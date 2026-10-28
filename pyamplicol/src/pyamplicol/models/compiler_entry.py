@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
@@ -36,13 +37,14 @@ from .compiler_contacts import (
 from .compiler_contractions import compile_contraction_records
 from .compiler_gauge import close_goldstone_flags, compile_goldstone_partner_records
 from .compiler_kernels import (
-    _canonicalize_oriented_kernel_component,
+    _canonical_product_text,
     _fuse_oriented_kernels,
     _is_compile_time_zero_parameter,
     _is_single_structure_constant,
     _lc_color_normalization_power,
     _oriented_component_expressions,
     _remap_kernel_symbols,
+    _renamed_kernel_text,
     _replace_expression_symbols,
     _spin_axis_labels,
 )
@@ -388,6 +390,7 @@ def _annotate_oriented_kernel_color_projections(
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
+    catalog = _contact_split_catalog(term_by_id)
     annotated: list[CompiledOrientedKernel] = []
     for kernel in kernels:
         term = term_by_id.get(kernel.term_id)
@@ -463,6 +466,7 @@ def _annotate_oriented_kernel_color_projections(
             contact_contract = _contact_recurrence_color_contract(
                 kernel,
                 term_by_id,
+                catalog,
             )
             if contact_contract is None:
                 recurrence_structure = structure
@@ -479,30 +483,32 @@ def _annotate_oriented_kernel_color_projections(
                 oriented_representations[1],
                 _dual_color_representation(oriented_representations[2]),
             )
-        annotated_kernel = replace(
-            kernel,
-            color_projection_structure=structure,
-            color_projection_coefficient=(
+        projection = {
+            "color_projection_coefficient": (
                 float(coefficient.real),
                 float(coefficient.imag),
             ),
-            lc_recurrence_color_rule_kind=recurrence_structure,
-        )
+            "lc_recurrence_color_rule_kind": recurrence_structure,
+        }
         recurrence_kernel = replace(
-            annotated_kernel,
+            kernel,
             color_projection_structure=recurrence_structure,
+            **projection,
         )
-        annotated_kernel = replace(
-            annotated_kernel,
-            lc_color_transition_terms=compile_lc_color_transition_terms(
-                recurrence_kernel,
-                oriented_representations,
-                proof_source=recurrence_proof_source,
-                provenance=recurrence_provenance,
-                tensor_role_representations=tensor_role_representations,
-            ),
+        annotated.append(
+            replace(
+                kernel,
+                color_projection_structure=structure,
+                lc_color_transition_terms=compile_lc_color_transition_terms(
+                    recurrence_kernel,
+                    oriented_representations,
+                    proof_source=recurrence_proof_source,
+                    provenance=recurrence_provenance,
+                    tensor_role_representations=tensor_role_representations,
+                ),
+                **projection,
+            )
         )
-        annotated.append(annotated_kernel)
     return tuple(annotated)
 
 
@@ -520,9 +526,38 @@ def _dual_color_representation(representation: int) -> int:
     return -representation if abs(representation) == 3 else representation
 
 
+# A contact split of the proof catalog: (catalog position, term, proof, split).
+_CatalogSplit = tuple[int, CompiledVertexTerm, Any, Any]
+
+
+def _contact_split_catalog(
+    term_by_id: Mapping[int, CompiledVertexTerm],
+) -> tuple[dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]]:
+    """The splits of every proven contact decomposition of ``term_by_id``,
+    in catalog order (terms, then their splits), by the auxiliary each split
+    owns and by its term (``_contact_recurrence_color_contract``)."""
+
+    by_auxiliary: dict[str, list[_CatalogSplit]] = {}
+    by_term: dict[int, list[_CatalogSplit]] = {}
+    position = 0
+    for term in term_by_id.values():
+        proof = term.contact_decomposition_proof
+        if proof is None or proof.status != "proven":
+            continue
+        for split in proof.splits:
+            entry = (position, term, proof, split)
+            position += 1
+            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{split.result_leg}"
+            by_auxiliary.setdefault(auxiliary_name, []).append(entry)
+            by_term.setdefault(term.id, []).append(entry)
+    return by_auxiliary, by_term
+
+
 def _contact_recurrence_color_contract(
     kernel: CompiledOrientedKernel,
     term_by_id: dict[int, CompiledVertexTerm],
+    catalog: tuple[dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]]
+    | None = None,
 ) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
     is_partial = kernel.vertex.endswith("::contact-partial")
     is_final = kernel.vertex.endswith(("::contact-final", "::contact-final-fused"))
@@ -534,43 +569,44 @@ def _contact_recurrence_color_contract(
         return None
 
     stage = "partial" if is_partial else "final"
-    owner_matches = []
-    orientation_matches = []
+    by_auxiliary, by_term = (
+        _contact_split_catalog(term_by_id) if catalog is None else catalog
+    )
     fused_term_ids = set(kernel.term_ids or (kernel.term_id,))
     # Contact-partial deduplication and final fusion may retain an auxiliary
     # owned by a term that is no longer the fused kernel's primary term ID.
     # Match the authenticated auxiliary name and source-leg orientation against
     # the complete proof catalog instead of trusting that incidental owner.
-    for term in term_by_id.values():
-        if term.contact_decomposition_proof is None:
-            continue
-        proof = term.contact_decomposition_proof
-        if proof.status != "proven":
-            continue
-        for split in proof.splits:
-            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{split.result_leg}"
-            owns_auxiliary = (
-                kernel.particles[2] == auxiliary_name
-                if stage == "partial"
-                else auxiliary_name in kernel.particles[:2]
-            )
-            if owns_auxiliary:
-                owner_matches.append((term, proof, split))
-            orientation_is_relevant = (
-                owns_auxiliary if stage == "partial" else term.id in fused_term_ids
-            )
-            if not orientation_is_relevant:
+    owned = {
+        entry[0]: entry
+        for name in (
+            (kernel.particles[2],) if stage == "partial" else kernel.particles[:2]
+        )
+        for entry in by_auxiliary.get(name, ())
+    }
+    owner_matches = [owned[position][1:] for position in sorted(owned)]
+    relevant = (
+        owned
+        if stage == "partial"
+        else {
+            entry[0]: entry
+            for term_id in fused_term_ids
+            for entry in by_term.get(term_id, ())
+        }
+    )
+    orientation_matches = []
+    for position in sorted(relevant):
+        _position, term, proof, split = relevant[position]
+        for orientation in split.orientations:
+            if orientation.stage != stage:
                 continue
-            for orientation in split.orientations:
-                if orientation.stage != stage:
-                    continue
-                expected_source_legs = (
-                    orientation.input_legs[0],
-                    orientation.input_legs[1],
-                    -1 if stage == "partial" else split.result_leg,
-                )
-                if kernel.source_particle_legs == expected_source_legs:
-                    orientation_matches.append((term, proof, split, orientation))
+            expected_source_legs = (
+                orientation.input_legs[0],
+                orientation.input_legs[1],
+                -1 if stage == "partial" else split.result_leg,
+            )
+            if kernel.source_particle_legs == expected_source_legs:
+                orientation_matches.append((term, proof, split, orientation))
     if len(owner_matches) != 1 or not orientation_matches:
         raise ValueError(
             f"compiler-generated contact kernel {kernel.vertex!r} has "
@@ -639,6 +675,27 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
 # of the lowered models of other processes. Cleared beyond the bound.
 _KERNEL_PROOFS: dict[str, tuple[Any, ...]] = {}
 _KERNEL_PROOF_BOUND = 1 << 16
+# The proof keys and the proofs a compile lacks are formed natively, in
+# parallel (``rusticol_core::model_proofs`` through the loop extension's
+# ``model_kernel_equivalence``; WP3.2 EWI-3R): byte-identical to the key loop
+# of ``_annotate_oriented_kernel_evaluation_equivalence`` and to
+# ``_kernel_equivalence_proof``, which stay the oracle
+# (``native_kernel_proofs(False)`` runs them).
+NATIVE_KERNEL_PROOFS = True
+
+
+@contextmanager
+def native_kernel_proofs(enabled: bool) -> Iterator[None]:
+    """``NATIVE_KERNEL_PROOFS`` set to ``enabled`` for the block and restored
+    after it: ``native_kernel_proofs(False)`` is the oracle lane."""
+
+    global NATIVE_KERNEL_PROOFS
+    before = NATIVE_KERNEL_PROOFS
+    NATIVE_KERNEL_PROOFS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_KERNEL_PROOFS = before
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(
@@ -658,7 +715,111 @@ def _annotate_oriented_kernel_evaluation_equivalence(
 
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
-    annotated: list[CompiledOrientedKernel] = []
+
+    def derived_terms(kernel: CompiledOrientedKernel) -> list[int]:
+        return [
+            term_id
+            for name in kernel.runtime_parameters
+            if name.startswith("derived_coupling_")
+            for term_id in (int(name.rsplit("_", 1)[1]),)
+            if term_id in term_by_id
+        ]
+
+    def dimensions_of(kernel: CompiledOrientedKernel) -> tuple[int, int, int]:
+        return tuple(
+            compiled_particle_component_dimension(particle_by_name[name])
+            for name in kernel.particles[:3]
+        )
+
+    if NATIVE_KERNEL_PROOFS:
+        from pyamplicol.loops.native import load_loop_native
+
+        derived_names: dict[int, str] = {}
+
+        def derived(term_id: int) -> tuple[str, str]:
+            if term_id not in derived_names:
+                derived_names[term_id] = symbols.derived_coupling(
+                    model_symbols.model_name, term_id
+                ).get_name()
+            return derived_names[term_id], term_by_id[term_id].coupling_expression
+
+        # The model's kernel symbol namespace (``kernel_component``).
+        prefix = model_symbols.kernel_component(0, "left", 0).get_name()
+        keys, found = load_loop_native().model_kernel_equivalence(
+            [
+                (
+                    kernel.kind,
+                    kernel.coupling_expression,
+                    int(kernel.lc_color_normalization_power or 0),
+                    list(kernel.component_expressions),
+                    # As the oracle's dict: one replacement per symbol.
+                    [
+                        derived(term_id)
+                        for term_id in dict.fromkeys(derived_terms(kernel))
+                    ],
+                    dimensions_of(kernel),
+                )
+                for kernel in kernels
+            ],
+            prefix.rsplit("::", 1)[0] + "::",
+            set(_KERNEL_PROOFS),
+        )
+        proofs = {
+            key: (
+                class_digest,
+                (float(sign), 0.0),
+                tuple(input_order),
+                None if exchange is None else (float(exchange), 0.0),
+            )
+            for key, (class_digest, sign, input_order, exchange) in found
+        }
+    else:
+        keys, proofs = _kernel_keys_and_proofs(
+            kernels, term_by_id, derived_terms, dimensions_of, model_symbols
+        )
+    needed = {key: _KERNEL_PROOFS.get(key) or proofs[key] for key in keys}
+    if len(_KERNEL_PROOFS) + len(proofs) > _KERNEL_PROOF_BOUND:
+        _KERNEL_PROOFS.clear()
+    _KERNEL_PROOFS.update(proofs)
+    # Each kernel's factor relative to the first factor of its class.
+    reference_factor_by_class: dict[str, complex] = {}
+    normalized: list[CompiledOrientedKernel] = []
+    for kernel, key in zip(kernels, keys, strict=True):
+        class_digest, factor, input_order, input_exchange_factor = needed[key]
+        evaluation_class = f"symbolica-sha256:{class_digest}"
+        class_factor_complex = complex(*factor)
+        reference_factor = reference_factor_by_class.setdefault(
+            evaluation_class,
+            class_factor_complex,
+        )
+        relative_factor = class_factor_complex / reference_factor
+        normalized.append(
+            replace(
+                kernel,
+                evaluation_class=evaluation_class,
+                evaluation_factor=(
+                    float(relative_factor.real),
+                    float(relative_factor.imag),
+                ),
+                evaluation_input_order=input_order,
+                evaluation_input_exchange_factor=input_exchange_factor,
+                evaluation_equivalence_verified=True,
+            )
+        )
+    return tuple(normalized)
+
+
+def _kernel_keys_and_proofs(
+    kernels: Sequence[CompiledOrientedKernel],
+    term_by_id: Mapping[int, CompiledVertexTerm],
+    derived_terms: Any,
+    dimensions_of: Any,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[list[str], dict[str, tuple[Any, ...]]]:
+    """The oracle of ``model_kernel_equivalence``: per kernel its proof key,
+    and the proofs (``_kernel_equivalence_proof``) of the distinct keys the
+    process's memo (``_KERNEL_PROOFS``) lacks."""
+
     parsed: dict[int, _sym.Expression] = {}
 
     def term_coupling(term_id: int) -> _sym.Expression:
@@ -666,15 +827,14 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             parsed[term_id] = _sym.E(term_by_id[term_id].coupling_expression)
         return parsed[term_id]
 
+    keys: list[str] = []
+    proofs: dict[str, tuple[Any, ...]] = {}
     for kernel in kernels:
         derived_couplings = {
             symbols.derived_coupling(model_symbols.model_name, term_id): term_coupling(
                 term_id
             )
-            for name in kernel.runtime_parameters
-            if name.startswith("derived_coupling_")
-            for term_id in (int(name.rsplit("_", 1)[1]),)
-            if term_id in term_by_id
+            for term_id in derived_terms(kernel)
         }
         coupling = _replace_expression_symbols(
             _sym.E(kernel.coupling_expression),
@@ -684,14 +844,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
         # so it must also participate in proofs of shared kernel evaluations.
         if kernel.lc_color_normalization_power:
             coupling *= _sym.E(f"2^(-{kernel.lc_color_normalization_power}/2)")
-        dimensions = tuple(
-            compiled_particle_component_dimension(particle)
-            for particle in (
-                particle_by_name[kernel.particles[0]],
-                particle_by_name[kernel.particles[1]],
-                particle_by_name[kernel.particles[2]],
-            )
-        )
+        dimensions = dimensions_of(kernel)
         # The kernel's components in the canonical kernel symbols, with the
         # coupling aliases resolved, per input order: with the dimensions and
         # the coupling they determine the proof below exactly, so kernels
@@ -726,43 +879,10 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
-        proof = _KERNEL_PROOFS.get(key)
-        if proof is None:
-            if len(_KERNEL_PROOFS) >= _KERNEL_PROOF_BOUND:
-                _KERNEL_PROOFS.clear()
-            proof = _KERNEL_PROOFS[key] = _kernel_equivalence_proof(
-                remapped, coupling, dimensions
-            )
-        class_digest, factor, input_order, input_exchange_factor = proof
-        annotated.append(
-            replace(
-                kernel,
-                evaluation_class=f"symbolica-sha256:{class_digest}",
-                evaluation_factor=factor,
-                evaluation_input_order=input_order,
-                evaluation_input_exchange_factor=input_exchange_factor,
-                evaluation_equivalence_verified=True,
-            )
-        )
-    reference_factor_by_class: dict[str, complex] = {}
-    normalized: list[CompiledOrientedKernel] = []
-    for kernel in annotated:
-        class_factor_complex = complex(*kernel.evaluation_factor)
-        reference_factor = reference_factor_by_class.setdefault(
-            kernel.evaluation_class,
-            class_factor_complex,
-        )
-        relative_factor = class_factor_complex / reference_factor
-        normalized.append(
-            replace(
-                kernel,
-                evaluation_factor=(
-                    float(relative_factor.real),
-                    float(relative_factor.imag),
-                ),
-            )
-        )
-    return tuple(normalized)
+        keys.append(key)
+        if key not in _KERNEL_PROOFS and key not in proofs:
+            proofs[key] = _kernel_equivalence_proof(remapped, coupling, dimensions)
+    return keys, proofs
 
 
 def _kernel_equivalence_proof(
@@ -880,6 +1000,13 @@ def _compile_oriented_kernels(
         if parameter.nature == "external"
     }
     kernels: list[CompiledOrientedKernel] = []
+    # The components of an oriented Lorentz structure, by (structure, spins,
+    # legs, transverse variant), with the kernel kind they were formed for:
+    # the network runs on canonical symbols whose order does not depend on
+    # the kind (``_execute_dense_network``), so another kernel's components
+    # are these with the kernel symbols renamed (the vertex copies of
+    # counterterm clone lines and every repeated structure).
+    oriented_memo: dict[tuple[object, ...], tuple[int, Any]] = {}
     for term in terms:
         if term.valence != 3:
             continue
@@ -912,24 +1039,50 @@ def _compile_oriented_kernels(
                         f"vertex {term.vertex} particle {result_source.name} refers to "
                         f"absent antiparticle {result_source.antiname}"
                     ) from exc
-                ordered_components = _oriented_component_expressions(
-                    term,
-                    particle_by_name,
-                    left_leg=left_leg,
-                    right_leg=right_leg,
-                    result_leg=result_leg,
-                    kind=len(kernels),
-                    model_symbols=model_symbols,
-                    use_transverse_massless_yang_mills=(
-                        transverse_massless_yang_mills
-                        and _term_supports_transverse_massless_yang_mills(
-                            term,
-                            particle_by_name,
-                            parameter_by_name,
-                            propagator_by_name,
-                        )
-                    ),
+                transverse = (
+                    transverse_massless_yang_mills
+                    and _term_supports_transverse_massless_yang_mills(
+                        term,
+                        particle_by_name,
+                        parameter_by_name,
+                        propagator_by_name,
+                    )
                 )
+                memo_key = (
+                    term.lorentz_expression,
+                    tuple(particle_by_name[name].spin for name in term.particles),
+                    left_leg,
+                    right_leg,
+                    result_leg,
+                    transverse,
+                )
+                found = oriented_memo.get(memo_key)
+                if found is None:
+                    ordered_components = _oriented_component_expressions(
+                        term,
+                        particle_by_name,
+                        left_leg=left_leg,
+                        right_leg=right_leg,
+                        result_leg=result_leg,
+                        kind=len(kernels),
+                        model_symbols=model_symbols,
+                        use_transverse_massless_yang_mills=transverse,
+                    )
+                    oriented_memo[memo_key] = (len(kernels), ordered_components)
+                else:
+                    formed, ordered_components = found
+                    ordered_components = replace(
+                        ordered_components,
+                        values=tuple(
+                            _renamed_kernel_text(
+                                value,
+                                old_kind=formed,
+                                new_kind=len(kernels),
+                                model_symbols=model_symbols,
+                            )
+                            for value in ordered_components.values
+                        ),
+                    )
                 kernels.append(
                     CompiledOrientedKernel(
                         kind=len(kernels),
@@ -1115,10 +1268,12 @@ def _compile_four_point_contact_kernels(
                         ),
                         source_particle_legs=(left_leg, right_leg, -1),
                         component_expressions=tuple(
-                            _canonicalize_oriented_kernel_component(
-                                _sym.E(components[index])
-                                * _sym.E(orientation.scalar_prefactor)
-                            ).to_canonical_string()
+                            _canonical_product_text(
+                                components[index],
+                                orientation.scalar_prefactor,
+                                kind=kind,
+                                model_symbols=model_symbols,
+                            )
                             for index in representative_indices
                         ),
                         coupling_expression="1",

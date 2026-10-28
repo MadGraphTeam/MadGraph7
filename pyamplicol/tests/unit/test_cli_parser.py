@@ -74,8 +74,27 @@ def test_generate_accepts_a_repeated_particle_veto() -> None:
         .effective
     )
     assert config.generation.particle_veto == ("t", "b")
+    assert config.generation.allow_anomalous_veto is False
     with pytest.raises(ConfigurationError, match="particle_veto requires"):
         parse_cli(("generate", "--particle-veto", "t")).resolve()
+    # [U2]: the override of an anomalous veto (refused by default).
+    allowed = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--loop-engine",
+                "v2",
+                "--particle-veto",
+                "t",
+                "--allow-anomalous-veto",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert allowed.generation.allow_anomalous_veto is True
 
 
 def test_generate_defaults_to_recurrence_execution() -> None:

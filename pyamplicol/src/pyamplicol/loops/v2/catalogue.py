@@ -40,14 +40,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from functools import cache
 from itertools import permutations, product
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from ..._internal.physics.symbols import ModelSymbolRegistry, symbols
 from ...models import compiler_symbolica as _sym
-from ...models import tensors as _tensors
 from ...models.compiler_entry import compile_ufo_model_ir
 from ...models.compiler_kernels import (
     _input_tensor_expression,
@@ -80,7 +78,11 @@ from ...models.prepared_catalog_helpers import (
     model_parameter_descriptor,
     used_input_descriptors,
 )
-from ...models.tensors import normalize_lorentz_expression
+from ...models.tensors import (
+    LEVI_CIVITA,
+    levi_civita_tensor,
+    normalize_lorentz_expression,
+)
 
 if TYPE_CHECKING:
     from ...models.contracts import CompiledParticleRecord, CompiledVertexTerm
@@ -881,9 +883,10 @@ class _CatalogueBuilder:
             )
         spins = tuple(record.spin for record in records)
         try:
-            # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ).
+            # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ), the
+            # dense ``tensors.LEVI_CIVITA``.
             expression = normalize_lorentz_expression(
-                _with_levi_civita(str(lorentz["structure"])),
+                str(lorentz["structure"]),
                 spins,
                 model_symbols=self.model_symbols,
             ).expression
@@ -1066,73 +1069,6 @@ def _counterterm_entry_key(entry: KernelBasisEntry) -> tuple[str, int, int, int,
     )
 
 
-# The four-dimensional Levi-Civita tensor of UFO Lorentz structures.
-UFO_LEVI_CIVITA = symbols.qualified_name("loop_v2_ufo_levi_civita")
-
-
-def _permutation_sign(permutation: Sequence[int]) -> int:
-    sign, order = 1, list(permutation)
-    for index in range(len(order)):
-        while order[index] != index:
-            target = order[index]
-            order[index], order[target] = order[target], order[index]
-            sign = -sign
-    return sign
-
-
-@cache
-def ufo_levi_civita_tensor() -> Any:
-    """The dense ``Epsilon`` of UFO Lorentz structures (``UFO_LEVI_CIVITA``).
-
-    ALOHA (``aloha_object.L_Epsilon``) represents Epsilon by its contravariant
-    components with epsilon^{0123} = -1 (epsilon_{0123} = +1) and contracts
-    every Lorentz index with the metric. Spenso contracts Minkowski slots the
-    same way (vectors are contravariant components), so the components are
-    ALOHA's: minus the sign of the index permutation. The ``ct-site`` kernels
-    of R2_GGZ and R2_GGGVa equal compiled ALOHA routines to rounding
-    (``tests/unit/test_loop_v2_levi_civita.py``).
-    """
-
-    _sym._ensure_symbolica()
-    minkowski = _sym.Representation.mink(4)
-    components = [
-        _sym.E(str(-_permutation_sign(axes) if len(set(axes)) == 4 else 0))
-        for axes in product(range(4), repeat=4)
-    ]
-    return _sym.Tensor.dense(
-        _sym.TensorName(UFO_LEVI_CIVITA)(*[minkowski] * 4), components
-    )
-
-
-def _with_levi_civita(structure: str) -> str:
-    """A wrapped UFO Lorentz structure with ``Epsilon`` as ``UFO_LEVI_CIVITA``.
-
-    The tree model compiler refuses Epsilon (``models.tensors``); the loop
-    catalogue admits it for counterterm sites only, with the slot labels the
-    normaliser gives the other Lorentz indices.
-    """
-
-    if "Epsilon" not in structure:
-        return structure
-    _sym._ensure_symbolica()
-    _tensors._ensure_symbolica()
-    minkowski = _sym.Representation.mink(4)
-    name = _sym.TensorName(UFO_LEVI_CIVITA)
-    wildcards = _tensors._WILDCARDS
-
-    def replace(match: Mapping[Any, Any]) -> Any:
-        return name(
-            *(
-                minkowski(_tensors._ufo_lorentz_label(match[wildcards[label]]))
-                for label in ("a_", "b_", "c_", "d_")
-            )
-        ).to_expression()
-
-    return _tensors._replace(
-        _sym.E(structure), "UFO::Epsilon(a_,b_,c_,d_)", replace
-    ).to_canonical_string()
-
-
 def _contract_lorentz(
     model_symbols: ModelSymbolRegistry,
     lorentz_expression: str,
@@ -1152,8 +1088,8 @@ def _contract_lorentz(
     """
 
     library = _sym.TensorLibrary.hep_lib_atom()
-    if UFO_LEVI_CIVITA in lorentz_expression:
-        library.register(ufo_levi_civita_tensor())
+    if LEVI_CIVITA in lorentz_expression:
+        library.register(levi_civita_tensor())
     minkowski = _sym.Representation.mink(4)
     momentum_names = {
         leg: _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))
