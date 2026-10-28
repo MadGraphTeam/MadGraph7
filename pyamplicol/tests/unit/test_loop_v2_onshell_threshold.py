@@ -41,7 +41,9 @@ in the production path (native executor, native inputs):
   its binary64 e+ e- > t t~ with MT = 1e-6 equals MPFR;
 * routed lanes use Symbolica in the native code, under pyAmpliCol's package
   key: unlicensed, with the restricted permit held elsewhere, a routed
-  binary64 evaluation completes with the key and aborts without it;
+  binary64 evaluation completes with the key and aborts without it, through
+  the executor and through the reducer on the caller's own thread (the
+  reducer's explicit guard);
 * the artifact records the routing: a public generation with MT = 1e-6 fixed
   names MT with its square and the threshold in the generation record of
   e+ e- > t t~ (``binary64_exact_engine``) and writes no entry for
@@ -480,3 +482,98 @@ def test_routed_binary64_lanes_run_under_the_package_key(light_artifact, tmp_pat
     assert refused != 0
     assert RESTRICTED in r_out + r_err
     assert unrouted == 0, u_out[-2000:] + u_err[-2000:]
+
+
+# One light bubble, B0(p^2 = 1e4; m^2, m^2) at rank 0, reduced by the v2
+# family reducer on the calling thread (as the Python reference path of
+# ``assemble.py`` does): ``light`` routes it (m^2 = 1e-12), ``heavy`` does
+# not (m^2 = 29929). Prints the statuses, values and routed-lane count.
+_REDUCER_SOURCE = """
+import json, sys
+from pyamplicol.loops.native import load_loop_native
+
+native = load_loop_native()
+mass = {"light": "1e-12", "heavy": "29929"}[sys.argv[1]]
+
+
+def batch(values):
+    return native.NativeBatch.from_decimal(
+        [[x, "0"] for x in values], 1, len(values), "double", None, [5]
+    )
+
+
+group = (
+    2,
+    batch(["0", "0", "0", "0", "100", "0", "0", "0"]),
+    batch([mass, mass]),
+    batch(["250000"]),
+    batch(["0", "10000", "10000", "0"]),
+    batch(["1.5"]),
+)
+reducer = native.V2Reducer("double", None, sys.argv[2])
+(direct,), _check = reducer.reduce([group])
+print(json.dumps({
+    "statuses": direct.statuses,
+    "values": direct.successful_values().to_decimal(),
+    "routed": reducer.take_exact_lanes(),
+}))
+"""
+
+
+@pytest.mark.loop_physics
+def test_the_reference_reducer_takes_the_key_on_its_own_thread(tmp_path):
+    """The explicit guard of a routed reduction (``FastEngine::reduce``,
+    ``pyamplicol::unlock``): the Python reference path reduces on the caller's
+    thread, which holds no executor worker's key. While another process holds
+    the restricted permit (a private lock directory), an unlicensed process
+    reduces a light bubble on the binary64 fast reducer: the lane is routed
+    (``V2Reducer.take_exact_lanes``) and completes with the package key,
+    bitwise equal to the generic binary64 reducer here (licensed); it aborts
+    with the key disabled (the control), while the heavy bubble, not routed,
+    completes with the key disabled. Without the guard the first run aborts
+    as the second does."""
+
+    import os
+    import subprocess
+    import sys
+
+    portability = _portability()
+    lock = tmp_path / "locks"
+    lock.mkdir(mode=0o700)
+    environment = {k: v for k, v in os.environ.items() if k != "SYMBOLICA_LICENSE"}
+    no_key = {**environment, "PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
+    runs = (("light", environment), ("light", no_key), ("heavy", no_key))
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        done = [
+            subprocess.run(
+                [sys.executable, "-c", _REDUCER_SOURCE, mass, "fast"],
+                capture_output=True,
+                text=True,
+                env=permit.environment(env),
+                cwd=tmp_path,
+                preexec_fn=portability._no_core,
+                timeout=600,
+            )
+            for mass, env in runs
+        ]
+    assert permit.record["verified"], permit.record
+    keyed, refused, unrouted = done
+    assert keyed.returncode == 0, keyed.stdout[-2000:] + keyed.stderr[-2000:]
+    assert RESTRICTED not in keyed.stdout + keyed.stderr
+    assert refused.returncode != 0
+    assert RESTRICTED in refused.stdout + refused.stderr
+    assert unrouted.returncode == 0, unrouted.stdout[-2000:] + unrouted.stderr[-2000:]
+    light = json.loads(keyed.stdout.splitlines()[-1])
+    heavy = json.loads(unrouted.stdout.splitlines()[-1])
+    assert light["statuses"] == heavy["statuses"] == [[5, "success"]]
+    assert (light["routed"], heavy["routed"]) == (1, 0)
+    generic = subprocess.run(
+        [sys.executable, "-c", _REDUCER_SOURCE, "light", "generic"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=600,
+    )
+    reference = json.loads(generic.stdout.splitlines()[-1])
+    assert reference["routed"] == 0
+    assert light["values"] == reference["values"]

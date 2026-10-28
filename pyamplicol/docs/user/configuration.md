@@ -836,10 +836,13 @@ bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
 AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
 levels (checked under emulation) run the saved states and agree to rounding
 ([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
-Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
-precision use pyAmpliCol's own Symbolica key. The native SDKs (C, C++,
-Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and evaluate
-binary64 virtuals, bitwise equal to the Python API, without a licence:
+Binary64 evaluation needs no Symbolica licence, except for loops routed to
+the exact engine at light masses (above: they use pyAmpliCol's own Symbolica
+key, which expires on 2028-01-01, after which they need a personal licence);
+double-double and arbitrary precision use pyAmpliCol's own Symbolica key as
+well. The native SDKs (C, C++, Fortran, Rust) open a v2 artifact through
+`rusticol_virtual_open` and evaluate binary64 virtuals, bitwise equal to the
+Python API, without a licence (with the same exception):
 `rusticol_virtual_set_poles(handle, poles)` takes the same pole selections as
 the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
 (its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and
