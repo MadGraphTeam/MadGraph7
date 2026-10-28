@@ -805,6 +805,38 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S2: a soft gluon (E_g / sqrt(s) = 1e-3, 1e-5), MadLoop in quadruple precision",
+     "extras": [],
+     "extras_pending": {},
+     "binary64_out_of_scope": [
+      {
+       "point": 1,
+       "sector": "QCD^6",
+       "coefficient": "born",
+       "E": null,
+       "true_error": 1.16e-11
+      },
+      {
+       "point": 1,
+       "sector": "QCD^8",
+       "coefficient": "finite",
+       "E": 9.35e-07,
+       "true_error": 6.26e-07
+      },
+      {
+       "point": 1,
+       "sector": "QCD^8",
+       "coefficient": "single_pole",
+       "E": 1.47e-06,
+       "true_error": 7.06e-07
+      },
+      {
+       "point": 1,
+       "sector": "QCD^8",
+       "coefficient": "double_pole",
+       "E": 5.22e-07,
+       "true_error": 2.31e-07
+      }
+     ],
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/uux_ggg_soft.json",
@@ -826,6 +858,8 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S2: a collinear pair (theta = 1e-3, 1e-5; small Gram determinants), MadLoop in quadruple precision",
+     "extras": [],
+     "extras_pending": {},
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/uux_ggg_collinear.json",
@@ -1931,6 +1965,8 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S1: top-pair threshold points (beta = 1e-1, 1e-2, 1e-3), MadLoop in quadruple precision",
+     "extras": [],
+     "extras_pending": {},
      "binary64_out_of_scope": [
       {
        "point": 1,
@@ -1988,6 +2024,8 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S4: MT = 170 at run time",
+     "extras": [],
+     "extras_pending": {},
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/gg_ttx_mt170.json",
@@ -2525,6 +2563,8 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S4: MB = 4.5, aS = 0.13 at run time (cond(MB) and reglog CT terms)",
+     "extras": [],
+     "extras_pending": {},
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/gg_bbx_4fs_params.json",
@@ -2743,6 +2783,8 @@
      "gating": false,
      "tier": "nightly",
      "notes": "the +-z beam-axis twin of the x-rotated points: a non-gating diagnostic (PLAN \u00a74.1)",
+     "extras": [],
+     "extras_pending": {},
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/bbx_hg_4fs_z.json",
@@ -4482,6 +4524,8 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S3: the radiation-zero points (0, 1) and their regular neighbour (2); no division by the Born",
+     "extras": [],
+     "extras_pending": {},
      "zero_points": {
       "0": 2,
       "1": 2

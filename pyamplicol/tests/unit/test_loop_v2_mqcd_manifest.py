@@ -225,8 +225,13 @@ def test_listings_name_real_points_and_coefficients(rows):
             assert entry["point"] in {i for p in row.points.values() for i in p}, name
             assert entry["coefficient"] in mqcd.COEFFICIENTS, name
         for entry in row.binary64_out_of_scope:
-            # Listed with E and its true error (PLAN §1.4 rule 2).
-            assert entry["E"] > mqcd.O1_CAP and entry["true_error"] >= 0, name
+            # Listed with E and its true error (PLAN §1.4 rule 2); a limit
+            # point's Born (no estimate) only on a special-point variant.
+            if entry["coefficient"] == "born":
+                assert row.base is not None and entry["E"] is None, name
+            else:
+                assert entry["E"] > mqcd.O1_CAP, name
+            assert entry["true_error"] >= 0, name
         for entry in row.vanishing:
             # A Laurent coefficient, or a colour-forbidden Born sector.
             assert entry["coefficient"] in mqcd.COEFFICIENTS, name
