@@ -28,12 +28,13 @@ names ``process``, ``born`` and ``loop`` orders, optional
 ``parameters``; the output adds the Catani prediction of each sector
 (``ir_poles``). With ``"ward": true`` it runs the gauge-Ward check of the
 request at N_c = N instead (``ward_main``; ``precision`` is the Ward
-carrier, "double" or "double-double"). With ``use_nc(n, catani=True)`` (this entry) Catani's
-operator also takes N_c = N: C_A = N, C_F = (N^2-1)/(2N) and beta_0's C_A
-(``loops.v2.poles``) and the colour-correlated Borns at N (the Python
-correlators; the native ones are contracted at N_c = 3), read by no colour
-declaration, so the renormalised
-virtual's poles at N against it test the counterterms' UV N_c dependence.
+carrier, "double" or "double-double"); ``"identities"`` replaces some of the
+declaration's identities (a control). With ``use_nc(n, catani=True)`` (this
+entry) Catani's operator also takes N_c = N: C_A = N, C_F = (N^2-1)/(2N),
+beta_0's C_A (``loops.v2.poles``) and the colour-correlated Borns at N (the
+Python correlators; the native ones are contracted at N_c = 3). No colour
+declaration enters it, so the renormalised virtual's poles at N against it
+test the counterterms' UV N_c dependence.
 """
 
 from __future__ import annotations
@@ -160,7 +161,6 @@ def request_main(argv: list[str]) -> None:
     from pyamplicol.loops.v2 import dag_input
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
-
     from pyamplicol.models.loop_color_declaration import (
         resolve_loop_color_declaration,
     )
