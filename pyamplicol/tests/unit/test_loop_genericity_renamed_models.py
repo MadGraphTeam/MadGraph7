@@ -525,10 +525,8 @@ def test_renamed_scale_and_moved_alpha_s_give_the_same_virtual(models, loop_nati
     _assert_same_values(*results)
 
 
-# Photon-only QED corrections (Z, W, H and the Goldstones vetoed), widths
-# zero outside the complex-mass scheme (``test_loop_v2_ew`` LADDER rung
-# uudd_qed_photon_uv).
-PHOTON_ONLY = (23, 24, 25, 250, 251)
+# Widths zero outside the complex-mass scheme (``test_loop_v2_ew`` LADDER
+# rung uudd_qed).
 ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
 MASSLESS_POINT = [
     ["500", "0", "0", "500"],
@@ -540,9 +538,12 @@ MASSLESS_POINT = [
 
 @pytest.mark.loop_nightly
 def test_renamed_correction_order_gives_the_same_virtual(models, loop_native):
-    """u u~ > d d~ with photon-only QED corrections named 'Qe' on
-    loop_qcd_qed_sm (UV pole selection, every component): the same EW
-    classification, route, frames and scale binding, and the same values."""
+    """u u~ > d d~ with QED corrections named 'Qe' on loop_qcd_qed_sm (UV
+    pole selection, every component): the same EW classification, route,
+    frames and scale binding, and the same values. (Photon-only corrections,
+    the Z, W, H and Goldstones vetoed, are refused on this model since WP3.2
+    EWI-5: its electroweak counterterms do not label their loop content,
+    ``refusals`` "veto-unlabelled-counterterms".)"""
 
     request = ("u u~ > d d~", {"QCD": 2, "QED": 0}, {"QCD": 2, "QED": 2}, ("QED",))
     slices, results = [], []
@@ -553,7 +554,6 @@ def test_renamed_correction_order_gives_the_same_virtual(models, loop_native):
             "qcd_qed",
             variant,
             *request,
-            particle_veto=PHOTON_ONLY,
             fixed_parameters=ZERO_WIDTHS,
         )
         assert slice_.request.corrections == (rename.order("QED"),)

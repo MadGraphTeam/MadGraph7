@@ -36,6 +36,31 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   native DAG builder refuses the same merge with the listed key
   (``rusticol_core::loop_v2::dag::FERMION_LINE_REPRESENTATION``), which
   ``dag_input`` raises as this error.
+* ``veto-unlabelled-counterterms`` (WP3.2 EWI-5 interim, until EWI-7's [U2]
+  veto guard and C1 UV certifier): ``particle_veto`` reaches the
+  counterterms through their UFO ``loop_particles`` labels only
+  (REQUIREMENTS_ADDENDUM J: a term whose label holds a vetoed particle is
+  dropped). That removes a vetoed species' loops from the counterterms only
+  when the labels partition every counterterm coupling by its loop content.
+  A model that writes a counterterm term of a correction with no loop
+  content at all (an empty label, the admission's wildcard: MG5_aMC's NLOCT
+  electroweak UV counterterms, one coupling over every loop of a vertex)
+  does not, and its other labels are nominal too (``loop_qcd_qed_sm``
+  labels the photon-and-Z R2 of ``e+ e- a`` by ``[e-, Z]`` and the
+  electroweak UV counterterm of ``u u~ g`` by ``[u, Z]``), which no
+  structure tells from a faithful label. A veto that removes a loop species
+  of such a correction then keeps vetoed loops in some counterterms and
+  drops kept ones from others: a silently wrong virtual (photon-only
+  ``e- e+ > mu- mu+`` on loop_qcd_qed_sm: single pole -3.487e-4 against the
+  QED Catani operator's -1.841e-4; ``poles = "uv"`` cannot see it, since
+  the field factors' UV part is the remainder). The criterion is the
+  model's own labelling: a vetoed species perturbative in a requested
+  correction (``perturbative_species_orders``) while some counterterm term
+  of the model (``LoopModelIR.kernels``, every vertex, not only those the
+  request reaches) whose coupling orders hold a requested correction has
+  an empty label (``unlabelled_counterterm_vertices``).
+  ``require_labelled_counterterms_for_veto`` refuses such a request before
+  any tree, naming the vetoed species and those vertices.
 """
 
 from __future__ import annotations
@@ -86,6 +111,22 @@ LOOP_ADMISSION_REFUSALS = (
         "order so that the request cannot use it",
         "A native-dag with WP3.2 EWI-5 (ew-leptons)",
         "Wick ranks for every fermion line, coloured or not",
+    ),
+    LoopAdmissionRefusal(
+        "veto-unlabelled-counterterms",
+        "a particle_veto that removes a loop species of a requested correction "
+        "on a model whose counterterm terms of that correction do not all "
+        "declare their loop content (loop_particles = [], e.g. MG5_aMC's "
+        "loop_qcd_qed_sm and its G_mu variant: photon-only QED corrections)",
+        "the veto drops the counterterm terms whose loop_particles hold a "
+        "vetoed particle (REQUIREMENTS_ADDENDUM J), which removes the vetoed "
+        "loops only when the labels partition every counterterm coupling by "
+        "loop content; unlabelled terms show that this model's labels do not",
+        "the complete corrections (no particle_veto of their loop species), or "
+        "a model whose counterterm terms each declare their loop content",
+        "WP3.2 EWI-7 ([U2] veto guard; C1 UV certifier)",
+        "vetoed loops removed from unlabelled counterterm couplings, or the "
+        "veto certified against the loops",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
@@ -316,6 +357,69 @@ def require_colour_preserving_fermion_lines(
         )
 
 
+# ------------------------------------------- veto of unlabelled counterterms
+
+
+def unlabelled_counterterm_vertices(
+    kernels: Iterable[Any], corrections: Iterable[str]
+) -> tuple[str, ...]:
+    """The UFO counterterm vertices (names, sorted) of a loop model's
+    ``kernels`` (``LoopModelIR.kernels``: every vertex of the model) with a
+    term of a correction in ``corrections`` (its coupling orders hold one)
+    that declares no loop content: its UFO ``loop_particles`` group is empty
+    (``()``, the counterterm admission's wildcard)."""
+
+    corrections = frozenset(corrections)
+    return tuple(
+        sorted(
+            {
+                entry.vertex_name
+                for entry in kernels
+                if entry.kind != "tree"
+                and entry.loop_particles is not None
+                and () in entry.loop_particles
+                and corrections & {name for name, power in entry.order if power}
+            }
+        )
+    )
+
+
+def require_labelled_counterterms_for_veto(
+    kernels: Iterable[Any],
+    process: str,
+    veto: Iterable[int],
+    corrections: Iterable[str],
+    species_orders: Mapping[int, Iterable[str]],
+) -> None:
+    """Refuse (``veto-unlabelled-counterterms``) a request for ``process``
+    (its expression) whose ``veto`` (|PDG| codes) removes a species
+    perturbative in one of its ``corrections`` (``species_orders``: |PDG| ->
+    orders, the prepared structure's ``perturbative_species_orders``) while
+    the model's counterterm terms of those corrections are not all labelled
+    with their loop content (``unlabelled_counterterm_vertices``)."""
+
+    corrections = frozenset(corrections)
+    vetoed = sorted(
+        pdg
+        for pdg in {abs(int(code)) for code in veto}
+        if corrections & set(species_orders.get(pdg, ()))
+    )
+    if not vetoed:
+        return
+    unlabelled = unlabelled_counterterm_vertices(kernels, corrections)
+    if unlabelled:
+        shown = ", ".join(unlabelled[:4])
+        more = f", and {len(unlabelled) - 4} more" if len(unlabelled) > 4 else ""
+        raise LoopRequestUnsupported(
+            "veto-unlabelled-counterterms",
+            f"{process!r}: particle_veto removes the species {vetoed}, "
+            f"perturbative in the corrections {sorted(corrections)}, and the "
+            f"model's counterterm vertices {shown}{more} write terms of those "
+            "corrections without loop content (loop_particles = []), so the "
+            "veto cannot remove the vetoed loops from its counterterms",
+        )
+
+
 __all__ = [
     "LOOP_ADMISSION_REFUSALS",
     "LoopAdmissionRefusal",
@@ -325,5 +429,7 @@ __all__ = [
     "representation_changing_vertices",
     "require_colour_preserving_fermion_lines",
     "require_formal_nc_tables",
+    "require_labelled_counterterms_for_veto",
     "require_nc_exact",
+    "unlabelled_counterterm_vertices",
 ]

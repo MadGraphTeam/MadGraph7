@@ -1523,16 +1523,20 @@ def test_referenced_couplings_equal_mpmath(ew, carrier):
 # B3 (unitary-gauge massive vectors in the loops) by EWI-4b (ew-gauge: every
 # electroweak request takes 't Hooft-Feynman gauge throughout, its
 # Goldstone-vector mixings are lowered as vertex insertions).
-# B4: more than one colour-singlet fermion line, refused when the request is
-# prepared, before any tree or counterterm is built
-# (``ct_sites.require_one_singlet_line``, until EWI-5).
-B4 = ("FermionSignError", r"colour-singlet fermion lines .*Koszul signs")
-# B4 in the loop: a colour-singlet fermion line through the loop
-# (``conventions.LeafWeights``, until EWI-5), reached after the families,
-# the counterterm program and the kernel catalogue.
-B4_LOOP = ("FermionSignError", r"colour-singlet fermion line through the loop")
+# B4 (several colour-singlet fermion lines; a colour-singlet line through the
+# loop) by EWI-5 (ew-leptons: the Koszul signs of the tree engine at the root
+# and in the loops, ``conventions.colour_singlet_sign``); their values against
+# MadLoop: ``test_loop_v2_ew_leptons``.
 LIFTED = None  # the rung generates (and runs its check)
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
+# A veto of loop species on loop_qcd_qed_sm, whose electroweak UV
+# counterterms declare no loop content (``refusals``, WP3.2 EWI-5 interim;
+# lifted by EWI-7's [U2] veto guard).
+_UNLABELLED = (
+    "LoopRequestUnsupported",
+    r"veto-unlabelled-counterterms: .* particle_veto removes the species "
+    r"\[23, 24, 25, 250, 251\]",
+)
 # Electroweak requests need every propagating width fixed to zero outside
 # the complex-mass scheme (``ew_policy``, the user's decision [U8]).
 _ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
@@ -1593,10 +1597,12 @@ def _rung(name, model, process, born, loop, blocker, **options):
 
     import pyamplicol.loops.v2.catalogue as catalogue
     import pyamplicol.loops.v2.conventions as conventions
+    import pyamplicol.loops.v2.refusals as refusals
 
     errors = {
         "LoopKernelCatalogueError": catalogue.LoopKernelCatalogueError,
         "FermionSignError": conventions.FermionSignError,
+        "LoopRequestUnsupported": refusals.LoopRequestUnsupported,
     }
     marks = ()
     if blocker is not LIFTED:
@@ -1610,16 +1616,23 @@ def _rung(name, model, process, born, loop, blocker, **options):
 
 LADDER = [
     # Photon-only QED corrections of a lepton process: two colour-singlet
-    # fermion lines (B4, EWI-5; B2 was lifted by EWI-1).
+    # fermion lines, one through every loop (B4, lifted by EWI-5; B2 by
+    # EWI-1). The veto cannot act on loop_qcd_qed_sm's unlabelled
+    # counterterms, so it is refused before any tree (WP3.2 EWI-5 interim):
+    # generated without the guard its single pole misses the QED Catani
+    # operator's, which the "uv" identity cannot see (it holds by
+    # construction, ``loops.v2.poles``; ``test_loop_v2_ew_leptons``).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B4,
+        _UNLABELLED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
+        point=_MASSLESS_POINT,
+        poles="uv",
         fixed_parameters=_ZERO_WIDTHS,
     ),
     # Lifted by EWI-1 (B2 at the root: a lepton as leg 1); its values
@@ -1632,24 +1645,22 @@ LADDER = [
         {"QCD": 2, "QED": 2},
         LIFTED,
     ),
-    # Q3: photon-only QED corrections of u u~ > d d~ pass the CT lowering
-    # (EWI-3). Their CT roots declare no loop species since the admission
-    # takes only loops of the selected corrections (the QCD R2 of u u~ a
-    # with a gluon loop declared the gluon and the quark before); the
-    # catalogue takes the families' species since EWI-1. Validated: the bare
-    # and counterterm UV poles cancel (UV renormalisation is complete). Not
-    # validated: the finite part. loop_qcd_qed_sm writes the photon and Z
-    # parts of the u u~ g R2 in one coupling (R2_GUU2Cp, (1 + lhv)/cw^2 (Qu^2
-    # + I3u^2/sw^2 - 2 Qu I3u) / 16 + ...) with the loop particles [[u, Z]],
-    # so the photon-only particle_veto drops its photon part too (r2 = 0):
-    # a veto that splits such a coupling is for the [U2] guard (EWI-7).
+    # Q3: photon-only QED corrections of u u~ > d d~ passed the CT lowering
+    # (EWI-3), but loop_qcd_qed_sm writes the photon and Z parts of the
+    # u u~ g R2 in one coupling (R2_GUU2Cp, (1 + lhv)/cw^2 (Qu^2 + I3u^2/sw^2
+    # - 2 Qu I3u) / 16 + ...) with the loop particles [[u, Z]], and its
+    # electroweak UV counterterm of u u~ g with [[u, Z]] too, so the
+    # photon-only particle_veto dropped their photon parts (r2 = 0; the "uv"
+    # identity held by construction). Refused since WP3.2 EWI-5 (the model's
+    # unlabelled electroweak counterterms show that its labels are nominal);
+    # a veto that splits such couplings is for the [U2] guard (EWI-7).
     _rung(
         "uudd_qed_photon_uv",
         "loop_qcd_qed_sm",
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        LIFTED,
+        _UNLABELLED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,
@@ -1657,8 +1668,12 @@ LADDER = [
         fixed_parameters=_ZERO_WIDTHS,
     ),
     # Lifted by EWI-4b: the full QED corrections (Z, W, H, Goldstones and
-    # ghosts in the loops, 't Hooft-Feynman gauge) generate and their bare
-    # and counterterm UV poles cancel (the finite part is EWI-7's).
+    # ghosts in the loops, 't Hooft-Feynman gauge) generate and evaluate
+    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
+    # identity of ``loops.v2.poles``, no evidence). Their poles against
+    # Catani: ``test_loop_v2_catani_scope.
+    # test_joint_request_predicts_its_cross_order_sector`` (QCD and QED
+    # corrections); the finite part is EWI-7's.
     _rung(
         "uudd_qed",
         "loop_qcd_qed_sm",
@@ -1704,15 +1719,15 @@ LADDER = [
         LIFTED,
     ),
     # The G_mu ladder of PLAN wp32 §1 (real masses, widths zero). e- e+ >
-    # m- m+ has two colour-singlet fermion lines: B4 (EWI-5) is refused
-    # before its CT lowering, which M1 measured before that guard (EWI-1).
+    # m- m+ has two colour-singlet fermion lines (B4, lifted by EWI-5); its
+    # values against the MadLoop controls: ``test_loop_v2_ew_leptons``.
     _rung(
         "gmu_eemm",
         "loop_gmu",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B4,
+        LIFTED,
         corrections=("QED",),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1731,11 +1746,10 @@ LADDER = [
     # The Goldstone-vector mixings (G0-Z, G0-A, G+-W-) as vertex insertions
     # (EWI-4b): its trees join the top line and the top pair through a Z or
     # photon on one side and a G0 on the other, with the gluon at leg 1; the
-    # request generates with the mixings admitted and lowered, and the UV
-    # poles of its QED corrections cancel (``poles="uv"`` takes the bare
-    # loop's UV poles from the counterterms, so this is blind to the mixings'
-    # sign, which moves the counterterms' finite part and single pole; their
-    # values against MadLoop: ``test_loop_v2_ew_gauge.
+    # request generates with the mixings admitted and lowered and evaluates
+    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
+    # identity of ``loops.v2.poles``, blind to every counterterm, the
+    # mixings' sign included; their values against MadLoop: ``test_loop_v2_ew_gauge.
     # test_goldstone_vector_mixings_equal_madloop``, and the O6 test
     # ``test_loop_v2_ew_gauge.test_goldstone_vector_mixings_equal_the_site_oracle``).
     _rung(
@@ -1750,15 +1764,17 @@ LADDER = [
         poles="uv",
         fixed_parameters=_G_MU_FIXED,
     ),
-    # The lepton line of the Z/photon decay runs through the loops (B4, EWI-5);
-    # g g > t t~ e- e+ lowers its G0-Z and G0-A mixings first (EWI-4b).
+    # The lepton line of the Z/photon decay runs through the loops (B4,
+    # lifted by EWI-5); g g > t t~ e- e+ lowers its G0-Z and G0-A mixings
+    # (EWI-4b). Each generates in about 10 min (8 GB); their values against
+    # the three-provider fixtures are EWI-7's.
     _rung(
         "gmu_uux_emepg",
         "loop_gmu",
         "u u~ > e- e+ g",
         {"QCD": 1, "QED": 2},
         {"QCD": 1, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1768,7 +1784,7 @@ LADDER = [
         "g g > t t~ e- e+",
         {"QCD": 2, "QED": 2},
         {"QCD": 2, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1778,7 +1794,7 @@ LADDER = [
         "g g > t t~ e- e+ g",
         {"QCD": 3, "QED": 2},
         {"QCD": 3, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1834,8 +1850,13 @@ def test_electroweak_ladder_reaches_its_blocker(
     ladder_models, loop_native, model, process, born, loop, blocker, options
 ):
     """Each rung stops at its named blocker, never in the CT lowering
-    (WP3.2 EWI-3); a rung whose blockers are lifted generates, runs its
-    check (the UV poles cancel) and is a plain test."""
+    (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates and
+    is a plain test. Its ``poles="uv"`` check is the pole split's identity
+    (``poles.split_sector`` takes the field factors' UV part as the
+    remainder, so bare + uv = 0 always): the uv mode exercised, never
+    evidence of UV renormalisation (coordinator DECISIONS 2026-10-28 ~05:20
+    (1)); a rung's values are tested against providers and Catani in the
+    tests its comment names."""
 
     import re
 
@@ -1862,8 +1883,9 @@ def test_electroweak_ladder_reaches_its_blocker(
         raise AssertionError(f"stopped before its blocker: {error!r}") from error
     if poles == "uv":
         # Bare UV poles + counterterm UV poles = 0 per sector and coefficient
-        # (REQUIREMENTS_ADDENDUM I): UV renormalisation is complete (the
-        # finite part is not checked here).
+        # (REQUIREMENTS_ADDENDUM I): an identity of the pole split (the field
+        # factors' UV part is the remainder), the API's uv mode exercised;
+        # it tests neither the counterterms nor the finite part.
         for sector, bare in result.components["bare"].items():
             counterterms = result.components["uv"][sector]
             for index in (1, 2):

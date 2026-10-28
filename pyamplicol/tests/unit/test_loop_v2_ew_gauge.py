@@ -1219,7 +1219,8 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
     """The UV counterterm component of the request of ``name`` in
     ``goldstone-mixing.json`` against MadLoop's Born x CT interference
     without its R2 amplitudes, per point, finite part and single pole within
-    1e-12 of MadLoop's (binary64)."""
+    1e-12 of MadLoop's (binary64). Returns the slice and the (point, mu_R^2,
+    fixture row) triples."""
 
     from fractions import Fraction
 
@@ -1241,12 +1242,14 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
         scale_parameter="MU_R",
     )
     slice_ = LoopSlice.generate(compiled, request, loop_native)
+    evaluated = []
     for point, mu, row in zip(
         reference["points"], reference["mu_r"], reference["rows"], strict=True
     ):
         result = slice_.evaluate(
             point, str(Fraction(mu) ** 2), parameters=reference["parameters"]
         )
+        evaluated.append((point, str(Fraction(mu) ** 2), row))
         assert sum(float(x) for x in result.born.values()) == pytest.approx(
             row["born"], rel=1e-13
         )
@@ -1268,10 +1271,51 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
             assert abs(mixing[key]) > 1e-9 * abs(expected)
             assert abs(uv[index] - expected) <= 1e-12 * abs(expected), (key, uv)
         assert uv[2] == row["ct"]["double_pole"] == 0
+    return slice_, evaluated
+
+
+def _ufo_coupling_ratio(path, numerator: str, denominator: str, card) -> float:
+    """The ratio of two UFO coupling values at ``card``, from the UFO's own
+    Python source (``test_loop_v2_ew._ufo_source_values``, binary64; the CT
+    parameters at their epsilon^0 coefficient)."""
+
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    name = "_ew_gauge_test_loop_v2_ew"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            name, Path(__file__).with_name("test_loop_v2_ew.py")
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    oracle = sys.modules[name]
+    modules = oracle._import_ufo(path, "_pyamplicol_test_ufo_gmu_ratio")
+    values, environment = oracle._ufo_source_values(
+        modules, card, exact=False, wrap=None
+    )
+    environment = {
+        **environment,
+        **{key: value for (key, power), value in values.items() if power == 0},
+    }
+    couplings = modules[3]
+
+    def value(coupling: str) -> complex:
+        source = getattr(couplings, coupling).value
+        return complex(eval(oracle._compiled(source, False), environment))
+
+    ratio = value(numerator) / value(denominator)
+    assert abs(ratio.imag) <= 1e-15 * abs(ratio.real), ratio
+    return ratio.real
 
 
 @pytest.mark.loop_nightly
-def test_goldstone_vector_mixings_equal_madloop(gmu, loop_reference, loop_native):
+def test_goldstone_vector_mixings_equal_madloop(
+    gmu, loop_gmu_ufo, loop_reference, loop_native
+):
     """The Goldstone-vector mixings' sign, decided by MadLoop (WP3.2 EWI-7b):
     g t > t t t~ with QED corrections (massless b), whose trees join the
     top line and the top pair through a Z, a photon or a G0, reaches the
@@ -1282,13 +1326,81 @@ def test_goldstone_vector_mixings_equal_madloop(gmu, loop_reference, loop_native
     at three points, finite part and single pole within 1e-12 (measured
     4e-14, MadLoop's binary64); the mixings make 0.3, 3 and 0.45 % of it,
     and the earlier reading (the scalar leg of the mixing taking the momentum
-    flowing in) missed by twice that. The R2 and bare parts are not compared:
-    pyAmpliCol's R2 of this request differs from MadLoop's (-1.83e-8 against
-    -1.33e-8 at point 0) and its virtual misses Catani's single pole, an open
-    defect outside the counterterm lowering (reported, WP3.2 EWI-7b fix
-    round 1). About 15 minutes."""
+    flowing in) missed by twice that.
 
-    _uv_component_equals_madloop(gmu, "gt_tttx_ew", loop_reference, loop_native)
+    The whole virtual is MadLoop's too (WP3.2 EWI-5): two massive top lines
+    joined through the loop by Z, photon, H, G0, W and G+- (W-b and G+--b
+    boxes and pentagons on both lines). The bare part equals MadLoop's
+    virtual minus its counterterms (finite part and single pole), the single
+    pole equals MadLoop's and the QED Catani operator's, and R2 and the
+    finite part equal MadLoop's plus the R2 coupling MadLoop omits
+    (``omitted_r2``: R2_G0tt_b of V_ttG02, loop label [W+, b], never matched
+    in 't Hooft-Feynman gauge, where every b loop of t~ t G0 holds a G+-;
+    as in ``required/emep_ttxh_ew``). The omitted term is (R2_G0tt_b /
+    R2_G0tt) times MadLoop's R2_G0tt component, the ratio from the UFO's
+    couplings at the card (0.869 at lhv = 1). Evaluated with 32 digits
+    (binary64 loses 3e-11 of the finite part at point 2, MadLoop's own
+    estimate there 1.5e-12; the binary64 conditioning is WP3.4's stability
+    work): within MadLoop's accuracy of its virtual (its binary64: 1e-12,
+    or MadLoop's own estimate ``virtual_accuracy`` where larger, the O1 rule;
+    measured 4.6e-14), the poles within 1e-12 of Catani's (measured
+    1.2e-16). Before the loop segments read the Goldstone vertices as the
+    tree engine does (``catalogue._CatalogueBuilder.reading_sign``, EWI-5),
+    the bare part missed MadLoop's by O(1) (single pole -1.07e-7 against
+    -3.78e-8 at point 0, the virtual's -5.6e-8 against Catani's 1.35e-8).
+    About 20 minutes."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    reference = loop_reference("goldstone-mixing")["processes"]["gt_tttx_ew"]
+    slice_, evaluated = _uv_component_equals_madloop(
+        gmu, "gt_tttx_ew", loop_reference, loop_native
+    )
+    omitted = reference["omitted_r2"]
+    assert omitted["madloop_amplitudes"][omitted["coupling"]] == 0
+    assert omitted["madloop_amplitudes"][omitted["proportional_to"]] > 0
+    card = {**reference["parameters"], **reference["fixed_parameters"]}
+    ratio = _ufo_coupling_ratio(
+        loop_gmu_ufo, omitted["coupling"], omitted["proportional_to"], card
+    )
+    assert 0.5 < ratio < 1.0, ratio
+    keys = ("finite", "single_pole", "double_pole")
+    worst = {"madloop": 0.0, "catani": 0.0}
+    for point, scale_squared, row in evaluated:
+        result = slice_.evaluate(
+            point,
+            scale_squared,
+            parameters=reference["parameters"],
+            precision=Precision.arbitrary(32),
+        )
+        (sector,) = result.components["virtual"]
+
+        def laurent(component, sector=sector, result=result):
+            return [float(x) for x in result.components[component][sector].coefficients]
+
+        madloop = [row["virtual"][key] for key in keys]
+        scale = max(abs(x) for x in madloop)
+        bound = max(1e-12, row["virtual_accuracy"])
+        omitted_r2 = ratio * row["r2_g0tt"]["finite"]
+        assert abs(omitted_r2) > 1e-3 * scale
+        expected = {
+            "virtual": [madloop[0] + omitted_r2, madloop[1], 0.0],
+            "bare": [madloop[i] - row["ct"][key] for i, key in enumerate(keys[:2])]
+            + [0.0],
+            "r2": [row["r2"]["finite"] + omitted_r2, 0.0, 0.0],
+        }
+        for component, values in expected.items():
+            for found, want in zip(laurent(component), values, strict=True):
+                error = abs(found - want) / scale
+                worst["madloop"] = max(worst["madloop"], error)
+                assert error <= bound, (component, found, want)
+        single, double = (float(x) for x in result.ir_poles[sector])
+        virtual = laurent("virtual")
+        for found, want in zip(virtual[1:], (single, double), strict=True):
+            error = abs(found - want) / scale
+            worst["catani"] = max(worst["catani"], error)
+            assert error <= 1e-12, (virtual, single, double)
+    print({key: f"{error:.1e}" for key, error in worst.items()})
 
 
 @pytest.mark.loop_nightly
