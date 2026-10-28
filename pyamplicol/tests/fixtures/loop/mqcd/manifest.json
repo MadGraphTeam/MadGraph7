@@ -193,17 +193,18 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1186,
+    "seconds": 1199,
     "rows": [
      "B05",
      "B05@sectors",
-     "C05"
+     "B06",
+     "D24"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 1556,
+    "seconds": 1351,
     "rows": [
      "A24"
     ],
@@ -211,7 +212,7 @@
    },
    {
     "job": 3,
-    "seconds": 1176,
+    "seconds": 1192,
     "rows": [
      "A08",
      "A23"
@@ -220,13 +221,14 @@
    },
    {
     "job": 4,
-    "seconds": 1195,
+    "seconds": 1185,
     "rows": [
+     "A13",
+     "A13@sectors",
+     "A14",
      "B07",
      "C06",
-     "D05",
-     "D08",
-     "D08@sectors",
+     "D02",
      "E06",
      "E06@sectors"
     ],
@@ -234,15 +236,13 @@
    },
    {
     "job": 5,
-    "seconds": 1196,
+    "seconds": 1199,
     "rows": [
      "A09",
      "A09@collinear",
      "A09@soft",
-     "A14",
+     "A15",
      "A18",
-     "A20",
-     "A20@sectors",
      "A21",
      "A21@sectors",
      "A22",
@@ -250,89 +250,89 @@
      "B01@mt170",
      "B01@sectors",
      "B01@threshold",
+     "B03",
+     "C01",
+     "C01@params",
+     "D01",
+     "D06",
+     "D06@madloop",
      "D07",
-     "D07@sectors"
+     "D07@sectors",
+     "D08",
+     "D08@sectors",
+     "D16",
+     "E01",
+     "H01",
+     "M01@P0",
+     "M01@P2"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_5.py"
    },
    {
     "job": 6,
-    "seconds": 1193,
+    "seconds": 1195,
     "rows": [
      "A01",
      "A01@sectors",
      "A02",
      "A02@madloop",
+     "A03",
+     "A05",
      "A06",
      "A06@sectors",
-     "A12",
-     "A12@sectors",
-     "A13",
-     "A13@sectors",
-     "A15",
+     "A07",
      "A19",
      "A19@sectors",
+     "A20",
+     "A20@sectors",
+     "A25",
+     "A26",
      "B02",
      "B02@madloop",
-     "B03",
-     "B06",
-     "C01",
-     "C01@params",
+     "B08",
      "C02",
-     "D06",
-     "D06@madloop",
+     "C03",
+     "C04",
+     "C05",
+     "C07",
+     "C08",
+     "D05",
      "D09",
      "D09@sectors",
      "D10",
      "D10@sectors",
+     "D11",
+     "D12",
+     "D13",
+     "D15",
+     "D17",
+     "D18",
+     "D19",
+     "D20",
+     "D23",
      "D25",
      "D25@zero",
-     "E01",
+     "D26",
+     "D27",
      "E02",
      "F01",
-     "M01@P0",
-     "M01@P2"
+     "F02",
+     "F04",
+     "G01",
+     "G02",
+     "R01"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
    },
    {
     "job": 7,
-    "seconds": 1064,
+    "seconds": 70,
     "rows": [
-     "A03",
      "A04",
-     "A05",
-     "A07",
-     "A25",
-     "A26",
-     "B08",
-     "C03",
-     "C04",
-     "C07",
-     "C08",
-     "D01",
-     "D02",
-     "D11",
-     "D12",
-     "D13",
-     "D15",
-     "D16",
-     "D17",
-     "D18",
-     "D19",
-     "D20",
+     "A12",
+     "A12@sectors",
      "D21",
-     "D23",
-     "D24",
-     "D26",
-     "D27",
-     "E05",
-     "F02",
-     "F04",
-     "G01",
-     "G02",
-     "H01",
-     "R01"
+     "E05"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_7.py"
    }
@@ -378,7 +378,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_gg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_gg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_gg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "default": [
@@ -417,7 +431,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -429,12 +443,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ],
    "extras_pending": {
@@ -768,7 +781,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uux_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uux_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uux_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -798,7 +825,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -810,12 +837,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -950,6 +976,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ggg_hel.json",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1146,7 +1173,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "default": [
@@ -1180,7 +1221,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -1192,12 +1233,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ],
    "extras_pending": {
@@ -1243,7 +1283,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -1276,7 +1330,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -1288,12 +1342,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ],
    "extras_pending": {
@@ -1495,6 +1548,7 @@
     "path": "tests/fixtures/loop/required/mqcd/gg_uuxuux.json",
     "providers": [
      "madloop",
+     "recola",
      "openloops"
     ]
    },
@@ -1638,7 +1692,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxssx_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxssx_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxssx_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -1669,7 +1737,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -1681,12 +1749,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -1729,7 +1796,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxddx_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxddx_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxddx_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -1760,7 +1841,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -1772,12 +1853,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -1820,7 +1900,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxuux_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxuux_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxuux_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -1853,7 +1947,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -1865,12 +1959,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ],
    "extras_pending": {
@@ -2275,7 +2368,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "default": [
@@ -2396,7 +2503,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector and per-helicity MadLoop run at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector and per-helicity MadLoop run at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -2408,12 +2515,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ],
    "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json"
@@ -2688,7 +2794,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxgg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxgg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxgg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -2718,7 +2838,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -2732,7 +2852,9 @@
       "nightly": [
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -3889,7 +4011,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepggg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepggg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepggg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -3919,7 +4055,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -3931,12 +4067,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -3979,7 +4114,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepddxg_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepddxg_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepddxg_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -4010,7 +4159,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -4022,12 +4171,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -4068,7 +4216,21 @@
     "path": "tests/fixtures/loop/required/uux_emepmummp.json",
     "providers": [
      "madloop"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepmummp_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepmummp_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepmummp_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -4098,7 +4260,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -4110,12 +4272,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -4157,7 +4318,21 @@
     "providers": [
      "madloop",
      "recola"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxepem_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxepem_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxepem_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -4188,7 +4363,7 @@
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -4200,12 +4375,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
@@ -5483,7 +5657,21 @@
      "madloop",
      "recola",
      "openloops"
-    ]
+    ],
+    "superseded": {
+     "0": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxemepg_qcd_sectors.json",
+      "row": 0
+     },
+     "1": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxemepg_qcd_sectors.json",
+      "row": 1
+     },
+     "2": {
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxemepg_qcd_sectors.json",
+      "row": 2
+     }
+    }
    },
    "points": {
     "nightly": [
@@ -5514,22 +5702,14 @@
      "true_error": 5.66e-09
     }
    ],
-   "reference_outliers": [
-    {
-     "point": 0,
-     "sector": "total",
-     "coefficient": "finite",
-     "provider": "madloop",
-     "note": "MadLoop binary64 (status 216, own accuracy 5.44e-12) 1.38e-12 from DD; OpenLoops 2.0e-14, Recola 9.2e-13"
-    }
-   ],
+   "reference_outliers": [],
    "vanishing": [],
    "variants": [
     {
      "name": "sectors",
      "gating": true,
      "tier": "nightly",
-     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2); its rows 0, 1, 2 supersede the row's reference at the same points (the row's rule 1 holds them)",
      "extras": [],
      "extras_pending": {},
      "reference": {
@@ -5541,12 +5721,11 @@
      },
      "points": {
       "nightly": [
-       0,
-       1,
-       2,
        3
       ]
-     }
+     },
+     "binary64_out_of_scope": [],
+     "reference_outliers": []
     }
    ]
   },
