@@ -1657,6 +1657,62 @@ def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
     assert np.array_equal(fact2_o, fact2_m)
 
 
+@pytest.mark.parametrize(
+    "history", list(ms.MLMClustering.ClusteringHistory.__members__.values())
+)
+@pytest.mark.parametrize(
+    "jet_scale_scheme", list(ms.MLMClustering.JetScaleScheme.__members__.values())
+)
+def test_the_ladder_leaves_every_other_clustering_mean_output_alone(
+    process, history, jet_scale_scheme
+):
+    """The walk under clustering_mean + ladder only writes the densities and
+    mu_F; everything else it computes is madevent's, and has to stay out of the
+    event. Checked on the gluon-rich processes, for every history and both jet
+    scale schemes, against plain clustering_mean (every non-pdf output, exactly)
+    and against madevent (mu_F and every ladder output, exactly)."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    scheme = ms.MLMClustering.ScaleScheme
+
+    def clustering(**kwargs):
+        return make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, xqcut=20.0,
+            clustering_history=history, jet_scale_scheme=jet_scale_scheme,
+            **kwargs,
+        )
+
+    ladder = clustering(scale_scheme=scheme.clustering_mean)
+    mean = clustering(
+        scale_scheme=scheme.clustering_mean, clustering_mean_pdf_ladder=False
+    )
+    madevent = clustering(scale_scheme=scheme.madevent)
+
+    ren, fact1, fact2, jets, diagram, veto = run_all(ladder, momenta)
+    ren_m, _, _, jets_m, diagram_m, veto_m = run_all(mean, momenta)
+    assert np.array_equal(ren, ren_m)
+    assert np.array_equal(jets, jets_m)
+    assert np.array_equal(diagram, diagram_m)
+    assert np.array_equal(veto, veto_m)
+    for got, want in zip(
+        alphas_outputs(ladder, momenta), alphas_outputs(mean, momenta)
+    ):
+        assert np.array_equal(got, want)
+
+    _, fact1_e, fact2_e, _, diagram_e, _ = run_all(madevent, momenta)
+    # the same history, or mu_F and the ladder have nothing to agree on
+    same = diagram == diagram_e
+    assert same.mean() > 0.5
+    assert np.array_equal(fact1[same], fact1_e[same])
+    assert np.array_equal(fact2[same], fact2_e[same])
+    # (no ladder step fires on these two fixtures, under madevent either: the
+    # steps themselves are compared on the t-channel process above)
+    out = pdf_outputs(ladder, momenta)
+    out_e = pdf_outputs(madevent, momenta)
+    for name in PDF_OUTPUTS:
+        assert np.array_equal(out[name][same], out_e[name][same]), name
+
+
 def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
     """The point of the whole thing: with it on, the density is asked for at or
     below the factorisation scale, and for a real part of the sample strictly
