@@ -491,6 +491,27 @@ def test_per_helicity_rows_take_the_helicity_average():
     madloop[2]["finite"] = 4.0 * (1 + 2e-12)
     failed = [c for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118) if not c.passed]
     assert [(c.sector, c.coefficient) for c in failed] == [("h-++", "finite")]
+    # MQ-REF's record compares a suppressed helicity absolutely against the
+    # summed Born (its F for the Laurent coefficients).
+    madloop[2]["reference"] = {
+        "status": "ok",
+        "comparison": "absolute",
+        "absolute_scale": 3.0,
+        "reason": "suppressed helicity",
+    }
+    madloop[2]["finite"] = 4.0 + 1e-14  # 2.5e-15 relative, 1.8e-13 of F
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    finite = next(c for c in checks if (c.sector, c.coefficient) == ("h-++", "finite"))
+    assert finite.passed and finite.bound == pytest.approx(
+        1e-12 * 3.0 * 0.118 / (2 * math.pi)
+    )
+    assert "suppressed helicity" in finite.note
+    madloop[2]["finite"] = 4.0 + 1e-12
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    assert not next(
+        c for c in checks if c.coefficient == "finite" and c.sector == "h-++"
+    ).passed
+    del madloop[2]["reference"]
     # A configuration MadLoop has and we do not (or the reverse) fails.
     failed = mqcd.rule_hel(_row(), 0, rows, madloop[:3], 0.118)
     assert not failed[0].passed and failed[0].coefficient == "helicity rows"
