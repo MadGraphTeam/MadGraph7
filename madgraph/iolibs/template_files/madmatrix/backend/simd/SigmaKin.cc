@@ -366,6 +366,46 @@ namespace madmatrix
             ihel );
   }
 
+  // The recycled build keeps, for the event page it works on, a table of what
+  // every helicity row leaves for the color flows: in the rows mode every
+  // amplitude of every row (g g > t t~ g g g: 128 rows x 1890 amplitudes), in
+  // the others the color flows, their shared sub-expressions and the
+  // multichannel numerators of every row. That is a fixed amount of memory
+  // traffic per EVENT, whatever the SIMD width, while the arithmetic gets
+  // cheaper with every doubling of the width; past some size the traffic is all
+  // that is left and the plain build, which keeps next to nothing, is faster.
+  // Measured (check_sa, recycled over plain), g g > t t~ g g g: 7.7 MB per page
+  // at simd_128 1.6x-1.9x faster on an Intel Xeon Gold 6346 and on an Apple M5
+  // Pro, 15.5 MB at simd_256 0.90x-1.07x, 31 MB at simd_512 0.60x-0.71x;
+  // g g > u u~ g g (0.57 MB at simd_512) 1.36x and more everywhere. Above
+  // MGONGPU_HR_MAX_TABLE_MB (make HRMAXMB=<n>, 0 for no limit) this build uses
+  // the plain helicity loop, which is compiled in the same library anyway. The
+  // size is per SIMD page of neppV events: in mixed precision a call makes two
+  // pages (nParity), which does not change the traffic per event, and the
+  // measurements above are all of that kind.
+#ifndef MGONGPU_HR_MAX_TABLE_MB
+#define MGONGPU_HR_MAX_TABLE_MB 10
+#endif
+#ifdef MGONGPU_HR_ROWS
+  constexpr size_t hrPageTableBytes = (size_t)nHrRows * hrNamp * sizeof( cxtype_amp_sv );
+#else
+  constexpr size_t hrPageTableBytes = (size_t)nHrRows * ( ( hrNtmp + njampso ) * sizeof( cxtype_amp_sv ) + ndiagrams * sizeof( fptype_amp_sv ) );
+#endif
+  constexpr bool hrUseRecycling = MGONGPU_HR_MAX_TABLE_MB <= 0 || hrPageTableBytes <= (size_t)MGONGPU_HR_MAX_TABLE_MB * 1024 * 1024;
+
+  // Say once that the limit took the plain build instead.
+  inline void
+  hr_declined()
+  {
+    static bool said = false;
+    if( said ) return;
+    said = true;
+    printf( "INFO: --hel_recycling is not used by this build: its tables would be %.1f MB per SIMD page at\n"
+            "INFO: this SIMD width, more than MGONGPU_HR_MAX_TABLE_MB=%d (make HRMAXMB=<n>, 0 for no limit);\n"
+            "INFO: the plain matrix element is faster there.\n",
+            hrPageTableBytes / ( 1024. * 1024. ), (int)MGONGPU_HR_MAX_TABLE_MB );
+  }
+
   // Build every helicity row of the table at once, for one event page (two in
   // mixed precision). What it leaves for the color flows depends on the mode
   // (OneProcessExporterMadMatrix.hr_jamps_inc): in the rows mode (the default,
@@ -882,15 +922,24 @@ namespace madmatrix
 
 #ifdef MGONGPU_HEL_RECYCLING
       // --hel_recycling: the recycled block for every helicity row of this page at
-      // once, then the helicity loop below, one row at a time (see hr_page)
-      hr_page( allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, jamp2_sv, MEs_ighel,
+      // once, then the helicity loop below, one row at a time (see hr_page) --
+      // unless its tables are too big for this SIMD width (hrUseRecycling)
+      if constexpr( hrUseRecycling )
+      {
+        hr_page( allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, jamp2_sv, MEs_ighel,
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-               MEs_ighel2,
+                 MEs_ighel2,
 #else
-               nullptr,
+                 nullptr,
 #endif
-               allChannelIds != nullptr || allrnddiagram != nullptr, ievt00 );
-#else
+                 allChannelIds != nullptr || allrnddiagram != nullptr, ievt00 );
+      }
+      else
+#endif
+      {
+#ifdef MGONGPU_HEL_RECYCLING
+      hr_declined();
+#endif
 
       // The color matrix does not depend on the helicity, so for a large-enough color matrix
       // (ColorMatrixData::shouldUseBlas) it pays to keep the jamps of every good helicity and
@@ -934,7 +983,7 @@ namespace madmatrix
         }
       }
 
-#endif // MGONGPU_HEL_RECYCLING
+      } // the plain helicity loop
 
       // Event-by-event random choice of helicity #403
       for( int ieppV = 0; ieppV < neppV; ++ieppV )

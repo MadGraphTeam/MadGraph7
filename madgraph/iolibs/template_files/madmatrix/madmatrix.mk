@@ -809,6 +809,11 @@ ifeq ($(GPUCC),)
 ifneq ($(HRPROBE),1)
 objects_lib += $(patsubst %%.cc,$(BUILDDIR)/%%.o,$(wildcard HelRecyclingChunks_*.cc))
 endif
+# the size above which the build takes the plain matrix element instead (see
+# hrUseRecycling in backend/{cpu,simd}/SigmaKin.cc; 0: no limit)
+ifneq ($(HRMAXMB),)
+CXXFLAGS += -DMGONGPU_HR_MAX_TABLE_MB=$(HRMAXMB)
+endif
 else
 ifneq ($(wildcard HelRecycling.inc),)
 $(info INFO: --hel_recycling is CPU only: this $(BACKEND) build of $(notdir $(CURDIR)) is the plain matrix element (see backend/gpu/SigmaKin.cc))
