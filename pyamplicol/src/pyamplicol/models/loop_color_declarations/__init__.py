@@ -11,8 +11,8 @@ on such a model without a hand-written declaration.
 
 A shipped data set is keyed per vertex by a **structural digest** of the
 vertex as the source writes it (``vertex_digest``): its counterterm type,
-its particles (spin, colour, PDG code, charge, mass and width parameters,
-never their names), colour structures, Lorentz structures, its coupling
+its particles (spin, colour, charge, mass and width parameters, never their
+names or PDG codes), colour structures, Lorentz structures, its coupling
 entries with each coupling's expression and orders, its loop-particle
 groups, and the definitions of every internal, counterterm and helper
 parameter those expressions read (transitively; external parameters by
@@ -187,13 +187,14 @@ def _expression_texts(record: Mapping[str, Any]) -> list[str]:
 
 
 def _particle(raw: Any, index: int) -> dict[str, Any]:
-    """A particle by its structure (spin, colour, PDG code, charge, mass and
-    width parameters), never its name."""
+    """A particle by its structure (spin, colour, charge, mass and width
+    parameters, self-conjugacy, ghost number, Goldstone flag), never its
+    name or PDG code: two particles of one structure are interchangeable in
+    a vertex's N_c continuation."""
 
     fields = raw.collections["particles"][index]["fields"]
     charge = fields.get("charge_exact")
     return {
-        "pdg": int(fields["pdg_code"]),
         "spin": int(fields["spin"]),
         "color": int(fields["color"]),
         "charge": _plain(charge if charge is not None else fields.get("charge")),
@@ -414,6 +415,8 @@ class ShippedColourData:
             if item.continuation == "whole-rule" and not item.recipes:
                 raise ValueError(f"{item.label}: a whole rule needs its recipes")
             if item.digest in vertices:
+                # Vertices of one structure share their entry (the builder
+                # writes it once).
                 raise ValueError(f"duplicate shipped vertex digest {item.digest}")
             vertices[item.digest] = item
         fields = {}
@@ -544,9 +547,9 @@ def resolve_shipped_declaration(raw: Any) -> LoopColorDeclaration | None:
     covers any of its counterterm vertices or ``raw`` lacks a parameter the
     data's identities or scheme values name."""
 
-    names = {str(record["name"]) for record in raw.collections["parameters"]}
     for coverage in colour_coverage(raw):
         data = coverage.data
+        names = {str(record["name"]) for record in raw.collections["parameters"]}
         if set(data.parameter_identities) | set(data.scheme_parameter_values) <= (
             names
         ):

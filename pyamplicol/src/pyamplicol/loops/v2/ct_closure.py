@@ -1109,6 +1109,26 @@ def counterterm_program_blocks(
                 for name, reason in sorted(recursion.residual.items())
             )
         )
+    if continuation is not None:
+        # LC and NLC grade the CT couplings by the declaration's N_c
+        # continuation: a vertex it does not cover is refused when a tree of
+        # the request can hold it (``refusals``, listed; MQ-NC).
+        from .refusals import require_declared_colour_rules
+
+        def reachability() -> Callable[[Any], bool]:
+            return InsertionReachability.build(
+                lowered.lowered.tree_model(),
+                ir,
+                recursion.coupling_order_limits(),
+                ignored_particle_ids=vetoed_particle_ids(veto),
+            ).admits
+
+        require_declared_colour_rules(
+            continuation,
+            {name: rules[name] for name in recursion.rules},
+            reachability,
+            process,
+        )
     program = run(
         "CT program",
         lambda: CountertermBlocks.build(

@@ -251,7 +251,7 @@ def build(source: Path) -> dict:
     )
 
     raw = compile_model_source(str(source)).raw_loop_model
-    vertices, seen = [], set()
+    vertices, seen, by_digest = [], set(), {}
     for vertex in raw.collections["counterterm_vertices"]:
         name = str(vertex["name"])
         if name not in TABLE:
@@ -286,6 +286,18 @@ def build(source: Path) -> dict:
                     for indices, coupling in sorted(entries)
                 },
             )
+        digest = entry["digest"]
+        if digest in by_digest:
+            # A vertex of the same structure (e.g. the d and s quark R2): one
+            # entry, whose data must agree.
+            first = by_digest[digest]
+            if {k: v for k, v in first.items() if k != "label"} != {
+                k: v for k, v in entry.items() if k != "label"
+            }:
+                raise SystemExit(f"{name}: same structure as {first['label']}, other data")
+            first["label"] += f"; {entry['label']}"
+            continue
+        by_digest[digest] = entry
         vertices.append(entry)
     if set(TABLE) - seen:
         raise SystemExit(f"table vertices absent from the source: {sorted(set(TABLE) - seen)}")
