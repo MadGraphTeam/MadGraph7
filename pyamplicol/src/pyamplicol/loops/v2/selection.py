@@ -122,6 +122,48 @@ def restrict_born_terms(
     return out
 
 
+def restrict_rows(blocks: Any, helicities: Sequence[tuple[int, int]]) -> Any:
+    """``TreeBlocks`` whose blocks keep the helicity rows of the selected leg
+    helicities only (``Selection.helicities``): the Born rows, the frames,
+    the dressing rows and the tree program follow (``plan_export.
+    born_helicities``, ``generator_input.leg_rows``). A block left without a
+    row is dropped; a selected helicity a leg does not have is refused."""
+
+    from dataclasses import replace
+
+    fixed = dict(helicities)
+    if not fixed:
+        return blocks
+    labels = {leg.label for leg in blocks.process.legs}
+    if not set(fixed) <= labels:
+        raise ValueError(
+            f"selected helicities name legs {sorted(set(fixed) - labels)} the "
+            "process does not have"
+        )
+    available: dict[int, set[int]] = {label: set() for label in fixed}
+    kept = []
+    for block in blocks.blocks:
+        if block.is_source:
+            for row in block.rows:
+                for label, h in row.helicities:
+                    if label in available:
+                        available[label].add(h)
+        rows = tuple(
+            row
+            for row in block.rows
+            if all(fixed.get(label, h) == h for label, h in row.helicities)
+        )
+        if rows:
+            kept.append(replace(block, rows=rows))
+    for label, h in fixed.items():
+        if h not in available[label]:
+            raise ValueError(
+                f"selected helicity {h} is unavailable for external leg {label} "
+                f"(its helicities: {sorted(available[label])})"
+            )
+    return replace(blocks, blocks=tuple(kept))
+
+
 def _item_flow(item: Any) -> Any:
     from .colour import _canonical_rotation
 

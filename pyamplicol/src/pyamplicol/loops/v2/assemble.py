@@ -1929,6 +1929,13 @@ class LoopSlice:
             # passes here).
             require_nc_exact(blocks, request.accuracy, request.process)
             blocks, kernels = with_ward_kernels(blocks, model, fixed)
+            if request.selection is not None and request.selection.helicities:
+                # A helicity selection keeps the selected rows of every block
+                # (``selection.restrict_rows``): Born rows, frames, dressing
+                # and the tree program follow.
+                from .selection import restrict_rows
+
+                blocks = restrict_rows(blocks, request.selection.helicities)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
