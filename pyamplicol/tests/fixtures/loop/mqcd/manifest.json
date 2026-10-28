@@ -1655,6 +1655,20 @@
      "coefficient": "single_pole",
      "E": 5.15e-09,
      "true_error": 6.79e-10
+    },
+    {
+     "point": 1,
+     "sector": "QCD^12",
+     "coefficient": "finite",
+     "E": 7.78e-08,
+     "true_error": 2e-09
+    },
+    {
+     "point": 1,
+     "sector": "QCD^12",
+     "coefficient": "single_pole",
+     "E": 5.38e-08,
+     "true_error": 2e-09
     }
    ],
    "reference_outliers": [],
