@@ -1651,7 +1651,8 @@ class TestRunCardMG7(unittest.TestCase):
 
     def test_mlm_jet_radius_defaults_to_madevents_d(self):
         """beam.jet_radius is madevent's hidden run_card d (common/to_dj/D),
-        which is 1 there and in FxFx, also as written to the TOML card"""
+        which is 1 there and in FxFx; hidden in the TOML card too, so it is only
+        written once it differs from that, and reads back as 1 otherwise"""
         import tomllib
         legacy = bannermod.RunCardLO()
         self.assertEqual(legacy['d'], 1.0)
@@ -1659,7 +1660,40 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['beam']['jet_radius'], legacy['d'])
         out = io.StringIO()
         rc.write(out, template=self.template)
-        self.assertEqual(tomllib.loads(out.getvalue())['beam']['jet_radius'], 1.0)
+        self.assertNotIn('jet_radius', tomllib.loads(out.getvalue())['beam'])
+        self.assertEqual(
+            bannermod.RunCardMG7(out.getvalue())['beam']['jet_radius'], 1.0)
+        rc.set('beam.jet_radius', 0.4, user=True)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        self.assertEqual(tomllib.loads(out.getvalue())['beam']['jet_radius'], 0.4)
+
+    def test_hidden_mlm_options_survive_a_rewrite(self):
+        """The MLM clustering options are hidden: absent from the default card,
+        and written at the end of [beam] once set, also when set without
+        user=True as from_LO does, so a rewrite of the card keeps them"""
+        import tomllib
+        hidden = ['jet_radius', 'jet_scale_scheme', 'scale_scheme',
+                  'parton_line_scheme', 'alphas_reweighting', 'pdf_reweighting',
+                  'clustering_mean_pdf_ladder', 'clustering_measure',
+                  'clustering_history']
+        rc = bannermod.RunCardMG7()
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        beam = tomllib.loads(out.getvalue())['beam']
+        self.assertEqual([k for k in hidden if k in beam], [])
+        self.assertIn('max_jet_flavor', beam)
+        rc.set('beam.scale_scheme', 'madevent')
+        rc.set('beam.clustering_history', 'diagram', user=True)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        reread = bannermod.RunCardMG7(out.getvalue())
+        self.assertEqual(reread['beam']['scale_scheme'], 'madevent')
+        self.assertEqual(reread['beam']['clustering_history'], 'diagram')
+        # and a second rewrite keeps them
+        out2 = io.StringIO()
+        reread.write(out2, template=self.template)
+        self.assertEqual(out2.getvalue(), out.getvalue())
 
     def test_numeric_suffix_like_legacy(self):
         """integer/float k/M suffixes are parsed as in the legacy RunCard"""

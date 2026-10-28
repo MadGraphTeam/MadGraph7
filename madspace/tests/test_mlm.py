@@ -1772,11 +1772,14 @@ def write_flat_pdf_grid(path, value):
 
 
 def t_channel_integrand_outputs(
-    tmp_path, pdf_value, batch_size=4000, pdf_reweighting=True, partial_weights=False
+    tmp_path, pdf_value, batch_size=4000, pdf_reweighting=True, partial_weights=False,
+    min_scale=0.0, **clustering_kwargs,
 ):
     """Every output of the t-channel process run through a whole Integrand
     under MLM (pdf reweighting by default), with the built-in flat test matrix
-    element and a flat PDF of the given value."""
+    element and a flat PDF of the given value. clustering_kwargs go to
+    t_channel_clustering (scale_scheme madevent unless given); min_scale is the
+    scale floor of the EnergyScale, beam.min_scale in a run."""
     context = ms.Context(device=ms.cpu_device(), thread_count=1)
     alphas_file = tmp_path / "alphas.info"
     alphas_file.write_text(
@@ -1820,7 +1823,8 @@ def t_channel_integrand_outputs(
         pdf_grid=pdf_grid,
         running_coupling=ms.RunningCoupling(alphas_grid),
         energy_scale=ms.EnergyScale(
-            t_channel_clustering(pdf_reweighting=pdf_reweighting)
+            t_channel_clustering(pdf_reweighting=pdf_reweighting, **clustering_kwargs),
+            min_scale=min_scale,
         ),
         channel_indices=[0],
         partial_weights=partial_weights,
@@ -1830,21 +1834,40 @@ def t_channel_integrand_outputs(
     )
 
 
-def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
+def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000, **kwargs):
     """Weights and momenta of t_channel_integrand_outputs."""
-    out = t_channel_integrand_outputs(tmp_path, pdf_value, batch_size)
+    out = t_channel_integrand_outputs(tmp_path, pdf_value, batch_size, **kwargs)
     return np.asarray(out[0]), np.asarray(out[1])
 
 
-def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path):
+# The ladder under clustering_mean (clustering_mean_pdf_ladder, on by default)
+# goes through the same integrand path. This process has a single flavour and no
+# mirror, which is where a weight_after_cuts left out of the weight product
+# would drop the ladder's veto without a trace. With no jet cut, the geometric
+# mean mu_R of clustering_mean falls below the alpha_s grid for a few percent of
+# the events, so that case runs with the 2 GeV floor of beam.min_scale, which
+# drops them as a run does (without it their weight is 0 * NaN).
+LADDER_SCHEMES = [
+    pytest.param({"scale_scheme": ms.MLMClustering.ScaleScheme.madevent},
+                 id="madevent"),
+    pytest.param({"scale_scheme": ms.MLMClustering.ScaleScheme.clustering_mean,
+                  "min_scale": 2.0},
+                 id="clustering_mean_pdf_ladder"),
+]
+
+
+@pytest.mark.parametrize("scheme", LADDER_SCHEMES)
+def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path, scheme):
     """reweight.f sets rewgt = 0 when the density it would divide by is under
     1e-10. With x f = 1e-12 everywhere every step of the ladder is such a
     division, so every event with a step on it must come out at zero.
 
     A ramp in the denominator used to let these through at num den 1e20 - a
     hundredth of the weight per step here, not zero."""
-    weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12)
-    out = pdf_outputs(t_channel_clustering(pdf_reweighting=True), momenta)
+    weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12, **scheme)
+    clustering = {k: v for k, v in scheme.items() if k != "min_scale"}
+    out = pdf_outputs(t_channel_clustering(pdf_reweighting=True, **clustering), momenta)
+    assert not np.isnan(weights).any()
     stepped = (out["pdf_rw_active"] == 1.0).any(axis=1)
     assert stepped.any() and not stepped.all(), "both kinds needed"
     assert np.all(weights[stepped] == 0.0)
@@ -1869,6 +1892,14 @@ def test_no_pdf_product_for_the_systematics_under_pdf_reweighting(tmp_path):
     # ... and left out with it
     assert (output_count(pdf_reweighting=True, partial_weights=True)
             == output_count(pdf_reweighting=True))
+    # the same under clustering_mean: left out with the ladder, which is on by
+    # default, and there without it
+    mean = {"scale_scheme": ms.MLMClustering.ScaleScheme.clustering_mean}
+    assert (output_count(partial_weights=True, **mean)
+            == output_count(**mean))
+    no_ladder = dict(mean, clustering_mean_pdf_ladder=False)
+    assert (output_count(partial_weights=True, **no_ladder)
+            == output_count(**no_ladder) + 1)
 
 
 # --------------------------------------------------------------------------

@@ -563,6 +563,13 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     return ret;
 }
 
+bool Integrand::has_channel_weight_after_cuts() const {
+    // the three groups of pushes into weights_after_cuts in build_channel_part
+    bool merging = _energy_scale && !_energy_scale->mlm_history_per_diagram() &&
+        (_energy_scale->is_mlm() || _energy_scale->has_scale_veto());
+    return _pid_options.size() > 1 || _has_mirror || merging;
+}
+
 NamedVector<Value> Integrand::build_channel_part(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
@@ -876,6 +883,13 @@ NamedVector<Value> Integrand::build_channel_part(
         weights_after_cuts.push_back(scales.at("scale_weight"));
     }
 
+    if (!weights_after_cuts.empty() && !has_channel_weight_after_cuts()) {
+        // the common part would drop these weights without a word
+        throw std::logic_error(
+            "Integrand: weight_after_cuts carries a weight that "
+            "has_channel_weight_after_cuts() does not announce"
+        );
+    }
     Value weight_after_cuts = weights_after_cuts.empty()
         ? fb.full({1., batch_size_acc})
         : fb.product(weights_after_cuts);
@@ -1418,14 +1432,10 @@ NamedVector<Value> Integrand::build_common_part(
             ? fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors))
             : fb.mul(diff_xs_acc, _flavor_factors.at(0));
     }
-    // weight_after_cuts is one by construction unless flavor or mirror sampling,
-    // or the merging weights and the scale veto of the history over every
-    // diagram, contribute to it (see build_channel_part)
-    bool channel_mlm_weights = _energy_scale &&
-        !_energy_scale->mlm_history_per_diagram() &&
-        (_energy_scale->is_mlm() || _energy_scale->has_scale_veto());
+    // weight_after_cuts is one by construction unless the channel part put a
+    // weight into it
     ValueVec weights_after_cuts;
-    if (has_multi_flavor || _has_mirror || channel_mlm_weights) {
+    if (has_channel_weight_after_cuts()) {
         weights_after_cuts.push_back(args.at("weight_after_cuts"));
     }
     weights_after_cuts.push_back(diff_xs_acc);

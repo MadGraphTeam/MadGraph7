@@ -255,6 +255,11 @@ private:
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
     NamedVector<Type> compute_channel_part_ret_types() const;
+    // Whether build_channel_part multiplies anything into weight_after_cuts:
+    // flavor or mirror sampling, or the merging weights and the scale veto of
+    // the history over every diagram. The common part leaves weight_after_cuts
+    // out of its product otherwise, as it is then one by construction.
+    bool has_channel_weight_after_cuts() const;
     NamedVector<Value>
     build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
     NamedVector<Value>

@@ -31,7 +31,11 @@ The branch was 699 commits behind. Most of the conflict surface was not real:
   were re-applied to `launch.py`. The matrix element is now built in a loop over
   backends, so `me_inputs` is computed once before that loop.
 * `run_card.toml` is now a template filled from `banner.py`, so `"mlm"`,
-  `beam.jet_radius` and `beam.max_jet_flavor` are declared there.
+  `beam.jet_radius` and `beam.max_jet_flavor` are declared there. The MLM
+  clustering options other than `max_jet_flavor` (`jet_radius`, `scale_scheme`,
+  `alphas_reweighting`, `pdf_reweighting`, `clustering_history`, ...) are
+  hidden: the template has no line for them, and `RunCardMG7.write` adds one at
+  the end of `[beam]` once they are set or differ from their default.
 * `LHECompleter` was refactored on main; main's version was taken. The branch's
   `TODO` about the permutation direction is gone because main fixed exactly
   that, by inverting the permutation before using it.
