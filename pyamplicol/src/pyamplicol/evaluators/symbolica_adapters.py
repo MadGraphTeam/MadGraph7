@@ -28,6 +28,7 @@ from .._internal.versions import (
     SYMJIT_PLANE_APPLICATION_ABI,
     verify_native_module,
 )
+from ..api.errors import NativePlatformError
 from .execution_schema import aggregate_runtime_capabilities
 from .symbolica_helpers import (
     _artifact_path_for_manifest,
@@ -291,6 +292,8 @@ class _JITSymbolicaEvaluatorAdapter:
         try:
             rusticol = importlib.import_module("pyamplicol._rusticol")
             verify_native_module(rusticol)
+        except NativePlatformError:
+            raise  # names the glibc this platform lacks: reinstalling cannot help
         except Exception as error:
             raise NativeEvaluationError(
                 "the Rusticol extension required to compile a direct-arena "

@@ -1,4 +1,13 @@
 ! SPDX-License-Identifier: 0BSD
+! Linux glibc floor (SDK README, "glibc floor (Linux)"): a client linked
+! against the shared librusticol_loop_sdk.so of a release native build needs
+! glibc 2.38 or newer (GLIBC_2.38). With gfortran on an older glibc the link
+! fails ("librusticol_loop_sdk.so: undefined reference to
+! `__isoc23_strtol@GLIBC_2.38'"); a client built on glibc 2.38 or newer and run
+! on an older one is stopped by the dynamic loader before the program starts
+! ("libc.so.6: version `GLIBC_2.38' not found (required by
+! .../librusticol_loop_sdk.so)"). Build and run it with gfortran on glibc 2.38
+! or newer, or build the SDK from source on that host.
 module rusticol_virtual
   use, intrinsic :: iso_c_binding
   use, intrinsic :: iso_fortran_env, only: error_unit

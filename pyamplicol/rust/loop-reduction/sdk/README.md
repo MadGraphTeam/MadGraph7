@@ -306,3 +306,62 @@ source labels (`spin_legs_json` in wrappers, `spin_legs` in the Cargo API).
 the same saved artifact without regenerating diagrams. The C client additionally
 checks UMAMI source offset/stride layouts, literal complex scaling, short buffers
 and output/result lifetimes.
+
+## glibc floor (Linux)
+
+The shared library `librusticol_loop_sdk.so` of a release native build
+(`tools/developer/build_loop_native.py`) needs the glibc symbol versions it
+links: `readelf -V librusticol_loop_sdk.so` lists them, and the build's
+`build-info.json` records them (`glibc_version_needs`). A build with the
+repository's toolchain needs at most `GLIBC_2.38` and no glibc ABI marker: the
+build compiles its C dependencies (GMP, MPFR, MPC) with the traditional TLS
+dialect, so the library does not need `GLIBC_ABI_GNU2_TLS`, which only glibc
+builds carrying that marker define. The floor is therefore glibc 2.38 (the
+same holds for the Python extension `_rusticol.so`). Its symbols bind numbered
+versions (`readelf --dyn-syms -W librusticol_loop_sdk.so` shows
+`__isoc23_strtol@GLIBC_2.38` and `hypot@GLIBC_2.35`, for instance), so an older
+glibc is caught at the first step that sees it.
+
+Linking a client executable with a toolchain whose glibc is older than 2.38
+fails at link time: GNU ld checks the shared library's undefined symbols for
+an executable (`--no-allow-shlib-undefined`, its default there), and the older
+glibc's `libc.so.6` defines no symbol of version `GLIBC_2.38`:
+
+```text
+ld: .../librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38'
+```
+
+A client built on glibc 2.38 or newer and run on an older glibc (or a shared
+library or plugin linked against the SDK on an older toolchain, which GNU ld
+does not check) is stopped by the dynamic loader before it runs:
+
+```text
+./client: .../libc.so.6: version `GLIBC_2.38' not found (required by .../librusticol_loop_sdk.so)
+```
+
+Both messages mean this floor: build and run the client on glibc 2.38 or newer
+(`ldd --version` shows the release), or build the SDK from source on the older
+host so that it links against that host's glibc.
+
+C and C++ clients of the release build's shared library can stop at compile
+time, before either: define `RUSTICOL_VIRTUAL_SHARED`, and
+`rusticol_virtual.h` refuses a toolchain whose glibc release is older than
+`RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.MINOR` (2.38) with an `#error` that names
+the floor (every glibc release defines the numbered versions of the releases
+before it, so the release comparison is exact). The macro states the release
+build's floor, not that of an SDK built from source on an older host: omit it
+for such a build.
+
+```sh
+cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
+  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -lm -o client
+```
+
+Fortran has no such hook (the module is not preprocessed): the link-time error
+or the loader message above names the floor. From Python, `import
+pyamplicol._rusticol` first looks up every glibc version the extension needs in
+the running glibc and raises `pyamplicol.NativePlatformError` naming the missing
+versions, the running glibc and the remedy; a refusal by the dynamic loader
+becomes the same error.
+pyAmpliCol does not open `librusticol_loop_sdk.so` from Python; code that opens
+it with `ctypes` gets the dynamic loader's `OSError`.
