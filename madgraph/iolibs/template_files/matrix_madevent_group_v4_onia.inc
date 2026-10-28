@@ -49,10 +49,11 @@ c
 C       Good-helicity filter is per (helicity, flavor, subprocess): a helicity
 C       that is zero for one merged flavor but non-zero for another must not be
 C       dropped, so GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
-C       They are also kept per beam orientation (IM = IMIRROR): a helicity can
-C       vanish in one orientation only (e.g. q q~ > z with the Z at rest), and
-C       in vector mode the first MAXTRIES events can all share one orientation.
-        LOGICAL GOODHEL(NCOMB, 2, MAXFLAVPERPROC, MAXSPROC)
+C       NTRY is also kept per beam orientation (IM = IMIRROR), so that each
+C       orientation gets its own MAXTRIES scan: a helicity can vanish in one
+C       orientation only (e.g. q q~ > z with the Z at rest), and in vector mode
+C       the first MAXTRIES events can all share one orientation.
+        LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
 	    INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
 
@@ -168,7 +169,7 @@ C   beam orientation of this event (1 if the caller did not set TO_MIRROR)
 !   If HEL_PICKED==-1, this means that calls to other matrix<i> where in initialization mode as well for the helicity.
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
-         IF (GOODHEL(I,IM,IFLAV,%(proc_id)s) .OR. NTRY(IM,IFLAV,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
+         IF (GOODHEL(I,IFLAV,%(proc_id)s) .OR. NTRY(IM,IFLAV,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
             T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
@@ -201,8 +202,8 @@ C   beam orientation of this event (1 if the caller did not set TO_MIRROR)
                   IF (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
                      PRINT *, 'Matrix Element/Good Helicity: %(proc_id)s ', i, 'IMIRROR', IMIRROR
 	          ENDIF
-	      ELSE IF (.NOT.GOODHEL(I,IM,IFLAV,%(proc_id)s) .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
-                 GOODHEL(I,IM,IFLAV,%(proc_id)s)=.TRUE.
+	      ELSE IF (.NOT.GOODHEL(I,IFLAV,%(proc_id)s) .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
+                 GOODHEL(I,IFLAV,%(proc_id)s)=.TRUE.
                  NGOOD = NGOOD +1
                  PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,' mirror ',IM,TS(I)*NCOMB/ANS,' in event ',NTRY(IM,IFLAV,%(proc_id)s)
               ENDIF

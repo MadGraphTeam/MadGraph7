@@ -3459,6 +3459,7 @@ class LoopInducedExporterMEGroup(LoopInducedExporterME,
     matrix_file = "matrix_loop_induced_madevent_group.inc"
     # GOODHEL(NCOMB, MAXSPROC) / NTRY(MAXSPROC) in matrix_file
     goodhel_dims = 'MAXSPROC'
+    ntry_dims = 'MAXSPROC'
 
     def make_source_links(self,*args, **opts):
         """ In the loop-induced output with MadEvent, we need the files from the 
