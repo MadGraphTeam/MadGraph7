@@ -1178,6 +1178,11 @@ class NativeExecutor:
     the slice's counterterm closure (``native_trees._counterterm_program``);
     without ``counterterms`` ``virtual`` is absent. Catani's pole prediction
     (``PointResult.ir_poles``) is not formed natively (WP3.1 I5c).
+
+    ``evaluate(..., ward=...)`` runs the asymmetric Ward mode on either input
+    path (``ward``): with native inputs the native trees read each point's
+    loop-side vector (``loop_sources``), with Python inputs the Python lane
+    forms them (the oracle); the slice needs the full tree kernels.
     """
 
     def __init__(
@@ -1319,14 +1324,30 @@ class NativeExecutor:
 
     # -- inputs ---------------------------------------------------------------
 
-    def _points(self, points, scales, parameters, precision, poles):
-        from .assemble import Precision, _fraction, _Numbers
+    def _points(self, points, scales, parameters, precision, poles, wards=None):
+        """Python point inputs; ``wards`` (one Ward value or None per point,
+        ``ward``) adds the loop-side vectors (``_PointEvaluation``'s
+        ``loop_sources``)."""
+
+        from .assemble import Precision, _fraction, _Numbers, _to_decimal
 
         precision = precision or Precision.double()
+        wards = wards or [None] * len(points)
         evaluations = []
-        for point, scale in zip(points, scales, strict=True):
+        for point, scale, ward in zip(points, scales, wards, strict=True):
             exact_point = tuple(tuple(_fraction(x) for x in p) for p in point)
             with _Numbers(precision).scope():
+                extra = {}
+                if ward is not None:
+                    from .ward import loop_vector, ward_leg
+
+                    leg = ward_leg(ward)
+                    vector = loop_vector(ward, exact_point[leg - 1])
+                    extra["loop_sources"] = {
+                        leg: tuple(
+                            (_to_decimal(re), _to_decimal(im)) for re, im in vector
+                        )
+                    }
                 evaluations.append(
                     self.slice._point(
                         exact_point,
@@ -1334,6 +1355,7 @@ class NativeExecutor:
                         dict(parameters or {}),
                         precision,
                         poles,
+                        **extra,
                     )
                 )
         return precision, evaluations
@@ -1440,6 +1462,22 @@ class NativeExecutor:
             # tree program's model parameters from the external parameters.
             batch["parameters"] = batch_parameters(exported.trees, evaluations)
             del batch["block_rows"], batch["born"]
+            # Per point its loop-side vectors (exact texts; the Ward mode).
+            loop = [getattr(e, "loop_sources", None) for e in evaluations]
+            if any(loop):
+                batch["loop_sources"] = [
+                    [
+                        (
+                            leg,
+                            [
+                                [_fraction_text(re), _fraction_text(im)]
+                                for re, im in vector
+                            ],
+                        )
+                        for leg, vector in sorted((sources or {}).items())
+                    ]
+                    for sources in loop
+                ]
             return batch
         for evaluation in evaluations:
             with evaluation.numbers.scope():
@@ -1538,12 +1576,18 @@ class NativeExecutor:
         poles: PoleSelection | str = PoleSelection.ALL,
         stability: Any = None,
         schedule: Literal["B", "M"] = "B",
+        ward: Any = None,
     ) -> list[Any]:
         """The complete virtual of every point (``LoopSlice.evaluate``), with
         dressing and reduction in the native executor (``schedule`` B, or M
         for the plan's schedule-M families). ``poles`` is the pole selection
         (``PoleSelection`` or its value: ``"all"``, ``"none"``, ``"uv"``,
         ``"ir"``; ``poles``).
+
+        ``ward`` is the asymmetric Ward mode (``ward``): one Ward value for
+        every point or a list with one per point (None: physical), on a
+        slice generated on the full tree kernels; each result then also
+        holds ``loop_born``.
 
         Rotation checks re-evaluate the rotated points natively; the
         reduction check is the native re-test pass. A failed point fails
@@ -1554,8 +1598,24 @@ class NativeExecutor:
         from .stability import ROTATION, StabilityChecks, StabilityEstimate
 
         stability = stability or StabilityChecks()
+        wards = None
+        if ward is not None:
+            from .ward import point_wards, require_full_kernels
+
+            wards = point_wards(ward, len(points))
+            if any(value is not None for value in wards):
+                require_full_kernels(self.slice)
+            else:
+                wards = None
         precision, evaluations, failures = self._evaluated(
-            points, scales, parameters, precision, poles, stability.frame, schedule
+            points,
+            scales,
+            parameters,
+            precision,
+            poles,
+            stability.frame,
+            schedule,
+            wards,
         )
         rotated = []
         for k, rotation in enumerate(stability.rotations):
@@ -1563,8 +1623,13 @@ class NativeExecutor:
                 rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
                 for point in points
             ]
+            turned = None
+            if wards is not None:
+                from .ward import rotated_ward
+
+                turned = [rotated_ward(rotation, value) for value in wards]
             _, runs, failed = self._evaluated(
-                moved, scales, parameters, precision, poles, None, schedule
+                moved, scales, parameters, precision, poles, None, schedule, turned
             )
             rotated.append(runs)
             for index, reasons in failed.items():
@@ -1644,13 +1709,21 @@ class NativeExecutor:
         return out
 
     def _evaluated(
-        self, points, scales, parameters, precision, poles, retest, schedule="B"
+        self,
+        points,
+        scales,
+        parameters,
+        precision,
+        poles,
+        retest,
+        schedule="B",
+        wards=None,
     ):
         """Evaluate a batch natively; returns the precision, the per-point
         evaluations (failed points unassembled) and the failures per point
-        index."""
+        index. ``wards``: one Ward value or None per point (``ward``)."""
 
-        from .assemble import Precision, _Numbers
+        from .assemble import Precision, _fraction, _Numbers
 
         if self.inputs == "native":
             from .poles import has_poles, pole_mode
@@ -1660,9 +1733,19 @@ class NativeExecutor:
             for evaluation in evaluations:
                 evaluation.mode = pole_mode(poles)
                 evaluation.poles = has_poles(evaluation.mode)
+            if wards is not None:
+                from .ward import loop_vector, ward_leg
+
+                for evaluation, point, ward in zip(
+                    evaluations, points, wards, strict=True
+                ):
+                    if ward is not None:
+                        leg = ward_leg(ward)
+                        momentum = [_fraction(x) for x in point[leg - 1]]
+                        evaluation.loop_sources = {leg: loop_vector(ward, momentum)}
         else:
             precision, evaluations = self._points(
-                points, scales, parameters, precision, poles
+                points, scales, parameters, precision, poles, wards
             )
         failed = self.reduce(evaluations, precision, poles, retest, schedule)
         for index, evaluation in enumerate(evaluations):
@@ -1788,6 +1871,17 @@ class NativeExecutor:
                         for order, (re, _im) in zip(
                             exported.trees.squared_orders,
                             output["born"][index],
+                            strict=True,
+                        )
+                    }
+                if output.get("loop_born") is not None and getattr(
+                    evaluation, "loop_sources", None
+                ):
+                    evaluation.loop_born = {
+                        order: numbers.real(Decimal(str(re)))
+                        for order, (re, _im) in zip(
+                            exported.trees.squared_orders,
+                            output["loop_born"][index],
                             strict=True,
                         )
                     }
