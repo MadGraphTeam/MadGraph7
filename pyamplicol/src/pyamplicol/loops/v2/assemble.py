@@ -129,6 +129,7 @@ from .ct_sites import (
     SiteTerm,
     generate_counterterm_sites,
     vanishes_identically,
+    vanishing_loop_vertices,
 )
 from .ct_sites import (
     Carrier as SiteCarrier,
@@ -1864,10 +1865,22 @@ class LoopSlice:
             ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
             loop_species=_correction_species(structure, request),
         )
+        # A vertex whose couplings vanish identically at the model's
+        # restriction (a W vertex of a CKM element a diagonal-CKM restriction
+        # sets to zero) contributes nothing and the restricted tree model
+        # holds no colour or Lorentz term of it: it is no loop vertex
+        # (fail-closed-2; decided from the coupling values,
+        # ``ct_sites.restricted_to_zero``, the counterterm root closure's
+        # rule too).
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
             veto=request.particle_veto,
+            vanishing=vanishing_loop_vertices(
+                compiled,
+                prepared.model.kernels,
+                (rule["name"] for rule in data["vertex_rules"]),
+            ),
         )
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled

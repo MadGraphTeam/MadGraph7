@@ -904,6 +904,13 @@ class ModelLoopCatalogue:
     ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
     loops: they are no loop species, and no vertex with one of them is a loop
     vertex.
+
+    ``vanishing`` (vertex rule name, coupling orders) are the vertices whose
+    couplings at those orders vanish identically at the model's restriction
+    (``ct_sites.vanishing_loop_vertices``, decided from the coupling values):
+    they are no loop vertices at those orders (fail-closed-2; e.g. a W vertex
+    of a CKM element a diagonal-CKM restriction sets to zero, which the
+    restricted tree model does not hold).
     """
 
     def __init__(
@@ -912,8 +919,10 @@ class ModelLoopCatalogue:
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
         veto: Iterable[int] = (),
+        vanishing: Iterable[tuple[str, Orders]] = (),
     ):
         data = model_data(model)
+        vanishing = frozenset(vanishing)
         veto = frozenset(abs(int(pdg)) for pdg in veto)
         vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
@@ -940,7 +949,8 @@ class ModelLoopCatalogue:
                 if name is not None
             }
             for order in sorted(orders):
-                rules.append((rule, order))
+                if (rule["name"], order) not in vanishing:
+                    rules.append((rule, order))
         if species_orders is None:
             pdg = {p["name"]: abs(p["pdg_code"]) for p in data["particles"]}
             derived: dict[int, set[str]] = defaultdict(set)

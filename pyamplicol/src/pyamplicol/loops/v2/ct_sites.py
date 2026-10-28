@@ -1448,6 +1448,70 @@ def vanishes_identically(compiled: Any, expression: Any) -> bool:
     return resolved_internal_parameters(compiled, value).expand() == zero
 
 
+def restricted_to_zero(compiled: Any, entries: Sequence[Any]) -> bool:
+    """Whether every coupling of a vertex's loop-model ``entries``
+    (``KernelBasisEntry`` rows of ``LoopModelIR.kernels``: one vertex, or one
+    vertex at one coupling order) vanishes identically in the restricted
+    model ``compiled``, so that its tree model holds no term of them: each
+    coupling with the source helpers it calls replaced by their exact bodies
+    (``ScalarFunctionLibrary.inline``; e.g. UFO's ``complexconjugate`` of a
+    CKM element that the restriction sets to zero) and its internal
+    parameters resolved to the restriction's external ones
+    (``vanishes_identically``). The decision reads the coupling values, never
+    vertex, particle or parameter names. False when it cannot be shown (no
+    entries, an internal parameter left unresolved, a helper body that keeps
+    a conditional of the parameters).
+
+    The one rule for vertices a model's restriction removes (fail-closed-2):
+    the loop catalogue leaves them out (``vanishing_loop_vertices``,
+    ``families.ModelLoopCatalogue``) and the counterterm root closure skips
+    them (``ct_closure``, WP3.2 EWI-5)."""
+
+    if not entries:
+        return False
+    try:
+        return all(
+            vanishes_identically(compiled, _inlined_coupling(entry))
+            for entry in entries
+        )
+    except ValueError:  # an internal parameter left unresolved
+        return False
+
+
+def _inlined_coupling(entry: Any) -> Any:
+    """The coupling of a loop-model entry with every source helper call
+    replaced by its exact body (the entry's scalar program's library)."""
+
+    value = entry.scalar_expression().value
+    program = getattr(entry, "scalar_program", None)
+    if program is None:
+        return value
+    return program.library.inline(value, lambda _arguments: True)
+
+
+def vanishing_loop_vertices(
+    compiled: Any, kernels: Iterable[Any], names: Iterable[str] | None = None
+) -> frozenset[tuple[str, Orders]]:
+    """The (vertex name, coupling orders) of the tree vertices of a loop
+    model's ``kernels`` (``LoopModelIR.kernels``; of the vertex names
+    ``names`` only, if given) every coupling of which at those orders
+    vanishes identically at the restriction of ``compiled``
+    (``restricted_to_zero``): such a vertex contributes nothing, and the
+    restricted tree model holds no colour or Lorentz term of it."""
+
+    wanted = None if names is None else frozenset(names)
+    groups: dict[tuple[str, Orders], list[Any]] = defaultdict(list)
+    for entry in kernels:
+        if entry.kind != "tree":
+            continue
+        if wanted is not None and entry.vertex_name not in wanted:
+            continue
+        groups[entry.vertex_name, add_orders(tuple(entry.order))].append(entry)
+    return frozenset(
+        key for key, entries in groups.items() if restricted_to_zero(compiled, entries)
+    )
+
+
 def resolved_internal_parameters(compiled: Any, expression: Any) -> Any:
     """``expression`` (in the model's symbols) with every internal parameter
     replaced by its resolved definition, which the model compiler writes in
@@ -1595,7 +1659,9 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
+    "restricted_to_zero",
     "ufo_colour_network",
     "vanishes_identically",
+    "vanishing_loop_vertices",
     "witness_alternatives",
 ]
