@@ -20,6 +20,7 @@ CKM: V_101 = u~ b W+ carries complexconjugate(CKM13) = 0) raised
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,20 @@ REPRODUCER = (
 )
 QED1 = (("QED", 1),)
 UP, DOWN = ("u", "c", "t"), ("d", "s", "b")
+# The vertices the loop catalogue leaves out of the reproducer's loops at the
+# G_mu default restriction (``LoopSlice.generate``: the native model's vertex
+# rules, by particles and orders): the W vertices of the six off-diagonal CKM
+# elements and the top's charged-Goldstone Yukawas of the two off-diagonal
+# elements it has (complexconjugate(CKM31) ymt and complexconjugate(CKM32)
+# ymt; the b is massless there). The prepared native model keeps them, as
+# the conjugate is only zero with the helper inlined.
+DIAGONAL_W = {(f"{up}~", down, "W+") for up, down in zip(UP, DOWN, strict=True)}
+PRODUCTION = {
+    ((f"{up}~", down, "W+"), QED1)
+    for up in UP
+    for down in DOWN
+    if (f"{up}~", down, "W+") not in DIAGONAL_W
+} | {(("t~", "d", "G+"), QED1), (("t~", "s", "G+"), QED1)}
 
 
 def _request(compiled, process, born, loops, *, corrections=("QCD", "QED")):
@@ -86,23 +101,41 @@ def gmu_models(loop_gmu_ufo, tmp_path_factory):
     return build
 
 
-def _vanishing(compiled) -> dict[tuple[tuple[str, ...], tuple], str]:
-    """(particles, orders) -> vertex name of the loop model's vertices that
-    vanish at the restriction, for the reproducer's request scope."""
+def _vanishing(compiled) -> tuple[dict, dict]:
+    """(particles, orders) -> vertex name of the loop model's tree vertices
+    that vanish at the restriction, for the reproducer's request scope: all
+    of them, and those of the native model's vertex rules (the set the loop
+    catalogue leaves out, ``LoopSlice.generate``).
+
+    The first set is checked here against an oracle independent of the rule:
+    it is exactly the loop model's tree vertices (by vertex and orders) of
+    which the compiled tree model holds no term (``ir.vertex_terms``; the
+    tree compiler's own zero test)."""
 
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.ct_sites import vanishing_loop_vertices
+    from pyamplicol.loops.v2.families import add_orders
 
     prepared = prepare_request_model(compiled, _request(compiled, *REPRODUCER))[0]
-    particles = {
-        entry.vertex_name: tuple(entry.particle_names)
-        for entry in prepared.model.kernels
-        if entry.kind == "tree"
+    kernels = prepared.model.kernels
+    tree = [entry for entry in kernels if entry.kind == "tree"]
+    found = vanishing_loop_vertices(compiled, kernels)
+    held = {
+        (term.vertex, add_orders(tuple(term.coupling_orders)))
+        for term in compiled.ir.vertex_terms
     }
-    return {
-        (particles[name], orders): name
-        for name, orders in vanishing_loop_vertices(compiled, prepared.model.kernels)
-    }
+    loop = {(entry.vertex_name, add_orders(tuple(entry.order))) for entry in tree}
+    assert found == loop - held
+    native = json.loads(prepared.structure.native.to_json())["vertex_rules"]
+    production = vanishing_loop_vertices(
+        compiled, kernels, (rule["name"] for rule in native)
+    )
+    particles = {entry.vertex_name: tuple(entry.particle_names) for entry in tree}
+
+    def named(keys) -> dict:
+        return {(particles[name], orders): name for name, orders in keys}
+
+    return named(found), named(production)
 
 
 def _w_vertices(found) -> set[tuple[str, str]]:
@@ -122,28 +155,77 @@ def _w_vertices(found) -> set[tuple[str, str]]:
 @pytest.mark.loop_physics
 def test_vanishing_vertices_follow_the_coupling_values_not_the_names(gmu_models):
     """At the G_mu UFO's default restriction (Wolfenstein inputs zero: a
-    diagonal CKM matrix) exactly the W vertices of the off-diagonal CKM
-    elements vanish (each a complexconjugate of a zero CKM element, which only
-    the inlined helper shows), with the charged-Goldstone Yukawas of the
-    same elements; the diagonal ones do not. The ``ckm`` variant, whose CKM
-    elements, Wolfenstein inputs and vertices are all renamed, gives the same
-    vertices by particles and orders under other names; at the restriction
-    with a non-diagonal CKM matrix (``restrict_ckm``) no W vertex vanishes."""
+    diagonal CKM matrix) the vanishing vertices are exactly those the tree
+    compiler drops (``_vanishing``'s oracle), among them the W vertices of
+    exactly the off-diagonal CKM elements (each a complexconjugate of a zero
+    CKM element, which only the inlined helper shows), not the diagonal
+    ones; of the native model's vertices, exactly ``PRODUCTION`` (with the
+    top's charged-Goldstone Yukawas of the same elements). The ``ckm``
+    variant, whose CKM elements, Wolfenstein inputs and vertices are all
+    renamed, gives the same vertices by particles and orders under other
+    names; at the restriction with a non-diagonal CKM matrix
+    (``restrict_ckm``) no W vertex vanishes, again exactly the dropped
+    ones."""
 
-    original = _vanishing(gmu_models())
+    original, production = _vanishing(gmu_models())
     off_diagonal = {(u, d) for u in UP for d in DOWN} - set(zip(UP, DOWN, strict=True))
     assert _w_vertices(original) == off_diagonal
-    assert (("u~", "b", "W+"), QED1) in original  # the reproducer's V_101
-    goldstones = {
-        particles
-        for particles, orders in original
-        if "G+" in particles or "G-" in particles
-    }
-    assert goldstones  # e.g. t~ d G+ (I113, -I213 of CKM13 and CKM31)
-    renamed = _vanishing(gmu_models("ckm"))
+    assert set(production) == PRODUCTION
+    assert production[("u~", "b", "W+"), QED1] == "V_101"  # the reproducer's
+    renamed, renamed_production = _vanishing(gmu_models("ckm"))
     assert set(renamed) == set(original)
+    assert set(renamed_production) == PRODUCTION
     assert not set(renamed.values()) & set(original.values())
-    assert _w_vertices(_vanishing(gmu_models(restriction="ckm"))) == set()
+    assert _w_vertices(_vanishing(gmu_models(restriction="ckm"))[0]) == set()
+
+
+@pytest.mark.loop_physics
+def test_the_reproducer_s_loops_leave_the_vanishing_vertices_out(
+    gmu_models, loop_native, monkeypatch
+):
+    """``LoopSlice.generate`` applies the rule: the reproducer's loop
+    catalogue receives exactly ``PRODUCTION`` as its vanishing vertices,
+    holds none of them, and the loop schedules (which read every loop
+    vertex's colour from the tree model) are built without a refusal; the
+    generation is stopped at the counterterm program that follows them
+    (about 40 s)."""
+
+    from pyamplicol.loops.v2 import assemble, ct_closure
+
+    catalogues = []
+
+    class Recorded(assemble.ModelLoopCatalogue):
+        def __init__(self, data, **options):
+            super().__init__(data, **options)
+            rules = {rule["name"]: rule for rule in data["vertex_rules"]}
+            vanishing = frozenset(options.get("vanishing", ()))
+            catalogues.append((self, rules, vanishing))
+
+    class Stopped(Exception):
+        pass
+
+    def stop(*_args, **_kwargs):
+        raise Stopped
+
+    monkeypatch.setattr(assemble, "ModelLoopCatalogue", Recorded)
+    monkeypatch.setattr(ct_closure.CountertermProgram, "build", stop)
+    compiled = gmu_models()
+    with pytest.raises(Stopped):
+        assemble.LoopSlice.generate(
+            compiled, _request(compiled, *REPRODUCER), loop_native
+        )
+    ((catalogue, rules, vanishing),) = catalogues
+    assert {
+        (tuple(rules[name]["particles"]), orders) for name, orders in vanishing
+    } == PRODUCTION
+    used = {
+        (vertex.rule, vertex.orders)
+        for species in catalogue.loop_species()
+        for vertex in catalogue.vertices(species)
+    }
+    assert used and not used & vanishing
+    # The diagonal W vertices stay loop vertices.
+    assert {tuple(rules[name]["particles"]) for name, _ in used} >= DIAGONAL_W
 
 
 @pytest.mark.loop_physics
