@@ -1,0 +1,4968 @@
+{
+ "schema_version": 1,
+ "plan": "workspace/reports/engine-v2/m-qcd/PLAN.md \u00a71.4, \u00a73.2 MQ-VALIDATE, \u00a74",
+ "description": "M-QCD validation campaign rows (one per PLAN \u00a74.2 row). tools/loop_benchmark/mqcd.py reads it; tests/unit/test_loop_v2_mqcd_*.py run it.",
+ "restriction_codes": {
+  "5F": {
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd"
+  },
+  "5F*": {
+   "restriction": "default",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd"
+  },
+  "4F": {
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-4fs"
+  },
+  "CM": {
+   "restriction": "c_mass",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-cmass"
+  },
+  "ZC": {
+   "restriction": "zeromass_ckm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-ckm"
+  },
+  "CK": {
+   "restriction": "ckm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-ckm4"
+  },
+  "LM": {
+   "restriction": "lepton_masses",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-lmass"
+  },
+  "W": {
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0"
+   },
+   "scheme": "qcd-widths"
+  }
+ },
+ "classes": [
+  "Q-massless",
+  "Q-top",
+  "Q-heavy",
+  "Q-EWBorn",
+  "Q-ttX",
+  "Q-singletop",
+  "Q-mixed",
+  "Q-CKM",
+  "Q-multi"
+ ],
+ "features": [
+  "2->1",
+  "2->2",
+  "2->3",
+  "2->4",
+  "2->5",
+  "ckm:non-diagonal",
+  "ew:VBF-H",
+  "ew:VH",
+  "ew:VV",
+  "ew:W-exchange",
+  "ew:W-leptons",
+  "ew:dilepton",
+  "ew:dilepton+jets",
+  "ew:lepton-initiated-jets",
+  "ew:onshell-V+jet",
+  "ew:radiation-zero",
+  "four-tops",
+  "gluons-only",
+  "initial:gg",
+  "initial:lepton-hadron",
+  "initial:leptons",
+  "initial:multiparticle",
+  "initial:photon-hadron",
+  "initial:qbarqbar",
+  "initial:qg",
+  "initial:qq",
+  "initial:qqbar",
+  "massive:b",
+  "massive:c",
+  "massive:leptons",
+  "massive:top",
+  "mixed-born-orders",
+  "multiparticle",
+  "quark-line:1",
+  "quarks:distinct-flavour",
+  "quarks:identical-flavour",
+  "quarks:three-lines",
+  "scheme:4FS",
+  "singletop:4FS-t",
+  "singletop:s",
+  "singletop:t",
+  "singletop:tW",
+  "special:parameters",
+  "special:radiation-zero",
+  "special:soft-collinear",
+  "special:threshold",
+  "ttX",
+  "veto:top",
+  "widths:colourless",
+  "yukawa:b",
+  "yukawa:top"
+ ],
+ "restrictions_in_scope": [
+  "default",
+  "no_b_mass",
+  "no_widths",
+  "no_masses",
+  "no_tau_mass",
+  "lepton_masses",
+  "c_mass",
+  "ckm",
+  "zeromass_ckm"
+ ],
+ "smokes": {
+  "same_request": {
+   "no_masses": "A12",
+   "no_tau_mass": "A12",
+   "no_widths": "B08"
+  },
+  "lc_every_restriction": "MQ-NC"
+ },
+ "rows": [
+  {
+   "id": "A01",
+   "class": "Q-massless",
+   "process": "g g > g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "active",
+   "reference_legend": "E v2/gg_gg_providers.json",
+   "reference": {
+    "format": "providers",
+    "path": "tests/fixtures/loop/v2/gg_gg_providers.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
+   },
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ap"
+   ],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "gluons-only"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "parameters": {
+    "aS": "0.118",
+    "MT": "173"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A02",
+   "class": "Q-massless",
+   "process": "u u~ > g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E quark-gluon-component-control (MadLoop binary64); N ~30 s",
+   "reference": {
+    "format": "component-control",
+    "path": "tests/fixtures/loop/quark-gluon-component-control.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "quark-line:1"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "parameters": {
+    "aS": "0.118",
+    "MT": "173"
+   }
+  },
+  {
+   "id": "A03",
+   "class": "Q-massless",
+   "process": "g g > u u~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~20 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "quark-line:1"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
+   }
+  },
+  {
+   "id": "A04",
+   "class": "Q-massless",
+   "process": "u g > u g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "N ~20 s",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "quark-line:1"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
+   }
+  },
+  {
+   "id": "A05",
+   "class": "Q-massless",
+   "process": "u u~ > d d~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "A06",
+   "class": "Q-massless",
+   "process": "u u~ > u u~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_uux",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_uux.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "A07",
+   "class": "Q-massless",
+   "process": "u u > u u",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~20 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qq",
+    "2->2",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
+   }
+  },
+  {
+   "id": "A08",
+   "class": "Q-massless",
+   "process": "g g > g g g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "R runs/g1/gg_ggg (+NJet)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ward",
+    "hel"
+   ],
+   "features": [
+    "initial:gg",
+    "2->3",
+    "gluons-only"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R runs/g1/gg_ggg (+NJet))"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "ward": "MQ-WARD (generic native Ward input)",
+    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)"
+   }
+  },
+  {
+   "id": "A09",
+   "class": "Q-massless",
+   "process": "u u~ > g g g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "E + R runs/g1/uux_ggg",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "sp"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "quark-line:1",
+    "special:soft-collinear"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: E + R runs/g1/uux_ggg)"
+   },
+   "notes": "quark-three-gluon-component-control.json has no points of its own; the accurate run on runs/g1/uux_ggg comes from MQ-REF",
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "sp": "MQ-REF (supplied special points S1-S4)"
+   }
+  },
+  {
+   "id": "A12",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "active",
+   "reference_legend": "E required/uux_ddxg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_ddxg.json"
+   },
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A13",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_uuxg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_uuxg.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ap"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A14",
+   "class": "Q-massless",
+   "process": "g g > g g g g",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E fixture (Recola + OpenLoops; MadLoop QP to be committed by MQ-REF)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_gggg.json",
+    "providers": [
+     "recola",
+     "openloops"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "initial:gg",
+    "2->4",
+    "gluons-only"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "extras_pending": {
+    "ward": "MQ-WARD (generic native Ward input)"
+   }
+  },
+  {
+   "id": "A15",
+   "class": "Q-massless",
+   "process": "u u~ > g g g g",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3-5 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "quark-line:1"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A18",
+   "class": "Q-massless",
+   "process": "g g > u u~ u u~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "initial:gg",
+    "2->4",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A19",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ s s~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_ddxssx",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_ddxssx.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "quarks:three-lines",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "A20",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ d d~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_uuxddx",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_uuxddx.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "quarks:three-lines",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "A21",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ u u~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_uuxuux",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_uuxuux.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "quarks:three-lines",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "A22",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ s s~ g",
+   "born_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 7,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E sevenleg (MadLoop Ninja + Recola)",
+   "reference": {
+    "format": "mqcd",
+    "path": "tests/fixtures/loop/mqcd/references/uux_ddxssxg.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->5",
+    "quarks:three-lines"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 12,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "A23",
+   "class": "Q-massless",
+   "process": "u u~ > g g g g g",
+   "born_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 7,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_ggggg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_ggggg.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->5",
+    "quark-line:1"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 12,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "A24",
+   "class": "Q-massless",
+   "process": "g g > g g g g g",
+   "born_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 7,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E gg_ggggg_njet (NJet DD)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ggggg_njet.json",
+    "providers": [
+     "njet_dd_oneloop_R1",
+     "njet_double_R1",
+     "njet_double_R2"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "initial:gg",
+    "2->5",
+    "gluons-only",
+    "veto:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 12,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "particle_veto": [
+    6
+   ]
+  },
+  {
+   "id": "A25",
+   "class": "Q-massless",
+   "process": "u d > u d",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qq",
+    "2->2",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "A26",
+   "class": "Q-massless",
+   "process": "u~ u~ > u~ u~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qbarqbar",
+    "2->2",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "B01",
+   "class": "Q-top",
+   "process": "g g > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "active",
+   "reference_legend": "E required/gg_ttx (+ R for S1, S4, hel)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ttx.json"
+   },
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "ap",
+    "uv",
+    "hel",
+    "sp"
+   ],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "massive:top",
+    "special:threshold",
+    "special:parameters"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "extras_pending": {
+    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)",
+    "sp": "MQ-REF (supplied special points S1-S4)"
+   }
+  },
+  {
+   "id": "B02",
+   "class": "Q-top",
+   "process": "u u~ > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E top-pair-model uu (MadLoop binary64); N ~15 s",
+   "reference": {
+    "format": "model-control",
+    "path": "tests/fixtures/loop/top-pair-model.json",
+    "key": "uu",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "massive:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "B03",
+   "class": "Q-top",
+   "process": "g g > t t~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~20-60 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ward"
+   ],
+   "features": [
+    "initial:gg",
+    "2->3",
+    "massive:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20-60 s)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "ward": "MQ-WARD (generic native Ward input)"
+   }
+  },
+  {
+   "id": "B05",
+   "class": "Q-top",
+   "process": "g g > t t~ g g",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/gg_ttxgg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ttxgg.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->4",
+    "massive:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "B06",
+   "class": "Q-top",
+   "process": "u u~ > t t~ d d~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15-60 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "massive:top",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-60 s)"
+   }
+  },
+  {
+   "id": "B07",
+   "class": "Q-top",
+   "process": "g g > t t~ t t~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~1-4 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->4",
+    "massive:top",
+    "four-tops"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~1-4 min)"
+   }
+  },
+  {
+   "id": "B08",
+   "class": "Q-heavy",
+   "process": "g g > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s (4F: plain loop_sm, WT = 0; = no_widths smoke)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "massive:top",
+    "scheme:4FS"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s (4F: plain loop_sm, WT = 0; = no_widths smoke))"
+   }
+  },
+  {
+   "id": "C01",
+   "class": "Q-heavy",
+   "process": "g g > b b~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "N ~10 s",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ap",
+    "ward",
+    "sp"
+   ],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "massive:b",
+    "scheme:4FS",
+    "special:parameters"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "ward": "MQ-WARD (generic native Ward input)",
+    "sp": "MQ-REF (supplied special points S1-S4)"
+   }
+  },
+  {
+   "id": "C02",
+   "class": "Q-heavy",
+   "process": "g g > g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s (b decoupled)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "gluons-only",
+    "scheme:4FS"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s (b decoupled))"
+   }
+  },
+  {
+   "id": "C03",
+   "class": "Q-heavy",
+   "process": "b b~ > h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~10 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->1",
+    "massive:b",
+    "yukawa:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~10 s)"
+   }
+  },
+  {
+   "id": "C04",
+   "class": "Q-heavy",
+   "process": "b b~ > h g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s (x-rotated points)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "massive:b",
+    "yukawa:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s (x-rotated points))"
+   }
+  },
+  {
+   "id": "C05",
+   "class": "Q-heavy",
+   "process": "g g > b b~ h",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~20-60 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->3",
+    "massive:b",
+    "yukawa:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20-60 s)"
+   }
+  },
+  {
+   "id": "C06",
+   "class": "Q-heavy",
+   "process": "g g > t t~ b b~",
+   "born_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~1-4 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->4",
+    "massive:top",
+    "massive:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 10,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~1-4 min)"
+   }
+  },
+  {
+   "id": "C07",
+   "class": "Q-singletop",
+   "process": "u g > d t b~",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~20-60 s (4FS t-channel)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->3",
+    "singletop:4FS-t",
+    "massive:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20-60 s (4FS t-channel))"
+   }
+  },
+  {
+   "id": "C08",
+   "class": "Q-heavy",
+   "process": "g g > c c~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "c_mass",
+   "restriction_code": "CM",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-cmass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s (+ Recola)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->2",
+    "massive:c"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s (+ Recola))"
+   }
+  },
+  {
+   "id": "C09",
+   "class": "Q-heavy",
+   "process": "g s > w- c",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "c_mass",
+   "restriction_code": "CM",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-cmass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s (+ Recola; MQ-5F)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "massive:c",
+    "ew:onshell-V+jet"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-5F",
+    "reason": "public-route or admission package: MQ-5F"
+   }
+  },
+  {
+   "id": "D01",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "N ~15 s (+ analytic form factor)",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "ap"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:dilepton"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-MODEL",
+    "reason": "public-route or admission package: MQ-MODEL"
+   },
+   "notes": "stock loop_sm on the public route needs the SSS1 repair (MQ-MODEL); its reference is new (MQ-REF)"
+  },
+  {
+   "id": "D02",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "W",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-widths",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "run on D01 with card widths",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:dilepton",
+    "widths:colourless"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-MODEL",
+    "reason": "public-route or admission package: MQ-MODEL"
+   }
+  },
+  {
+   "id": "D05",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "R runs/g1/uux_emepg",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ward",
+    "uv",
+    "hel"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "ew:dilepton+jets"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R runs/g1/uux_emepg)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "ward": "MQ-WARD (generic native Ward input)",
+    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)"
+   }
+  },
+  {
+   "id": "D06",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E dilepton-two-gluon (MadLoop + Recola, binary64) + R",
+   "reference": {
+    "format": "dilepton",
+    "path": "tests/fixtures/loop/dilepton-two-gluon.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "ew:dilepton+jets"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "D07",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g g g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_emepggg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_emepggg.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->5",
+    "ew:dilepton+jets"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "D08",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ d d~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_emepddxg",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_emepddxg.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->5",
+    "ew:dilepton+jets",
+    "quarks:distinct-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "D09",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ mu- mu+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_emepmummp",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_emepmummp.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "ew:VV"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "D10",
+   "class": "Q-EWBorn",
+   "process": "u u~ > u u~ e+ e-",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_uuxepem (the 22x case)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_uuxepem.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->4",
+    "ew:dilepton+jets",
+    "quarks:identical-flavour"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "D11",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15-30 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:onshell-V+jet"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-30 s)"
+   }
+  },
+  {
+   "id": "D12",
+   "class": "Q-EWBorn",
+   "process": "u d~ > e+ ve g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "ew:W-leptons"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "D13",
+   "class": "Q-EWBorn",
+   "process": "u g > a u",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "ew:onshell-V+jet"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
+   }
+  },
+  {
+   "id": "D15",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z z",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:VV"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "D16",
+   "class": "Q-EWBorn",
+   "process": "u u~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:VV"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
+   }
+  },
+  {
+   "id": "D17",
+   "class": "Q-EWBorn",
+   "process": "b b~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "5F*",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s (MQ-5F)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:VV"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-5F",
+    "reason": "public-route or admission package: MQ-5F"
+   }
+  },
+  {
+   "id": "D18",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:VH"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
+   }
+  },
+  {
+   "id": "D19",
+   "class": "Q-EWBorn",
+   "process": "u d > u d h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 3
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~20-60 s (VBF, QCD=0)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qq",
+    "2->3",
+    "ew:VBF-H"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20-60 s (VBF, QCD=0))"
+   }
+  },
+  {
+   "id": "D20",
+   "class": "Q-EWBorn",
+   "process": "e+ e- > u u~ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:leptons",
+    "2->3",
+    "ew:lepton-initiated-jets"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
+   }
+  },
+  {
+   "id": "D21",
+   "class": "Q-EWBorn",
+   "process": "e+ e- > t t~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E runs/top-pair-ee-model-control.json (MQ-REF commits it)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:leptons",
+    "2->2",
+    "massive:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: E runs/top-pair-ee-model-control.json (MQ-REF commits it))"
+   }
+  },
+  {
+   "id": "D23",
+   "class": "Q-EWBorn",
+   "process": "a g > u u~",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:photon-hadron",
+    "2->2"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
+   }
+  },
+  {
+   "id": "D24",
+   "class": "Q-EWBorn",
+   "process": "e- u > e- u",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:lepton-hadron",
+    "2->2"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
+   }
+  },
+  {
+   "id": "D25",
+   "class": "Q-EWBorn",
+   "process": "u d~ > w+ a",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "sp"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ew:VV",
+    "ew:radiation-zero",
+    "special:radiation-zero"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
+   },
+   "extras_pending": {
+    "sp": "MQ-REF (supplied special points S1-S4)"
+   }
+  },
+  {
+   "id": "D26",
+   "class": "Q-heavy",
+   "process": "u u~ > e- e+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s (4F twin of D05)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "ew:dilepton+jets",
+    "scheme:4FS"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s (4F twin of D05))"
+   }
+  },
+  {
+   "id": "D27",
+   "class": "Q-EWBorn",
+   "process": "g u > e+ ve d",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->3",
+    "ew:W-leptons"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "E01",
+   "class": "Q-ttX",
+   "process": "g g > t t~ h",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~30-90 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "ward",
+    "uv"
+   ],
+   "features": [
+    "initial:gg",
+    "2->3",
+    "ttX",
+    "yukawa:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~30-90 s)"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
+    "ward": "MQ-WARD (generic native Ward input)"
+   }
+  },
+  {
+   "id": "E02",
+   "class": "Q-ttX",
+   "process": "g g > t t~ z",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~30-120 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->3",
+    "ttX"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~30-120 s)"
+   }
+  },
+  {
+   "id": "E05",
+   "class": "Q-ttX",
+   "process": "e+ e- > t t~ h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 3
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E top-pair-higgs-model.json (MadLoop binary64)",
+   "reference": {
+    "format": "model-control",
+    "path": "tests/fixtures/loop/top-pair-higgs-model.json",
+    "key": "ee",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:leptons",
+    "2->3",
+    "ttX",
+    "yukawa:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "E06",
+   "class": "Q-ttX",
+   "process": "g g > t t~ e- e+ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 5,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/gg_ttxemepg_qcd + point 2 (rule 1 outlier: OpenLoops)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ttxemepg_qcd.json"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:gg",
+    "2->5",
+    "ttX"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "F01",
+   "class": "Q-singletop",
+   "process": "u b > d t",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "5F*",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc",
+    "uv",
+    "ap"
+   ],
+   "features": [
+    "initial:qq",
+    "2->2",
+    "singletop:t"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-MODEL",
+    "reason": "public-route or admission package: MQ-MODEL"
+   },
+   "extras_pending": {
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   }
+  },
+  {
+   "id": "F02",
+   "class": "Q-singletop",
+   "process": "b u > d t",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "5F*",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qq",
+    "2->2",
+    "singletop:t"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  },
+  {
+   "id": "F03",
+   "class": "Q-singletop",
+   "process": "u d~ > t b~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "singletop:s"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-MODEL",
+    "reason": "public-route or admission package: MQ-MODEL"
+   }
+  },
+  {
+   "id": "F04",
+   "class": "Q-singletop",
+   "process": "g b > t w-",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "5F*",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~20 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "singletop:tW"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20 s)"
+   },
+   "extras_pending": {
+    "ward": "MQ-WARD (generic native Ward input)"
+   }
+  },
+  {
+   "id": "G01",
+   "class": "Q-mixed",
+   "process": "u u~ > d d~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "none",
+   "restriction_code": "G-full",
+   "fixed_parameters": {
+    "MC": "0",
+    "MB": "0",
+    "Me": "0",
+    "MM": "0",
+    "MTA": "0",
+    "ymc": "0",
+    "ymb": "0",
+    "yme": "0",
+    "ymm": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-full-sm-ckm",
+   "tier": "default",
+   "status": "active",
+   "reference_legend": "E tools/loop_reference/uudd_mixed_sm_qcd.json (= mixed-uudd-sm-qcd-control)",
+   "reference": {
+    "format": "mixed-sm",
+    "path": "tools/loop_reference/uudd_mixed_sm_qcd.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "mixed-born-orders",
+    "ew:W-exchange"
+   ],
+   "predicted_sectors": [],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": []
+  },
+  {
+   "id": "G02",
+   "class": "Q-mixed",
+   "process": "u u~ > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15-30 s (driver item 4)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "mixed-born-orders",
+    "massive:top"
+   ],
+   "predicted_sectors": [],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-30 s (driver item 4))"
+   }
+  },
+  {
+   "id": "H01",
+   "class": "Q-CKM",
+   "process": "u s~ > w+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "zeromass_ckm",
+   "restriction_code": "ZC",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-ckm",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s + CKM-factor relation",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "ckm:non-diagonal"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s + CKM-factor relation)"
+   }
+  },
+  {
+   "id": "H02",
+   "class": "Q-CKM",
+   "process": "g s > t w-",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "zeromass_ckm",
+   "restriction_code": "ZC",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-ckm",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s + CKM-factor relation (MQ-5F)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "ckm:non-diagonal",
+    "singletop:tW"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-5F",
+    "reason": "public-route or admission package: MQ-5F"
+   }
+  },
+  {
+   "id": "H03",
+   "class": "Q-CKM",
+   "process": "g d > t w-",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "ckm",
+   "restriction_code": "CK",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-ckm4",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~15 s (single-provider exception; MQ-5F)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qg",
+    "2->2",
+    "ckm:non-diagonal",
+    "massive:b"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-5F",
+    "reason": "public-route or admission package: MQ-5F"
+   }
+  },
+  {
+   "id": "M01",
+   "class": "Q-multi",
+   "process": "p p > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N multi-P ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:multiparticle",
+    "2->2",
+    "multiparticle",
+    "massive:top"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~1-2 min)"
+   }
+  },
+  {
+   "id": "R01",
+   "class": "Q-EWBorn",
+   "process": "u u~ > mu- mu+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "lepton_masses",
+   "restriction_code": "LM",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-lmass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~15 s",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "initial:qqbar",
+    "2->2",
+    "massive:leptons"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "binary64_out_of_scope": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "pending": {
+    "waits_for": "MQ-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
+   }
+  }
+ ]
+}
