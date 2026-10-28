@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: 0BSD
 """Full colour at another N_c: the N_c scan of ``test_loop_v2_fermion_lines``.
 
-``python -m tests.unit.loop_nc_scan <compiled model> <name> <N> <precision>``
-prints, as one JSON line, the full-colour result of the projection request
-``name`` of ``test_loop_v2_fermion_lines`` at its first point with N_c = N
-(a rational), in ``precision`` (``double`` or ``arbitrary:<digits>``, the
-Python reference path).
+``python -m tests.unit.loop_nc_scan <compiled model> <name> <carrier> <N>
+<precision>`` prints, as one JSON line, the full-colour result of the
+projection request ``name`` of ``test_loop_v2_fermion_lines`` at its
+``carrier``'s point with N_c = N (a rational), in ``precision`` (``double``
+or ``arbitrary:<digits>``, the Python reference path).
 
 Full colour never splits a block by N_c grade (``generation.dag_grades`` acts
 on leading- and next-to-leading-colour requests only), so this value does not
@@ -115,7 +115,7 @@ def result_json(result) -> dict:
 
 
 def main(argv: list[str] | None = None) -> None:
-    model, name, n_text, precision_text = argv or sys.argv[1:]
+    model, name, carrier, n_text, precision_text = argv or sys.argv[1:]
     n = Fraction(n_text)
     counter = use_nc(n) if n != 3 else {"interactions": 0}
 
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> None:
         precision = Precision.arbitrary(int(digits))
     compiled = load_compiled_model(model)
     request, point, scale, parameters = _projection_request(
-        compiled, name, "full", "double"
+        compiled, name, "full", carrier
     )
     with dag_input.native_flags(dag=False, program=False):
         full = LoopSlice.generate(compiled, request, load_loop_native())

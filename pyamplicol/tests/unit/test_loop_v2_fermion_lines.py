@@ -192,17 +192,22 @@ PROJECTION_NAMES = (
 # sum of its kept powers within 1e-12 and 1e-24 of each sector's largest
 # Laurent coefficient. In binary64 a value whose own stability estimate E
 # exceeds 1e-12 is held to E (capped at 1e-9; the O1 rule, HANDOFF §0.5),
-# which the double-double check then holds to 1e-24: u u~ > u u~ u u~ has E =
-# 3.7e-11 at its first point (its parts are up to six times its full-colour
-# coefficients and cancel).
+# which the double-double check then holds to 1e-24. A fixture's first point
+# is used unless ``PROJECTION_POINTS`` names another for a carrier: the first
+# point of u u~ > u u~ u u~ is outside binary64's 1e-12 (full-colour estimate
+# 3.9e-11, true binary64 error 1.95e-12 against double-double; its parts are
+# up to six times its full-colour coefficients and cancel), so binary64
+# takes its second (estimate 4.0e-12, true error 2.7e-13).
 PROJECTION_CARRIERS = {"double": 1e-12, "double-double": 1e-24}
+PROJECTION_POINTS = {"uux_uuxuux": {"double": 1}}
 O1_CAP = 1e-9
 
 
 def _projection_request(compiled, name: str, accuracy: str, carrier: str):
     """The request of ``name`` at ``accuracy`` with the colour declaration of
     the formal-N_c continuation (the counterterms' N_c grades), and the
-    ``carrier``'s point (a fixture's first), scale and parameters."""
+    ``carrier``'s point (a fixture's first unless ``PROJECTION_POINTS``),
+    scale and parameters."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -230,7 +235,9 @@ def _projection_request(compiled, name: str, accuracy: str, carrier: str):
         point = [[exact_points.decimal_string(x) for x in p] for p in point]
         return request, point, "1000000", {"aS": "0.118"}
     reference = _reference(name)
-    point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
+    index = PROJECTION_POINTS.get(name, {}).get(carrier, 0)
+    point = reference["points"][index]
+    scale = str(Fraction(reference["mu_r"][index]) ** 2)
     return (
         _request(compiled, reference, **colour),
         point,
@@ -447,9 +454,10 @@ NC_SCAN_VALUES = tuple(
 NC_SCAN_PRECISION = {"double": "double", "double-double": "arbitrary:32"}
 
 
-def _fc_at_nc(model, name, values, precision, cache):
-    """FC of ``name`` at each N_c of ``values`` (``loop_nc_scan``, one
-    process each, concurrently): N -> (rescaled interactions, entries)."""
+def _fc_at_nc(model, name, carrier, values, precision, cache):
+    """FC of ``name`` at the ``carrier``'s point and each N_c of ``values``
+    (``loop_nc_scan``, one process each, concurrently): N -> (rescaled
+    interactions, entries)."""
 
     import os
     import subprocess
@@ -467,6 +475,7 @@ def _fc_at_nc(model, name, values, precision, cache):
                 "tests.unit.loop_nc_scan",
                 str(model),
                 name,
+                carrier,
                 str(n),
                 precision,
             ],
@@ -530,6 +539,7 @@ def test_colour_projections_are_coefficients_of_an_nc_scan_of_full_colour(
     scan = _fc_at_nc(
         loop_sm_compiled_model,
         name,
+        carrier,
         NC_SCAN_VALUES,
         NC_SCAN_PRECISION[carrier],
         tmp_path,
