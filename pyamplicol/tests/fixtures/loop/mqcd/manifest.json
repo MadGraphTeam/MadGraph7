@@ -799,6 +799,51 @@
    "reference_outliers": [],
    "vanishing": [],
    "notes": "quark-three-gluon-component-control.json has no points of its own; the accurate run on runs/g1/uux_ggg comes from MQ-REF",
+   "variants": [
+    {
+     "name": "soft",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S2: a soft gluon (E_g / sqrt(s) = 1e-3, 1e-5), MadLoop in quadruple precision",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_ggg_soft.json",
+      "providers": [
+       "madloop",
+       "recola",
+       "openloops"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "name": "collinear",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S2: a collinear pair (theta = 1e-3, 1e-5; small Gram determinants), MadLoop in quadruple precision",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_ggg_collinear.json",
+      "providers": [
+       "madloop",
+       "recola",
+       "openloops"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "sp": "MQ-REF (supplied special points S1-S4)"
@@ -4431,6 +4476,32 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "variants": [
+    {
+     "name": "zero",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S3: the radiation-zero points (0, 1) and their regular neighbour (2); no division by the Born",
+     "zero_points": {
+      "0": 2,
+      "1": 2
+     },
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/udx_wpa_zero.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "sp": "MQ-REF (supplied special points S1-S4)"
    }
