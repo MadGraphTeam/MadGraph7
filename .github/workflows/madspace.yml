@@ -56,7 +56,10 @@ jobs:
                 HIPFLAGS=--gcc-toolchain=$(dirname $(which g++))/../..
                 SKBUILD_CMAKE_ARGS="-DENABLE_CUDA=ON;-DENABLE_HIP=ON;-DENABLE_SIMD=ON;-DENABLE_OPENBLAS=OFF;-DENABLE_DOCS=ON"
 
-          - os: macos-14
+          # GitHub retires the macos-14 image on 2026-11-02. macos-15 rather
+          # than macos-latest, which moves with each new macOS (and Xcode).
+          # The deployment target keeps the wheels installable on macOS 14.5+.
+          - os: macos-15
             build_small: cp312-macosx_arm64
             build_full: cp3*-macosx_arm64
             MACOSX_DEPLOYMENT_TARGET: 14.5
