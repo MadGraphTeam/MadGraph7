@@ -67,7 +67,7 @@
    "references": [
     {
      "run": "uux_gg",
-     "fixture": "required/uux_gg.json",
+     "fixture": "required/mqcd/uux_gg.json",
      "process_key": "uux_gg",
      "note": null,
      "reference_notes": {},
@@ -205,7 +205,7 @@
    "references": [
     {
      "run": "gg_uux",
-     "fixture": "required/gg_uux.json",
+     "fixture": "required/mqcd/gg_uux.json",
      "process_key": "gg_uux",
      "note": null,
      "reference_notes": {},
@@ -343,7 +343,7 @@
    "references": [
     {
      "run": "ug_ug",
-     "fixture": "required/ug_ug.json",
+     "fixture": "required/mqcd/ug_ug.json",
      "process_key": "ug_ug",
      "note": null,
      "reference_notes": {},
@@ -483,7 +483,7 @@
    "references": [
     {
      "run": "uux_ddx",
-     "fixture": "required/uux_ddx.json",
+     "fixture": "required/mqcd/uux_ddx.json",
      "process_key": "uux_ddx",
      "note": null,
      "reference_notes": {},
@@ -667,7 +667,7 @@
    "references": [
     {
      "run": "uu_uu",
-     "fixture": "required/uu_uu.json",
+     "fixture": "required/mqcd/uu_uu.json",
      "process_key": "uu_uu",
      "note": null,
      "reference_notes": {},
@@ -809,7 +809,7 @@
    "references": [
     {
      "run": "gg_ggg",
-     "fixture": "required/gg_ggg.json",
+     "fixture": "required/mqcd/gg_ggg.json",
      "process_key": "gg_ggg",
      "note": null,
      "reference_notes": {},
@@ -951,7 +951,7 @@
    "references": [
     {
      "run": "uux_ggg",
-     "fixture": "required/uux_ggg.json",
+     "fixture": "required/mqcd/uux_ggg.json",
      "process_key": "uux_ggg",
      "note": null,
      "reference_notes": {},
@@ -1067,7 +1067,7 @@
     },
     {
      "run": "uux_ggg_soft",
-     "fixture": "required/uux_ggg_soft.json",
+     "fixture": "required/mqcd/uux_ggg_soft.json",
      "process_key": "uux_ggg",
      "note": "S2: soft gluon E/sqrt(s) = 1e-3, 1e-5",
      "reference_notes": {},
@@ -1175,7 +1175,7 @@
     },
     {
      "run": "uux_ggg_collinear",
-     "fixture": "required/uux_ggg_collinear.json",
+     "fixture": "required/mqcd/uux_ggg_collinear.json",
      "process_key": "uux_ggg",
      "note": "S2: collinear gluon pair theta = 1e-3, 1e-5 (small Gram determinants)",
      "reference_notes": {
@@ -1463,7 +1463,7 @@
    "references": [
     {
      "run": "uux_gggg",
-     "fixture": "required/uux_gggg.json",
+     "fixture": "required/mqcd/uux_gggg.json",
      "process_key": "uux_gggg",
      "note": null,
      "reference_notes": {},
@@ -1605,7 +1605,7 @@
    "references": [
     {
      "run": "gg_uuxuux",
-     "fixture": "required/gg_uuxuux.json",
+     "fixture": "required/mqcd/gg_uuxuux.json",
      "process_key": "gg_uuxuux",
      "note": null,
      "reference_notes": {},
@@ -2003,7 +2003,7 @@
    "references": [
     {
      "run": "ud_ud",
-     "fixture": "required/ud_ud.json",
+     "fixture": "required/mqcd/ud_ud.json",
      "process_key": "ud_ud",
      "note": null,
      "reference_notes": {},
@@ -2141,7 +2141,7 @@
    "references": [
     {
      "run": "uxux_uxux",
-     "fixture": "required/uxux_uxux.json",
+     "fixture": "required/mqcd/uxux_uxux.json",
      "process_key": "uxux_uxux",
      "note": null,
      "reference_notes": {},
@@ -2285,7 +2285,7 @@
    "references": [
     {
      "run": "gg_ttx_sectors",
-     "fixture": "required/gg_ttx_sectors.json",
+     "fixture": "required/mqcd/gg_ttx_sectors.json",
      "process_key": "gg_ttx",
      "note": "per-sector and per-helicity MadLoop run at the committed fixture's points",
      "reference_notes": {},
@@ -2391,7 +2391,7 @@
     },
     {
      "run": "gg_ttx_threshold",
-     "fixture": "required/gg_ttx_threshold.json",
+     "fixture": "required/mqcd/gg_ttx_threshold.json",
      "process_key": "gg_ttx",
      "note": "S1: threshold beta = 1e-1, 1e-2, 1e-3",
      "reference_notes": {},
@@ -2501,7 +2501,7 @@
     },
     {
      "run": "gg_ttx_mt170",
-     "fixture": "required/gg_ttx_mt170.json",
+     "fixture": "required/mqcd/gg_ttx_mt170.json",
      "process_key": "gg_ttx_mt170",
      "note": "S4: runtime MT = 170",
      "reference_notes": {},
@@ -2665,7 +2665,7 @@
    "references": [
     {
      "run": "uux_ttx",
-     "fixture": "required/uux_ttx.json",
+     "fixture": "required/mqcd/uux_ttx.json",
      "process_key": "uux_ttx",
      "note": null,
      "reference_notes": {},
@@ -2806,7 +2806,7 @@
    "references": [
     {
      "run": "gg_ttxg",
-     "fixture": "required/gg_ttxg.json",
+     "fixture": "required/mqcd/gg_ttxg.json",
      "process_key": "gg_ttxg",
      "note": null,
      "reference_notes": {},
@@ -2991,7 +2991,7 @@
    "references": [
     {
      "run": "uux_ttxddx",
-     "fixture": "required/uux_ttxddx.json",
+     "fixture": "required/mqcd/uux_ttxddx.json",
      "process_key": "uux_ttxddx",
      "note": null,
      "reference_notes": {},
@@ -3131,7 +3131,7 @@
    "references": [
     {
      "run": "gg_ttxttx",
-     "fixture": "required/gg_ttxttx.json",
+     "fixture": "required/mqcd/gg_ttxttx.json",
      "process_key": "gg_ttxttx",
      "note": null,
      "reference_notes": {},
@@ -3277,7 +3277,7 @@
    "references": [
     {
      "run": "gg_ttx_4fs",
-     "fixture": "required/gg_ttx_4fs.json",
+     "fixture": "required/mqcd/gg_ttx_4fs.json",
      "process_key": "gg_ttx_4fs",
      "note": null,
      "reference_notes": {},
@@ -3421,7 +3421,7 @@
    "references": [
     {
      "run": "gg_bbx_4fs",
-     "fixture": "required/gg_bbx_4fs.json",
+     "fixture": "required/mqcd/gg_bbx_4fs.json",
      "process_key": "gg_bbx_4fs",
      "note": null,
      "reference_notes": {},
@@ -3541,7 +3541,7 @@
     },
     {
      "run": "gg_bbx_4fs_params",
-     "fixture": "required/gg_bbx_4fs_params.json",
+     "fixture": "required/mqcd/gg_bbx_4fs_params.json",
      "process_key": "gg_bbx_4fs_params",
      "note": "S4: runtime MB = 4.5, aS = 0.13 (cond(MB) and reglog CT terms)",
      "reference_notes": {},
@@ -3690,7 +3690,7 @@
    "references": [
     {
      "run": "gg_gg_4fs",
-     "fixture": "required/gg_gg_4fs.json",
+     "fixture": "required/mqcd/gg_gg_4fs.json",
      "process_key": "gg_gg_4fs",
      "note": null,
      "reference_notes": {},
@@ -3829,7 +3829,7 @@
    "references": [
     {
      "run": "bbx_h_4fs",
-     "fixture": "required/bbx_h_4fs.json",
+     "fixture": "required/mqcd/bbx_h_4fs.json",
      "process_key": "bbx_h_4fs",
      "note": null,
      "reference_notes": {},
@@ -3972,7 +3972,7 @@
    "references": [
     {
      "run": "bbx_hg_4fs",
-     "fixture": "required/bbx_hg_4fs.json",
+     "fixture": "required/mqcd/bbx_hg_4fs.json",
      "process_key": "bbx_hg_4fs",
      "note": null,
      "reference_notes": {},
@@ -4092,7 +4092,7 @@
     },
     {
      "run": "bbx_hg_4fs_z",
-     "fixture": "required/bbx_hg_4fs_z.json",
+     "fixture": "required/mqcd/bbx_hg_4fs_z.json",
      "process_key": "bbx_hg_4fs",
      "note": "non-gating diagnostic: the same construction with the beams on +-z",
      "reference_notes": {},
@@ -4236,7 +4236,7 @@
    "references": [
     {
      "run": "gg_bbxh_4fs",
-     "fixture": "required/gg_bbxh_4fs.json",
+     "fixture": "required/mqcd/gg_bbxh_4fs.json",
      "process_key": "gg_bbxh_4fs",
      "note": null,
      "reference_notes": {},
@@ -4381,7 +4381,7 @@
    "references": [
     {
      "run": "gg_ttxbbx_4fs",
-     "fixture": "required/gg_ttxbbx_4fs.json",
+     "fixture": "required/mqcd/gg_ttxbbx_4fs.json",
      "process_key": "gg_ttxbbx_4fs",
      "note": null,
      "reference_notes": {},
@@ -4527,7 +4527,7 @@
    "references": [
     {
      "run": "ug_dtbx_4fs",
-     "fixture": "required/ug_dtbx_4fs.json",
+     "fixture": "required/mqcd/ug_dtbx_4fs.json",
      "process_key": "ug_dtbx_4fs",
      "note": null,
      "reference_notes": {},
@@ -4671,7 +4671,7 @@
    "references": [
     {
      "run": "gg_ccx_cmass",
-     "fixture": "required/gg_ccx_cmass.json",
+     "fixture": "required/mqcd/gg_ccx_cmass.json",
      "process_key": "gg_ccx_cmass",
      "note": null,
      "reference_notes": {},
@@ -4817,7 +4817,7 @@
    "references": [
     {
      "run": "gs_wmc_cmass",
-     "fixture": "required/gs_wmc_cmass.json",
+     "fixture": "required/mqcd/gs_wmc_cmass.json",
      "process_key": "gs_wmc_cmass",
      "note": null,
      "reference_notes": {},
@@ -4965,7 +4965,7 @@
    "references": [
     {
      "run": "uux_emep",
-     "fixture": "required/uux_emep.json",
+     "fixture": "required/mqcd/uux_emep.json",
      "process_key": "uux_emep",
      "note": null,
      "reference_notes": {},
@@ -5101,7 +5101,7 @@
    "references": [
     {
      "run": "uux_emep_widths",
-     "fixture": "required/uux_emep_widths.json",
+     "fixture": "required/mqcd/uux_emep_widths.json",
      "process_key": "uux_emep_widths",
      "note": null,
      "reference_notes": {},
@@ -5244,7 +5244,7 @@
    "references": [
     {
      "run": "uux_emepg",
-     "fixture": "required/uux_emepg.json",
+     "fixture": "required/mqcd/uux_emepg.json",
      "process_key": "uux_emepg",
      "note": null,
      "reference_notes": {},
@@ -5383,7 +5383,7 @@
    "references": [
     {
      "run": "uux_emepgg",
-     "fixture": "required/uux_emepgg.json",
+     "fixture": "required/mqcd/uux_emepgg.json",
      "process_key": "uux_emepgg",
      "note": null,
      "reference_notes": {},
@@ -5709,7 +5709,7 @@
    "references": [
     {
      "run": "uux_zg",
-     "fixture": "required/uux_zg.json",
+     "fixture": "required/mqcd/uux_zg.json",
      "process_key": "uux_zg",
      "note": null,
      "reference_notes": {},
@@ -5847,7 +5847,7 @@
    "references": [
     {
      "run": "udx_epveg",
-     "fixture": "required/udx_epveg.json",
+     "fixture": "required/mqcd/udx_epveg.json",
      "process_key": "udx_epveg",
      "note": null,
      "reference_notes": {},
@@ -5986,7 +5986,7 @@
    "references": [
     {
      "run": "ug_au",
-     "fixture": "required/ug_au.json",
+     "fixture": "required/mqcd/ug_au.json",
      "process_key": "ug_au",
      "note": null,
      "reference_notes": {},
@@ -6124,7 +6124,7 @@
    "references": [
     {
      "run": "uux_zz",
-     "fixture": "required/uux_zz.json",
+     "fixture": "required/mqcd/uux_zz.json",
      "process_key": "uux_zz",
      "note": null,
      "reference_notes": {},
@@ -6262,7 +6262,7 @@
    "references": [
     {
      "run": "uux_wpwm",
-     "fixture": "required/uux_wpwm.json",
+     "fixture": "required/mqcd/uux_wpwm.json",
      "process_key": "uux_wpwm",
      "note": null,
      "reference_notes": {},
@@ -6408,7 +6408,7 @@
    "references": [
     {
      "run": "bbx_wpwm",
-     "fixture": "required/bbx_wpwm.json",
+     "fixture": "required/mqcd/bbx_wpwm.json",
      "process_key": "bbx_wpwm",
      "note": null,
      "reference_notes": {},
@@ -6551,7 +6551,7 @@
    "references": [
     {
      "run": "uux_zh",
-     "fixture": "required/uux_zh.json",
+     "fixture": "required/mqcd/uux_zh.json",
      "process_key": "uux_zh",
      "note": null,
      "reference_notes": {},
@@ -6694,7 +6694,7 @@
    "references": [
     {
      "run": "ud_udh",
-     "fixture": "required/ud_udh.json",
+     "fixture": "required/mqcd/ud_udh.json",
      "process_key": "ud_udh",
      "note": null,
      "reference_notes": {},
@@ -6833,7 +6833,7 @@
    "references": [
     {
      "run": "epem_uuxg",
-     "fixture": "required/epem_uuxg.json",
+     "fixture": "required/mqcd/epem_uuxg.json",
      "process_key": "epem_uuxg",
      "note": null,
      "reference_notes": {},
@@ -6999,7 +6999,7 @@
    "references": [
     {
      "run": "ag_uux",
-     "fixture": "required/ag_uux.json",
+     "fixture": "required/mqcd/ag_uux.json",
      "process_key": "ag_uux",
      "note": null,
      "reference_notes": {},
@@ -7137,7 +7137,7 @@
    "references": [
     {
      "run": "emu_emu",
-     "fixture": "required/emu_emu.json",
+     "fixture": "required/mqcd/emu_emu.json",
      "process_key": "emu_emu",
      "note": null,
      "reference_notes": {},
@@ -7277,7 +7277,7 @@
    "references": [
     {
      "run": "udx_wpa",
-     "fixture": "required/udx_wpa.json",
+     "fixture": "required/mqcd/udx_wpa.json",
      "process_key": "udx_wpa",
      "note": null,
      "reference_notes": {},
@@ -7397,7 +7397,7 @@
     },
     {
      "run": "udx_wpa_zero",
-     "fixture": "required/udx_wpa_zero.json",
+     "fixture": "required/mqcd/udx_wpa_zero.json",
      "process_key": "udx_wpa",
      "note": "S3: Born-zero points cos(u, photon) = -1/3 and one regular neighbour",
      "reference_notes": {},
@@ -7531,7 +7531,7 @@
    "references": [
     {
      "run": "uux_emepg_4fs",
-     "fixture": "required/uux_emepg_4fs.json",
+     "fixture": "required/mqcd/uux_emepg_4fs.json",
      "process_key": "uux_emepg_4fs",
      "note": null,
      "reference_notes": {},
@@ -7670,7 +7670,7 @@
    "references": [
     {
      "run": "gu_epved",
-     "fixture": "required/gu_epved.json",
+     "fixture": "required/mqcd/gu_epved.json",
      "process_key": "gu_epved",
      "note": null,
      "reference_notes": {},
@@ -7813,7 +7813,7 @@
    "references": [
     {
      "run": "gg_ttxh",
-     "fixture": "required/gg_ttxh.json",
+     "fixture": "required/mqcd/gg_ttxh.json",
      "process_key": "gg_ttxh",
      "note": null,
      "reference_notes": {},
@@ -7957,7 +7957,7 @@
    "references": [
     {
      "run": "gg_ttxz",
-     "fixture": "required/gg_ttxz.json",
+     "fixture": "required/mqcd/gg_ttxz.json",
      "process_key": "gg_ttxz",
      "note": null,
      "reference_notes": {},
@@ -8181,7 +8181,7 @@
    "references": [
     {
      "run": "ub_dt",
-     "fixture": "required/ub_dt.json",
+     "fixture": "required/mqcd/ub_dt.json",
      "process_key": "ub_dt",
      "note": null,
      "reference_notes": {},
@@ -8322,7 +8322,7 @@
    "references": [
     {
      "run": "bu_dt",
-     "fixture": "required/bu_dt.json",
+     "fixture": "required/mqcd/bu_dt.json",
      "process_key": "bu_dt",
      "note": null,
      "reference_notes": {},
@@ -8460,7 +8460,7 @@
    "references": [
     {
      "run": "udx_tbx",
-     "fixture": "required/udx_tbx.json",
+     "fixture": "required/mqcd/udx_tbx.json",
      "process_key": "udx_tbx",
      "note": null,
      "reference_notes": {},
@@ -8603,7 +8603,7 @@
    "references": [
     {
      "run": "gb_twm",
-     "fixture": "required/gb_twm.json",
+     "fixture": "required/mqcd/gb_twm.json",
      "process_key": "gb_twm",
      "note": null,
      "reference_notes": {},
@@ -8775,7 +8775,7 @@
    "references": [
     {
      "run": "uux_ttx_mixed",
-     "fixture": "required/uux_ttx_mixed.json",
+     "fixture": "required/mqcd/uux_ttx_mixed.json",
      "process_key": "uux_ttx_mixed",
      "note": null,
      "reference_notes": {},
@@ -8947,7 +8947,7 @@
    "references": [
     {
      "run": "usx_wpg_ckm",
-     "fixture": "required/usx_wpg_ckm.json",
+     "fixture": "required/mqcd/usx_wpg_ckm.json",
      "process_key": "usx_wpg_ckm",
      "note": null,
      "reference_notes": {},
@@ -9094,7 +9094,7 @@
    "references": [
     {
      "run": "gs_twm_ckm",
-     "fixture": "required/gs_twm_ckm.json",
+     "fixture": "required/mqcd/gs_twm_ckm.json",
      "process_key": "gs_twm_ckm",
      "note": null,
      "reference_notes": {},
@@ -9241,7 +9241,7 @@
    "references": [
     {
      "run": "gd_twm_ckm4",
-     "fixture": "required/gd_twm_ckm4.json",
+     "fixture": "required/mqcd/gd_twm_ckm4.json",
      "process_key": "gd_twm_ckm4",
      "note": null,
      "reference_notes": {},
@@ -9388,7 +9388,7 @@
    "references": [
     {
      "run": "pp_ttx_P0_uux_ttx",
-     "fixture": "required/pp_ttx_P0_uux_ttx.json",
+     "fixture": "required/mqcd/pp_ttx_P0_uux_ttx.json",
      "process_key": "pp_ttx",
      "note": null,
      "reference_notes": {},
@@ -9503,7 +9503,7 @@
     },
     {
      "run": "pp_ttx_P2_gg_ttx",
-     "fixture": "required/pp_ttx_P2_gg_ttx.json",
+     "fixture": "required/mqcd/pp_ttx_P2_gg_ttx.json",
      "process_key": "pp_ttx",
      "note": null,
      "reference_notes": {},
@@ -9641,7 +9641,7 @@
    "references": [
     {
      "run": "uux_mummp_lmass",
-     "fixture": "required/uux_mummp_lmass.json",
+     "fixture": "required/mqcd/uux_mummp_lmass.json",
      "process_key": "uux_mummp_lmass",
      "note": null,
      "reference_notes": {},

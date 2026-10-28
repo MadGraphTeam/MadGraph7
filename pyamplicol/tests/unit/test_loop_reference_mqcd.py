@@ -55,7 +55,7 @@ def _runs(campaign: dict) -> list[dict]:
 
 
 def _fixture(run_id: str) -> dict:
-    return json.loads((FIXTURES / "required" / f"{run_id}.json").read_text())
+    return json.loads((FIXTURES / "required" / "mqcd" / f"{run_id}.json").read_text())
 
 
 def test_campaign_and_manifest_cover_every_row(campaign: dict, manifest: dict) -> None:

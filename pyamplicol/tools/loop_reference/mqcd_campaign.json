@@ -1,5 +1,5 @@
 {
- "description": "M-QCD validation campaign (workspace/reports/engine-v2/m-qcd/PLAN.md \u00a74): the rows of \u00a74.2 and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/mqcd/<run>/ and their merged references are committed as tests/fixtures/loop/required/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py.",
+ "description": "M-QCD validation campaign (workspace/reports/engine-v2/m-qcd/PLAN.md \u00a74): the rows of \u00a74.2 and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/mqcd/<run>/ and their merged references are committed as tests/fixtures/loop/required/mqcd/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py.",
  "restriction_codes": {
   "5F": {
    "restriction": "no_b_mass",
