@@ -1326,9 +1326,9 @@ def test_goldstone_vector_mixings_equal_madloop(
     R2_G0tt) times MadLoop's R2_G0tt component, the ratio from the UFO's
     couplings at the card (0.869 at lhv = 1). Evaluated with 32 digits
     (binary64 loses 3e-11 of the finite part at point 2, MadLoop's own
-    estimate there 1.5e-12), within 1e-11 of MadLoop's virtual (its binary64;
-    measured <= 1.7e-12 at point 0 in binary64), the poles against Catani
-    within 1e-12. Before the loop segments read the Goldstone vertices as the
+    estimate there 1.5e-12): within 1e-11 of MadLoop's virtual (its
+    binary64; measured 4.6e-14), the poles within 1e-12 of Catani's
+    (measured 1.2e-16). Before the loop segments read the Goldstone vertices as the
     tree engine does (``catalogue._CatalogueBuilder.reading_sign``, EWI-5),
     the bare part missed MadLoop's by O(1) (single pole -1.07e-7 against
     -3.78e-8 at point 0, the virtual's -5.6e-8 against Catani's 1.35e-8).
