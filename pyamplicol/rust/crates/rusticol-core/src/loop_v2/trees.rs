@@ -807,6 +807,13 @@ pub struct TreeProgram {
     layouts: Vec<Vec<TermInput>>,
     /// The closure terms' colour weights and their sqrt(2) powers.
     weights: Vec<([Rational; 2], i32)>,
+    /// The rows the plan's columns keep and the block rows its kept links
+    /// read, when they restrict them (`rows::Restriction`): applied by
+    /// `set_columns` (observable columns).
+    restriction: Option<rows::Restriction>,
+    /// The Born rows the root closures evaluate (none: every row; set by
+    /// the row restriction, `rows`).
+    closure_rows: Option<Vec<bool>>,
 }
 
 /// The parameter-only inputs of one batch.
@@ -1924,6 +1931,8 @@ impl TreeProgram {
             counterterms,
             counterterm_trees,
             columns: None,
+            restriction: rows::Restriction::of(plan),
+            closure_rows: None,
             layouts: layouts.into_iter().map(|(inputs, _)| inputs).collect(),
             weights,
             masks: {
@@ -2412,12 +2421,18 @@ impl TreeProgram {
             .counterterm_trees
             .as_ref()
             .map_or(0, |ct| ct.layout.size);
+        let restricts = !columns.is_empty();
         self.columns = Some(Columns {
             programs,
             columns,
             trees: slots(&file.trees, self.state_size)?,
             counterterms: slots(&file.counterterms, counterterm_size)?,
         });
+        // Observable columns of a plan that keeps some Born rows: the
+        // program evaluates what their kept rows read (`rows`).
+        if restricts && let Some(restriction) = self.restriction.take() {
+            self.restrict_rows(restriction);
+        }
         Ok(())
     }
 
@@ -3303,6 +3318,10 @@ impl<T: Carrier> Closure<'_, T> {
             || (vec![zero.clone(); inputs * v], Vec::new()),
             |(x, starts), (task, target)| {
                 let (chunk, row) = (task / rows, task % rows);
+                // A row the program's restriction drops stays zero (`rows`).
+                if program.closure_rows.as_ref().is_some_and(|kept| !kept[row]) {
+                    return;
+                }
                 let lanes: [usize; L] =
                     std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
                 for term in self.terms {
@@ -3433,6 +3452,24 @@ where
     };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
+    // The weights follow the program's interactions (a runtime built before
+    // a row restriction, `rows`, would not).
+    require(
+        edge_weights.len() == program.steps.len()
+            && program
+                .steps
+                .iter()
+                .zip(edge_weights)
+                .all(|(step, weights)| {
+                    step.groups.len() == weights.len()
+                        && step
+                            .groups
+                            .iter()
+                            .zip(weights)
+                            .all(|((_, edges), weights)| edges.len() == weights.len())
+                }),
+        "a tree runtime of another interaction program",
+    )?;
     for (step, weights) in program.steps.iter().zip(edge_weights) {
         let mut sums = vec![czero.clone(); points * step.width];
         for ((kernel, edges), weights) in step.groups.iter().zip(weights) {
@@ -3831,6 +3868,9 @@ impl TreeCarrier for Float {
         exact_kernel(_saved, zero)
     }
 }
+
+#[path = "trees_rows.rs"]
+mod rows;
 
 #[cfg(test)]
 #[path = "trees_tests.rs"]
