@@ -12,7 +12,8 @@ has loaded; a missing one raises ``NativePlatformError``, and the dynamic
 loader's own missing-version error becomes the same error. Libraries and
 "older" C libraries with chosen versions are linked here against stub shared
 objects (any C toolchain, whatever its glibc), so only the floor pin and the
-readelf cross-check depend on the staged native.
+readelf cross-check depend on the staged native. The build script's pin of the
+C dependencies' TLS dialect is checked against a gnu2-default compiler wrapper.
 """
 
 from __future__ import annotations
@@ -620,3 +621,87 @@ def test_the_sdk_header_stops_an_older_glibc_toolchain_at_compile_time(
     refused = compile_client("-DRUSTICOL_VIRTUAL_SHARED", "-include", older)
     assert refused.returncode != 0
     assert "librusticol_loop_sdk.so needs glibc >= 2.38" in refused.stderr
+
+
+def _build_loop_native():
+    import importlib.util
+
+    script = ROOT / "tools" / "developer" / "build_loop_native.py"
+    spec = importlib.util.spec_from_file_location("_glibc_build_loop_native", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _tls_descriptor_relocations(path: Path) -> int:
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        pytest.fail("readelf (binutils) is not on PATH")
+    output = subprocess.run(
+        [readelf, "-rW", str(path)], check=True, capture_output=True, text=True
+    ).stdout
+    return output.count("TLSDESC")
+
+
+def test_the_c_dependencies_are_compiled_without_tls_descriptors(tmp_path) -> None:
+    """A compiler wrapper defaulting to -mtls-dialect=gnu2 is overridden.
+
+    The wrapper puts its dialect before the caller's flags, as the nixpkgs
+    cc-wrapper's cc-cflags-before does; the pinned CC appends the traditional
+    dialect, so a thread-local access compiles without TLS descriptors.
+    """
+
+    build_loop_native = _build_loop_native()
+    wrapper = tmp_path / "gnu2-cc"
+    wrapper.write_text(f'#!/bin/sh\nexec {_compiler()} -mtls-dialect=gnu2 "$@"\n')
+    wrapper.chmod(0o755)
+    settings = build_loop_native.c_dependency_environment(
+        dict(os.environ, CC=str(wrapper))
+    )
+    if not (sys.platform.startswith("linux") and os.uname().machine == "x86_64"):
+        assert settings == {}  # one TLS dialect elsewhere
+        return
+    assert settings == {"CC": f"{wrapper} -mtls-dialect=gnu"}
+    source = tmp_path / "tls.c"
+    source.write_text("__thread int counter;\nint bump(void) { return ++counter; }\n")
+
+    def relocations(compiler: str, name: str) -> int:
+        target = tmp_path / name
+        _link(*compiler.split(), "-fPIC", "-O2", "-c", str(source), "-o", str(target))
+        return _tls_descriptor_relocations(target)
+
+    assert relocations(str(wrapper), "wrapped.o") > 0  # the wrapper's own dialect
+    assert relocations(settings["CC"], "pinned.o") == 0
+
+
+def test_a_target_directory_with_other_c_settings_drops_gmp_mpfr_sys(
+    monkeypatch, tmp_path
+) -> None:
+    build_loop_native = _build_loop_native()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        build_loop_native.subprocess,
+        "run",
+        lambda command, **options: calls.append(command),
+    )
+    target = tmp_path / "target"
+    settings = {"CC": "cc -mtls-dialect=gnu"}
+    stamp = target / "pyamplicol-c-dependencies.json"
+
+    def drops() -> bool:
+        calls.clear()
+        build_loop_native._drop_stale_c_dependencies(tmp_path, target, {}, settings)
+        return bool(calls)
+
+    assert not drops()  # nothing built yet
+    (target / "release" / "build" / "gmp-mpfr-sys-0123").mkdir(parents=True)
+    assert drops()  # built before the C settings were recorded
+    assert calls[0][:2] == ["cargo", "clean"] and calls[0][-2:] == [
+        "-p",
+        "gmp-mpfr-sys",
+    ]
+    stamp.write_text(json.dumps({"CC": "gcc"}))
+    assert drops()
+    stamp.write_text(json.dumps(settings))
+    assert not drops()
