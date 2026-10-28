@@ -555,6 +555,31 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         stability_checks=VirtualStabilityChecks(("z:3/5:4/5",), True),
     )
     assert checked.stability is not None and checked.stability[0].relative < 1e-9
+    # A stored selection is one column set formed from the stored resolved
+    # records (``native_observables.selection_parts``): a (row, flow)
+    # selection is its resolved entry, and a flow's set runs only the
+    # families whose seeds it reads.
+    resolved = inclusive.evaluate_resolved(pts, mu_r2=scales)
+    flow = anchors[2]
+    (b,) = flow.born_term_indices
+    k = [h.id for h in inclusive.physics.helicities].index(rows[1])
+    one = inclusive.evaluate(
+        pts, mu_r2=scales, helicities=[rows[1]], color_flows=[flow.id]
+    )
+    for index in range(len(pts)):
+        entry = resolved.values[index][0][k][
+            resolved.virtual_color_ids.index(f"basis-{b}")
+        ]
+        _close(list(one.values[index][0]), list(entry), DOUBLE)
+    inclusive.evaluate(pts, mu_r2=scales, color_flows=[flow.id])
+    stored = inclusive._backend._observable_runtime()._observables
+    (flow_set,) = (
+        found
+        for key, found in stored._sets.items()
+        if key[:2] == ("selection", lc.column(None, frozenset({b})).key)
+    )
+    kept = flow_set.families[0]
+    assert kept is not None and len(kept) < int(flow_set.meta["families"])
     _close(
         _summed(
             inclusive.evaluate(pts, mu_r2=scales, color_flows=[a.id]) for a in anchors
