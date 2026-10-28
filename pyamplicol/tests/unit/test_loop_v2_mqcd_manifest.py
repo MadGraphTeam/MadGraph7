@@ -434,3 +434,36 @@ def test_sector_keys_drop_zero_powers():
     assert mqcd.sector_key([["QED", 2], ["QCD", 4]]) == (("QCD", 4), ("QED", 2))
     assert mqcd.sector_text((("QCD", 4), ("QED", 2))) == "QCD^4 QED^2"
     assert mqcd.born_sector((("QCD", 6), ("QED", 2))) == (("QCD", 4), ("QED", 2))
+
+
+def test_per_helicity_rows_take_the_helicity_average():
+    """MadLoop's SLOOPMATRIXHEL rows have no helicity average: ours (with
+    the inclusive initial average) times the incoming legs' helicity count."""
+
+    def ours(born, laurent):
+        return _point("double-double", born, laurent)
+
+    rows = {
+        (-1, -1, 1): ours(0.25, (0.5, -0.25, 0.125)),
+        (1, -1, 1): ours(0.0, (0.0, 0.0, 0.0)),
+        (-1, 1, 1): ours(0.5, (1.0, -0.5, 0.25)),
+        (1, 1, 1): ours(0.0, (0.0, 0.0, 0.0)),
+    }
+    madloop = [
+        {"helicity": [-1, -1, 1], "born": 1.0, "finite": 2.0, "single_pole": -1.0,
+         "double_pole": 0.5},
+        {"helicity": [1, -1, 1], "born": 0.0, "finite": 0.0, "single_pole": 0.0,
+         "double_pole": 0.0},
+        {"helicity": [-1, 1, 1], "born": 2.0, "finite": 4.0, "single_pole": -2.0,
+         "double_pole": 1.0},
+        {"helicity": [1, 1, 1], "born": 0.0, "finite": 0.0, "single_pole": 0.0,
+         "double_pole": 0.0},
+    ]  # fmt: skip
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    assert all(c.passed for c in checks), [c for c in checks if not c.passed]
+    madloop[2]["finite"] = 4.0 * (1 + 2e-12)
+    failed = [c for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118) if not c.passed]
+    assert [(c.sector, c.coefficient) for c in failed] == [("h-++", "finite")]
+    # A configuration MadLoop has and we do not (or the reverse) fails.
+    failed = mqcd.rule_hel(_row(), 0, rows, madloop[:3], 0.118)
+    assert not failed[0].passed and failed[0].coefficient == "helicity rows"

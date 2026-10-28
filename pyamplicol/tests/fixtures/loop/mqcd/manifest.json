@@ -726,8 +726,7 @@
    "vanishing": [],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)",
-    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)"
+    "ward": "MQ-WARD (generic native Ward input)"
    }
   },
   {
@@ -1881,8 +1880,8 @@
      }
     }
    ],
+   "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
    "extras_pending": {
-    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)",
     "sp": "MQ-REF (supplied special points S1-S4)"
    }
   },
@@ -3153,8 +3152,7 @@
    "vanishing": [],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)",
-    "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)"
+    "ward": "MQ-WARD (generic native Ward input)"
    }
   },
   {
