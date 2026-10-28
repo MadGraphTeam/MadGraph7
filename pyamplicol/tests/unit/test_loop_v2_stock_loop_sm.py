@@ -771,3 +771,26 @@ def test_public_route_on_the_shipped_loop_sm_equals_madloop(
         for k, key in enumerate(("born", "finite", "single_pole", "double_pole")):
             assert _row_rel(dd[k], expected[key]) <= 1e-12, (index, key)
             assert _row_rel(double[k], float(dd[k])) <= 1e-12, (index, key)
+
+
+@pytest.mark.loop_fast
+def test_self_test_virtual_is_a_named_warning_without_symbolica(monkeypatch):
+    """The f64 deployment gate runs ``run_self_test`` with Symbolica's import
+    blocked and needs ``report.ok``: the virtual check reports why it did not
+    run and imports nothing of Symbolica."""
+
+    import builtins
+
+    from pyamplicol import diagnostics
+
+    original = builtins.__import__
+
+    def reject(name, *args, **kwargs):
+        if name == "symbolica" or name.startswith("symbolica."):
+            raise ModuleNotFoundError("blocked", name="symbolica")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject)
+    check = diagnostics._virtual_check()
+    assert check.status == "warning"
+    assert "needs Symbolica" in check.detail

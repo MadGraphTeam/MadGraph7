@@ -207,8 +207,19 @@ def _physics_check() -> DiagnosticCheck:
 def _virtual_check() -> DiagnosticCheck:
     """A one-loop virtual on the shipped loop_sm against MadLoop
     (``_internal.selftest_virtual``); the Symbolica licence state is always
-    named, so a licence failure is never silent."""
+    named, so a licence failure is never silent. Generating the virtual
+    needs Symbolica: an evaluation-only installation without it (the f64
+    deployment gate) reports a warning naming why the check did not run."""
 
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "warning",
+            "not run: generating the one-loop self-test virtual needs Symbolica "
+            f"({exc})",
+        )
     try:
         from .licensing import detect_symbolica_license
 
