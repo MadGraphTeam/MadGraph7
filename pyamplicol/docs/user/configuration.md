@@ -556,8 +556,12 @@ counterterm vertex of the model, two-point ones included, is an ordinary tree
 vertex inserted exactly once per contribution, within the requested coupling
 orders, and is not matched to the loops. The
 default `engine = "legacy"` keeps the per-diagram engine, which remains
-available as an oracle. A v2 evaluation can skip the poles and return stability
-estimates:
+available as an oracle. On Linux, the v2 engine's release native libraries
+(`_rusticol.so`, `librusticol_loop_sdk.so`) need glibc 2.42 or newer; on an
+older glibc, loading them fails at once with `NativePlatformError` naming the
+required and the running version (see
+[Native libraries and glibc](installation.md#native-libraries-and-glibc)).
+A v2 evaluation can skip the poles and return stability estimates:
 
 ```toml
 [evaluation]

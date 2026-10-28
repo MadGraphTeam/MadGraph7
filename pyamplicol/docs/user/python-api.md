@@ -609,6 +609,9 @@ except EvaluationError as error:
 Useful subclasses include configuration, model, generation, artifact,
 compatibility, dependency, and evaluation errors. Catch the narrowest type you
 can handle; catch `PyAmpliColError` at an application boundary.
+`NativePlatformError`, a `DependencyError`, means that this platform cannot
+load a native library at all (for example a glibc older than the library
+needs; see [Native libraries and glibc](installation.md#native-libraries-and-glibc)).
 
 ## API design notes
 

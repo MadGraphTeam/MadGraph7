@@ -253,6 +253,22 @@ and ASM artifacts are target-specific and may require particular CPU features.
 Regenerate a target-specific artifact on the destination, or use a portable
 JIT configuration. See [Artifacts and Portability](artifacts-and-portability.md).
 
+## `NativePlatformError`: a native library needs a newer glibc
+
+```text
+NativePlatformError: Native library .../_rusticol.so requires glibc >= 2.42 (it
+needs the ELF version GLIBC_ABI_GNU2_TLS), but this process runs glibc 2.40. ...
+```
+
+The one-loop engine's release native libraries need glibc 2.42 or newer, and
+pyAmpliCol refuses them before loading on an older glibc (or on a C library
+that is not glibc). Compare with `ldd --version`, then run on a system or
+container with glibc >= 2.42, or build the native libraries from source on
+this host. A C, C++ or Fortran client of `librusticol_loop_sdk.so` sees the
+dynamic loader's ``version `GLIBC_ABI_GNU2_TLS' not found`` instead; it means
+the same floor. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+
 ## Artifact loading or an explicit checksum audit fails
 
 Treat a size/digest/path mismatch as a changed or incomplete artifact. Do not

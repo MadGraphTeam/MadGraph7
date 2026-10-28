@@ -59,6 +59,50 @@ intend to use:
 
 See [Native APIs](native-apis.md) for the generated driver workflow.
 
+## Native libraries and glibc
+
+On Linux, every native library records the glibc versions it needs (its ELF
+version requirements, `readelf -V`). The wheels above are built in a
+manylinux 2.28 container and need glibc 2.28 or newer. The release native libraries of
+the one-loop engine (`loop.engine = "v2"`), built from a checkout with
+`tools/developer/build_loop_native.py` — the Python extension `_rusticol.so`
+and the loop SDK's shared library `librusticol_loop_sdk.so` — need
+**glibc 2.42 or newer**: they may require `GLIBC_ABI_GNU2_TLS` (TLS
+descriptors), which glibc 2.42 introduced. Check the running glibc with
+`ldd --version` or
+`python -c "import os; print(os.confstr('CS_GNU_LIBC_VERSION'))"`.
+
+pyAmpliCol checks this when it loads the extension. Before
+`pyamplicol._rusticol` is opened, it compares the newest glibc version the
+file requires with the running one, so an older glibc fails cleanly at load
+time with `pyamplicol.NativePlatformError` (a `DependencyError`) instead of
+the dynamic loader's raw message:
+
+```text
+pyamplicol.api.errors.NativePlatformError: Native library .../pyamplicol/_rusticol.so
+requires glibc >= 2.42 (it needs the ELF version GLIBC_ABI_GNU2_TLS), but this
+process runs glibc 2.40. Run it on a Linux system or container with glibc 2.42
+or newer (`ldd --version` shows the version), or build pyAmpliCol's native
+libraries from source on this host so that they link against its glibc (see
+'Native libraries and glibc' in docs/user/installation.md).
+```
+
+The error's attributes `library`, `required`, `found` and `version_name` carry
+the same facts. The floor is read from the installed library itself, so a
+library built against an older glibc (a wheel, or a source build on that host)
+is accepted wherever it can load. A C library that is not glibc (for example
+musl) is named as such. If the loader still reports a missing glibc version
+(for instance one required by a dependency such as a locally built Symbolica),
+that error is translated into the same `NativePlatformError`, with the
+loader's text appended.
+
+C, C++ and Fortran clients of `librusticol_loop_sdk.so` meet the same floor
+when the loader starts them; on an older glibc it reports
+`` version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so) ``.
+C and C++ clients can define `RUSTICOL_VIRTUAL_SHARED` to stop at compile
+time instead, and the static archives do not carry the floor (see the loop
+SDK's `rust/loop-reduction/sdk/README.md`, "glibc floor").
+
 ## Create an editable examples workspace
 
 The examples are package resources. Copy them before editing or running them:
@@ -193,6 +237,13 @@ python -c 'import platform; print(platform.system(), platform.machine())'
 ```
 
 If no wheel matches, use the tagged source installation above.
+
+### `NativePlatformError: Native library ... requires glibc >= 2.42`
+
+The native libraries need a newer glibc than this system runs (see
+[Native libraries and glibc](#native-libraries-and-glibc)). Use a system or
+container with that glibc, or build the native libraries from source on this
+host.
 
 ### `pyamplicol: command not found`
 
