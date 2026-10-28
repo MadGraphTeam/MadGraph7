@@ -659,7 +659,9 @@ def test_ward_rule_reads_the_ward_criterion():
             **extra,
         }
 
-    dd = mqcd.rule_ward(0, "double-double", {"rows": [entry([1e-33, 2e-32, 0.0])]})
+    dd = mqcd.rule_ward(
+        _row(), 0, "double-double", {"rows": [entry([1e-33, 2e-32, 0.0])]}
+    )
     assert [c.coefficient for c in dd] == ["born", "virtual"] and all(
         c.passed for c in dd
     )
@@ -671,7 +673,7 @@ def test_ward_rule_reads_the_ward_criterion():
         estimate=[3e-15, 3e-15, 0.0],
         in_scope=True,
     )
-    _born, virtual = mqcd.rule_ward(0, "double", {"rows": [b64]})
+    _born, virtual = mqcd.rule_ward(_row(), 0, "double", {"rows": [b64]})
     assert virtual.error == 2e-3 and virtual.bound == 1.0 and virtual.passed
     failing = entry(
         [1e-10, 0.0, 0.0],
@@ -681,11 +683,35 @@ def test_ward_rule_reads_the_ward_criterion():
         estimate=[1e-13, 0, 0],
         in_scope=True,
     )
-    assert not mqcd.rule_ward(0, "double", {"rows": [failing]})[1].passed
+    assert not mqcd.rule_ward(_row(), 0, "double", {"rows": [failing]})[1].passed
+    # Outside the binary64 scope (E_k > 1e-9 of the scale): listed, not
+    # asserted, still bracketed tenfold; unlisted it fails.
+    outside = entry(
+        [1e-9, 0.0, 0.0],
+        passed=False,
+        o1_over=[0.03, 0, 0],
+        estimate_over=[0.03, 0, 0],
+        estimate=[3e-8, 0, 0],
+        in_scope=False,
+    )
+    listing = [{"point": 0, "leg": 1, "factor": [1, 0], "E": 3e-8}]
+    listed = mqcd.rule_ward(
+        _row(ward_out_of_scope=listing), 0, "double", {"rows": [outside]}
+    )[1]
+    assert listed.passed and not listed.asserted
+    assert not mqcd.rule_ward(_row(), 0, "double", {"rows": [outside]})[1].passed
+    unbracketed = {**outside, "estimate_over": [11.0, 0, 0]}
+    assert not mqcd.rule_ward(
+        _row(ward_out_of_scope=listing), 0, "double", {"rows": [unbracketed]}
+    )[1].passed
+    # A listing of an evaluation within the scope is stale.
+    assert not mqcd.rule_ward(
+        _row(ward_out_of_scope=listing), 0, "double", {"rows": [b64]}
+    )[1].passed
     # No reduction-direction estimate: no binary64 criterion, a failure.
-    assert not mqcd.rule_ward(0, "double", {"rows": [entry([0, 0, 0], passed=None)]})[
-        1
-    ].passed
+    assert not mqcd.rule_ward(
+        _row(), 0, "double", {"rows": [entry([0, 0, 0], passed=None)]}
+    )[1].passed
 
 
 def test_ward_extras_are_checked_on_their_rows(rows):
@@ -697,4 +723,9 @@ def test_ward_extras_are_checked_on_their_rows(rows):
     for name in ward_rows:
         assert "ward" not in rows[name].extras_pending, name
     assert rows["A14"].ward_legs == (1,)
+    for name, row in rows.items():
+        for listing in row.ward_out_of_scope:
+            assert name in ward_rows and listing["E"] > 1e-9, name
+            legs = row.ward_legs or ()
+            assert not legs or listing["leg"] in legs, name
     assert all(rows[n].ward_legs is None for n in ward_rows - {"A14"})
