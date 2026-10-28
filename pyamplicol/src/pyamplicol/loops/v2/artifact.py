@@ -1152,7 +1152,11 @@ class V2VirtualRuntime:
         from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
         from .native_observables import StoredObservableSlice
+        from .observables import FORCED_FFT_OBSERVABLES
 
+        if self._execution["request"]["colour_contraction"] == "fft":
+            # The stored observable columns are contracted directly.
+            raise CompatibilityError(FORCED_FFT_OBSERVABLES)
         with self._lock:
             if self._observables is None:
                 correlators = correlators_from_record(self._execution["request"])

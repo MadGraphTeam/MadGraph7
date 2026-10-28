@@ -1397,8 +1397,10 @@ class NativeExecutor:
                 forms=self.forms,
                 trees=trees,
                 # The seed FFT runs in every floating carrier; the exact one
-                # (numerators only) contracts directly.
-                fourier=self.exported.fourier if arithmetic != "exact" else None,
+                # (numerators only) and a direct policy contract directly.
+                fourier=None
+                if arithmetic == "exact" or self.contraction == "direct"
+                else self.exported.fourier,
             )
         return found
 
