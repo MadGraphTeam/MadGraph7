@@ -2814,7 +2814,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 for l in legs:
@@ -2866,7 +2866,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 legs[0:2] = [legs[1],legs[0]]
@@ -4222,7 +4222,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 
-        interface containing all potential usefull information.
+        interface containing all potential useful information.
     """
 
     opt = dict(cmd.options)

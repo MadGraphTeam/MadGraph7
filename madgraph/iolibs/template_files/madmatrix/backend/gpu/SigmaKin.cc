@@ -347,7 +347,7 @@ namespace madmatrix
     cxtype_amp_sv w_sv_tmp[1][nw6];
     ALOHAOBJ aloha_obj_tmp[1];
     aloha_obj_tmp[0] = ALOHAOBJ{ pvec_sv_tmp[0], w_sv_tmp[0] };
-    cxtype_amp_sv amp_tmp_sv[1]; // to ensure proper aligment for vector instructions
+    cxtype_amp_sv amp_tmp_sv[1]; // to ensure proper alignment for vector instructions
     fptype_amp* amp_tmp_fp = reinterpret_cast<fptype_amp*>( amp_tmp_sv );
 
     // jamp: sum (for one event) of the invariant amplitudes for all Feynman diagrams in a

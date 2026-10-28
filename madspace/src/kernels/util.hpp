@@ -45,7 +45,7 @@ KERNELSPEC void backward_kernel_gather(
 
 template <typename T>
 KERNELSPEC void
-kernel_gather_int(IIn<T, 0> index, IIn<T, 1> choices, IOut<T, 0> output) {
+kernel_gather_int(IIn<T, 0> index, ISIn<T, 1> choices, IOut<T, 0> output) {
     output = choices.gather(index);
 }
 
@@ -67,7 +67,7 @@ kernel_select_int(IIn<T, 1> input, IIn<T, 1> indices, IOut<T, 1> output) {
 }
 
 template <typename T>
-KERNELSPEC void kernel_select(FIn<T, 1> input, IIn<T, 1> indices, FOut<T, 1> output) {
+KERNELSPEC void kernel_select(FIn<T, 1> input, ISIn<T, 1> indices, FOut<T, 1> output) {
     for (std::size_t i = 0; i < indices.size(); ++i) {
         output[i] = input.gather(indices[i]);
     }
@@ -75,7 +75,7 @@ KERNELSPEC void kernel_select(FIn<T, 1> input, IIn<T, 1> indices, FOut<T, 1> out
 
 template <typename T>
 KERNELSPEC void backward_kernel_select(
-    IIn<T, 1> indices,
+    ISIn<T, 1> indices,
     FIn<T, 1> output_grad,
     FOut<T, 1> input_grad,
     FOut<T, 1> indices_grad

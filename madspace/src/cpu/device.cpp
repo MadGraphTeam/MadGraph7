@@ -49,11 +49,13 @@ void tensor_zero_impl(Tensor& tensor, const D& device) {
 
 template <typename D>
 void tensor_add_impl(const Tensor& source, Tensor& target, const D& device) {
+    // a broadcast target (e.g. the gradient of a literal or global) accumulates
+    // the whole source batch
     tensor_foreach_dynamic_single<
         kernel_add_inplace<CpuTypes>,
         kernel_add_inplace<SimdTypes>,
         1,
-        1>({&source}, {&target}, target.size(0), device);
+        1>({&source}, {&target}, std::max(source.size(0), target.size(0)), device);
 }
 
 } // namespace

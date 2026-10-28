@@ -5165,6 +5165,9 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
     PRELUDE = ''
     NEVENTS = 1000
     SEED = 191919
+    # appended to the output line, and lines added after `launch`
+    OUTPUT_OPTIONS = ''
+    LAUNCH_SETS = ''
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_ttjj_')
@@ -5181,12 +5184,13 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
         with open(card, 'w') as fsock:
             fsock.write(self.PRELUDE)
             fsock.write('generate %s %s\n'
-                        'output madevent %s -f\n'
+                        'output madevent %s -f %s\n'
                         'launch\n'
                         'set nevents %d\n'
                         'set iseed %d\n'
                         % (self.PROCESS, _pin_crossing(options), outdir,
-                           self.NEVENTS, self.SEED))
+                           self.OUTPUT_OPTIONS, self.NEVENTS, self.SEED))
+            fsock.write(self.LAUNCH_SETS)
         subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         results = pjoin(outdir, 'SubProcesses', 'results.dat')
         self.assertTrue(
@@ -5417,6 +5421,32 @@ class TestMadeventClusteringScaleCrossingXsec(TestMadeventInclusiveCrossingXsec)
                 self.assertEqual(
                     self._flavor_tables(dispatch, 'XGFLAV%s' % n), own,
                     '%s: flavour rows of subprocess %s' % (pdir, n))
+
+
+class TestMadeventVectorCrossingXsec(TestMadeventInclusiveCrossingXsec):
+    """The inclusive cross section of the crossing-routed build in the LO
+    vector mode (vector_size 16), without helicity recycling.
+
+    In vector mode the flavour IFLAV and the beam orientation IMIRROR are
+    chosen per warp (DSIG<n>_VEC), while SMATRIX<n>_MULTI hands every event
+    its own IFLAV, IPSEL and IMIRROR. A routed subprocess turns its IFLAV into
+    the extended index of its base (DSIG_XGROUTE / the router), so each lane
+    still selects its own crossing; without helicity recycling the
+    good-helicity scan runs inside the base SMATRIX, per beam orientation, and
+    each crossed index keeps its own try counter there (NTRYX, per
+    orientation as NTRY). The massive z makes the helicity zeros of the base
+    frame-dependent, so a scan shared with the wrong caller shows up here.
+    """
+
+    PRELUDE = TestMadeventMassiveLegCrossingXsec.PRELUDE
+    PROCESS = TestMadeventMassiveLegCrossingXsec.PROCESS
+    NEVENTS = 2000
+    SEED = 4242
+    OUTPUT_OPTIONS = '--hel_recycling=False'
+    LAUNCH_SETS = 'set vector_size 16\n'
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_vec_')
 
 
 class TestMadeventAmplitudeChunkCompiles(unittest.TestCase):

@@ -459,7 +459,7 @@ class WriteALOHA:
 
     
     def make_declaration_list(self):
-        """ make the list of declaration nedded by the header """
+        """ make the list of declaration needed by the header """
         
         declare_list = []
         
@@ -922,7 +922,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         return name
   
     def change_number_format(self, number):
-        """Formating the number"""
+        """Formatting the number"""
 
         def isinteger(x):
             try:
@@ -1363,7 +1363,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         Only used when the merged routine can not be built (see write_combined).
         """
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell
@@ -1374,7 +1374,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                     
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -1913,7 +1913,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     
     
     def change_number_format(self, number):
-        """Formating the number"""
+        """Formatting the number"""
 
         def isinteger(x):
             try:
@@ -2467,7 +2467,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     def write_combined_cc(self, lor_names, offshell=None, sym=True, mode=''):
         "Return the content of the .cc file linked to multiple lorentz call."
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             offshell = self.offshell
               
@@ -2476,7 +2476,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                    
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -2564,7 +2564,7 @@ class ALOHAWriterForCPP(WriteALOHA):
     def write_combined(self, lor_names, mode='', offshell=None, **opt):
         """Write the .h and .cc files associated to the combined file"""
 
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell  
@@ -2586,7 +2586,7 @@ class ALOHAWriterForCPP(WriteALOHA):
             self.mode = 'self'
         h_text.write(self.get_h_text(couplings=couplings))
         
-        #ADD SYMETRY
+        #ADD SYMMETRY
         if sym:
             for elem in self.routine.symmetries:
                 self.mode = 'no_include'
@@ -2836,7 +2836,7 @@ class ALOHAWriterForPython(WriteALOHA):
     def change_var_format(self, name): 
         """Formatting the variable name to Python format
         start to count at zero. 
-        No neeed to define the variable in python -> no need to keep track of 
+        No need to define the variable in Python -> no need to keep track of
         the various variable
         """
         
@@ -3188,7 +3188,7 @@ class ALOHAWriterForPython(WriteALOHA):
     def write_combined(self, lor_names, mode='self', offshell=None):
         """Write routine for combine ALOHA call (more than one coupling)"""
         
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             sym = 1
             offshell = self.offshell  
@@ -3197,7 +3197,7 @@ class ALOHAWriterForPython(WriteALOHA):
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)
         # write head - momenta - body - foot
         text = StringIO()
-        data = {} # for the formating of the line
+        data = {} # for the formatting of the line
                     
         # write header 
         new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
@@ -3239,7 +3239,7 @@ class ALOHAWriterForPython(WriteALOHA):
         
         text.write(self.get_foot_txt(combine=True))
 
-        #ADD SYMETRY
+        #ADD SYMMETRY
         if sym:
             for elem in self.routine.symmetries:
                 text.write(self.write_combined(lor_names, mode, elem))
@@ -3326,7 +3326,7 @@ class WriterFactory(object):
 #c      Include Model parameter / coupling
 #       include \"../MODEL/input.inc\"
 #       include \"../MODEL/coupl.inc\"
-#c      Defintion of the arguments       
+#c      Definition of the arguments
 #%(definitions)s
 #       
 #c      enter HERE the code corresponding to your function.

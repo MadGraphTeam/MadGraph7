@@ -173,7 +173,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify matrix
-        elements: ((leg numer, state, spin, self_antipart, mass,
+        elements: ((leg number, state, spin, self_antipart, mass,
         width, color, polarization, decay and is_part), number)."""
 
         part = model.get_particle(leg.get('id'))
@@ -458,7 +458,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify configs: 
-        ((leg numer, mass, width, color), number)."""
+        ((leg number, mass, width, color), number)."""
 
         part = model.get_particle(leg.get('id'))
 
@@ -614,7 +614,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         self['is_part'] = True
         # Properties related to the interaction generating the propagator
         # For an e- produced from an e+e-A vertex would have the following
-        # proporties:
+        # properties:
         # interaction_id = the id of the interaction in the model
         # pdg_codes = the pdg_codes property of the interaction, [11, -11, 22]
         # inter_color = the 'color' property of the interaction: []
@@ -921,7 +921,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                       " %s is not a valid total angular momentum" % str(value['J']))
                 if value['C'] not in [1, 8]:
                     raise self.PhysicsObjectError( \
-                      " %s is not a valid color configuartion" % str(value['C']))
+                      " %s is not a valid color configuration" % str(value['C']))
 
         return True
 
@@ -1744,7 +1744,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     map[pdg] = [flavor]
             map[pdg_out] = [1]
 
-            #carefull check_flavor empty the list of the map!
+            #careful check_flavor empty the list of the map!
             status = vertex.check_flavor(map, model)
             if not status:
                 self[tag_name] = 0
@@ -1754,9 +1754,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 return return_fct(self, True, model, tag_name)
         else:
             # no need to set the flavor for this case
-            # note thise might not be consistent but this is not checked here
+            # note this might not be consistent but this is not checked here
             # either this has been checked already (in the case of checking identical matrix-element
-            # or will be explicitely when checking if flavor contributes)
+            # or will be explicitly when checking if flavor contributes)
             self[tag_name] = 1
             return return_fct(self, True, model, tag_name)
         
@@ -2031,7 +2031,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
     def find_leg_index(self, pdg_code, spin_state):
         """ Find the place in the interaction list of the given particle with
         pdg 'pdg_code' and spin 'spin_stat'. For interactions with several identical particles (or 
-        fermion pairs) the outgoing index is always the first occurence.
+        fermion pairs) the outgoing index is always the first occurrence.
         """
         wf_indices = self.get('pdg_codes')
         wf_index = wf_indices.index(pdg_code)
@@ -2896,7 +2896,7 @@ class HelasWavefunctionList(base_objects.PhysicsObjectList):
                 # index i. None of them should have wf as its mother
                 for w in diag_wfs[i+1:]:
                     if w['number'] in [mwf['number'] for mwf in wf.get('mothers')]:
-                        # There is an inconsisent order so we must move this
+                        # There is an inconsistent order so we must move this
                         # mother w *before* wf which is placed at i.
                         diag_wfs.remove(w)
                         diag_wfs.insert(i,w)
@@ -3109,7 +3109,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
     def nice_string(self):
         """ simple way to check which FD is related to this amplitude"""
         def get_structure(wf):
-            """ funtion to allow to loop over helaswavefunction"""
+            """ function to allow to loop over helaswavefunction"""
             mothers = []
             try:
                 mothers = wf.get('mothers')
@@ -3263,7 +3263,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
                 else:
                     map[pdg] = [flavor]
         if debug: misc.sprint(map)
-        # carefull check_flavor empty the list of the map!
+        # careful check_flavor empty the list of the map!
         status = vertex.check_flavor(map, model)
         if debug: misc.sprint(status)
         if not status:
@@ -3722,7 +3722,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
         w.r.t. color"""
         mothers = self.get('mothers')
 
-        # Sort mothers according to pdg codes if fermions with indentical
+        # Sort mothers according to pdg codes if fermions with identical
         # color but not identical pdg code. Needed for antisymmetric
         # color eps^{ijk}.
         for imo in range(len(mothers)-1):
@@ -4294,9 +4294,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         
         assert  isinstance(amplitude, diagram_generation.Amplitude), \
-                    "Missing or erraneous arguments for generate_helas_diagrams"
+                    "Missing or erroneous arguments for generate_helas_diagrams"
         assert isinstance(optimization, int), \
-                    "Missing or erraneous arguments for generate_helas_diagrams"
+                    "Missing or erroneous arguments for generate_helas_diagrams"
         self.optimization = optimization
 
         diagram_list = amplitude.get('diagrams')
@@ -5061,7 +5061,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             final_decay_wfs = [amp.get('mothers')[1] for amp in \
                                                   decay_diag.get('amplitudes')]
 
-                            # Since we made deepcopy, need to syncronize
+                            # Since we made deepcopy, need to synchronize
                             for i, wf in enumerate(final_decay_wfs):
                                 final_decay_wfs[i] = \
                                                    decay_diag_wfs[decay_diag_wfs.index(wf)]
@@ -5797,7 +5797,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     
     def get_external_nhel(self):
         """Determine which list of helicity are not zero for the external particles"""
-        # NOT IMPLEMETED /WORKING /CALL
+        # NOT IMPLEMENTED /WORKING /CALL
         allowed_helicity = []
         for nhel in self.get_helicity_matrix():
             if self.check_helicity(nhel):
@@ -7005,7 +7005,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         merge_quartic_amplitudes says whether the caller also writes out the
         sums of get_quartic_amplitude_merges. Only the Fortran writer does.
-        A backend which does not has to leave those amplitudes in the JAMPs,
+        A backend which does not have to leave those amplitudes in the JAMPs,
         where their own colour coefficients give the identical result -- the
         two carry the same colour factor, which is the whole premise."""
 
@@ -7529,7 +7529,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         (HelasMatrixElements) are equal.
 
         Note that this has to be called before any combination of
-        processes has occured.
+        processes has occurred.
         
         Since a decay processes for a decay chain is always generated
         such that all final state legs are completely contracted
@@ -8228,7 +8228,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         SubprocessGroup functionality). decay_ids is a list of decayed
         particle ids, since those should not be combined even if
         matrix element is identical. 
-        The compute_loop_nc sets wheter independent tracking of Nc power coming
+        The compute_loop_nc sets whether independent tracking of Nc power coming
         from the color loop trace is necessary or not (it is time consuming).
         Matrix_element_opts are potential additional options to be passed to 
         the HelasMatrixElements constructed."""

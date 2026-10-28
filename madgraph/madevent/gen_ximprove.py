@@ -425,7 +425,7 @@ class gensym(object):
                 if len(good_hels) == 1:
                     files.cp(matrix_file, matrix_file.replace('orig','optim'))
                     files.cp(matrix_file.replace('.f','.o'), matrix_file.replace('orig','optim').replace('.f','.o'))
-                    continue # avoid optimization if onlye one helicity
+                    continue # avoid optimization if only one helicity
                 
                 gauge = self.cmd.proc_characteristics['gauge']
                 recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps, bad_amps_perhel, gauge=gauge)
@@ -526,10 +526,10 @@ class gensym(object):
             jobs = stdout.split()
             job_list[Pdir] = jobs
             try:
-                # check that all input are valid
+                # check that all inputs are valid
                 [float(s) for s in jobs]
             except Exception:
-                logger.debug("unformated string found in gensym. Please check:\n %s" % stdout)
+                logger.debug("unformatted string found in gensym. Please check:\n %s" % stdout)
                 done=False
                 job_list[Pdir] = []
                 lines = stdout.split('\n')
@@ -643,8 +643,8 @@ class gensym(object):
         
     
     def submit_to_cluster_no_splitting(self, job_list):
-        """submit the survey without the parralelization.
-           This is the old mode which is still usefull in single core"""
+        """submit the survey without the parallelization.
+           This is the old mode which is still useful in single core"""
      
         # write the template file for the parameter file   
         self.write_parameter(parralelization=False, Pdirs=list(job_list.keys()))
@@ -693,8 +693,11 @@ class gensym(object):
         Gdir = pjoin(Pdir, 'G%s' % G)
         self.write_parameter_file(pjoin(Gdir, 'input_app.txt'), options)   
         
-        # 2. check that ftn25 exists.
-        assert os.path.exists(pjoin(Gdir, "ftn25"))    
+        # 2. check that the grid the jobs start from exists: refine_splitted.sh
+        #    copies G/ftn26 into each job's ftn25. A split survey puts it there
+        #    when it combines its last iteration, an unsplit one
+        #    (survey_splitting = 1) leaves the one madevent wrote.
+        assert os.path.exists(pjoin(Gdir, "ftn26"))
         
         
         # 3. Submit the new jobs
@@ -718,7 +721,7 @@ class gensym(object):
 
 
     def submit_to_cluster_splitted(self, job_list):
-        """ submit the version of the survey with splitted grid creation 
+        """ submit the version of the survey with split grid creation
         """ 
         
         #if self.splitted_grid <= 1:
@@ -748,7 +751,7 @@ class gensym(object):
         # Compute the number of events used for this run.                      
         nb_events = grid_calculator.target_evt
 
-        Gdirs = [] #build the the list of directory
+        Gdirs = [] #build the list of directory
         for i in range(self.splitted_for_dir(Pdir, G)):
             path = pjoin(Pdir, "G%s_%s" % (G, i+1))
             Gdirs.append(path)
@@ -870,7 +873,7 @@ class gensym(object):
             
              
         #2. combine the information about the total crossection / error
-        # start by keep the interation in memory
+        # start by keep the interaction in memory
         cross, across, sigma = grid_calculator.get_cross_section()
 
         #3. Try to avoid one single PS point which ruins the integration
@@ -1479,10 +1482,10 @@ class gen_ximprove_v4(gen_ximprove):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': C.parent_name, 
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # needed for RO gridpack
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'nevents': nevents,
                     'maxiter': self.max_iter,
                     'miniter': self.min_iter,
@@ -1490,8 +1493,8 @@ class gen_ximprove_v4(gen_ximprove):
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
                     'suppress_amplitude': 0 if self.disable_multichannel else 1,
-                    'grid_refinment' : 0,    #no refinment of the grid
-                    'base_directory': '',   #should be change in splitted job if want to keep the grid
+                    'grid_refinment' : 0,    #no refinement of the grid
+                    'base_directory': '',   #should be change in split job if want to keep the grid
                     'packet': packet, 
                     }
 
@@ -1518,7 +1521,7 @@ class gen_ximprove_v4(gen_ximprove):
         if not write_dir:
             write_dir =  pjoin(self.me_dir, 'SubProcesses')
         
-        #filter the job according to their SubProcess directory # no mix submition
+        #filter the job according to their SubProcess directory # no mix submission
         P2job= collections.defaultdict(list)
         for j in jobs:
             P2job[j['P_dir']].append(j)
@@ -1533,7 +1536,7 @@ class gen_ximprove_v4(gen_ximprove):
         
         template_text = open(template, 'r').read()
         # special treatment if needed to combine the script
-        # computes how many submition miss one job
+        # computes how many submission miss one job
         if self.combining_job > 1:
             skip1=0
             n_channels = len(jobs)
@@ -1637,10 +1640,10 @@ class gen_ximprove_v4(gen_ximprove):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': C.parent_name, 
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # used for RO gridpack
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'nevents': nevents,
                     'maxiter': self.max_iter,
                     'miniter': self.min_iter,
@@ -1835,7 +1838,7 @@ class gen_ximprove_share(gen_ximprove, gensym):
         grid_calculator, cross, error = self.combine_grid(Pdir, G, step)
         
         # collect all the generated_event
-        Gdirs = [] #build the the list of directory
+        Gdirs = [] #build the list of directory
         for i in range(self.splitted_for_dir(Pdir, G)):
             path = pjoin(Pdir, "G%s_%s" % (G, i+1))
             Gdirs.append(path)
@@ -2122,9 +2125,9 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': os.path.basename(C.parent_name), 
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # use for RO gridpack
                     'nevents': nevents, #int(nevents*self.gen_events_security)+1,
                     'maxiter': self.max_iter,
@@ -2134,8 +2137,8 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
                     'suppress_amplitude': 0 if self.disable_multichannel else 1,
-                    'grid_refinment' : 0,    #no refinment of the grid
-                    'base_directory': '',   #should be change in splitted job if want to keep the grid
+                    'grid_refinment' : 0,    #no refinement of the grid
+                    'base_directory': '',   #should be change in split job if want to keep the grid
                     'packet': None, 
                     }
 

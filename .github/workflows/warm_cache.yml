@@ -338,6 +338,10 @@ jobs:
                tar -xzpvf NNPDF40_nlo_as_01180.tar.gz
                wget https://lhapdfsets.web.cern.ch/current/NNPDF40_nlo_as_01180_nf_4.tar.gz
                tar -xzpvf NNPDF40_nlo_as_01180_nf_4.tar.gz
+               # photon in the initial state / NLO EW corrections: the QED set
+               # (lhaid 335900, LO and NLO run_card and mg7 [beam] pdf)
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF40_nlo_as_01180_qed.tar.gz
+               tar -xzpvf NNPDF40_nlo_as_01180_qed.tar.gz
                # previous mg7 default; still pinned by some tests
                wget https://lhapdfsets.web.cern.ch/current/NNPDF40MC_lo_as_01180.tar.gz
                tar -xzpvf NNPDF40MC_lo_as_01180.tar.gz

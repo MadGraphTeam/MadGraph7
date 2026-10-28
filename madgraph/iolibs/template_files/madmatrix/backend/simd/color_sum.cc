@@ -34,7 +34,7 @@ namespace madmatrix
   // is safe to mask on the squared order: sqSoIndex is symmetric (a squared
   // order is the SUM of the two amplitude orders), so a pair and its transpose
   // are always kept or dropped together and the masked total stays real.
-  static void
+  [[maybe_unused]] static void
   color_sum_cpu_splitorders( fptype* allMEs,                  // output: allMEs[nevt], add |M|^2 for one specific helicity
                              const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for one specific helicity
                              const int ievt0 )                // input: first event number in current C++ event page
@@ -272,7 +272,7 @@ namespace madmatrix
                  const float* beta, float* c, const int* ldc );
   }
 
-  static inline void
+  [[maybe_unused]] static inline void
   blas_symm( const int m, const int n, const double* a, const double* b, double* c )
   {
     const char side = 'L', uplo = 'U';
@@ -280,7 +280,7 @@ namespace madmatrix
     dsymm_( &side, &uplo, &m, &n, &alpha, a, &m, b, &m, &beta, c, &m );
   }
 
-  static inline void
+  [[maybe_unused]] static inline void
   blas_symm( const int m, const int n, const float* a, const float* b, float* c )
   {
     const char side = 'L', uplo = 'U';

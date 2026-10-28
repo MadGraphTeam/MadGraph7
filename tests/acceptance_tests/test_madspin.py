@@ -615,7 +615,7 @@ decay w+ > all all
                                      % (particle.pid, name_scipt_file))
 
     def test_madspin_loop_induced(self):
-        """ Tests that that the differrent mode of madspin work for loop-induced processes.
+        """ Tests that the different modes of MadSpin work for loop-induced processes.
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 
@@ -625,7 +625,7 @@ decay w+ > all all
         self._run_one_mode("madspin", [24, -24], 'test_madspin_loop_induced_madspin.lhe.gz', 'test_loop_induced_madspin')
 
     def test_madspin_tree_level(self):
-        """ Tests that that the differrent mode of madspin work for tree-level processes.
+        """ Tests that the different modes of MadSpin work for tree-level processes.
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 

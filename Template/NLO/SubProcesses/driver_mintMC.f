@@ -137,7 +137,7 @@ c
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       call fill_configurations_common
       call check_amp_split 
@@ -312,7 +312,7 @@ c Randomly pick the contribution that will be written in the event file
       endif
 
       if (ntot.ne.0) then
-         write(*,*) "Satistics from MadLoop:"
+         write(*,*) "Statistics from MadLoop:"
          write(*,*)
      &        "  Total points tried:                              ",ntot
          write(*,*)

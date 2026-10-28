@@ -26,7 +26,9 @@ runs:
     - name: madspace cache key
       run: |
         echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
-        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}" >> $GITHUB_ENV
+        # -simd: the install includes the SIMD CPU backends; a separate suffix so
+        # that a cached install from before SIMD was enabled is never restored
+        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd" >> $GITHUB_ENV
       shell: bash
 
     # Cache the installed madspace/install prefix directly (not just a wheel), so
@@ -68,6 +70,7 @@ runs:
         python3 -m pip install --upgrade pip packaging
         python3 -m pip install ./madspace \
           -Ccmake.define.ENABLE_OPENBLAS=ON \
+          -Ccmake.define.ENABLE_SIMD=ON \
           ${{ inputs.enable_docs == 'true' && '-Ccmake.define.ENABLE_DOCS=ON' || '' }} \
           --target="$GITHUB_WORKSPACE/madspace/install"
       shell: bash

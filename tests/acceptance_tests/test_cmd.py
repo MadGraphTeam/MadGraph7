@@ -3100,7 +3100,7 @@ int main(int argc, char** argv){
             self.assertIsNotNone(match)
 
             val1 = float(match.group(1))
-            target =  process[1]  # value to comapre to
+            target =  process[1]  # value to compare to
             passed = abs(val1-target)/(val1+target) < 1e-08
 
             self.assertTrue(passed)
@@ -3326,12 +3326,55 @@ int main(int argc, char** argv){
 
 
         self.assertEqual(len(sol), 10)
-        # I am not sure why for this case I didn't have to introduce the nomalisation term
+        # I am not sure why for this case I didn't have to introduce the normalisation term
         original_sol = sol =  {(-1, -1, 1, 1): (-5.551115123125783e-17, 0.0), (-1, -1, 1, -1): (0.00926133766116009, 0.0), (-1, 1, 1, 1): (-0.009292545047075378, 0.0), (-1, 1, 1, -1): (0.09884700885130696, 0.0), (-1, -1, -1, -1): (-1.6479873021779667e-17, 0.0), (-1, 1, -1, 1): (5.415404411525035e-07, 0.0), (-1, 1, -1, -1): (-0.012877349160785171, 0.0), (1, 1, 1, 1): (-1.734723475976807e-17, 0.0), (1, 1, 1, -1): (0.012880402732054583, 0.0), (1, 1, -1, -1): (-4.85722573273506e-17, 0.0)}
         for key in original_sol:
             self.assertIn(key, sol)
             self.assertAlmostEqual(original_sol[key][0] if abs(original_sol[key][0]) > 1e-12 else 0, sol[key][0])
             self.assertAlmostEqual(original_sol[key][1] if abs(original_sol[key][1]) > 1e-12 else 0, sol[key][1])
+
+    def test_standalone_zerowidth(self):
+        """output standalone_fortran --zerowidth_decay=: in a decay only the decaying
+        particle's propagators get a zero width, in a production the listed
+        final-state particles' ones; nothing changes without the option."""
+
+        def calls(out_dir, pdir):
+            # the P<n>_ numbering depends on the generation, not the suffix
+            sub = os.path.join(out_dir, 'SubProcesses')
+            pdir = [d for d in os.listdir(sub) if d.split('_', 1)[-1] == pdir][0]
+            text = open(os.path.join(sub, pdir, 'matrix.f')).read()
+            return [l.strip() for l in text.split('\n')
+                    if l.strip().startswith('CALL') and 'XXXXX' not in l]
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('set group_subprocesses False')
+        self.do('generate t > e+ ve b')
+        self.do('add process t > w+ b g')
+        for option in ('True', '6,24'):
+            self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=%s -f'
+                    % (self.out_dir, option))
+            # the internal W of the top decay keeps its width
+            self.assertTrue([c for c in calls(self.out_dir, 't_epveb')
+                             if ',MDL_MW,MDL_WW,' in c])
+            # the internal top of t > w+ b g does not
+            self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                             if ',MDL_MT, ZERO,' in c])
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
+                % self.out_dir)
+        self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                         if ',MDL_MT,MDL_WT,' in c])
+
+        self.do('generate e+ e- > t t~ z')
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=6,24 -f'
+                % self.out_dir)
+        zeroed = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertEqual(len(zeroed), 2)
+        self.assertTrue(all('MDL_MT, ZERO,' in c for c in zeroed), zeroed)
+
+        self.do('output standalone_fortran %s --prefix=int --density=1 -f' % self.out_dir)
+        kept = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertTrue(all('MDL_MT,MDL_WT,' in c for c in kept), kept)
 
     def test_standalone_density_uu(self):
         ############################################################################
@@ -4634,7 +4677,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -4818,7 +4861,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -4839,7 +4882,7 @@ set helicity_direction [6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4854,7 +4897,13 @@ set boost_choice [6, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [complex(0.45270438876343766, 0.0), complex(0.0, 0.0024345422714880808), complex(0.0, -0.002434542275983678), complex(0.28551318353826904, 0.0), complex(0.047295611236562354, 0.0), complex(0.047011148655689436, 0.0), complex(0.0, 0.0024345422759837264), complex(0.047295611236562354, 0.0), complex(0.0, -0.0024345422714880972), complex(0.45270438876343766, 0.0)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.45270438876343766+0.0j), (0.0+0.0024345422714880808j), (-0.0-0.002434542275983678j),
+                       (0.28551318353826904+0.0j), (0.047295611236562354+0.0j), (0.047011148655689436+0.0j),
+                       (0.0+0.0024345422759837264j), (0.047295611236562354+0.0j), (-0.0-0.0024345422714880972j),
+                       (0.45270438876343766+0.0j)]
 
         #1) here we check that the density matrix is computed properly
         for i in range(len(density_ref)):
@@ -4892,7 +4941,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd2.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4917,7 +4966,7 @@ set order_helicities [+1, -1, +1, 0, +1, +1, 0, -1, 0, 0, 0, +1, -1, -1, -1, 0, 
 set axis_referential [-1, -2]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt2.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4994,7 +5043,7 @@ set run_card use_syst False
 """
 
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -5016,7 +5065,7 @@ set particle_in_density_matrix [5, -6]
 set boost_choice [5, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -5052,7 +5101,7 @@ set boost_choice [5, -6]
         5  1    3    3  501    0 +4.3637392514e+01 +4.9281743782e+00 -1.3060449857e+01 4.6056207819e+01 4.7000000000e+00 0.0000e+00 -1.0000e+00
        24  1    3    3    0    0 -5.4634276257e+01 +1.8631606795e+02 -1.6969165851e+02 2.7011304345e+02 8.0419002446e+01 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +1.0996883743e+01 -1.9124424233e+02 -3.5723989432e+02 4.4073192960e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.0025697944663450214+0j) (0.00022583206322766304+0.0002724023671240153j) (0.03458000936877068-0.003111931365020864j) (0.003535839291923179+0.0031321719755733556j) (0.002495767955975634+0j) (0.002308240777864438-0.002551169179285921j) (0.03333888343971259-0.0016718211497894133j) (0.5116911466377606+0j) (0.04414462084336885+0.031496541741920014j) (0.48324329093991875+0j) </density>
+<density> (0.002572819258503627+0.0j) (0.00022287625051417933+0.000269373544283043j) (0.034620381554042186-0.0031148240475356633j) (0.003493349987547038+0.0030943536658021155j) (0.002492794223097223+0.0j) (0.0022714731159374324-0.0025077711911968975j) (0.03329882105505325-0.001669052089828375j) (0.5122804070927276+0.0j) (0.043564252872336236+0.03090169904947277j) (0.48265397942567173+0.0j) </density>
 </event>
 """
         
@@ -5095,7 +5144,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -5117,7 +5166,7 @@ set particle_in_density_matrix [24, -6]
 set boost_choice [24, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -5155,10 +5204,8 @@ set boost_choice [24, -6]
 
         rho_instance = dens.DensityMatrixObservables(density_check)
 
-        #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [1.30947427e-04, 2.33695634e-04,
-                                       1.00468437e-01, 1.27838949e-01,
-                                       2.55651384e-01, 5.15676588e-01]
+        #2) here we check that the smaller eigenvalue of the partially transposed density matrix is computed properly
+        flag_ref, eigval_ref = False, [0.0001309474273079456, 0.00023369563417047353, 0.10046843670831423, 0.1278389488146789, 0.25565138370380525, 0.5156765877117229]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
@@ -5187,7 +5234,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
         
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -5216,7 +5263,7 @@ set particle_in_density_matrix [6, -6] rapidity [0, 1]
 set boost_choice [6, -6] pt [0, 0]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -5235,7 +5282,7 @@ set boost_choice [6, -6] pt [0, 0]
         6  1    1    2  502    0 -3.1599447381e+02 +3.9628896508e+02 +1.0466750690e+02 5.4569381371e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  501 -2.8790168023e+02 -5.3212030280e+01 +2.4116702458e+02 4.1690458307e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +2.3766404453e+02 -1.6598323661e+02 +7.5634541823e+01 3.4595406749e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.41585128247332614+0j) (-0.03826754879773473-0.08665010160467382j) (0.01819843853040962+0.0694772074195328j) (-0.006036323974019095+0.028318452797874368j) (0.08409384779983874+0j) (-0.051323966834621225-0.010218484907272918j) (-0.018157600093053276-0.06950829298296718j) (0.0841062677380868+0j) (0.0382601151338116+0.08669345314193963j) (0.41594860198874833+0j) </density>
+<density> (0.4158995551694228+0.0j) (-0.038266416707557815-0.08667282347919017j) (0.018177344236518424+0.06949114218724137j) (-0.006036326465490495+0.02831843465941133j) (0.08410102856179515+0.0j) (-0.051324023693436596-0.010218495226221291j) (-0.018178695623423707-0.06949438656775611j) (0.0840990482542204+0.0j) (0.03826126259622656+0.08667076377998419j) (0.4159003680145617+0.0j) </density>
 </event>
 """
 

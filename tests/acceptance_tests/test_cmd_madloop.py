@@ -1032,13 +1032,28 @@ class TestCmdLoop(unittest.TestCase):
         def propagator(Q2, mz, gammaz):
             return 1/((Q2 - mz**2)**2 + mz**2 * gammaz**2)
 
-    #We check that the mass, the decay and the transfered mommentum of the z are the same in the decay and the production for each of the 5 events
+    #We check that the mass, the decay and the transferred momentum of the z are the same in the decay and the production for each of the 5 events
         for i in range(5):
             self.assertAlmostEqual(p2_decay[i], p2_production[i], places=7)
             comparison = 3 * propagator(p2_decay[i], 9.118800e+01, gammaz_decay) * convolution(rho_production[i], rho_decay[i])
             self.assertAlmostEqual(comparison.imag, 0., places=12)
             self.assertAlmostEqual(matrix_element_prod_and_decay[i], comparison.real)
 
+
+    def test_standalone_rw_tree_then_virt(self):
+        """The calls of a tree standalone_rw output (fk_ tag of the widths)
+        must not leak into the next MadLoop output (NLO reweighting)"""
+
+        self.do('import model loop_sm')
+        self.do('generate u u~ > e+ e-')
+        self.do('output standalone_rw %s -f' % pjoin(self.tmpdir, 'TREE'))
+        self.do('generate u u~ > e+ e- [virt=QCD]')
+        self.do('output standalone_rw %s -f' % pjoin(self.tmpdir, 'VIRT'))
+
+        born = open(pjoin(self.tmpdir, 'VIRT', 'SubProcesses', 'P0_uux_epem',
+                          'born_matrix.f')).read()
+        self.assertEqual([l.strip() for l in born.split('\n') if 'FK_' in l.upper()], [])
+        self.assertIn('MDL_MZ,MDL_WZ,', born)
 
     def test_density_mode_loop_induced_standalone1(self):
         """ Testing the density mode in standalone mode for loop induced.
@@ -1325,7 +1340,7 @@ class TestCmdLoop(unittest.TestCase):
                     set run_card use_syst False
                 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -1345,7 +1360,7 @@ set reweight_card particle_in_density_matrix [24, -24]
 set reweight_card order_helicities [-1, 1, -1, 0, -1, -1, 0, 1, 0, 0, 0, -1, 1, 1, 1, 0, 1, -1]
 set matrix_normalisation False
 """
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()

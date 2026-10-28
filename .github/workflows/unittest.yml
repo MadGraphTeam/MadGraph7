@@ -53,6 +53,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_0 ----
       - name: "unittest_0"
@@ -208,6 +209,10 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_hwu_output test_cli_keeps_amcatnlo_scale_and_pdf_columns -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_2:
     # former jobs, run one after the other: unittest_1 unittest_4 unittest_5
@@ -220,6 +225,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_1 ----
       - name: "unittest_1"
@@ -318,6 +324,10 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_lhe_ordering test_reweight_ordering test_boost_by_a_momentum_at_rest test_nested_identical_children -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
@@ -329,6 +339,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       # tests.unit_tests.madspin.test_madspin imports numpy (the density
       # primitives, the sequential accept/reject and the maxwgt decomposition
       # all work on arrays), which is not on the runner by default.
@@ -351,7 +362,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             # no sudo/apt on the self-hosted runner: user install there
             if command -v apt-get > /dev/null; then sudo pip install scipy; else python3 -m pip install --user scipy; fi
-            ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities -t0
+            ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_additional_steering test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities test_density_selection_not_used test_density_selection_default_order test_density_selection_observable_order test_density_selection_observable_ranks test_density_selection_tie test_density_selection_wrong_inputs -t0
 
       # ---- unittest_madspin_sequential ----
       # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
@@ -365,6 +376,10 @@ jobs:
             if command -v apt-get > /dev/null; then sudo pip install numpy; else python3 -m pip install --user numpy; fi
             ./tests/test_manager.py test_madspin test_lhe_parser -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_4:
     # former jobs, run one after the other: unittest_18_2 unittest_24
@@ -376,6 +391,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_18_2 ----
       - name: "unittest_18_2"
@@ -400,6 +416,28 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
 
+      # ---- unittest_run_output (from mg5 3.8.2) ----
+      # combine_runs, histograms and the madevent run helpers (Delphes split
+      # fusion, LHAPDF info patching); collect_events, systematics, make_opts and
+      # transpole already run in unittest_bundle_7.
+      - name: "unittest_run_output: combine_runs, histograms and madevent interface"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_combine_runs test_histograms test_madevent -t0
+
+      # ---- unittest_tchannel_width (from mg5 3.8.2) ----
+      # t-channel widths of the reweighting and MadSpin matrix elements
+      - name: "unittest_tchannel_width: t-channel widths of the reweighting and MadSpin outputs"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_UFO_fortran_tchannel_width_standalone_rw test_UFO_fortran_tchannel_width_decay test_reweight_tchannel -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_5:
     # former jobs, run one after the other: unittest_18_3 unittest_19
@@ -411,6 +449,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_18_3 ----
       - name: "unittest_18_3"
@@ -433,6 +472,10 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_diagram_generation_gg_ng test_diagram_generation_uux_ddx test_diagram_generation_uux_ga test_diagram_generation_aa_ttx_EW test_diagram_generation_aa_wpwm_EW test_diagram_generation_epem_ttxa_EW test_diagram_generation_epem_ttxg_EW test_diagram_generation_gg_ggg_EW test_diagram_generation_gg_ttxg_EW test_diagram_generation_gg_ttxh_EW test_diagram_generation_hh_hh_EW test_diagram_generation_hh_hhh_EW test_diagram_generation_ttx_wpwm_EW test_diagram_generation_uux_epem_EW test_diagram_generation_uux_ga_EW test_fuse_line test_LO_draw_with_NLO_generation test_NLO_draw test_NLO_draw_all_gg_gg test_NLO_draw_all_reconstructed_dd_eemm test_NLO_draw_all_reconstructed_gg_gg test_NLO_draw_gg_ggg test_NLO_draw_uux_guux test_NLO_draw_uux_uuxddx test_flipping -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_6:
     # former jobs, run one after the other: unittest_22 unittest_29
@@ -443,6 +486,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/restore_ufomodel
 
       # ---- unittest_22 ----
@@ -472,6 +516,10 @@ jobs:
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization test_standalone_compresses test_fks_writes_the_entries_out test_split_orders_and_madspin_write_the_entries_out test_madevent_compresses_and_madweight_does_not test_whitelist_matches_the_templates -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_7:
     # Unit tests that no workflow selected (audit of 2026-10-24): a test runs in
@@ -488,6 +536,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       # a skipped test fails the step (test_manager exits 1): test_mg7_plots
       # renders with matplotlib, test_mg7_gridpack_compression compares with pigz.
       # No sudo/apt on the self-hosted runner, which has pigz installed: user
@@ -522,13 +571,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_hel_recycle test_transpole test_copy_events_no_blank_line -t0
+            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
 
       - name: "unittest_various_uncovered"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_cluster test_collect_events test_make_opts test_mg7_plots test_systematics test_test_finder TestHistogramRegressions TestLorentzStructureCanonicalisation TestRestrictionDoesNotLeakIntoTheUFO TEST_pythia8_main164 TestPrecisionCheck test_write_inc_file_running_scale test_scan_summary_json test_collapse_duplicate_lorentz test_goldstone_mass_mismatches test_goldstone_merge_is_atomic test_goldstone_merge_keeps_coupling_orders_apart test_goldstone_phase_detects_a_rotated_convention test_goldstone_phase_of_the_sm_is_trivial test_lorentz_info_cache_refresh test_optimise_iden_coup_lorentz_added_after_cache test_optimise_iden_coup_unknown_lorentz_is_skipped test_parse_fermion_structure test_rotate_coupling test_fd_gauge_interaction_ids_stay_unique test_configure_gzip_resets_pigz_threads test_external_gzip_failure_removes_partial_archive test_external_gzip_keep_passes_thread_limit test_gzip_failure_keeps_source_and_leaves_no_archive test_gzip_keep_preserves_plain_source test_interrupted_gzip_removes_partial_archive -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   unittest_new_coverage:
@@ -543,6 +596,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test q_polynomial and hepmc_parser modules
@@ -571,6 +625,24 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py TestReweightGenerationFoldsCrossings TestReweightGenerationUnfoldsIncompleteRecords TestFindMatrixElement TestCrossingRecordsCoverTheFoldedSubprocesses TestFoldedCrossingHelicity CrossingDisplayTest TestSvgCurls TestMultiSvgFiles -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
+
+  unittest_real_channels:
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: test fixed-order real channels and channel sampling
+        run: |
+            cd $GITHUB_WORKSPACE
+            gfortran --version
+            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_mint_channels test_real_channels_auto -t0
+
 
   unittest_write_model:
     # runs alone: excluded from the shared unittest jobs due to side effects
@@ -581,9 +653,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       - name: run test_write_model (usermod)
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_write_model -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
