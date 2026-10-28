@@ -21,41 +21,48 @@ pub type SymmetricGroupComplex64 = (f64, f64);
 
 type YoungTableau = Box<[(u8, u8)]>;
 
+// The tower's structure is readable in the crate (`pub(crate)`) so that
+// transforms in other carriers walk the same Young bases: the loop engine's
+// seed FFT in double-double and MPFR (`loop_v2::fourier`, DESIGN.md §7.3)
+// recomputes the generator factors from the integer axial distance there.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct YoungGeneratorAction {
-    partner: u32,
-    diagonal: f64,
-    mixing: f64,
+pub(crate) struct YoungGeneratorAction {
+    pub(crate) partner: u32,
+    pub(crate) diagonal: f64,
+    pub(crate) mixing: f64,
+    /// The axial distance r of the generator on this basis vector:
+    /// `diagonal = 1/r`, `mixing = sqrt(1 - 1/r^2)`.
+    pub(crate) axial: i16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct YoungBranch {
-    child_irrep: u32,
-    basis_offset: u32,
+pub(crate) struct YoungBranch {
+    pub(crate) child_irrep: u32,
+    pub(crate) basis_offset: u32,
 }
 
 #[derive(Debug)]
-struct YoungIrrep {
+pub(crate) struct YoungIrrep {
     shape: Box<[u8]>,
-    dimension: usize,
-    coefficient_offset: usize,
-    branches: Box<[YoungBranch]>,
+    pub(crate) dimension: usize,
+    pub(crate) coefficient_offset: usize,
+    pub(crate) branches: Box<[YoungBranch]>,
     tableaux: Box<[YoungTableau]>,
-    generators: Box<[YoungGeneratorAction]>,
+    pub(crate) generators: Box<[YoungGeneratorAction]>,
 }
 
 impl YoungIrrep {
-    fn generator(&self, generator: usize, basis: usize) -> YoungGeneratorAction {
+    pub(crate) fn generator(&self, generator: usize, basis: usize) -> YoungGeneratorAction {
         self.generators[generator * self.dimension + basis]
     }
 }
 
 #[derive(Debug)]
-struct SymmetricGroupLevel {
-    degree: usize,
-    order: usize,
-    maximum_dimension: usize,
-    irreps: Box<[YoungIrrep]>,
+pub(crate) struct SymmetricGroupLevel {
+    pub(crate) degree: usize,
+    pub(crate) order: usize,
+    pub(crate) maximum_dimension: usize,
+    pub(crate) irreps: Box<[YoungIrrep]>,
 }
 
 /// Public description of one packed Fourier block.
@@ -179,6 +186,12 @@ impl SymmetricGroupFftPlan {
             .irreps
             .iter()
             .map(block_description)
+    }
+
+    /// The subgroup tower `S_0 < ... < S_m` the transforms walk (level `k`
+    /// is `S_k`).
+    pub(crate) fn levels(&self) -> &[SymmetricGroupLevel] {
+        &self.levels
     }
 
     /// Map recursive coset-order indices to lexicographic image-permutation indices.
@@ -1058,6 +1071,7 @@ fn build_young_generators(
                     .map_err(|_| internal("Young generator partner exceeds u32"))?,
                 diagonal,
                 mixing: (1.0 - diagonal * diagonal).max(0.0).sqrt(),
+                axial: axial_distance,
             });
         }
     }
