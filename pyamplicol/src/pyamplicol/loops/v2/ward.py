@@ -47,6 +47,9 @@ vectors, c p_j / p_j^0: of the size of a polarisation vector, so that the
 substituted amplitudes are measured against the physical ones on equal
 footing (c p_j alone scales them by the leg's energy).
 
+``ward_check`` runs the check of one point and carrier in one batch (the
+physical entry and every leg and factor) and judges each row.
+
 **The criterion** (``ward_row``), per point, leg and factor, against the
 physical evaluation at the same point; the scale of a Laurent coefficient is
 the largest physical component magnitude over the sectors
@@ -351,6 +354,58 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     return row
 
 
+def ward_check(
+    executor: Any,
+    point: Sequence[Sequence[Any]],
+    scale: Any,
+    carrier: str,
+    *,
+    legs: Sequence[int] | None = None,
+    factors: Sequence[Any] = WARD_FACTORS,
+    parameters: Any = None,
+    checks: bool | None = None,
+) -> dict[str, Any]:
+    """The Ward check of one point in one batch of ``executor`` (a
+    ``plan_export.NativeExecutor`` of a ``ward_slice``, either input path):
+    the physical evaluation and, per leg (default: ``gauge_legs``) and
+    factor, the evaluation with ``gauge_ward``, judged by ``ward_row``.
+    ``carrier`` is "double" or "double-double"; ``checks`` (default: in
+    binary64 only) runs ``WARD_CHECKS``, which the binary64 criterion
+    reads. Returns ``physical`` (the ``PointResult``), ``results`` (one per
+    row), ``rows`` (``ward_row`` plus ``leg`` and ``factor``) and
+    ``passed`` (every row; None if a row has no criterion)."""
+
+    from .assemble import Precision
+
+    precisions = {"double": Precision.double, "double-double": Precision.double_double}
+    if carrier not in precisions:
+        raise ValueError(f"no Ward criterion for the carrier {carrier!r}")
+    legs = tuple(legs if legs is not None else gauge_legs(executor.slice))
+    checked = carrier == "double" if checks is None else checks
+    labels = [(leg, factor) for leg in legs for factor in factors]
+    results = executor.evaluate(
+        [point] * (len(labels) + 1),
+        [scale] * (len(labels) + 1),
+        parameters=parameters,
+        precision=precisions[carrier](),
+        ward=[None, *(gauge_ward(leg, factor, point) for leg, factor in labels)],
+        stability=WARD_CHECKS if checked else None,
+    )
+    physical, results = results[0], results[1:]
+    rows = []
+    for (leg, factor), result in zip(labels, results, strict=True):
+        rows.append(
+            {**ward_row(physical, result, carrier), "leg": leg, "factor": factor}
+        )
+    verdicts = [row["passed"] for row in rows]
+    return {
+        "physical": physical,
+        "results": results,
+        "rows": rows,
+        "passed": None if None in verdicts else all(verdicts),
+    }
+
+
 __all__ = [
     "BINARY64_FLOOR",
     "BINARY64_SCOPE",
@@ -369,6 +424,7 @@ __all__ = [
     "point_wards",
     "require_full_kernels",
     "rotated_ward",
+    "ward_check",
     "ward_leg",
     "ward_row",
     "ward_scales",

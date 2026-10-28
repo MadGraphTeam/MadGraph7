@@ -54,12 +54,6 @@ def _peak_gib() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
 
 
-def _precision(name: str) -> Any:
-    from pyamplicol.loops.v2.assemble import Precision
-
-    return Precision.double() if name == "double" else Precision.double_double()
-
-
 def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
@@ -150,40 +144,37 @@ def main(argv: list[str] | None = None) -> int:
     for index in options.points:
         point = streams.exact(stream, index)
         scale = str(Fraction(stream["mu_r"][index]) ** 2)
-        labels = [(leg, name) for leg in legs for name in options.factors]
-        configurations = [None] + [
-            ward.gauge_ward(leg, FACTORS[name], point) for leg, name in labels
-        ]
         entry: dict[str, Any] = {"index": index, "carriers": {}}
         record["points"].append(entry)
+        names = {FACTORS[name]: name for name in options.factors}
         for carrier in options.precisions:
             checked = carrier == "double" or options.dd_checks
             begin = time.perf_counter()
-            results = executor.evaluate(
-                [point] * len(configurations),
-                [scale] * len(configurations),
+            check = ward.ward_check(
+                executor,
+                point,
+                scale,
+                carrier,
+                legs=legs,
+                factors=list(names),
                 parameters=parameters,
-                precision=_precision(carrier),
-                ward=list(configurations),
-                stability=ward.WARD_CHECKS if checked else None,
+                checks=checked,
             )
             seconds = time.perf_counter() - begin
-            physical = results[0]
+            physical = check["physical"]
             scales = ward.ward_scales(physical)
             rows = []
-            for (leg, name), result in zip(labels, results[1:], strict=True):
-                row = ward.ward_row(physical, result, carrier)
+            for row, result in zip(check["rows"], check["results"], strict=True):
                 lanes = ward.lane_scales(result, average)
                 row.update(
-                    leg=leg,
-                    factor=name,
+                    factor=names[row["factor"]],
                     lanes=[v / s for v, s in zip(lanes, scales, strict=True)],
                 )
                 rows.append(row)
             width = len(scales)
             summary = {
                 "seconds": seconds,
-                "batch": len(configurations),
+                "batch": len(rows) + 1,
                 "checks": checked,
                 "born": float(sum(complex(v).real for v in physical.born.values())),
                 # The physical virtual per sector and Laurent coefficient
@@ -201,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                     else list(physical.stability.coefficients)
                 ),
                 "rows": rows,
-                "passed": all(row["passed"] for row in rows),
+                "passed": bool(check["passed"]),
                 "max_born": max(row["born"] for row in rows),
                 "max_virtual": [
                     max(row["parts"]["virtual"][k] for row in rows)

@@ -122,14 +122,14 @@ def test_ward_identity_on_native_inputs(slices, name):
     assert ward.gauge_legs(slice_) == legs
     point, scale = _point(name)
     executor = NativeExecutor(slice_, inputs="native", forward=False)
-    configurations = [(leg, factor) for leg in legs for factor in ward.WARD_FACTORS]
-    wards = [ward.gauge_ward(leg, factor, point) for leg, factor in configurations]
     for carrier in CARRIERS:
-        physical, results = _evaluate(executor, point, scale, wards, carrier)
-        assert physical.loop_born is None
-        for configuration, result in zip(configurations, results, strict=True):
-            row = ward.ward_row(physical, result, carrier)
-            assert row["passed"] is True, (carrier, configuration, row)
+        # Every gluon leg (``gauge_legs``) and factor in one batch.
+        check = ward.ward_check(executor, point, scale, carrier, parameters=PARAMETERS)
+        assert check["physical"].loop_born is None
+        assert [(row["leg"], row["factor"]) for row in check["rows"]] == [
+            (leg, factor) for leg in legs for factor in ward.WARD_FACTORS
+        ]
+        assert check["passed"] is True, (carrier, check["rows"])
 
 
 @pytest.mark.parametrize("name", tuple(DEFAULT))
