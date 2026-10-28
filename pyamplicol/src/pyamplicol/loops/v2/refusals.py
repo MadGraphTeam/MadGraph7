@@ -74,6 +74,16 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   not hold at the order a loop position takes it has no structure to read:
   the request is refused when a loop position uses it
   (``colour.SeedColour.states``), naming the vertex and the order.
+* ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
+  "fft"`` requires the certified symmetric-group FFT of the seed contraction
+  (design §7.3). Orbits of the external adjoint labels are found and
+  certified on the exact seed cells (``colour.seed_fourier``: a structural
+  criterion, no process or multiplicity key); a table without a certified
+  pair, a leading-colour request (diagonal, contracted directly) and declared
+  observables (their columns are contracted directly) are refused
+  (``LoopSlice._plan_contraction``, ``ObservableSlice.of``) instead of
+  silently contracting directly. ``"auto"`` serves all of them, reporting the
+  algorithm it ran.
 """
 
 from __future__ import annotations
@@ -157,6 +167,23 @@ LOOP_ADMISSION_REFUSALS = (
         "coupling-order bound that keeps it out of the request's loops",
         "fail-closed-2 (a guard)",
         "none (kept as the guard of the restriction rule)",
+    ),
+    LoopAdmissionRefusal(
+        "forced-seed-fft-unserved",
+        'a forced seed FFT (color.contraction = "symmetric-group-fft", the '
+        "slice's colour_contraction 'fft') that the FFT cannot serve: a seed "
+        "table without a certified symmetric-group orbit pair (e.g. fewer than "
+        "two permutable external gluons), leading colour, or declared colour, "
+        "spin or Ward observables",
+        "a forced FFT requires the FFT and never contracts silently directly; "
+        "the orbits of the external adjoint labels are detected and certified "
+        "structurally on the exact seed cells (colour.seed_fourier), leading "
+        "colour is diagonal and observable columns are contracted directly "
+        "(design §7.3)",
+        'color.contraction = "auto" (the certified pairs by the FFT, the rest '
+        'directly, the algorithm reported) or "direct"',
+        "MQ-FFT (a guard)",
+        "none (kept: a forced FFT is never silently direct)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}

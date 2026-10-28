@@ -2288,14 +2288,22 @@ class LoopSlice:
             raise ValueError(f"unknown colour contraction {policy!r}")
         if policy == "direct":
             return
+        from .refusals import LoopRequestUnsupported
+
         if self.request.accuracy == "lc":
             if policy == "fft":
-                raise ValueError("leading-colour seeds are contracted directly")
+                raise LoopRequestUnsupported(
+                    "forced-seed-fft-unserved",
+                    f"{self.request.process!r}: leading-colour seeds are "
+                    "contracted directly",
+                )
             return
         self.fourier = seed_fourier(self.table)
         if self.fourier is None and policy == "fft":
-            raise ValueError(
-                "the seed table has no certified symmetric-group orbit pair"
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved",
+                f"{self.request.process!r}: the seed table has no certified "
+                "symmetric-group orbit pair",
             )
 
     def _prune_colour(

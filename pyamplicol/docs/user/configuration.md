@@ -842,9 +842,11 @@ seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
 the certified symmetric-group orbit pairs of the external gluons with the FFT
 and the rest directly, `direct` contracts everything directly, and
 `symmetric-group-fft` requires a certified pair (a process with fewer than two
-external gluons has none and is refused). The FFT and the direct contraction
-are equal up to rounding in every arithmetic; each evaluation reports the
-algorithm it ran. A dry run
+external gluons has none and is refused at generation with the listed
+`forced-seed-fft-unserved`, as are declared correlations with a forced FFT,
+since observable columns are contracted directly). The FFT and the direct
+contraction are equal up to rounding in every arithmetic; each evaluation
+reports the algorithm it ran. A dry run
 (`generate --dry-run`) reports what the model preparation refuses (the
 veto refusal "veto-unlabelled-counterterms" included); the rest of loop
 admission is checked by the generation only, and the dry run lists what it

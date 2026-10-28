@@ -774,7 +774,11 @@ class ObservableSlice:
         if slice_.request.colour_contraction == "fft" and (declared or ward):
             # The inclusive virtual takes the forced seed FFT (the native
             # executor, MQ-FFT); declared observables could never run.
-            raise ValueError(FORCED_FFT_OBSERVABLES)
+            from .refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved", FORCED_FFT_OBSERVABLES
+            )
         correlators = correlators or CorrelatorConfig()
         correlators = correlators._resolve_color(
             process_color_legs(slice_.blocks.process)

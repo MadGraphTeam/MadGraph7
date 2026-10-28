@@ -2148,5 +2148,8 @@ def test_observables_refuse_a_required_seed_fft(generate):
     required = dataclasses.replace(
         slice_, request=dataclasses.replace(slice_.request, colour_contraction="fft")
     )
-    with pytest.raises(ValueError, match="contracted directly"):
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(LoopRequestUnsupported, match="contracted directly") as refused:
         ObservableSlice.of(required, correlators=declarations)
+    assert refused.value.key == "forced-seed-fft-unserved"

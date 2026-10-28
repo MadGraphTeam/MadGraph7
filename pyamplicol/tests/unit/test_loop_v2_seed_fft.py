@@ -250,8 +250,15 @@ def test_processes_without_certified_pairs_fall_back_to_direct(compiled, loop_na
     points = _points([0] * 5, 1)
     (result,) = executor.evaluate(points, _scales(points), parameters=PARAMETERS)
     assert result.colour_contraction == "direct"
-    with pytest.raises(ValueError, match="no certified symmetric-group orbit pair"):
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(
+        LoopRequestUnsupported, match="no certified symmetric-group orbit pair"
+    ) as refused:
         _slice(compiled, loop_native, *request, colour_contraction="fft")
+    # Listed (the dry run names it with its remedy).
+    assert refused.value.key == "forced-seed-fft-unserved"
+    assert 'color.contraction = "auto"' in str(refused.value)
 
 
 @pytest.mark.loop_physics
