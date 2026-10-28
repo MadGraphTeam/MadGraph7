@@ -60,7 +60,7 @@ class IdentifyConfigTag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify configs: 
-        ((leg numer, spin, mass, width, color), number)."""
+        ((leg number, spin, mass, width, color), number)."""
 
         part = model.get_particle(leg.get('id'))
         if abs(part.get('pdg_code')) in [23,25] and leg.get('state') == False:
@@ -368,7 +368,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
         for ime, me in enumerate(matrix_elements):
             # Define here a FDStructure repository which will be used for the 
             # tagging all the diagrams in get_contracted_loop_diagram. Remember
-            # the the tagging of each loop updates the FDStructre repository
+            # the tagging of each loop updates the FDStructre repository
             # with the new structures identified.
                                     
             if isinstance(me, loop_helas_objects.LoopHelasMatrixElement):

@@ -182,7 +182,7 @@ C
       INCLUDE 'config_subproc_map.inc'
 
 C     
-C     VARIABLE FOR THE MC over proccess with importance sampling
+C     VARIABLE FOR THE MC over process with importance sampling
 C      additional factor
 C     
       LOGICAL INIT_MODE
@@ -228,7 +228,7 @@ C     all, then we pick a point based on PDF only.
           ENDDO
         ENDDO
  50     CONTINUE
-C       Update weigth w.r.t SELPROC normalized to selection probability
+C       Update weight w.r.t SELPROC normalized to selection probability
 
         DO I=1, WARP_SIZE
           IVEC = (IWARP -1) *WARP_SIZE + I
@@ -1025,7 +1025,7 @@ C                     Need to flip back x values
 C       Turn caching in dsigproc back off to avoid side effects.
         LAST_ICONF=-1
 C       If these additional entries were enough to initialize the
-C        gird, then update it
+C        grid, then update it
 C       To do this check we must *not* used the cached varianble
 C        grouped_MC_grid_status
         IF(DS_GET_DIM_STATUS('grouped_processes').GE.1) THEN
@@ -1064,7 +1064,7 @@ C      all, then we pick a point based on PDF only.
         IF(IPROC.EQ.0) RETURN
 
 
-C       Update weigth w.r.t SELPROC normalized to selection probability
+C       Update weight w.r.t SELPROC normalized to selection probability
 
         WGT=WGT*(SUMPROB/SELPROC(IMIRROR,IFLAV,IPROC,ICONF))
 

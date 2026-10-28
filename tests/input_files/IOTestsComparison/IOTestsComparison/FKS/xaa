@@ -87,7 +87,7 @@ class IOTest(object):
         self.hel_amp = hel_amp 
         self.helasModel = helasModel
         self.exporter = exporter
-        # Security mesure
+        # Security measure
         if not str(path.dirname(_file_path)) in str(outputPath) and \
                                         not str(outputPath).startswith('/tmp/'):
             raise MadGraph5Error, "OutputPath must be within MG directory or"+\
@@ -358,7 +358,7 @@ class IOTestManager(unittest.TestCase):
         return pjoin(file_name[1:].split('%'))
     
 #    def test_IOTests(self):
-#        """ A test function in the mother so that all childs automatically run
+#        """ A test function in the mother so that all children automatically run
 #        their tests when scanned with the test_manager. """
 #        
 #        # Set it to True if you want info during the regular test_manager.py runs

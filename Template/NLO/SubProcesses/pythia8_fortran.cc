@@ -51,7 +51,7 @@ extern "C" {
     pythia.setLHAupPtr(lhareader);
     pythia.init();
     pythia.mergingPtr->setLHAPtr(lhawriter);
-    // Flag that Pythia8 intiialisation has been performed.
+    // Flag that Pythia8 initialisation has been performed.
     pythia_control_.is_pythia_active = 1;
   }
 
@@ -128,7 +128,7 @@ extern "C" {
     pythia.setLHAupPtr(lhareader);
     pythia.init();
     pythia.mergingPtr->setLHAPtr(lhawriter);
-    // Flag that Pythia8 intiialisation has been performed.
+    // Flag that Pythia8 initialisation has been performed.
     pythia_control_.is_pythia_active = 1;
   }
 

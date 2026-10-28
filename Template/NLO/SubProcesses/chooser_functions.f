@@ -488,7 +488,7 @@ c gluon splitting:  g/a -> ff
                     pdg_uborn(k,ict)=22
                   else
                     write (*,*) 'set_pdg ',
-     &                'ERROR#1 in PDG assigment for underlying Born'
+     &                'ERROR#1 in PDG assignment for underlying Born'
                     stop 1
                   endif
                else
@@ -500,7 +500,7 @@ c gluon splitting:  g/a -> ff
                     pdg_uborn(k,ict)=22
                   else
                     write (*,*) 'set_pdg ',
-     &                'ERROR#2 in PDG assigment for underlying Born'
+     &                'ERROR#2 in PDG assignment for underlying Born'
                     stop 1
                   endif
                endif
@@ -514,7 +514,7 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
                pdg_uborn(k,ict)=-pdg(fks_i_d(iFKS),ict)
             else
                write(*,*)
-     &          'set_pdg ERROR#3 in PDG assigment for underlying Born'
+     &          'set_pdg ERROR#3 in PDG assignment for underlying Born'
                stop 1
             endif
          elseif(k.lt.fks_i_d(iFKS)) then
@@ -530,7 +530,7 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
                     ! will always have momenta 0
                 else
                write(*,*)
-     &          'set_pdg ERROR#4 in PDG assigment for underlying Born'
+     &          'set_pdg ERROR#4 in PDG assignment for underlying Born'
                stop 1
 
                 endif

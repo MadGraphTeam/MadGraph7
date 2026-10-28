@@ -122,7 +122,7 @@ def mg_root():
 # parse_info_str
 #===============================================================================
 def parse_info_str(fsock):
-    """Parse a newline separated list of "param=value" as a dictionnary
+    """Parse a newline separated list of "param=value" as a dictionary
     """
 
     info_dict = {}
@@ -1116,7 +1116,7 @@ def check_system_error(value=1):
                     return f(arg, *args, **opt)
                 # NO such file or directory
                 elif error.errno == 2:
-                    # raise a more meaningfull error message
+                    # raise a more meaningful error message
                     raise Exception('%s fails with no such file or directory' \
                                                                            % arg)            
                 # Checkpoint, requeued automatically
@@ -1175,13 +1175,13 @@ def copytree(src, dst, symlinks = False, ignore = None):
       shutil.copystat(src, dst)
     except PermissionError:
         if os.path.realpath(src).startswith('/cvmfs') and os.path.realpath(dst).startswith('/afs'):
-           # allowing missmatch from cvmfs to afs since sounds to not create issue --at least in general-- 
+           # allowing mismatch from cvmfs to afs since sounds to not create issue --at least in general--
            logger.critical(f'Ignoring that we could not copy permissions from {src} to {dst}')
         else:
            logger.critical(f'Permission error detected from {src} to {dst}.\n'+\
                           'If you are using WSL with windows partition, please try using python3.12\n'+\
                           'or avoid moving your data from the WSL partition to the UNIX one')
-           # we do not have enough experience in WSL to allow it to get trough.
+           # we do not have enough experience in WSL to allow it to get through.
            raise
       
   lst = os.listdir(src)
@@ -1239,7 +1239,7 @@ def tail(f, n, offset=None):
 
 def mkfifo(fifo_path):
     """ makes a piping fifo (First-in First-out) file and nicely intercepts 
-    error in case the file format of the target drive doesn't suppor tit."""
+    error in case the file format of the target drive doesn't support it."""
 
     try:
         os.mkfifo(fifo_path)
@@ -1420,7 +1420,7 @@ def gunzip(path, keep=False, stdout=None):
         if os.path.exists("%s.gz" % path):
             path = "%s.gz" % path
         else:
-            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exists" %\
+            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exist" %\
                               {"path": path})         
 
     
@@ -1568,7 +1568,7 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
 # Global function to open supported file types
 #
 class open_file(object):
-    """ a convinient class to open a file """
+    """ a convenient class to open a file """
     
     web_browser = None
     eps_viewer = None
@@ -1748,7 +1748,7 @@ class open_file(object):
 def get_HEPTools_location_setter(HEPToolsDir,type):
     """ Checks whether mg5dir/HEPTools/<type> (which is 'lib', 'bin' or 'include')
     is in the environment paths of the user. If not, it returns a preamble that
-    sets it before calling the exectuable, for example:
+    sets it before calling the executable, for example:
        <preamble> ./my_exe
     with <preamble> -> DYLD_LIBRARY_PATH=blabla:$DYLD_LIBRARY_PATH"""
     
@@ -2187,10 +2187,10 @@ class misc(object):
         return sprint(*args, **opt)
 spirnt = sprint
 ################################################################################
-# function to check if two float are approximatively equal
+# function to check if two float are approximately equal
 ################################################################################
 def equal(a,b,sig_fig=6, zero_limit=True):
-    """function to check if two float are approximatively equal"""
+    """function to check if two float are approximately equal"""
     import math
 
     if isinstance(sig_fig, int):
@@ -2211,7 +2211,7 @@ def equal(a,b,sig_fig=6, zero_limit=True):
 
 ################################################################################
 # class to change directory with the "with statement"
-# Exemple:
+# Example:
 # with chdir(path) as path:
 #     pass
 ################################################################################
@@ -2231,7 +2231,7 @@ class chdir:
 ################################################################################
 
 def timeout(func, args=(), kwargs={}, timeout_duration=1, default=None):
-    '''This function will spwan a thread and run the given function using the args, kwargs and 
+    '''This function will spawn a thread and run the given function using the args, kwargs and
     return the given default value if the timeout_duration is exceeded 
     ''' 
     import threading
@@ -2687,7 +2687,7 @@ class EasterEgg(object):
             return ""
         
         text= """
-*                CONTIBUTOR OF THE DAY:                    *
+*                CONTRIBUTOR OF THE DAY:                    *
 """
         for author, year in to_add:
             one = "*  - %s (first contribution in %s)" % (author, year) 

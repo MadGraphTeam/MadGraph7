@@ -2000,7 +2000,7 @@ C Apply user-defined (in FKS_params.dat) contribution type filters if necessary
       if (VetoedContributionTypes(0).gt.0) then
         do i=1,VetoedContributionTypes(0)
           if (type.eq.VetoedContributionTypes(i)) then
-C This contribution was explicitely vetoed out by the user. Skip it.
+C This contribution was explicitly vetoed out by the user. Skip it.
             return
           endif
         enddo
@@ -2316,7 +2316,7 @@ c and not be part of the plots nor computation of the cross section.
 c Include the weight from the bias_wgt_function to all the contributions
 c in icontr. This only changes the weight of the central value (after
 c inclusion of alphaS and parton luminosity). Both for 'wgts(1,icontr)'
-c as well as the the 'parton_iproc(1:niproc(icontr),icontr)', since
+c as well as the 'parton_iproc(1:niproc(icontr),icontr)', since
 c these are the ones used in MINT as well as for unweighting. Also the
 c 'virt_wgt_mint' and 'born_wgt_mint' are updated. Furthermore, to
 c include the weight also in the 'wgt' array that contain the
@@ -2595,7 +2595,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                      parton_pdg_uborn(k,j,ict)=22
                    else
                      write (*,*) 'set_pdg_codes ',
-     &                'ERROR#1 in PDG assigment for underlying Born'
+     &                'ERROR#1 in PDG assignment for underlying Born'
                      stop 1
                    endif
                  else
@@ -2607,7 +2607,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                      parton_pdg_uborn(k,j,ict)=22
                    else
                      write (*,*) 'set_pdg_codes ',
-     &                'ERROR#2 in PDG assigment for underlying Born'
+     &                'ERROR#2 in PDG assignment for underlying Born'
                      stop 1
                    endif
                  endif
@@ -2619,7 +2619,7 @@ c           Keep GeV's for decay processes (no conv. factor needed)
                  parton_pdg_uborn(k,j,ict)=-idup_d(iFKS,fks_i_d(iFKS),j)
                else
                  write (*,*) 'set_pdg_codes ',
-     &                'ERROR#3 in PDG assigment for underlying Born'
+     &                'ERROR#3 in PDG assignment for underlying Born'
                  stop 1
                endif
             elseif(k.lt.fks_i_d(iFKS)) then
@@ -2899,7 +2899,7 @@ c add the weights to the array
 
       subroutine fill_pineappl_weights(vegas_wgt)
 c Fills the FineAPPL weights of pineappl_common.inc. This subroutine assumes
-c that there is an unique PS configuration: at most one Born, one real
+c that there is a unique PS configuration: at most one Born, one real
 c and one set of counter terms. Among other things, this means that one
 c must do MC over FKS directories.
       use weight_lines
@@ -3415,7 +3415,7 @@ c include it here!
 
       
       subroutine update_shower_scale_Sevents(ifold_counter,ifold_picked)
-c When contributions from various FKS configrations are summed together
+c When contributions from various FKS configurations are summed together
 c for the S-events (see the sum_identical_contributions subroutine), we
 c need to update the shower starting scale (because it is not
 c necessarily the same for all of these summed FKS configurations and/or
@@ -3909,7 +3909,7 @@ c$$$         ifold_picked=ifold_cnt(icontr_picked)
          colour_connections(1:2,1:nexternal)=icolour_con(1:2,1:nexternal
      $        ,icontr_picked)
 c Determine if we need to write the granny (based only on the special
-c mapping in genps_fks) randomly, weighted by the seperate contributions
+c mapping in genps_fks) randomly, weighted by the separate contributions
 c that are summed together in a single S-event.
          do i=1,fks_configs
             tmp_wgt(i)=0d0
@@ -8428,7 +8428,7 @@ c granny is part of the chain
             granny_chain_fks(igranny_fks(nFKSprocess,ichan),nFKSprocess,ichan)
      &           =.true.
 c loop from the granny to the external particles. If mother was part of
-c the granny chain, so are the daugthers.
+c the granny chain, so are the daughters.
             do i=igranny_fks(nFKSprocess,ichan),-1
                if (granny_chain_fks(i,nFKSprocess,ichan)) then
                   granny_chain_fks(iforest(1,i,iconf),nFKSprocess,ichan) =

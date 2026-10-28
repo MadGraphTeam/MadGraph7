@@ -125,7 +125,7 @@ class ReweightInterface(extended_cmd.Cmd):
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
             
-        # dictionary to fortan evaluator
+        # dictionary to fortran evaluator
         self.calculator = {}
         self.calculator_nbcall = {}
         
@@ -287,7 +287,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 commandline +='add process %s pert_%s %s --no_warning=duplicate;' % (process,order.replace(' ',''), final)
             if ewsudakov:
                 # EW sudakov reweight
-                # this is a NLO-type generation, so [LOonly=QCD] must be added, toghether
+                # this is a NLO-type generation, so [LOonly=QCD] must be added, together
                 # with the proper flag for the EW sudakov.
                 # Also, --no_warning=duplicate can be removed
                 commandline = commandline.replace("--no_warning=duplicate", "[LOonly=QCD] --ewsudakov")
@@ -802,7 +802,7 @@ class ReweightInterface(extended_cmd.Cmd):
     def setup_f2py_interface(self):
         """ ensure that all f2py interface are ready/loaded/compiled
             if this function does not return None then nothing is executed after this
-            usefull for some plugin
+            useful for some plugin
         """
 
         if self.rwgt_dir and os.path.exists(pjoin(self.rwgt_dir,'rw_me','rwgt.pkl')):
@@ -885,7 +885,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 Shell_internal = None
             if not isinstance(self.mother, (extended_cmd.CmdShell, Shell_internal)): 
                 raise Exception("scan are not allowed on the Web")
-            # at least one scan parameter found. create an iterator to go trough the cards
+            # at least one scan parameter found. create an iterator to go through the cards
             main_card = check_param_card.ParamCardIterator(new_card)
             if self.options['rwgt_name']:
                 self.options['rwgt_name'] = '%s_0' % self.options['rwgt_name']
@@ -1226,7 +1226,7 @@ class ReweightInterface(extended_cmd.Cmd):
             # LO reweighting    
             w_orig = self.calculate_matrix_element(event, 0)
             # reshuffle event for mass effect # external mass only
-            # carefull that new_event can sometimes be = to event 
+            # careful that new_event can sometimes be = to event
             # (i.e. change can be in place)
             jac, new_event = self.change_kinematics(event)
         
@@ -1466,8 +1466,8 @@ class ReweightInterface(extended_cmd.Cmd):
 
         if self.output_type != 'default':
             event.nloweight.modified = True # the internal info will be changed
-                                            # so set this flage to True to change
-                                            # the writting of those data
+                                            # so set this flag to True to change
+                                            # the writing of those data
 
         #initialise the input to the function which recompute the weight
         scales2 = []
@@ -2015,7 +2015,7 @@ class ReweightInterface(extended_cmd.Cmd):
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
                 new_value, code = new_value
-                #if code points unstability -> returns 0
+                #if code points instability -> returns 0
                 hundred_value = (code % 1000) //100
                 if hundred_value in [4]:
                     new_value = 0.
@@ -2034,7 +2034,7 @@ class ReweightInterface(extended_cmd.Cmd):
         
 
     def get_crossing_tag(self,tag):
-        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
+        """find if using crossing symmetry allow to find the correct tag and return the associated tag"""
 
         # get list of possible crossing tag
         crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
@@ -2892,9 +2892,9 @@ class ReweightInterface(extended_cmd.Cmd):
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%s%sprocess_nhel' % (fprefix,prefix)):
-                    #transer nhel information from fortran to wrapper
+                    #transfer nhel information from fortran to wrapper
                     getattr(mymod, '%sget_nhel_entry' % prefix)()
-                    #transer now to python dictionary
+                    #transfer now to python dictionary
                     nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
@@ -3214,7 +3214,7 @@ class DensityInterface(ReweightInterface):
         pattern = re.compile(r"\[[^\]]*\]", re.IGNORECASE)
         return pattern.findall(input_text)
 
-    def find_observable(self, input_text): #we accepect input as "observable" or "observable_name"
+    def find_observable(self, input_text): #we accept input as "observable" or "observable_name"
         # pattern = re.compile(r"lambda p: p\.[A-Za-z0-9]+", re.IGNORECASE)
         # output = pattern.findall(input_text)
         # if output == []:
@@ -3744,7 +3744,7 @@ class DensityInterface(ReweightInterface):
         All_PDGs = []
         prefix_unique = []
             
-        #Bloc to determine which sets of pdg-codes corresponds to which prefix
+        #Block to determine which sets of pdg-codes corresponds to which prefix
         for i in range(len(PREFIX)):
             prefix_cor.append(PREFIX[i].decode('UTF-8').strip().lower())
             if prefix_cor[i] not in prefix_unique:
@@ -3794,7 +3794,7 @@ class DensityInterface(ReweightInterface):
     def calculate_weight(self, event, sud_mod=None):
         """ This method overwrites the method of the same name in the class ReweightInterface.
             For this mode, it does not do a lot.
-            Output: {'orig': w_orig} (dictionnary with the production matrix as value)
+            Output: {'orig': w_orig} (dictionary with the production matrix as value)
         """
         w_orig = self.calculate_matrix_element(event, 0)
         return {'orig': w_orig}
@@ -3831,7 +3831,7 @@ class DensityInterface(ReweightInterface):
             pboost += lhe_parser.FourMomentum(momenta[position])
 
         if abs(pboost.px/pboost.E) < 1e-10 and abs(pboost.py/pboost.E) < 1e-10 and abs(pboost.pz/pboost.E) < 1e-10:
-            #if we try to boost with with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
+            #if we try to boost with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
             return momenta
                 
         if abs(pboost.px/pboost.E) < 1e-10:

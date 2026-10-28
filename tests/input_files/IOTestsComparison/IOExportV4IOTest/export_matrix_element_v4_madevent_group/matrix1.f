@@ -47,7 +47,7 @@ C     output argument
 C     
       INTEGER IHEL, ICOL
 C     
-C     global (due to reading writting) 
+C     global (due to reading writing)
 C     
 C     Good-helicity filter is per (helicity, flavor, subprocess): a
 C      helicity
