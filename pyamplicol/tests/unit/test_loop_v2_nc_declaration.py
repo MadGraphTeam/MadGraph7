@@ -496,3 +496,68 @@ def test_lc_and_nlc_smoke_on_every_shipped_restriction(
                 for c in laurent.coefficients
             ]
             assert values and all(math.isfinite(float(c)) for c in values)
+
+
+SCHEME = """
+[loop.model]
+loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
+"""
+
+
+@pytest.mark.loop_physics
+def test_public_route_lc_on_loop_sm_needs_no_declaration(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """The public route: an LC card on loop_sm with no colour declaration
+    plans and generates g g > g g (the shipped declaration, recorded in the
+    artifact's request), and the stored process evaluates at LC."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet, Runtime
+    from pyamplicol.config import resolve_config
+
+    output = tmp_path / "gg-lc"
+    card = tmp_path / "card.toml"
+    card.write_text(
+        f"""
+action = "generate"
+[model]
+source = {json.dumps(str(loop_sm_compiled_model))}
+[process]
+entries = [{{expression="g g > g g", name="gg"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "lc"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+engine = "v2"
+[loop.preparation]
+fixed_parameters = {{MB = "0"}}
+{SCHEME}
+[generation]
+output = {json.dumps(str(output))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+    )
+    processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
+    generator = Generator(resolve_config(card))
+    plan = generator.plan(processes)
+    assert not plan.unsupported_features, plan.unsupported_features
+    assert REFUSAL in " ".join(plan.estimated_coverage["loop_admission_refusals"])
+    generator.generate(processes, output)
+    runtime = Runtime.load(output)
+    result = runtime.evaluate([POINT_GG], mu_r2="1000000")
+    assert result.color_accuracy == "lc"
