@@ -606,19 +606,42 @@ would treat a smaller one as zero and an invariant that close to a squared mass
 as on that shell. A `double` evaluation never applies these: a loop whose
 squared masses or invariants at a point fall in that window (a keV-scale
 internal mass in GeV, the electron mass in TeV) is reduced by the exact generic
-binary64 engine instead, so its integrals do not depend on the units; only the
-cost of those loops changes, in the v2 and the legacy engine alike. The exact
-engine uses Symbolica in the native code, under pyAmpliCol's package key, so a
-v2 binary64 evaluation with such a loop needs the key, which other v2 binary64
-evaluations do not (see [Symbolica and licensing](symbolica-and-licensing.md)).
+binary64 engine instead, so these comparisons no longer depend on the units;
+only the cost of those loops changes, in the v2 and the legacy engine alike.
+The exact engine uses Symbolica in the native code, under pyAmpliCol's package
+key, so a v2 binary64 evaluation with such a loop needs the key, which other v2
+binary64 evaluations do not (see
+[Symbolica and licensing](symbolica-and-licensing.md)).
 The artifact's generation filters list the masses this light at the generation
 parameters (`binary64_exact_engine`: the threshold and each squared mass; v2
 artifacts); a parameter override is checked again at evaluation. Binary64
 itself limits light loops far below the other scales: a box with three or four
 light lines can lose several digits, and one beside a massive leg can fail with
 a non-finite master integral (the point then fails rather than returning the
-massless value). Use the stability checks, and `double-double` where binary64
-fails.
+massless value). Such a loop is as accurate as binary64's master integrals at
+its arguments, and the rotation and reduction-direction checks reuse those
+masters, so they do not see that error (`u u~ > t t~` with a 1e-6 GeV top:
+2.5e-6 off with estimates of 4e-15); only the rescaled reduction check, which
+recomputes the masters (Python `StabilityChecks(reduction_direction=True,
+rescaled=True)`), does. Use that check for light loops, and `double-double`
+where binary64 fails.
+
+**Units and the beam axis in binary64.** One absolute constant of the fast
+binary64 engine remains until an upstream fix (NinjaRS): its light-like spinors
+take a momentum within 1e-9, in the model's units, of the z axis as lying on
+it, and form the others with a square root that cancels near the -z axis. In
+GeV-like units this is harmless for beams along z. With energies of order 1e6
+or more in the model's units (keV or eV units, or MeV with multi-TeV beams) the
+rounding of a beam along z exceeds that window, and a `double` virtual can be
+silently off by several per cent with the checks off (measured 3-22 % for
+`u u~ > d d~ g` and `g g > t t~` with every momentum and dimensionful
+parameter scaled from GeV by factors from 1e4 to 1e9);
+the stability checks see most such points but not all, and can flag correct
+ones. For `double`, use units in which the energies stay below about 1e6 (GeV
+for collider energies), or `double-double`. In any units, a final-state leg
+within about 1e-3 rad of the z axis can lose up to about 1e-5 of relative
+accuracy silently; use a rotation or the reduction-direction check for such
+kinematics.
 
 #### Ultraviolet and infrared poles
 
