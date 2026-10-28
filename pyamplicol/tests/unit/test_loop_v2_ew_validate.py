@@ -889,3 +889,117 @@ def test_dirac_weyl_closure_is_a_listed_refusal(loop_gmu_ufo, loop_native):
         "dirac-weyl-closure",
     )
     assert "Weyl" in message and "restrict_with_b_mass" in message
+
+
+# ------------------------------------------------------- reflection audit
+
+# A species name after every other: the mirror of a routing read as sorting
+# after it, so ``families._Recursion._close`` keeps that routing.
+_LAST = "\U0010ffff"
+
+
+def _mumu_families(loop_qcd_qed_sm_ufo, loop_native, monkeypatch, other):
+    """Every family's integral (40 digits) of e- e+ > mu- mu+ with full
+    electroweak corrections on loop_qcd_qed_sm, with the Python family
+    recursion keeping, of every N <= 2 routing and its mirror (the routing
+    read backwards from position 1, ``_Recursion._reflected``), the one that
+    sorts first (the default) or, with ``other``, the one that sorts last."""
+
+    from pyamplicol.loops.v2 import families, generator_input
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    monkeypatch.setattr(generator_input, "NATIVE_STAGES", frozenset({"schedules"}))
+    if other:
+        close, reflected = families._Recursion._close, families._Recursion._reflected
+
+        def close_other(self, cut, positions, admitted, rejected):
+            if len(positions) <= 2:
+                mirror = reflected(self, positions)
+                if mirror > (cut, positions):
+                    return  # the default's reading: its mirror is kept
+                if mirror < (cut, positions):
+                    families._Recursion._reflected = lambda s, p: (_LAST, p)
+                    try:
+                        return close(self, cut, positions, admitted, rejected)
+                    finally:
+                        families._Recursion._reflected = reflected
+            return close(self, cut, positions, admitted, rejected)
+
+        monkeypatch.setattr(families._Recursion, "_close", close_other)
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "e- e+ > m- m+",
+            {"QED": 2, "QCD": 0},
+            {"QED": 4, "QCD": 0},
+            corrections=("QED",),
+            fixed_parameters=ZERO_WIDTHS,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+    )
+    monkeypatch.undo()
+    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
+    point += [["500", "240", "320", "300"], ["500", "-240", "-320", "-300"]]
+    result = slice_.evaluate(
+        point,
+        "1000000",
+        parameters={"aS": "0.118", "MT": "173"},
+        precision=Precision.arbitrary(AP_DIGITS),
+    )
+    return slice_, result
+
+
+def _family_deviations(default, other):
+    """Per family (key, loop order, sector): the largest deviation of the
+    other reading's Laurent coefficients from the default's, relative to the
+    default's largest one."""
+
+    out = {}
+    for lane, laurent in default.families.items():
+        mine = [complex(x) for x in laurent.coefficients]
+        theirs = [complex(x) for x in other.families[lane].coefficients]
+        scale = max(abs(x) for x in mine) or 1.0
+        out[lane] = max(abs(a - b) for a, b in zip(mine, theirs, strict=True)) / scale
+    return out
+
+
+@pytest.mark.loop_nightly
+def test_one_and_two_point_loops_do_not_depend_on_their_reading(
+    loop_qcd_qed_sm_ufo, loop_native, monkeypatch
+):
+    """The N <= 2 reflection identification (EW-21, review minor 10;
+    ``families`` conventions): a one- or two-point ring and its mirror are
+    one loop diagram, so the family recursion keeps one of them (the one
+    that sorts first; weight 1/2 when the ring is its own mirror, a real
+    field's seagull). On e- e+ > mu- mu+ with full electroweak corrections
+    (the gamma-Z, Z-Z and gamma-gamma fermion bubbles of the s-channel line
+    with the Z's chiral couplings; W, Goldstone and ghost bubbles; the H,
+    G0, W+- and G+- seagulls of the Z and photon lines) every one- and
+    two-point family's integral is the same, to 1e-30 of its size at 40
+    digits, whichever reading is kept: the identification is exact (a
+    bubble's C-odd V.A part, odd under the reflection, integrates to zero,
+    epsilon^{mu nu rho sigma} p_rho p_sigma = 0, and the readings agree
+    family by family). N >= 3 rings keep both orientations (one reading
+    direction, min(B_2) < min(B_N)), so chiral loops of three or more
+    points never rely on it. About 3 min."""
+
+    _slice, default = _mumu_families(
+        loop_qcd_qed_sm_ufo, loop_native, monkeypatch, other=False
+    )
+    _slice, other = _mumu_families(
+        loop_qcd_qed_sm_ufo, loop_native, monkeypatch, other=True
+    )
+    assert set(default.families) == set(other.families)
+    rings = [lane for lane in default.families if len(lane[0]) <= 2]
+    # The s-channel bubbles: the two blocks are the initial and the final
+    # lepton pair; the seagulls attach both to one vertex.
+    assert any({mask for mask, _mass in lane[0]} == {3, 12} for lane in rings)
+    assert any(len(lane[0]) == 1 for lane in rings)
+    deviations = _family_deviations(default, other)
+    worst = max(deviations[lane] for lane in rings)
+    assert worst <= 1e-30, worst
+    print(f"{len(rings)} one- and two-point families, worst {worst:.1e}")
