@@ -484,15 +484,42 @@ def test_gate_floor_below_five_milliseconds():
     # At 5 ms and above the gate applies.
     assert gate.gate_verdict(0.005, {"openloops": 0.001})["status"] == "fail"
     assert gate.gate_verdict(0.006, {"openloops": 0.005})["status"] == "pass"
-    # The batched time decides (floor_basis): a B = 1 time above 5 ms of a
-    # configuration batched below it is not gated either, and conversely.
+    # The B = 128 time decides (floor_basis, ``floor_bases``), and conversely.
     one = gate.gate_verdict(0.009, times, floor_basis=0.003)
     assert one["status"] == gate.GATE_FLOOR_STATUS
     assert one["floor_basis_seconds"] == 0.003
     assert gate.gate_verdict(0.004, times, floor_basis=0.006)["status"] == "fail"
 
 
-def test_floor_basis_is_the_largest_batch_and_the_default_configuration():
+def test_only_b128_is_gated():
+    """The user's rule of 2026-10-28: any batch but B = 128 is reported with
+    its checks, ratios and band, the checks' own verdict as measured_status,
+    and neither the gate nor the 5 ms floor sets its status."""
+
+    times = {"madloop": 0.004, "openloops": 0.001}
+    assert gate.GATE_BATCH == 128
+    at128 = gate.gate_verdict(0.009, times, uncertainty=0.01)
+    assert at128 == gate.gate_verdict(0.009, times, uncertainty=0.01, batch=128)
+    assert at128["status"] == "fail"
+    for batch in (1, 16, 256):
+        out = gate.gate_verdict(0.009, times, uncertainty=0.01, batch=batch)
+        assert out["status"] == gate.GATE_REPORTED_STATUS
+        assert out["measured_status"] == "fail" and out["gate_batch"] == 128
+        assert {
+            k: v for k, v in out.items() if k not in ("measured_status", "gate_batch")
+        } == {
+            **at128,
+            "status": gate.GATE_REPORTED_STATUS,
+        }
+    below = gate.gate_verdict(0.003, times, floor_basis=0.003, batch=1)
+    assert below["status"] == gate.GATE_REPORTED_STATUS
+    assert below["measured_status"] == "fail" and "floor_seconds" not in below
+    assert gate.gate_verdict(0.003, {}, batch=16)["measured_status"] == (
+        "no matched provider timing"
+    )
+
+
+def test_floor_basis_is_the_b128_time():
     def config(inputs, accuracy, batches):
         return {
             "inputs": inputs,
@@ -504,14 +531,19 @@ def test_floor_basis_is_the_largest_batch_and_the_default_configuration():
 
     bases = gate.floor_bases(
         {
-            "native/full": config("native", "full", {1: 0.009, 32: 0.003, 128: 0.0027}),
+            "native/full": config(
+                "native", "full", {1: 0.009, 32: 0.003, 128: 0.0027, 256: 0.002}
+            ),
             "native/full/L1": config("native", "full", {1: 0.004}),
+            "native/lc": config("native", "lc", {16: 0.004}),
             "python/full": config("python", "full", {1: 0.1}),
         }
     )
+    # Only B = 128 decides: no other batch and no other configuration.
     assert bases == {
         "native/full": 0.0027,
-        "native/full/L1": 0.0027,
+        "native/full/L1": None,
+        "native/lc": None,
         "python/full": None,
     }
 
@@ -673,6 +705,93 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
     slow = rows["gg_ggg"]["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
     assert slow["status"] == "fail" and "measured_status" not in slow
     assert no_old_root == []
+
+
+def test_gate_document_takes_the_verdict_at_b128_only(tmp_path):
+    """``gate.build``: a B = 1 fail beside a B = 128 pass is a passing
+    configuration, a configuration without a B = 128 timing has no verdict
+    (missing, with the reason), and the 5 ms floor is the B = 128 time's."""
+
+    import json
+
+    rows = [{"born": 1.0, "finite": 0.5, "seconds": 0.004}] * 2
+    providers = {
+        "kind": "providers",
+        "process": "gg_ggg",
+        "cpu": 130,
+        "points": 2,
+        "providers": {
+            "openloops": {
+                "points": 2,
+                "mean_seconds_per_point": 0.004,
+                "median_seconds_per_point": 0.004,
+                "rows": rows,
+            }
+        },
+    }
+
+    def record(key, accuracy, batches, **extra):
+        out = _pyamplicol_record(key, [1.0], accuracy=accuracy, **extra)
+        summary = out["batches"]["128"]
+        out["batches"] = {
+            str(size): {
+                **summary,
+                "median_seconds_per_point": t,
+                "min_seconds_per_point": t,
+                "max_seconds_per_point": t,
+                "samples_seconds_per_point": [t, t, t],
+            }
+            for size, t in batches.items()
+        }
+        return out
+
+    records = [
+        providers,
+        {**providers, "process": "uux_ddxg"},
+        # Limit 1.3 x 4 ms = 5.2 ms: B = 1 fails, B = 128 passes.
+        record("gg_ggg", "full", {1: 0.009, 128: 0.005}),
+        # One lane, B = 1 only: no verdict, whatever B = 1 says.
+        record("gg_ggg", "full", {1: 0.003}, lanes=1),
+        record("gg_ggg", "full", {16: 0.003}, schedule="M"),
+        record("gg_ggg", "lc", {16: 0.001}),
+        # B = 1 above 5 ms, B = 128 below: the floor is B = 128's.
+        record("uux_ddxg", "full", {1: 0.009, 128: 0.0045}),
+        record("uux_ddxg", "full", {1: 0.003, 128: 0.006}, schedule="M"),
+    ]
+    paths = []
+    for index, data in enumerate(records):
+        path = tmp_path / f"record-{index}.json"
+        path.write_text(json.dumps(data))
+        paths.append(path)
+    document, _ = gate.build(paths, None)
+    rows = {row["key"]: row["pyamplicol"] for row in document["processes"]}
+    full = rows["gg_ggg"]["native/full"]
+    assert full["gate"] == {"batch": 128, "status": "pass"}
+    one = full["batches"]["1"]["gate"]
+    assert one["status"] == gate.GATE_REPORTED_STATUS
+    assert one["measured_status"] == "fail"
+    assert one["ratio_to_binding_limit"] == pytest.approx(0.009 / 0.0052)
+    assert full["batches"]["128"]["gate"]["status"] == "pass"
+    for name, timed in (("native/full/L1", "1"), ("native/full/M", "16")):
+        verdict = rows["gg_ggg"][name]["gate"]
+        assert verdict["status"] == gate.GATE_MISSING_STATUS
+        assert f"timed at B = {timed}" in verdict["reason"]
+        assert "B = 128 only" in verdict["reason"]
+        batch = rows["gg_ggg"][name]["batches"][timed]["gate"]
+        assert batch["status"] == gate.GATE_REPORTED_STATUS
+        assert batch["measured_status"] == "pass"
+    lc = rows["gg_ggg"]["native/lc"]
+    assert lc["gate"] == {"status": "no gate (colour approximation)"}
+    assert lc["batches"]["16"]["gate"] == lc["gate"]
+    floored = rows["uux_ddxg"]["native/full"]
+    assert floored["gate"] == {"batch": 128, "status": gate.GATE_FLOOR_STATUS}
+    assert floored["batches"]["128"]["gate"]["floor_basis_seconds"] == 0.0045
+    assert floored["batches"]["1"]["gate"]["status"] == gate.GATE_REPORTED_STATUS
+    gated = rows["uux_ddxg"]["native/full/M"]
+    assert gated["gate"] == {"batch": 128, "status": "fail"}
+    assert gated["batches"]["128"]["gate"]["status"] == "fail"
+    assert "floor_seconds" not in gated["batches"]["1"]["gate"]
+    assert gated["batches"]["1"]["gate"]["measured_status"] == "pass"
 
 
 def test_a_repeat_at_another_batch_keeps_the_earlier_checks(tmp_path):
