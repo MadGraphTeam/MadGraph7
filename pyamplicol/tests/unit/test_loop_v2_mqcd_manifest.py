@@ -471,7 +471,7 @@ def test_per_helicity_rows_take_the_helicity_average():
          "double_pole": 0.0},
         {"helicity": [-1, 1, 1], "born": 2.0, "finite": 4.0, "single_pole": -2.0,
          "double_pole": 1.0},
-        {"helicity": [1, 1, 1], "born": 0.0, "finite": 0.0, "single_pole": 0.0,
+        {"helicity": [1, 1, 1], "born": 1e-33, "finite": 0.0, "single_pole": 0.0,
          "double_pole": 0.0},
     ]  # fmt: skip
     checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
