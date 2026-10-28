@@ -335,6 +335,70 @@ def test_colour_singlet_segments_take_the_tree_engines_reading_sign(loop_gmu_ufo
     signs = builder._signs()
     fields = (["G0"], ["G+", "G-"], ["H"], ["Z"], ["A"], ["W+", "W-"], ["G"])
     assert [signs.product(names) for names in fields] == [-1, 1, 1, 1, 1, 1, 1]
+    # The open ends' orientation is the opposite of the tree engine's source
+    # orientation of the block's incoming field, on every fermion: one rule
+    # with ``models.contracts`` (and the tree engine's sign ownership).
+    from pyamplicol.generation.fermion_ordering import (
+        _fermion_rep_requires_exterior_sign,
+    )
+    from pyamplicol.loops.v2.conventions import (
+        SINGLET_END,
+        fermion_end,
+        open_end_orientation,
+    )
+
+    opposite = {"particle": "antiparticle", "antiparticle": "particle"}
+    fermions = [r for r in compiled.ir.particles if r.statistics == "fermion"]
+    assert len(fermions) >= 24
+    for record in fermions:
+        entry = {
+            "name": record.name,
+            "antiname": record.antiname,
+            "pdg_code": record.pdg_code,
+        }
+        assert open_end_orientation(entry) == opposite[record.source_orientation]
+        singlet = _fermion_rep_requires_exterior_sign(record.color, False)
+        assert (fermion_end(record.color) == SINGLET_END) is singlet
+
+
+@pytest.mark.loop_fast
+def test_field_signs_refuse_only_the_contradicted_fields():
+    """The field signs solve the closed boson vertices' reading signs over
+    GF(2) per component of fields sharing a vertex (``catalogue.
+    _FieldSigns``): a component whose reading signs no field basis gives
+    refuses the products over its fields only, so a ghost vertex of an
+    unrelated sector (the gluon's: s(G) from G G G) keeps its sign; a
+    product the equations do not fix is None."""
+
+    from pyamplicol.loops.v2.catalogue import LoopKernelCatalogueError, _FieldSigns
+
+    equations = [
+        (("G", "G", "G"), 1),
+        (("Z", "G0", "H"), 1),
+        (("H", "H", "H"), 1),
+        (("G0", "G0", "H"), 1),
+        (("Z", "Z", "H"), 1),
+        # A sector no field basis reads: s(X) s(Y) = -1, s(X) = s(Y) = 1.
+        (("X", "Y"), -1),
+        (("X", "X", "X"), 1),
+        (("Y", "Y", "Y"), 1),
+        # A squared field reading -1: no basis either.
+        (("V", "V"), -1),
+        (("V", "W", "W"), 1),
+    ]
+    signs = _FieldSigns(equations)
+    assert signs.product(["G"]) == 1
+    assert signs.product(["H"]) == 1 and signs.product(["Z", "G0"]) == 1
+    assert signs.product(["Z"]) is None and signs.product(["U"]) is None
+    assert signs.product(["X", "X"]) == 1  # no field with odd multiplicity
+    for names in (["X"], ["Y", "G"], ["V"], ["W"]):
+        with pytest.raises(LoopKernelCatalogueError, match="not those of a field"):
+            signs.product(names)
+    # Without the contradicted sectors the same products: one solve per
+    # component.
+    clean = _FieldSigns(equations[:5])
+    for names in (["G"], ["H"], ["Z", "G0"], ["Z"]):
+        assert clean.product(names) == signs.product(names)
 
 
 # A toy extension of the G_mu UFO (genericity audit 2, G2-M6): a colour-

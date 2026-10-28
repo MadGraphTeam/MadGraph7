@@ -1236,20 +1236,59 @@ _FERMION_SPIN = 2
 
 class _FieldSigns:
     """Signs s_f = +-1 of fields with prod_legs s_f = sign per equation,
-    solved over GF(2) (``_CatalogueBuilder._signs``)."""
+    solved over GF(2) (``_CatalogueBuilder._signs``).
+
+    The equations split into components of fields that share an equation;
+    each is solved on its own. A component whose equations contradict each
+    other (no field basis gives its reading signs) fixes no sign: a product
+    over one of its fields is refused, every other product is unaffected
+    (a ghost vertex's sign needs only the fields it holds)."""
 
     def __init__(self, equations: Iterable[tuple[Iterable[str], int]]):
         self._index: dict[str, int] = {}
+        # (mask, parity, support): the support holds every field of the
+        # vertex, also those its mask cancels (a field on two legs).
+        rows = []
+        for names, sign in equations:
+            names = tuple(names)
+            support = 0
+            for name in names:
+                support |= 1 << self._index.setdefault(name, len(self._index))
+            rows.append((self._mask(names), int(sign < 0), support))
+        # Union-find over the field bits: one component per connected set.
+        parent = list(range(len(self._index)))
+
+        def root(bit: int) -> int:
+            while parent[bit] != bit:
+                parent[bit] = parent[parent[bit]]
+                bit = parent[bit]
+            return bit
+
+        for _mask, _parity, support in rows:
+            bits = [bit for bit in range(support.bit_length()) if support >> bit & 1]
+            for bit in bits[1:]:
+                parent[root(bit)] = root(bits[0])
+        self._component = {bit: root(bit) for bit in range(len(self._index))}
+        self._names = {bit: name for name, bit in self._index.items()}
         # Reduced rows: pivot bit -> (mask, parity); a mask is a field set.
         self._rows: dict[int, tuple[int, int]] = {}
-        for names, sign in equations:
-            mask, parity = self._reduce(self._mask(names), int(sign < 0))
+        # Components whose equations contradict each other.
+        self._contradicted: set[int] = set()
+        for mask, parity, support in rows:
+            if not support:
+                continue
+            component = self._component[support.bit_length() - 1]
+            if component in self._contradicted:
+                continue
+            mask, parity = self._reduce(mask, parity)
             if not mask:
                 if parity:
-                    raise LoopKernelCatalogueError(
-                        "the tree reading signs of the closed boson vertices "
-                        "are not those of a field basis"
-                    )
+                    self._contradicted.add(component)
+                    self._rows = {
+                        bit: row
+                        for bit, row in self._rows.items()
+                        if self._component[bit] != component
+                    }
                 continue
             pivot = mask.bit_length() - 1
             for bit, (other, other_parity) in list(self._rows.items()):
@@ -1271,9 +1310,25 @@ class _FieldSigns:
         return mask, parity
 
     def product(self, names: Iterable[str]) -> int | None:
-        """prod s_f over ``names``, None when the equations do not fix it."""
+        """prod s_f over ``names``, None when the equations do not fix it.
 
-        mask, parity = self._reduce(self._mask(names), 0)
+        Refused (``LoopKernelCatalogueError``) when one of the fields (with
+        odd multiplicity) lies in a component whose equations contradict
+        each other."""
+
+        known = len(self._component)
+        mask = self._mask(names)
+        touched = sorted(
+            self._names[bit]
+            for bit in range(min(mask.bit_length(), known))
+            if mask >> bit & 1 and self._component[bit] in self._contradicted
+        )
+        if touched:
+            raise LoopKernelCatalogueError(
+                "the tree reading signs of the closed boson vertices with the "
+                f"fields {touched} are not those of a field basis"
+            )
+        mask, parity = self._reduce(mask, 0)
         return None if mask else (-1 if parity else 1)
 
 

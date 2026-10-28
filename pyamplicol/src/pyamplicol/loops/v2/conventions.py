@@ -437,21 +437,27 @@ SINGLET_END = 1
 def fermion_end(representation: int, what: str = "a fermion") -> int:
     """The fermion end of a fermion of colour representation
     ``representation``, the one classifier of ``LeafWeights`` and
-    ``ct_sites.SiteClosure`` (external ends, blocks): ``SINGLET_END`` for a
-    colour singlet, the representation (3 or -3) for a (anti)triplet. Other
-    representations (sextets, octets) have no sign rule here, as in the tree
-    engine (``fermion_ordering._fermion_rep_requires_exterior_sign``), and
-    are refused (``FermionSignError`` naming ``what``)."""
+    ``ct_sites.SiteClosure`` (external ends, blocks): the tree engine's
+    sign ownership (``fermion_ordering._fermion_rep_requires_exterior_sign``,
+    the classifier the DAG admission and ``refusals`` use): ``SINGLET_END``
+    for a fermion the Wick order signs (a colour singlet), its
+    representation (3 or -3) for one the colour flow signs (a (anti)triplet).
+    A representation the tree engine refuses (sextets, octets) has no sign
+    rule and is refused (``FermionSignError`` naming ``what``)."""
+
+    from pyamplicol.generation.fermion_ordering import (
+        _fermion_rep_requires_exterior_sign,
+    )
 
     representation = int(representation)
-    if representation == 1:
-        return SINGLET_END
-    if abs(representation) == 3:
-        return representation
-    raise FermionSignError(
-        f"{what}: a fermion of colour representation {representation} has no "
-        "sign rule (colour singlets and (anti)triplets only)"
-    )
+    try:
+        singlet = _fermion_rep_requires_exterior_sign(representation, False)
+    except ValueError as error:
+        raise FermionSignError(
+            f"{what}: a fermion of colour representation {representation} has no "
+            f"sign rule ({error})"
+        ) from None
+    return SINGLET_END if singlet else representation
 
 
 def fermion_ends(fermions: Iterable[tuple[int, int]]) -> dict[int, int]:
@@ -468,12 +474,22 @@ def open_end_orientation(field: Mapping[str, Any]) -> str:
     """Source orientation of the external end of the open fermion line of a
     block whose incoming field is the native particle entry ``field``: the
     block of incoming field f holds the external end of anti(f) (an incoming
-    e- enters as the field e- and is the outgoing source e+)."""
+    e- enters as the field e- and is the outgoing source e+), so its
+    orientation is the opposite of f's. f's is the tree engine's
+    ``CompiledParticleRecord.source_orientation`` (``models.contracts``:
+    self-conjugate, else particle or antiparticle by the sign of the PDG
+    code), read from the same fields of the native entry
+    (``test_loop_v2_ew_leptons``: equal on every fermion of the G_mu UFO)."""
 
     if field["name"] == field["antiname"]:
         raise FermionSignError(
             f"self-conjugate fermion {field['name']}: Majorana lines have no "
             "source orientation (the tree engine refuses them too)"
+        )
+    if int(field["pdg_code"]) == 0:
+        raise FermionSignError(
+            f"fermion {field['name']}: a non-self-conjugate particle cannot use "
+            "PDG code zero (the tree engine refuses it too)"
         )
     return ANTIPARTICLE if int(field["pdg_code"]) > 0 else PARTICLE
 
