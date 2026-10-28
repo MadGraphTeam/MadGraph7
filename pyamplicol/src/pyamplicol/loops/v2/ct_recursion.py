@@ -97,7 +97,7 @@ recursion's partials equal the sites of the lowered rules
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Container, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import reduce
@@ -974,6 +974,22 @@ def _exact_number(value: Any) -> Fraction | None:
         return Fraction(text)
     except (ValueError, ZeroDivisionError):
         return None
+
+
+class _Every:
+    """Every index (``_RealArguments.cut_parameters`` of an unknown body)."""
+
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
+_EVERY = _Every()
+
+
+def _symbol_names(value: Any) -> frozenset[str]:
+    """The canonical names of the symbols of ``value``."""
+
+    return frozenset(symbol.to_canonical_string() for symbol in value.get_all_symbols())
 
 
 def _has_parameters(value: Any) -> bool:
@@ -1997,9 +2013,11 @@ class _RealArguments:
     * any other argument of the five helpers above is normalised at runtime
       as MadLoop does: ``if(imaginary_part(z) == 0, real_part(z), z)``.
 
-    With ``signed`` only the arguments that are manifestly real and not
-    manifestly non-negative (``is_nonnegative``) are projected, and nothing
-    is normalised at runtime: the form of the native lane's counterterm and
+    With ``signed`` only branch-cut arguments that are manifestly real and
+    not manifestly non-negative (``is_nonnegative``) are projected (those of
+    a logarithm, a square root, a fractional power, and of the parameters a
+    helper's body reads through one, ``cut_parameters``), and nothing is
+    normalised at runtime: the form of the native lane's counterterm and
     field couplings (``native_trees._parameter_program``), whose other
     arguments are off the negative real axis or not exactly real.
     """
@@ -2009,6 +2027,12 @@ class _RealArguments:
 
         self.signed = signed
         self._nonnegative: dict[Any, bool] = {}
+        # helper head name -> (parameters, body), for ``cut_parameters``.
+        self._bodies = {
+            head.get_name(): body
+            for head, body in getattr(library, "_bodies", {}).items()
+        }
+        self._cuts: dict[str, Container[int]] = {}
         self.reals = frozenset(reals) | {Expression.PI, Expression.E}
         self.real_part = library.predicates["real_part"]
         self.imaginary_part = library.predicates["imaginary_part"]
@@ -2072,15 +2096,66 @@ class _RealArguments:
         elif kind == AtomType.Pow:
             base, exponent = list(atom)
             number = _exact_number(exponent)
-            found = number is not None and (
-                (number.denominator == 1 and number.numerator % 2 == 0)
-                and self.is_real(base)
-                or self.is_nonnegative(base)
-            )
+            even = number is not None and number == number.numerator
+            even = even and number.numerator % 2 == 0 and self.is_real(base)
+            found = even or (number is not None and self.is_nonnegative(base))
         else:
             found = False
         self._nonnegative[atom] = found
         return found
+
+    def cut_parameters(self, name: str) -> Container[int]:
+        """The indices of the parameters of the helper ``name`` that its body
+        reads through a branch cut: in the argument of a logarithm, a square
+        root or a fractional power, or of such a parameter of a helper it
+        calls; every parameter of a helper without a known body."""
+
+        found = self._cuts.get(name)
+        if found is not None:
+            return found
+        known = self._bodies.get(name)
+        if known is None:
+            found = _EVERY
+        else:
+            self._cuts[name] = frozenset()  # a recursive helper reads none
+            parameters, body = known
+            arguments = self._cut_arguments(body)
+            found = frozenset(
+                index
+                for index, parameter in enumerate(parameters)
+                if any(
+                    parameter.to_canonical_string() in _symbol_names(argument)
+                    for argument in arguments
+                )
+            )
+        self._cuts[name] = found
+        return found
+
+    def _cut_arguments(self, atom: Any) -> list[Any]:
+        """The arguments ``atom`` reads through a branch cut (``cut_parameters``)."""
+
+        from symbolica import AtomType
+
+        kind = atom.get_type()
+        if kind in (AtomType.Num, AtomType.Var):
+            return []
+        children = list(atom)
+        out = [
+            argument for child in children for argument in self._cut_arguments(child)
+        ]
+        if kind == AtomType.Pow:
+            base, exponent = children
+            number = _exact_number(exponent)
+            if number is None or number.denominator != 1:
+                out.append(base)
+        elif kind == AtomType.Fn:
+            name = atom.get_name()
+            if name in ("symbolica::log", "symbolica::sqrt"):
+                out.extend(children)
+            elif name.startswith("pyamplicol_scalar_model_"):
+                cuts = self.cut_parameters(name)
+                out.extend(c for i, c in enumerate(children) if i in cuts)
+        return out
 
     def __call__(self, atom: Any) -> Any:
         from symbolica import AtomType
@@ -2111,7 +2186,17 @@ class _RealArguments:
                 "symbolica::sqrt",
             ):
                 normalised = name in self.normalised
-                children = [self._argument(child, normalised) for child in children]
+                cuts = (
+                    self.cut_parameters(name)
+                    if self.signed and name.startswith("pyamplicol_scalar_model_")
+                    else None
+                )
+                children = [
+                    self._argument(child, normalised)
+                    if cuts is None or index in cuts
+                    else child
+                    for index, child in enumerate(children)
+                ]
             found = symbols.qualified(name)(*children)
         self._done[atom] = found
         return found

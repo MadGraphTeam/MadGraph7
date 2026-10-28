@@ -1851,7 +1851,8 @@ def test_electroweak_ladder_reaches_its_blocker(
 ):
     """Each rung stops at its named blocker, never in the CT lowering
     (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates,
-    exports its native point inputs (EWI-N) and is a plain test. Its ``poles="uv"`` check is the pole split's identity
+    exports its native point inputs (EWI-N) and is a plain test. Its
+    ``poles="uv"`` check is the pole split's identity
     (``poles.split_sector`` takes the field factors' UV part as the
     remainder, so bare + uv = 0 always): the uv mode exercised, never
     evidence of UV renormalisation (coordinator DECISIONS 2026-10-28 ~05:20

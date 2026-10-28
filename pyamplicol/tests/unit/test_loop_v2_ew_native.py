@@ -72,7 +72,11 @@ def _plane_values(application: bytes, inputs: int, outputs: int, rows):
 
     rows = np.ascontiguousarray(rows, dtype=np.complex128)
     flat = _rusticol._evaluate_symjit_plane_application_v2(
-        bytes(application), inputs, outputs, rows.view(np.float64).ravel().tolist(), len(rows)
+        bytes(application),
+        inputs,
+        outputs,
+        rows.view(np.float64).ravel().tolist(),
+        len(rows),
     )
     return np.asarray(flat, dtype=np.float64).view(np.complex128).reshape(len(rows), -1)
 
@@ -93,7 +97,9 @@ def test_plane_check_certifies_the_translation_in_any_input_order(loop_native):
 
     from symbolica import Evaluator
 
-    swapped = [t.replace("x", "#").replace("y", "x").replace("#", "y") for t in W_COUPLING]
+    swapped = [
+        t.replace("x", "#").replace("y", "x").replace("#", "y") for t in W_COUPLING
+    ]
     for texts, point in ((W_COUPLING, PHYSICAL), (swapped, PHYSICAL[::-1])):
         state = _state(texts)
         plane, inputs, outputs = loop_native.compile_v2_plane(
@@ -107,7 +113,7 @@ def test_plane_check_certifies_the_translation_in_any_input_order(loop_native):
         assert np.all(got.imag == 0) and np.all(np.isfinite(got))
     # The former probes as the real point: a correct translation refused on
     # the cut (the imaginary part's sign: SymJIT's -0 against Symbolica's +0).
-    message, output, row, imaginary, real_axis = _refusal(
+    message, _output, row, imaginary, real_axis = _refusal(
         loop_native, _state(W_COUPLING), [list(FORMER_PROBES)]
     )
     assert (row, imaginary, real_axis) == (0, True, True), message
@@ -131,8 +137,10 @@ def test_plane_check_refuses_a_real_point_on_a_cut_where_the_sides_differ(
         loop_native, state, [[-2.0, 1.0], [2.0, 1.0]]
     )
     assert (output, row, imaginary, real_axis) == (1, 1, True, True), message
-    assert "(imaginary part, real-axis probe row 1: -1.4142135623730951e0 against " \
-        "1.4142135623730951e0)" in message, message
+    assert (
+        "(imaginary part, real-axis probe row 1: -1.4142135623730951e0 against "
+        "1.4142135623730951e0)" in message
+    ), message
     assert loop_native.compile_v2_plane(state, 2, False, [[-2.0, 1.0]])
     with pytest.raises(native_trees.NativeExportUnsupported) as refused:
         native_trees._plane_applications((state,), None, {0: [[2.0, 1.0]]})
@@ -161,9 +169,7 @@ def test_plane_check_needs_a_real_point_for_branch_cuts_of_its_inputs(
         (["log(x)", "x"], 0),
         (["x", "y", "x^(1/3)"], 2),
     ):
-        message, found, row, imaginary, real_axis = _refusal(
-            loop_native, _state(texts)
-        )
+        message, found, row, imaginary, real_axis = _refusal(loop_native, _state(texts))
         assert (found, row, imaginary) == (output, None, None), message
         assert real_axis, message
         assert f"output {output} reads a branch-cut or discontinuous function" in (
@@ -194,7 +200,10 @@ def test_the_parameter_programs_real_point_is_the_requests_values():
     from pyamplicol.loops.v2.native_trees import _request_points
 
     slice_ = SimpleNamespace(fixed_parameters={"WZ": "0", "MB": "0"})
-    record = {"names": ["MZ", "WZ", "MB", "MU_R"], "defaults": ["22797/250", "2.4952", "4.7", "91.188"]}
+    record = {
+        "names": ["MZ", "WZ", "MB", "MU_R"],
+        "defaults": ["22797/250", "2.4952", "4.7", "91.188"],
+    }
     assert _request_points(slice_, record) == [(91.188, 0.0, 0.0, 91.188)]
 
 
@@ -225,24 +234,32 @@ def test_counterterm_couplings_take_madloops_side_of_real_cuts(loop_native):
         for name in ("equal", "real_part", "imaginary_part")
     }
     library = SimpleNamespace(
-        predicates=predicates, choose=symbols.qualified("symbolica::if"), zero=E("0"),
+        predicates=predicates,
+        choose=symbols.qualified("symbolica::if"),
+        zero=E("0"),
         helpers={},
     )
-    mw, mz, mu, z = S("ewn_mw", "ewn_mz", "ewn_mu", "ewn_z")
+    mw, mz, mu = S("ewn_mw", "ewn_mz", "ewn_mu")
     side = _RealArguments({mw, mz, mu}, library, signed=True)
     cut = (mz**4 * (1 - 4 * mw**2 / mz**2)) ** E("1/2")
     projected = side(cut)
     assert projected == predicates["real_part"](mz**4 * (1 - 4 * mw**2 / mz**2)) ** E(
         "1/2"
     )
-    for kept in (E("log(ewn_mu^2/ewn_mz^2)"), E("sqrt(ewn_mw)"), E("sqrt(ewn_z - ewn_mw)")):
+    for kept in (
+        E("log(ewn_mu^2/ewn_mz^2)"),
+        E("sqrt(ewn_mw)"),
+        E("sqrt(ewn_z - ewn_mw)"),
+    ):
         kept = kept.replace(E("ewn_mu"), mu)
         assert side(kept) == kept
     point = [[80.419, 91.188]]
 
     def state(expression) -> bytes:
         return bytes(
-            Expression.evaluator_multiple([expression], [mw, mz], jit_compile=False).save()
+            Expression.evaluator_multiple(
+                [expression], [mw, mz], jit_compile=False
+            ).save()
         )
 
     with pytest.raises(loop_native.PlaneMismatchError, match="real-axis probe row 0"):
@@ -305,7 +322,9 @@ def ew_slices(loop_gmu_ufo, loop_qcd_qed_sm_ufo, loop_native, loop_reference):
             )
             point, scale = massless, "1000000"
         else:
-            compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+            compiled = compile_model_source(
+                loop_qcd_qed_sm_ufo, require_supported=False
+            )
             request = SliceRequest(
                 "u u~ > d d~",
                 {"QCD": 2, "QED": 0},
@@ -440,4 +459,3 @@ def test_electroweak_artifact_stores_native_inputs_and_relocates_bitwise(
     assert scan["clean"], scan["findings"]
     assert set(scan["member_kinds"]) == {"1", "2", "11"}, scan["member_kinds"]
     assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
-

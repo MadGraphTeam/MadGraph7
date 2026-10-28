@@ -1476,9 +1476,7 @@ def _parameter_program(
                 )
                 if kind == "real"
             }
-            found = sides[p] = _RealArguments(
-                reals, plan.program.library, signed=True
-            )
+            found = sides[p] = _RealArguments(reals, plan.program.library, signed=True)
         return found(value)
 
     def column_value(
