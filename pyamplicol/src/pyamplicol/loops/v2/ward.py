@@ -249,6 +249,16 @@ def born_ratio(result: Any, physical: Any) -> float:
     return abs(ward) / abs(born)
 
 
+def _ratio(value: float, scale: float) -> float:
+    """``value / scale``; a vanishing scale (a coefficient no physical
+    component has, e.g. the double pole of the "uv" selection) admits only a
+    vanishing value (0, else infinity)."""
+
+    if scale:
+        return value / scale
+    return 0.0 if value == 0 else float("inf")
+
+
 def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     """The criterion of one Ward evaluation (module docstring): ``physical``
     and ``result`` are the ``PointResult`` of the same point without and with
@@ -262,7 +272,7 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     scale = ward_scales(physical)
     width = len(scale)
     parts = {
-        name: [v / s for v, s in zip(largest(result, name), scale, strict=True)]
+        name: [_ratio(v, s) for v, s in zip(largest(result, name), scale, strict=True)]
         for name in PARTS
     }
     born = born_ratio(result, physical)
@@ -297,14 +307,12 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
             for sector in virtual
         }
         row["estimate"] = [
-            max(absolute[sector][k] for sector in virtual) / scale[k]
+            _ratio(max(absolute[sector][k] for sector in virtual), scale[k])
             for k in range(width)
         ]
         row["estimate_over"] = [
             max(
-                abs(complex(laurent.coefficients[k])) / absolute[sector][k]
-                if absolute[sector][k]
-                else (0.0 if laurent.coefficients[k] == 0 else float("inf"))
+                _ratio(abs(complex(laurent.coefficients[k])), absolute[sector][k])
                 for sector, laurent in virtual.items()
             )
             for k in range(width)
