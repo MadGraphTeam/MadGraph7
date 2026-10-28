@@ -38,7 +38,43 @@ cc -std=c11 examples/client.c -Iinclude /path/to/librusticol_capi.a \
 ```
 
 Those system libraries describe this tested host; use the installed SDK link
-metadata on another platform. The Rust clients use the single-file wrapper, so
+metadata on another platform.
+
+## glibc floor (Linux)
+
+The shared library `librusticol_loop_sdk.so` of a release native build
+(`tools/developer/build_loop_native.py`) needs **glibc 2.42 or newer**: it may
+require `GLIBC_ABI_GNU2_TLS` (TLS descriptors), which glibc 2.42 introduced
+(the same holds for the Python extension `_rusticol.so`). `readelf -V
+librusticol_loop_sdk.so` lists the requirements of a given build. A client linked
+against it on an older glibc links without complaint and is stopped by the
+dynamic loader before `main`:
+
+```text
+./client: .../libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so)
+```
+
+That message means this floor: build and run the client on a system with
+glibc >= 2.42 (`ldd --version`), or link the static archive instead. A program
+linking `librusticol_loop_sdk.a` (or the wheel's `librusticol_capi.a`) does not
+carry the floor; it is checked against the glibc of the host that links it,
+at link time (a C client linked on glibc 2.40 runs there). C and C++ clients of
+the shared library can stop at compile time instead: define
+`RUSTICOL_VIRTUAL_SHARED`, and `rusticol_virtual.h` refuses a toolchain whose
+glibc is older than `RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.MINOR` with an
+`#error` that names the floor:
+
+```sh
+cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
+  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -o client
+```
+
+Fortran has no such hook (the module is not preprocessed): rely on the loader
+message above. From Python, `import pyamplicol._rusticol` checks the running
+glibc against the library's own requirements first and raises
+`pyamplicol.NativePlatformError` (required and found versions, remedy); code that
+opens the shared library with `ctypes` can call
+`pyamplicol._native_loader.check_native_library(path)` before it. The Rust clients use the single-file wrapper, so
 their Cargo example targets link the same combined archive:
 
 ```sh

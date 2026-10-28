@@ -319,3 +319,49 @@ def test_doctor_reports_the_platform_error(monkeypatch) -> None:
     check = diagnostics._native_check(required=True)
     assert (check.status, check.name) == ("fail", "rusticol-python")
     assert "requires glibc >= 2.42" in check.detail
+
+
+HEADER = ROOT / "rust" / "loop-reduction" / "sdk" / "include" / "rusticol_virtual.h"
+
+
+def test_the_sdk_header_states_the_documented_floor() -> None:
+    floor = {}
+    for line in HEADER.read_text().splitlines():
+        for part in ("MAJOR", "MINOR"):
+            prefix = f"#define RUSTICOL_VIRTUAL_GLIBC_FLOOR_{part} "
+            if line.startswith(prefix):
+                floor[part] = int(line[len(prefix) :])
+    assert (floor["MAJOR"], floor["MINOR"]) == DOCUMENTED_FLOOR
+
+
+def test_the_sdk_header_stops_an_older_glibc_toolchain_at_compile_time(
+    tmp_path,
+) -> None:
+    """``-DRUSTICOL_VIRTUAL_SHARED``: an older glibc (faked) is an #error."""
+
+    compiler = os.environ.get("CC") or shutil.which("cc")
+    if compiler is None:
+        pytest.fail("no cc on PATH for the SDK header check; set CC")
+    client = tmp_path / "client.c"
+    client.write_text('#include "rusticol_virtual.h"\n')
+    older = tmp_path / "older_glibc.h"
+    older.write_text(
+        "#include <features.h>\n#undef __GLIBC_MINOR__\n"
+        f"#define __GLIBC_MINOR__ {DOCUMENTED_FLOOR[1] - 1}\n"
+    )
+
+    command = (compiler, "-std=c11", "-fsyntax-only", f"-I{HEADER.parent}")
+
+    def compile_client(*flags: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [*command, *flags, str(client)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert compile_client("-DRUSTICOL_VIRTUAL_SHARED").returncode == 0
+    assert compile_client("-include", str(older)).returncode == 0  # opt-in only
+    refused = compile_client("-DRUSTICOL_VIRTUAL_SHARED", "-include", str(older))
+    assert refused.returncode != 0
+    assert "librusticol_loop_sdk.so needs glibc >= 2.42" in refused.stderr

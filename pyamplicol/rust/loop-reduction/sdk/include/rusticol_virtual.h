@@ -1,6 +1,29 @@
 /* SPDX-License-Identifier: 0BSD */
 #ifndef RUSTICOL_VIRTUAL_H
 #define RUSTICOL_VIRTUAL_H
+/* Linux glibc floor of the shared library (README, "glibc floor").
+ * librusticol_loop_sdk.so of a release native build needs at most glibc
+ * RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR (2.42:
+ * GLIBC_ABI_GNU2_TLS, TLS descriptors); `readelf -V` lists a build's own
+ * requirements. On an older glibc the dynamic loader stops the client before
+ * main with "libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found (required by
+ * .../librusticol_loop_sdk.so)". Static archives do not carry this floor: a
+ * program linking librusticol_loop_sdk.a is checked against the glibc of the
+ * host that links it, at link time. Define RUSTICOL_VIRTUAL_SHARED when
+ * compiling a client of the shared library to stop at compile time instead,
+ * on a toolchain whose glibc is older than the floor. */
+#define RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR 2
+#define RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR 42
+#if defined(RUSTICOL_VIRTUAL_SHARED) && defined(__linux__)
+#include <features.h>
+#if !defined(__GLIBC__)
+#error "librusticol_loop_sdk.so needs glibc >= 2.42 but this toolchain's C library is not glibc; link librusticol_loop_sdk.a instead"
+#elif __GLIBC__ < RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR || \
+    (__GLIBC__ == RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR && \
+     __GLIBC_MINOR__ < RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR)
+#error "librusticol_loop_sdk.so needs glibc >= 2.42 (GLIBC_ABI_GNU2_TLS) but this toolchain's glibc is older; build and run with glibc >= 2.42, or link librusticol_loop_sdk.a instead"
+#endif
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus

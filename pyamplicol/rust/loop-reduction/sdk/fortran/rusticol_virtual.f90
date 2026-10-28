@@ -1,4 +1,10 @@
 ! SPDX-License-Identifier: 0BSD
+! Linux glibc floor (SDK README, "glibc floor"): a client linked against the
+! shared librusticol_loop_sdk.so of a release native build needs glibc >= 2.42
+! (GLIBC_ABI_GNU2_TLS). On an older glibc the dynamic loader stops it before
+! the program starts with "libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found
+! (required by .../librusticol_loop_sdk.so)"; build and run with gfortran on
+! glibc >= 2.42, or link the static librusticol_loop_sdk.a instead.
 module rusticol_virtual
   use, intrinsic :: iso_c_binding
   use, intrinsic :: iso_fortran_env, only: error_unit
