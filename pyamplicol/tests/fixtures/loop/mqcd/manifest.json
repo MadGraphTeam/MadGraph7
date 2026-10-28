@@ -174,9 +174,16 @@
  ],
  "smokes": {
   "same_request": {
-   "no_masses": "A12",
-   "no_tau_mass": "A12",
-   "no_widths": "B08"
+   "no_masses": {
+    "row": "A12"
+   },
+   "no_tau_mass": {
+    "row": "A12"
+   },
+   "no_widths": {
+    "row": "B08",
+    "points_from": "B01"
+   }
   },
   "lc_every_restriction": "MQ-NC"
  },

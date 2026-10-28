@@ -38,3 +38,17 @@ def test_row_meets_the_acceptance_rules(campaign, name):
     mqcd.write_result(report)
     assert report.checks, name
     assert report.passed, report.describe()
+
+
+SMOKES = mqcd.load_manifest()["smokes"]["same_request"]
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("restriction", sorted(SMOKES))
+def test_restriction_smoke_equals_its_base_row(campaign, restriction):
+    """no_masses, no_tau_mass and no_widths: the same request as its base row
+    (on that row's restriction) within 1e-14 (PLAN §3.2 item 5)."""
+
+    checks = mqcd.smoke(campaign, restriction, SMOKES[restriction])
+    failures = [c for c in checks if not c.passed]
+    assert not failures, failures

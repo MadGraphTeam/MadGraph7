@@ -148,8 +148,10 @@ def test_features_cover_the_plan(manifest, rows):
     restrictions = {row.restriction for row in rows.values()}
     smokes = set(manifest["smokes"]["same_request"])
     assert restrictions | smokes >= RESTRICTIONS
-    for restriction, base in manifest["smokes"]["same_request"].items():
-        assert base in rows, restriction
+    for restriction, spec in manifest["smokes"]["same_request"].items():
+        assert spec["row"] in rows, restriction
+        source = rows[spec.get("points_from", spec["row"])]
+        assert source.active and source.process == rows[spec["row"]].process
 
 
 def test_active_references_agree_with_their_rows(manifest, rows):
