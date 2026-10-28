@@ -3385,7 +3385,7 @@ gather_vector:
       type: [int]
       desc: "row index to select"
     - name: choices
-      type: [float, single, n, m]
+      type: [float, n, m]
       desc: "matrix of choices"
   outputs:
     - name: output
