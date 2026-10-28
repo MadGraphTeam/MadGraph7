@@ -69,8 +69,9 @@ int rusticol_virtual_open_with_policy(const char *path, const char *process,
 int rusticol_virtual_free(rusticol_virtual_handle *handle); /* NULL is accepted */
 int rusticol_virtual_clear(rusticol_virtual_handle *handle);
 /* Plan v4: the whole mapping is validated first, as the Python API's
- * set_model_parameters; a value that is not a finite decimal, an unknown
- * name, the renormalisation scale's parameter (set per point by mu_r2) or a
+ * set_model_parameters; an empty name, a value that is not a finite decimal
+ * (ASCII text, as Python's Decimal reads it), an unknown name, the
+ * renormalisation scale's parameter (set per point by mu_r2) or a
  * parameter fixed at generation at another value returns
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT, a nonzero imaginary part
  * RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python CompatibilityError), and changes
