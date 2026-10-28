@@ -36,13 +36,15 @@ owns). Checks:
   FeynKit's diagrams with their overall factors), the poles of
   e- e+ > mu- mu+ on loop_qcd_qed_sm against the QED Catani operator (full
   EW; photon-only corrections are refused, ``refusals``
-  "veto-unlabelled-counterterms": the model's counterterm labels cannot
-  express the veto, and without the guard the single pole misses Catani's,
-  a strict xfail), the legacy engine's FFS projector exchange checked
+  "veto-unlabelled-counterterms", through the slice, the public API, the
+  CLI and the dry run: the model's counterterm labels cannot express the
+  veto, and without the guard the single pole misses Catani's, a strict
+  xfail), the legacy engine's FFS projector exchange checked
   against MadLoop before the legacy engine serves as the second engine, the
   native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N), and
   e- e+ > t t~ h against Recola (``required/emep_ttxh_ew``; MadLoop
-  excluded, it omits the G0 t t~ R2 of the b loops; it needs the counterterm
+  excluded, it omits the G0 t t~ R2 of the b loops, and with that coupling
+  zeroed in the UFO the virtual equals MadLoop's; it needs the counterterm
   roots' reading of Z G0 H, genericity audit 2 G2-M7);
 * the tree engine's reading sign of colour-singlet loop segments
   (``catalogue._CatalogueBuilder.reading_sign``): the tree engine reads
