@@ -316,17 +316,19 @@ impl Interference {
 
     /// The complex sums `sum_rows c <A0(bra)|M|ket>` of one point per output
     /// (an observable column's interferences, `loops/v2/native_observables`):
-    /// `born` holds `rows x born components`, `ket` `rows x ket components`,
-    /// `couplings` the point's coupling slots. `keep_rows` restricts the
-    /// rows (helicity-resolved columns, a spin source's fixed row) and
-    /// `keep_bra` the bra's basis elements (leading-colour resolved
-    /// columns; the ket is never masked). Without `poles`, outputs of a
+    /// `born` holds `rows x born components` (the bra; `born_ket`, when
+    /// given, the external-field insertions' Born ket, else `born`), `ket`
+    /// `rows x ket components`, `couplings` the point's coupling slots.
+    /// `keep_rows` restricts the rows (helicity-resolved columns, a spin
+    /// source's fixed row) and `keep_bra` the bra's basis elements
+    /// (leading-colour resolved columns; the ket is never masked). Without `poles`, outputs of a
     /// nonzero epsilon power stay zero. Not divided by the average.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_complex<T: Carrier>(
         &self,
         runtime: &InterferenceRuntime<T>,
         born: &[Complex<T>],
+        born_ket: Option<&[Complex<T>]>,
         born_width: usize,
         ket: &[Complex<T>],
         ket_width: usize,
@@ -346,6 +348,7 @@ impl Interference {
             .filter(|(_, keep)| **keep)
             .map(|(row, _)| {
                 let a = &born[row * born_width..][..born_width];
+                let b = born_ket.map_or(a, |born| &born[row * born_width..][..born_width]);
                 let k = &ket[row * ket_width..][..ket_width];
                 let mut out = vec![czero.clone(); self.outputs.len()];
                 let mut cache: BTreeMap<(usize, usize, usize), Vec<Complex<T>>> = BTreeMap::new();
@@ -355,7 +358,7 @@ impl Interference {
                     }
                     let (kets, values) = match entry.ket {
                         Ket::Vector(v) => (&self.vectors[v], k),
-                        Ket::Born(o) => (&self.bra[o], a),
+                        Ket::Born(o) => (&self.bra[o], b),
                     };
                     let mut value = czero.clone();
                     for (g, ((_p, bras), classes)) in
@@ -408,15 +411,18 @@ impl Interference {
         &self.cells
     }
 
-    /// The outputs of one point: `born` holds `rows x born components`,
-    /// `ket` `rows x ket components`, `couplings` the point's coupling
-    /// slots. Without `poles`, outputs of a nonzero epsilon power stay zero.
+    /// The outputs of one point: `born` holds `rows x born components` (the
+    /// bra; `born_ket`, when given, the external-field insertions' Born ket,
+    /// else `born`: the loop-side Born of `trees::TreeProgram::
+    /// inputs_loop_side`), `ket` `rows x ket components`, `couplings` the
+    /// point's coupling slots. Without `poles`, outputs of a nonzero epsilon power stay zero.
     /// Not divided by the average.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate<T: Carrier>(
         &self,
         runtime: &InterferenceRuntime<T>,
         born: &[Complex<T>],
+        born_ket: Option<&[Complex<T>]>,
         born_width: usize,
         ket: &[Complex<T>],
         ket_width: usize,
@@ -433,6 +439,7 @@ impl Interference {
             .into_par_iter()
             .map(|row| {
                 let a = &born[row * born_width..][..born_width];
+                let b = born_ket.map_or(a, |born| &born[row * born_width..][..born_width]);
                 let k = &ket[row * ket_width..][..ket_width];
                 let mut out = vec![zero.clone(); self.outputs.len()];
                 // z per (bra order, bra group, class).
@@ -443,7 +450,7 @@ impl Interference {
                     }
                     let (kets, values) = match entry.ket {
                         Ket::Vector(v) => (&self.vectors[v], k),
-                        Ket::Born(o) => (&self.bra[o], a),
+                        Ket::Born(o) => (&self.bra[o], b),
                     };
                     let mut value = czero.clone();
                     for (g, ((_p, bras), classes)) in
@@ -554,6 +561,70 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_field_entry_reads_the_loop_side_born_ket() {
+        // A Born-ket (external-field) entry over the Hermitian Born metric
+        // M = [[1, 1 + i], [1 - i, 2]]: the bra is the physical Born, the
+        // ket the loop side's when given (`trees::TreeProgram::
+        // inputs_loop_side`), else the bra itself.
+        let cells = MetricCells::List(vec![
+            (0, 0, 0, [r(1), r(0)]),
+            (0, 1, 0, [r(1), r(1)]),
+            (1, 0, 0, [r(1), r(-1)]),
+            (1, 1, 0, [r(2), r(0)]),
+        ]);
+        let program = Interference::new(
+            2,
+            1,
+            2,
+            cells,
+            &[(0, 0, 0), (1, 0, 0)],
+            &[],
+            0,
+            vec![Entry {
+                bra: 0,
+                ket: Ket::Born(0),
+                coupling: None,
+                grade: 0,
+                output: 0,
+                degree: None,
+            }],
+            vec![0],
+            0,
+            None,
+        )
+        .unwrap();
+        let runtime = program.runtime(&0.0_f64);
+        let c = Complex::new;
+        let bra = [c(1.0, 2.0), c(-1.0, 1.0)];
+        let ket = [c(3.0, -1.0), c(2.0, 2.0)];
+        let real = |born_ket: Option<&[Complex<f64>]>| {
+            program.evaluate(&runtime, &bra, born_ket, 2, &[], 0, 1, &[], true, &0.0)
+        };
+        let complex = |born_ket: Option<&[Complex<f64>]>| {
+            let keep = [true];
+            program.evaluate_complex(
+                &runtime,
+                &bra,
+                born_ket,
+                2,
+                &[],
+                0,
+                &keep,
+                None,
+                &[],
+                true,
+                &0.0,
+            )
+        };
+        // <bra|M|ket> = 3 - 9i; <bra|M|bra> = 5.
+        assert_eq!(real(Some(&ket)), vec![6.0]);
+        assert_eq!(complex(Some(&ket)), vec![c(3.0, -9.0)]);
+        assert_eq!(real(None), vec![10.0]);
+        assert_eq!(real(Some(&bra)), real(None));
+        assert_eq!(complex(None), vec![c(5.0, 0.0)]);
     }
 
     #[test]
