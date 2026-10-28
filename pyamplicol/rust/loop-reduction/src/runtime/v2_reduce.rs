@@ -44,7 +44,11 @@
 //! binary64 engine, which has none; every other lane takes the fast engine
 //! unchanged, so plans and points without such inputs keep its bits. The
 //! check runs per frame, on the frame's own (rescaled) inputs.
-//! [`V2Reducer::take_exact_lanes`] counts the routed lanes. Exactly zero
+//! [`V2Reducer::take_exact_lanes`] counts the routed lanes. The generic
+//! engine builds and evaluates Symbolica expressions, so a routed lane is the
+//! one binary64 reduction that touches Symbolica state: it takes pyAmpliCol's
+//! library key on its thread (`pyamplicol::unlock`); every other binary64
+//! lane touches none. Exactly zero
 //! masses and invariants, and invariants exactly equal to a mass (the
 //! executor's on-shell external invariants), never route. The upstream
 //! `OneLoopNativeMasters::with_onshell_threshold(None)` (NinjaRS PR prepared
@@ -687,11 +691,16 @@ impl BucketEngine<f64> for FastEngine {
             Vec::new()
         }
         .into_iter();
-        let mut exact = self
-            .exact
-            .get_or_insert_with(|| GenericEngine::new(0_f64))
-            .reduce(&input.select(&routed))?
-            .into_iter();
+        // The generic engine parses and evaluates Symbolica expressions: it
+        // runs under pyAmpliCol's library key on this thread (module docs,
+        // 'Absolute thresholds'), whichever thread the executor reduces on.
+        let mut exact = {
+            let _unlock = pyamplicol::unlock();
+            self.exact
+                .get_or_insert_with(|| GenericEngine::new(0_f64))
+                .reduce(&input.select(&routed))?
+        }
+        .into_iter();
         routed
             .iter()
             .map(|&r| {
@@ -845,7 +854,7 @@ fn template(rank: usize) -> (String, Vec<String>) {
 /// for the 968 lanes of four uu~ -> e-e+dd~g points in one bucket stream), so
 /// buckets are reduced in chunks of this many lanes; lanes are independent,
 /// and chunking leaves every value unchanged.
-const GENERIC_CHUNK_LANES: usize = 16;
+pub(super) const GENERIC_CHUNK_LANES: usize = 16;
 
 impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where

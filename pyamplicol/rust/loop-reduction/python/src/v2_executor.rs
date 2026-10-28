@@ -909,7 +909,10 @@ impl V2Executor {
         let carrier = self.carrier;
         // The generic reduction builds Symbolica expressions and the exact
         // tree kernels decode Symbolica states: pyAmpliCol's library key
-        // (binary64 with the fast engine and plane kernels touches neither).
+        // (binary64 with the fast engine and plane kernels touches neither,
+        // except lanes the fast engine routes to the generic one at its
+        // absolute thresholds, which take the key themselves: `v2_reduce`
+        // module docs).
         let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
             .then(pyamplicol::unlock)
             .flatten();
