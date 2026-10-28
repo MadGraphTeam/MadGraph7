@@ -108,10 +108,7 @@ cc -std=c11 rust/loop-reduction/sdk/examples/client_umami_virtual.c \
 These commands describe the tested Linux source delivery, not a release bundle.
 The adapter can also be compiled directly alongside the client and linked to
 `librusticol_loop_sdk.a` with the SDK's documented native link flags. Runtime
-and adapter must use the same SDK build. A shared adapter that links the
-archive keeps its TLS descriptors: link it on a glibc that defines
-`GLIBC_ABI_GNU2_TLS` (see "glibc floor (Linux)" in the
-[SDK README](../README.md)). The ordinary generated `API/umami`
+and adapter must use the same SDK build. The ordinary generated `API/umami`
 bundle does not yet publish this virtual extension.
 
 The native control covers the independent three-order MadLoop uudd fixture,

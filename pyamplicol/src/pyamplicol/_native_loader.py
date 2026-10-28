@@ -313,52 +313,46 @@ def _error(
     missing = _ordered(missing)
     newest = _newest_numbered(missing)
     required = None if newest is None else newest.partition("_")[2]
-    names = ", ".join(missing)
-    versions = f"the ELF version{'s' if len(missing) > 1 else ''} {names}"
+    plural = len(missing) > 1
+    versions = f"the ELF version{'s' if plural else ''} {', '.join(missing)}"
     subject = f"Native library {library}" if library else "A native library"
+    newer = "" if required is None else f"glibc {required} or newer"
     if found is None:
-        what = f"needs glibc{f' >= {required}' if required else ''} ({versions})"
-        running = (
-            "this process does not run on glibc (no GNU C library version is "
-            f"reported on {sys.platform})"
+        problem = (
+            f"needs glibc{f' >= {required}' if required else ''} ({versions}), "
+            "but this process does not run on glibc (no GNU C library version "
+            f"is reported on {sys.platform})"
         )
-        where = (
-            "Run it on a Linux system or container with glibc"
-            f"{f' {required} or newer' if required else ''}"
-        )
+        where = f"Run it on a Linux system or container with {newer or 'glibc'}"
     else:
-        it = "them" if len(missing) > 1 else "it"
-        what = (
-            f"requires glibc >= {required}: it needs {versions}"
-            if required is not None
-            else f"needs {versions}"
+        it = "them" if plural else "it"
+        markers = [name for name in missing if numbered_release(name) is None]
+        problem = (
+            f"needs {versions}, which this process's glibc {found} does not define"
         )
-        running = f"which this process's glibc {found} does not define"
-        if required is None:
-            release = ""
-        elif len(missing) > 1 and any(numbered_release(n) is None for n in missing):
-            release = f", glibc {required} or newer at least"
+        if markers:
+            # No release number tells whether a glibc build defines a marker.
+            check = "`readelf -V` of a system's libc.so.6 lists the versions it defines"
         else:
-            release = f", glibc {required} or newer"
+            check = "`ldd --version` shows the glibc release"
         where = (
-            f"Run it on a Linux system or container whose glibc defines {it}{release}"
+            f"Run it on a Linux system or container whose glibc defines {it}"
+            f"{f' ({newer} at least)' if markers and newer else ''}"
+            f"{f' ({newer})' if newer and not markers else ''}; {check}"
         )
     if own:
         remedy = (
-            f"{where} (`ldd --version` shows the version), or build pyAmpliCol's "
-            "native libraries from source on this host so that they link "
-            "against its glibc (see 'Native libraries and glibc' in "
-            "docs/user/installation.md)."
+            f"{where}. Or build pyAmpliCol's native libraries from source on this "
+            "host so that they link against its glibc (see 'Native libraries and "
+            "glibc' in docs/user/installation.md)."
         )
     else:
         remedy = (
             "Install a build of that library made for this glibc (for a Python "
             "package, a wheel for this platform or a build from source on this "
-            f"host), or {where[0].lower()}{where[1:]} (`ldd --version` shows "
-            "the version)."
+            f"host). Or {where[0].lower()}{where[1:]}."
         )
-    separator = ", but " if found is None else ", "
-    message = f"{subject} {what}{separator}{running}. {remedy}"
+    message = f"{subject} {problem}. {remedy}"
     if loader_message:
         message += f" The dynamic loader reported: {loader_message}"
     return NativePlatformError(
@@ -382,11 +376,11 @@ def check_native_library(path: str | os.PathLike[str]) -> None:
     needs = _version_needs(path)
     if not needs:
         return
-    glibc = {
-        soname: names
-        for soname, names in needs.items()
-        if (names := [name for name in names if _is_glibc(name)])
-    }
+    glibc: dict[str, list[str]] = {}
+    for soname, names in needs.items():
+        wanted = [name for name in names if _is_glibc(name)]
+        if wanted:
+            glibc[soname] = wanted
     if not glibc:
         return
     found = running_glibc()

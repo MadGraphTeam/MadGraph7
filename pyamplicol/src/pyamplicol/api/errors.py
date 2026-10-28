@@ -47,21 +47,20 @@ class DependencyError(PyAmpliColError):
 class NativePlatformError(DependencyError):
     """The running platform cannot load one of pyAmpliCol's native libraries.
 
-    Raised before the library is loaded when its ELF version requirements need
-    a newer glibc release than the running one (the loop engine's release
-    natives can need ``GLIBC_ABI_GNU2_TLS``: glibc 2.43 or newer, or a glibc
-    2.42 build with the stable-branch update that added it), or a glibc on a
-    platform without one, and in place of the dynamic loader's
-    "version `GLIBC_...' not found" error (for instance on a glibc 2.42 build
-    without that update). It is not an ImportError: no fallback can run the
-    library on this platform.
+    On Linux a native library needs ELF symbol versions from glibc
+    (``GLIBC_2.38``, or an ABI marker such as ``GLIBC_ABI_GNU2_TLS``). Raised
+    before ``pyamplicol._rusticol`` is loaded when the running glibc does not
+    define one of them, or when the process does not run on glibc at all; and
+    in place of the dynamic loader's "version `GLIBC_...' not found" error for
+    any native library, a dependency's included. The dynamic loader would
+    refuse the library for the same reason. It is not an ImportError, so code
+    that treats a missing optional module as absent does not hide it.
 
-    Attributes: ``library`` (path, if known), ``required`` (the oldest glibc
-    release that can provide the version, ``"2.42"``; None if unknown),
-    ``found`` (the running glibc, None if the C library is not glibc) and
-    ``version_name`` (``"GLIBC_ABI_GNU2_TLS"``). ``found`` at or above
-    ``required`` means that this glibc build does not define an ABI marker
-    its release can define (a glibc 2.42 without that update).
+    Attributes: ``library`` (path, if known), ``missing`` (the version names
+    the running glibc does not define, numbered ones first), ``required`` (the
+    newest glibc release among the missing numbered versions, ``"2.38"``; None
+    when only ABI markers are missing, which no release number guarantees) and
+    ``found`` (the running glibc release, None if the C library is not glibc).
     """
 
     def __init__(
@@ -71,13 +70,13 @@ class NativePlatformError(DependencyError):
         library: str | None = None,
         required: str | None = None,
         found: str | None = None,
-        version_name: str | None = None,
+        missing: tuple[str, ...] = (),
     ) -> None:
         super().__init__(message)
         self.library = library
         self.required = required
         self.found = found
-        self.version_name = version_name
+        self.missing = missing
 
 
 __all__ = [
