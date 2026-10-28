@@ -187,6 +187,29 @@ def correction_orders(compiled: Any, fixed: Mapping[str, Any]) -> CorrectionOrde
     )
 
 
+def request_corrections(compiled: Any, request: Any) -> tuple[str, ...]:
+    """The correction orders of a loop request: its ``corrections``, or,
+    when it names none (``SliceRequest.corrections`` is None), the model's
+    strong correction (``correction_orders``: the order the gluon's minimal
+    vertices carry, never an order's name; genericity audit 2, m7). A
+    request naming none of a model without a strong correction is refused."""
+
+    if request.corrections is not None:
+        return tuple(request.corrections)
+    strong = correction_orders(compiled, request.fixed_parameters).strong
+    if strong is None:
+        from pyamplicol.api.errors import GenerationError
+
+        raise GenerationError(
+            f"{request.process!r}: the request names no correction orders and "
+            "the model has no strong correction (no massless adjoint vector "
+            "whose minimal vertices carry one coupling order); name the "
+            "corrections (SliceRequest.corrections, [process] "
+            "loop_coupling_orders)"
+        )
+    return (strong,)
+
+
 def electroweak(
     compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
 ) -> bool:
@@ -197,7 +220,7 @@ def electroweak(
     (``species_orders``: |PDG| -> coupling orders, the prepared structure's
     ``perturbative_species_orders``)."""
 
-    corrections = set(request.corrections)
+    corrections = set(request_corrections(compiled, request))
     strong = correction_orders(compiled, request.fixed_parameters).strong
     if corrections - {strong}:
         return True

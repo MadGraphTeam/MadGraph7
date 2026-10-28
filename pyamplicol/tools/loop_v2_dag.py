@@ -177,7 +177,11 @@ def _counts(dag: Any, blocks: tuple[Any, ...]) -> dict[str, int]:
 
 def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
     from pyamplicol.loops.v2 import snapshot
-    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.assemble import (
+        SliceRequest,
+        prepare_request_model,
+        resolve_request,
+    )
     from pyamplicol.loops.v2.blocks import (
         build_tree_blocks,
         vetoed_particle_ids,
@@ -189,11 +193,14 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = clock("model", lambda: _load_model(args))
-    request = SliceRequest(
-        args.process,
-        record["born_bounds"],
-        record["loop_orders"],
-        particle_veto=tuple(args.ignore),
+    request = resolve_request(
+        compiled,
+        SliceRequest(
+            args.process,
+            record["born_bounds"],
+            record["loop_orders"],
+            particle_veto=tuple(args.ignore),
+        ),
     )
     prepared, continuation, fixed, _scale, _alpha = clock(
         "request model", lambda: prepare_request_model(compiled, request)

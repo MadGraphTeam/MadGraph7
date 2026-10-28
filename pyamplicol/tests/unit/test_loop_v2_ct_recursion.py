@@ -933,7 +933,11 @@ def _program_and_rules(compiled_path, text, born, loop, veto=()):
 
     import json
 
-    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.assemble import (
+        SliceRequest,
+        prepare_request_model,
+        resolve_request,
+    )
     from pyamplicol.loops.v2.blocks import (
         build_tree_blocks,
         vetoed_particle_ids,
@@ -946,12 +950,17 @@ def _program_and_rules(compiled_path, text, born, loop, veto=()):
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = load_compiled_model(compiled_path)
-    request = SliceRequest(
-        text,
-        born,
-        loop,
-        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-        particle_veto=tuple(veto),
+    # The model's strong correction (``resolve_request``: SliceRequest
+    # names no correction by default).
+    request = resolve_request(
+        compiled,
+        SliceRequest(
+            text,
+            born,
+            loop,
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            particle_veto=tuple(veto),
+        ),
     )
     prepared, continuation, fixed, _scale, _alpha = prepare_request_model(
         compiled, request

@@ -1127,6 +1127,34 @@ class FailedPoints(ArithmeticError):
         )
 
 
+def _scale_dependent(exported: Any, first: Any, other: Any) -> str:
+    """The refusal of a Python-input batch whose points differ in a shared
+    value (kernel constants, squared masses, the legs' squared masses): the
+    points of a batch differ in their renormalisation scale only, so these
+    depend on it (a running-coupling or MSbar-mass model; the native inputs
+    record them, ``native_trees.scale_dependent_shared``). Names them as the
+    native record does (``native_trees._output_label``)."""
+
+    from .native_trees import _output_label
+
+    labels = (
+        [_output_label(("constant", key, flips)) for key, flips in exported.constants],
+        [f"mass {name}" for name in exported.masses],
+        [f"mass of leg {i + 1}" for i in range(len(first[2]))],
+    )
+    names = [
+        label
+        for kind, label_list in enumerate(labels)
+        for label, a, b in zip(label_list, first[kind], other[kind], strict=True)
+        if a != b
+    ]
+    return (
+        f"{', '.join(names)} depend on the renormalisation scale: the points "
+        "of one batch need equal kernel constants and masses (a batch takes "
+        "one mu_R^2)"
+    )
+
+
 class NativeExecutor:
     """The native v2 executor of a generated slice (one plan, many batches).
 
@@ -1424,9 +1452,7 @@ class NativeExecutor:
                 ]
             # The scale may change per point; kernels and masses may not.
             if batch.setdefault("shared", common) != common:
-                raise ValueError(
-                    "the points of one batch need equal kernel constants and masses"
-                )
+                raise ValueError(_scale_dependent(exported, batch["shared"], common))
             batch["block_rows"].append(rows)
             amplitudes = [_born_row(evaluation, row) for row in exported.rows]
             batch["born"].append(

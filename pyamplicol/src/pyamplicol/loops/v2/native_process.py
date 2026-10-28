@@ -31,7 +31,7 @@ process run it, so no pole selection regenerates the slice.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from types import SimpleNamespace
@@ -226,7 +226,17 @@ class NativeProcess:
             "average": int(slice_.normalisation.average),
             "accuracy": request.accuracy,
             "colour_contraction": request.colour_contraction,
-            "fixed_parameters": dict(request.fixed_parameters),
+            # Every parameter fixed at generation (the request's and those
+            # the model preparation fixes): refused at another value and
+            # applied by every runtime (``LoopSlice.fixed_parameters``).
+            "fixed_parameters": slice_.fixed_parameters,
+            # Those of them the model preparation fixed (scheme constants),
+            # which a refusal names as such (``assemble.fixed_refusal``).
+            "preparation_fixed_parameters": sorted(slice_.preparation_fixed_parameters),
+            # The model's external parameters (those a caller may set): every
+            # view of the stored process refuses another name
+            # (``_ProcessView``), as the Python API and the SDKs do.
+            "externals": sorted(slice_._external_parameters()),
             "scale_parameter": slice_.scale_parameter,
             "alpha_s_parameter": slice_.alpha_s_parameter,
             "families": len(exported.families),
@@ -318,17 +328,26 @@ class NativeProcess:
 
     # -- evaluation ----------------------------------------------------------
 
-    def executor(self, native: Any, **options: Any) -> Any:
+    def executor(
+        self,
+        native: Any,
+        *,
+        externals: Collection[str] | None = None,
+        **options: Any,
+    ) -> Any:
         """The native executor of the process (``plan_export.NativeExecutor``
         with native inputs) on its structural view; ``native`` is the loaded
-        loop native module, ``options`` the executor's (lanes, threads,
-        forms)."""
+        loop native module, ``externals`` the external parameters of the
+        process's model (the caller's parameters are checked against them,
+        ``_ProcessView._point_parameters``; the public runtime passes its
+        artifact model's; by default the record's ``externals``), ``options``
+        the executor's (lanes, threads, forms)."""
 
         from .plan_export import NativeExecutor
 
         record = self.record
         columns = tuple(_orders_of(sector) for sector, _pairs in record["sectors"])
-        view = _ProcessView(record, native)
+        view = _ProcessView(record, native, externals)
         companion = None
         if self.scaleless is not None:
             twin = self.scaleless
@@ -336,7 +355,7 @@ class NativeProcess:
                 _plan_view(twin.record, columns, twin.trees, record["families"]),
                 twin.plan_json,
             )
-            view.scaleless = _ProcessView(record, native)
+            view.scaleless = _ProcessView(record, native, externals)
         return NativeExecutor(
             view,
             forward=False,
@@ -352,8 +371,23 @@ class _ProcessView:
     """The structural attributes of a ``LoopSlice`` the native executor and
     ``assemble._NativePoint`` read, from a native process record."""
 
-    def __init__(self, record: Mapping[str, Any], native: Any):
+    def __init__(
+        self,
+        record: Mapping[str, Any],
+        native: Any,
+        externals: Collection[str] | None = None,
+    ):
         self.native = native
+        # The caller's names, else the record's (a record of an older build
+        # has none: its views then do not check names; regenerate it).
+        if externals is None:
+            externals = record.get("externals")
+        self.externals = None if externals is None else frozenset(externals)
+        self.preparation_fixed = frozenset(
+            record.get("preparation_fixed_parameters", ())
+        )
+        # The last caller mapping checked and its values (one per batch).
+        self._checked: tuple[Any, dict[str, str]] | None = None
         self.request = SimpleNamespace(
             accuracy=record["accuracy"],
             colour_contraction=record["colour_contraction"],
@@ -384,9 +418,27 @@ class _ProcessView:
     def _point_parameters(
         self, parameters: Mapping[str, str], scale: Fraction, precision: Any
     ) -> dict[str, str]:
-        """The caller's and the fixed parameters; the scale parameter is
-        formed natively from each point's mu_R^2 (``batch_parameters``)."""
+        """The caller's parameters, validated as by the Python API and the
+        live slice (``assemble.check_model_parameters``: the scale parameter,
+        a fixed parameter at another value and a name that is not an external
+        parameter of the model, the record's or ``NativeProcess.executor(...,
+        externals=...)``, are refused), and the fixed
+        parameters (the record's: every one fixed at generation); the scale
+        parameter is formed natively from each point's mu_R^2
+        (``batch_parameters``)."""
 
-        values = dict(parameters)
-        values.update(self.request.fixed_parameters)
-        return values
+        from .assemble import check_model_parameters
+
+        key = tuple(sorted(parameters.items()))
+        if self._checked is None or self._checked[0] != key:
+            fixed = self.request.fixed_parameters
+            values = check_model_parameters(
+                parameters,
+                self.externals,
+                self.scale_parameter,
+                fixed,
+                self.preparation_fixed,
+            )
+            values.update(fixed)
+            self._checked = (key, values)
+        return dict(self._checked[1])

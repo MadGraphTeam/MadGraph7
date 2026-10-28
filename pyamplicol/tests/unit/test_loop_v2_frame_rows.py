@@ -6,9 +6,9 @@ A segment's rows are the helicity assignments of its legs, so the
 cheapest-frame policy prices it by the product of its legs' helicity counts
 (``generator_input.leg_rows``: 1 for a scalar, 3 for a massive vector, ...).
 The native policy with ``leg_rows`` chooses the frames of the Python
-``cheapest(frame_rows(leg_rows), model)``, the argmin over every frame;
-without ``leg_rows`` both price two rows per leg, which is exact (and the
-plans byte-identical) whenever every leg has two helicity states.
+``cheapest(frame_rows(leg_rows), model)``, the argmin over every frame. The
+counts are required: no count per leg is assumed (second genericity audit,
+m8), so a call without them is refused.
 """
 
 from __future__ import annotations
@@ -43,9 +43,10 @@ def test_frame_rows_is_the_product_of_the_legs_rows():
 
 @pytest.mark.loop_fast
 def test_native_frames_with_leg_rows_equal_python(loop_native):
-    """u u~ > d d~ g on the QCD+QED control model: two rows per leg give the
-    default plan; uneven counts change frames, and the native policy picks
-    the Python policy's frames (equal skeletons, views and tries)."""
+    """u u~ > d d~ g on the QCD+QED control model: two rows per leg (its
+    massless legs) give the Python two-rows-per-leg plan; uneven counts
+    change frames, and the native policy picks the Python policy's frames
+    (equal skeletons, views and tries); no counts are refused."""
 
     from pyamplicol.loops.control_models import qcd_qed_control_model
 
@@ -60,8 +61,18 @@ def test_native_frames_with_leg_rows_equal_python(loop_native):
         generation = NativeGeneration(table, catalogue, selection, loop_native)
         return generation.schedules(colour, leg_rows=rows)
 
-    default = native(None)
-    assert_same_schedules(native((2,) * 5), default)
+    with pytest.raises(ValueError, match="needs the helicity rows of every leg"):
+        native(None)
+    default = native((2,) * 5)
+    assert_same_schedules(
+        default,
+        build_schedules(
+            families,
+            catalogue,
+            colour,
+            policy=cheapest(frame_rows((2,) * 5), STRUCTURED),
+        ),
+    )
     uneven = UNEVEN_ROWS
     plan = native(uneven)
     python = build_schedules(

@@ -668,7 +668,7 @@ def test_seven_gluon_seed_tables_within_five_minutes(
     import time
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2 import assemble, generator_input
     from pyamplicol.loops.v2.blocks import requested_loop_blocks
     from pyamplicol.loops.v2.colour import Primitive
     from pyamplicol.loops.v2.generator_input import NativeGeneration
@@ -723,7 +723,7 @@ def test_seven_gluon_seed_tables_within_five_minutes(
     )
     assert generation.families().families == reachable.families
     colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-    generation.schedules(colour)
+    generation.schedules(colour, leg_rows=generator_input.leg_rows(blocks))
     assert generation.base is not None
     skeletons = [s for family in generation.base.skeletons for s in family]
     start = time.perf_counter()

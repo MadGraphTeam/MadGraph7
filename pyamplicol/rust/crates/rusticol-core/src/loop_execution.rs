@@ -2345,6 +2345,13 @@ pub mod v2 {
             self.lanes
         }
 
+        /// Run `op` on this executor's thread pool (its `threads` bound):
+        /// parallel work inside it (the tree program's stages, its
+        /// interferences) stays on these workers instead of the global pool.
+        pub fn install<R: Send>(&self, op: impl FnOnce() -> R + Send) -> R {
+            self.pool.install(op)
+        }
+
         /// Every family numerator of every point (oracles O2, O4 and the
         /// comparison with the Python reference executor).
         pub fn numerators<T: Carrier>(

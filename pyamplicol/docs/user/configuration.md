@@ -788,13 +788,30 @@ fixed_parameters = {MB = "0", WT = "0"}
 ```
 
 The legacy engine takes every propagator without width; a resonant coloured
-particle needs the complex-mass scheme (not available yet). An evaluation refuses
-unknown parameter names, the renormalisation-scale parameter (`mu_r2` sets it
-per point) and a value other than the one a parameter was fixed to at
-generation. Other known parameters are accepted even where the process does not
-use them (for example a width only loop propagators would carry), as with the
-legacy engine. The renormalisation-scale parameter is the external
-parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
+particle needs the complex-mass scheme (not available yet). An evaluation
+(the Python API and the native SDKs alike) refuses an empty parameter name, a
+value that is not a finite decimal number (a number, or ASCII decimal text:
+surrounding whitespace and underscores are ignored, fractions and non-ASCII
+digits are refused), unknown parameter names, the renormalisation-scale
+parameter (`mu_r2` sets it per point) and a value other than the one a parameter
+was fixed to at generation (the card's `fixed_parameters` and those the model
+preparation fixes, e.g. a colour declaration's external scheme constants, which
+the refusal names as such: they are not run-time parameters); a parameter
+update with one refused entry changes nothing, and every client checks the
+entries by name, so a mapping with several refused entries gets the same
+message everywhere. Other known parameters are accepted even where
+the process does not use them (for example a width only loop propagators would
+carry), as with the legacy engine. The renormalisation-scale parameter is the
+external parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
+Generation records which model-derived values depend on it: for the usual NLO
+models only the counterterms do, and a batch of points at several scales is
+evaluated at once; for a model whose Born couplings or masses run with the scale
+(a running-coupling or MSbar-mass UFO) an ordinary evaluation (`evaluate`, every
+SDK) is evaluated per scale, so every point equals its evaluation at that scale
+alone. Colour- and spin-correlated and helicity-resolved evaluations of such a
+model take one scale per call: a batch of several scales is refused with a
+`ValueError` naming the scale-dependent couplings, constants or masses (call
+them once per scale).
 
 A v2 artifact stores its whole program: the loop plan and its per-point tree,
 Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
@@ -824,7 +841,11 @@ binary64 virtuals, bitwise equal to the Python API, without a licence:
 the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
 (its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and
 `"ir"` the split selections (the finite part is the same in all four);
-correlated, resolved and extended-precision calls go through the Python API. A
+model parameters (at open and through `rusticol_virtual_update_parameters`)
+follow the Python API's rules above, with the same messages
+(`RUSTICOL_VIRTUAL_INVALID_ARGUMENT`); the default R2 strategy `"auto"` selects
+the artifact's model R2; correlated, resolved and extended-precision calls go
+through the Python API. A
 v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).

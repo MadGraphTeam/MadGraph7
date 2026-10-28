@@ -294,8 +294,10 @@ pub unsafe extern "C" fn rusticol_virtual_update_parameters(
         Ok(())
     })
 }
-/// The pole selection of the handle's later evaluations: "all" (NULL) or
-/// "none" (plan v4: the finite part, pole entries quiet NaNs).
+/// The pole selection of the handle's later evaluations, the Python API's
+/// four: "all" (NULL, the default), "none" (plan v4: the finite part, pole
+/// entries quiet NaNs), "uv" (plan v4: the bare loop's UV poles) or "ir"
+/// (plan v4: the renormalised virtual's IR poles).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_set_poles(
     handle: *mut VirtualHandle,

@@ -317,11 +317,14 @@ _DERIVED_COUPLING = re.compile(r"derived_coupling_([0-9]+)")
 
 def _output_label(key: Any, models: tuple[Any, Any] = (None, None)) -> str:
     """A parameter-program output's key (``_parameter_program``'s ``output``:
-    kind, then the coupling, parameter or constant it forms) as text: a
-    derived coupling (``derived_coupling_<term id>``) of the trees' model
-    (kind ``model``) or the counterterm program's (``ct-model``) by its UFO
-    coupling, vertex and particles; a counterterm coefficient with its
-    epsilon power and N_c grade."""
+    kind, then the coupling, parameter or constant it forms) as text, the one
+    naming of the plane check's refusal and of the scale-dependence record
+    (``_scale_outputs``): a derived coupling (``derived_coupling_<term id>``)
+    of the trees' model (kind ``model``) or the counterterm program's
+    (``ct-model``) by its UFO coupling, vertex and particles; a Born coupling
+    with its N_c grade; a counterterm coefficient with its epsilon power and
+    N_c grade; a kernel constant by its value's form (coefficient and model
+    factors, ``_constant_text``); a derived mass by its parameter."""
 
     kind, *rest = key
     model = models[kind == "ct-model"] if kind in ("model", "ct-model") else None
@@ -337,7 +340,70 @@ def _output_label(key: Any, models: tuple[Any, Any] = (None, None)) -> str:
     if kind in ("counterterm", "diagnostic") and len(rest) == 3:
         name, power, grade = rest
         return f"{kind} {name}, epsilon power {power}, N_c grade {grade}"
+    if kind == "scaled" and len(rest) == 4:
+        name, power, grade, _scale = rest
+        return f"scaled counterterm {name}, epsilon power {power}, N_c grade {grade}"
+    if kind == "coupling" and len(rest) == 2:
+        return f"Born coupling {rest[0]}, N_c grade {rest[1]}"
+    if kind == "derived-mass" and len(rest) == 1:
+        return f"mass {rest[0]}"
+    if kind == "constant" and len(rest) == 2:
+        return f"kernel constant {_constant_text(*rest)}"[:200]
+    if kind == "positive" and len(rest) == 2:
+        factor, flips = rest
+        return f"kernel constant base {_factor_text(factor)}{_flips_text(flips)}"[:200]
+    if kind == "whole" and len(rest) == 3:
+        degree, text, _scalars = rest
+        return f"whole-rule counterterm {text}, N_c grade {degree}"[:200]
     return " ".join([str(kind), *(str(part) for part in rest)])[:200]
+
+
+def _factor_text(factor: Any) -> str:
+    """A kernel constant's model factor (``reference_executor.Factor``) as
+    text: a parameter by name, a prime, pi, or a parameter expression with
+    its parameters' names."""
+
+    kind, value = factor
+    if kind in ("param", "prime"):
+        return str(value)
+    if kind == "pi":
+        return "pi"
+    text, pairs = value
+    for symbol, name in sorted(pairs, key=lambda pair: -len(str(pair[0]))):
+        text = text.replace(str(symbol), str(name))
+    return f"({text})"
+
+
+def _flips_text(flips: Any) -> str:
+    flipped = sorted(str(name) for name, sign in flips if sign < 0)
+    return f" (sign of {', '.join(flipped)} flipped)" if flipped else ""
+
+
+def _constant_text(key: Any, flips: Any) -> str:
+    """A kernel constant's value form from its key (``plan_export.
+    ExportedPlan.constants``: complex rational coefficient, exact and
+    irrational model factors with their exponents; ``reference_executor.
+    KernelConstants``) and the reading's mass flips, e.g. ``-1/2*i*GC_11^2``."""
+
+    coefficient, exact, irrational, _bases = key
+    real, imag = (Fraction(part) for part in coefficient)
+    if imag == 0:
+        text = _fraction_text(real)
+    elif real == 0:
+        text = f"{_fraction_text(imag)}*i"
+    else:
+        sign = "+" if imag > 0 else "-"
+        text = f"({_fraction_text(real)}{sign}{_fraction_text(abs(imag))}*i)"
+    for factor, exponent in (*exact, *irrational):
+        power = Fraction(exponent)
+        base = _factor_text(factor)
+        if power == 1:
+            text += f"*{base}"
+        elif power.denominator == 1:
+            text += f"*{base}^{power.numerator}"
+        else:
+            text += f"*{base}^({power})"
+    return text + _flips_text(flips)
 
 
 def _fraction_text(value: Fraction) -> str:
@@ -1572,11 +1638,25 @@ def _parameter_program(
         ],
         jit_compile=False,
     )
+    scale = index.get(slice_.scale_parameter)
     record = {
         "names": names,
         "defaults": defaults,
         # The renormalisation scale's parameter: sqrt(mu_R^2) per point.
-        "scale": index.get(slice_.scale_parameter),
+        "scale": scale,
+        # Every output that depends on it (genericity audit 2, m3): the
+        # runtime partitions a batch by mu_R^2 when a Born coupling, kernel
+        # constant or mass is among them (a running-coupling or MSbar-mass
+        # model; the usual NLO models' scale enters the counterterms only).
+        "scale_outputs": _scale_outputs(
+            outputs,
+            output_of,
+            None if scale is None else inputs[scale],
+            (
+                trees.compiled,
+                None if counterterm_trees is None else counterterm_trees.rows.compiled,
+            ),
+        ),
         "outputs": len(outputs),
         "model": model,
         "counterterm_model": counterterm_model,
@@ -1596,6 +1676,32 @@ def _parameter_program(
     for key, index in output_of.items():
         keys[index] = key
     return record, bytes(evaluator.save()), tuple(keys)
+
+
+def _scale_outputs(
+    outputs: Sequence[Any],
+    keys: Mapping[Any, int],
+    scale: Any,
+    models: tuple[Any, Any] = (None, None),
+) -> list[list[Any]]:
+    """``[output index, name]`` of every parameter-program output that
+    depends on the renormalisation scale's input ``scale`` (none: the program
+    does not read it), by structure: the output's expression contains the
+    input symbol. The outputs are on the program's input symbols (derived
+    parameters and the scalar plans' coefficients substituted); the helper
+    functions they call are functions of their arguments only, so a helper
+    call depends on the scale exactly when an argument does. Names are the
+    plane check's (``_output_label`` on the trees' and the counterterm
+    program's ``models``)."""
+
+    if scale is None:
+        return []
+    names = {o: _output_label(key, models) for key, o in keys.items()}
+    return [
+        [o, names[o]]
+        for o, expression in enumerate(outputs)
+        if bool(expression.contains(scale))
+    ]
 
 
 def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
@@ -2456,13 +2562,35 @@ def _external_masses(slice_: Any) -> tuple[tuple[int, str], ...]:
     return tuple(sorted(out.items()))
 
 
+def scale_dependent_shared(trees: NativeTrees) -> tuple[str, ...]:
+    """The names of a tree program's batch-shared parameter-program outputs
+    (Born couplings, kernel constants, derived external and loop masses) that
+    depend on the renormalisation scale (``_scale_outputs``; the native
+    ``TreeProgram::scale_dependent_shared``): empty for the usual NLO models,
+    whose scale enters the counterterm couplings only. A batch of mixed
+    mu_R^2 of a model that has some runs per scale. A program written before
+    the record has none recorded (its batches are checked per point)."""
+
+    record = trees.program["parameters"]
+    dependent = record.get("scale_outputs") or ()
+    shared = {
+        *record["couplings"],
+        *record["constants"],
+        *(o for _pdg, o in record.get("derived_masses", ())),
+        *(mass[1] for mass in record["plan_masses"] if isinstance(mass, list)),
+    }
+    return tuple(name for o, name in dependent if o in shared)
+
+
 def batch_parameters(trees: NativeTrees, evaluations: Sequence[Any]) -> list[str]:
     """The exact values of the tree program's external parameters for a
     batch (``inputs["parameters"]``): the points' values (``LoopSlice.
-    _point_parameters``: the caller's and the request's fixed parameters),
-    else the parameter's default. The renormalisation scale's parameter is
-    formed natively from each point's mu_R^2 (``TreeProgram::bind``), so it
-    is the one parameter the points may differ in."""
+    _point_parameters``: the caller's and those fixed at generation,
+    ``LoopSlice.fixed_parameters``: the request's and the model
+    preparation's), else the parameter's default. The renormalisation
+    scale's parameter is formed natively from each point's mu_R^2
+    (``TreeProgram::bind``), so it is the one parameter the points may differ
+    in."""
 
     record = trees.program["parameters"]
     scale = record["scale"]

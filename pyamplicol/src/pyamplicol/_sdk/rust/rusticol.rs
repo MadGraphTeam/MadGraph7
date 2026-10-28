@@ -209,8 +209,10 @@ pub mod virtual_amplitudes {
             // SAFETY: exclusive access to a live handle.
             check(unsafe { ffi::rusticol_virtual_clear(self.handle.as_ptr()) })
         }
-        /// Pole selection of later evaluations: "all" (default) or "none"
-        /// (plan v4: the finite part, the pole entries quiet NaNs).
+        /// Pole selection of later evaluations, the Python API's four: "all"
+        /// (default), "none" (plan v4: the finite part, the pole entries
+        /// quiet NaNs), "uv" (plan v4: the bare loop's UV poles) or "ir"
+        /// (plan v4: the renormalised virtual's IR poles).
         pub fn set_poles(&mut self, poles: &str) -> Result<()> {
             let poles = checked_cstring(poles, "pole selection")?;
             // SAFETY: exclusive live handle and owned string.
