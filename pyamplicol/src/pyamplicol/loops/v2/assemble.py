@@ -1438,8 +1438,10 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
     ``prepare_loop_request_model``, with a colour declaration
-    ``prepare_declared_source_color``, and the gauge refusal of an
-    electroweak request (``ew_policy.require_feynman_gauge``). The public dry run
+    ``prepare_declared_source_color``, the gauge refusal of an electroweak
+    request (``ew_policy.require_feynman_gauge``) and the listed refusal of a
+    veto of loop species on unlabelled counterterms
+    (``refusals.require_labelled_counterterms_for_veto``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -1505,6 +1507,17 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         # preparation already, a bundle prepared in unitary gauge here);
         # ``LoopSlice.generate`` switches the gauge.
         ew_policy.require_feynman_gauge(compiled, request)
+    # A veto reaches the counterterms through their loop-content labels
+    # only: refused where the model's counterterm terms of a requested
+    # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5
+    # interim, EWI-7's [U2] guard), here so that the dry run reports it.
+    require_labelled_counterterms_for_veto(
+        prepared.model.kernels,
+        request.process,
+        request.particle_veto,
+        request.corrections,
+        prepared.structure.perturbative_species_orders,
+    )
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
     )
@@ -1647,9 +1660,10 @@ class LoopSlice:
         typed ``LoopRequestUnsupported``) are raised before the structures they
         concern are used: a veto of a loop species on a model whose
         counterterms of the correction are not all labelled with their loop
-        content and a vertex joining fermions of different sign ownership
-        before any tree, LC/NLC over tree blocks that are not exact in N_c
-        right after the trees.
+        content in the model preparation (``prepare_request_model``, which
+        the dry run runs too), a vertex joining fermions of different sign
+        ownership before any tree, LC/NLC over tree blocks that are not exact
+        in N_c right after the trees.
         """
 
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
@@ -1703,17 +1717,6 @@ class LoopSlice:
             # species take 't Hooft-Feynman gauge with explicit Goldstones
             # and ghosts; QCD-only requests keep the model's gauge.
             compiled = ew_policy.feynman_gauge_model(compiled, request)
-        # A veto reaches the counterterms through their loop-content labels
-        # only: refused where the model's counterterm terms of a requested
-        # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5
-        # interim, EWI-7's [U2] guard).
-        require_labelled_counterterms_for_veto(
-            prepared.model.kernels,
-            request.process,
-            request.particle_veto,
-            request.corrections,
-            structure.perturbative_species_orders,
-        )
         # A fermion line that changes colour representation (a vertex joining
         # a coloured and a colour-singlet fermion that a tree or a loop of the
         # request can use) has no sign in the blocks' conventions: refused

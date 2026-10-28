@@ -714,9 +714,10 @@ names the rule, for example:
   "veto-unlabelled-counterterms: ... particle_veto removes the species
   [23, 24, 25, 250, 251], perturbative in the corrections ['QED'], and the
   model's counterterm vertices V_UV... write terms of those corrections
-  without loop content ...", before any tree is built (photon-only QED
-  corrections on MG5_aMC's `loop_qcd_qed_sm` and its G_mu variant; see the
-  particle veto below). Request the complete corrections;
+  without loop content ...", in the model preparation, before any tree is
+  built, so a dry run reports it too (photon-only QED corrections on
+  MG5_aMC's `loop_qcd_qed_sm` and its G_mu variant; see the particle veto
+  below). Request the complete corrections;
 - a vertex joining a coloured and a colour-singlet fermion that the request
   can use (a leptoquark `u e lq` vertex: one fermion line changing colour
   representation): "fermion-line-representation: ... the vertex V (u~ e- lq)
@@ -767,7 +768,8 @@ MG5_aMC's `loop_qcd_qed_sm` needs
 `G-` loses the Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
 goldstoneboson"); `loop.preparation.covariant_multiplets` and
 `color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
-(`generate --dry-run`) reports what the model preparation refuses; loop
+(`generate --dry-run`) reports what the model preparation refuses (the
+veto refusal "veto-unlabelled-counterterms" included); the rest of loop
 admission is checked by the generation only, and the dry run lists what it
 refuses (`estimated_coverage.loop_admission_refusals`, with the remedies) and
 what the native export refuses (`native_export_refusals`).

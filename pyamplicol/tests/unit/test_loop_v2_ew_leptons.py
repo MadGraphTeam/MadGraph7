@@ -64,6 +64,7 @@ owns). Checks:
 
 from __future__ import annotations
 
+import io
 import itertools
 import json
 import math
@@ -1322,6 +1323,55 @@ def test_reference_points_lie_on_the_scheme_mass_shells(name, loop_reference):
         references.check_point_masses(spec, {"points": moved})
 
 
+def _top_pair_higgs(ufo, loop_native, reference) -> list:
+    """e- e+ > t t~ h with full electroweak corrections on the G_mu UFO
+    ``ufo`` ('t Hooft-Feynman gauge) at the reference's points and scales:
+    per point (Born, the virtual's [finite, single, double], the result).
+    Generation about 11 min, 8 GB."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(ufo, require_supported=False)
+    externals = {record.name for record in compiled.ir.parameters}
+    fixed = {k: v for k, v in reference["fixed_parameters"].items() if k in externals}
+    request = SliceRequest(
+        "e- e+ > t t~ h",
+        dict(reference["born_orders"]),
+        dict(reference["loop_orders"]),
+        corrections=("QED",),
+        fixed_parameters=fixed,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    rows = []
+    for point, mu in zip(reference["points"], reference["mu_r"], strict=True):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+        )
+        rows.append((*_totals(result), result))
+    return rows
+
+
+def _provider_errors(reference, rows, provider) -> list[list[float]]:
+    """Per point the fixtures' metric of the virtual's [finite, single,
+    double] against ``provider``'s (the floor its Born times alpha / 2 pi)."""
+
+    alpha = float(reference["derived_parameters"]["alpha"])
+    errors = []
+    for (_born, virtual, _result), row in zip(rows, reference["rows"], strict=True):
+        values = row["providers"][provider]
+        floor = abs(values["born"]) * alpha / (2 * math.pi)
+        errors.append(
+            [
+                _metric(value, values[key], floor)
+                for value, key in zip(virtual, LAURENT, strict=True)
+            ]
+        )
+    return errors
+
+
 @pytest.mark.loop_nightly
 def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
     loop_gmu_ufo, loop_native, loop_reference
@@ -1336,53 +1386,81 @@ def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
     coupling of the b loops (R2_G0tt_b), whose loop-particle label [W+, b]
     matches no 't Hooft-Feynman-gauge loop in MG5_aMC's counterterm
     matching, while the recursion inserts every admitted R2 vertex once
-    (ADDENDUM J); Recola - MadLoop is exactly that term. Before the
-    counterterm roots read Z G0 H as the tree engine does (genericity audit 2
-    G2-M7, ew-epsilon) the single pole missed Recola and Catani by 8.8e-3 of
-    the Born floor at point 0. Generation about 11 min, 8 GB."""
-
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.models.loading import compile_model_source
+    (ADDENDUM J); Recola - MadLoop is exactly that term, and without it
+    (``test_lepton_initiated_top_pair_higgs_without_r2_g0tt_b_equals_madloop``)
+    the virtual equals MadLoop's and misses Recola's. Before the counterterm
+    roots read Z G0 H as the tree engine does (genericity audit 2 G2-M7,
+    ew-epsilon) the single pole missed Recola and Catani by 8.8e-3 of the
+    Born floor at point 0. Generation about 11 min, 8 GB."""
 
     reference = loop_reference(TOP_PAIR_HIGGS)
     assert reference["validated_providers"] == ["recola"]
-    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
-    externals = {record.name for record in compiled.ir.parameters}
-    fixed = {k: v for k, v in reference["fixed_parameters"].items() if k in externals}
-    request = SliceRequest(
-        "e- e+ > t t~ h",
-        dict(reference["born_orders"]),
-        dict(reference["loop_orders"]),
-        corrections=("QED",),
-        fixed_parameters=fixed,
-        compatibility="gmu_particle_anti",
-        scale_parameter="MU_R",
-    )
-    slice_ = LoopSlice.generate(compiled, request, loop_native)
-    alpha = float(reference["derived_parameters"]["alpha"])
     tolerance = reference["tolerance"]
-    worst = 0.0
-    for point, mu, row in zip(
-        reference["points"], reference["mu_r"], reference["rows"], strict=True
-    ):
-        result = slice_.evaluate(
-            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
-        )
-        born, virtual = _totals(result)
-        recola = row["providers"]["recola"]
-        floor = abs(recola["born"]) * alpha / (2 * math.pi)
-        assert _metric(born, recola["born"], 0.0) <= tolerance
-        for value, key in zip(virtual, LAURENT, strict=True):
-            error = _metric(value, recola[key], floor)
-            worst = max(worst, error)
-            assert error <= tolerance, (key, value, recola[key])
+    rows = _top_pair_higgs(loop_gmu_ufo, loop_native, reference)
+    for (born, _virtual, result), row in zip(rows, reference["rows"], strict=True):
+        assert _metric(born, row["providers"]["recola"]["born"], 0.0) <= tolerance
         assert result.ir_poles is not None
         for sector, laurent in result.components["virtual"].items():
             single, double = (complex(x) for x in result.ir_poles[sector])
             scale = max(abs(single), abs(double))
             assert abs(complex(laurent.double_pole) - double) <= TOLERANCE * scale
             assert abs(complex(laurent.single_pole) - single) <= TOLERANCE * scale
-    print(f"recola {worst:.1e}")
+    recola = _provider_errors(reference, rows, "recola")
+    madloop = _provider_errors(reference, rows, "madloop")
+    print(f"recola {recola}\nmadloop {madloop}")
+    assert max(max(errors) for errors in recola) <= tolerance, recola
+
+
+def _without_r2_g0tt_b(loop_gmu_ufo, directory: Path) -> Path:
+    """The G_mu UFO with the coupling R2_G0tt_b (the G0 t t~ R2 of the b
+    loops: CT vertex V_ttG02, loop particles [W+, b]) set to zero, every
+    other coupling unchanged: the model MadLoop evaluates in 't Hooft-Feynman
+    gauge. Pickled model caches are not copied (they would shadow the
+    edit)."""
+
+    target = directory / "loop_qcd_qed_sm_Gmu_without_r2_g0tt_b"
+    shutil.copytree(
+        loop_gmu_ufo, target, ignore=shutil.ignore_patterns("__pycache__", "*.pkl")
+    )
+    path = target / "CT_couplings.py"
+    import re
+
+    text, count = re.subn(
+        r"(R2_G0tt_b = Coupling\(name = 'R2_G0tt_b',\n\s*value = )'[^']*'",
+        r"\g<1>'0'",
+        path.read_text(),
+    )
+    assert count == 1
+    path.write_text(text)
+    return target
+
+
+@pytest.mark.loop_nightly
+def test_lepton_initiated_top_pair_higgs_without_r2_g0tt_b_equals_madloop(
+    loop_gmu_ufo, loop_native, loop_reference, tmp_path
+):
+    """The evidence for MadLoop's omitted R2_G0tt_b (coordinator DECISIONS
+    2026-10-28 ~03:50 and ~05:20 (2b)), independent of MadLoop's own export
+    (which never calls it: ``helas_calls_ampb_1.f``, ``couplings2.f``):
+    e- e+ > t t~ h reaches the G0 t t~ R2 insertion of the b loops, and with
+    R2_G0tt_b set to zero in the UFO (``_without_r2_g0tt_b``) its virtual
+    equals MadLoop's at the reference's three points within the fixture's
+    tolerance and misses Recola's finite part by more than a hundred times
+    it, while with the coupling (the test above) it equals Recola's: Recola
+    includes the term, MadLoop does not, and it is the whole difference of
+    the two providers. Generation about 11 min, 8 GB."""
+
+    reference = loop_reference(TOP_PAIR_HIGGS)
+    tolerance = reference["tolerance"]
+    ufo = _without_r2_g0tt_b(loop_gmu_ufo, tmp_path)
+    rows = _top_pair_higgs(ufo, loop_native, reference)
+    recola = _provider_errors(reference, rows, "recola")
+    madloop = _provider_errors(reference, rows, "madloop")
+    print(f"recola {recola}\nmadloop {madloop}")
+    assert max(max(errors) for errors in madloop) <= tolerance, madloop
+    # The finite part alone moves (the R2 carries no poles).
+    assert min(errors[0] for errors in recola) > 100 * tolerance, recola
+    assert max(max(errors[1:]) for errors in recola) <= tolerance, recola
 
 
 # ------------------------------------------------ Bhabha (loop_qcd_qed_sm)
@@ -1559,6 +1637,127 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
     assert "V_UV" in message and "loop_particles = []" in message
 
 
+_PUBLIC_CARD = """
+action = "generate"
+[model]
+source = {model}
+[process]
+entries = [{{expression = "e- e+ > m- m+", name = "eemm"}}]
+loop_coupling_orders = ["QED"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+engine = "v2"
+[loop.model]
+loop_coupling_orders = ["QED"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO on-shell electroweak"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_qcd_qed_sm lhv=1 supplied QED rules"
+[loop.preparation]
+fixed_parameters = {{WT = "0", WW = "0", WZ = "0", WH = "0"}}
+compatibility = "gmu_particle_anti"
+[generation]
+output = {output}
+emit_api_bundle = false
+{veto}
+[generation.validation]
+post_build_validation = false
+"""
+
+
+@pytest.mark.loop_nightly
+def test_public_generation_cli_and_dry_run_refuse_photon_only_mumu(
+    loop_qcd_qed_sm_ufo, loop_native, tmp_path
+):
+    """The veto refusal at the public boundary (coordinator DECISIONS
+    2026-10-28 ~05:20 (1)): photon-only QED corrections of e- e+ > mu- mu+
+    on loop_qcd_qed_sm (the card's ``particle_veto`` of Z, W, H and the
+    Goldstones) through ``Generator.generate`` (the typed error with its
+    key), ``pyamplicol generate`` (exit code 2, the rule and the remedy
+    named) and ``pyamplicol generate --dry-run`` (the model preparation's
+    refusal reported as the plan's unsupported feature); nothing is written.
+    The complete corrections on the same card plan without it."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.cli import run_cli
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loading import compile_model_source
+
+    # The dry run reads compiled models from the model cache only.
+    compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    veto = 'particle_veto = ["Z", "W+", "H", "G0", "G+"]'
+    key = "veto-unlabelled-counterterms"
+    removed = "particle_veto removes the species [23, 24, 25, 250, 251]"
+    processes = ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="eemm"),))
+
+    def card(name, veto):
+        path = tmp_path / f"{name}.toml"
+        output = tmp_path / name
+        path.write_text(
+            _PUBLIC_CARD.format(
+                model=json.dumps(str(loop_qcd_qed_sm_ufo)),
+                output=json.dumps(str(output)),
+                veto=veto,
+            )
+        )
+        return path, output
+
+    path, output = card("api", veto)
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        Generator(resolve_config(path)).generate(processes, output)
+    assert refused.value.key == key
+    assert removed in str(refused.value)
+    assert not output.exists()
+    path, output = card("cli", veto)
+    stderr = io.StringIO()
+    code = run_cli(
+        ("generate", "--card", str(path), "--progress", "off"),
+        stdout=io.StringIO(),
+        stderr=stderr,
+    )
+    assert code == 2
+    text = stderr.getvalue()
+    assert f"{key}: " in text and removed in text
+    assert "Instead: the complete corrections" in text
+    assert not output.exists()
+
+    def dry_run(path):
+        stdout = io.StringIO()
+        code = run_cli(
+            (
+                "generate",
+                "--card",
+                str(path),
+                "--dry-run",
+                "--json",
+                "--progress",
+                "off",
+            ),
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        return json.loads(stdout.getvalue())
+
+    plan = dry_run(path)
+    (feature,) = plan["unsupported_features"]
+    assert feature.startswith(f"{key}: ") and removed in feature
+    assert not output.exists()
+    path, output = card("complete", "")
+    assert dry_run(path)["unsupported_features"] == []
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.xfail(
     strict=True,
@@ -1575,12 +1774,15 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
         "guard, WP3.2 EWI-7)"
     ),
 )
-def test_photon_only_mumu_without_the_veto_guard_misses_catani(
+def test_qed_poles_of_photon_only_mumu_on_loop_qcd_qed_sm_are_catani(
     loop_qcd_qed_sm_ufo, loop_native, monkeypatch
 ):
-    """The negative control of the refusal above: with the guard disabled
-    the request generates and its poles miss the QED Catani operator's, so
-    the refusal stops a silently wrong virtual. Generation about 1 min."""
+    """Photon-only QED corrections (Z, W, H and the Goldstones vetoed): a
+    lepton line through every box and vertex loop. The target of the real
+    fix (EWI-7, PLAN M11/R6), generated with the veto refusal disabled; it is
+    also the refusal's negative control: the request generates and its poles
+    miss the QED Catani operator's, so the refusal stops a silently wrong
+    virtual. Generation about 1 min."""
 
     from pyamplicol.loops.v2 import assemble
 
