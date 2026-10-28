@@ -2,7 +2,10 @@
 
 //! Existing epsilon-sector reduction facade shared with non-Python callers.
 use super::fast::FastReductions;
-use super::v2_reduce::{GENERIC_CHUNK_LANES, fast_engine_threshold, reaches_fast_threshold};
+use super::v2_reduce::{
+    GENERIC_CHUNK_LANES, fast_engine_threshold, invariant_reaches_fast_threshold,
+    reaches_fast_threshold, squared_mass_reaches_fast_threshold,
+};
 use super::*;
 use crate::{
     AmplitudeInput, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
@@ -253,12 +256,21 @@ enum Plans {
 /// (genericity audit 2, G2-M3; `v2_reduce` module docs, 'Absolute
 /// thresholds'). On the pinned NinjaRS the fast path compares its inputs with
 /// absolute constants in the model's units (the native masters' on-shell
-/// snap and the engine's `infrared_eps`, both `1e-9`): every lane whose
-/// squared masses or invariants reach them ([`reaches_fast_threshold`], the
-/// v2 engine's rule) is reduced instead by the generic binary64 reduction of
-/// the same numerator, which has none, built on first use under pyAmpliCol's
-/// library key; every other lane, and every call without such a lane, keeps
-/// the fast reduction's code path and bits.
+/// snap and the engine's `infrared_eps`, both `1e-9`). Lanes are routed on
+/// the given inputs ([`Route`]): with an invariant matrix, every lane whose
+/// squared masses or invariants reach the thresholds
+/// ([`reaches_fast_threshold`], the v2 engine's rule) is reduced instead by
+/// the generic binary64 reduction of the same numerator, which has none,
+/// built on first use under pyAmpliCol's library key. Without one the
+/// invariants are formed from the binary64 shifts, and below the thresholds
+/// they are indistinguishable from rounding (a massless leg at a generic
+/// angle gives `|p²| ~ 1e-11` at `E = 500`), which the fast path's snap sets
+/// to zero as before: such a call routes on the squared masses alone. A lane
+/// with a light squared mass takes the generic plan when its formed
+/// invariants keep clear of the thresholds, and is refused with
+/// [`LIGHT_MASS_NEEDS_INVARIANTS`] otherwise (rounded invariants cannot
+/// resolve the mass). Every other lane, and every call without a routed or
+/// refused lane, keeps the fast reduction's code path and bits.
 struct FastPlan {
     fast: FastReductions,
     expressions: [String; 3],
@@ -270,46 +282,66 @@ struct FastPlan {
     exact_lanes: u64,
 }
 
-/// `(p_i - p_j)²` of each lane's `n` real shifts, lane-major `n²` per lane.
-fn shift_invariants(shifts: &[FourMomentum<Complex<f64>>], n: usize) -> Vec<Complex<f64>> {
-    shifts
-        .chunks_exact(n)
-        .flat_map(|lane| {
-            lane.iter().flat_map(move |a| {
-                lane.iter().map(move |b| {
-                    let (a, b) = (a.components(), b.components());
-                    let d: [f64; 4] = std::array::from_fn(|mu| a[mu].re - b[mu].re);
-                    Complex::new(d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3], 0.)
-                })
+/// The status of a lane of a legacy binary64 fast plan that carries a squared
+/// mass in `(0, 1e-9)` while the call gives no invariant matrix and an
+/// invariant formed from its shifts lies within `1e-9` of zero or of one of
+/// its squared masses ([`FastPlan`]): binary64 invariants formed from rounded
+/// shifts cannot resolve so light a mass. Pass the exact invariants
+/// (`s_matrix`), or use double-double or arbitrary precision.
+pub const LIGHT_MASS_NEEDS_INVARIANTS: &str = "InvalidInput(a squared mass below the binary64 fast \
+     path's absolute threshold 1e-9 needs the exact invariant matrix: an invariant formed from the \
+     rounded shifts lies within 1e-9 of zero or of a squared mass; pass s_matrix, or use \
+     double-double or arbitrary precision)";
+
+/// Where a lane of [`FastPlan`] is reduced.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Route {
+    /// The fast reduction.
+    Fast,
+    /// The generic binary64 reduction (`FastPlan::exact`).
+    Exact,
+    /// Not reduced: [`LIGHT_MASS_NEEDS_INVARIANTS`].
+    Refused,
+}
+
+/// `(p_i - p_j)²` of one lane's `n` real shifts in binary64, row-major `n²`.
+fn shift_invariants(lane: &[FourMomentum<Complex<f64>>]) -> Vec<Complex<f64>> {
+    lane.iter()
+        .flat_map(|a| {
+            lane.iter().map(move |b| {
+                let (a, b) = (a.components(), b.components());
+                let d: [f64; 4] = std::array::from_fn(|mu| a[mu].re - b[mu].re);
+                Complex::new(d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3], 0.)
             })
         })
         .collect()
 }
 
-/// The rows of `values` (`width` entries per lane) that `keep` selects.
-fn kept<V: Clone>(values: &[V], width: usize, keep: &[bool], wanted: bool) -> Vec<V> {
+/// The rows of `values` (`width` entries per lane) whose route is `wanted`.
+fn kept<V: Clone>(values: &[V], width: usize, routes: &[Route], wanted: Route) -> Vec<V> {
     values
         .chunks_exact(width.max(1))
-        .zip(keep)
-        .filter(|&(_, &k)| k == wanted)
+        .zip(routes)
+        .filter(|&(_, &route)| route == wanted)
         .flat_map(|(row, _)| row.iter().cloned())
         .collect()
 }
 
 impl FastPlan {
-    fn evaluate_native(
-        &mut self,
-        ids: &[u64],
+    /// The route of each lane ([`FastPlan`]); empty for inputs the fast path
+    /// refuses (shape, complex shifts, scales or invariants), which keep its
+    /// refusal.
+    fn routes(
+        &self,
+        lanes: usize,
         shifts: &[FourMomentum<Complex<f64>>],
         masses: &[Complex<f64>],
         scales: &[Complex<f64>],
         parameters: &[Complex<f64>],
         s_matrix: Option<&[Complex<f64>]>,
-    ) -> ExecutionResult<Vec<Lane<Complex<f64>, String>>> {
-        let (n, width, lanes) = (self.fast.propagators, self.fast.parameter_count, ids.len());
+    ) -> Vec<Route> {
+        let (n, width) = (self.fast.propagators, self.fast.parameter_count);
         let real = |values: &[Complex<f64>]| values.iter().all(|z| z.im == 0.);
-        // Inputs the fast path refuses (shape, complex shifts, scales or
-        // invariants) keep its refusal.
         let admissible = shifts.len() == lanes * n
             && masses.len() == lanes * n
             && scales.len() == lanes
@@ -319,47 +351,68 @@ impl FastPlan {
             && shifts
                 .iter()
                 .all(|p| p.components().iter().all(|z| z.im == 0.));
-        let derived;
-        let invariants = match s_matrix {
-            Some(matrix) => matrix,
-            None if admissible => {
-                derived = shift_invariants(shifts, n);
-                &derived
-            }
-            None => &[],
-        };
-        let routed: Vec<bool> = if admissible {
-            (0..lanes)
-                .map(|lane| {
-                    reaches_fast_threshold(
-                        n,
-                        &masses[lane * n..(lane + 1) * n],
-                        &invariants[lane * n * n..(lane + 1) * n * n],
-                        self.threshold,
-                    )
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        if !routed.contains(&true) {
+        if !admissible {
+            return Vec::new();
+        }
+        (0..lanes)
+            .map(|lane| {
+                let masses = &masses[lane * n..(lane + 1) * n];
+                match s_matrix {
+                    Some(matrix) => {
+                        let invariants = &matrix[lane * n * n..(lane + 1) * n * n];
+                        if reaches_fast_threshold(n, masses, invariants, self.threshold) {
+                            Route::Exact
+                        } else {
+                            Route::Fast
+                        }
+                    }
+                    None if !squared_mass_reaches_fast_threshold(masses, self.threshold) => {
+                        Route::Fast
+                    }
+                    None => {
+                        let invariants = shift_invariants(&shifts[lane * n..(lane + 1) * n]);
+                        if invariant_reaches_fast_threshold(n, masses, &invariants, self.threshold)
+                        {
+                            Route::Refused
+                        } else {
+                            Route::Exact
+                        }
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn evaluate_native(
+        &mut self,
+        ids: &[u64],
+        shifts: &[FourMomentum<Complex<f64>>],
+        masses: &[Complex<f64>],
+        scales: &[Complex<f64>],
+        parameters: &[Complex<f64>],
+        s_matrix: Option<&[Complex<f64>]>,
+    ) -> ExecutionResult<Vec<Lane<Complex<f64>, String>>> {
+        let (n, width) = (self.fast.propagators, self.fast.parameter_count);
+        let routes = self.routes(ids.len(), shifts, masses, scales, parameters, s_matrix);
+        if routes.iter().all(|&route| route == Route::Fast) {
             return self
                 .fast
                 .evaluate_native(ids, shifts, masses, scales, parameters, s_matrix);
         }
-        self.exact_lanes += routed.iter().filter(|&&r| r).count() as u64;
-        let part = |wanted: bool| {
+        let count = |wanted: Route| routes.iter().filter(|&&route| route == wanted).count();
+        self.exact_lanes += count(Route::Exact) as u64;
+        let part = |wanted: Route| {
             (
-                kept(ids, 1, &routed, wanted),
-                kept(shifts, n, &routed, wanted),
-                kept(masses, n, &routed, wanted),
-                kept(scales, 1, &routed, wanted),
-                kept(parameters, width, &routed, wanted),
-                s_matrix.map(|s| kept(s, n * n, &routed, wanted)),
+                kept(ids, 1, &routes, wanted),
+                kept(shifts, n, &routes, wanted),
+                kept(masses, n, &routes, wanted),
+                kept(scales, 1, &routes, wanted),
+                kept(parameters, width, &routes, wanted),
+                s_matrix.map(|s| kept(s, n * n, &routes, wanted)),
             )
         };
-        let mut fast = if routed.contains(&false) {
-            let (ids, shifts, masses, scales, parameters, matrix) = part(false);
+        let mut fast = if count(Route::Fast) > 0 {
+            let (ids, shifts, masses, scales, parameters, matrix) = part(Route::Fast);
             self.fast.evaluate_native(
                 &ids,
                 &shifts,
@@ -372,7 +425,7 @@ impl FastPlan {
             Vec::new()
         }
         .into_iter();
-        let mut exact = {
+        let mut exact = if count(Route::Exact) > 0 {
             // The generic reduction parses and evaluates Symbolica
             // expressions.
             let _unlock = pyamplicol::unlock();
@@ -385,7 +438,7 @@ impl FastPlan {
                     0_f64,
                 )?),
             };
-            let (ids, shifts, masses, scales, parameters, matrix) = part(true);
+            let (ids, shifts, masses, scales, parameters, matrix) = part(Route::Exact);
             let mut lanes = Vec::with_capacity(ids.len());
             // In chunks, as the v2 generic engine (values unchanged).
             for start in (0..ids.len()).step_by(GENERIC_CHUNK_LANES) {
@@ -400,13 +453,23 @@ impl FastPlan {
                 )?);
             }
             lanes
+        } else {
+            Vec::new()
         }
         .into_iter();
-        routed
-            .iter()
-            .map(|&r| {
-                if r { exact.next() } else { fast.next() }
-                    .ok_or_else(|| error("a reduction engine lost a lane"))
+        ids.iter()
+            .zip(&routes)
+            .map(|(&id, &route)| {
+                match route {
+                    Route::Fast => fast.next(),
+                    Route::Exact => exact.next(),
+                    Route::Refused => Some(Lane {
+                        id,
+                        status: LIGHT_MASS_NEEDS_INVARIANTS.into(),
+                        value: None,
+                    }),
+                }
+                .ok_or_else(|| error("a reduction engine lost a lane"))
             })
             .collect()
     }
@@ -539,6 +602,9 @@ impl PolynomialPlan {
     /// Lanes of the binary64 fast plan reduced by the generic binary64
     /// reduction since the last call because their inputs reach one of the
     /// fast path's absolute thresholds (`FastPlan`); 0 for the generic plans.
+    /// A test hook: the legacy Python binding and `runtime::physical` do not
+    /// report it (the v2 executor reports its own count,
+    /// `V2Reducer::take_exact_lanes`).
     pub fn take_exact_lanes(&mut self) -> u64 {
         match &mut self.plan {
             Plans::Fast(plan) => std::mem::take(&mut plan.exact_lanes),

@@ -1105,7 +1105,8 @@ fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
 /// The legacy engine's binary64 fast plans (`PolynomialPlan` `fast` and
 /// `fast-tensor`; the default `loop.engine`) route by the same rule: light
 /// lanes give the legacy generic binary64 plan's bits, with the invariant
-/// matrix and without it (then formed from the shifts), not the massless
+/// matrix and without it (then formed from the shifts, exact at these
+/// points; rounded ones: the next test), not the massless
 /// lines' integrals the snap computed; the lanes of an ordinary family keep
 /// the fast plan's bits beside them in one call, and a call without a light
 /// lane routes nothing.
@@ -1178,6 +1179,147 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
     }
 }
 
+/// The legacy fast plans without an invariant matrix (`evaluate_batch` with
+/// `s_matrix = None`, `evaluate_decimal`) form the invariants from the
+/// binary64 shifts: a massless leg at a generic angle gives a rounding
+/// `p²` in `(0, 1e-9)` (here `-7.3e-11`, `E = 500`), which the fast path's
+/// snap sets to zero. Such calls route on the squared masses alone: the
+/// massless box keeps the fast plan (no lane routed) and equals the generic
+/// plan given the exact invariants (the massless legs on their shells); the
+/// generic plan given the rounded `p²` instead computes a slightly off-shell
+/// box, O(1) off. A light internal line at that point is refused
+/// (`LIGHT_MASS_NEEDS_INVARIANTS`): rounded invariants cannot resolve it;
+/// given the exact invariants it is routed and equals the generic plan.
+#[test]
+fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
+    use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
+    let energy = 500_f64;
+    let (theta, phi) = (1.1_f64, 0.4_f64);
+    let p3 = [
+        energy,
+        energy * theta.sin() * phi.cos(),
+        energy * theta.sin() * phi.sin(),
+        energy * theta.cos(),
+    ];
+    let point = [
+        [energy, 0., 0., energy],
+        [energy, 0., 0., -energy],
+        p3,
+        [energy, -p3[1], -p3[2], -p3[3]],
+    ];
+    let lanes_of = |masses: Vec<f64>, id: u64| {
+        let family = Family {
+            legs: vec![vec![0], vec![1], vec![2], vec![3]],
+            masses,
+            rank: 3,
+        };
+        let mut lanes = lanes_at(&family, &[point], &[id], "double");
+        let n = family.legs.len();
+        let rounded = values(&lanes.matrix);
+        // The precondition: an invariant formed from the shifts is rounding
+        // inside the thresholds.
+        assert!(rounded.iter().any(|[re, _]| *re != 0. && re.abs() < 1e-9));
+        let mut exact = rounded.clone();
+        for i in 0..n {
+            for j in [(i + 1) % n, (i + n - 1) % n] {
+                exact[i * n + j] = [0., 0.];
+            }
+        }
+        let rounded_lanes = Batch::from_decimal(
+            complex_decimal(&rounded),
+            1,
+            n * n,
+            "double",
+            None,
+            Some(vec![id]),
+        )
+        .unwrap();
+        lanes.matrix = Batch::from_decimal(
+            complex_decimal(&exact),
+            1,
+            n * n,
+            "double",
+            None,
+            Some(vec![id]),
+        )
+        .unwrap();
+        (lanes, rounded_lanes)
+    };
+    let (massless, rounded) = lanes_of(vec![0.; 4], 11);
+    let exact_generic = values(
+        &legacy_reduce(&mut legacy_plan(&massless, "generic"), &massless, true)
+            .values()
+            .unwrap(),
+    );
+    let mut off_shell = legacy_plan(&massless, "generic");
+    let off_shell = values(
+        &off_shell
+            .evaluate_batch(
+                &massless.shifts,
+                &massless.masses,
+                &massless.scales,
+                &massless.coefficients,
+                Some(&rounded),
+            )
+            .unwrap()
+            .values()
+            .unwrap(),
+    );
+    let off = relative(&off_shell, &exact_generic, 3);
+    eprintln!("the generic plan at the rounded invariants: {off:e} off");
+    assert!(off > 1e-2, "{off:e}");
+    for engine in ["fast", "fast-tensor"] {
+        let mut plan = legacy_plan(&massless, engine);
+        let given = values(&legacy_reduce(&mut plan, &massless, true).values().unwrap());
+        let formed = legacy_reduce(&mut plan, &massless, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(formed.statuses(), [(11, "success".to_string())], "{engine}");
+        let formed = values(&formed.values().unwrap());
+        let error = relative(&formed, &exact_generic, 3);
+        assert!(error < 1e-12, "{engine}: {error:e}");
+        assert!(relative(&given, &exact_generic, 3) < 1e-12, "{engine}");
+    }
+    let (light, _) = lanes_of(vec![0., 0., 0., LIGHT], 12);
+    let generic = values(
+        &legacy_reduce(&mut legacy_plan(&light, "generic"), &light, true)
+            .values()
+            .unwrap(),
+    );
+    for engine in ["fast", "fast-tensor"] {
+        let mut plan = legacy_plan(&light, engine);
+        let refused = legacy_reduce(&mut plan, &light, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(
+            refused.statuses(),
+            [(12, LIGHT_MASS_NEEDS_INVARIANTS.to_string())],
+            "{engine}"
+        );
+        assert_eq!(refused.successful_values().rows(), 0);
+        let given = values(&legacy_reduce(&mut plan, &light, true).values().unwrap());
+        assert_eq!(plan.take_exact_lanes(), 1, "{engine}");
+        assert_eq!(given, generic, "{engine}");
+        // In one call beside the massless lane, which keeps its bits.
+        let both = concatenated(&massless, &light);
+        let mut plan = legacy_plan(&both, engine);
+        let alone = values(
+            &legacy_reduce(&mut legacy_plan(&massless, engine), &massless, false)
+                .values()
+                .unwrap(),
+        );
+        let mixed = legacy_reduce(&mut plan, &both, false);
+        assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+        assert_eq!(
+            mixed.statuses(),
+            [
+                (11, "success".to_string()),
+                (12, LIGHT_MASS_NEEDS_INVARIANTS.to_string())
+            ],
+            "{engine}"
+        );
+        assert_eq!(values(&mixed.successful_values()), alone, "{engine}");
+    }
+}
+
 /// Coefficients of `Π_j (q·a_j + b_j)` (Minkowski product, rank = the number
 /// of factors) in the tensor layout of `tensor_monomials(rank)`.
 fn product_numerator(factors: &[([f64; 4], f64)]) -> Vec<[f64; 2]> {
@@ -1225,7 +1367,8 @@ fn rotated(p: &[f64; 4]) -> [f64; 4] {
 /// four-vectors): the generic engine agrees with DoubleFloat in both frames,
 /// the fast engine only in the rotated one, and its error is silent (the lane
 /// succeeds) and as large as the two frames' difference, so a rotation check
-/// sees it. Pins the pinned NinjaRS's behaviour (the upstream note
+/// sees it; the reduction-direction check differs from the direct frame by
+/// more than half the error. Pins the pinned NinjaRS's behaviour (the upstream note
 /// `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/`).
 #[test]
 fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
@@ -1318,10 +1461,13 @@ fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
         assert!(error(&fast_rotated) < 1e-13, "θ = {angle:e}");
         assert!(wrong > least, "θ = {angle:e}: {wrong:e}");
         assert!(seen > 0.5 * wrong && seen < 2. * wrong, "θ = {angle:e}");
+        // The reduction-direction check sees it too (measured 1.29 to 2.26
+        // times the error).
+        let direction = relative(&fast, &reversed, 3);
+        assert!(direction > 0.5 * wrong, "θ = {angle:e}: {direction:e}");
         eprintln!(
             "θ = {angle:e}: fast {wrong:e}, rotation check {seen:e}, \
-             reduction-direction check {:e}",
-            relative(&fast, &reversed, 3)
+             reduction-direction check {direction:e}"
         );
     }
 }

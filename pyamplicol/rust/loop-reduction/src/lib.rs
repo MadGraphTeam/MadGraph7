@@ -401,7 +401,8 @@ where
 /// The native master provider applies its fixed 1e-9 on-shell threshold and
 /// the engine its `infrared_eps`, absolute constants in the model's units:
 /// `runtime::PolynomialPlan`'s fast plans route every lane that reaches them
-/// to the generic binary64 reducer (`runtime::reaches_fast_threshold`); a
+/// to the generic binary64 reducer (`runtime::reaches_fast_threshold`; on the
+/// squared masses alone when the invariants are formed from the shifts); a
 /// direct caller does the same when it needs exact-zero classification.
 pub struct FastReducer<N: FastNumerator> {
     numerator: N,
