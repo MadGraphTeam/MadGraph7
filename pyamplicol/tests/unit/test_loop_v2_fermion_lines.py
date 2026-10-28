@@ -26,7 +26,10 @@ to full colour, identical flavours included (their blocks of one colour
 word and different U(1)-subtraction grades are separate blocks,
 ``generation.dag_grades``), in binary64 and double-double. The grades
 themselves are checked independently by an N_c scan of the tree currents:
-every block scales as its U(1)-subtraction pieces. The 2->4 requests run in
+every block scales as its U(1)-subtraction pieces. Independently of the
+grades altogether, LC and NLC are the kept coefficients of full colour as a
+function of N_c (full colour has no grade split; ``loop_nc_scan`` evaluates
+it at eleven N_c). The 2->4 requests run in
 the nightly tier; the physics tier keeps a 2->3 control (u u~ > u u~ g, two
 identical-flavour lines).
 """
@@ -236,6 +239,73 @@ def _projection_request(compiled, name: str, accuracy: str, carrier: str):
     )
 
 
+class _PowerParts:
+    """The N_c-power parts of ``name`` at its ``carrier`` point: ``parts[p]``
+    is the unpruned LC slice evaluated keeping N_c power p only (``at``), p
+    from ``top`` (the largest leading degree) down to ``lowest`` = top - 10;
+    binary64 on the Python reference path, double-double in the native
+    executor (``evaluate``)."""
+
+    def __init__(self, compiled, loop_native, monkeypatch, name, carrier):
+        self.compiled, self.native, self.name = compiled, loop_native, name
+        self.monkeypatch, self.carrier = monkeypatch, carrier
+        _request0, self.point, self.scale, self.parameters = _projection_request(
+            compiled, name, "lc", carrier
+        )
+        self.unpruned = self.build("lc", prune=False)
+        self.degrees = self.unpruned.degrees()
+        self.top = max(
+            value
+            for kind in self.degrees.values()
+            for value in kind.values()
+            if value is not None
+        )
+        self.lowest = self.top - 10
+        self.parts = {p: self.at(p) for p in range(self.lowest, self.top + 1)}
+
+    def build(self, accuracy, prune=True):
+        from pyamplicol.loops.v2.assemble import LoopSlice
+
+        request, *_rest = _projection_request(
+            self.compiled, self.name, accuracy, self.carrier
+        )
+        return LoopSlice.generate(self.compiled, request, self.native, prune=prune)
+
+    def evaluate(self, slice_, stability=None):
+        from pyamplicol.loops.v2.assemble import Precision
+        from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+
+        if self.carrier == "double":
+            return slice_.evaluate(
+                self.point,
+                self.scale,
+                parameters=self.parameters,
+                precision=Precision.double(),
+                stability=stability,
+            )
+        executor = NativeExecutor(
+            slice_, forward=False, exported=export_plan(slice_, forward=False)
+        )
+        (result,) = executor.evaluate(
+            [self.point],
+            [self.scale],
+            parameters=self.parameters,
+            precision=Precision.double_double(),
+        )
+        return result
+
+    def at(self, power):
+        from pyamplicol.loops.v2 import assemble, colour
+
+        def kept(exponent, _degree, _accuracy):
+            return exponent == power
+
+        with self.monkeypatch.context() as patch:
+            patch.setattr(colour, "kept", kept)
+            patch.setattr(assemble, "kept", kept)
+            return self.evaluate(self.unpruned)
+
+
 @pytest.mark.parametrize("carrier", list(PROJECTION_CARRIERS))
 @pytest.mark.parametrize(
     "name",
@@ -262,62 +332,16 @@ def test_colour_projections_are_formal_nc_projections(
 
     from decimal import Decimal, localcontext
 
-    from pyamplicol.loops.v2 import assemble, colour
-    from pyamplicol.loops.v2.assemble import LoopSlice, Precision
-    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
     from pyamplicol.models.loading import load_compiled_model
 
     compiled = load_compiled_model(loop_sm_compiled_model)
     tolerance = Decimal(str(PROJECTION_CARRIERS[carrier]))
-    _request0, point, scale, parameters = _projection_request(
-        compiled, name, "lc", carrier
-    )
-
-    def build(accuracy, prune=True):
-        request = _projection_request(compiled, name, accuracy, carrier)[0]
-        return LoopSlice.generate(compiled, request, loop_native, prune=prune)
-
-    def evaluate(slice_, stability=None):
-        if carrier == "double":
-            return slice_.evaluate(
-                point,
-                scale,
-                parameters=parameters,
-                precision=Precision.double(),
-                stability=stability,
-            )
-        executor = NativeExecutor(
-            slice_, forward=False, exported=export_plan(slice_, forward=False)
-        )
-        (result,) = executor.evaluate(
-            [point],
-            [scale],
-            parameters=parameters,
-            precision=Precision.double_double(),
-        )
-        return result
-
-    unpruned, full = build("lc", prune=False), build("full")
-    degrees = unpruned.degrees()
-
-    def at(power):
-        def kept(exponent, _degree, _accuracy):
-            return exponent == power
-
-        with monkeypatch.context() as patch:
-            patch.setattr(colour, "kept", kept)
-            patch.setattr(assemble, "kept", kept)
-            return evaluate(unpruned)
-
-    top = max(
-        value
-        for kind in degrees.values()
-        for value in kind.values()
-        if value is not None
-    )
-    lowest = top - 10
-    parts = {power: at(power) for power in range(lowest, top + 1)}
+    projection = _PowerParts(compiled, loop_native, monkeypatch, name, carrier)
+    build, evaluate, at = projection.build, projection.evaluate, projection.at
+    full, degrees = build("full"), projection.degrees
+    lowest = projection.lowest
+    parts = projection.parts
     if carrier == "double":
         exact = evaluate(
             full, StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
@@ -398,6 +422,190 @@ def test_colour_projections_are_formal_nc_projections(
                             accuracy,
                             k,
                         )
+
+
+# An independent formal-N_c projection: full colour as a function of N_c.
+# Full colour has no grade split, and ``loop_nc_scan`` evaluates it with
+# N_c = N wherever the engine substitutes N_c = 3 and 1/N for the trees'
+# U(1)-subtraction weight, so FC(N) = sum_p c_p N^p comes without the grade
+# bookkeeping LC and NLC rest on. The parts of the projection test above are
+# c_p 3^p. FC(N) at eleven N (one per power of the parts; 1 and powers of two
+# keep 1/N exact in binary64) fixes every coefficient: in binary64 FC(N)
+# equals sum_p part_p (N/3)^p within 1e-12 of the largest term (the O1 rule
+# above), and at 32 digits (FC(N) on the Python reference path, whose
+# arbitrary precision is the only carrier that projects in Python; the parts
+# and the LC and NLC slices in double-double) the coefficients solved exactly
+# from FC(N) equal the parts, and their kept powers the LC and NLC slices,
+# within 1e-24 of the largest part. One process per N.
+NC_SCAN_NAMES = ("uux_uuxg", "uux_uuxuux")
+NC_SCAN_VALUES = tuple(
+    Fraction(n)
+    for n in ("3", "2", "4", "1", "8", "1/2", "16", "1/4", "32", "1/8", "64")
+)
+NC_SCAN_PRECISION = {"double": "double", "double-double": "arbitrary:32"}
+
+
+def _fc_at_nc(model, name, values, precision, cache):
+    """FC of ``name`` at each N_c of ``values`` (``loop_nc_scan``, one
+    process each, concurrently): N -> (rescaled interactions, entries)."""
+
+    import os
+    import subprocess
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = Path(__file__).resolve().parents[2]
+
+    def run(index, n):
+        environment = dict(os.environ, PYAMPLICOL_CACHE_DIR=str(cache / f"nc-{index}"))
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tests.unit.loop_nc_scan",
+                str(model),
+                name,
+                str(n),
+                precision,
+            ],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        assert process.returncode == 0, (n, process.stderr[-4000:])
+        found = json.loads(process.stdout.strip().splitlines()[-1])
+        return found["rescaled"], _entries(found)
+
+    with ThreadPoolExecutor(len(values)) as pool:
+        return dict(zip(values, pool.map(run, range(len(values)), values), strict=True))
+
+
+def _entries(result) -> dict:
+    """(born, order) and (component, sector, k) -> exact value, from a
+    ``PointResult`` or its ``loop_nc_scan`` JSON (orders and sectors by repr)."""
+
+    from decimal import Decimal
+
+    def exact(value):
+        return Fraction(Decimal(str(value)))
+
+    if isinstance(result, dict):
+        born, components = result["born"], result["components"]
+    else:
+        born = {repr(k): v for k, v in result.born.items()}
+        components = {
+            c: {repr(s): laurent.coefficients for s, laurent in sectors.items()}
+            for c, sectors in result.components.items()
+        }
+    out = {("born", order, 0): exact(v) for order, v in born.items()}
+    for component, sectors in components.items():
+        for sector, coefficients in sectors.items():
+            for k, c in enumerate(coefficients):
+                out[component, sector, k] = exact(c)
+    return out
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("carrier", list(NC_SCAN_PRECISION))
+@pytest.mark.parametrize("name", NC_SCAN_NAMES)
+def test_colour_projections_are_coefficients_of_an_nc_scan_of_full_colour(
+    loop_sm_compiled_model, loop_native, monkeypatch, tmp_path, name, carrier
+):
+    """LC and NLC of identical-flavour lines equal the N_c^P (N_c^P..N_c^(P-2))
+    coefficients of full colour as a function of N_c (comment above): Born
+    and every component and Laurent coefficient at the first point."""
+
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    projection = _PowerParts(compiled, loop_native, monkeypatch, name, carrier)
+    parts = {p: _entries(part) for p, part in projection.parts.items()}
+    powers = sorted(parts)
+    assert len(NC_SCAN_VALUES) == len(powers)
+    scan = _fc_at_nc(
+        loop_sm_compiled_model,
+        name,
+        NC_SCAN_VALUES,
+        NC_SCAN_PRECISION[carrier],
+        tmp_path,
+    )
+    assert all(scan[n][0] for n in NC_SCAN_VALUES if n != 3), scan.keys()
+    keys = set().union(*parts.values(), *(entries for _r, entries in scan.values()))
+
+    def sector(key):
+        return key[:2]
+
+    if carrier == "double":
+        full = projection.build("full")
+        estimate = projection.evaluate(
+            full, StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+        ).stability.relative
+        assert estimate < O1_CAP, estimate
+        tolerance = Fraction(max(PROJECTION_CARRIERS[carrier], estimate))
+        for n, (_rescaled, value) in scan.items():
+            terms = {
+                key: [parts[p].get(key, 0) * (n / 3) ** p for p in powers]
+                for key in keys
+            }
+            size = {}
+            for key, row in terms.items():
+                size[sector(key)] = max(size.get(sector(key), 0), *map(abs, row))
+            for key, row in terms.items():
+                error = abs(value.get(key, 0) - sum(row))
+                assert error <= tolerance * (size[sector(key)] or 1), (n, key)
+        return
+    tolerance = Fraction(PROJECTION_CARRIERS[carrier])
+    accuracies = {
+        accuracy: _entries(projection.evaluate(projection.build(accuracy)))
+        for accuracy in ("lc", "nlc")
+    }
+    degrees = {("born", repr(k)): v for k, v in projection.degrees["born"].items()}
+    degrees.update(
+        {
+            (component, repr(k)): v
+            for component in {key[0] for key in keys if key[0] != "born"}
+            for k, v in projection.degrees["virtual"].items()
+        }
+    )
+    matrix = [[(n / 3) ** p for p in powers] for n in NC_SCAN_VALUES]
+    size = {}
+    for key in keys:
+        largest = max(abs(parts[p].get(key, 0)) for p in powers)
+        size[sector(key)] = max(size.get(sector(key), 0), largest)
+    for key in keys:
+        fitted = _solve(matrix, [scan[n][1].get(key, 0) for n in NC_SCAN_VALUES])
+        scale = size[sector(key)] or 1
+        for p, c in zip(powers, fitted, strict=True):
+            assert abs(c - parts[p].get(key, 0)) <= tolerance * scale, (key, p)
+        degree = degrees[sector(key)]
+        for accuracy, depth in (("lc", 0), ("nlc", 2)):
+            kept = sum(
+                c
+                for p, c in zip(powers, fitted, strict=True)
+                if degree - depth <= p <= degree
+            )
+            error = abs(accuracies[accuracy].get(key, 0) - kept)
+            assert error <= tolerance * scale, (accuracy, key)
+
+
+def _solve(matrix, rhs):
+    """The exact solution of the square linear system ``matrix x = rhs``."""
+
+    rows = [[*row, b] for row, b in zip(matrix, rhs, strict=True)]
+    size = len(rows)
+    for column in range(size):
+        pivot = next(r for r in range(column, size) if rows[r][column])
+        rows[column], rows[pivot] = rows[pivot], rows[column]
+        for r in range(size):
+            if r != column and rows[r][column]:
+                factor = rows[r][column] / rows[column][column]
+                rows[r] = [
+                    x - factor * y for x, y in zip(rows[r], rows[column], strict=True)
+                ]
+    return [rows[r][size] / rows[r][r] for r in range(size)]
 
 
 # The N_c dependence of the tree currents, independently of the grade
