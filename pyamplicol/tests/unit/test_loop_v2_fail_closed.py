@@ -378,6 +378,11 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # ``externals`` and ``preparation_fixed_parameters``; with those removed every
 # native digest equals the former pin, and the plan and companion digests
 # are unchanged.
+# Re-pinned by mq-select: the LC native digests only, for the leading-colour
+# flow catalogue the stored observables record now holds (``color_flows``,
+# ``native_observables._flows_record``; runtime colour-flow selection); with
+# it removed both LC native digests equal the former pins, the plan and
+# companion digests are unchanged and NLC and full colour keep every byte.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -390,7 +395,7 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "d16cba9475fc8230df4e79375a4f1cbbd0acad3b6e68e0dbc62b1919f55fba19",
+        "e370be763a5e2f3ded0fa1834ccf35b67ff9f210fc9a7362ebf7333c798d6376",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
@@ -400,7 +405,7 @@ CONTROL_BYTES = {
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "1d86b2b60a5073da2709e614c0a9b43d9a7166661f2aec2009e4f0aa33b3a6ce",
+        "1e98ed0592e422045831a842b2baeba64468492e51cfe9a2565fc814cae0eca5",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
