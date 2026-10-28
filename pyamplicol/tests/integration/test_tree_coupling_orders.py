@@ -652,6 +652,79 @@ def test_recurrence_lane_refuses_the_massive_exchange_with_a_massless_b(
         _runtime(sm_no_b_mass_model, process, tmp_path / "artifact")
 
 
+@pytest.mark.parametrize(
+    ("restriction", "process"),
+    [
+        ("default", "vt vt~ > w+ w- z"),
+        ("default", "vt vt~ > w+ w- a"),
+        ("no_b_mass", "b b~ > w+ w- z"),
+        ("no_b_mass", "b b~ > w+ w- a"),
+        ("no_b_mass", "b b~ > w+ w- g"),
+    ],
+)
+def test_recurrence_lane_refuses_the_radiative_dirac_weyl_class(
+    sm_model: ModelSource,
+    sm_no_b_mass_model: ModelSource,
+    tmp_path: Path,
+    restriction: str,
+    process: str,
+) -> None:
+    """The radiative processes the recurrence got wrong without an error
+    (v_tau v_tau~ > W+ W- Z 631-2210x MadGraph, W+ W- gamma 157-4780x; with a
+    massless b, b b~ > W+ W- Z 21-1460x, W+ W- gamma 68-685x, W+ W- g
+    14-160x; DESIGN WP2.9) are refused too."""
+
+    model = sm_model if restriction == "default" else sm_no_b_mass_model
+    with pytest.raises(GenerationError, match=_RECURRENCE_DIRAC_WEYL_CLOSURE):
+        _runtime(model, process, tmp_path / "artifact")
+
+
+def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
+    """A 2 -> 2 point at sqrt(s) = 1000 GeV in the centre-of-mass frame."""
+
+    m1, m2, m3, m4 = masses
+    root = 1000.0
+    s = root * root
+
+    def momentum(a: float, b: float) -> float:
+        return math.sqrt((s - (a + b) ** 2) * (s - (a - b) ** 2)) / (2 * root)
+
+    p, q = momentum(m1, m2), momentum(m3, m4)
+    sine = math.sqrt(1 - cosine * cosine)
+    v = [q * sine * 0.6, q * sine * 0.8, q * cosine]
+    return [
+        [math.hypot(p, m1), 0.0, 0.0, p],
+        [math.hypot(p, m2), 0.0, 0.0, -p],
+        [math.hypot(q, m3), *v],
+        [math.hypot(q, m4), *(-x for x in v)],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("process", "masses"),
+    [
+        ("ta+ ta- > vt vt~", (1.777, 1.777, 0.0, 0.0)),
+        ("ta- ve > vt e-", (1.777, 0.0, 0.0, 0.0)),
+    ],
+)
+def test_recurrence_lane_builds_a_massive_line_closing_on_no_weyl_sink(
+    sm_model: ModelSource, tmp_path: Path, process: str, masses: tuple
+) -> None:
+    """The guard's control: a W turning an external tau into a v_tau puts a
+    massive fermion on the v_tau line, but the recurrence closes at a tau, so
+    no Dirac current meets a Weyl sink; it builds and equals the eager lane."""
+
+    points = [_on_shell_two_to_two(masses, cosine) for cosine in (0.3, -0.7)]
+    recurrence = _runtime(sm_model, process, tmp_path / "recurrence")
+    eager = _runtime(sm_model, process, tmp_path / "eager", execution_mode="eager")
+    for mine, theirs in zip(
+        recurrence.evaluate(points), eager.evaluate(points), strict=True
+    ):
+        mine, theirs = complex(mine), complex(theirs)
+        assert theirs.real > 0.0 and mine.imag == 0.0
+        assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
+
+
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
 @pytest.mark.parametrize("process", [_THREE_LINE_TRIPLE_GAUGE, _W_PAIRED_THREE_LINES])
 def test_eager_lane_counts_a_three_line_triple_gauge_vertex_once(
