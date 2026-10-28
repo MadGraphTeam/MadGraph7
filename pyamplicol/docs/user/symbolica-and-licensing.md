@@ -134,7 +134,13 @@ to the personal license or to the restricted mode, as the Python side does.
   unlicensed processes (for example a Monte Carlo farm) evaluate virtuals
   concurrently; it does not depend on the package key either. On an x86-64
   CPU without AVX and FMA3, where SymJIT cannot compile, f64 evaluates the
-  saved Symbolica states instead, under the package key.
+  saved Symbolica states instead, under the package key. One more exception:
+  a loop whose squared masses or invariants at a point lie strictly between
+  0 and 1e-9 in the model's units (a keV-scale mass in GeV; see "Light
+  masses in binary64" in the configuration guide) is reduced by the exact
+  generic engine, which uses Symbolica in the native code under the package
+  key. Such evaluations also run in concurrent unlicensed processes, but
+  they need the package key (or a personal licence) as double-double does.
 - Double-double and arbitrary-precision virtual evaluation, and the legacy
   loop engine at every precision (Python and the C/C++/Fortran SDK), decode
   saved Symbolica evaluator states natively under the package key, so they

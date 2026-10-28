@@ -607,14 +607,18 @@ as on that shell. A `double` evaluation never applies these: a loop whose
 squared masses or invariants at a point fall in that window (a keV-scale
 internal mass in GeV, the electron mass in TeV) is reduced by the exact generic
 binary64 engine instead, so its integrals do not depend on the units; only the
-cost of those loops changes (the legacy engine keeps both shortcuts). The
-artifact's generation filters list the masses this light at the generation
-parameters (`binary64_exact_engine`: the threshold and each squared mass); a
-parameter override is checked again at evaluation. Binary64 itself limits light
-loops far below the other scales: a box with three or four light lines can lose
-several digits, and one beside a massive leg can fail with a non-finite master
-integral (the point then fails rather than returning the massless value). Use
-the stability checks, and `double-double` where binary64 fails.
+cost of those loops changes, in the v2 and the legacy engine alike. The exact
+engine uses Symbolica in the native code, under pyAmpliCol's package key, so a
+v2 binary64 evaluation with such a loop needs the key, which other v2 binary64
+evaluations do not (see [Symbolica and licensing](symbolica-and-licensing.md)).
+The artifact's generation filters list the masses this light at the generation
+parameters (`binary64_exact_engine`: the threshold and each squared mass; v2
+artifacts); a parameter override is checked again at evaluation. Binary64
+itself limits light loops far below the other scales: a box with three or four
+light lines can lose several digits, and one beside a massive leg can fail with
+a non-finite master integral (the point then fails rather than returning the
+massless value). Use the stability checks, and `double-double` where binary64
+fails.
 
 #### Ultraviolet and infrared poles
 
