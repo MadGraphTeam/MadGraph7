@@ -96,7 +96,7 @@ def restricted(loop_sm_ufo, tmp_path_factory):
 
     built = {}
 
-    def compile_(restriction: str):
+    def compile_(restriction: str, *, path: bool = False):
         if restriction not in built:
             root = tmp_path_factory.mktemp(f"loop-sm-{restriction}")
             model = compile_model_source(
@@ -110,8 +110,9 @@ def restricted(loop_sm_ufo, tmp_path_factory):
                 _serialized_path=None,
                 _prepared_bundle=None,
             )
-            built[restriction] = load_compiled_model(model.write(root / "model.json"))
-        return built[restriction]
+            written = model.write(root / "model.json")
+            built[restriction] = (written, load_compiled_model(written))
+        return built[restriction][0 if path else 1]
 
     return compile_
 
@@ -265,6 +266,20 @@ def test_the_loop_born_dag_records_a_dirac_weyl_root(restricted):
     assert {root.coupling_orders for root in _born_roots(dag, model)} == {(("QED", 2),)}
 
 
+@pytest.mark.loop_fast
+def test_the_born_order_preflight_admits_the_class(restricted):
+    """``artifact.born_amplitude_orders`` (the public route's preflight)
+    reads the Born orders from a loop Born DAG: g b > t w- with a massless b,
+    whose every root closes a Dirac current on a Weyl sink, has its Born."""
+
+    from pyamplicol.loops.v2.artifact import born_amplitude_orders
+
+    orders, _dag = born_amplitude_orders(
+        restricted("no_b_mass"), "g b > t w-", {"QCD": 1, "QED": 1}
+    )
+    assert orders == ((("QCD", 1), ("QED", 1)),)
+
+
 def _equal_routes(restricted, loop_native, process, carriers):
     """The process on loop_sm-no_b_mass equals the default restriction with
     MB = ymb = 0 at a point, per Born sector and virtual coefficient."""
@@ -326,3 +341,71 @@ def test_the_dirac_weyl_class_generates(restricted, loop_native, restriction, pr
     result = _evaluate(slice_, point, Precision.double_double())
     assert any(Decimal(str(v)) for v in result.born.values())
     _assert_catani(result)
+
+
+@pytest.mark.loop_nightly
+def test_the_public_route_generates_the_class(restricted, loop_native, tmp_path):
+    """b b~ > w+ w- on loop_sm-no_b_mass through the TOML card,
+    ``Generator`` and ``Runtime`` (minimal coupling orders: the preflight
+    reads the Born orders from the loop Born DAG) equals the slice in
+    binary64."""
+
+    import json
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    model = restricted("no_b_mass", path=True)
+    fixed = ", ".join(f'{name} = "{value}"' for name, value in ZERO_WIDTHS.items())
+    card = tmp_path / "card.toml"
+    card.write_text(
+        f"""
+action = "generate"
+[model]
+source = {json.dumps(str(model))}
+[process]
+entries = [{{expression="b b~ > w+ w-", name="bbx_wpwm"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+engine = "v2"
+[loop.preparation]
+fixed_parameters = {{{fixed}}}
+[loop.model]
+loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
+[generation]
+output = {json.dumps(str(tmp_path / "artifact"))}
+emit_api_bundle = false
+"""
+    )
+    processes = ProcessSet((ProcessRequest.parse("b b~ > w+ w-", name="bbx_wpwm"),))
+    Generator(resolve_config(card)).generate(processes, tmp_path / "artifact")
+    runtime = Runtime.load(
+        tmp_path / "artifact", process="bbx_wpwm", model_parameters=PARAMETERS
+    )
+    point = _point(PROCESSES["b b~ > w+ w-"][2])
+    public = runtime.evaluate([point], mu_r2=[MU_R2])
+    slice_ = _slice(restricted("no_b_mass"), loop_native, "b b~ > w+ w-", ZERO_WIDTHS)
+    mine = _evaluate(slice_, point, Precision.double())
+    ((born,),) = (public.born_values[0],)
+    (theirs,) = mine.born.values()
+    assert _relative(Decimal(str(born)), Decimal(str(theirs))) <= 1e-12
+    ((laurent,),) = (public.values[0],)
+    (virtual,) = mine.components["virtual"].values()
+    for ours, theirs in zip(laurent, virtual.coefficients, strict=True):
+        assert _relative(Decimal(str(ours)), Decimal(str(theirs))) <= 1e-12
