@@ -1351,10 +1351,13 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     (``loop_admission_checked`` and ``native_export_checked`` are False;
     ``native_export_refusals`` lists the features the export refuses,
     ``native_trees.NATIVE_EXPORT_REFUSALS``: such a process fails generation,
-    a stored plan v4 process never regenerates at load)."""
+    a stored plan v4 process never regenerates at load;
+    ``loop_admission_refusals`` the structures the generation refuses,
+    ``refusals.LOOP_ADMISSION_REFUSALS``, with their remedies)."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
+    from pyamplicol.loops.v2.refusals import LOOP_ADMISSION_REFUSALS
 
     blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []
@@ -1410,6 +1413,10 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         runtime_capability=LOOP_V2_RUNTIME_CAPABILITY,
         native_export_refusals=tuple(
             f"{refusal.key}: {refusal.feature}" for refusal in NATIVE_EXPORT_REFUSALS
+        ),
+        loop_admission_refusals=tuple(
+            f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
+            for refusal in LOOP_ADMISSION_REFUSALS
         ),
     )
     return replace(result, estimated_coverage=estimated)
