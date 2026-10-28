@@ -694,3 +694,80 @@ def test_majorana_and_contact_vertices_are_listed_refusals(loop_sm_ufo, key):
             certify_primitives=False,
         )
     assert refused.value.key == key
+
+
+# ------------------------------------------------- MadLoop on the public route
+
+# MadLoop 3.7.0 accurate-mode controls on loop_sm-no_b_mass (committed):
+# Drell-Yan with the Z vetoed and e+ e- > t t~, QCD corrections, widths 0.
+MADLOOP_ROWS = {
+    "dy": ("drell-yan-control", "u u~ > e- e+", ["Z"]),
+    "ee": ("ee-ttx-madloop-control", "e+ e- > t t~", []),
+}
+
+
+def _row_rel(mine, reference) -> float:
+    from decimal import Decimal
+
+    mine = Decimal(str(complex(mine).real)) if not isinstance(mine, Decimal) else mine
+    reference = Decimal(repr(reference))
+    scale = max(abs(mine), abs(reference))
+    return 0.0 if scale == 0 else float(abs(mine - reference) / scale)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param("dy", marks=pytest.mark.loop_physics),
+        pytest.param("ee", marks=pytest.mark.loop_nightly),
+    ],
+)
+def test_public_route_on_the_shipped_loop_sm_equals_madloop(
+    loop_reference, loop_native, tmp_path, row
+):
+    """The public route on ``model.source = "loop_sm"`` (no [loop.model],
+    default full colour) against MadLoop (m-qcd PLAN §1.4): double-double
+    within 1e-12 of MadLoop (rule 1; MadLoop's own accuracy is below that at
+    every point), binary64 within 1e-12 of our double-double (rule 2,
+    well-conditioned 2 -> 2 points), Born and every Laurent coefficient."""
+
+    from pyamplicol import Runtime
+
+    name, expression, veto = MADLOOP_ROWS[row]
+    reference = loop_reference(name)
+    assert all(item["accuracy"] < 1e-11 for item in reference["results"])
+    _compile("loop_sm", "no_b_mass")
+    card = tmp_path / "card.toml"
+    text = _ufo_card(
+        "loop_sm", tmp_path / "artifact", expression, restriction="no_b_mass"
+    ).replace(
+        "[generation]\n",
+        f"[generation]\nparticle_veto = {json.dumps(veto)}\n",
+    )
+    _generator(text, card).generate(_processes(expression), tmp_path / "artifact")
+    runtime = Runtime.load(tmp_path / "artifact", process="p")
+    assert runtime.inspect()["color_accuracy"] == "full"
+    points = reference["points"]
+    scales = [1.0e6] * len(points)
+    carriers = {
+        arithmetic: runtime.evaluate(
+            [[[str(c) for c in p] for p in point] for point in points]
+            if arithmetic != "double"
+            else [[[float(c) for c in p] for p in point] for point in points],
+            mu_r2=scales,
+            arithmetic=arithmetic,
+        )
+        for arithmetic in ("double", "double-double")
+    }
+
+    def coefficients(result, index):
+        ((born,),) = (result.born_values[index],)
+        ((laurent,),) = (result.values[index],)
+        return (born, laurent.finite, laurent.single_pole, laurent.double_pole)
+
+    for index, expected in enumerate(reference["results"]):
+        dd = coefficients(carriers["double-double"], index)
+        double = coefficients(carriers["double"], index)
+        for k, key in enumerate(("born", "finite", "single_pole", "double_pole")):
+            assert _row_rel(dd[k], expected[key]) <= 1e-12, (index, key)
+            assert _row_rel(double[k], float(dd[k])) <= 1e-12, (index, key)
