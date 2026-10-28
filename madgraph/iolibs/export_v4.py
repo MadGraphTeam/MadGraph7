@@ -4065,9 +4065,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # kept apart (AMP2H) and only the rows above the good-helicity cut of
         # this point join AMP2, the test GOODHEL itself is trained on. With MC
         # over helicities no row sum exists (TS stays 0): the picked row counts.
+        # MATRIX fills AMP2H only under SDE_STRAT 1 (its amp2_lines), so that
+        # is when it is reset, every call, multi-channel or not: it no longer
+        # accumulates without bound when MULTI_CHANNEL is off. Only
+        # MULTI_CHANNEL with SDE_STRAT 1 reads AMP2 as accumulated (any other
+        # SDE_STRAT overwrites it with GET_CHANNEL_CUT, and without
+        # MULTI_CHANNEL it is not read), so the rows join AMP2 then only.
         if len(table) > 1:
             cut_decl = '\n      DOUBLE PRECISION AMP2H(MAXAMPS,NCOMB), TSSUM'
-            cut_init = ('\n      IF (MULTI_CHANNEL.AND.SDE_STRAT.EQ.1)'
+            cut_init = ('\n      IF (SDE_STRAT.EQ.1)'
                         ' AMP2H(1:NDIAGS,:) = 0D0')
             cut_amp2 = 'AMP2H(1,I)'
             cut_pass = '\n'.join([
