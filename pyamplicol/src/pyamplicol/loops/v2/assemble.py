@@ -1453,11 +1453,15 @@ def check_model_parameters(
     fixed_parameters`` and those the model preparation fixes, ``prepared``,
     which the refusal names as such) are refused with a ``ValueError``. A
     known parameter the process does not read is accepted (it has no
-    effect). Every value is read first, as the Python API reads it
-    (``runtime.virtual._number``: a finite decimal number of ASCII text)."""
+    effect). An empty name is the Python API reader's ``TypeError``; every
+    value is read first, as the Python API reads it (``runtime.virtual.
+    _number``: a finite decimal number of ASCII text)."""
 
     from pyamplicol.runtime.virtual import _number
 
+    if any(not isinstance(name, str) or not name for name in parameters):
+        # The Python API's reader's refusal (``runtime.virtual._parameters``).
+        raise TypeError("model parameter names must be nonempty strings")
     names = sorted(parameters)
     for name in names:
         _number(parameters[name], f"parameter {name!r} real part")

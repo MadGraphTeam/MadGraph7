@@ -10,21 +10,28 @@ parameters and scales (second genericity audit, G2-M2 and G2-m3).
   which is the Rust SDK's ``Runtime``) and the slice's own evaluation (the
   reference executor's twin, ``LoopSlice.evaluate``) refuse the same inputs
   with the same message: the fixed WT at another value, the renormalisation
-  scale MU_R, an unknown name, a value that is not a finite decimal (a
-  fraction, an infinity); a mapping with one refused entry changes nothing,
+  scale MU_R, an unknown name, a value that is not a finite decimal of
+  ASCII text (a fraction, other digits, an infinity), an empty name (the
+  Python API's ``TypeError``); a mapping with one refused entry changes
+  nothing,
   and one with several is refused with the same message everywhere (values
   first, then names, by name). A complex value is the Python API's
   ``CompatibilityError`` (C status 3). The stored process's own executor
-  applies the rule too. An external colour-scheme constant that the colour
-  declaration fixes (toy: loop_sm with ``lhv`` external) is in the fixed set
-  of every client and of the slice. Accepted values (WT at its fixed zero,
+  applies the rule too, with the model's names from its record. An external
+  colour-scheme constant that the colour declaration fixes (toy: loop_sm
+  with ``lhv`` external) is in the fixed set of every client and of the
+  slice, and its refusal says the model preparation fixed it. Accepted
+  values (WT at its fixed zero,
   MT, aS, a parameter the process does not read) give bitwise the Python
   API's binary64 values in every client, at points exact in binary64 and on
   shell at their top mass.
   The C++ and Fortran wrappers compile against the typed errors
   (``VirtualError::status``, ``update_parameters(..., error_message=...)``)
-  and report them; the native runtime keeps its tree and closure stages on
-  its own thread pool (``threads=1`` starts no global rayon pool).
+  and report them; the native runtime and the Python API's native executor
+  keep their tree and closure stages on their own thread pool
+  (``threads=1`` starts no global rayon pool). The Rust SDK's own control
+  (``sdk/tests/v4_parameters.rs``, its error kinds) runs on this file's
+  artifact in ``test_the_rust_sdk_follows_the_python_api`` (nightly).
 * **Scale-dependent batches (G2-m3).** Generation records which outputs of
   the parameter program depend on the scale (``native_trees._scale_outputs``).
   loop_sm's NLO couplings read MU_R in the counterterms only, so its Born
@@ -118,10 +125,22 @@ REFUSED = [
         {"WX": "1", "MU_R": "100"},
         "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
     ),
-    # Values are decimal numbers, read before the names.
+    # Values are decimal numbers of ASCII text, read before the names (no
+    # fractions, no other digits: Arabic-Indic 173 here).
     ({"aS": "59/500"}, "parameter 'aS' real part is not a decimal number"),
+    (
+        {"MT": "\u0661\u0667\u0663"},
+        "parameter 'MT' real part is not a decimal number",
+    ),
     ({"WX": "1", "aS": "Infinity"}, "parameter 'aS' real part must be finite"),
 ]
+
+# An empty name: the Python API's TypeError (the C ABI's invalid argument,
+# the Rust SDK's InvalidArgument), in the same words, before every value.
+EMPTY_NAME = (
+    {"": "1", "MT": "one"},
+    "model parameter names must be nonempty strings",
+)
 
 
 def _card(
@@ -445,6 +464,41 @@ def test_refused_parameters_are_the_python_apis_in_every_client(
         assert opened[:3] == ["open", 3, str(refused.value)], opened
 
 
+def test_an_empty_parameter_name_is_refused_in_every_client(
+    ggtt, loop_native, c_client, tmp_path
+):
+    """An empty name is the Python API's ``TypeError`` (the stored view's
+    and the slice's too), the C ABI's invalid argument (status 1) and the
+    native runtime's ``ValueError`` (``evaluate_v2_artifact`` raises every
+    typed refusal so), with the same text, before any value is read."""
+
+    from pyamplicol import Runtime
+
+    parameters, message = EMPTY_NAME
+    with pytest.raises(TypeError) as refused:
+        Runtime.load(ggtt, process="ggtt", model_parameters=parameters)
+    assert str(refused.value) == message
+    with pytest.raises(ValueError) as refused:
+        _native_values(loop_native, ggtt, "ggtt", POINT_173, SCALES, parameters)
+    assert str(refused.value) == message
+    (opened,) = _run_client(
+        c_client,
+        ggtt,
+        "ggtt",
+        POINT_173,
+        SCALES,
+        [_overrides(parameters)],
+        tmp_path,
+    )
+    assert opened[:3] == ["open", 1, message], opened
+    process = _stored_process(ggtt, "ggtt")
+    with pytest.raises(TypeError) as refused:
+        process.executor(loop_native).evaluate(
+            [POINT_173], SCALES[:1], parameters=parameters
+        )
+    assert str(refused.value) == message
+
+
 def test_accepted_parameters_are_bitwise_the_python_apis_in_every_client(
     ggtt, loop_native, c_client, tmp_path
 ):
@@ -537,9 +591,9 @@ def test_stored_process_executor_refuses_the_same_parameters(
 ):
     """The stored process's own executor (``NativeProcess.executor``, the
     benchmark's ``--load`` path; the public runtime validates first) applies
-    the same rule: given the model's external parameters it refuses every
-    mapping above with the Python API's text; without them (a stored process
-    alone) it still refuses the scale and the fixed WT at another value."""
+    the same rule: it refuses every mapping above with the Python API's
+    text, given the model's external parameters or alone (the record holds
+    the model's names), so a misspelt name is never dropped."""
 
     from pyamplicol.models.loading import load_compiled_model
 
@@ -548,16 +602,15 @@ def test_stored_process_executor_refuses_the_same_parameters(
     process = _stored_process(ggtt, "ggtt")
     # loop_sm's preparation fixes nothing besides the card's (same spelling).
     assert process.record["fixed_parameters"] == {"MB": "0", "WT": "0"}
+    assert process.record["preparation_fixed_parameters"] == []
+    assert process.record["externals"] == sorted(externals)
     executor = process.executor(loop_native, externals=externals)
-    for parameters, message in REFUSED:
-        with pytest.raises(ValueError) as refused:
-            executor.evaluate([POINT_173], SCALES[:1], parameters=parameters)
-        assert str(refused.value) == message
     bare = process.executor(loop_native)
-    for parameters, message in REFUSED[:2]:
-        with pytest.raises(ValueError) as refused:
-            bare.evaluate([POINT_173], SCALES[:1], parameters=parameters)
-        assert str(refused.value) == message
+    for parameters, message in REFUSED:
+        for runner in (executor, bare):
+            with pytest.raises(ValueError) as refused:
+                runner.evaluate([POINT_173], SCALES[:1], parameters=parameters)
+            assert str(refused.value) == message
     (accepted,) = executor.evaluate(
         [POINT_173], SCALES[:1], parameters={"WT": "0", "MH": "130"}
     )
@@ -587,8 +640,9 @@ def scheme_constant(loop_sm_ufo, loop_native, tmp_path_factory):
 
 
 LHV_FIXED = (
-    "parameter 'lhv' was fixed to 1 at generation ([loop.preparation] "
-    "fixed_parameters); regenerate the artifact to change it"
+    "parameter 'lhv' was fixed to 1 at generation by the model preparation "
+    "(a scheme constant, e.g. of the colour declaration); it is not a "
+    "run-time parameter"
 )
 
 
@@ -598,16 +652,19 @@ def test_a_scheme_constant_the_colour_declaration_fixes_is_refused(
     """An external colour-scheme constant is fixed at generation by the
     colour declaration (``source_color_fixed_parameters``), not by the card:
     the native record holds it with the card's fixed parameters
-    (``LoopSlice.fixed_parameters``), and the Python API, the native runtime
-    and the C ABI refuse it at another value (before, they accepted lhv = 2
-    and evaluated trees whose counterterm colour continuation was built at
-    lhv = 1) and accept it at its value, bitwise unchanged."""
+    (``LoopSlice.fixed_parameters``; ``preparation_fixed_parameters`` names
+    it, so the refusal does not point to the card), and the Python API, the
+    native runtime and the C ABI refuse it at another value (before, they
+    accepted lhv = 2 and evaluated trees whose counterterm colour
+    continuation was built at lhv = 1) and accept it at its value, bitwise
+    unchanged."""
 
     from pyamplicol import Runtime
 
     artifact, _model = scheme_constant
     record = _stored_process(artifact, "gg").record
     assert record["fixed_parameters"] == {"MB": "0", "WT": "0", "lhv": "1"}
+    assert record["preparation_fixed_parameters"] == ["lhv"]
     runtime = Runtime.load(artifact, process="gg")
     before = _python_values(runtime, GG_POINT, SCALES)
     refused = {"lhv": "2"}
@@ -677,6 +734,7 @@ def test_the_slice_fixes_the_scheme_constant_its_preparation_fixes(
         loop_native,
     )
     assert slice_.fixed_parameters == {"MB": "0", "WT": "0", "lhv": "1"}
+    assert slice_.preparation_fixed_parameters == {"lhv"}
     with pytest.raises(ValueError) as error:
         slice_.evaluate(GG_POINT, SCALES[0], parameters={"lhv": "2"})
     assert str(error.value) == LHV_FIXED
@@ -872,7 +930,12 @@ def test_nlo_couplings_read_the_scale_in_the_counterterms_only(ggtt):
     trees = _trees(ggtt, "ggtt")
     record = trees.program["parameters"]
     names = [name for _o, name in record["scale_outputs"]]
-    assert names and all(name.startswith("counterterm") for name in names), names
+    # Named as the plane check names outputs (``_output_label``): the
+    # counterterm coefficients (and their diagnostics) only.
+    assert names and all(
+        name.startswith(("counterterm ", "scaled counterterm ", "diagnostic "))
+        for name in names
+    ), names
     assert record["names"][record["scale"]] == "MU_R"
     shared = {*record["couplings"], *record["constants"]}
     assert not shared & {o for o, _name in record["scale_outputs"]}
@@ -890,6 +953,9 @@ def test_running_coupling_batches_are_partitioned_by_scale(running, loop_native)
     assert all(
         name.startswith(("Born coupling", "kernel constant")) for name in dependent
     )
+    # Every one by its key (coupling, or the constant's value form), none by
+    # an output index alone.
+    assert not any("(output" in name for name in dependent), dependent
     runtime = Runtime.load(artifact, process="gg")
     batch = _python_values(runtime, GG_POINT, SCALES)
     singles = [_python_values(runtime, GG_POINT, [scale])[0] for scale in SCALES]
@@ -1076,3 +1142,106 @@ def test_the_native_runtime_honours_its_thread_bound(ggtt, tmp_path):
     assert run.returncode == 0, run.stderr[-4000:]
     before, after = map(int, run.stdout.split()[-2:])
     assert after == before, (before, after)
+
+
+EXECUTOR_THREADS_SCRIPT = r"""
+import sys
+import time
+from pathlib import Path
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+def threads():
+    with open("/proc/self/status") as status:
+        return int(next(l for l in status if l.startswith("Threads:")).split()[1])
+
+artifact, point = Path(sys.argv[1]), sys.argv[2:]
+(pacbin,) = artifact.rglob("ggtt/loop-runtime.pacbin")
+process = read_native_process(pacbin, read_plan(pacbin))
+native = load_loop_native()
+before = threads()
+executor = process.executor(native, threads=1)
+momenta = [[point[4 * i : 4 * i + 4] for i in range(4)]] * 32
+executor.evaluate(momenta, ["1000000"] * 32)
+deadline = time.monotonic() + 30
+while threads() > before + 1 and time.monotonic() < deadline:
+    time.sleep(0.05)
+print(before, threads())
+"""
+
+
+@pytest.mark.skipif(not Path("/proc/self/status").is_file(), reason="needs procfs")
+def test_the_python_apis_native_executor_honours_its_thread_bound(ggtt, tmp_path):
+    """The Python API's native executor (``NativeProcess.executor(native,
+    threads=1)``, the stored runtime and the benchmark's ``--load`` path)
+    binds its batch and runs its tree and closure stages on its own pool
+    (``V2Executor``'s, one worker here), as the SDK runtime does: with
+    ``RAYON_NUM_THREADS=8`` an evaluation adds at most that worker (before,
+    rayon's global pool too: 2 -> 11 threads)."""
+
+    import sys
+
+    script = tmp_path / "executor_threads.py"
+    script.write_text(EXECUTOR_THREADS_SCRIPT)
+    point = [c for momentum in POINT_173 for c in momentum]
+    run = subprocess.run(
+        [sys.executable, str(script), str(ggtt), *point],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        env={**os.environ, "RAYON_NUM_THREADS": "8"},
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr[-4000:]
+    before, after = map(int, run.stdout.split()[-2:])
+    assert after <= before + 1, (before, after)
+
+
+@pytest.mark.loop_nightly
+def test_the_rust_sdk_follows_the_python_api(ggtt):
+    """The Rust SDK's own control (``sdk/tests/v4_parameters.rs``: the same
+    refusals with their error kinds, ``ModelParameter``, ``InvalidArgument``
+    and ``Compatibility``, atomic updates, "auto" and "direct" R2) on this
+    file's g g > t t~ artifact. It builds the SDK's test in release into
+    ``PYAMPLICOL_SDK_CARGO_TARGET_DIR`` (a private target directory: about
+    20 min cold, seconds on one that holds a native build made with
+    ``tools/developer/build_loop_native.py``, whose release settings it
+    uses); it is not run without one."""
+
+    from tools.developer.build_loop_native import _CODEGEN_DEFAULTS
+
+    target = os.environ.get("PYAMPLICOL_SDK_CARGO_TARGET_DIR")
+    if not target:
+        pytest.skip(
+            "opt-in: set PYAMPLICOL_SDK_CARGO_TARGET_DIR to a private cargo "
+            "target directory to build and run the Rust SDK's control"
+        )
+    shared = os.environ.get("CARGO_TARGET_DIR")
+    if shared and Path(shared).resolve() == Path(target).resolve():
+        pytest.fail("PYAMPLICOL_SDK_CARGO_TARGET_DIR is the shared CARGO_TARGET_DIR")
+    env = {k: v for k, v in os.environ.items() if k != "CARGO_TARGET_DIR"}
+    env = {**_CODEGEN_DEFAULTS, **env, "PYAMPLICOL_V4_GGTT_ARTIFACT": str(ggtt)}
+    run = subprocess.run(
+        [
+            "cargo",
+            "test",
+            "--locked",
+            "--release",
+            "--target-dir",
+            target,
+            "-p",
+            "rusticol-loop-sdk",
+            "--test",
+            "v4_parameters",
+            "--",
+            "--ignored",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=7200,
+        check=False,
+    )
+    assert run.returncode == 0, run.stdout[-4000:] + run.stderr[-4000:]
+    assert "test result: ok. 1 passed" in run.stdout, run.stdout[-4000:]
