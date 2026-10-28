@@ -139,6 +139,8 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "veto-unlabelled-counterterms",
         # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
         "loop-vertex-outside-tree-model",
+        # MQ-FFT's forced seed FFT guard (``test_loop_v2_seed_fft.py``).
+        "forced-seed-fft-unserved",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")
@@ -378,6 +380,12 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # ``externals`` and ``preparation_fixed_parameters``; with those removed every
 # native digest equals the former pin, and the plan and companion digests
 # are unchanged.
+# Re-pinned by mq-fft (M-QCD MQ-FFT, design §7.3): g g > u u~ u u~'s native
+# digest only, for the seed Fourier record its native process record now
+# carries (S_2 on the two gluons, certified); with that record removed the
+# native digest equals the former pin (``FOURIER_FREE``), and its plan and
+# companion digests are unchanged (the plan v4 bytes do not depend on the
+# seed contraction).
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -415,20 +423,42 @@ CONTROL_BYTES = {
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a",
+        "f814e4f90bbe6ac8ed84b8f4f0f1616d6c45d1b014ef52968934bc88a9117f83",
+    ),
+}
+# The native digests of the controls without their seed Fourier record (the
+# pins before mq-fft).
+FOURIER_FREE = {
+    "gg_uuxuux_full": (
+        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a"
     ),
 }
 
 
-def _identity(generated) -> tuple[str, str, str]:
+def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
     """``CONTROL_BYTES``' digests of a stored process. The parameter
     programs' plane applications (``*parameters.symjit``) are left out: their
     SymJIT call tags are random (``SYMJIT_RANDOM_CALL_TAG``, strict xfail
     ``test_symjit_plane_helper_functions``); their exact evaluators
-    (``*parameters.bin``) are in."""
+    (``*parameters.bin``) are in. ``fourier=False`` drops the seed Fourier
+    records from the native process record (``FOURIER_FREE``)."""
+
+    import dataclasses
 
     sha = lambda data: hashlib.sha256(data).hexdigest()  # noqa: E731
-    members = generated.native.members()
+    native = generated.native
+    if not fourier:
+        record = {
+            key: value for key, value in native.record.items() if key != "fourier"
+        }
+        if record.get("scaleless") is not None:
+            record["scaleless"] = {
+                key: value
+                for key, value in record["scaleless"].items()
+                if key != "fourier"
+            }
+        native = dataclasses.replace(native, record=record)
+    members = native.members()
     native = hashlib.sha256()
     for name in sorted(members):
         if not name.endswith("parameters.symjit"):
@@ -468,6 +498,11 @@ def test_plans_the_guards_do_not_refuse_keep_their_bytes(loop_sm, loop_native, n
         loop_sm, _request(process, born, accuracy), loop_native
     )
     assert _identity(generated) == CONTROL_BYTES[name]
+    if name in FOURIER_FREE:
+        assert "fourier" in generated.native.record
+        assert _identity(generated, fourier=False)[2] == FOURIER_FREE[name]
+    else:
+        assert "fourier" not in generated.native.record
 
 
 # ---------------------------------------- G2-M1 through the API and the CLI

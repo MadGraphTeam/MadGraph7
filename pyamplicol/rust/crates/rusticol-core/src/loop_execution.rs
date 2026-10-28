@@ -2083,6 +2083,8 @@ pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
     use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::forward::{forward_factors, run_forward};
+    pub use crate::loop_v2::fourier::SeedFourier;
+    use crate::loop_v2::fourier::seeds_fourier;
     use crate::loop_v2::merged::{DEFAULT_PART_CHUNKS, MergedStats, parts, run_merged};
     use crate::loop_v2::plan::{LoopProgramV4, Merged};
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
@@ -2153,6 +2155,8 @@ pub mod v2 {
         pub schedule: Schedule,
         /// Schedule-M chunks per streamed part.
         pub part_chunks: usize,
+        /// The seed contraction (DESIGN.md §7.3).
+        pub contraction: Contraction,
     }
 
     impl Default for V2Options {
@@ -2163,9 +2167,30 @@ pub mod v2 {
                 chunk_families: DEFAULT_CHUNK_FAMILIES,
                 schedule: Schedule::B,
                 part_chunks: DEFAULT_PART_CHUNKS,
+                contraction: Contraction::Auto,
             }
         }
     }
+
+    /// The seed contraction of an evaluation (DESIGN.md §7.3): `Auto`
+    /// contracts the certified orbit pairs of the executor's seed Fourier
+    /// record ([`V2Executor::with_fourier`]) with the symmetric-group FFT
+    /// and everything else directly (all of it without a record); `Direct`
+    /// contracts every weight directly; `Fft` requires a record.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub enum Contraction {
+        #[default]
+        Auto,
+        Direct,
+        Fft,
+    }
+
+    /// Report count of the seed-FFT jobs an evaluation ran (one per job and
+    /// lane chunk; absent when every seed was contracted directly).
+    pub const FFT_SEED_JOBS: &str = "symmetric-group-fft seed jobs";
+    /// Report stage of the seed contraction alone (direct or FFT), within
+    /// the "seeds" stage, which also gathers each chunk's lane data.
+    pub const SEED_CONTRACTION: &str = "seed contraction";
 
     /// A reduction lane of one point: (family, loop orders, observable column).
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2288,11 +2313,13 @@ pub mod v2 {
         }
     }
 
-    /// A loaded plan with its lane count and thread pool.
+    /// A loaded plan with its lane count, thread pool and, optionally, the
+    /// certified seed FFT of its seeds ([`SeedFourier`]).
     pub struct V2Executor {
         plan: Arc<LoopProgramV4>,
         lanes: usize,
         pool: rayon::ThreadPool,
+        fourier: Option<Arc<SeedFourier>>,
     }
 
     macro_rules! with_lanes {
@@ -2334,7 +2361,24 @@ pub mod v2 {
             let pool = builder
                 .build()
                 .map_err(|e| RusticolError::internal(e.to_string()))?;
-            Ok(Self { plan, lanes, pool })
+            Ok(Self {
+                plan,
+                lanes,
+                pool,
+                fourier: None,
+            })
+        }
+
+        /// Attach the plan's seed Fourier record (`plan_export.fourier_record`),
+        /// certified on the plan's weights at load ([`SeedFourier::load`]).
+        pub fn with_fourier(mut self, record: &[u8]) -> RusticolResult<Self> {
+            self.fourier = Some(Arc::new(SeedFourier::load(record, &self.plan)?));
+            Ok(self)
+        }
+
+        /// The certified seed FFT, if the executor has one.
+        pub fn fourier(&self) -> Option<&SeedFourier> {
+            self.fourier.as_deref()
         }
 
         pub fn plan(&self) -> &LoopProgramV4 {
@@ -2369,6 +2413,40 @@ pub mod v2 {
             })
         }
 
+        /// The certified seed FFT an evaluation with `contraction` runs.
+        fn contraction(&self, contraction: Contraction) -> RusticolResult<Option<&SeedFourier>> {
+            Ok(match contraction {
+                Contraction::Direct => None,
+                Contraction::Auto => self.fourier.as_deref(),
+                Contraction::Fft => Some(self.fourier.as_deref().ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "the seed contraction 'fft' needs the plan's certified seed \
+                         Fourier record (the plan has no certified orbit pair)",
+                    )
+                })?),
+            })
+        }
+
+        /// The seeds `U0` of every point (the oracle of the seed
+        /// contraction, DESIGN.md §7.3): per point, per seed key, its
+        /// `rows × columns` values in object order, contracted as an
+        /// evaluation with `contraction` contracts them.
+        pub fn seed_values<T: Carrier + Real>(
+            &self,
+            batch: &V2Batch<T>,
+            zero: &T,
+            contraction: Contraction,
+        ) -> RusticolResult<Vec<Vec<Vec<Complex<T>>>>> {
+            batch.validate(&self.plan)?;
+            let fourier = self.contraction(contraction)?;
+            self.pool.install(|| {
+                with_lanes!(
+                    self.lanes,
+                    seed_values_lanes::<T>(&self.plan, fourier, batch, zero)
+                )
+            })
+        }
+
         /// Dress, reduce and assemble the bare virtual of every point.
         pub fn evaluate<T: Carrier + Real, B: V2Backend<T> + Send>(
             &self,
@@ -2379,15 +2457,47 @@ pub mod v2 {
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
             batch.validate(&self.plan)?;
             let threads = self.pool.current_num_threads();
+            let fourier = self.contraction(options.contraction)?;
             self.pool.install(|| {
                 let (results, mut report) = with_lanes!(
                     self.lanes,
-                    evaluate_lanes::<T>(&self.plan, batch, zero, backend, options)
+                    evaluate_lanes::<T>(&self.plan, fourier, batch, zero, backend, options)
                 )?;
                 report.threads = threads;
                 Ok((results, report))
             })
         }
+    }
+
+    fn seed_values_lanes<T: Carrier + Real, const L: usize>(
+        plan: &LoopProgramV4,
+        fourier: Option<&SeedFourier>,
+        batch: &V2Batch<T>,
+        zero: &T,
+    ) -> RusticolResult<Vec<Vec<Vec<Complex<T>>>>> {
+        let v = crate::loop_v2::kernels::lane_vector_len(L);
+        let mut out = vec![Vec::new(); batch.points()];
+        for chunk in chunks(batch.points(), L) {
+            let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
+            let seeds = match fourier {
+                Some(fourier) => seeds_fourier(plan, fourier, &data),
+                None => seeds(plan, &data),
+            };
+            for (lane, &point) in chunk.iter().enumerate() {
+                out[point] = seeds
+                    .values
+                    .iter()
+                    .map(|key| {
+                        key.chunks(v)
+                            .map(|vector| {
+                                Complex::new(vector[lane].clone(), vector[L + lane].clone())
+                            })
+                            .collect()
+                    })
+                    .collect();
+            }
+        }
+        Ok(out)
     }
 
     fn chunks(points: usize, lanes: usize) -> Vec<Vec<usize>> {
@@ -2770,6 +2880,7 @@ pub mod v2 {
 
     fn evaluate_lanes<T: Carrier + Real, const L: usize>(
         plan: &LoopProgramV4,
+        fourier: Option<&SeedFourier>,
         batch: &V2Batch<T>,
         zero: &T,
         backend: &mut (impl V2Backend<T> + Send),
@@ -2802,7 +2913,16 @@ pub mod v2 {
             backend.begin();
             let start = Instant::now();
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
-            let seeds = seeds(plan, &data);
+            let contraction = Instant::now();
+            let seeds = match fourier {
+                Some(fourier) => {
+                    report.count(FFT_SEED_JOBS, fourier.jobs() as u64);
+                    seeds_fourier(plan, fourier, &data)
+                }
+                None => seeds(plan, &data),
+            };
+            // The contraction alone ("seeds" also gathers the lane data).
+            report.time(SEED_CONTRACTION, contraction);
             report.time("seeds", start);
             let mut inputs = ChunkInputs::new(plan);
             let masses: Vec<Complex<T>> = batch
