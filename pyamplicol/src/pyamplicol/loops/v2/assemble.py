@@ -1621,20 +1621,25 @@ class LoopSlice:
     @property
     def fixed_parameters(self) -> dict[str, str]:
         """The external parameters fixed at generation, with their exact
-        values: the request's (``SliceRequest.fixed_parameters``) and those
-        the model preparation fixes besides (a colour declaration's external
-        scheme constants, ``source_color_fixed_parameters``; an applied
-        source restriction's), the set the scalar plans and the counterterm
-        program were built with (``prepared.structure.fixed_parameters``).
-        Every runtime refuses a caller's other value of any of them and
-        evaluates at these (``check_model_parameters``; the native record's
+        values: the request's (``SliceRequest.fixed_parameters``, as given)
+        and the model's external parameters its preparation fixes besides
+        (a colour declaration's external scheme constants,
+        ``source_color_fixed_parameters``), from the set the scalar plans and
+        the counterterm program were built with (``prepared.structure.
+        fixed_parameters``; the names an applied source restriction removed
+        from the model are not parameters a caller can set). Every runtime
+        refuses a caller's other value of any of them and evaluates at these
+        (``check_model_parameters``; the native record's
         ``fixed_parameters``; genericity audit 2, M2)."""
 
         found = self._cache.get("fixed-parameters")
         if found is None:
-            found = {}
+            externals = self._external_parameters()
+            found = dict(self.request.fixed_parameters)
             prepared = self.prepared.structure.fixed_parameters or {}
             for name, value in prepared.items():
+                if name in found or name not in externals:
+                    continue
                 real, imaginary = (value, "0") if isinstance(value, str) else value
                 if Decimal(imaginary) != 0:
                     raise ValueError(
@@ -1642,13 +1647,21 @@ class LoopSlice:
                         "loop runtimes take real external parameters"
                     )
                 found[name] = real
-            missing = sorted(set(self.request.fixed_parameters) - set(found))
-            if missing:
-                raise ValueError(
-                    f"the prepared model lost the fixed parameters {missing}"
-                )
             self._cache["fixed-parameters"] = found
         return dict(found)
+
+    def _external_parameters(self) -> frozenset[str]:
+        """The names of the model's external parameters (those a caller
+        sets)."""
+
+        found = self._cache.get("external-parameters")
+        if found is None:
+            found = self._cache["external-parameters"] = frozenset(
+                record.name
+                for record in self.compiled.ir.parameters
+                if record.nature == "external"
+            )
+        return found
 
     @property
     def site_terms(self) -> Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]:
@@ -2327,16 +2340,9 @@ class LoopSlice:
         model preparation fixes) and the renormalisation scale (the root of
         ``scale``)."""
 
-        externals = self._cache.get("external-parameters")
-        if externals is None:
-            externals = self._cache["external-parameters"] = frozenset(
-                record.name
-                for record in self.compiled.ir.parameters
-                if record.nature == "external"
-            )
         fixed = self.fixed_parameters
         values = check_model_parameters(
-            parameters, externals, self.scale_parameter, fixed
+            parameters, self._external_parameters(), self.scale_parameter, fixed
         )
         values.update(fixed)
         digits = precision.working_digits

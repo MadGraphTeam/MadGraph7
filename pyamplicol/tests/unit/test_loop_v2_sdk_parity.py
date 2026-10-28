@@ -546,6 +546,8 @@ def test_stored_process_executor_refuses_the_same_parameters(
     compiled = load_compiled_model(loop_sm_compiled_model)
     externals = {r.name for r in compiled.ir.parameters if r.nature == "external"}
     process = _stored_process(ggtt, "ggtt")
+    # loop_sm's preparation fixes nothing besides the card's (same spelling).
+    assert process.record["fixed_parameters"] == {"MB": "0", "WT": "0"}
     executor = process.executor(loop_native, externals=externals)
     for parameters, message in REFUSED:
         with pytest.raises(ValueError) as refused:
