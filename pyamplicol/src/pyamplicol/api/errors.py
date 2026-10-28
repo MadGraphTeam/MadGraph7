@@ -44,6 +44,36 @@ class DependencyError(PyAmpliColError):
     """A required optional or native dependency is unavailable."""
 
 
+class NativePlatformError(DependencyError):
+    """The running platform cannot load one of pyAmpliCol's native libraries.
+
+    Raised before the library is loaded when its ELF version requirements need
+    a newer glibc than the running one (the loop engine's release natives need
+    glibc >= 2.42) or a glibc on a platform without one, and in place of the
+    dynamic loader's "version `GLIBC_...' not found" error. It is not an
+    ImportError: no fallback can run the library on this platform.
+
+    Attributes: ``library`` (path, if known), ``required`` (``"2.42"``, None if
+    the version is unknown), ``found`` (the running glibc, None if the C
+    library is not glibc) and ``version_name`` (``"GLIBC_ABI_GNU2_TLS"``).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        library: str | None = None,
+        required: str | None = None,
+        found: str | None = None,
+        version_name: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.library = library
+        self.required = required
+        self.found = found
+        self.version_name = version_name
+
+
 __all__ = [
     "ArtifactError",
     "CompatibilityError",
@@ -52,5 +82,6 @@ __all__ = [
     "EvaluationError",
     "GenerationError",
     "ModelError",
+    "NativePlatformError",
     "PyAmpliColError",
 ]
