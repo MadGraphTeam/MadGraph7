@@ -137,6 +137,8 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         LINE_REFUSAL,
         # WP3.2 EWI-5's interim veto guard (``test_loop_v2_ew_leptons.py``).
         "veto-unlabelled-counterterms",
+        # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
+        "loop-vertex-outside-tree-model",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")

@@ -62,6 +62,18 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   an empty label (``unlabelled_counterterm_vertices``).
   ``require_labelled_counterterms_for_veto`` refuses such a request before
   any tree, naming the vetoed species and those vertices.
+* ``loop-vertex-outside-tree-model`` (fail-closed-2, a guard): loop lines
+  read the colour and Lorentz structures of their vertices from the
+  request's tree model (one set of conventions for loops, blocks and the
+  Born). A vertex of the loop model whose couplings at an order vanish
+  identically at the model's restriction (``ct_sites.restricted_to_zero``,
+  decided from the coupling values: e.g. a W vertex of a CKM element that a
+  diagonal-CKM restriction sets to zero, which the tree compiler drops) is
+  no loop vertex there (``ct_sites.vanishing_loop_vertices``,
+  ``families.ModelLoopCatalogue``). Any other loop vertex the tree model does
+  not hold at the order a loop position takes it has no structure to read:
+  the request is refused when a loop position uses it
+  (``colour.SeedColour.states``), naming the vertex and the order.
 """
 
 from __future__ import annotations
@@ -130,6 +142,21 @@ LOOP_ADMISSION_REFUSALS = (
         "WP3.2 EWI-7 ([U2] veto guard; C1 UV certifier)",
         "vetoed loops removed from unlabelled counterterm couplings, or the "
         "veto certified against the loops",
+    ),
+    LoopAdmissionRefusal(
+        "loop-vertex-outside-tree-model",
+        "a loop vertex that the request's restricted tree model does not hold at "
+        "the coupling order a loop of the request takes it, while its couplings "
+        "there are not shown to vanish at the model's restriction",
+        "loop lines read their vertices' colour and Lorentz structures from the "
+        "tree model; a vertex whose couplings vanish identically at the "
+        "restriction leaves the loops (ct_sites.restricted_to_zero), any other "
+        "vertex the tree model drops has no structure to read",
+        "a restriction under which the vertex's couplings vanish exactly, or one "
+        "that keeps the vertex in the tree model; or a particle_veto or "
+        "coupling-order bound that keeps it out of the request's loops",
+        "fail-closed-2 (a guard)",
+        "none (kept as the guard of the restriction rule)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}

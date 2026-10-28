@@ -52,8 +52,10 @@ at 200 bits, and binary64 values were bitwise unchanged.
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
 upstream pins need a coherent update before use with the current tensor APIs.
-Release mode uses Symbolica **3.0.0** and SymJIT **2.26.4**. Historical candidate
-mode retains SymJIT **2.26.0**; version numbers alone do not establish Python API
+Release mode uses Python Symbolica **3.0.2** (Rust kernel 3.0.1) and SymJIT
+**2.27.3** (`release-lock.toml`). Historical candidate mode retains Symbolica
+**3.0.0** and SymJIT **2.26.0** (`contributor-lock.toml`), so the two locks pin
+different versions; version numbers alone do not establish Python API
 compatibility. Candidate builds do not
 relabel dependency versions or modify upstream source files.
 
@@ -87,14 +89,16 @@ checkpoint. Dirty edits can use focused tests against the staged native runtime.
 The developer dashboard retains its pinned Ratatui 0.4.2 build and FFI checkout
 in both lanes; it is not a core runtime dependency.
 
-Release-equivalent builds use exact published versions. Canonical Cargo
-resolution uses the published Symbolica 3.0.0 and SymJIT 2.26.4 crates without
-source patches. `release-lock.toml` records those versions, and `Cargo.lock`
-records normal registry resolution and checksums. The
-ordinary locked Cargo build is the dependency check; no local dependency
-patches or release-only source projections are needed.
+Release-equivalent builds use exact versions. `release-lock.toml` records Rust
+Symbolica 3.0.1 and SymJIT 2.27.3, and `Cargo.lock` records their resolution:
+SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
+from the `9cdc294` integration fork through the root `Cargo.toml`'s
+`[patch.crates-io]`, the source patch that still fails the published-crate gate
+(see above). The ordinary locked Cargo build is the dependency check; no
+release-only source projections are needed.
 
-Python Symbolica 3.0.0 is published on PyPI. The required ufo-model-loader 1.0.0
+Python Symbolica 3.0.2 is published on PyPI; its wheels are recorded in
+`python-runtime-lock.toml`. The required ufo-model-loader 1.0.0
 entry has no published wheel recorded in `python-runtime-lock.toml` yet. After
 the loader is uploaded, record its official PyPI wheel metadata before running
 the final release gates. A local wheel is not a published runtime-lock artifact.
