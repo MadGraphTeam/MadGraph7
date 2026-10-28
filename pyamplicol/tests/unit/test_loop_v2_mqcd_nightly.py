@@ -27,6 +27,7 @@ ROWS = sorted(
     name
     for name, row in mqcd.rows().items()
     if row.active
+    and row.gating
     and (row.tier_points(TIER) or set(row.extras) & mqcd.IMPLEMENTED_EXTRAS)
 )
 
