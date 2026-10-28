@@ -12,12 +12,16 @@ tree engine's conventions (``generation.physics_metadata``):
 * a colour flow's ID is ``flow:<word>`` (``_color_id``) of a sector of the
   tree engine's leading-colour plan (``color.plan.build_color_plan`` at LC,
   trace reflections folded as the tree engine folds them, each folded
-  sector's reflection a flow of its own), the flows sorted by ID and numbered
-  from 1 in that order (the tree runtime's ordinals).
+  sector's reflection a flow of its own), numbered from 1 in the tree
+  runtime's order (plan sectors, a folded sector's reflection after it).
 
 A flow is the Born basis element (``colour.BornBasis``) with the same outer
 flow (``colour.sector_flow``); Born basis elements of no leading-colour flow
-(U(1) and Fierz pieces) have no leading-colour contribution. The selected
+(U(1) and Fierz pieces) have no leading-colour contribution. The loop's
+leading colour is the leading N_c power of the squared matrix element: a
+tree-engine flow below it (u u~ > d d~ g's flows joining each quark to its
+own antiquark) has a vanishing leading-colour Born and virtual, so its
+selection is zero at evaluation and refused at generation. The selected
 output is the observable column of those rows and basis elements
 (``observables.Column``): its seeds and its Born, counterterm and field bras
 keep them only, so a complete set of selections sums to the inclusive value.
@@ -81,6 +85,7 @@ def restrict_born_terms(
     born_terms: Mapping[Any, tuple[Any, ...]],
     legs: Sequence[Any],
     flows: Sequence[Sequence[int]],
+    leading: Iterable[Any] | None = None,
 ) -> dict[Any, tuple[Any, ...]]:
     """The Born closure's terms with the colour components of the selected
     flows only (``Selection.flows``, tree words; ``colour.outer_flow`` keys):
@@ -90,8 +95,10 @@ def restrict_born_terms(
     interfere at the leading power, nor does a flow with a Born tensor of no
     flow (U(1) and Fierz pieces), so the Born of the kept terms is the
     selected flows' and the seeds, counterterm and field bras keep them only.
-    A selected flow without a Born tensor is refused, as is a selection
-    that keeps none of the closure."""
+    A selected flow without a Born tensor is refused, as is one that is not
+    a leading Born flow (``leading``, ``colour.leading_born_flows``): its
+    leading-colour value vanishes, and on its own its Born would set a lower
+    leading power than the process's."""
 
     from dataclasses import replace
 
@@ -103,6 +110,12 @@ def restrict_born_terms(
         key = outer_flow(word, representations)
         if key is None:
             raise ValueError(f"colour flow {list(word)} has no planar reading")
+        if leading is not None and key not in set(leading):
+            raise ValueError(
+                f"colour flow {list(word)} is below the process's leading colour "
+                "(its leading-colour Born and virtual vanish); select a leading "
+                "flow"
+            )
         wanted[key] = tuple(word)
     out: dict[Any, tuple[Any, ...]] = {}
     seen = set()
@@ -263,8 +276,9 @@ def leading_colour_plan(
 
 
 def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
-    """The physical flows of a leading-colour plan, sorted by ID (the tree
-    runtime's ``ColorFlow`` order), each with its element of ``basis``."""
+    """The physical flows of a leading-colour plan in the tree runtime's
+    ``ColorFlow`` order (each sector's flow, then for a folded trace its
+    reflection), each with its element of ``basis``."""
 
     from .colour import _canonical_rotation, sector_flow
 
@@ -299,11 +313,9 @@ def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
         key = ((), (_canonical_rotation(reflected),))
         found.setdefault(
             other,
-            Flow(
-                other, reflected, elements.get(key), False, identifier, int(sector.id)
-            ),
+            Flow(other, reflected, elements.get(key), True, other, int(sector.id)),
         )
-    return tuple(found[key] for key in sorted(found))
+    return tuple(found.values())
 
 
 def slice_flows(slice_: Any) -> tuple[Flow, ...]:

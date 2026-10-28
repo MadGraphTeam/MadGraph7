@@ -2124,10 +2124,14 @@ class LoopSlice:
             # A leading-colour selection keeps its flows' Born tensors only
             # (``selection.restrict_born_terms``): the basis, the seed table,
             # the colour pruning and the Born and counterterm bras follow.
+            from .colour import leading_born_flows
             from .selection import restrict_born_terms
 
             born_terms = restrict_born_terms(
-                born_terms, closure.legs, request.selection.flows
+                born_terms,
+                closure.legs,
+                request.selection.flows,
+                leading_born_flows(blocks.born_dag),
             )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
