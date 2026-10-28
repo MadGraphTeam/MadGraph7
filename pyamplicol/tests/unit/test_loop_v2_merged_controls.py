@@ -27,7 +27,6 @@ import pytest
 from pyamplicol.loops.v2 import merged
 from pyamplicol.loops.v2.assemble import Precision
 from pyamplicol.loops.v2.plan_export import NativeExecutor
-from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
 from .test_loop_v2_merged import (
     PARAMETERS,
@@ -66,35 +65,9 @@ CARRIERS = {
 }
 
 
-# LC and NLC of identical-flavour lines (blocks mixing U(1)-subtraction
-# grades, not exact in N_c) are refused at generation (``refusals`` key
-# ``colour-accuracy-nc-exact``, package fail-closed) until
-# identical-flavour-lc's grade split makes those blocks exact (slice-status
-# DECISIONS 2026-10-26 ~21:10 items 2 and 3); M and B of such a slice would
-# agree on grade-0 projections that are not LC/NLC values.
-_NOT_NC_EXACT = pytest.mark.xfail(
-    strict=True,
-    raises=LoopRequestUnsupported,
-    reason="identical-flavour LC/NLC refused at generation (colour-accuracy-"
-    "nc-exact) until identical-flavour-lc's grade split",
-)
-NOT_NC_EXACT = {("uux_uuxg", "nlc"), ("uux_uuxg", "lc")}
-
-
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(
-    ("name", "accuracy"),
-    [
-        pytest.param(
-            name,
-            accuracy,
-            marks=(_NOT_NC_EXACT,) if (name, accuracy) in NOT_NC_EXACT else (),
-            id=f"{name}-{accuracy}",
-        )
-        for accuracy in ACCURACIES
-        for name in CONTROLS
-    ],
-)
+@pytest.mark.parametrize("accuracy", ACCURACIES)
+@pytest.mark.parametrize("name", CONTROLS)
 def test_m_equals_b_on_every_control(slices, name, accuracy):  # noqa: F811
     slice_ = slices(name, accuracy)
     graph = merged.merged_graph(slice_)

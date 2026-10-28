@@ -7,13 +7,15 @@ never served as a silently wrong value, and the rule is structural:
 
 * G2-M1 (``refusals.LOOP_ADMISSION_REFUSALS`` key
   ``colour-accuracy-nc-exact``): LC and NLC over tree blocks that are not exact
-  in N_c (identical-flavour quark lines, whose blocks mix U(1)-subtraction
-  grades) are refused at generation, through ``LoopSlice.generate``, the public
-  Python API and the CLI, before any family or export, and every export
-  refuses them again, so no stored plan, native runtime or SDK serves a
-  grade-0 projection. Identical flavours with N_c-exact blocks (u u~ > u u~)
-  and full colour are not refused: the criterion is N_c-exactness, not the
-  flavours.
+  in N_c (blocks mixing U(1)-subtraction grades: identical-flavour quark lines
+  compiled without the grade split of ``generation.dag_grades``, which every
+  LC and NLC request runs; ``_without_grade_split``) are refused at
+  generation, through ``LoopSlice.generate``, the public Python API and the
+  CLI, before any family or export, and every export refuses them again, so
+  no stored plan, native runtime or SDK serves a grade-0 projection.
+  Identical flavours with N_c-exact blocks (u u~ > u u~, and u u~ > u u~ g with
+  the split) and full colour are not refused: the criterion is N_c-exactness,
+  not the flavours.
 * G2-M4 interim (``native_trees.NATIVE_EXPORT_REFUSALS`` key
   ``plane-mismatch``): the SymJIT plane check's disagreement is a listed
   refusal naming the kernel or the parameter-program output.
@@ -43,8 +45,9 @@ from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXED = {"MB": "0"}
-# Identical-flavour quark lines (blocks mixing U(1)-subtraction grades) and
-# a relabelled copy (another flavour, permuted legs).
+# Identical-flavour quark lines (blocks mixing U(1)-subtraction grades
+# without the grade split) and a relabelled copy (another flavour, permuted
+# legs).
 MIXED = {
     "uux_uuxg": ("u u~ > u u~ g", {"QCD": 3, "QED": 0}),
     "gg_uuxuux": ("g g > u u~ u u~", {"QCD": 4, "QED": 0}),
@@ -81,6 +84,26 @@ def _request(process, born, accuracy, **changes):
         **colour,
         **changes,
     )
+
+
+def _without_grade_split(monkeypatch) -> None:
+    """Compile the slice's loop-request DAGs (loop blocks and the CT
+    program, either DAG lane) without the grade split of
+    ``generation.dag_grades``: identical-flavour blocks then mix
+    U(1)-subtraction grades, as before package identical-flavour-lc."""
+
+    from pyamplicol.loops.v2 import assemble, ct_closure
+
+    for module, name in (
+        (assemble, "build_tree_blocks"),
+        (ct_closure, "counterterm_program_blocks"),
+    ):
+        original = getattr(module, name)
+
+        def unsplit(*args, original=original, **kwargs):
+            return original(*args, **{**kwargs, "u1_grades": False})
+
+        monkeypatch.setattr(module, name, unsplit)
 
 
 def _stop(stage: str):
@@ -237,14 +260,16 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
 def test_projections_over_blocks_not_exact_in_nc_are_refused_before_the_families(
     loop_sm, loop_native, monkeypatch, name, accuracy
 ):
-    """LC and NLC of identical-flavour quark lines: the typed refusal names
-    the rule and full colour, raised right after the trees (before their
-    kernels, the families and any export)."""
+    """LC and NLC of identical-flavour quark lines compiled without the
+    grade split: the typed refusal names the rule and full colour, raised
+    right after the trees (before their kernels, the families and any
+    export)."""
 
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice
 
     process, born = MIXED[name]
+    _without_grade_split(monkeypatch)
     monkeypatch.setattr(assemble, "with_ward_kernels", _stop("the tree kernels"))
     with pytest.raises(LoopRequestUnsupported) as refused:
         LoopSlice.generate(loop_sm, _request(process, born, accuracy), loop_native)
@@ -263,8 +288,9 @@ def test_identical_flavours_with_nc_exact_blocks_and_full_colour_generate(
     loop_sm, loop_native
 ):
     """The guard is keyed on N_c exactness, not on flavours: u u~ > u u~ has
-    identical flavours and N_c-exact blocks (LC generates), and full colour of
-    u u~ > u u~ g keeps every power at N_c = 3 (generates)."""
+    identical flavours and N_c-exact blocks (LC generates), the grade split
+    makes the blocks of u u~ > u u~ g N_c-exact (LC generates, graded), and
+    full colour of u u~ > u u~ g keeps every power at N_c = 3 (generates)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice
 
@@ -272,6 +298,8 @@ def test_identical_flavours_with_nc_exact_blocks_and_full_colour_generate(
         loop_sm, _request("u u~ > u u~", {"QCD": 2, "QED": 0}, "lc"), loop_native
     )
     assert lc.colour.formal_nc and lc.table.formal_nc
+    split = LoopSlice.generate(loop_sm, _request(*MIXED["uux_uuxg"], "lc"), loop_native)
+    assert split.blocks.graded and split.colour.formal_nc and split.table.formal_nc
     full = LoopSlice.generate(
         loop_sm, _request(*MIXED["uux_uuxg"], "full"), loop_native
     )
@@ -282,8 +310,9 @@ def test_identical_flavours_with_nc_exact_blocks_and_full_colour_generate(
 def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
     loop_sm, loop_native, monkeypatch
 ):
-    """Defence in depth: an LC slice of u u~ > u u~ g built with the
-    generation guard bypassed is refused by every export layer in turn
+    """Defence in depth: an LC slice of u u~ > u u~ g built without the
+    grade split and with the generation guard bypassed is refused by every
+    export layer in turn
     (``export_plan``, the seed records, the native trees' counterterm
     program) and by the native seed records of column sets, so no stored
     plan carries its grade-0 projection."""
@@ -292,6 +321,7 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
     from pyamplicol.loops.v2.assemble import LoopSlice
 
     with monkeypatch.context() as patch:
+        _without_grade_split(patch)
         patch.setattr(assemble, "require_nc_exact", lambda *args: None)
         slice_ = LoopSlice.generate(
             loop_sm, _request(*MIXED["uux_uuxg"], "lc"), loop_native
@@ -468,19 +498,21 @@ def _card(model, output, name, expression, accuracy) -> str:
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["uux_uuxg", "gg_uuxuux"])
-def test_public_generation_and_cli_refuse_lc_and_nlc_of_identical_flavours(
-    loop_sm_colour_model, loop_native, tmp_path, name
+def test_public_generation_and_cli_refuse_lc_and_nlc_over_blocks_not_exact_in_nc(
+    loop_sm_colour_model, loop_native, monkeypatch, tmp_path, name
 ):
-    """Through ``Generator.generate`` (the typed error itself) and
-    ``pyamplicol generate`` (exit code 2, the rule and full colour named), at
-    LC and NLC, with post-build validation off: nothing is written. The dry
-    run lists the refusal."""
+    """Identical-flavour quark lines compiled without the grade split,
+    through ``Generator.generate`` (the typed error itself) and ``pyamplicol
+    generate`` (exit code 2, the rule and full colour named), at LC and NLC,
+    with post-build validation off: nothing is written. The dry run lists
+    the refusal."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.cli import run_cli
     from pyamplicol.config import resolve_config
     from pyamplicol.loops.v2.refusals import LOOP_ADMISSION_REFUSALS
 
+    _without_grade_split(monkeypatch)
     expression = MIXED[name][0]
     processes = ProcessSet((ProcessRequest.parse(expression, name=name),))
     for accuracy in ("lc", "nlc"):
