@@ -1626,7 +1626,22 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 0,
+     "sector": "QCD^12",
+     "coefficient": "finite",
+     "E": 1.36e-08,
+     "true_error": 1.4e-09
+    },
+    {
+     "point": 0,
+     "sector": "QCD^12",
+     "coefficient": "single_pole",
+     "E": 5.15e-09,
+     "true_error": 6.79e-10
+    }
+   ],
    "reference_outliers": [],
    "vanishing": [],
    "particle_veto": [
