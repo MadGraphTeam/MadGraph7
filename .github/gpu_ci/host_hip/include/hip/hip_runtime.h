@@ -122,6 +122,20 @@ inline hipError_t hipStreamCreateWithFlags( hipStream_t* s, unsigned int ) { *s 
 inline hipError_t hipStreamDestroy( hipStream_t ) { return hipSuccess; }
 inline hipError_t hipStreamSynchronize( hipStream_t ) { return hipSuccess; }
 
+// The bit-cast intrinsics (selectable_total in backend/gpu/SigmaKin.cc)
+HOST_HIP_HD inline long long __double_as_longlong( double x )
+{
+  long long r;
+  __builtin_memcpy( &r, &x, sizeof( r ) );
+  return r;
+}
+HOST_HIP_HD inline unsigned int __float_as_uint( float x )
+{
+  unsigned int r;
+  __builtin_memcpy( &r, &x, sizeof( r ) );
+  return r;
+}
+
 template<typename T>
 HOST_HIP_HD inline T atomicAdd( T* a, T v )
 {
