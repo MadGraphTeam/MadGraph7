@@ -429,8 +429,11 @@ def test_seed_fft_equals_direct_on_the_slice(
         leading,
         request=dataclasses.replace(leading.request, colour_contraction="fft"),
     )
-    with pytest.raises(ValueError, match="leading-colour"):
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(LoopRequestUnsupported, match="leading-colour") as refused:
         forced._plan_contraction()
+    assert refused.value.key == "forced-seed-fft-unserved"
 
 
 # ----------------------------------------------------------------- O8 providers

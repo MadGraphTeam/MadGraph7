@@ -846,7 +846,10 @@ external gluons has none and is refused at generation with the listed
 `forced-seed-fft-unserved`, as are declared correlations with a forced FFT,
 since observable columns are contracted directly). The FFT and the direct
 contraction are equal up to rounding in every arithmetic; each evaluation
-reports the algorithm it ran. A dry run
+reports the algorithm it ran. The orbits are those of the loop's own seed
+tables (the external gluons' permutations, certified on the exact colour
+weights): loop requests keep the default `color.fft_basis = "adjoint"`, and
+`"trace"` is refused unless the contraction is `direct`. A dry run
 (`generate --dry-run`) reports what the model preparation refuses (the
 veto refusal "veto-unlabelled-counterterms" included); the rest of loop
 admission is checked by the generation only, and the dry run lists what it
