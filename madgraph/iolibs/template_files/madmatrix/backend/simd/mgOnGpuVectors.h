@@ -74,7 +74,7 @@ namespace madmatrix
   constexpr int neppVD = neppV / 2;
   static_assert( neppV % 2 == 0, "neppV must be even for SIMD denom64" );
 #ifdef __clang__
-  typedef fptype_momenta fptype_denom_sv __attribute__( ( ext_vector_type( neppV ) ) );
+  typedef fptype_momenta fptype_denom_sv __attribute__( ( ext_vector_type( neppV ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
 #else
   typedef fptype_momenta fptype_denom_sv __attribute__( ( vector_size( neppV * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
 #endif
@@ -184,7 +184,11 @@ namespace madmatrix
     const fptype_denom_sv rn = fpdenom_bcast( 1. ) / n;
     return { ( a.real() * b.real() + a.imag() * b.imag() ) * rn, ( a.imag() * b.real() - a.real() * b.imag() ) * rn };
   }
-  inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() / b, a.imag() / b }; }
+  inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const fptype_denom_sv& b )
+  {
+    const fptype_denom_sv rb = fpdenom_bcast( 1. ) / b;
+    return { a.real() * rb, a.imag() * rb };
+  }
   // Scalar operands (M, W, Ccoeff): gcc vector types do not convert implicitly from a scalar.
   inline cxtype_denom_sv operator+( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) + b; }
   inline cxtype_denom_sv operator+( const cxtype_denom_sv& a, fptype_momenta b ) { return a + fpdenom_bcast( b ); }

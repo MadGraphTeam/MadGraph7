@@ -831,12 +831,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if 'L' not in self.tag:
                 # each term of an assembled routine has its own denominator
                 # (they are 'const' declarations in the same scope): 'denomname'
-                # is the bare declared name at denom precision, 'coeff' is the
-                # same value cast down to vertex precision for the wavefunction
-                # formulas below
+                # is already at vertex precision, so the wavefunction formulas
+                # below use it as it is
                 denomsuffix = coup_name[4:] if self.combined_part else ''
                 denomname = 'denom%s' % denomsuffix
-                coeff = 'static_cast<cxtype_amp_sv>(%s)' % denomname
+                coeff = denomname
                 mydict = {}
                 if self.type2def['pointer_coup'] in ['*']:
                     mydict['pre_coup'] = '(*'
