@@ -430,17 +430,19 @@ def test_colour_projections_are_formal_nc_projections(
 # U(1)-subtraction weight, so FC(N) = sum_p c_p N^p comes without the grade
 # bookkeeping LC and NLC rest on. The parts of the projection test above are
 # c_p 3^p. FC(N) at eleven N (one per power of the parts; 1 and powers of two
-# keep 1/N exact in binary64) fixes every coefficient: in binary64 FC(N)
-# equals sum_p part_p (N/3)^p within 1e-12 of the largest term (the O1 rule
-# above), and at 32 digits (FC(N) on the Python reference path, whose
-# arbitrary precision is the only carrier that projects in Python; the parts
-# and the LC and NLC slices in double-double) the coefficients solved exactly
-# from FC(N) equal the parts, and their kept powers the LC and NLC slices,
-# within 1e-24 of the largest part. One process per N.
+# keep 1/N exact in binary64, more of them below 3 as the parts reach N_c^-6
+# but only N_c^4: the exact fit loses about three digits) fixes every
+# coefficient: in binary64 FC(N) equals sum_p part_p (N/3)^p within 1e-12 of
+# the largest term (the O1 rule above; FC(N) itself is no scale: at N = 1 it
+# cancels to rounding), and at 32 digits (FC(N) on the Python reference path,
+# whose arbitrary precision is the only carrier that projects in Python; the
+# parts and the LC and NLC slices in double-double) the coefficients solved
+# exactly from FC(N) equal the parts, and their kept powers the LC and NLC
+# slices, within 1e-24 of the largest part. One process per N.
 NC_SCAN_NAMES = ("uux_uuxg", "uux_uuxuux")
 NC_SCAN_VALUES = tuple(
     Fraction(n)
-    for n in ("3", "2", "4", "1", "8", "1/2", "16", "1/4", "32", "1/8", "64")
+    for n in ("3", "2", "4", "1", "8", "1/2", "16", "1/4", "1/8", "1/16", "1/32")
 )
 NC_SCAN_PRECISION = {"double": "double", "double-double": "arbitrary:32"}
 
