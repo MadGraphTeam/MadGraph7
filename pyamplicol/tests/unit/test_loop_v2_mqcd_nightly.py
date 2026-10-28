@@ -4,10 +4,11 @@
 Every manifest row whose reference exists, at its nightly points (a default
 row's points beyond 0 and 1), in binary64 and double-double under the
 acceptance rules 1-4 of PLAN §1.4 (``tools/loop_benchmark/mqcd.py``), plus
-the extras the harness checks: ``uv`` (rule 5, the bare loop's UV poles
-against the counterterms and the Feynman-gauge field factors with n_f from
-the request) and ``ap`` (rule 6, 40 digits against double-double and against
-60 digits). One test id per row, so the nightly jobs split per row; the
+the extras the harness checks: ``hel`` (per-helicity double-double against
+MadLoop's SLOOPMATRIXHEL rows within 1e-12), ``uv`` (rule 5, the bare loop's
+UV poles against the counterterms and the Feynman-gauge field factors with
+n_f from the request) and ``ap`` (rule 6, 40 digits against double-double and
+against 60 digits). One test id per row, so the nightly jobs split per row; the
 manifest lists the pending rows and extras with the package each waits for.
 A row's variants (``<id>@<name>``: a runtime parameter change on the same
 generation) are ids of their own; a non-gating variant (a diagnostic twin)
