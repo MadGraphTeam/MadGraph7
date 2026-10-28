@@ -20,8 +20,7 @@ use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
 use rusticol_core::loop_execution::v2::{
-    Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor,
-    V2Options,
+    Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};

@@ -418,7 +418,8 @@ impl<T: Carrier + Real> Factors<T> {
                             .iter()
                             .map(|action| {
                                 let r = i64::from(action.axial);
-                                let diagonal = cast(zero, &Rational::new(Integer::from(1), Integer::from(r)));
+                                let diagonal =
+                                    cast(zero, &Rational::new(Integer::from(1), Integer::from(r)));
                                 let mixing = if r.abs() == 1 {
                                     zero.clone()
                                 } else {
@@ -450,7 +451,10 @@ impl<T: Carrier + Real> Factors<T> {
             .map(|block| {
                 cast(
                     zero,
-                    &Rational::new(Integer::from(block.dimension() as i64), Integer::from(order)),
+                    &Rational::new(
+                        Integer::from(block.dimension() as i64),
+                        Integer::from(order),
+                    ),
                 )
             })
             .collect();
@@ -495,7 +499,8 @@ fn apply_generator<T: Carrier>(
                 let b = block[other_base + lane].clone();
                 block[first_base + lane] =
                     action.diagonal.clone() * &a + action.mixing.clone() * &b;
-                block[other_base + lane] = partner.mixing.clone() * &a + partner.diagonal.clone() * &b;
+                block[other_base + lane] =
+                    partner.mixing.clone() * &a + partner.diagonal.clone() * &b;
             }
         }
     }
@@ -526,9 +531,11 @@ fn transform_level<T: Carrier>(
                     let offset = branch.basis_offset as usize;
                     for column in 0..sub.dimension {
                         for row in 0..sub.dimension {
-                            let source =
-                                (child_start + sub.coefficient_offset + column * sub.dimension + row)
-                                    * lanes;
+                            let source = (child_start
+                                + sub.coefficient_offset
+                                + column * sub.dimension
+                                + row)
+                                * lanes;
                             let target = ((offset + column) * d + offset + row) * lanes;
                             block[target..target + lanes]
                                 .clone_from_slice(&input[source..source + lanes]);
@@ -541,7 +548,10 @@ fn transform_level<T: Carrier>(
                     apply_generator(d, &actions[index], generator, block, lanes);
                 }
                 let offset = (group_start + irrep.coefficient_offset) * lanes;
-                for (target, value) in output[offset..offset + d * d * lanes].iter_mut().zip(block.iter()) {
+                for (target, value) in output[offset..offset + d * d * lanes]
+                    .iter_mut()
+                    .zip(block.iter())
+                {
                     *target += value;
                 }
             }
@@ -579,9 +589,11 @@ fn transpose_level<T: Carrier>(
                     for column in 0..sub.dimension {
                         for row in 0..sub.dimension {
                             let source = ((offset + column) * d + offset + row) * lanes;
-                            let target =
-                                (child_start + sub.coefficient_offset + column * sub.dimension + row)
-                                    * lanes;
+                            let target = (child_start
+                                + sub.coefficient_offset
+                                + column * sub.dimension
+                                + row)
+                                * lanes;
                             for lane in 0..lanes {
                                 output[target + lane] += &block[source + lane];
                             }
@@ -628,11 +640,35 @@ fn forward<T: Carrier>(
     let levels = fft.levels();
     let mut in_buffer = true;
     for degree in 2..levels.len() {
-        let (level, child, actions) = (&levels[degree], &levels[degree - 1], &factors.levels[degree]);
+        let (level, child, actions) = (
+            &levels[degree],
+            &levels[degree - 1],
+            &factors.levels[degree],
+        );
         if in_buffer {
-            transform_level(level, child, actions, &work.buffer, coefficients, &mut work.block, lanes, total, zero);
+            transform_level(
+                level,
+                child,
+                actions,
+                &work.buffer,
+                coefficients,
+                &mut work.block,
+                lanes,
+                total,
+                zero,
+            );
         } else {
-            transform_level(level, child, actions, coefficients, &mut work.buffer, &mut work.block, lanes, total, zero);
+            transform_level(
+                level,
+                child,
+                actions,
+                coefficients,
+                &mut work.buffer,
+                &mut work.block,
+                lanes,
+                total,
+                zero,
+            );
         }
         in_buffer = !in_buffer;
     }
@@ -662,11 +698,35 @@ fn inverse<T: Carrier>(
     let levels = fft.levels();
     let mut in_buffer = true;
     for degree in (2..levels.len()).rev() {
-        let (level, child, actions) = (&levels[degree], &levels[degree - 1], &factors.levels[degree]);
+        let (level, child, actions) = (
+            &levels[degree],
+            &levels[degree - 1],
+            &factors.levels[degree],
+        );
         if in_buffer {
-            transpose_level(level, child, actions, &work.buffer, values, &mut work.block, lanes, total, zero);
+            transpose_level(
+                level,
+                child,
+                actions,
+                &work.buffer,
+                values,
+                &mut work.block,
+                lanes,
+                total,
+                zero,
+            );
         } else {
-            transpose_level(level, child, actions, values, &mut work.buffer, &mut work.block, lanes, total, zero);
+            transpose_level(
+                level,
+                child,
+                actions,
+                values,
+                &mut work.buffer,
+                &mut work.block,
+                lanes,
+                total,
+                zero,
+            );
         }
         in_buffer = !in_buffer;
     }
@@ -682,48 +742,65 @@ fn inverse<T: Carrier>(
 
 // ------------------------------------------------------------- the seeds
 
-/// FFT outputs of one (job, Born row): per output record its lane vector.
-type RowOutputs<T> = Vec<(usize, Vec<T>)>;
+/// Born rows per transform: the rows of a task are folded into the
+/// transform's lane dimension (`rows × 2L` real lanes), which amortises the
+/// tower walk over them and keeps every inner loop contiguous.
+const ROWS_PER_TASK: usize = 16;
 
-/// The covered seeds of Born row `row` for one job.
-fn job_row<T: Carrier, const L: usize>(
+/// FFT outputs of one (job, block of Born rows): per output its Born row,
+/// seed-class record and lane vector.
+type RowOutputs<T> = Vec<(usize, usize, Vec<T>)>;
+
+/// The covered seeds of the Born rows `rows` for one job.
+fn job_rows<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     fourier: &SeedFourier,
     factors: &Factors<T>,
     job: &Job,
     kernels: &[Vec<T>],
     data: &LaneData<T, L>,
-    row: usize,
+    rows: &[usize],
 ) -> RowOutputs<T> {
     let v = lane_vector_len(L);
+    let n = rows.len() * v;
     let group = fourier.fft.order();
     let zero = &data.zero;
-    let mut work = Workspace::new(group, v, zero);
+    let mut work = Workspace::new(group, n, zero);
     let used: BTreeSet<usize> = job.pairs.iter().map(|pair| pair.born).collect();
     let mut born: BTreeMap<usize, Vec<T>> = BTreeMap::new();
-    let mut values = vec![zero.clone(); group * v];
+    let mut values = vec![zero.clone(); group * n];
     for &a in &used {
-        // f_a(h) = conj(A0_{b_a(h)}).
+        // f_a(h) = conj(A0_{b_a(h)}), per row a lane vector of the lane block.
         for (h, component) in job.born[a].iter().enumerate() {
-            let target = &mut values[h * v..(h + 1) * v];
-            match component {
-                Some(j) => {
-                    let source = &data.born[(row * plan.born_components + j) * v..][..v];
-                    target[..L].clone_from_slice(&source[..L]);
-                    for (t, s) in target[L..].iter_mut().zip(&source[L..]) {
-                        *t = -s.clone();
+            for (r, &row) in rows.iter().enumerate() {
+                let target = &mut values[h * n + r * v..][..v];
+                match component {
+                    Some(j) => {
+                        let source = &data.born[(row * plan.born_components + j) * v..][..v];
+                        target[..L].clone_from_slice(&source[..L]);
+                        for (t, s) in target[L..].iter_mut().zip(&source[L..]) {
+                            *t = -s.clone();
+                        }
                     }
+                    None => target.fill(zero.clone()),
                 }
-                None => target.fill(zero.clone()),
             }
         }
-        let mut transformed = vec![zero.clone(); group * v];
-        forward(&fourier.fft, factors, v, &values, &mut transformed, &mut work, zero);
+        let mut transformed = vec![zero.clone(); group * n];
+        forward(
+            &fourier.fft,
+            factors,
+            n,
+            &values,
+            &mut transformed,
+            &mut work,
+            zero,
+        );
         born.insert(a, transformed);
     }
     let mut out = Vec::new();
-    let mut product = vec![zero.clone(); group * v];
-    let mut convolution = vec![zero.clone(); group * v];
+    let mut product = vec![zero.clone(); group * n];
+    let mut convolution = vec![zero.clone(); group * n];
     for (l, outputs) in job.outputs.iter().enumerate() {
         if outputs.is_empty() {
             continue;
@@ -740,36 +817,49 @@ fn job_row<T: Carrier, const L: usize>(
                 let offset = block.coefficient_offset();
                 for column in 0..d {
                     for r in 0..d {
-                        let target = (offset + column * d + r) * v;
+                        let target = (offset + column * d + r) * n;
                         for inner in 0..d {
                             let k = offset + column * d + inner;
                             let (kr, ki) = (&kernel[2 * k], &kernel[2 * k + 1]);
                             if kr.is_zero() && ki.is_zero() {
                                 continue;
                             }
-                            let s = (offset + inner * d + r) * v;
-                            let (fr, fi) = source[s..s + v].split_at(L);
-                            let (pr, pi) = product[target..target + v].split_at_mut(L);
-                            for lane in 0..L {
-                                pr[lane] += kr.clone() * &fr[lane] - ki.clone() * &fi[lane];
-                                pi[lane] += kr.clone() * &fi[lane] + ki.clone() * &fr[lane];
+                            let s = (offset + inner * d + r) * n;
+                            for b in 0..rows.len() {
+                                let (fr, fi) = source[s + b * v..][..v].split_at(L);
+                                let (pr, pi) = product[target + b * v..][..v].split_at_mut(L);
+                                for lane in 0..L {
+                                    pr[lane] += kr.clone() * &fr[lane] - ki.clone() * &fi[lane];
+                                    pi[lane] += kr.clone() * &fi[lane] + ki.clone() * &fr[lane];
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        inverse(&fourier.fft, factors, v, &product, &mut convolution, &mut work, zero);
+        inverse(
+            &fourier.fft,
+            factors,
+            n,
+            &product,
+            &mut convolution,
+            &mut work,
+            zero,
+        );
         for &(record, g, negative) in outputs {
-            let lanes = &convolution[g * v..(g + 1) * v];
-            out.push((
-                record,
-                if negative {
-                    lanes.iter().map(|x| -x.clone()).collect()
-                } else {
-                    lanes.to_vec()
-                },
-            ));
+            for (b, &row) in rows.iter().enumerate() {
+                let lanes = &convolution[g * n + b * v..][..v];
+                out.push((
+                    row,
+                    record,
+                    if negative {
+                        lanes.iter().map(|x| -x.clone()).collect()
+                    } else {
+                        lanes.to_vec()
+                    },
+                ));
+            }
         }
     }
     out
@@ -801,36 +891,59 @@ pub fn seeds_fourier<T: Carrier + Real, const L: usize>(
                         .flat_map(|[re, im]| [data.cast(re), data.cast(im)])
                         .collect();
                     let mut out = vec![zero.clone(); 2 * group];
-                    forward(&fourier.fft, &factors, 2, &values, &mut out, &mut work, zero);
+                    forward(
+                        &fourier.fft,
+                        &factors,
+                        2,
+                        &values,
+                        &mut out,
+                        &mut work,
+                        zero,
+                    );
                     out
                 })
                 .collect()
         })
         .collect();
-    let tasks: Vec<(usize, usize)> = fourier
+    // Per job its Born rows some column of its weight column keeps, in
+    // blocks of `ROWS_PER_TASK`.
+    let tasks: Vec<(usize, Vec<usize>)> = fourier
         .jobs
         .iter()
         .enumerate()
         .flat_map(|(k, job)| {
-            (0..plan.rows)
+            let rows: Vec<usize> = (0..plan.rows)
                 .filter(|&h| {
                     plan.column_weights
                         .iter()
                         .enumerate()
                         .any(|(o, &w)| w == job.column && plan.column_rows.keeps(h, o))
                 })
-                .map(move |h| (k, h))
+                .collect();
+            rows.chunks(ROWS_PER_TASK)
+                .map(|block| (k, block.to_vec()))
+                .collect::<Vec<_>>()
         })
         .collect();
-    let rows: Vec<RowOutputs<T>> = tasks
+    let outputs: Vec<RowOutputs<T>> = tasks
         .par_iter()
-        .map(|&(k, h)| job_row(plan, fourier, &factors, &fourier.jobs[k], &kernels[k], data, h))
+        .map(|(k, rows)| {
+            job_rows(
+                plan,
+                fourier,
+                &factors,
+                &fourier.jobs[*k],
+                &kernels[*k],
+                data,
+                rows,
+            )
+        })
         .collect();
     // Per record: (Born row, weight column, lanes).
     let mut extra: Vec<Vec<(usize, usize, &[T])>> = vec![Vec::new(); fourier.direct.len()];
-    for (&(k, h), outputs) in tasks.iter().zip(&rows) {
-        for (record, lanes) in outputs {
-            extra[*record].push((h, fourier.jobs[k].column, lanes));
+    for ((k, _rows), outputs) in tasks.iter().zip(&outputs) {
+        for (row, record, lanes) in outputs {
+            extra[*record].push((*row, fourier.jobs[*k].column, lanes));
         }
     }
     contract(plan, &fourier.direct, Some(extra.as_slice()), data)
@@ -874,7 +987,11 @@ mod tests {
                     inverse[x] = i;
                 }
                 let (re, im) = k[relative(&inverse, &elements[g], &mut scratch)];
-                let re = if perturb && g == 2 && h == 3 { re + 1 } else { re };
+                let re = if perturb && g == 2 && h == 3 {
+                    re + 1
+                } else {
+                    re
+                };
                 terms.push(format!("[{h},\"{re}/7\",\"{im}/5\"]"));
             }
             classes.push(format!("{{\"columns\":[[{}]]}}", terms.join(",")));
@@ -900,8 +1017,14 @@ mod tests {
         use symbolica::domains::float::Complex;
         let value = |i: usize| {
             Complex::new(
-                zero.from_rational(&Rational::new(Integer::from((7 * i % 11) as i64 - 5), Integer::from(3))),
-                zero.from_rational(&Rational::new(Integer::from((5 * i % 13) as i64 - 6), Integer::from(7))),
+                zero.from_rational(&Rational::new(
+                    Integer::from((7 * i % 11) as i64 - 5),
+                    Integer::from(3),
+                )),
+                zero.from_rational(&Rational::new(
+                    Integer::from((5 * i % 13) as i64 - 6),
+                    Integer::from(7),
+                )),
             )
         };
         super::super::dress::V2Batch {
@@ -921,7 +1044,10 @@ mod tests {
         let (plan, record) = synthetic(false);
         let plan = LoopProgramV4::load(&plan).unwrap();
         let fourier = SeedFourier::load(&record, &plan).unwrap();
-        assert_eq!((fourier.jobs(), fourier.pairs(), fourier.covered()), (1, 1, 18));
+        assert_eq!(
+            (fourier.jobs(), fourier.pairs(), fourier.covered()),
+            (1, 1, 18)
+        );
         let batch = batch(zero);
         let data = LaneData::<T, 2>::new(&plan, &batch, &[0, 1], zero).unwrap();
         let direct = super::super::seeds::seeds(&plan, &data);
@@ -997,9 +1123,25 @@ mod tests {
             let values: Vec<DoubleFloat> = values.iter().map(|&x| DoubleFloat::from(x)).collect();
             let mut work = Workspace::new(group, lanes, &zero);
             let mut coefficients = vec![zero; group * lanes];
-            forward(&fft, &factors, lanes, &values, &mut coefficients, &mut work, &zero);
+            forward(
+                &fft,
+                &factors,
+                lanes,
+                &values,
+                &mut coefficients,
+                &mut work,
+                &zero,
+            );
             let mut back = vec![zero; group * lanes];
-            inverse(&fft, &factors, lanes, &coefficients, &mut back, &mut work, &zero);
+            inverse(
+                &fft,
+                &factors,
+                lanes,
+                &coefficients,
+                &mut back,
+                &mut work,
+                &zero,
+            );
             for (a, b) in back.iter().zip(&values) {
                 let error = (a.clone() - b).to_f64().abs();
                 assert!(error <= 1e-29, "degree {degree}: {error}");
@@ -1008,7 +1150,7 @@ mod tests {
     }
 
     /// `F[f ⋆ k] = F[f] F[k]` with `(f ⋆ k)(g) = Σ_h f(h) k(h⁻¹ ∘ g)` and the
-    /// block product of [`job_row`].
+    /// block product of [`job_rows`].
     #[test]
     fn block_products_are_group_convolutions() {
         for degree in 2..=5 {
@@ -1035,7 +1177,15 @@ mod tests {
                 }
             }
             let mut convolution = vec![0.0; group];
-            inverse(&fft, &factors, 1, &product, &mut convolution, &mut work, &0.0);
+            inverse(
+                &fft,
+                &factors,
+                1,
+                &product,
+                &mut convolution,
+                &mut work,
+                &0.0,
+            );
             let mut scratch = vec![0; degree];
             for g in 0..group {
                 let mut direct = 0.0;
@@ -1046,7 +1196,10 @@ mod tests {
                     }
                     direct += f[h] * k[relative(&inverse_h, &elements[g], &mut scratch)];
                 }
-                assert!((convolution[g] - direct).abs() <= 1e-12, "degree {degree} g {g}");
+                assert!(
+                    (convolution[g] - direct).abs() <= 1e-12,
+                    "degree {degree} g {g}"
+                );
             }
         }
     }

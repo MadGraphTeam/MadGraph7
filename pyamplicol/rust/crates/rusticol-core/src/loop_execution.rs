@@ -2083,11 +2083,11 @@ pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
     use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::forward::{forward_factors, run_forward};
+    pub use crate::loop_v2::fourier::SeedFourier;
+    use crate::loop_v2::fourier::seeds_fourier;
     use crate::loop_v2::merged::{DEFAULT_PART_CHUNKS, MergedStats, parts, run_merged};
     use crate::loop_v2::plan::{LoopProgramV4, Merged};
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
-    pub use crate::loop_v2::fourier::SeedFourier;
-    use crate::loop_v2::fourier::seeds_fourier;
     use crate::loop_v2::seeds::seeds;
     use crate::loop_v2::trie::run_family;
     use crate::{RusticolError, RusticolResult};
@@ -2188,6 +2188,9 @@ pub mod v2 {
     /// Report count of the seed-FFT jobs an evaluation ran (one per job and
     /// lane chunk; absent when every seed was contracted directly).
     pub const FFT_SEED_JOBS: &str = "symmetric-group-fft seed jobs";
+    /// Report stage of the seed contraction alone (direct or FFT), within
+    /// the "seeds" stage, which also gathers each chunk's lane data.
+    pub const SEED_CONTRACTION: &str = "seed contraction";
 
     /// A reduction lane of one point: (family, loop orders, observable column).
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2854,6 +2857,7 @@ pub mod v2 {
             backend.begin();
             let start = Instant::now();
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
+            let contraction = Instant::now();
             let seeds = match fourier {
                 Some(fourier) => {
                     report.count(FFT_SEED_JOBS, fourier.jobs() as u64);
@@ -2861,6 +2865,8 @@ pub mod v2 {
                 }
                 None => seeds(plan, &data),
             };
+            // The contraction alone ("seeds" also gathers the lane data).
+            report.time(SEED_CONTRACTION, contraction);
             report.time("seeds", start);
             let mut inputs = ChunkInputs::new(plan);
             let masses: Vec<Complex<T>> = batch

@@ -170,7 +170,8 @@ fn with_fourier(
     match fourier {
         None => Ok(executor),
         Some(record) => executor.with_fourier(
-            &serde_json::to_vec(record).map_err(|e| invalid(format!("seed Fourier record: {e}")))?,
+            &serde_json::to_vec(record)
+                .map_err(|e| invalid(format!("seed Fourier record: {e}")))?,
         ),
     }
 }

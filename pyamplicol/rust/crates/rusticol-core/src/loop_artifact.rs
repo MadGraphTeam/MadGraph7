@@ -832,7 +832,10 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
-            && matches!(metadata.color_contraction.as_str(), "auto" | "direct" | "fft"),
+            && matches!(
+                metadata.color_contraction.as_str(),
+                "auto" | "direct" | "fft"
+            ),
         "unsupported contribution, convention or feature declaration",
     )?;
     require(
