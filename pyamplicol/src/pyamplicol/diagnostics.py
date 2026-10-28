@@ -16,6 +16,7 @@ from typing import Literal
 
 from . import __version__
 from ._internal.versions import verify_native_module
+from .api.errors import NativePlatformError
 
 CheckStatus = Literal["pass", "warning", "fail"]
 
@@ -70,7 +71,14 @@ def _native_check(*, required: bool) -> DiagnosticCheck:
         verify_native_module(native)
         abi_version = int(native.abi_version())
         native_version = str(native.package_version())
-    except (ImportError, AttributeError, TypeError, ValueError, RuntimeError) as exc:
+    except (
+        ImportError,
+        NativePlatformError,
+        AttributeError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
         return DiagnosticCheck(
             "rusticol-python",
             "fail" if required else "warning",
