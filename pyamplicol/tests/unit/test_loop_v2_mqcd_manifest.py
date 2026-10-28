@@ -108,6 +108,7 @@ def test_rows_are_the_plan_rows(rows):
 
 def test_rows_are_well_formed(manifest, rows):
     codes = manifest["restriction_codes"]
+    manifest_rows = {data["id"]: data for data in manifest["rows"]}
     for name, row in rows.items():
         assert row.cls in CLASSES, name
         assert row.tier in mqcd.TIERS and row.status in mqcd.STATUSES, name
@@ -141,8 +142,21 @@ def test_rows_are_well_formed(manifest, rows):
         assert row.catani == ("none" if row.inputs == "native" else "python"), name
         if row.base is not None:
             base = rows[row.base]
-            assert row.tier == "nightly" and row.process == base.process, name
-            assert row.reference != base.reference, name
+            assert row.tier == "nightly" and row.reference != base.reference, name
+            # A subprocess variant of a multiparticle row is one of the
+            # processes MadLoop lists for it; any other variant keeps the
+            # base request.
+            if row.subprocess:
+                listed = {
+                    process
+                    for processes in manifest_rows[row.base][
+                        "madloop_subprocesses"
+                    ].values()
+                    for process in processes
+                }
+                assert row.process in listed, name
+            else:
+                assert row.process == base.process, name
         if isinstance(row.loop_orders, dict):
             # One loop order: the Born's plus the correction's two powers.
             assert row.loop_orders == {
@@ -189,7 +203,8 @@ def test_active_references_agree_with_their_rows(manifest, rows):
             data = json.loads((mqcd.ROOT / row.reference["path"]).read_text())
             process = data["process"].split(" [")[0]
             tokens = [aliases.get(t, t) for t in process.split() if "=" not in t]
-            assert " ".join(tokens) == row.process, name
+            expected = rows[row.base].process if row.subprocess else row.process
+            assert " ".join(tokens) == expected, name
             # A mixed-order request lists every Born order (``born_orders_all``,
             # MQ-REF); the row holds their bounds and every loop order.
             borns = data.get("born_orders_all", [data["born_orders"]])

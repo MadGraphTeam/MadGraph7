@@ -59,3 +59,21 @@ def test_restriction_smoke_equals_its_base_row(campaign, restriction):
     checks = mqcd.smoke(campaign, restriction, SMOKES[restriction])
     failures = [c for c in checks if not c.passed]
     assert not failures, failures
+
+
+MULTIPARTICLE = sorted(
+    data["id"]
+    for data in mqcd.load_manifest()["rows"]
+    if "madloop_subprocesses" in data
+)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", MULTIPARTICLE)
+def test_multiparticle_expansion_is_madloops(campaign, name):
+    """M01: the public route's expansion of the multiparticle label is the
+    set of processes of MadLoop's SubProcesses/P* (each P reference runs as
+    a row variant, ``M01@P<n>``)."""
+
+    checks = mqcd.multiparticle_subprocesses(campaign, name)
+    assert all(c.passed for c in checks), checks

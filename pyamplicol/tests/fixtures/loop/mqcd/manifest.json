@@ -1607,8 +1607,7 @@
    "points": {
     "nightly": [
      0,
-     1,
-     2
+     1
     ]
    },
    "extras": [
@@ -1843,6 +1842,43 @@
      "gating": true,
      "tier": "nightly",
      "notes": "S1: top-pair threshold points (beta = 1e-1, 1e-2, 1e-3), MadLoop in quadruple precision",
+     "binary64_out_of_scope": [
+      {
+       "point": 1,
+       "sector": "QCD^6",
+       "coefficient": "finite",
+       "E": 1.73e-09,
+       "true_error": 1.21e-10
+      },
+      {
+       "point": 1,
+       "sector": "QCD^6",
+       "coefficient": "single_pole",
+       "E": 5.65e-09,
+       "true_error": 6.24e-12
+      },
+      {
+       "point": 2,
+       "sector": "QCD^6",
+       "coefficient": "finite",
+       "E": 2.89e-06,
+       "true_error": 1.74e-07
+      },
+      {
+       "point": 2,
+       "sector": "QCD^6",
+       "coefficient": "single_pole",
+       "E": 4.61e-05,
+       "true_error": 8.7e-10
+      },
+      {
+       "point": 2,
+       "sector": "QCD^6",
+       "coefficient": "double_pole",
+       "E": 7.49e-09,
+       "true_error": 2.95e-10
+      }
+     ],
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/gg_ttx_threshold.json",
@@ -5457,13 +5493,7 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N multi-P ~1-2 min",
-   "reference": {
-    "format": "required",
-    "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P0_uux_ttx.json",
-    "providers": [
-     "madloop"
-    ]
-   },
+   "reference": null,
    "points": {
     "nightly": [
      0,
@@ -5490,8 +5520,68 @@
    "reference_outliers": [],
    "vanishing": [],
    "pending": {
-    "waits_for": "MQ-VALIDATE",
-    "reason": "per-subprocess references exist (MQ-REF); the multiparticle subprocess check (public-route expansion against MadLoop's P directories) is not in the harness yet"
+    "waits_for": "MQ-MODEL",
+    "reason": "the public route's multiparticle artifact (each subprocess = its single-process generation, bitwise) waits for the public route on loop_sm; the expansion against MadLoop's P directories and every P reference (variants M01@P0, M01@P2) run now"
+   },
+   "variants": [
+    {
+     "name": "P0",
+     "gating": true,
+     "tier": "nightly",
+     "subprocess": true,
+     "process": "u u~ > t t~",
+     "notes": "MadLoop SubProcesses/P0_uux_ttx of p p > t t~",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P0_uux_ttx.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    },
+    {
+     "name": "P2",
+     "gating": true,
+     "tier": "nightly",
+     "subprocess": true,
+     "process": "g g > t t~",
+     "notes": "MadLoop SubProcesses/P2_gg_ttx of p p > t t~",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P2_gg_ttx.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
+   "madloop_subprocesses": {
+    "P0_uux_ttx": [
+     "b b~ > t t~",
+     "c c~ > t t~",
+     "d d~ > t t~",
+     "s s~ > t t~",
+     "u u~ > t t~"
+    ],
+    "P2_gg_ttx": [
+     "g g > t t~"
+    ]
    }
   },
   {
