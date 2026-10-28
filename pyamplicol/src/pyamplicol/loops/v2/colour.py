@@ -741,7 +741,19 @@ class SeedColour:
         vertex = position.vertex
         indices = self._indices.get((vertex.rule, add_orders(vertex.orders)))
         if not indices:
-            raise ValueError(f"no colour structure of {vertex.rule} at {vertex.orders}")
+            # The loop catalogue holds a vertex the tree model dropped (one
+            # whose couplings vanish at the restriction is no loop vertex,
+            # ``ct_sites.vanishing_loop_vertices``): refused, listed.
+            from .refusals import LoopRequestUnsupported
+
+            particles = " ".join(self._rules[vertex.rule]["particles"])
+            raise LoopRequestUnsupported(
+                "loop-vertex-outside-tree-model",
+                f"{self.blocks.process.process!r}: the loop vertex {vertex.rule} "
+                f"({particles}) at the coupling orders {dict(vertex.orders)} "
+                "has no term in the request's tree model, and its couplings are "
+                "not shown to vanish at the model's restriction",
+            )
         legs = self._canonical_legs(
             vertex.rule,
             vertex.loop_in,

@@ -24,7 +24,11 @@ request on both and compare decisions under the map and values to rounding:
   the value it derives from the default card) where it is derived;
 * ``quarks``: a quark flavour renamed and renumbered (``u`` -> ``uq``, PDG 2
   -> 9000002, in the particles and their ``loop_particles``), so identical-
-  flavour lines are those of a quark no PDG range or name names.
+  flavour lines are those of a quark no PDG range or name names;
+* ``ckm``: the CKM elements and their Wolfenstein inputs renamed (``CKM13``
+  -> ``VQ13``, ``lamWS`` -> ``wlam``, ...) and every vertex renamed
+  (``V_101`` -> ``VX_101``), so vertices that a restriction removes are
+  those of couplings no parameter or vertex name names.
 
 The rewrite is textual and checked: every substitution must apply, so a
 changed source fails loudly instead of yielding an unrenamed "variant". Run
@@ -41,7 +45,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VARIANTS = ("orders", "lower", "particles", "scale", "mass", "quarks")
+VARIANTS = ("orders", "lower", "particles", "scale", "mass", "quarks", "ckm")
 
 
 @dataclass(frozen=True)
@@ -376,6 +380,26 @@ def write_variant(source: Path, target: Path, variant: str) -> RenameMap:
         for path in files:
             files[path] = _renumber_loop_particles(files[path], pdgs)
         rename = RenameMap(variant, particles=particles, pdgs=pdgs)
+    elif variant == "ckm":
+        candidates = {f"CKM{i}{j}": f"VQ{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)}
+        candidates.update(lamWS="wlam", AWS="wA", rhoWS="wrho", etaWS="weta")
+        parameters = {
+            old: new
+            for old, new in candidates.items()
+            if re.search(rf"\bname\s*=\s*'{old}'", files["parameters.py"])
+        }
+        if not parameters:
+            raise ValueError("renamed-model rewrite found no CKM parameter")
+        for path in files:
+            for old, new in parameters.items():
+                files[path] = re.sub(rf"\b{old}\b", new, files[path])
+        files["vertices.py"] = _sub(
+            r"\bname(\s*=\s*)'V_(\d+)'",
+            r"name\g<1>'VX_\g<2>'",
+            files["vertices.py"],
+            what="vertex names",
+        )
+        rename = RenameMap(variant, parameters=parameters)
     elif variant == "scale":
         parameters = {"MU_R": "muR"}
         for path in files:

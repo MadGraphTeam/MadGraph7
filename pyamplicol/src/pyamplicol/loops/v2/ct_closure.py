@@ -61,7 +61,7 @@ from .ct_sites import (
     SiteClosure,
     generate_counterterm_sites,
     resolved_internal_parameters,
-    vanishes_identically,
+    restricted_to_zero,
 )
 from .families import (
     LoopOrderSelection,
@@ -579,7 +579,7 @@ class CountertermClosure:
                         # has no copy and contributes nothing (WP3.2 EWI-5);
                         # any other is refused.
                         absent = entries[0].vertex_name not in tree_vertices
-                        if absent and _restricted_to_zero(lowered, entries):
+                        if absent and restricted_to_zero(lowered, entries):
                             continue
                         raise UnloweredCountertermError(
                             f"the counterterm root vertex {entries[0].vertex_name} "
@@ -647,22 +647,6 @@ class CountertermClosure:
                         )
                     )
         return cls(program, closure, tuple(sites), tuple(terms))
-
-
-def _restricted_to_zero(compiled: Any, entries: Sequence[Any]) -> bool:
-    """Whether every coupling of a vertex's loop-model ``entries`` vanishes
-    identically in the model ``compiled`` (its internal parameters resolved
-    to the restriction's external ones, ``ct_sites.vanishes_identically``),
-    so that the restricted tree model holds no term of it; False when that
-    cannot be shown."""
-
-    try:
-        return all(
-            vanishes_identically(compiled, entry.scalar_expression().value)
-            for entry in entries
-        )
-    except ValueError:  # an internal parameter left unresolved
-        return False
 
 
 def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
