@@ -94,6 +94,9 @@ struct Job {
     /// of the record, negative sign).
     outputs: Vec<Vec<(usize, usize, bool)>>,
     pairs: Vec<Pair>,
+    /// Per loop orbit the indices of its pairs, in pair order (one scan of
+    /// the pairs, not one per loop orbit).
+    by_loop: Vec<Vec<usize>>,
 }
 
 /// The certified seed FFT of one plan: its jobs and the plan's seed classes
@@ -334,11 +337,16 @@ impl SeedFourier {
                 }
             }
             if !pairs.is_empty() {
+                let mut by_loop = vec![Vec::new(); loops.len()];
+                for (index, pair) in pairs.iter().enumerate() {
+                    by_loop[pair.loop_orbit].push(index);
+                }
                 jobs.push(Job {
                     column: job.column,
                     born,
                     outputs,
                     pairs,
+                    by_loop,
                 });
             }
         }
@@ -806,10 +814,8 @@ fn job_rows<T: Carrier, const L: usize>(
             continue;
         }
         product.fill(zero.clone());
-        for (pair, kernel) in job.pairs.iter().zip(kernels) {
-            if pair.loop_orbit != l {
-                continue;
-            }
+        for &index in &job.by_loop[l] {
+            let (pair, kernel) = (&job.pairs[index], &kernels[index]);
             let source = &born[&pair.born];
             // R(r, c) += F(r, i) K(i, c), complex, per block.
             for block in fourier.fft.blocks() {
