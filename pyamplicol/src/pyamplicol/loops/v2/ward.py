@@ -57,10 +57,13 @@ the largest physical component magnitude over the sectors
   its double-double agreement);
 * virtual, every sector and Laurent coefficient: in double-double
   |V_k| <= 1e-25 x scale_k (O10's double-double bound); in binary64, where
-  the reduction's rounding grows with the multiplicity, |V_k| <= 10 E_k with
-  E_k the absolute stability estimate of the Ward evaluation itself from
-  the reduction-direction check (``REDUCTION``; the user's 10x rule), and
-  E_k <= 1e-9 x scale_k (O1's binary64 scope). A gauge violation does not
+  the reduction's rounding grows with the multiplicity, the user's O1 rule
+  (m-qcd PLAN §1.4 rules 2 and 3) with the exact value 0 and the scale in
+  place of the coefficient: E_k, the absolute stability estimate of the
+  Ward evaluation itself from the reduction-direction check
+  (``REDUCTION``), is within O1's binary64 scope, E_k <= 1e-9 x scale_k;
+  |V_k| <= max(1e-12 x scale_k, E_k) (rule 2, ``BINARY64_FLOOR``); and
+  |V_k| <= 10 E_k (rule 3, the 10x rule). A gauge violation does not
   depend on the reduction frame, so the estimate does not cover it. A
   rotation check is no rounding estimate here: the substituted leg's bra
   sums over its helicities against a helicity-independent ket, so each
@@ -93,6 +96,7 @@ BORN_BOUNDS = {"double": 1e-12, "double-double": 1e-24}
 VIRTUAL_BOUNDS = {"double-double": 1e-25}
 ESTIMATE_FACTOR = 10
 BINARY64_SCOPE = 1e-9
+BINARY64_FLOOR = 1e-12
 # The stability check the binary64 criterion reads.
 WARD_CHECKS = StabilityChecks(reduction_direction=True)
 
@@ -265,7 +269,9 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     the Ward value, ``carrier`` "double" or "double-double". Returns the
     ratios to the physical scale (per Laurent coefficient, the largest over
     the sectors), the binary64 estimate's (E_k / scale_k, None without
-    checks), the Born ratio and ``passed`` (None: binary64 without checks)."""
+    checks) with |V_k| / E_k (``estimate_over``, rule 3) and, in binary64,
+    |V_k| / max(1e-12 scale_k, E_k) (``o1_over``, rule 2), the Born ratio
+    and ``passed`` (None: binary64 without checks)."""
 
     if carrier not in BORN_BOUNDS:
         raise ValueError(f"no Ward criterion for the carrier {carrier!r}")
@@ -320,8 +326,22 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
         bracketed = all(x <= ESTIMATE_FACTOR for x in row["estimate_over"])
         if carrier == "double":
             in_scope = all(e <= BINARY64_SCOPE for e in row["estimate"])
+            # O1 rule 2 per sector and coefficient: |V_k| / max(1e-12
+            # scale_k, E_k), the largest over the sectors (<= 1 passes).
+            row["o1_over"] = [
+                max(
+                    _ratio(
+                        abs(complex(laurent.coefficients[k])),
+                        max(BINARY64_FLOOR * scale[k], absolute[sector][k]),
+                    )
+                    for sector, laurent in virtual.items()
+                )
+                for k in range(width)
+            ]
             row["in_scope"] = in_scope
-            virtual_passed = bracketed and in_scope
+            virtual_passed = (
+                bracketed and in_scope and all(x <= 1 for x in row["o1_over"])
+            )
         else:
             virtual_passed = bool(virtual_passed) and bracketed
     row["virtual_passed"] = virtual_passed
@@ -332,6 +352,7 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "BINARY64_FLOOR",
     "BINARY64_SCOPE",
     "BORN_BOUNDS",
     "ESTIMATE_FACTOR",

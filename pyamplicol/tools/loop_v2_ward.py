@@ -102,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             "virtual": ward.VIRTUAL_BOUNDS,
             "estimate_factor": ward.ESTIMATE_FACTOR,
             "binary64_scope": ward.BINARY64_SCOPE,
+            "binary64_floor": ward.BINARY64_FLOOR,
             "vector": "c p_j / p_j^0",
             "checks": {"double": "reduction-direction"},
         },
@@ -185,6 +186,14 @@ def main(argv: list[str] | None = None) -> int:
                 "batch": len(configurations),
                 "checks": checked,
                 "born": float(sum(complex(v).real for v in physical.born.values())),
+                # The physical virtual per sector and Laurent coefficient
+                # (against the production slice's values at the point).
+                "virtual": {
+                    repr(sector): [
+                        [complex(x).real, complex(x).imag] for x in laurent.coefficients
+                    ]
+                    for sector, laurent in physical.components["virtual"].items()
+                },
                 "scale": scales,
                 "physical_estimate": (
                     None

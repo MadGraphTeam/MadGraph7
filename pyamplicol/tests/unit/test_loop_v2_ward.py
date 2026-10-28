@@ -10,12 +10,13 @@ TreeProgram::inputs_loop_side``), and the Python lane forms the same inputs
 as the oracle. The criterion is ``ward.ward_row``: the Born and the virtual
 of every sector and Laurent coefficient vanish to the carrier's rounding
 against the physical evaluation of the same point (double-double: 1e-25 of
-the physical scale; binary64: within ten times the evaluation's own
-reduction-direction estimate, itself within 1e-9 of the scale; the Born
-1e-12 / 1e-24).
+the physical scale; binary64: the O1 rule with the evaluation's own
+reduction-direction estimate E, itself within 1e-9 of the scale: within
+max(1e-12 of the scale, E) and within 10 E; the Born 1e-12 / 1e-24).
 
 * Default tier: g g > g g and u u~ > g g g (every gluon leg, both factors,
-  binary64 and double-double) on native inputs; native inputs = Python
+  binary64 and double-double) on native inputs; the Ward slice's full
+  kernels are physically the production slice's; native inputs = Python
   inputs on the non-gauge control (a literal vector on the loop side, where
   nothing vanishes) in double-double, and the Python-input Ward evaluation
   meets the criterion; the refusals (transverse kernels, a stored process,
@@ -131,6 +132,38 @@ def test_ward_identity_on_native_inputs(slices, name):
             assert row["passed"] is True, (carrier, configuration, row)
 
 
+@pytest.mark.parametrize("name", tuple(DEFAULT))
+def test_ward_slice_is_the_production_slice_physically(slices, name):
+    """The Ward check runs on the full tree kernels; physically (no Ward
+    value) they are the production slice's transverse kernels: every
+    component, sector and Laurent coefficient and the Born agree to 1e-25
+    of the physical scale in double-double, native inputs (measured:
+    bitwise on g g > g g and u u~ > g g g; binary64 5.6e-13 of the scale on
+    u u~ > g g g, bitwise on g g > g g)."""
+
+    point, scale = _point(name)
+    results = {}
+    for kernels in ("full", "transverse"):
+        executor = NativeExecutor(slices(name, kernels), inputs="native", forward=False)
+        results[kernels], _ = _evaluate(
+            executor, point, scale, [], "double-double", checks=False
+        )
+    full, production = results["full"], results["transverse"]
+    size = ward.ward_scales(production)
+    for part in COMPONENTS:
+        assert full.components[part].keys() == production.components[part].keys()
+        for sector, laurent in production.components[part].items():
+            other = full.components[part][sector]
+            for k, value in enumerate(laurent.coefficients):
+                deviation = abs(complex(value) - complex(other.coefficients[k]))
+                assert deviation <= 1e-25 * size[k], (name, part, sector, k)
+    assert full.born.keys() == production.born.keys()
+    for order, value in production.born.items():
+        assert abs(complex(full.born[order]) - complex(value)) <= 1e-25 * abs(
+            complex(value)
+        )
+
+
 def test_native_loop_side_inputs_match_python(slices):
     """The native trees' loop-side run against the Python lane's, u u~ > g g g
     (every gluon leg) and g g > g g (an initial leg): with a literal vector on
@@ -234,6 +267,61 @@ def test_ward_mode_refusals(slices, loop_native):
     )
     with pytest.raises(ValueError, match="reduction-direction check alone"):
         ward.ward_row(physical, result, "double")
+
+
+def test_ward_criterion_applies_the_o1_rule():
+    """``ward.ward_row`` on synthetic results (scale 1, one sector, one
+    coefficient): binary64 passes with |V| <= max(1e-12, E) and |V| <= 10 E
+    and E <= 1e-9 (O1 rules 2 and 3 and scope), and fails on each alone;
+    double-double needs |V| <= 1e-25; the Born ratio has its own bound; a
+    coefficient without a physical scale admits only zero."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.stability import REDUCTION
+
+    sector = ("QCD", 6)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def point(virtual, born=0.0, estimate=None, scale=(1.0,)):
+        components = {name: {sector: laurent(*scale)} for name in COMPONENTS}
+        components["virtual"] = {sector: laurent(*virtual)}
+        stability = None
+        if estimate is not None:
+            stability = SimpleNamespace(
+                budgets={REDUCTION: {}}, absolute={sector: laurent(*estimate)}
+            )
+        return SimpleNamespace(
+            components=components,
+            born={sector: 1.0},
+            loop_born={sector: born},
+            stability=stability,
+        )
+
+    physical = point((1.0,))
+    for virtual, estimate, passed in (
+        ((5e-13,), (1e-15,), False),  # rule 3: |V| > 10 E
+        ((5e-13,), (1e-13,), True),  # rule 2's floor 1e-12
+        ((5e-11,), (1e-11,), False),  # rule 2: |V| > E above the floor
+        ((9e-12,), (1e-11,), True),
+        ((5e-10,), (2e-9,), False),  # outside the binary64 scope
+    ):
+        row = ward.ward_row(physical, point(virtual, estimate=estimate), "double")
+        assert row["passed"] is passed, (virtual, estimate, row)
+    assert ward.ward_row(physical, point((1e-20,)), "double")["passed"] is None
+    born = point((0.0,), born=2e-12, estimate=(1e-13,))
+    assert ward.ward_row(physical, born, "double")["passed"] is False
+    for virtual, passed in (((9e-26,), True), ((2e-25,), False)):
+        row = ward.ward_row(physical, point(virtual), "double-double")
+        assert row["passed"] is passed
+    # A coefficient no physical component has (scale 0) admits only zero.
+    unscaled = point((0.0, 0.0), scale=(1.0, 0.0))
+    for virtual, passed in (((0.0, 0.0), True), ((0.0, 1e-40), False)):
+        result = point(virtual, scale=(1.0, 0.0))
+        row = ward.ward_row(unscaled, result, "double-double")
+        assert row["passed"] is passed
 
 
 # ------------------------------------------------------------ nightly ladder
