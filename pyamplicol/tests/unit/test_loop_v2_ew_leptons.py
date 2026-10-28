@@ -294,6 +294,17 @@ READING_FLIPS = {
     ("G-", "H", "W+"),
     ("G0", "ghWm", "ghWm~"),
     ("G0", "ghWp", "ghWp~"),
+    # The W ghost vertices not closed under conjugation, read on their own
+    # legs (WP3.2 EWI-7): s(W+-) = -1, s(G+-) = +1 in the gauge-fixed
+    # solution of the conjugate readings (s(W-) s(G+) = -1).
+    ("W+", "ghA", "ghWp~"),
+    ("W+", "ghA~", "ghWm"),
+    ("W+", "ghWm", "ghZ~"),
+    ("W+", "ghWp~", "ghZ"),
+    ("W-", "ghA", "ghWm~"),
+    ("W-", "ghA~", "ghWp"),
+    ("W-", "ghWm~", "ghZ"),
+    ("W-", "ghWp", "ghZ~"),
 }
 
 

@@ -549,13 +549,18 @@ def test_conventions_record_the_models_schemes(loop_gmu_ufo, loop_qcd_qed_sm_ufo
 
 
 def test_conventions_are_stored_and_inspected_only_where_recorded():
-    """The plumbing of the record (WP3.2 EWI-7): the v2 process metadata
-    serialises ``conventions`` only when recorded (other artifacts keep
-    their bytes), the artifact inspection lists it as (field, value) pairs
-    and the inspection summary shows a "conventions" row."""
+    """The plumbing of the record (WP3.2 EWI-7): the conventions live in the
+    process's generation record (the physics metadata keeps the schema the
+    native admission reads), ``recorded_conventions`` finds them there for
+    ``Runtime.inspect`` and the artifact inspection (None where none is
+    recorded, so other artifacts keep their bytes), the inspection lists
+    them as (field, value) pairs and its summary shows a "conventions"
+    row."""
+
+    from dataclasses import replace
 
     from pyamplicol.artifacts.inspection import _conventions
-    from pyamplicol.generation import loop_artifact
+    from pyamplicol.generation.loop_artifact import recorded_conventions
 
     record = {
         "regularisation": "HV",
@@ -568,19 +573,18 @@ def test_conventions_are_stored_and_inspected_only_where_recorded():
         ("lambda_HV", "1.0"),
         ("alpha_inputs", "Gf=SMINPUTS 2, MZ=MASS 23"),
     )
-
-    from dataclasses import dataclass, replace
-
-    @dataclass
-    class Plain:
-        families: int
-        conventions: dict | None = None
-
-    assert loop_artifact._v2_metadata_record(Plain(3)) == {"families": 3}
-    assert loop_artifact._v2_metadata_record(Plain(3, record)) == {
-        "families": 3,
-        "conventions": record,
+    extensions = {
+        "generation": {
+            "concrete_processes": [
+                {"id": "qcd", "filters": {"loop_engine": "v2"}},
+                {"id": "ew", "filters": {"conventions": record}},
+            ]
+        }
     }
+    assert recorded_conventions(extensions, "ew") == record
+    assert recorded_conventions(extensions, "qcd") is None
+    assert recorded_conventions(extensions, "other") is None
+    assert recorded_conventions({}, "ew") is None
     from dataclasses import asdict
 
     from pyamplicol.artifacts.inspection import ArtifactLoopInspection

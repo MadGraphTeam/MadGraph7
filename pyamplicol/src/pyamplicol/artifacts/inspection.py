@@ -136,7 +136,8 @@ class ArtifactLoopInspection:
     point_inputs: str | None = None
     # The conventions of an electroweak virtual (WP3.2 EWI-7: regularisation
     # and lambda_HV, gamma five, gauge, UV, mass and electroweak input
-    # schemes, external photons), (field, value) pairs; empty otherwise.
+    # schemes, external photons; from the generation record), (field,
+    # value) pairs; empty otherwise.
     conventions: tuple[tuple[str, str], ...] = ()
 
 
@@ -336,8 +337,9 @@ class ArtifactInspection:
 
 def _conventions(value: object, context: str) -> tuple[tuple[str, str], ...]:
     """The (field, value) pairs of a v2 process's recorded conventions
-    (``LoopV2ExecutionMetadata.conventions``), mappings as sorted
-    ``key=value`` lists; empty when none is recorded."""
+    (its generation record's ``conventions``, ``generation.loop_artifact.
+    recorded_conventions``), mappings as sorted ``key=value`` lists; empty
+    when none is recorded."""
 
     if value is None:
         return ()
@@ -3061,6 +3063,7 @@ def _loop_process_inspection(
     from pyamplicol.generation.loop_artifact import (
         LOOP_PHYSICS_KIND,
         LOOP_RUNTIME_KIND,
+        recorded_conventions,
     )
 
     process_id = str(process["id"])
@@ -3174,7 +3177,9 @@ def _loop_process_inspection(
             point_inputs=_string(
                 execution.get("point_inputs"), f"{execution_path}.point_inputs"
             ),
-            conventions=_conventions(metadata.get("conventions"), context),
+            conventions=_conventions(
+                recorded_conventions(manifest.extensions, process_id), context
+            ),
         )
     else:
         orders = _mapping(metadata.get("orders"), f"{context}.orders")

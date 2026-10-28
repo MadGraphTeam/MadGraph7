@@ -1544,7 +1544,6 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 color_contraction=request.colour_contraction,
                                 color_correlations=process.color_correlations(),
                                 spin_correlations=process.spin_correlations(),
-                                conventions=conventions,
                             ),
                             validation_point=build_process_validation_point(
                                 entry.process_ir,

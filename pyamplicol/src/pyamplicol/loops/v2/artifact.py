@@ -676,10 +676,10 @@ class GeneratedProcess:
         """The conventions of an electroweak request's virtual (WP3.2 EWI-7,
         ``ew_policy.scheme_conventions``: regularisation and lambda_HV, the
         gamma-five reading, gauge, UV, mass and electroweak input schemes,
-        the external-photon convention): the generation record's and the
-        process metadata's ``conventions``; None for a request that is not
-        electroweak (its records then have no entry, so such artifacts keep
-        their bytes)."""
+        the external-photon convention): the generation record's
+        ``conventions`` (``Runtime.inspect`` and the artifact inspection read
+        it there); None for a request that is not electroweak (its record
+        then has no entry, so such artifacts keep their bytes)."""
 
         from .ew_policy import scheme_conventions
 
@@ -1126,6 +1126,13 @@ class V2VirtualRuntime:
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
         self._manifest = manifest
+        # WP3.2 EWI-7: the conventions of an electroweak virtual, from the
+        # generation record (None when none is recorded).
+        from pyamplicol.generation.loop_artifact import recorded_conventions
+
+        self._conventions = recorded_conventions(
+            manifest.extensions, str(selected["id"])
+        )
         self._process_id = process_id
         self._expression = str(selected["expression"])
         self._physics = physics
@@ -1287,6 +1294,11 @@ class V2VirtualRuntime:
                     ),
                     "rescue_available": False,
                     "accuracy_established": False,
+                    **(
+                        {"conventions": self._conventions}
+                        if self._conventions is not None
+                        else {}
+                    ),
                 }
             )
 
