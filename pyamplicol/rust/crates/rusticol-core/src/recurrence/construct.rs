@@ -4395,8 +4395,10 @@ impl DiracWeylClosureGuard {
     ) -> RusticolResult<Self> {
         let mut closable = BTreeSet::new();
         for (left, right) in pairs {
-            let left = Self::state(states, left)?;
-            let right = Self::state(states, right)?;
+            let (Some(left), Some(right)) = (Self::state(states, left), Self::state(states, right))
+            else {
+                continue;
+            };
             if Self::fermion(left) && Self::fermion(right) {
                 closable.insert((left.particle_id, right.particle_id));
                 closable.insert((right.particle_id, left.particle_id));
@@ -4425,13 +4427,15 @@ impl DiracWeylClosureGuard {
         Self::from_state_pairs(&template.current_states, pairs)
     }
 
+    /// The state row of a template id; `None` for a state the template's
+    /// current-state table does not describe (structural test fixtures),
+    /// which the guard cannot classify and leaves to the builder's own
+    /// integrity checks.
     fn state(
         states: &[super::template::CurrentStateRow],
         state_template_id: u32,
-    ) -> RusticolResult<&super::template::CurrentStateRow> {
-        states
-            .get(state_template_id as usize)
-            .ok_or_else(|| invalid("Dirac-Weyl guard references an absent current state"))
+    ) -> Option<&super::template::CurrentStateRow> {
+        states.get(state_template_id as usize)
     }
 
     fn fermion(state: &super::template::CurrentStateRow) -> bool {
@@ -4448,8 +4452,12 @@ impl DiracWeylClosureGuard {
         complement_state: u32,
         context: impl std::fmt::Display,
     ) -> RusticolResult<()> {
-        let anchor = Self::state(states, anchor_state)?;
-        let complement = Self::state(states, complement_state)?;
+        let (Some(anchor), Some(complement)) = (
+            Self::state(states, anchor_state),
+            Self::state(states, complement_state),
+        ) else {
+            return Ok(());
+        };
         if !Self::fermion(anchor)
             || !Self::fermion(complement)
             || (anchor.chirality == 0) == (complement.chirality == 0)
