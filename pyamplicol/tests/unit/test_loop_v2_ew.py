@@ -1529,6 +1529,14 @@ def test_referenced_couplings_equal_mpmath(ew, carrier):
 # MadLoop: ``test_loop_v2_ew_leptons``.
 LIFTED = None  # the rung generates (and runs its check)
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
+# A veto of loop species on loop_qcd_qed_sm, whose electroweak UV
+# counterterms declare no loop content (``refusals``, WP3.2 EWI-5 interim;
+# lifted by EWI-7's [U2] veto guard).
+_UNLABELLED = (
+    "LoopRequestUnsupported",
+    r"veto-unlabelled-counterterms: .* particle_veto removes the species "
+    r"\[23, 24, 25, 250, 251\]",
+)
 # Electroweak requests need every propagating width fixed to zero outside
 # the complex-mass scheme (``ew_policy``, the user's decision [U8]).
 _ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
@@ -1589,10 +1597,12 @@ def _rung(name, model, process, born, loop, blocker, **options):
 
     import pyamplicol.loops.v2.catalogue as catalogue
     import pyamplicol.loops.v2.conventions as conventions
+    import pyamplicol.loops.v2.refusals as refusals
 
     errors = {
         "LoopKernelCatalogueError": catalogue.LoopKernelCatalogueError,
         "FermionSignError": conventions.FermionSignError,
+        "LoopRequestUnsupported": refusals.LoopRequestUnsupported,
     }
     marks = ()
     if blocker is not LIFTED:
@@ -1607,17 +1617,18 @@ def _rung(name, model, process, born, loop, blocker, **options):
 LADDER = [
     # Photon-only QED corrections of a lepton process: two colour-singlet
     # fermion lines, one through every loop (B4, lifted by EWI-5; B2 by
-    # EWI-1); it generates and evaluates (the "uv" identity holds by
-    # construction, ``loops.v2.poles``). Its poles against the QED Catani
-    # operator: ``test_loop_v2_ew_leptons`` (a strict xfail: the veto splits
-    # loop_qcd_qed_sm's counterterm couplings).
+    # EWI-1). The veto cannot act on loop_qcd_qed_sm's unlabelled
+    # counterterms, so it is refused before any tree (WP3.2 EWI-5 interim):
+    # generated without the guard its single pole misses the QED Catani
+    # operator's, which the "uv" identity cannot see (it holds by
+    # construction, ``loops.v2.poles``; ``test_loop_v2_ew_leptons``).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        LIFTED,
+        _UNLABELLED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,
@@ -1634,24 +1645,22 @@ LADDER = [
         {"QCD": 2, "QED": 2},
         LIFTED,
     ),
-    # Q3: photon-only QED corrections of u u~ > d d~ pass the CT lowering
-    # (EWI-3). Their CT roots declare no loop species since the admission
-    # takes only loops of the selected corrections (the QCD R2 of u u~ a
-    # with a gluon loop declared the gluon and the quark before); the
-    # catalogue takes the families' species since EWI-1. Validated: the bare
-    # and counterterm UV poles cancel (UV renormalisation is complete). Not
-    # validated: the finite part. loop_qcd_qed_sm writes the photon and Z
-    # parts of the u u~ g R2 in one coupling (R2_GUU2Cp, (1 + lhv)/cw^2 (Qu^2
-    # + I3u^2/sw^2 - 2 Qu I3u) / 16 + ...) with the loop particles [[u, Z]],
-    # so the photon-only particle_veto drops its photon part too (r2 = 0):
-    # a veto that splits such a coupling is for the [U2] guard (EWI-7).
+    # Q3: photon-only QED corrections of u u~ > d d~ passed the CT lowering
+    # (EWI-3), but loop_qcd_qed_sm writes the photon and Z parts of the
+    # u u~ g R2 in one coupling (R2_GUU2Cp, (1 + lhv)/cw^2 (Qu^2 + I3u^2/sw^2
+    # - 2 Qu I3u) / 16 + ...) with the loop particles [[u, Z]], and its
+    # electroweak UV counterterm of u u~ g with [[u, Z]] too, so the
+    # photon-only particle_veto dropped their photon parts (r2 = 0; the "uv"
+    # identity held by construction). Refused since WP3.2 EWI-5 (the model's
+    # unlabelled electroweak counterterms show that its labels are nominal);
+    # a veto that splits such couplings is for the [U2] guard (EWI-7).
     _rung(
         "uudd_qed_photon_uv",
         "loop_qcd_qed_sm",
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        LIFTED,
+        _UNLABELLED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,

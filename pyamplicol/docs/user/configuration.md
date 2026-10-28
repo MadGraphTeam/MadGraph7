@@ -708,6 +708,15 @@ names the rule, for example:
   them; `u u~ > u u~` and distinct flavours (`u u~ > d d~ g`) are not
   affected. The check runs right after the trees are built, and every export
   repeats it, so no artifact carries such a projection;
+- a `particle_veto` that removes a species running in the loops of a
+  requested correction, on a model some of whose counterterm terms of that
+  correction declare no loop content (`loop_particles = []`):
+  "veto-unlabelled-counterterms: ... particle_veto removes the species
+  [23, 24, 25, 250, 251], perturbative in the corrections ['QED'], and the
+  model's counterterm vertices V_UV... write terms of those corrections
+  without loop content ...", before any tree is built (photon-only QED
+  corrections on MG5_aMC's `loop_qcd_qed_sm` and its G_mu variant; see the
+  particle veto below). Request the complete corrections;
 - a vertex joining a coloured and a colour-singlet fermion that the request
   can use (a leptoquark `u e lq` vertex: one fermion line changing colour
   representation): "fermion-line-representation: ... the vertex V (u~ e- lq)
@@ -739,14 +748,14 @@ counterterm, and loop_sm with `MW` made a card input).
 A `particle_veto` drops every counterterm whose declared loop particles include
 a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for
 the photon and Z loops together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop
-particles `u` and `Z`), so photon-only QED corrections (the Z, W, Higgs and
-Goldstones vetoed) drop the photon's part of such a coupling too: R2
-counterterms carry no poles and the UV poles of such a request cancel
-(checked on `u u~ > d d~`), but its finite part is incomplete until the engine
-handles such shared couplings. Its UV counterterms carry nominal loop
+particles `u` and `Z`), and its electroweak UV counterterms carry nominal loop
 particles (none on the vertices, one representative on the two-point ones),
-so the veto keeps their W and Z loops: with lepton lines (`e- e+ > m- m+`)
-the single pole of photon-only corrections misses the QED Catani operator's.
+so photon-only QED corrections (the Z, W, Higgs and Goldstones vetoed) would
+drop the photon's part of the former and keep the W and Z loops of the latter:
+with lepton lines (`e- e+ > m- m+`) the single pole misses the QED Catani
+operator's, and the finite part is wrong. Such a veto is therefore refused at
+generation ("veto-unlabelled-counterterms", above) on every model with a
+counterterm term of a requested correction that declares no loop content.
 Photon-only corrections are not expressible on this model; full electroweak
 corrections are.
 

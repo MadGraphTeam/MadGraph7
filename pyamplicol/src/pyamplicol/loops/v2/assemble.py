@@ -176,7 +176,11 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
-from .refusals import require_colour_preserving_fermion_lines, require_nc_exact
+from .refusals import (
+    require_colour_preserving_fermion_lines,
+    require_labelled_counterterms_for_veto,
+    require_nc_exact,
+)
 from .schedules import (
     STRUCTURED,
     LoopSchedules,
@@ -1641,9 +1645,11 @@ class LoopSlice:
 
         Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
         typed ``LoopRequestUnsupported``) are raised before the structures they
-        concern are used: a vertex joining fermions of different sign
-        ownership before any tree, LC/NLC over tree blocks that are not exact
-        in N_c right after the trees.
+        concern are used: a veto of a loop species on a model whose
+        counterterms of the correction are not all labelled with their loop
+        content and a vertex joining fermions of different sign ownership
+        before any tree, LC/NLC over tree blocks that are not exact in N_c
+        right after the trees.
         """
 
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
@@ -1697,6 +1703,17 @@ class LoopSlice:
             # species take 't Hooft-Feynman gauge with explicit Goldstones
             # and ghosts; QCD-only requests keep the model's gauge.
             compiled = ew_policy.feynman_gauge_model(compiled, request)
+        # A veto reaches the counterterms through their loop-content labels
+        # only: refused where the model's counterterm terms of a requested
+        # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5
+        # interim, EWI-7's [U2] guard).
+        require_labelled_counterterms_for_veto(
+            prepared.model.kernels,
+            request.process,
+            request.particle_veto,
+            request.corrections,
+            structure.perturbative_species_orders,
+        )
         # A fermion line that changes colour representation (a vertex joining
         # a coloured and a colour-singlet fermion that a tree or a loop of the
         # request can use) has no sign in the blocks' conventions: refused

@@ -35,8 +35,10 @@ owns). Checks:
   massless and massive muons and on Bhabha (O13: the legacy families are
   FeynKit's diagrams with their overall factors), the poles of
   e- e+ > mu- mu+ on loop_qcd_qed_sm against the QED Catani operator (full
-  EW; photon-only a strict xfail: the model's counterterm labels cannot
-  express the veto), the legacy engine's FFS projector exchange checked
+  EW; photon-only corrections are refused, ``refusals``
+  "veto-unlabelled-counterterms": the model's counterterm labels cannot
+  express the veto, and without the guard the single pole misses Catani's,
+  a strict xfail), the legacy engine's FFS projector exchange checked
   against MadLoop before the legacy engine serves as the second engine, the
   native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N), and
   e- e+ > t t~ h against Recola (``required/emep_ttxh_ew``; MadLoop
@@ -1415,12 +1417,91 @@ def test_qed_poles_of_mumu_on_loop_qcd_qed_sm_are_catani(
     _qed_catani(loop_qcd_qed_sm_ufo, loop_native, ())
 
 
+def _kernel(kind, vertex, order, loop_particles):
+    return SimpleNamespace(
+        kind=kind,
+        vertex_name=vertex,
+        order=order,
+        loop_particles=loop_particles,
+    )
+
+
+@pytest.mark.loop_fast
+def test_veto_of_loop_species_needs_labelled_counterterms():
+    """``refusals.require_labelled_counterterms_for_veto``: a veto removing a
+    species perturbative in a requested correction is refused when a
+    counterterm term of that correction declares no loop content (an empty
+    UFO ``loop_particles`` group), whatever the term's vertex; labelled
+    terms, terms of other corrections, tree vertices and vetoes of no loop
+    species of the request pass."""
+
+    from pyamplicol.loops.v2.refusals import (
+        LoopRequestUnsupported,
+        require_labelled_counterterms_for_veto,
+        unlabelled_counterterm_vertices,
+    )
+
+    labelled = [
+        _kernel("tree", "V_1", (("QED", 1),), None),
+        _kernel("R2", "V_R2", (("QED", 3),), ((7, 1), (2, 15))),
+        _kernel("UV", "V_UVq", (("QCD", 3),), ((4,),)),
+    ]
+    unlabelled = _kernel("UV", "V_UVe", (("QED", 3),), ((),))
+    species = {22: ("QED",), 23: ("QED",), 6: ("QCD", "QED"), 21: ("QCD",)}
+
+    def check(kernels, veto, corrections=("QED",)):
+        require_labelled_counterterms_for_veto(
+            kernels, "e- e+ > m- m+", veto, corrections, species
+        )
+
+    assert unlabelled_counterterm_vertices([*labelled, unlabelled], ["QED"]) == (
+        "V_UVe",
+    )
+    assert unlabelled_counterterm_vertices([*labelled, unlabelled], ["QCD"]) == ()
+    check(labelled, (23,))  # every term labelled
+    check([*labelled, unlabelled], ())  # no veto
+    check([*labelled, unlabelled], (21, 9000))  # no loop species of QED
+    check([*labelled, unlabelled], (6,), ("QCD",))  # no QCD term unlabelled
+    for veto in ((23,), (-6, 23), (6,)):
+        with pytest.raises(LoopRequestUnsupported) as refused:
+            check([*labelled, unlabelled], veto)
+        assert refused.value.key == "veto-unlabelled-counterterms"
+        message = str(refused.value)
+        assert "particle_veto removes the species" in message
+        assert "V_UVe" in message and "Instead: the complete corrections" in message
+
+
+@pytest.mark.loop_nightly
+def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
+    loop_qcd_qed_sm_ufo, loop_native, monkeypatch
+):
+    """Photon-only QED corrections (Z, W, H and the Goldstones vetoed) on
+    loop_qcd_qed_sm, whose electroweak UV counterterms declare no loop
+    content: refused with the listed key before any tree, naming the
+    vetoed species and the unlabelled vertices."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    def stop(*args, **kwargs):
+        raise AssertionError("the trees were built")
+
+    monkeypatch.setattr(assemble, "build_tree_blocks", stop)
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
+    assert refused.value.key == "veto-unlabelled-counterterms"
+    message = str(refused.value)
+    assert "removes the species [23, 24, 25, 250, 251]" in message
+    assert "V_UV" in message and "loop_particles = []" in message
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
     reason=(
-        "photon-only veto on loop_qcd_qed_sm: the single pole is -3.487e-4 "
+        "the guard's evidence: generated without the veto refusal, photon-only "
+        "e- e+ > mu- mu+ on loop_qcd_qed_sm has the single pole -3.487e-4 "
         "against Catani's -1.841e-4 (double pole equal); the veto acts on the "
         "UFO's loop labels, nominal on the UV counterterms (none on the "
         "vertices, one representative on the two-point ones: A A [e-], e+ e- "
@@ -1430,12 +1511,18 @@ def test_qed_poles_of_mumu_on_loop_qcd_qed_sm_are_catani(
         "guard, WP3.2 EWI-7)"
     ),
 )
-def test_qed_poles_of_photon_only_mumu_on_loop_qcd_qed_sm_are_catani(
-    loop_qcd_qed_sm_ufo, loop_native
+def test_photon_only_mumu_without_the_veto_guard_misses_catani(
+    loop_qcd_qed_sm_ufo, loop_native, monkeypatch
 ):
-    """Photon-only QED corrections (Z, W, H and the Goldstones vetoed): a
-    lepton line through every box and vertex loop. Generation about 1 min."""
+    """The negative control of the refusal above: with the guard disabled
+    the request generates and its poles miss the QED Catani operator's, so
+    the refusal stops a silently wrong virtual. Generation about 1 min."""
 
+    from pyamplicol.loops.v2 import assemble
+
+    monkeypatch.setattr(
+        assemble, "require_labelled_counterterms_for_veto", lambda *args: None
+    )
     _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
 
 
