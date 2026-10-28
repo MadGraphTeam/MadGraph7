@@ -552,10 +552,12 @@ contains
   end function
 
   ! Plan v4: the whole mapping is validated first, as the Python API's
-  ! set_model_parameters; an unknown name, the renormalisation scale's
-  ! parameter (set per point by mu_r2) or a parameter fixed at generation at
-  ! another value sets ierr = RUSTICOL_VIRTUAL_INVALID_ARGUMENT (1) and
-  ! changes nothing; error_message (optional) then holds the refusal.
+  ! set_model_parameters; a value that is not a finite decimal, an unknown
+  ! name, the renormalisation scale's parameter (set per point by mu_r2) or a
+  ! parameter fixed at generation at another value sets
+  ! ierr = RUSTICOL_VIRTUAL_INVALID_ARGUMENT (1), a nonzero imaginary part
+  ! ierr = RUSTICOL_VIRTUAL_RUNTIME_ERROR (3), and changes nothing;
+  ! error_message (optional) then holds the refusal.
   subroutine update_parameters(self,exact_json,revision,ierr,error_message)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: exact_json

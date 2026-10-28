@@ -10,7 +10,7 @@ use rusticol_core::loop_runtime::LoopRuntimePlan;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime, is_v2_artifact};
+use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime, decimal_parameter, is_v2_artifact};
 use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
@@ -353,11 +353,13 @@ impl Runtime {
         })).map_err(serialization)
     }
     /// Update model parameters. A plan v4 process validates the whole
-    /// mapping first, as the Python API's `set_model_parameters`: unknown
+    /// mapping first, as the Python API's `set_model_parameters` (in its
+    /// order and words): a value that is not a finite decimal, unknown
     /// names, the renormalisation scale's parameter (set per point by
     /// `mu_r2`) and a value other than the one generation fixed are refused
-    /// with a typed `ModelParameter` error, and a refused update changes
-    /// nothing (its revision is always 0).
+    /// with a typed `ModelParameter` error, a complex value with a typed
+    /// `Compatibility` error, and a refused update changes nothing (its
+    /// revision is always 0).
     pub fn update_parameters(&mut self, values: &SourceOverrides) -> RusticolResult<u64> {
         match &mut self.engine {
             Engine::V3(native) => native.update_parameters(values),
@@ -459,18 +461,33 @@ impl Runtime {
     }
 }
 
-/// Real model parameter overrides: a plan v4 process takes real external
-/// parameters, an exactly zero imaginary part (any exact spelling), refused
-/// otherwise in the Python API's words (`artifact._real_parameters`).
+/// Real model parameter overrides, read as the Python API reads them
+/// (`runtime.virtual._parameters`, then `artifact._real_parameters`): by
+/// name, each real and imaginary part a finite decimal
+/// ([`decimal_parameter`]: a typed `ModelParameter` error otherwise, the
+/// Python `ValueError`), then a plan v4 process takes real external
+/// parameters only: a nonzero imaginary part is refused with a typed
+/// `Compatibility` error (the Python `CompatibilityError`, in its words).
 fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>> {
-    use rusticol_core::loop_v2::dress::parse_rational;
+    let mut imaginary = Vec::with_capacity(values.len());
+    for (name, [re, im]) in values {
+        decimal_parameter(re, &format!("parameter '{name}' real part"))?;
+        imaginary.push(decimal_parameter(
+            im,
+            &format!("parameter '{name}' imaginary part"),
+        )?);
+    }
     values
         .iter()
-        .map(|(name, [re, im])| match parse_rational(im) {
-            Ok(imaginary) if imaginary.is_zero() => Ok((name.as_str(), re.as_str())),
-            _ => Err(RusticolError::model_parameter(format!(
-                "parameter '{name}': v2 loop runtimes take real external parameters"
-            ))),
+        .zip(imaginary)
+        .map(|((name, [re, _]), im)| {
+            if im.is_zero() {
+                Ok((name.as_str(), re.as_str()))
+            } else {
+                Err(RusticolError::compatibility(format!(
+                    "parameter '{name}': v2 loop runtimes take real external parameters"
+                )))
+            }
         })
         .collect()
 }

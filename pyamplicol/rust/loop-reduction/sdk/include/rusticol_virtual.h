@@ -69,10 +69,12 @@ int rusticol_virtual_open_with_policy(const char *path, const char *process,
 int rusticol_virtual_free(rusticol_virtual_handle *handle); /* NULL is accepted */
 int rusticol_virtual_clear(rusticol_virtual_handle *handle);
 /* Plan v4: the whole mapping is validated first, as the Python API's
- * set_model_parameters; an unknown name, the renormalisation scale's
- * parameter (set per point by mu_r2) or a parameter fixed at generation at
- * another value returns RUSTICOL_VIRTUAL_INVALID_ARGUMENT and changes nothing
- * (the same applies to parameters_json at open). */
+ * set_model_parameters; a value that is not a finite decimal, an unknown
+ * name, the renormalisation scale's parameter (set per point by mu_r2) or a
+ * parameter fixed at generation at another value returns
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT, a nonzero imaginary part
+ * RUSTICOL_VIRTUAL_RUNTIME_ERROR (the Python CompatibilityError), and changes
+ * nothing (the same applies to parameters_json at open). */
 int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,
   const char *changes_json, uint64_t *source_revision);
 /* Pole selection of later evaluations (REQUIREMENTS_ADDENDUM I): "all" (NULL,

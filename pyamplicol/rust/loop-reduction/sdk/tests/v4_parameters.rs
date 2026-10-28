@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: 0BSD
 //! The safe Rust SDK on a plan v4 artifact: model parameters at parity with
-//! the Python API (second genericity audit, G2-M2). Set
-//! PYAMPLICOL_V4_GGTT_ARTIFACT to a g g > t t~ plan v4 artifact generated
-//! with WT fixed to zero (`tests/unit/test_loop_v2_sdk_parity.py`'s `ggtt`;
-//! that test checks the same refusals and values through the C ABI, which
-//! wraps this `Runtime`). This executable does not start or link Python.
+//! the Python API (second genericity audit, G2-M2). It needs a g g > t t~
+//! plan v4 artifact generated with WT fixed to zero
+//! (`tests/unit/test_loop_v2_sdk_parity.py`'s `ggtt`, which checks the same
+//! refusals and values through the C ABI, the wrapper of this `Runtime`), so
+//! it is ignored by default and run explicitly:
+//! `PYAMPLICOL_V4_GGTT_ARTIFACT=<artifact> cargo test --release --test
+//! v4_parameters -- --ignored` (it fails without the variable). This
+//! executable does not start or link Python.
+use rusticol_core::RusticolErrorKind;
 use rusticol_loop_sdk::{Runtime, SourceOverrides};
 
 /// A point exact in binary64 and on shell at MT = 173 (loop_sm's default).
@@ -28,11 +32,10 @@ fn values(runtime: &mut Runtime) -> (Vec<f64>, Vec<f64>) {
 }
 
 #[test]
+#[ignore = "needs PYAMPLICOL_V4_GGTT_ARTIFACT (a g g > t t~ plan v4 artifact); run with --ignored"]
 fn v4_parameter_updates_follow_the_python_api() {
-    let Ok(path) = std::env::var("PYAMPLICOL_V4_GGTT_ARTIFACT") else {
-        eprintln!("set PYAMPLICOL_V4_GGTT_ARTIFACT for the plan v4 parameter controls");
-        return;
-    };
+    let path = std::env::var("PYAMPLICOL_V4_GGTT_ARTIFACT")
+        .expect("set PYAMPLICOL_V4_GGTT_ARTIFACT to the g g > t t~ plan v4 artifact");
     let refused = [
         (
             vec![("WT", "1.4915")],
@@ -48,17 +51,43 @@ fn v4_parameter_updates_follow_the_python_api() {
             vec![("MT", "150"), ("WX", "1")],
             "unknown external parameter 'WX'",
         ),
+        // Two refused names: the first by name, as in Python.
+        (
+            vec![("WT", "1.4915"), ("MU_R", "100")],
+            "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
+        ),
+        // Values are Python decimals (no fractions).
+        (
+            vec![("aS", "59/500")],
+            "parameter 'aS' real part is not a decimal number",
+        ),
     ];
     // Open with the default R2 strategy ("auto": the artifact's model R2).
     let mut runtime = Runtime::open(&path, Some("ggtt"), None, "auto").unwrap();
-    assert!(Runtime::open(&path, Some("ggtt"), None, "direct").is_err());
+    let direct = Runtime::open(&path, Some("ggtt"), None, "direct")
+        .err()
+        .unwrap();
+    assert_eq!(direct.kind(), RusticolErrorKind::Compatibility);
     let before = values(&mut runtime);
+    // A complex value: the Python API's CompatibilityError, in its words.
+    let complex: SourceOverrides =
+        [("aS".to_owned(), ["0.118".to_owned(), "0.1".to_owned()])].into();
+    let error = runtime.update_parameters(&complex).unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Compatibility);
+    assert_eq!(
+        error.message(),
+        "parameter 'aS': v2 loop runtimes take real external parameters"
+    );
+    assert_eq!(values(&mut runtime), before);
     for (parameters, message) in &refused {
         let at_open = Runtime::open(&path, Some("ggtt"), Some(&overrides(parameters)), "model");
-        assert_eq!(at_open.err().unwrap().message(), *message);
+        let error = at_open.err().unwrap();
+        assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
+        assert_eq!(error.message(), *message);
         let error = runtime
             .update_parameters(&overrides(parameters))
             .unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
         assert_eq!(error.message(), *message);
         // A refused update changes nothing.
         assert_eq!(values(&mut runtime), before);

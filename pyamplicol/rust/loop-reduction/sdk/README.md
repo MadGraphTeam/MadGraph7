@@ -85,7 +85,14 @@ parameter it is, as the Python API does) and a parameter fixed at generation
 set to another value are refused with `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and
 the Python API's message; a refused update changes nothing (an open refuses
 the handle). A known parameter the process does not read is accepted with no
-effect, as in Python. Values are real (zero imaginary part).
+effect, as in Python. Values are decimal strings read as Python's `Decimal`
+(no fractions; an infinity or NaN is refused as not finite) and real: a
+nonzero imaginary part is the Python API's `CompatibilityError`, here
+`RUSTICOL_VIRTUAL_RUNTIME_ERROR` (as `"direct"` R2). The checks run in the
+Python API's order (every value, then every name, by name), so a mapping with
+several refused entries is refused with the same message in every client. The
+fixed parameters include those the model preparation fixes (e.g. a colour
+declaration's external scheme constants).
 
 A model whose Born couplings, kernel constants or masses depend on the
 renormalisation scale (a running-coupling or MSbar-mass UFO; generation

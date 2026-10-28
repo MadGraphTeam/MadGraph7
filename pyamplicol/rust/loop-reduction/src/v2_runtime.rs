@@ -54,9 +54,12 @@
 //! `model/parameters.json`), the renormalisation scale's parameter (resolved
 //! at generation as the Python API resolves it, the native record's
 //! `scale_parameter`; each point's `mu_R²` sets it) and a value other than the
-//! one a parameter was fixed to at generation are refused with a typed
+//! one a parameter was fixed to at generation (the native record's
+//! `fixed_parameters`: the request's and those the model preparation fixes)
+//! are refused with a typed
 //! [`RusticolErrorKind::ModelParameter`](rusticol_core::RusticolErrorKind)
-//! error, in the Python API's words.
+//! error, in the Python API's words and order (values read as Python's
+//! `Decimal`, then names, both by name).
 //!
 //! **Scale-dependent batches.** A batch shares its Born couplings, kernel
 //! constants and masses across its points. Generation records which outputs
@@ -149,20 +152,54 @@ fn refused(message: impl Into<String>) -> RusticolError {
     RusticolError::model_parameter(message.into())
 }
 
+/// A model parameter value as the Python API reads it
+/// (`runtime.virtual._number`, `Decimal(str(value))`): surrounding
+/// whitespace and underscores are ignored, then a decimal literal (a sign,
+/// digits with an optional fraction part, an optional exponent) is its exact
+/// value; any other text, a fraction such as `59/500` included, is refused
+/// with "`description` is not a decimal number" and an infinity or NaN with
+/// "`description` must be finite" (typed `ModelParameter` errors, the Python
+/// API's `ValueError`). Decimal digits are ASCII.
+pub fn decimal_parameter(value: &str, description: &str) -> RusticolResult<Rational> {
+    let text: String = value.trim().chars().filter(|c| *c != '_').collect();
+    let unsigned = text
+        .strip_prefix(['+', '-'])
+        .unwrap_or(&text)
+        .to_ascii_lowercase();
+    let payload = |prefix: &str| {
+        unsigned
+            .strip_prefix(prefix)
+            .is_some_and(|digits| digits.bytes().all(|c| c.is_ascii_digit()))
+    };
+    if unsigned == "inf" || unsigned == "infinity" || payload("nan") || payload("snan") {
+        return Err(refused(format!("{description} must be finite")));
+    }
+    rusticol_core::source_scalar::decimal_rational(&text)
+        .map_err(|_| refused(format!("{description} is not a decimal number")))
+}
+
 /// The caller's model parameter values, validated as a whole before any is
-/// applied (`artifact.V2VirtualRuntime._checked_parameters`): every name an
-/// external parameter of the model (`externals`), none the renormalisation
-/// scale's parameter (`scale`, set per point by `mu_R²`), and a parameter the
-/// request fixed at generation (`fixed`) only at its fixed value. Returns the
-/// exact values in input order, or the first refusal (nothing applied).
+/// applied (`artifact.V2VirtualRuntime._checked_parameters` and
+/// `assemble.check_model_parameters`), in the Python API's order: by name,
+/// every value first ([`decimal_parameter`]), then every name an external
+/// parameter of the model (`externals`), none the renormalisation scale's
+/// parameter (`scale`, set per point by `mu_R²`), and a parameter fixed at
+/// generation (`fixed`) only at its fixed value. Returns the exact values by
+/// name, or the first refusal (nothing applied).
 pub fn checked_parameters<'a>(
     values: impl IntoIterator<Item = (&'a str, &'a str)>,
     externals: &BTreeSet<String>,
     scale: Option<&str>,
     fixed: &BTreeMap<String, String>,
 ) -> RusticolResult<Vec<(String, Rational)>> {
-    let mut out = Vec::new();
-    for (name, value) in values {
+    let mut values: Vec<(&str, &str)> = values.into_iter().collect();
+    values.sort_by_key(|(name, _)| *name);
+    let exact = values
+        .iter()
+        .map(|(name, value)| decimal_parameter(value, &format!("parameter '{name}' real part")))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    for ((name, _), exact) in values.iter().zip(&exact) {
+        let name = *name;
         if !externals.contains(name) {
             return Err(refused(format!("unknown external parameter '{name}'")));
         }
@@ -171,11 +208,9 @@ pub fn checked_parameters<'a>(
                 "'{name}' is the renormalisation scale: pass it per point as mu_r2"
             )));
         }
-        let exact = parse_rational(value)
-            .map_err(|e| refused(format!("parameter '{name}': {}", e.message())))?;
         if let Some(fixed) = fixed.get(name) {
             let pinned = parse_rational(fixed).map_err(|e| invalid(e.message()))?;
-            if exact != pinned {
+            if *exact != pinned {
                 return Err(refused(format!(
                     "parameter '{name}' was fixed to {fixed} at generation \
                      ([loop.preparation] fixed_parameters); regenerate the \
@@ -183,9 +218,12 @@ pub fn checked_parameters<'a>(
                 )));
             }
         }
-        out.push((name.to_owned(), exact));
     }
-    Ok(out)
+    Ok(values
+        .into_iter()
+        .zip(exact)
+        .map(|((name, _), exact)| (name.to_owned(), exact))
+        .collect())
 }
 
 /// The external parameters of the artifact's model (`model/parameters.json`,
@@ -507,15 +545,18 @@ impl V2Runtime {
             .or_else(|| self.trees.scale_parameter())
     }
 
-    /// The parameters the request fixed at generation, with their exact
-    /// values (decimal or fraction strings).
+    /// The parameters fixed at generation (the request's and those its model
+    /// preparation fixes, e.g. a colour declaration's external scheme
+    /// constants: `LoopSlice.fixed_parameters`), with their exact decimal
+    /// values.
     pub fn fixed_parameters(&self) -> &BTreeMap<String, String> {
         &self.record.fixed_parameters
     }
 
-    /// Set the caller's model parameter values (exact decimal or fraction
-    /// strings) by name, as the Python API's `set_model_parameters`: the
-    /// whole mapping is validated first ([`checked_parameters`]: unknown
+    /// Set the caller's model parameter values (exact decimal strings, read
+    /// as Python's `Decimal`: [`decimal_parameter`]) by name, as the Python
+    /// API's `set_model_parameters`: the whole mapping is validated first
+    /// ([`checked_parameters`]: a value that is not a finite decimal, unknown
     /// names, the scale parameter and a fixed parameter at another value are
     /// refused with a typed `ModelParameter` error), then every value is
     /// applied; a refused update changes nothing. A known parameter the
@@ -978,8 +1019,8 @@ mod tests {
             checked_parameters(values.iter().copied(), &externals, Some("MU_R"), &fixed)
         };
         // Accepted: known names, a fixed parameter at its fixed value (any
-        // exact spelling), in input order.
-        let accepted = check(&[("MT", "173.5"), ("WT", "0.0"), ("aS", "59/500")]).unwrap();
+        // exact decimal spelling, as Python's `Decimal`), by name.
+        let accepted = check(&[("aS", " 1_18e-3 "), ("WT", "-0.0"), ("MT", "173.5")]).unwrap();
         assert_eq!(
             accepted,
             vec![
@@ -1009,9 +1050,35 @@ mod tests {
             assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
             assert_eq!(error.message(), message);
         }
-        let error = check(&[("MT", "one")]).unwrap_err();
-        assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
-        assert!(error.message().starts_with("parameter 'MT': "));
+        // Values are read first and names in sorted order, as in Python: a
+        // fraction is not a decimal number, an infinity not finite, and of
+        // two refused names the first by name is reported.
+        for (values, message) in [
+            (
+                vec![("aS", "59/500")],
+                "parameter 'aS' real part is not a decimal number",
+            ),
+            (
+                vec![("MT", "one")],
+                "parameter 'MT' real part is not a decimal number",
+            ),
+            (
+                vec![("MT", "-Infinity")],
+                "parameter 'MT' real part must be finite",
+            ),
+            (
+                vec![("aS", "NaN"), ("WX", "1")],
+                "parameter 'aS' real part must be finite",
+            ),
+            (
+                vec![("WT", "1.4915"), ("MU_R", "100")],
+                "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
+            ),
+        ] {
+            let error = check(&values).unwrap_err();
+            assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
+            assert_eq!(error.message(), message);
+        }
         // Without a scale parameter (a program that reads none) the name is
         // just a model parameter.
         assert!(checked_parameters([("MU_R", "100")], &externals, None, &fixed).is_ok());
