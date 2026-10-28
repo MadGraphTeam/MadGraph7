@@ -65,7 +65,7 @@ def check_html_page(cls, link):
     with misc.chdir(cwd):
         for path in pattern.findall(text):
             if not path:
-                continue # means is just a linke starting with #
+                continue # means is just a line starting with #
             cls.assertTrue(os.path.exists(path), '%s/%s' %(cwd,path))
     return True
     
@@ -2186,10 +2186,8 @@ class TestMECmdShell(unittest.TestCase):
         gen_ximprove = MECmd.gen_ximprove
 
         results = {}
-        # upstream also runs ('grouped_vec', True, 16): the LO vector mode is
-        # not usable with flavour grouping yet (DSIG<n>_VEC and SMATRIX<n>_MULTI
-        # index the per-warp IFLAV_VEC per event), so only the scalar mode here
         for name, group, vector_size in [('grouped', True, 1),
+                                         ('grouped_vec', True, 16),
                                          ('nongrouped', False, 1)]:
             self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
             mg_cmd = MGCmd.MasterCmd()
@@ -2225,7 +2223,7 @@ class TestMECmdShell(unittest.TestCase):
 
         val0, err0 = results['nongrouped']
         self.assertGreater(val0, 0)
-        for name in ['grouped']:
+        for name in ['grouped', 'grouped_vec']:
             val, err = results[name]
             # without the fix, grouped is ~3% low (about 8 sigma)
             self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
@@ -2535,7 +2533,7 @@ class TestMECmdShell(unittest.TestCase):
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2636,7 +2634,7 @@ C
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -3094,7 +3092,7 @@ C
         if syst:
             # check that the html has the information
             self.assertIn('syst', data[0].parton)
-            # check that the code was runned correctly
+            # check that the code was run correctly
             fsock = open('%s/Events/%s/parton_systematics.log' % \
                   (self.run_dir, data[0]['run_name']),'r')
             text = fsock.read()
@@ -3532,7 +3530,7 @@ class TestMEfromfile(unittest.TestCase):
         """
         This test is checking that the scale in auto_dsig are correctly assigned
         in 3.6.2, a wrong Q2FACT(IB(1)) was used instead of Q2FACT(1).
-        Leading to an assymetry in the DY +1j process.
+        Leading to an asymmetry in the DY +1j process.
         This acceptance test is there to prevent such type of error
         """
 

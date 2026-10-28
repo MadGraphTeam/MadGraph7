@@ -242,7 +242,7 @@ class UFOModel(object):
         elif param is None:
             return 'None'
         else:
-            raise Exception('%s unknow type for writting UFO' % param.__class__.__name__)
+            raise Exception('%s unknown type for writing UFO' % param.__class__.__name__)
 
 
 
@@ -508,7 +508,7 @@ from object_library import all_propagators, Propagator
         return
 
     def write_external_files(self, outputdir):
-        """Copy/merge the routines written in Fortran/C++/pyhton"""
+        """Copy/merge the routines written in Fortran/C++/Python"""
         
         #1. Special case for the formfactor written in Fortran
         re_fct = re.compile(r'''^\s{7,70}[\w\s]*function (\w*)\(''',re.M+re.I)
@@ -532,7 +532,7 @@ from object_library import all_propagators, Propagator
                 fsock.write(text)
                 fsock.close()
                 
-        #2. Ohter files present in Fortran/Cpp/Python directory
+        #2. Other files present in Fortran/Cpp/Python directory
         #   ASk user to handle it if any!
         for dirpath in self.all_path:
             for subdir in ['Fortran', 'CPP', 'Python']:
@@ -542,7 +542,7 @@ from object_library import all_propagators, Propagator
                             continue
                         if '.' not in filepath:
                             continue
-                        logger.warning('Manual HELAS routine associated to the model. Those are not modified automaticaly!! So you need to manually checked them')
+                        logger.warning('Manual HELAS routine associated to the model. Those are not modified automatically!! So you need to manually check them')
                         nb = 0
                         name, extension = filepath.rsplit('.', 1) 
 

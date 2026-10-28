@@ -34,7 +34,7 @@ ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
 # remove it to force recompilation of the library if back on it
    TOCOMPILE += makefile_gammaUPC
 else
-# go throught here if neither pdlabel1 or pdlabel2 is on "edff" or "chff"
+# go through here if neither pdlabel1 or pdlabel2 is on "edff" or "chff"
    TOCOMPILE += makefile_gammaUPC_dummy
    TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
 endif

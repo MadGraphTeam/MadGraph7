@@ -176,7 +176,7 @@ c
       include 'config_subproc_map.inc'
       
 c      
-c     VARIABLE FOR THE MC over proccess with importance sampling additional factor
+c     VARIABLE FOR THE MC over process with importance sampling additional factor
 c
       logical init_mode
       common/to_determine_zero_hel/init_mode
@@ -221,7 +221,7 @@ C      all, then we pick a point based on PDF only.
           ENDDO
         ENDDO
  50     CONTINUE
-C       Update weigth w.r.t SELPROC normalized to selection probability
+C       Update weight w.r.t SELPROC normalized to selection probability
 
     DO I=1, WARP_SIZE
        IVEC = (IWARP -1) *WARP_SIZE + I
@@ -467,8 +467,9 @@ c     ******************************************************
       double precision all_xbk(2,*)
       double precision all_q2fact(2,*)
       double precision all_cm_rap(*)
-      integer iconf_vec(NB_WARP), iproc, iflav(nb_warp), imirror_vec(NB_WARP)
-      integer iflav_vec(nb_warp)
+C     configuration, flavor and orientation are chosen per warp
+      integer iconf_vec(NB_WARP), iproc, imirror_vec(NB_WARP)
+      integer iflav_vec(NB_WARP)
       double precision all_out(*)
       include 'maxconfigs.inc'
       include 'maxamps.inc'
@@ -961,7 +962,7 @@ C                   Need to flip back x values
         ENDDO
 C       Turn caching in dsigproc back off to avoid side effects.
         LAST_ICONF=-1
-C       If these additional entries were enough to initialize the gird, then update it
+C       If these additional entries were enough to initialize the grid, then update it
 C       To do this check we must *not* used the cached varianble grouped_MC_grid_status
         IF(DS_get_dim_status('grouped_processes').ge.1) then
           CALL DS_update_grid('grouped_processes')
@@ -998,7 +999,7 @@ c     If we are still initializing the grid or simply not using one at all, then
       IF(IPROC.EQ.0) RETURN
 
 
-C     Update weigth w.r.t SELPROC normalized to selection probability
+C     Update weight w.r.t SELPROC normalized to selection probability
 
       WGT=WGT*(SUMPROB/SELPROC(IMIRROR,IFLAV,IPROC,ICONF))
 

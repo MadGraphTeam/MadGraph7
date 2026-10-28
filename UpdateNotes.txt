@@ -5,12 +5,10 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
-   OM: madevent LO vector mode (vector_size>1) with grouped subprocesses: crashed or returned
-       zero (the per-warp flavour class was read per event), summed the PDFs of every
-       flavour class in an order different from leshouche.inc, used the flavour choice of
-       the last event of the vector for the sign and the written event, and the helicity
-       scan saw a single beam orientation per warp (half of p p > z was dropped by the
-       recycled matrix element). The helicity scan now runs event by event.
+   OM: madevent LO vector mode (vector_size>1): the helicity scan saw a single beam
+       orientation per warp, so half of p p > z was dropped by the recycled matrix
+       element; it now runs event by event. An event in IMODE 5 no longer skips the
+       rest of the vector.
    RF: Add real-diagram channels for fixed-order NLO, through the
        hidden option real_channels_x0 in the run_card. Useful for
        processes that have new structures opening beyond LO, such as

@@ -41,7 +41,7 @@ class TestBanner(unittest.TestCase):
     
     def test_banner(self):
 
-        #try to instansiate a banner with no argument
+        #try to instantiate a banner with no argument
         mybanner = bannermod.Banner()
         self.assertTrue(hasattr, (mybanner, "lhe_version"))
         
@@ -51,7 +51,7 @@ class TestBanner(unittest.TestCase):
         # check that all attribute are common
         self.assertEqual(mybanner.__dict__, secondbanner.__dict__)
         
-        # check that the two are different and independant
+        # check that the two are different and independent
         self.assertNotEqual(id(secondbanner), id(mybanner))
         mybanner.test = True
         self.assertFalse(hasattr(secondbanner, "test"))
@@ -83,7 +83,7 @@ class TestBanner(unittest.TestCase):
 
 class TestConfigFileCase(unittest.TestCase):
     """ A class to test the TestConfig functionality """
-    # a lot of the functionality are actually already tested in the child
+    # a lot of the functionality is actually already tested in the child
     # TESTMadLoopParam and are not repeated here.
      
     def setUp(self):
@@ -328,7 +328,7 @@ class TestConfigFileCase(unittest.TestCase):
         #check that postscript are correctly called
         self.config.control = False
 
-        #Note that this is a bit hacky since this is not a normall class fct
+        #Note that this is a bit hacky since this is not a normal class function
         # but this does the job
         def f( value, *args, **opts):
             self.config.control=True
@@ -739,7 +739,7 @@ class TestRunCardNLOMeFrame(unittest.TestCase):
 
 class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
-    # a lot of the funtionality are actually already tested in the child
+    # a lot of the functionality is actually already tested in the child
     # TESTMadLoopParam and are not repeated here.
     
 
@@ -875,7 +875,7 @@ class TestRunCard(unittest.TestCase):
         self.assertEqual(run_card['fixed_fac_scale1'], False)
         self.assertEqual(run_card['fixed_fac_scale2'], False)
 
-        # check that for elastisc a a collision we do  not force to use fixed_fac_scale1/2
+        # check that for elastic a a collision we do  not force to use fixed_fac_scale1/2
         run_card.set('lpp1', 2, user=True)
         run_card.set('lpp2', 2, user=True)
         #with self.assertRaises(bannermod.InvalidRunCard):
@@ -942,7 +942,7 @@ class TestRunCard(unittest.TestCase):
         """check that one can added complex structure via unknown entry functionality with the smart detection.
         
            note that the smart detection is done via guess_entry_fromname which is tested by
-           test_guess_entry_fromname. So this test is mainly to test that the output function of that function is corrrectly
+           test_guess_entry_fromname. So this test is mainly to test that the output function of that function is correctly
            linked to add_param as done in add_unknown_entry
         """
 
@@ -986,14 +986,14 @@ class TestRunCard(unittest.TestCase):
         self.assertNotIn(name.lower(), run_card.definition_path[True]) 
         self.assertNotIn(name, run_card.includepath[True])
 
-        # check that one can overwritte hidden 
+        # check that one can overwrite hidden
         input = ("max_data<hidden=False>", "3.0", False)
         fct(*input)
         name = "max_data"
         self.assertEqual(run_card[name], 3.0)
         self.assertNotIn(name.lower(), run_card.hidden_param)
 
-        # check that one can overwritte autodef
+        # check that one can overwrite autodef
         input = ("max_data2<autodef=False>", "3", False)
         fct(*input)
         name = "max_data2"
@@ -1001,8 +1001,8 @@ class TestRunCard(unittest.TestCase):
         self.assertNotIn(name.lower(), run_card.definition_path[True])
         self.assertIn(name.lower(), run_card.hidden_param)
 
-        # check that one can overwritte include to False but autodef to True
-        # check that one can overwritte autodef
+        # check that one can overwrite include to False but autodef to True
+        # check that one can overwrite autodef
         input = ("data3<autodef=True><include=False>", "True", False)
         fct(*input)
         name = "data3"
@@ -1074,7 +1074,7 @@ class TestRunCard(unittest.TestCase):
         else:
             self.assertIn("COMMON/USER_CUSTOM_RUN/test_list,include_pdf2", f.getvalue())
 
-        #check that cleaning is occuring correctly 
+        #check that cleaning is occurring correctly
         run_card = bannermod.RunCardLO()
         run_card.write_autodef(None,output_file=f)
         self.assertNotIn("CHARACTER INCLUDE_PDF(0:100)", f.getvalue())
@@ -1088,7 +1088,7 @@ class TestRunCard(unittest.TestCase):
 
     def test_autodef_nomissmatch(self):
         """
-        check that the code detects LO/NLO cards missmatch and crash correctly in that case
+        check that the code detects LO/NLO cards mismatch and crash correctly in that case
         """
         
         LO = bannermod.RunCardLO()
@@ -1171,7 +1171,7 @@ c
         self.assertIn("SHAT = X(1)*X(2)*EBEAM(1)*EBEAM(2)", new_text)
         self.assertIn("LOGICAL  FUNCTION DUMMY_BOOSTFRAME()", new_text)
 
-        # launch the function with only one editted
+        # launch the function with only one edited
         open(pjoin(self.tmpdir, 'custom'),'w').write(custom_contents1)
         LO.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
 
@@ -1395,7 +1395,7 @@ c
         # check that pdlabel is set on the proton pdf
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel2'])
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel1'])
-        # should now allow assymetric pdlabel here
+        # should now allow asymmetric pdlabel here
         run_card.set('pdlabel1','lhapdf', user=True) 
         # 'nn23lo1' rather than the invalid 'nnpdf23lo1' used before: that one
         # was rejected and left pdlabel2 at its default, which only differed
@@ -1459,7 +1459,7 @@ c
         self.assertEqual(run_card['pdlabel1'], 'isronlyll')
         self.assertEqual(run_card['pdlabel2'], 'isronlyll')
         # check that at fortran pdlabel is passed to generic value "dressed"
-        # but that invidual value are kept 
+        # but that individual values are kept
         f = io.StringIO()
         run_card.write_include_file(None,output_file=f)
         self.assertIn("pdlabel = 'dressed'", f.getvalue())
@@ -2660,7 +2660,7 @@ class TestMadLoopParam(unittest.TestCase):
             previous_line = [previous_line[1], line]
             
     def test_modifparameter(self):
-        """ test that we can modify the parameter and that the formating is applied 
+        """ test that we can modify the parameter and that the formatting is applied
         correctly """
 
         #1. create the object without argument
@@ -2695,7 +2695,7 @@ class TestMadLoopParam(unittest.TestCase):
                 self.assertRaises(Exception, param1.__setitem__, (name, value))
                 
     def test_writeMLparam(self):
-        """check that the writting is correct"""
+        """check that the writing is correct"""
         
         param1 = MadLoopParam(pjoin(MG5DIR,"Template", "loop_material","StandAlone",
                                       "Cards","MadLoopParams.dat"))

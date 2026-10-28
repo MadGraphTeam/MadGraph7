@@ -117,7 +117,7 @@ def su2_from_so3(O, tol=1e-8):
 
     return U
 
-# Distances betweeen 2 matrices
+# Distances between 2 matrices
 def trace_distance(Matrix1: list[complex, complex], Matrix2: list[complex, complex]) -> float:
     """
        Input: Matrix1, Matrix2 -> 2 square matrices
@@ -217,7 +217,7 @@ class DensityMatrixObservables(list):
     """
     def __new__(cls, user_input:Union[list[complex, complex], list[complex], str], len_user_input=None):
         """ 
-        This method determines the dimension of the user input and decides which subclass to instanciate.
+        This method determines the dimension of the user input and decides which subclass to instantiate.
         For now, there are classes for density matrices of 2x2, 2x3 and 3x3 systems.
         """
         if len_user_input is None: #we add the optional information of the length of the line matrix to use for Fortran input
@@ -258,7 +258,7 @@ class DensityMatrixObservables(list):
         else:
             raise TypeError("The type of the input of DensityMatrixObservables is not recognised")
 
-        # According to the dimension of the density matrix given, we instanciate the specific class
+        # According to the dimension of the density matrix given, we instantiate the specific class
         # If none corresponds, we stay in the generic class
         if dim_density_matrix == 4:
             return super(DensityMatrixObservables, cls).__new__(DensityMatrixObservables22, user_input, len_user_input)
@@ -436,7 +436,7 @@ class DensityMatrixObservables(list):
             return aux
 
     def Get_Purity(self) -> float:
-        """ Computes the purity of a density matrix of any dimention."""
+        """ Computes the purity of a density matrix of any dimension."""
         rho = self.square_matrix()
         rho2 = np.dot(rho, rho)
         Purity = np.trace(rho2)
@@ -640,7 +640,7 @@ class DensityMatrixObservables(list):
         """
         Input:  rho -> density matrix
                 particle_type -> type of the two particles in the density matrix ('fermion' or 'boson')
-                epsilon -> treshold under which the eigenvalues are taken as 0 to deal with numerical instabilities
+                epsilon -> threshold under which the eigenvalues are taken as 0 to deal with numerical instabilities
         Output: flag_entanglement -> True if the criterion is satisfied and shows entanglement
                 eigvals -> eigenvalues of the partially transposed density matrix
         """

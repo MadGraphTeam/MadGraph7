@@ -657,7 +657,7 @@ c Stuff to be written (depending on AddInfoLHE) onto the LHE file
      #                fksfather_lhe,ipartner_lhe
       common/cto_LHE2/scale1_lhe,scale2_lhe
 
-c Radiation hardness needed (pt_hardness) for the theta function
+c Radiation hardness needed (pt_hardness) for theta function
 c Should be zero if there are no jets at the Born
       double precision shower_S_scale(fks_configs*2)
      &     ,shower_H_scale(fks_configs*2),ref_H_scale(fks_configs*2)
@@ -1839,7 +1839,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny) then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 2 in kinematics_driver: negtive sqrt'
+                 write(*,*)'Error 2 in kinematics_driver: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif
@@ -1872,7 +1872,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny)then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 3 in kinematics_driver: negtive sqrt'
+                 write(*,*)'Error 3 in kinematics_driver: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif
@@ -3024,7 +3024,7 @@ c Sum of final-state transverse masses
          write(*,*)'Wrong i_scale in assign_ref_scale',i_scale
          stop
       endif
-c Safety threshol for the reference scale
+c Safety threshold for the reference scale
       ref_sc=max(ref_sc,30d0)
 
       return

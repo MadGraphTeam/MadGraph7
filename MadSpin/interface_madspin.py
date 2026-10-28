@@ -924,7 +924,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.mg5cmd = master_interface.MasterCmd()
         self.seed = None
         self.err_branching_ratio = 0
-        self.me_run_name = "" # Events diretory name where to stotre the events (used by madevent) not use internally
+        self.me_run_name = "" # Events directory where the events are stored (used by madevent, not used internally)
         self.all_iden = {}
         # The card this run executes, and the directory do_import derives from
         # the event file. Both are what madspin_card_path archives from; set
@@ -2296,7 +2296,7 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # the legacy modes 'madspin_v1' and 'onshell_v1' are not compatible with loop-induced processes
         if self.options['spinmode'] in ['madspin_v1', 'onshell_v1'] and process_LI:
-            raise ValueError("The MadSpin modes 'madspin_v1' and 'onshell_v1' are are not compatible with loop-induced processes. Please choose a mode among 'none', 'PA', 'madspin' or 'onshell'.")
+            raise ValueError("The MadSpin modes 'madspin_v1' and 'onshell_v1' are not compatible with loop-induced processes. Please choose a mode among 'none', 'PA', 'madspin' or 'onshell'.")
 
         if self.options['onlyhelicity']:
             self.options['spinmode'] = 'madspin_v1'
@@ -2626,7 +2626,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             import madgraph.various.hepmc_parser as hepmc_parser
             orig_lhe = hepmc_parser.HEPMC_EventFile(filename)
             orig_lhe.allow_empty_event = True
-            logger.info("Parsing input event to know how many decay to generate. This can takes few minuts.")
+            logger.info("Parsing input events to determine how many decays to generate. This can take a few minutes.")
         else:
             raise Exception
             
@@ -4096,7 +4096,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             seq_ladder = self._sequential_pool_ladder(to_decay, nb_event,
                                                       density_method)
             for pdg, nb_needed in to_decay.items():
-                # muliply by expected effeciency of generation
+                # multiply by expected efficiency of generation
                 spin = self.model.get_particle(pdg).get('spin')
                 if pdg in seq_ladder:
                     efficiency = seq_ladder[pdg]
@@ -11859,7 +11859,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                 build_event=True, decay_densities=None):
         """ return the onshell wgt for the production event associated to the decays
             return also the full event with decay.
-            Carefull this modifies production event (pass to the full one)
+            Careful: this modifies the production event (pass to the full one)
             build_event: if False (density mode) compute weight without building event
             decay_densities: pre-computed decay density matrices (see
                 calculate_matrix_element_from_density); the decay events must
