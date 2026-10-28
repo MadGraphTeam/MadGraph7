@@ -20,6 +20,20 @@ it; Python DAG lanes). Powers of two keep 1/N exact in binary64. The external
 colour average is the request's (N_c = 3) at every N. One N per process: the
 patched constants stay out of the test session, and the caller gives each
 process its own ``PYAMPLICOL_CACHE_DIR``.
+
+``python -m tests.unit.loop_nc_scan request <compiled model> <request JSON>
+<N> <precision>`` does the same for any request (MQ-NC's oracles): the JSON
+names ``process``, ``born`` and ``loop`` orders, optional
+``fixed_parameters`` and ``particle_veto``, the ``point``, ``mu_r2`` and
+``parameters``; the output adds the Catani prediction of each sector
+(``ir_poles``). With ``"ward": true`` it runs the gauge-Ward check of the
+request at N_c = N instead (``ward_main``; ``precision`` is the Ward
+carrier, "double" or "double-double"). With ``use_nc(n, catani=True)`` (this entry) Catani's
+operator also takes N_c = N: C_A = N, C_F = (N^2-1)/(2N) and beta_0's C_A
+(``loops.v2.poles``) and the colour-correlated Borns at N (the Python
+correlators; the native ones are contracted at N_c = 3), read by no colour
+declaration, so the renormalised
+virtual's poles at N against it test the counterterms' UV N_c dependence.
 """
 
 from __future__ import annotations
@@ -41,8 +55,9 @@ class _Rational(Fraction):
         return str(self) if not spec else super().__format__(spec)
 
 
-def use_nc(n: Fraction) -> dict[str, int]:
-    """Set N_c = ``n`` in this process (module constants and tree weights).
+def use_nc(n: Fraction, *, catani: bool = False) -> dict[str, int]:
+    """Set N_c = ``n`` in this process (module constants and tree weights;
+    with ``catani`` the Casimirs and beta_0 of Catani's operator too).
 
     Returns the counter of rescaled tree interactions (``"interactions"``).
     """
@@ -71,6 +86,16 @@ def use_nc(n: Fraction) -> dict[str, int]:
     from pyamplicol.loops.v2 import colour
 
     colour._nc_power.cache_clear()
+    if catani:
+        from pyamplicol.loops.v2 import native_cells, poles
+
+        # The native colour correlators (WP3.1 C4 "dipoles" stage) are
+        # contracted at N_c = 3; the Python ones read the patched constant.
+        native_cells.NATIVE_STAGES = native_cells.NATIVE_STAGES - {"dipoles"}
+        nc = Fraction(n)
+        poles._N_C = nc
+        poles._CASIMIRS = {3: (nc * nc - 1) / (2 * nc), 8: nc}
+        poles._DYNKIN = {3: Fraction(1, 2), 8: nc}
 
     counter = {"interactions": 0}
     fold = dag_compiler.apply_colour_connection_signs
@@ -114,8 +139,135 @@ def result_json(result) -> dict:
     }
 
 
+def _precision(text: str):
+    from pyamplicol.loops.v2.assemble import Precision
+
+    if text == "double":
+        return Precision.double()
+    kind, digits = text.split(":")
+    assert kind == "arbitrary", text
+    return Precision.arbitrary(int(digits))
+
+
+def request_main(argv: list[str]) -> None:
+    """The ``request`` entry (module docstring)."""
+
+    model, request_text, n_text, precision_text = argv
+    n = Fraction(n_text)
+    counter = use_nc(n, catani=True) if n != 3 else {"interactions": 0}
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
+
+    spec = json.loads(request_text)
+    compiled = load_compiled_model(model)
+    # Full colour with the model's colour declaration (the shipped one of
+    # loop_sm): its graded counterterm and field couplings take N_c = N.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
+    assert declaration is not None, "the model has no colour declaration"
+    if spec.get("identities"):
+        # A control: identities replaced (e.g. C_F by the number 4/3, which
+        # passes the proof at N_c = 3 and is wrong at any other N).
+        declaration = replace(
+            declaration,
+            parameter_identities={
+                **declaration.parameter_identities,
+                **spec["identities"],
+            },
+        )
+    request = SliceRequest(
+        spec["process"],
+        spec["born"],
+        spec["loop"],
+        fixed_parameters=spec.get("fixed_parameters", {}),
+        particle_veto=tuple(spec.get("particle_veto", ())),
+        colour_declaration=declaration,
+        colour_contraction="direct",
+    )
+    if spec.get("ward"):
+        ward_main(compiled, request, spec, precision_text, counter)
+        return
+    with dag_input.native_flags(dag=False, program=False):
+        full = LoopSlice.generate(compiled, request, load_loop_native())
+    assert not full.blocks.graded
+    result = full.evaluate(
+        spec["point"],
+        spec["mu_r2"],
+        parameters=spec.get("parameters", {}),
+        precision=_precision(precision_text),
+    )
+    poles = {
+        repr(sector): [str(single), str(double)]
+        for sector, (single, double) in (result.ir_poles or {}).items()
+    }
+    print(
+        json.dumps(
+            {
+                "rescaled": counter["interactions"],
+                "ir_poles": poles,
+                **result_json(result),
+            }
+        )
+    )
+
+
+def ward_main(compiled, request, spec, carrier: str, counter) -> None:
+    """The ``request`` entry with ``"ward": true``: the gauge-Ward check
+    (``loops.v2.ward.ward_check``: every gluon leg, c = 1 and i) of the
+    full-colour request at N_c = N in ``carrier`` ("double" or
+    "double-double"), Python inputs (the patched constants and the Python
+    tree lanes), the native executor dressing them. Prints each row's
+    verdict and ratios."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import dag_input, ward
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    with dag_input.native_flags(dag=False, program=False):
+        slice_ = ward.ward_slice(compiled, request, load_loop_native())
+    executor = NativeExecutor(slice_, inputs="python", forward=False)
+    check = ward.ward_check(
+        executor,
+        spec["point"],
+        spec["mu_r2"],
+        carrier,
+        parameters=spec.get("parameters", {}),
+    )
+    rows = [
+        {
+            "leg": row["leg"],
+            "factor": list(row["factor"]),
+            "passed": row["passed"],
+            "born": row["born"],
+            "virtual": row["parts"]["virtual"],
+            "estimate": row["estimate"],
+        }
+        for row in check["rows"]
+    ]
+    print(
+        json.dumps(
+            {
+                "rescaled": counter["interactions"],
+                "passed": check["passed"],
+                "rows": rows,
+                **result_json(check["physical"]),
+            }
+        )
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
-    model, name, carrier, n_text, precision_text = argv or sys.argv[1:]
+    argv = argv or sys.argv[1:]
+    if argv[0] == "request":
+        request_main(argv[1:])
+        return
+    model, name, carrier, n_text, precision_text = argv
     n = Fraction(n_text)
     counter = use_nc(n) if n != 3 else {"interactions": 0}
 
