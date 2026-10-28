@@ -1057,6 +1057,7 @@ class V2VirtualRuntime:
             self._member = _stored_member(group_member, str(selected["expression"]))
         record = self._native_process.record
         self._fixed = dict(record["fixed_parameters"])
+        self._prepared_fixed = frozenset(record.get("preparation_fixed_parameters", ()))
         self._scale_parameter = record["scale_parameter"]
         self._executor = self._native_process.executor(
             native, externals=self._externals
@@ -1591,6 +1592,7 @@ class V2VirtualRuntime:
             self._externals,
             self._scale_parameter,
             self._fixed,
+            self._prepared_fixed,
         )
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:

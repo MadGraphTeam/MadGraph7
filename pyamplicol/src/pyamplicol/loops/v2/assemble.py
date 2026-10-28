@@ -1438,21 +1438,23 @@ def check_model_parameters(
     externals: Container[str] | None,
     scale_parameter: str | None,
     fixed: Mapping[str, Any],
+    prepared: Container[str] = (),
 ) -> dict[str, str]:
     """The caller's real model parameter values, validated as a whole before
     any is applied (the Python API's and the SDK's one rule, genericity audit
     2 M2; ``rusticol_loop_reduction::v2_runtime::checked_parameters`` is its
     native twin), by name (so a mapping with several refused entries is
     refused with the same message in every client): an unknown name (not an
-    external parameter of the model, ``externals``; not checked when None, a
-    stored process without its model), the renormalisation scale's parameter
-    (each point's ``mu_r2`` sets it) and a value other than the one a
-    parameter was fixed to at generation (``fixed``, ``LoopSlice.
-    fixed_parameters``: ``[loop.preparation] fixed_parameters`` and those the
-    model preparation fixes) are refused with a ``ValueError``. A known
-    parameter the process does not read is accepted (it has no effect).
-    Every value is read first, as the Python API reads it (``runtime.virtual.
-    _number``: a finite decimal number)."""
+    external parameter of the model, ``externals``; None only for a stored
+    process of an older build, whose record lacks its model's names), the
+    renormalisation scale's parameter (each point's ``mu_r2`` sets it) and a
+    value other than the one a parameter was fixed to at generation
+    (``fixed``, ``LoopSlice.fixed_parameters``: ``[loop.preparation]
+    fixed_parameters`` and those the model preparation fixes, ``prepared``,
+    which the refusal names as such) are refused with a ``ValueError``. A
+    known parameter the process does not read is accepted (it has no
+    effect). Every value is read first, as the Python API reads it
+    (``runtime.virtual._number``: a finite decimal number of ASCII text)."""
 
     from pyamplicol.runtime.virtual import _number
 
@@ -1468,12 +1470,28 @@ def check_model_parameters(
                 f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
             )
         if name in fixed and Decimal(str(value)) != Decimal(str(fixed[name])):
-            raise ValueError(
-                f"parameter {name!r} was fixed to {fixed[name]} at generation "
-                "([loop.preparation] fixed_parameters); regenerate the "
-                "artifact to change it"
-            )
+            raise ValueError(fixed_refusal(name, fixed[name], name in prepared))
     return dict(parameters)
+
+
+def fixed_refusal(name: str, value: Any, prepared: bool) -> str:
+    """The refusal of a value other than the one ``name`` was fixed to at
+    generation, naming who fixed it: the request (``[loop.preparation]
+    fixed_parameters``) or the model preparation (``prepared``: a scheme
+    constant, e.g. a colour declaration's, which no card entry sets);
+    ``v2_runtime::fixed_refusal`` is its native twin."""
+
+    if prepared:
+        return (
+            f"parameter {name!r} was fixed to {value} at generation by the model "
+            "preparation (a scheme constant, e.g. of the colour declaration); "
+            "it is not a run-time parameter"
+        )
+    return (
+        f"parameter {name!r} was fixed to {value} at generation "
+        "([loop.preparation] fixed_parameters); regenerate the artifact to "
+        "change it"
+    )
 
 
 class RequestModel(NamedTuple):
@@ -1650,6 +1668,15 @@ class LoopSlice:
                 found[name] = real
             self._cache["fixed-parameters"] = found
         return dict(found)
+
+    @property
+    def preparation_fixed_parameters(self) -> frozenset[str]:
+        """The names in ``fixed_parameters`` the model preparation fixed (a
+        colour declaration's scheme constants), not the request."""
+
+        return frozenset(self.fixed_parameters) - frozenset(
+            self.request.fixed_parameters
+        )
 
     def _external_parameters(self) -> frozenset[str]:
         """The names of the model's external parameters (those a caller
@@ -2390,7 +2417,11 @@ class LoopSlice:
 
         fixed = self.fixed_parameters
         values = check_model_parameters(
-            parameters, self._external_parameters(), self.scale_parameter, fixed
+            parameters,
+            self._external_parameters(),
+            self.scale_parameter,
+            fixed,
+            self.preparation_fixed_parameters,
         )
         values.update(fixed)
         digits = precision.working_digits

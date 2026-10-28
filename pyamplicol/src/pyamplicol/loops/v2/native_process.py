@@ -230,6 +230,13 @@ class NativeProcess:
             # the model preparation fixes): refused at another value and
             # applied by every runtime (``LoopSlice.fixed_parameters``).
             "fixed_parameters": slice_.fixed_parameters,
+            # Those of them the model preparation fixed (scheme constants),
+            # which a refusal names as such (``assemble.fixed_refusal``).
+            "preparation_fixed_parameters": sorted(slice_.preparation_fixed_parameters),
+            # The model's external parameters (those a caller may set): every
+            # view of the stored process refuses another name
+            # (``_ProcessView``), as the Python API and the SDKs do.
+            "externals": sorted(slice_._external_parameters()),
             "scale_parameter": slice_.scale_parameter,
             "alpha_s_parameter": slice_.alpha_s_parameter,
             "families": len(exported.families),
@@ -333,8 +340,8 @@ class NativeProcess:
         loop native module, ``externals`` the external parameters of the
         process's model (the caller's parameters are checked against them,
         ``_ProcessView._point_parameters``; the public runtime passes its
-        artifact model's), ``options`` the executor's (lanes, threads,
-        forms)."""
+        artifact model's; by default the record's ``externals``), ``options``
+        the executor's (lanes, threads, forms)."""
 
         from .plan_export import NativeExecutor
 
@@ -371,7 +378,14 @@ class _ProcessView:
         externals: Collection[str] | None = None,
     ):
         self.native = native
+        # The caller's names, else the record's (a record of an older build
+        # has none: its views then do not check names; regenerate it).
+        if externals is None:
+            externals = record.get("externals")
         self.externals = None if externals is None else frozenset(externals)
+        self.preparation_fixed = frozenset(
+            record.get("preparation_fixed_parameters", ())
+        )
         # The last caller mapping checked and its values (one per batch).
         self._checked: tuple[Any, dict[str, str]] | None = None
         self.request = SimpleNamespace(
@@ -405,10 +419,10 @@ class _ProcessView:
         self, parameters: Mapping[str, str], scale: Fraction, precision: Any
     ) -> dict[str, str]:
         """The caller's parameters, validated as by the Python API and the
-        live slice (``assemble.check_model_parameters``: the scale parameter
-        and a fixed parameter at another value are refused, and a name that
-        is not an external parameter of the model when the view has them,
-        ``NativeProcess.executor(..., externals=...)``), and the fixed
+        live slice (``assemble.check_model_parameters``: the scale parameter,
+        a fixed parameter at another value and a name that is not an external
+        parameter of the model, the record's or ``NativeProcess.executor(...,
+        externals=...)``, are refused), and the fixed
         parameters (the record's: every one fixed at generation); the scale
         parameter is formed natively from each point's mu_R^2
         (``batch_parameters``)."""
@@ -419,7 +433,11 @@ class _ProcessView:
         if self._checked is None or self._checked[0] != key:
             fixed = self.request.fixed_parameters
             values = check_model_parameters(
-                parameters, self.externals, self.scale_parameter, fixed
+                parameters,
+                self.externals,
+                self.scale_parameter,
+                fixed,
+                self.preparation_fixed,
             )
             values.update(fixed)
             self._checked = (key, values)

@@ -109,11 +109,17 @@ def _stability_input(
 
 
 def _number(value: object, description: str) -> str:
-    """Validate a real decimal input without a binary64 round trip."""
+    """Validate a real decimal input without a binary64 round trip: a number
+    or ASCII decimal text (``Decimal``'s syntax; other digits and whitespace
+    than ASCII are refused, as by the native SDKs'
+    ``v2_runtime::decimal_parameter``)."""
     if isinstance(value, bool) or not isinstance(value, (str, Integral, Real, Decimal)):
         raise TypeError(f"{description} must be a real number or decimal string")
+    text = str(value)
+    if not text.isascii():
+        raise ValueError(f"{description} is not a decimal number")
     try:
-        decimal = Decimal(str(value))
+        decimal = Decimal(text)
     except InvalidOperation as error:
         raise ValueError(f"{description} is not a decimal number") from error
     if not decimal.is_finite():
