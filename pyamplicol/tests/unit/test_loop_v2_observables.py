@@ -1948,7 +1948,11 @@ def assert_native_estimates_follow_the_api(generate, carrier: str) -> None:
     scales = ["1000000"] * 2
     precision = NATIVE_CARRIERS[carrier]
     alone = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
-    inclusive = NativeExecutor(observables.slice, lanes=4)
+    # Observable columns are contracted directly (design §7.3), so the
+    # inclusive evaluation they share their lanes with is the direct one
+    # (under "auto" the inclusive virtual takes the seed FFT, equal to
+    # rounding: ``test_loop_v2_seed_fft``).
+    inclusive = NativeExecutor(observables.slice, lanes=4, contraction="direct")
     rotation = Rotation.about("z", "3/5", "4/5")
     for checks, names in (
         (StabilityChecks((rotation,)), {ROTATION.format(0)}),
