@@ -331,9 +331,11 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 
 
 # The bytes of the controls the guards do not refuse, measured on the slice
-# before package fail-closed (work/v2-slice 59d47cb3, native digest a1e0606a;
-# equal at 11542fd5): per control the SHA-256 of the stored plan JSON, of the
-# companion plan JSON, and of every native member but the parameter
+# before package fail-closed (work/v2-slice 6da37352, native digest a1e0606a;
+# equal at 59d47cb3 and 11542fd5 except g g > u u~ u u~'s native trees, whose
+# counterterm program carries the root-closure reading signs of 6da37352,
+# ew-epsilon's G2-M7): per control the SHA-256 of the stored plan JSON, of
+# the companion plan JSON, and of every native member but the parameter
 # programs' plane applications (``_identity``). A package that changes these
 # plans on purpose re-measures them on its base and states why.
 CONTROLS = {
@@ -373,7 +375,7 @@ CONTROL_BYTES = {
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "9aec170072cd12f61ac90f5bfa86152244ab0bed3dea011c72533e5996e7cca5",
+        "e15f21c0bfd2887db9e24803f317d6bc181242f4be580a2906e1dda6f2bafa14",
     ),
 }
 
