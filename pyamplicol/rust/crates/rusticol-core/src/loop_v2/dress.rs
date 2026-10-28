@@ -604,7 +604,20 @@ pub fn build_current<T: Carrier, const L: usize>(
     let row_len = term.width() * v;
     let mut out = vec![data.zero.clone(); term.rows.len() * row_len];
     let mut scratch = vec![data.zero.clone(); v];
-    for ((_row, blocks), target) in term.rows.iter().zip(out.chunks_exact_mut(row_len)) {
+    // The rows schedule B reads (all without the live-row pruning).
+    let read = plan
+        .read_rows
+        .as_ref()
+        .map(|rows| rows.currents[id].as_slice());
+    for (k, ((_row, blocks), target)) in term
+        .rows
+        .iter()
+        .zip(out.chunks_exact_mut(row_len))
+        .enumerate()
+    {
+        if read.is_some_and(|read| !read[k]) {
+            continue;
+        }
         block_components::<T, L>(term, blocks, data, target, &mut scratch);
     }
     out
@@ -630,13 +643,23 @@ pub fn build_factor<T: Carrier, const L: usize>(
     let mut out = vec![data.zero.clone(); content.rows * row_len];
     let loop_momentum = data.momentum(shift);
     let mut scratch = Scratch::<T>::new(&data.zero, v);
+    // The content rows schedule B reads (all without the live-row pruning):
+    // the others stay zero.
+    let read = plan
+        .read_rows
+        .as_ref()
+        .map(|rows| rows.factors[id].as_slice());
+    let reads = |row: usize| read.is_none_or(|read| read[row]);
     for term in &content.terms {
         if let Some(split) = &term.vertex {
+            if !term.rows.iter().any(|(row, _)| reads(*row)) {
+                continue;
+            }
             let vertex = &plan.vertices[split.id];
             let values = vertex_values(plan, split.id, shift, data, &mut scratch);
             let mut components = vec![data.zero.clone(); term.width() * v];
             let mut product = vec![data.zero.clone(); v];
-            for (row, blocks) in &term.rows {
+            for (row, blocks) in term.rows.iter().filter(|(row, _)| reads(*row)) {
                 block_components::<T, L>(term, blocks, data, &mut components, &mut product);
                 let target = &mut out[row * row_len..][..row_len];
                 for (e, (&(_b, nu, _bp, _exponents), &fused)) in
@@ -653,7 +676,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
             continue;
         }
         let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
-        for (row, blocks) in &term.rows {
+        for (row, blocks) in term.rows.iter().filter(|(row, _)| reads(*row)) {
             let target = &mut out[row * row_len..][..row_len];
             for binding in &term.bindings {
                 let kernel = &plan.kernels[binding.kernel];

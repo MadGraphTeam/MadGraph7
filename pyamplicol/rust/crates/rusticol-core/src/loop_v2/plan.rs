@@ -848,6 +848,19 @@ pub struct LoopProgramV4 {
     pub products: Vec<MonomialProductTable>,
     /// Loop orders labels used by the families (indices as exported).
     pub order_count: usize,
+    /// The rows of the chunk inputs schedule B reads, when the live-row
+    /// pruning restricts them (`plan/live.rs`); `None`: every row.
+    pub read_rows: Option<ReadRows>,
+}
+
+/// The rows of the chunk inputs schedule B reads (`plan/live.rs`): the
+/// builders leave the others zero.
+#[derive(Clone, Debug)]
+pub struct ReadRows {
+    /// Per fused factor, per content row.
+    pub factors: Vec<Vec<bool>>,
+    /// Per split current, per term row.
+    pub currents: Vec<Vec<bool>>,
 }
 
 struct Tables {
@@ -1557,6 +1570,7 @@ impl LoopProgramV4 {
             merged,
             products: tables.tables,
             order_count,
+            read_rows: None,
         };
         // Helicity-resolved and selected columns: the steps keep the rows
         // their kept Born rows reach (`live`).

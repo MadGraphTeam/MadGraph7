@@ -947,6 +947,23 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             tally.alive(pruning);
         }
     }
+    if file.column_rows.is_some() && file.forward.is_none() && file.merged.is_none() {
+        // The rows the kept links read (`plan::ReadRows`, kept): a flag per
+        // content row of each fused factor and per term row of each split
+        // current (one current per content term at most), then a pass over
+        // the kept links.
+        let factor_rows = file.factors.iter().map(|&(content, _)| {
+            file.contents
+                .get(content)
+                .map_or(0, |c| c.row_helicities.len() as u64)
+        });
+        tally.keep(factor_rows.sum(), 1);
+        tally.keep(file.factors.len() as u64, size_of::<Vec<bool>>());
+        tally.keep(sizes.term_rows.iter().sum(), 1);
+        let terms = file.contents.iter().map(|c| c.terms.len() as u64);
+        tally.keep(terms.sum(), size_of::<Vec<bool>>());
+        tally.iterate(sizes.parts);
+    }
 
     // Schedule F: stored links (one column), tables by the states' ranks,
     // closures with their weights and rows.
