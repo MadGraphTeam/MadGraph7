@@ -457,6 +457,11 @@ C     Per-event flavor index and leshouche row passed to SMATRIX_MULTI;
 C     NB_PSEL_WARP(w) is the number of ALL_PD rows of the flavor of
 C      warp w
       INTEGER ALL_IFLAV(VECSIZE_MEMMAX), ALL_IPSEL(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR of the warp), set in
+C      TO_MIRROR
+C     for each SMATRIX call (its good-helicity filter is per
+C      orientation)
+      INTEGER ALL_IMIRROR(VECSIZE_MEMMAX)
       INTEGER NB_PSEL_WARP(NB_WARP)
       INTEGER IFLAV, IPSEL_SHIFT
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
@@ -576,6 +581,7 @@ C         leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
           IPSEL = IPSEL + IPSEL_SHIFT
           ALL_IPSEL(IVEC) = IPSEL
           ALL_IFLAV(IVEC) = IFLAV
+          ALL_IMIRROR(IVEC) = IMIRROR_VEC(CURR_WARP)
 
           CHANNELS(IVEC) = CONFSUB(1,SYMCONF(ICONF_VEC(CURR_WARP)))
           SUBDIAG(1) = CHANNELS(IVEC)  ! only valid if a single process
@@ -597,8 +603,8 @@ C         leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
           CALL RANMAR(COL_RAND(IVEC))
         ENDDO  ! end loop on IWARP/IVEC	 
       ENDDO  ! end loop on the CURR_WARP
-      CALL SMATRIX1_MULTI(P_MULTI, ALL_IFLAV, ALL_IPSEL, HEL_RAND,
-     $  COL_RAND, CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL,
+      CALL SMATRIX1_MULTI(P_MULTI, ALL_IFLAV, ALL_IPSEL, ALL_IMIRROR,
+     $  HEL_RAND, COL_RAND, CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL,
      $  SELECTED_COL, VECSIZE_USED)
 
 
@@ -684,8 +690,8 @@ C           Call UNWGT to unweight and store events
 
 
       SUBROUTINE SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, IPSEL_VEC,
-     $  HEL_RAND, COL_RAND, CHANNELS, IGRAPH, OUT, SELECTED_HEL,
-     $  SELECTED_COL, VECSIZE_USED)
+     $  IMIRROR_VEC, HEL_RAND, COL_RAND, CHANNELS, IGRAPH, OUT,
+     $  SELECTED_HEL, SELECTED_COL, VECSIZE_USED)
       USE OMP_LIB
       IMPLICIT NONE
 
@@ -701,6 +707,9 @@ C     Per-event flavor index and leshouche row (IPSEL, used for
 C      BROKEN_SYM)
       INTEGER IFLAV_VEC(VECSIZE_MEMMAX)
       INTEGER IPSEL_VEC(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR, used by the good-helicity
+C      filter)
+      INTEGER IMIRROR_VEC(VECSIZE_MEMMAX)
       INTEGER CHANNELS(VECSIZE_MEMMAX)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
@@ -712,6 +721,8 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IVEC
       INTEGER          IPSEL
       COMMON /SUBPROC/ IPSEL
+      INTEGER IMIRROR, IPROC
+      COMMON/TO_MIRROR/ IMIRROR, IPROC
 
 
 
@@ -720,6 +731,7 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 !$OMP DO
       DO IVEC=1, VECSIZE_USED
         IPSEL = IPSEL_VEC(IVEC)
+        IMIRROR = IMIRROR_VEC(IVEC)
         CALL SMATRIX1(P_MULTI(0,1,IVEC),
      &                           IFLAV_VEC(IVEC), 
      &                           hel_rand(IVEC),
