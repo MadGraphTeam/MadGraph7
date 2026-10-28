@@ -422,7 +422,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/PythonFunction.html">PythonFunction</a></li>
@@ -567,7 +568,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Overloaded.html">Overloaded</a></li>
 </ul>
@@ -650,13 +652,15 @@ followed by a device index such as <code class="docutils literal notranslate"><s
 <code class="docutils literal notranslate"><span class="pre">simd_256</span></code>, <code class="docutils literal notranslate"><span class="pre">simd_512</span></code> and <code class="docutils literal notranslate"><span class="pre">avx512y</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> picks the widest width the host
 supports.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">madspace_cpu_mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>SIMD width of the phase-space sampling on <code class="docutils literal notranslate"><span class="pre">cpu</span></code> devices. Choose from <code class="docutils literal notranslate"><span class="pre">auto</span></code>,
+<code class="docutils literal notranslate"><span class="pre">scalar</span></code>, <code class="docutils literal notranslate"><span class="pre">simd_128</span></code> (ARM only), <code class="docutils literal notranslate"><span class="pre">simd_256</span></code>, <code class="docutils literal notranslate"><span class="pre">avx512y</span></code> and <code class="docutils literal notranslate"><span class="pre">simd_512</span></code>.
+<code class="docutils literal notranslate"><span class="pre">auto</span></code> picks <code class="docutils literal notranslate"><span class="pre">simd_512</span></code>, then <code class="docutils literal notranslate"><span class="pre">simd_256</span></code> on x86. On ARM it picks <code class="docutils literal notranslate"><span class="pre">scalar</span></code>,
+because the vectorized mode is currently slower there.</p>
+</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">precision</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;color32&quot;</span></code>)</dt><dd><p>Floating-point precision of the matrix elements. <code class="docutils literal notranslate"><span class="pre">all64</span></code> and <code class="docutils literal notranslate"><span class="pre">all32</span></code> use double and
 single precision throughout. <code class="docutils literal notranslate"><span class="pre">color32</span></code> evaluates the color algebra in single precision
 and everything else in double precision. <code class="docutils literal notranslate"><span class="pre">denom64</span></code> keeps the momenta and propagator
 denominators in double precision and uses single precision elsewhere.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">simd_vector_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Vector size of the CPU matrix elements. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses automatically. Valid sizes are 1,
-4 and 8 on x86 and 1 and 2 on Apple silicon.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">cpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>), <code class="docutils literal notranslate"><span class="pre">gpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">combine_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Number of threads for each <code class="docutils literal notranslate"><span class="pre">cpu</span></code> device, each GPU device and for combining the
 channel results. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses based on the number of CPUs.</p>

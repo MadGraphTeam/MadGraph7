@@ -1,0 +1,4 @@
+set_simd_mode
+=============
+
+.. doxygenfunction:: madspace::set_simd_mode

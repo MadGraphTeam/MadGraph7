@@ -422,7 +422,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/PythonFunction.html">PythonFunction</a></li>
@@ -567,7 +568,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Overloaded.html">Overloaded</a></li>
 </ul>
@@ -722,42 +724,46 @@ gridpack is created.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">--device</span></code> (several entries are allowed)</p></td>
 </tr>
 <tr class="row-odd"><td></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">madspace_cpu_mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--madspace_cpu_mode</span></code></p></td>
+</tr>
+<tr class="row-even"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">cpu_thread_pool_size</span></code>, <code class="docutils literal notranslate"><span class="pre">gpu_thread_pool_size</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--cpu_thread_pool_size</span></code>, <code class="docutils literal notranslate"><span class="pre">--gpu_thread_pool_size</span></code></p></td>
 </tr>
-<tr class="row-even"><td></td>
+<tr class="row-odd"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">verbosity</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--verbosity</span></code></p></td>
 </tr>
-<tr class="row-odd"><td></td>
+<tr class="row-even"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">output_format</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--output_format</span></code></p></td>
 </tr>
-<tr class="row-even"><td></td>
+<tr class="row-odd"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code>, <code class="docutils literal notranslate"><span class="pre">precision</span></code>, <code class="docutils literal notranslate"><span class="pre">combine_thread_pool_size</span></code></p></td>
 <td><p>Card only.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[generation]</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[generation]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">events</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--events</span></code></p></td>
 </tr>
-<tr class="row-even"><td></td>
+<tr class="row-odd"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">max_overweight_truncation</span></code>, <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--max_overweight_truncation</span></code>, <code class="docutils literal notranslate"><span class="pre">--freeze_max_weight_after</span></code></p></td>
 </tr>
-<tr class="row-odd"><td></td>
+<tr class="row-even"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">cpu_batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">gpu_batch_size</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--cpu_batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">--gpu_batch_size</span></code></p></td>
 </tr>
-<tr class="row-even"><td></td>
+<tr class="row-odd"><td></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">cut_efficiency_threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">max_cut_repetitions</span></code></p></td>
 <td><p>Card only.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">temp_output_dir</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">--output_dir</span></code>, <code class="docutils literal notranslate"><span class="pre">--temp_output_dir</span></code></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">[systematics]</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">[systematics]</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">enable</span></code>, <code class="docutils literal notranslate"><span class="pre">mur</span></code>, <code class="docutils literal notranslate"><span class="pre">muf</span></code>, <code class="docutils literal notranslate"><span class="pre">together</span></code>, <code class="docutils literal notranslate"><span class="pre">dynamical_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">pdf</span></code>,
 <code class="docutils literal notranslate"><span class="pre">write_inputs</span></code></p></td>
 <td><p>Card only.</p></td>

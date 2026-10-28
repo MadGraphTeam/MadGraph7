@@ -422,7 +422,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/PythonFunction.html">PythonFunction</a></li>
@@ -567,7 +568,8 @@
 <li class="toctree-l2"><a class="reference internal" href="hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Overloaded.html">Overloaded</a></li>
 </ul>
@@ -616,6 +618,25 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayoutE">
 <span id="_CPPv3N8madspace11FieldLayoutE"></span><span id="_CPPv2N8madspace11FieldLayoutE"></span><span id="madspace::FieldLayout"></span><span class="target" id="structmadspace_1_1FieldLayout"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">FieldLayout</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayoutE" title="Link to this definition">¶</a><br /></dt>
 <dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4TypeE">
+<span id="_CPPv3N8madspace11FieldLayout4TypeE"></span><span id="_CPPv2N8madspace11FieldLayout4TypeE"></span><span class="target" id="structmadspace_1_1FieldLayout_1a49e9e13babb8e127591bf758810ec699"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">Type</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4TypeE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4Type3i32E">
+<span id="_CPPv3N8madspace11FieldLayout4Type3i32E"></span><span id="_CPPv2N8madspace11FieldLayout4Type3i32E"></span><span class="target" id="structmadspace_1_1FieldLayout_1a49e9e13babb8e127591bf758810ec699aafb0fd74435d7b631c853225bb3faea1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">i32</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4Type3i32E" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4Type3f64E">
+<span id="_CPPv3N8madspace11FieldLayout4Type3f64E"></span><span id="_CPPv2N8madspace11FieldLayout4Type3f64E"></span><span class="target" id="structmadspace_1_1FieldLayout_1a49e9e13babb8e127591bf758810ec699afd629c9884a377f7b1e9cf200b34d59d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">f64</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4Type3f64E" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-members">Public Members</p>
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4nameE">
@@ -624,7 +645,7 @@
 
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4typeE">
-<span id="_CPPv3N8madspace11FieldLayout4typeE"></span><span id="_CPPv2N8madspace11FieldLayout4typeE"></span><span id="madspace::FieldLayout::type__cCP"></span><span class="target" id="structmadspace_1_1FieldLayout_1a0c7929a46d5d21dbe59ce353e043256a"></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">type</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4typeE" title="Link to this definition">¶</a><br /></dt>
+<span id="_CPPv3N8madspace11FieldLayout4typeE"></span><span id="_CPPv2N8madspace11FieldLayout4typeE"></span><span id="madspace::FieldLayout::type__Type"></span><span class="target" id="structmadspace_1_1FieldLayout_1aa39f314c65867457824a216ded1e483d"></span><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4TypeE" title="madspace::FieldLayout::Type"><span class="n"><span class="pre">Type</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">type</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4typeE" title="Link to this definition">¶</a><br /></dt>
 <dd></dd></dl>
 
 <dl class="cpp var">
@@ -634,16 +655,18 @@
 
 </div>
 <div class="breathe-sectiondef docutils container">
-<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-attributes">Public Static Attributes</p>
-<dl class="cpp var">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout3i32E">
-<span id="_CPPv3N8madspace11FieldLayout3i32E"></span><span id="_CPPv2N8madspace11FieldLayout3i32E"></span><span id="madspace::FieldLayout::i32__cCP"></span><span class="target" id="structmadspace_1_1FieldLayout_1af6f476b6390aae352bfaecc80174f552"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">i32</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout3i32E" title="Link to this definition">¶</a><br /></dt>
-<dd></dd></dl>
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-functions">Public Static Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout4sizeE4Type">
+<span id="_CPPv3N8madspace11FieldLayout4sizeE4Type"></span><span id="_CPPv2N8madspace11FieldLayout4sizeE4Type"></span><span id="madspace::FieldLayout::size__TypeCE"></span><span class="target" id="structmadspace_1_1FieldLayout_1adefb230fd31a6b2b79d5046ce272831f"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">size</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4TypeE" title="madspace::FieldLayout::Type"><span class="n"><span class="pre">Type</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout4sizeE4Type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Size of a field of the given type in bytes. </p>
+</dd></dl>
 
-<dl class="cpp var">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout3f64E">
-<span id="_CPPv3N8madspace11FieldLayout3f64E"></span><span id="_CPPv2N8madspace11FieldLayout3f64E"></span><span id="madspace::FieldLayout::f64__cCP"></span><span class="target" id="structmadspace_1_1FieldLayout_1ad7f1d29c4b040f423459fbf33d4761e6"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">f64</span></span></span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout3f64E" title="Link to this definition">¶</a><br /></dt>
-<dd></dd></dl>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace11FieldLayout5dtypeE4Type">
+<span id="_CPPv3N8madspace11FieldLayout5dtypeE4Type"></span><span id="_CPPv2N8madspace11FieldLayout5dtypeE4Type"></span><span id="madspace::FieldLayout::dtype__TypeCE"></span><span class="target" id="structmadspace_1_1FieldLayout_1ab93b2d23ae5d29031ec383e2e0fb4a65"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">dtype</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4TypeE" title="madspace::FieldLayout::Type"><span class="n"><span class="pre">Type</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">type</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace11FieldLayout5dtypeE4Type" title="Link to this definition">¶</a><br /></dt>
+<dd><p>numpy type string of a field of the given type. </p>
+</dd></dl>
 
 </div>
 </dd></dl>
@@ -707,11 +730,16 @@
             <ul>
 <li><a class="reference internal" href="#">FieldLayout</a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayoutE"><code class="docutils literal notranslate"><span class="pre">madspace::FieldLayout</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4TypeE"><code class="docutils literal notranslate"><span class="pre">Type</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4Type3i32E"><code class="docutils literal notranslate"><span class="pre">i32</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4Type3f64E"><code class="docutils literal notranslate"><span class="pre">f64</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4nameE"><code class="docutils literal notranslate"><span class="pre">name</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4typeE"><code class="docutils literal notranslate"><span class="pre">type</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout5groupE"><code class="docutils literal notranslate"><span class="pre">group</span></code></a></li>
-<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout3i32E"><code class="docutils literal notranslate"><span class="pre">i32</span></code></a></li>
-<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout3f64E"><code class="docutils literal notranslate"><span class="pre">f64</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout4sizeE4Type"><code class="docutils literal notranslate"><span class="pre">size()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace11FieldLayout5dtypeE4Type"><code class="docutils literal notranslate"><span class="pre">dtype()</span></code></a></li>
 </ul>
 </li>
 </ul>

@@ -1,4 +1,0 @@
-set_simd_vector_size
-====================
-
-.. doxygenfunction:: madspace::set_simd_vector_size

@@ -420,7 +420,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/PythonFunction.html">PythonFunction</a></li>
@@ -565,7 +566,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Overloaded.html">Overloaded</a></li>
 </ul>
@@ -2465,15 +2467,21 @@
 </li>
         <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayoutE">madspace::FieldLayout (C++ struct)</a>
 </li>
-        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout3f64E">madspace::FieldLayout::f64 (C++ member)</a>
+        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout5dtypeE4Type">madspace::FieldLayout::dtype (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout5groupE">madspace::FieldLayout::group (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout3i32E">madspace::FieldLayout::i32 (C++ member)</a>
-</li>
         <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4nameE">madspace::FieldLayout::name (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4sizeE4Type">madspace::FieldLayout::size (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4TypeE">madspace::FieldLayout::Type (C++ enum)</a>
+</li>
         <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4typeE">madspace::FieldLayout::type (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4Type3f64E">madspace::FieldLayout::Type::f64 (C++ enumerator)</a>
+</li>
+        <li><a href="madspace/cpp/FieldLayout.html#_CPPv4N8madspace11FieldLayout4Type3i32E">madspace::FieldLayout::Type::i32 (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/Flow.html#_CPPv4N8madspace4FlowE">madspace::Flow (C++ class)</a>
 </li>
@@ -3015,10 +3023,10 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config8adam_epsE">madspace::MadnisTraining::Config::adam_eps (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE">madspace::MadnisTraining::Config::adam_weight_decay (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17batch_size_offsetE">madspace::MadnisTraining::Config::batch_size_offset (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config22batch_size_per_channelE">madspace::MadnisTraining::Config::batch_size_per_channel (C++ member)</a>
@@ -3433,6 +3441,8 @@
 </li>
         <li><a href="madspace/cpp/PackedTensorView.html#_CPPv4N8madspace16PackedTensorView5shapeE">madspace::PackedTensorView::shape (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/PackedTensorView.html#_CPPv4N8madspace16PackedTensorView11simd_paddedE">madspace::PackedTensorView::simd_padded (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/PackedTensorView.html#_CPPv4N8madspace16PackedTensorView6strideE">madspace::PackedTensorView::stride (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecordE">madspace::ParticleRecord (C++ class)</a>
@@ -3705,7 +3715,7 @@
 </li>
         <li><a href="madspace/cpp/set_lib_path.html#_CPPv4N8madspace12set_lib_pathERKNSt6stringE">madspace::set_lib_path (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/set_simd_vector_size.html#_CPPv4N8madspace20set_simd_vector_sizeEi">madspace::set_simd_vector_size (C++ function)</a>
+        <li><a href="madspace/cpp/set_simd_mode.html#_CPPv4N8madspace13set_simd_modeERKNSt6stringE">madspace::set_simd_mode (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Sizes.html#_CPPv4N8madspace5SizesE">madspace::Sizes (C++ class)</a>
 </li>
@@ -3754,6 +3764,8 @@
         <li><a href="madspace/cpp/SubprocessSystArgs.html#_CPPv4N8madspace18SubprocessSystArgs9beam_pdgsE">madspace::SubprocessSystArgs::beam_pdgs (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SubprocessSystArgs.html#_CPPv4N8madspace18SubprocessSystArgs9qcd_powerE">madspace::SubprocessSystArgs::qcd_power (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/supported_simd_modes.html#_CPPv4N8madspace20supported_simd_modesEv">madspace::supported_simd_modes (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsCalculator.html#_CPPv4N8madspace21SystematicsCalculatorE">madspace::SystematicsCalculator (C++ class)</a>
 </li>
@@ -3883,6 +3895,10 @@
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor17is_only_referenceEv">madspace::Tensor::is_only_reference (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor14is_simd_paddedEv">madspace::Tensor::is_simd_padded (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor20max_simd_padded_sizeE">madspace::Tensor::max_simd_padded_size (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6TensorcvbEv">madspace::Tensor::operator bool (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6TensoraSERK6Tensor">madspace::Tensor::operator= (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6TensoraSERR6Tensor">[1]</a>
@@ -3898,6 +3914,8 @@
         <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor10set_streamENSt8optionalINSt9uintptr_tEEE">madspace::Tensor::set_stream (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor5shapeEv">madspace::Tensor::shape (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4N8madspace6Tensor19simd_padded_literalERK12LiteralValueNSt6size_tE9DevicePtr">madspace::Tensor::simd_padded_literal (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor4sizeENSt6size_tE">madspace::Tensor::size (C++ function)</a>
 </li>
@@ -5045,7 +5063,7 @@
         </ul></li>
         <li><a href="madspace/python/PrettyBox.html#madspace.PrettyBox.set_row">set_row() (madspace.PrettyBox method)</a>
 </li>
-        <li><a href="madspace/python/set_simd_vector_size.html#madspace.set_simd_vector_size">set_simd_vector_size() (in module madspace)</a>
+        <li><a href="madspace/python/set_simd_mode.html#madspace.set_simd_mode">set_simd_mode() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/set_stream.html#madspace.set_stream">set_stream() (in module madspace)</a>
 </li>
@@ -5138,6 +5156,8 @@
         <li><a href="madspace/python/SubprocessSystArgs.html#madspace.SubprocessSystArgs">SubprocessSystArgs (class in madspace)</a>
 </li>
         <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.summary">summary() (madspace.SystematicsCalculator method)</a>
+</li>
+        <li><a href="madspace/python/supported_simd_modes.html#madspace.supported_simd_modes">supported_simd_modes() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.survey">survey() (madspace.EventGenerator method)</a>
 </li>

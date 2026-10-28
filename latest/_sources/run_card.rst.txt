@@ -49,15 +49,18 @@ fixed parameters. Their entries are described below.
     ``simd_256``, ``simd_512`` and ``avx512y``. ``auto`` picks the widest width the host
     supports.
 
+``madspace_cpu_mode`` (``"auto"``)
+    SIMD width of the phase-space sampling on ``cpu`` devices. Choose from ``auto``,
+    ``scalar``, ``simd_128`` (ARM only), ``simd_256``, ``avx512y`` and ``simd_512``.
+    ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
+    because the vectorized mode is currently slower there.
+
 ``precision`` (``"color32"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
     single precision throughout. ``color32`` evaluates the color algebra in single precision
     and everything else in double precision. ``denom64`` keeps the momenta and propagator
     denominators in double precision and uses single precision elsewhere.
 
-``simd_vector_size`` (``-1``)
-    Vector size of the CPU matrix elements. ``-1`` chooses automatically. Valid sizes are 1,
-    4 and 8 on x86 and 1 and 2 on Apple silicon.
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)
     Number of threads for each ``cpu`` device, each GPU device and for combining the

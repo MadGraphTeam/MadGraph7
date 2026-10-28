@@ -422,7 +422,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/PythonFunction.html">PythonFunction</a></li>
@@ -567,7 +568,8 @@
 <li class="toctree-l2"><a class="reference internal" href="hip_device.html">hip_device</a></li>
 <li class="toctree-l2"><a class="reference internal" href="select_combine_channel_index.html">select_combine_channel_index</a></li>
 <li class="toctree-l2"><a class="reference internal" href="set_lib_path.html">set_lib_path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="set_simd_mode.html">set_simd_mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="supported_simd_modes.html">supported_simd_modes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="NamedVector.html">NamedVector</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Overloaded.html">Overloaded</a></li>
 </ul>
@@ -640,6 +642,12 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace16PackedTensorView5shapeE">
 <span id="_CPPv3N8madspace16PackedTensorView5shapeE"></span><span id="_CPPv2N8madspace16PackedTensorView5shapeE"></span><span id="madspace::PackedTensorView::shape__Sizes"></span><span class="target" id="structmadspace_1_1PackedTensorView_1aed1098d8839e708fd284a425b70db512"></span><a class="reference internal" href="Sizes.html#_CPPv4N8madspace5SizesE" title="madspace::Sizes"><span class="n"><span class="pre">Sizes</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">shape</span></span></span><a class="headerlink" href="#_CPPv4N8madspace16PackedTensorView5shapeE" title="Link to this definition">¶</a><br /></dt>
 <dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace16PackedTensorView11simd_paddedE">
+<span id="_CPPv3N8madspace16PackedTensorView11simd_paddedE"></span><span id="_CPPv2N8madspace16PackedTensorView11simd_paddedE"></span><span id="madspace::PackedTensorView::simd_padded__b"></span><span class="target" id="structmadspace_1_1PackedTensorView_1a6d209d97cf90cd800ec3f5376c34b727"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">simd_padded</span></span></span><a class="headerlink" href="#_CPPv4N8madspace16PackedTensorView11simd_paddedE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether the data is a literal stored padded to the CPU SIMD vector size (see <a class="reference internal" href="Tensor.html#classmadspace_1_1Tensor_1afa8c1883233b0d873533f43986f8a90a"><span class="std std-ref">Tensor::is_simd_padded</span></a>). </p>
+</dd></dl>
 
 </div>
 <div class="breathe-sectiondef docutils container">
@@ -715,6 +723,7 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace16PackedTensorView4dataE"><code class="docutils literal notranslate"><span class="pre">data</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace16PackedTensorView6strideE"><code class="docutils literal notranslate"><span class="pre">stride</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace16PackedTensorView5shapeE"><code class="docutils literal notranslate"><span class="pre">shape</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace16PackedTensorView11simd_paddedE"><code class="docutils literal notranslate"><span class="pre">simd_padded</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace16PackedTensorView3dimE"><code class="docutils literal notranslate"><span class="pre">dim</span></code></a></li>
 </ul>
 </li>

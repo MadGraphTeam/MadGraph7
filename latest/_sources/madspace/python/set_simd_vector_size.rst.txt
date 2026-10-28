@@ -1,4 +1,0 @@
-set_simd_vector_size
-====================
-
-.. autofunction:: madspace.set_simd_vector_size
