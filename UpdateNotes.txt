@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: madevent LO vector mode (vector_size>1): the good-helicity scan saw a single
+       beam orientation per warp, so up to half of p p > z was dropped. With helicity
+       recycling, the madevent_forhel scan now runs event by event. Without it
+       (hel_recycling = False), the scan inside SMATRIX now runs its MAXTRIES events
+       for each beam orientation and gets the orientation of each event. Also fixed a
+       latent bug: an event in IMODE 5 no longer skips the rest of the vector (the
+       vector code currently always uses IMODE 0).
    RF: Add real-diagram channels for fixed-order NLO, through the
        hidden option real_channels_x0 in the run_card. Useful for
        processes that have new structures opening beyond LO, such as
