@@ -65,7 +65,7 @@ def check_html_page(cls, link):
     with misc.chdir(cwd):
         for path in pattern.findall(text):
             if not path:
-                continue # means is just a linke starting with #
+                continue # means is just a line starting with #
             cls.assertTrue(os.path.exists(path), '%s/%s' %(cwd,path))
     return True
     
@@ -483,8 +483,19 @@ class TestMECmdShell(unittest.TestCase):
         self.assertGreater(len(set(biased_events_wgts)),1)
         # Make sure that there is significantly more events in the ptj tail
         self.assertGreater(biased_median_ptj,5.0*unbiased_median_ptj)
-        # Make sure that the cross-section is close enough for the bias and unbiased samples
-        self.assertLess((abs(biased_events.cross-unbiased_events.cross)/abs(unbiased_events.cross)),0.1)
+        # Make sure that the cross-section is close enough for the bias and
+        # unbiased samples. The biased sample estimates it from its event
+        # weights, which have a long tail (low ptj events carry large
+        # weights): its statistical error is ~4.5% for 10k events, so a
+        # fixed 10% (~2 sigma) tolerance fails for some seeds.
+        nb = len(biased_events_wgts)
+        mean_wgt = sum(biased_events_wgts) / nb
+        stat_err = math.sqrt(sum((w - mean_wgt)**2 for w in biased_events_wgts)
+                             / (nb - 1) / nb)
+        self.assertLess(abs(biased_events.cross-unbiased_events.cross),
+                        4 * stat_err,
+                        'biased %s +- %s vs unbiased %s' % (biased_events.cross,
+                                                stat_err, unbiased_events.cross))
 
     def test_madspin_gridpack(self):
 
@@ -2072,6 +2083,53 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_t_channel_survey_grid(self):
+        """check that refining on the survey grid is not biased for
+        u q > z u q (all channels pure t-channel chains). With the grid
+        defined on [-1,1] while the variables are in [0,1], the survey grid
+        starved the regions close to the kinematic end-points (below the
+        lowest x seen): the rare huge weights from there biased the refine
+        low (96.6 pb, -2.3%, averaged over 4 seeds).
+        Reference (fixed scale 91.188, default PDF) from high statistics
+        (8 iterations up to 2.5M points per channel, pooled over seeds):
+        98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
+        Only the grouped output is checked here (the non-grouped one is
+        test_madevent_merged_flavor_nogroup_symmetry)."""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        # never split the refine jobs: they then restart from the
+        # survey grid (with a fixed grid)
+        with mock.patch.object(gen_ximprove.gen_ximprove_v4, 'max_request_event', 10**9):
+            self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
+
     def test_madevent_merged_flavor_nogroup_symmetry(self):
         """u q > z u q (q = u d) without subprocess grouping: one
         flavor-merged P dir (rows u u and u d). The identical-particle swap
@@ -2118,6 +2176,59 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val - target) / target, 0.02,
                         '%s +- %s vs %s' % (val, err, target))
 
+
+    def test_group_subprocess_permuted_scale(self):
+        """check that grouped (scalar and vector) and non-grouped output agree
+        when the grouped channels use a symmetry permutation of the momenta
+        and the scales depend on the clustering (MLM). see issue #453"""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        results = {}
+        for name, group, vector_size in [('grouped', True, 1),
+                                         ('grouped_vec', True, 16),
+                                         ('nongrouped', False, 1)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('set group_subprocesses %s' % group)
+            mg_cmd.exec_cmd('define q = u d')
+            mg_cmd.exec_cmd('generate u q > z u q')
+            mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 10000, user=True)
+            run_card.set('iseed', 11, user=True)
+            run_card.set('use_syst', False, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 40.0, user=True)
+            run_card.set('drjj', 0.0, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            # use the same refine setup (survey grid kept) for grouped and
+            # non-grouped: whether a job is split depends on the output
+            # mode and changes the refine grid, which is independent of #453
+            with mock.patch.object(gen_ximprove.gen_ximprove, 'keep_grid_for_refine', True), \
+                 mock.patch.object(gen_ximprove.gen_ximprove_v4, 'keep_grid_for_refine', True):
+                self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['nongrouped']
+        self.assertGreater(val0, 0)
+        for name in ['grouped', 'grouped_vec']:
+            val, err = results[name]
+            # without the fix, grouped is ~3% low (about 8 sigma)
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs nongrouped %s +- %s' % (name, val, err, val0, err0))
+        
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
         
@@ -2422,7 +2533,7 @@ class TestMECmdShell(unittest.TestCase):
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2523,7 +2634,7 @@ C
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2981,7 +3092,7 @@ C
         if syst:
             # check that the html has the information
             self.assertIn('syst', data[0].parton)
-            # check that the code was runned correctly
+            # check that the code was run correctly
             fsock = open('%s/Events/%s/parton_systematics.log' % \
                   (self.run_dir, data[0]['run_name']),'r')
             text = fsock.read()
@@ -3419,7 +3530,7 @@ class TestMEfromfile(unittest.TestCase):
         """
         This test is checking that the scale in auto_dsig are correctly assigned
         in 3.6.2, a wrong Q2FACT(IB(1)) was used instead of Q2FACT(1).
-        Leading to an assymetry in the DY +1j process.
+        Leading to an asymmetry in the DY +1j process.
         This acceptance test is there to prevent such type of error
         """
 

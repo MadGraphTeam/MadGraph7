@@ -44,7 +44,7 @@ c   output argument
 c
     integer ihel, icol
 c
-c global (due to reading writting) 
+c global (due to reading writing)
 c
 C       Good-helicity filter is per (helicity, flavor, subprocess): a helicity
 C       that is zero for one merged flavor but non-zero for another must not be

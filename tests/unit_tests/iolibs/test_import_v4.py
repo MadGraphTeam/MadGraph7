@@ -38,7 +38,7 @@ class IOImportV4Test(unittest.TestCase):
     def test_read_particles(self):
         """Test the output of import particles.dat file"""
 
-        particles_dat_str = """# Test string with particles.dat formating
+        particles_dat_str = """# Test string with particles.dat formatting
                                 ve ve~ F S ZERO ZERO S ve 12
                                 w+ w- V W MW WW S W 24
                                 T1 T1 T D ZERO ZERO O T1 8000002

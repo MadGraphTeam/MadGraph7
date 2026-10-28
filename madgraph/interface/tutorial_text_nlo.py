@@ -114,7 +114,7 @@ You can do so by typing:
 MG_aMC> launch -i MyFolder
 
 Please see MY_FIRST_AMCATNLO_RUN/README to know about the available commands.
-To know the possible options/modes for each command, simply tiple
+To know the possible options/modes for each command, simply type
 'MyFolder'> help COMMAND
 from the interface bound to the 'MyFolder' output.
 

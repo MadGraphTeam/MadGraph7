@@ -873,13 +873,13 @@ NamedVector<Value> Integrand::build_channel_part(
     Value weight_after_cuts = weights_after_cuts.empty()
         ? fb.full({1., batch_size_acc})
         : fb.product(weights_after_cuts);
-    Value adaptive_prob = adaptive_probs.empty()
+    // the dets are Jacobians, the inverse of the sampling density
+    Value adaptive_det = adaptive_probs.empty()
         ? fb.full({1., batch_size_val})
         : fb.product(adaptive_probs);
-    if (_drop_cuts_and_rescale) {
-        adaptive_prob =
-            fb.div(fb.accept_norm(indices_acc, adaptive_prob), adaptive_prob);
-    }
+    Value adaptive_prob = _drop_cuts_and_rescale
+        ? fb.div(fb.accept_norm(indices_acc, adaptive_det), adaptive_det)
+        : fb.div(fb.full({1., batch_size_val}), adaptive_det);
 
     NamedVector<Value> out;
 

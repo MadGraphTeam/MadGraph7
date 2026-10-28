@@ -67,6 +67,22 @@ class TestCitation(unittest.TestCase):
         local.cite('Alwall:2014hca', 'core')  # must not raise
         self.assertEqual(os.listdir(self.citation_dir), [])
 
+    def test_cite_follows_env_across_runs(self):
+        """One process (the mg5 prompt) can launch several runs: a cite made
+        before any run is set up must not disable tracking, and each run must
+        get its own log, including keys already cited for a previous run."""
+        os.environ.pop(citation.ENV_VAR, None)
+        local = citation.CitationLogger()
+        local.cite('Alwall:2014hca', 'core')  # no run yet: dropped
+        os.environ[citation.ENV_VAR] = self.citation_dir
+        local.cite('Alwall:2014hca', 'core')
+        run_02 = pjoin(self.tmpdir, 'Events', 'run_02', 'citations')
+        os.environ[citation.ENV_VAR] = run_02
+        local.cite('Alwall:2014hca', 'core')
+        for directory in (self.citation_dir, run_02):
+            self.assertEqual(citation.collect(directory),
+                             {'Alwall:2014hca': ['core']})
+
     def test_collect_unions_and_keeps_contexts(self):
         self.logger.cite('Alwall:2014hca', 'core')
         self._write_extra_log('cite.other.999.log', [
@@ -127,6 +143,19 @@ class TestCitation(unittest.TestCase):
         collected = citation.collect_file(path)
         self.assertEqual(collected['Alwall:2014hca'], ['framework'])
         self.assertEqual(set(collected), {'Alwall:2014hca', 'deAquino:2011ub'})
+
+    def test_nlo_output_ships_citation_files(self):
+        """bin/aMCatNLO imports internal.citation: without it a run launched
+        from an NLO output records no citation at all (issue #307)."""
+        import madgraph.iolibs.export_fks as export_fks
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        exporter.dir_path = self.tmpdir
+        os.makedirs(pjoin(self.tmpdir, 'bin', 'internal'))
+        exporter.copy_python_files()
+        internal = pjoin(self.tmpdir, 'bin', 'internal')
+        self.assertTrue(os.path.isfile(pjoin(internal, 'citation.py')))
+        bib = citation.Bibliography(pjoin(internal, 'citations.bib'))
+        self.assertIn('Frederix:2009yq', bib)
 
     def test_generation_pairs_render_to_dir(self):
         # simulate what madgraph_interface.write_generation_citations does

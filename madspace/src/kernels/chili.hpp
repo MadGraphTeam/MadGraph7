@@ -21,7 +21,7 @@ KERNELSPEC void kernel_chili_forward(
     FVal<T> det_tmp(1.);
     FVal<T> _e_cm(e_cm);
     auto e_cm2 = _e_cm * _e_cm;
-    auto pt_max = _e_cm / 2; // generally too large, thats why we get x1x2 > 1 and NaNs
+    auto pt_max = _e_cm / 2; // generally too large, that's why we get x1x2 > 1 and NaNs
     auto pt2_max = pt_max * pt_max;
     auto n_out = m_out.size();
     for (std::size_t i = 0; i < n_out - 1; ++i) {

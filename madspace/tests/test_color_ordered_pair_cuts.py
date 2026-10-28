@@ -79,7 +79,7 @@ def psm_momenta(order, cut_items, r, d):
         leptonic=True,
         mode=PSM.color_ordered,
         cuts=ms.Cuts(cut_items),
-        color_order=order,
+        color_ordered=ms.ColorOrderedMapping.Options(order),
     )
     assert mapping.random_dim() == r.shape[1]
     assert mapping.discrete_dim() == d.shape[1]
@@ -88,7 +88,9 @@ def psm_momenta(order, cut_items, r, d):
 
 
 def co_momenta(order, pt_min, m_inv_min, dr_min, r, d):
-    mapping = ms.ColorOrderedMapping(order, 0.8, 0.8, pt_min, m_inv_min, dr_min)
+    mapping = ms.ColorOrderedMapping(
+        ms.ColorOrderedMapping.Options(order), pt_min, m_inv_min, dr_min
+    )
     n = r.shape[0]
     inputs = [r[:, i].contiguous() for i in range(r.shape[1])]
     inputs += [d[:, j].contiguous() for j in range(d.shape[1])]
@@ -137,7 +139,7 @@ def test_pair_cut_reaches_color_ordered_mapping(
     """PhaseSpaceMapping must hand ColorOrderedMapping the full pair-cut
     matrices: its momenta equal those of a ColorOrderedMapping built by hand
     with the cut, and differ from one built without it."""
-    probe = ms.ColorOrderedMapping(order)
+    probe = ms.ColorOrderedMapping(ms.ColorOrderedMapping.Options(order))
     r, d = random_inputs(probe.random_dim(), probe.discrete_dim(), 2000, SEED)
 
     p_psm = psm_momenta(order, cut_items, r, d)
@@ -163,7 +165,7 @@ def sample(order, cuts, n, seed):
         leptonic=True,
         mode=PSM.color_ordered,
         cuts=cuts,
-        color_order=order,
+        color_ordered=ms.ColorOrderedMapping.Options(order),
     )
     r, d = random_inputs(mapping.random_dim(), mapping.discrete_dim(), n, seed)
     inputs = [r, d] if mapping.discrete_dim() else [r]

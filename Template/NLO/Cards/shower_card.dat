@@ -101,7 +101,7 @@ time_shower_me_after_first  = XX    # hep-ph/2308.06389 for details
 #                                                                      *
 # Syntax for PYTHIA8                                                   *
 # DM_I = M:onIfAny = D1 D2                                             *
-# or similar, according to the offical PYTHIA8 decay syntax, see       *
+# or similar, according to the official PYTHIA8 decay syntax, see       *
 # the online PYTHIA8 manual                                            *
 # WARNING: 1 -> n decays (with n > 2) are handled through a sequence   *
 # of 1 -> 2 decays.                                                    *

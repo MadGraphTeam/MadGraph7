@@ -51,7 +51,7 @@ RPATHFLAG=-Wl,-soname,
 dylibext=so
 endif
 
-# Increase the number of allowed charcters in a Fortran line
+# Increase the number of allowed characters in a Fortran line
 FFLAGS+= -ffixed-line-length-132
 # ensure that no-automatic is done
 FFLAGS+= -fno-automatic

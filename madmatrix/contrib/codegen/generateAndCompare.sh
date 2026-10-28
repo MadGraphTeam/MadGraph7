@@ -543,7 +543,7 @@ OUTDIR=$(dirname $SCRDIR) # e.g. epochX/cudacpp if $SCRDIR=epochX/cudacpp/CODEGE
 # Script directory backend (cudacpp, gridpack or alpaka)
 SCRBCK=$(basename $OUTDIR) # e.g. cudacpp if $OUTDIR=epochX/cudacpp
 
-# Default output backend (in the cudacpp directory this can be changed using commad line options like --cpp, --gpu or --mad)
+# Default output backend (in the cudacpp directory this can be changed using command line options like --cpp, --gpu or --mad)
 OUTBCK=$SCRBCK
 
 # Default: brief diffs (use --nobrief to use full diffs, use -q to be much quieter)

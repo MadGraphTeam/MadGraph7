@@ -381,7 +381,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
-                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % prefix),
+                      # get_me takes the squared scale (UPDATE_AS_PARAM2 sets MU_R = sqrt(SCALE2))
+                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, SCALES2, NHEL, ANS, RETURNCODE)' % prefix),
                       'maxpart': max_nexternal,
                       'nb_me': len(allids),
                       'pdgs': ','.join([str(pdg[i]) if i<len(pdg) else '0' 
@@ -554,7 +555,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
     def get_SubProc_folder_name(self, process, 
                                  group_number = None, group_elem_number = None):
         """Returns the name of the SubProcess directory, which can contain
-        the process goup and group element number for the case of loop-induced
+        the process group and group element number for the case of loop-induced
         integration with MadEvent."""
         
         # When disabling the loop grouping in the LoopInduced MadEvent output,
@@ -665,7 +666,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     raise MadGraph5Error("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
     
     def cat_coeff(self, ff_number, frac, is_imaginary, Nc_power, Nc_value=3):
         """Concatenate the coefficient information to reduce it to 
@@ -1160,7 +1162,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         # Extract max number of loop couplings (specific to this output type)
         matrix_element.rep_dict['maxlcouplings']= \
                                          matrix_element.find_max_loop_coupling()
-        # The born amp declaration suited for also outputing the loop-induced
+        # The born amp declaration suited for also outputting the loop-induced
         # processes as well.
         if matrix_element.get('processes')[0].get('has_born'):
             matrix_element.rep_dict['dp_born_amps_decl_in_mp'] = \
@@ -1445,7 +1447,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         else:
             replace_dict['include_vector'] = '' 
         
-        # We finalize CT result differently wether we used the built-in 
+        # We finalize CT result differently whether we used the built-in
         # squaring against the born.
         if matrix_element.get('processes')[0].get('has_born'):
             replace_dict['finalize_CT']='\n'.join([\
@@ -1562,7 +1564,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         size n_helas and place them in dedicated subroutine with name 
         <bunch_name>_i. Also setup the corresponding calls to these subroutine 
         in the replace_dict dictionary under the entry entry_name.
-        The context specified will be forwarded to the the fileWriter."""
+        The context specified will be forwarded to the fileWriter."""
         helascalls_replace_dict=copy.copy(replace_dict)
         helascalls_replace_dict['bunch_name']=bunch_name
         helascalls_files=[]
@@ -1746,7 +1748,7 @@ C               ENDIF""")%replace_dict
         else:
             toBeRepaced='loop_induced_helas_calls'
 
-        # Decide here wether we need to split the loop_matrix.f file or not.
+        # Decide here whether we need to split the loop_matrix.f file or not.
         if (not noSplit and (len(matrix_element.get_all_amplitudes())>1000)):
             file=self.split_HELASCALLS(writer,replace_dict,\
                             'helas_calls_split.inc',file,born_ct_helas_calls,\
@@ -1810,7 +1812,7 @@ C               ENDIF""")%replace_dict
                                         matrix_element.get('born_color_basis')))
         bornME.set('color_matrix',copy.deepcopy(\
                               color_amp.ColorMatrix(bornME.get('color_basis'))))
-        # This is to decide wether once to reuse old wavefunction to store new
+        # This is to decide whether once to reuse old wavefunction to store new
         # ones (provided they are not used further in the code.)
         bornME.optimization = True
         replace_dict = super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
@@ -1859,7 +1861,7 @@ C               ENDIF""")%replace_dict
 
         file = open(os.path.join(self.template_dir,\
                         'mp_born_amps_and_wfs.inc')).read()   
-        # Decide here wether we need to split the loop_matrix.f file or not.
+        # Decide here whether we need to split the loop_matrix.f file or not.
         if (not noSplit and (len(matrix_element.get_all_amplitudes())>2000)):
             file=self.split_HELASCALLS(writer,replace_dict,\
                             'mp_helas_calls_split.inc',file,\
@@ -1887,7 +1889,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
        the loop numerators as polynomial to render its evaluations faster."""
 
     template_dir=os.path.join(_file_path,'iolibs/template_files/loop_optimized')
-    # The option below controls wether one wants to group together in one single
+    # The option below controls whether one wants to group together in one single
     # CutTools/TIR call the loops with same denominator structure
     forbid_loop_grouping = False
     
@@ -1896,7 +1898,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     # which might also contain a version of ninja. We must therefore
     # make sure that ninja appears first in the list of -L because 
     # it is the tool for which the user is most susceptible of 
-    # using a standalone verison independent of gosam_contrib
+    # using a standalone version independent of gosam_contrib
     all_tir=['pjfry','iregi','ninja','golem','samurai','collier']
     
     def __init__(self, dir_path = "", opt=None):
@@ -2020,7 +2022,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         writers.MakefileWriter(MadLoop_makefile_definitions),
                                 link_tir_libs,tir_libs, tir_include=tir_include)
 
-        # Finally overwrite MadLoopCommons.f now that we know the availibility of
+        # Finally overwrite MadLoopCommons.f now that we know the availability of
         # COLLIER.
         MadLoopCommon = open(os.path.join(self.loop_dir,'StandAlone', 
                                     "SubProcesses","MadLoopCommons.inc")).read()
@@ -2312,7 +2314,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     def set_optimized_output_specific_replace_dict_entries(self, matrix_element):
         """ Specify the entries of the replacement dictionary which are specific
         to the optimized output and only relevant to it (the more general entries
-        are set in the the mother class LoopProcessExporterFortranSA."""
+        are set in the mother class LoopProcessExporterFortranSA."""
         
         max_loop_rank=matrix_element.get_max_loop_rank()
         matrix_element.rep_dict['maxrank']=max_loop_rank
@@ -2461,7 +2463,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         # First write GOLEM_interface which interfaces MG5 with TIR.
         replace_dict=copy.copy(matrix_element.rep_dict)
         
-        # We finalize TIR result differently wether we used the built-in 
+        # We finalize TIR result differently whether we used the built-in
         # squaring against the born.
         if not self.get_context(matrix_element)['AmplitudeReduction']:
             replace_dict['loop_induced_sqsoindex']=',SQSOINDEX'
@@ -2592,7 +2594,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 # is larger than the one of the loop coef and none of them is
                 # zero. This never happens in renormalizable theories but it
                 # can happen in the HEFT ones or other effective ones. In this
-                # case the typicaly use of this routine if for the product
+                # case the typically use of this routine if for the product
                 # loop_rank_1 x vertex_rank_2
                 subroutines.append(poly_writer.write_compact_wl_updater(\
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))
@@ -2853,7 +2855,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         different maximum loop vertex rank have to be output together, then
         the file 'coef.inc' in the HELAS Source folder must contain the overall
         maximum of these quantities. It is not safe though, and the user has 
-        been appropriatly warned at the output stage """
+        been appropriately warned at the output stage """
         
         # Remove the existing link
         coef_specs_path=os.path.join(self.dir_path,'Source','DHELAS',\
@@ -2950,7 +2952,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                              
     def write_tir_cache_size_include(self, writer):
         """Write the file 'tir_cache_size.inc' which sets the size of the TIR
-        cache the the user wishes to employ and the default value for it.
+        cache the user wishes to employ and the default value for it.
         This can have an impact on MadLoop speed when using stability checks
         but also impacts in a non-negligible way MadLoop's memory footprint.
         It is therefore important that the user can chose its size."""
@@ -3322,7 +3324,7 @@ class LoopInducedExporterME(LoopProcessOptimizedExporterFortranSA):
         
     def write_tir_cache_size_include(self, writer):
         """Write the file 'tir_cache_size.inc' which sets the size of the TIR
-        cache the the user wishes to employ and the default value for it.
+        cache the user wishes to employ and the default value for it.
         This can have an impact on MadLoop speed when using stability checks
         but also impacts in a non-negligible way MadLoop's memory footprint.
         It is therefore important that the user can chose its size."""
@@ -3444,7 +3446,7 @@ class LoopInducedExporterME(LoopProcessOptimizedExporterFortranSA):
         """Make sure the function is implemented in the daughters"""
 
         raise NotImplemented('The function get_amp2_lines must be called in '+\
-                                       ' the daugthers of LoopInducedExporterME')
+                                       ' the daughters of LoopInducedExporterME')
 
 #===============================================================================
 # LoopInducedExporterMEGroup
@@ -3475,7 +3477,7 @@ class LoopInducedExporterMEGroup(LoopInducedExporterME,
         # Call specifically the necessary building functions for the mixed
         # template setup for both MadEvent and MadLoop standalone
         
-        # Start witht the MadEvent one
+        # Start with the MadEvent one
         export_v4.ProcessExporterFortranMEGroup.copy_template(self,*args,**opts)
 
         # Then the MadLoop-standalone related one
@@ -3500,7 +3502,7 @@ class LoopInducedExporterMEGroup(LoopInducedExporterME,
         fsock.close()
 
         
-        # And the finilize from LoopInducedExporterME which essentially takes
+        # And the finalize from LoopInducedExporterME which essentially takes
         # care of MadLoop virtuals initialization
         LoopInducedExporterME.finalize(self,*args,**opts)
         
@@ -3656,7 +3658,7 @@ class LoopInducedExporterMENoGroup(LoopInducedExporterME,
         # Call specifically the necessary building functions for the mixed
         # template setup for both MadEvent and MadLoop standalone
         
-        # Start witht the MadEvent one
+        # Start with the MadEvent one
         export_v4.ProcessExporterFortranME.copy_template(self,*args,**opts)
 
         # Then the MadLoop-standalone related one

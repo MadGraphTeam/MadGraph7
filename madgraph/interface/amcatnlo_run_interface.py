@@ -57,7 +57,7 @@ sys.path.insert(0, os.path.join(root_path,'bin'))
 
 __maxint__ = 2**31 - 1
 
-# usefull shortcut
+# useful shortcut
 pjoin = os.path.join
 # Special logger for the Cmd Interface
 logger = logging.getLogger('madgraph.stdout') # -> stdout
@@ -104,7 +104,7 @@ class aMCatNLOError(Exception):
 
 
 def compile_dir(*arguments):
-    """compile the direcory p_dir
+    """compile the directory p_dir
     arguments is the tuple (me_dir, p_dir, mode, options, tests, exe, run_mode)
     this function needs not to be a class method in order to do
     the compilation on multicore"""
@@ -146,12 +146,24 @@ def compile_dir(*arguments):
                 tf.close()
             
         if not options['reweightonly']:
+            # Publish the compiled setting only after both binaries and their
+            # channel catalogues are ready. A failed rebuild must not permit
+            # --nocompile to reuse an executable with stale channel metadata.
+            has_real_channels = os.path.exists(pjoin(this_dir, 'real_channels.inc'))
+            marker = pjoin(this_dir, 'real_channels_x0.dat')
+            executable_marker = pjoin(this_dir, exe + '.real_channels_x0.dat')
+            if has_real_channels:
+                for path in (marker, executable_marker):
+                    with open(path, 'w') as stream:
+                        stream.write('compilation incomplete\n')
             misc.compile(['gensym'], cwd=this_dir, job_specs = False)
+            #compile madevent_mintMC/mintFO
+            misc.compile([exe], cwd=this_dir, job_specs = False)
             misc.call(['./gensym', mode],cwd= this_dir,
                      stdout=open(pjoin(this_dir, 'gensym.log'), 'w'),
                      close_fds=True) 
-            #compile madevent_mintMC/mintFO
-            misc.compile([exe], cwd=this_dir, job_specs = False)
+            if has_real_channels:
+                shutil.copyfile(marker, executable_marker)
         if mode in ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO']:
             misc.compile(['reweight_xsec_events'], cwd=this_dir, job_specs = False)
 
@@ -321,7 +333,7 @@ class CmdExtended(common_run.CommonRunCmd):
         return self.history_header % misc.get_time_info()
     
     def stop_on_keyboard_stop(self):
-        """action to perform to close nicely on a keyboard interupt"""
+        """action to perform to close nicely on a keyboard interrupt"""
         try:
             if hasattr(self, 'cluster'):
                 logger.info('rm jobs on queue')
@@ -400,7 +412,7 @@ class HelpToCmd(object):
         _compile_parser.print_help()
 
     def help_generate_events(self):
-        """help for generate_events commandi
+        """help for generate_events command
         just call help_launch"""
         _generate_events_parser.print_help()
 
@@ -451,7 +463,7 @@ class CheckValidForCmd(object):
             self.help_shower()
             raise self.InvalidCmd('Invalid syntax, please specify the run name')
         if not os.path.isdir(pjoin(self.me_dir, 'Events', args[0])):
-            raise self.InvalidCmd('Directory %s does not exists' % \
+            raise self.InvalidCmd('Directory %s does not exist' % \
                             pjoin(os.getcwd(), 'Events',  args[0]))
 
         self.set_run_name(args[0], level= 'shower')
@@ -833,7 +845,7 @@ class CompleteForCmd(CheckValidForCmd):
 
     def complete_generate_events(self, text, line, begidx, endidx):
         """auto-completion for generate_events command
-        call the compeltion for launch"""
+        call the completion for launch"""
         self.complete_launch(text, line, begidx, endidx)
 
 
@@ -953,7 +965,7 @@ class AskRunNLO(cmd.ControlSwitch):
         if os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libstdhep.a'))):
             self.available_module.add('StdHEP')
 #
-#   shorcut
+#   shortcut
 #
     def ans_lo(self, value):
         """ function called if the user type lo=value. or lo (then value is None)"""
@@ -1261,7 +1273,7 @@ class AskRunNLO(cmd.ControlSwitch):
         return None
     
     def get_cardcmd_for_shower(self, value):
-        """ adpat run_card according to this setup. return list of cmd to run"""
+        """ adapt run_card according to this setup. return list of cmd to run"""
         
         if value != 'OFF':
             return  ['set parton_shower %s' % self.switch['shower']]
@@ -1372,7 +1384,7 @@ class AskRunNLO(cmd.ControlSwitch):
             self.switch['reweight'] = 'Not Avail'      
             
     def get_cardcmd_for_reweight(self, value):
-        """ adpat run_card according to this setup. return list of cmd to run"""
+        """ adapt run_card according to this setup. return list of cmd to run"""
         
         if value == 'LO':
             return ["edit reweight_card --replace_line='change mode' --before_line='launch' change mode LO"]
@@ -1598,7 +1610,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         """Main commands: launch the full chain 
         options and args are relevant if the function is called from other 
         functions, such as generate_events or calculate_xsect
-        mode gives the list of switch needed for the computation (usefull for banner_run)
+        mode gives the list of switch needed for the computation (useful for banner_run)
         """
 
         if not argss and not options:
@@ -1667,12 +1679,12 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         if False:# self.param_card_iterator:
             cpath = pjoin(self.me_dir,'Cards','param_card.dat')
             param_card_iterator = self.param_card_iterator
-            self.param_card_iterator = [] #avoid to next generate go trough here
+            self.param_card_iterator = [] #avoid to next generate go through here
             param_card_iterator.store_entry(self.run_name, self.results.current['cross'],
                                             error=self.results.current['error'],
                                             param_card_path=cpath)
             orig_name = self.run_name
-            #go trough the scan
+            #go through the scan
             with misc.TMP_variable(self, 'allow_notification_center', False):
                 for i,card in enumerate(param_card_iterator):
                     card.write(cpath)
@@ -1971,7 +1983,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
 
     def write_orders_tag_info(self):
-        """Collects the informations on the orders_tag variable from the 
+        """Collects the information on the orders_tag variable from the
         different channels and writes a file, linked to the P0 dirs
         """
         log = pjoin(self.me_dir, 'Events', self.run_name, 'alllogs_0.html')
@@ -1982,7 +1994,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             tag = int(l.split()[1])
             if not tag in orderstags:
                 orderstags.append(tag)
-        # now write a fortran include file with all the informations
+        # now write a fortran include file with all the information
         content = '%d\n' % len(orderstags)
         content+= '%s\n' % ' '.join(['%d' % v for v in orderstags])
         outfile = open(pjoin(self.me_dir, 'SubProcesses', 'orderstags_glob.dat'), 'w')
@@ -2001,10 +2013,85 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         return
 
 
+    @staticmethod
+    def effective_real_channels_x0(value):
+        """Use a single value for all settings that disable real channels."""
+        return value if 0.0 < value < 1.0 else -1.0
+
+    def check_real_channels_mode(self,mode):
+        """Real-diagram channels are supported only for ordinary fixed-order NLO.
+        The run_card of a process can enable them by default (chosen at output),
+        so they are switched off, not refused, for the other modes."""
+        value = self.run_card['real_channels_x0'] if 'real_channels_x0' in self.run_card else -1.0
+        x0 = self.effective_real_channels_x0(value)
+        if x0 > 0 and (mode != 'NLO' or self.run_card['ickkw'] != 0):
+            logger.info('real_channels_x0 = %s ignored: the real-emission integration '
+                        'channels are only used for fixed-order NLO with ickkw=0.' % value)
+            # before the run_card.inc is written: the executable and the
+            # channel lists of this run are built without them
+            self.run_card['real_channels_x0'] = -1.0
+            x0 = -1.0
+        return x0
+
+    def check_real_channels_restart(self,jobs,x0):
+        """Do not reuse adaptive grids made for a different real-emission split."""
+        for job in jobs:
+            saved = self.effective_real_channels_x0(job.get('real_channels_x0', -1.0))
+            kind = job.get('channel_type', 0)
+            if saved != x0:
+                raise aMCatNLOError('Cannot restart with a different real_channels_x0 '
+                                    'setting. Start a fresh integration to rebuild the grids.')
+            if kind not in (0, 1) or (kind == 1 and saved < 0):
+                raise aMCatNLOError('Invalid real-channel metadata in saved job status.')
+            job['channel_type'] = kind
+            job['real_channels_x0'] = saved
+
+    def check_real_channels_nocompile(self,p_dirs,exe='madevent_mintFO'):
+        """Keep job construction consistent with the setting in existing binaries."""
+        requested_x0 = self.run_card['real_channels_x0'] if 'real_channels_x0' in self.run_card else -1.0
+        requested_x0 = self.effective_real_channels_x0(requested_x0)
+        for p_dir in p_dirs:
+            # The catalogue and selected executable can come from different
+            # builds when switching between fixed order and MC@NLO.
+            for filename in ('real_channels_x0.dat', exe + '.real_channels_x0.dat'):
+                path = pjoin(self.me_dir, 'SubProcesses', p_dir, filename)
+                compiled_x0 = -1.0
+                try:
+                    with open(path) as stream:
+                        compiled_x0 = float(stream.read().strip().lower().replace('d', 'e'))
+                    if not math.isfinite(compiled_x0):
+                        raise ValueError('Non-finite compiled setting')
+                except FileNotFoundError:
+                    # Processes generated before this feature have no markers
+                    # and can only be reused with real channels disabled.
+                    pass
+                except (OSError, ValueError):
+                    raise self.InvalidCmd('Cannot determine the compiled real_channels_x0 '
+                                          'setting in %s. Rerun without --nocompile.' % p_dir)
+                if self.effective_real_channels_x0(compiled_x0) != requested_x0:
+                    raise self.InvalidCmd('real_channels_x0 differs from the compiled setting '
+                                          'in %s. Rerun without --nocompile to update the '
+                                          'executable and integration channels.' % p_dir)
+
+    @staticmethod
+    def fixed_order_job_identity(job):
+        """A split job belongs to one subprocess, channel group and channel kind."""
+        return job['p_dir'], job['channel'], job.get('channel_type', 0)
+
+    def check_fixed_order_job_group(self,jobs):
+        """Check channel identities before summing jobs or touching their grids."""
+        identities = {(self.fixed_order_job_identity(job), job.get('configs'),
+                       self.effective_real_channels_x0(job.get('real_channels_x0', -1.0)))
+                      for job in jobs}
+        if len(identities) != 1:
+            raise aMCatNLOError('Cannot combine fixed-order jobs with different channels, '
+                                'channel types or real_channels_x0 settings.')
+
     def create_jobs_to_run(self,options,p_dirs,req_acc,run_mode,\
                            integration_step,mode,fixed_order=True):
         """Creates a list of dictionaries with all the jobs to be run"""
         jobs_to_run=[]
+        real_channels_x0 = self.check_real_channels_mode(mode)
         if not options['only_generation']:
             # Fresh, new run. Check all the P*/channels.txt files
             # (created by the 'gensym' executable) to set-up all the
@@ -2019,18 +2106,37 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                     logger.warning('No integration channels found for contribution %s (too large masses/low energy?)' % p_dir)
                     continue
                 if fixed_order:
-                    lch=len(channels)
+                    channel_groups = [(0, channels)]
+                    if real_channels_x0 > 0 and run_mode[:4] not in ('born', 'bovi', 'bosk') \
+                            and not run_mode.startswith('vi'):
+                        hard_file = pjoin(self.me_dir,'SubProcesses',p_dir,'channels_hard.txt')
+                        try:
+                            with open(hard_file) as chan_file:
+                                hard_channels = chan_file.read().split()
+                        except IOError:
+                            raise aMCatNLOError('Missing hard real-emission channel list %s. '
+                                                'Recompile this process before running.' % hard_file)
+                        channel_groups.append((1, hard_channels))
                     maxchannels=20    # combine up to 20 channels in a single job
-                    njobs=(int(lch/maxchannels)+1 if lch%maxchannels!= 0 \
-                           else int(lch/maxchannels))
-                    for nj in range(1,njobs+1):
+                    grouped_channels=[]
+                    for kind, pool in channel_groups:
+                        lch=len(pool)
+                        njobs=(lch+maxchannels-1)//maxchannels
+                        for nj in range(1,njobs+1):
+                            nchans=lch//njobs + (1 if nj <= lch%njobs else 0)
+                            grouped_channels.append((kind, pool[:nchans]))
+                            del pool[:nchans]
+                        if pool:
+                            raise aMCatNLOError('"channels" is not empty %s' % pool)
+                    for nj, (kind, configs) in enumerate(grouped_channels, 1):
                         job={}
                         job['p_dir']=p_dir
                         job['p_label']=p_dir[1:].split('_')[0]
                         job['channel']=str(nj)
-                        job['nchans']=(int(lch/njobs)+1 if nj <= lch%njobs else int(lch/njobs))
-                        job['configs']=' '.join(channels[:job['nchans']])
-                        del channels[:job['nchans']]
+                        job['nchans']=len(configs)
+                        job['configs']=' '.join(configs)
+                        job['channel_type']=kind
+                        job['real_channels_x0']=real_channels_x0
                         job['split']=0
                         if req_acc == -1:
                             job['accuracy']=0
@@ -2048,8 +2154,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                         job['wgt_frac']=1.0
                         job['wgt_mult']=1.0
                         jobs_to_run.append(job)
-                    if channels:
-                        raise aMCatNLOError('"channels" is not empty %s' % channels)
                 else:
                     for channel in channels:
                         job={}
@@ -2076,6 +2180,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             except:
                 raise aMCatNLOError('Cannot reconstruct jobs from saved job status in %s' % \
                                     pjoin(self.me_dir,'SubProcesses','job_status.pkl'))
+            self.check_real_channels_restart(jobs_to_collect,real_channels_x0)
             # Update cross sections and determine which jobs to run next
             if fixed_order:
                 jobs_to_run,jobs_to_collect=self.collect_the_results(options,req_acc,jobs_to_run,
@@ -2142,6 +2247,8 @@ RUN_MODE = %(run_mode)s
 RESTART = %(mint_mode)s
 """ \
               % job
+            if job.get('channel_type', 0) == 1:
+                content = content.replace('\nCHANNEL =', '\nCHANNEL_TYPE = 1\nCHANNEL =')
         else:
             if job['mint_mode'] == 0:
                 job['fold_string']='1 1 1'
@@ -2316,8 +2423,8 @@ RESTART = %(mint_mode)s
                 job['combined']=1
                 jobs_to_run_new.append(job) # this jobs wasn't split
             elif job['split'] == 1:
-                jobgroups_to_combine.append([j for j in jobs_to_run if j['p_dir'] == job['p_dir'] and \
-                                            j['channel'] == job['channel']])
+                jobgroups_to_combine.append([j for j in jobs_to_run if \
+                    self.fixed_order_job_identity(j) == self.fixed_order_job_identity(job)])
             else:
                 continue
         for job_group in jobgroups_to_combine:
@@ -2328,6 +2435,7 @@ RESTART = %(mint_mode)s
 
     def combine_split_order_jobs(self,job_group):
         """combine the jobs in job_group and return a single summed job"""
+        self.check_fixed_order_job_group(job_group)
         # first copy one of the jobs in 'jobs'
         sum_job=copy.copy(job_group[0])
         # update the information to have a 'non-split' job:
@@ -2362,6 +2470,7 @@ RESTART = %(mint_mode)s
         """Combines the mint_grids and MC-integer grids from the split order
         jobs (fixed order only).
         """
+        self.check_fixed_order_job_group(job_group)
         files_mint_grids=[]
         files_MC_integer=[]
         location=None
@@ -2409,15 +2518,24 @@ RESTART = %(mint_mode)s
                     # they should all be identical (INTEGERS)
                     write_string = [int(round(floatgrp[0])) for floatgrp in floatgrps]
                 elif 'SPE' in action:
-                    # special: average first; sum second; average third (ALL INTEGERS)
+                    # Average points/iteration and grid hits; sum iterations.
                     write_string=[]
-                    for i,floatgrp in enumerate(floatgrps):
+                    for i,floatgrp in enumerate(floatgrps[:3]):
                         if i==0: # average number of PS points per iterations
                             write_string.append(int(sum(floatgrp)/len(floatgrp)))
-                        elif i==1: # sum te number of iterations
+                        elif i==1: # sum the number of iterations
                             write_string.append(int(sum(floatgrp)))
                         elif i==2: # average the nhits_in_grids
                             write_string.append(int(sum(floatgrp)/len(floatgrp)))
+                    if len(floatgrps) >= 5:
+                        # New MINT grids also store the conditional second
+                        # moment and its sample count. These weights exclude
+                        # wgt_mult: pool samples rather than summing moments
+                        # as for the split contributions to the integral.
+                        moment_calls = sum(floatgrps[4])
+                        moment = (sum(row[3]*row[4] for row in floatsbyfile)/moment_calls
+                                  if moment_calls else sum(floatgrps[3])/len(floatgrps[3]))
+                        write_string.extend([moment, int(moment_calls)])
                 else:
                     raise aMCatNLOError('Unknown action for combining grids: %s' % action[0])
                 to_write.append(action[0] + " " + (" ".join(str(ws) for ws in write_string)) + "\n")
@@ -2481,8 +2599,8 @@ RESTART = %(mint_mode)s
             # remove current job from jobs_to_collect. Make sure
             # to remove all the split ones in case the original
             # job had been a split one (before it was re-combined)
-            for j in [j for j in jobs_to_collect_new if j['p_dir'] == job['p_dir'] and \
-                                j['channel'] == job['channel']]:
+            for j in [j for j in jobs_to_collect_new if \
+                    self.fixed_order_job_identity(j) == self.fixed_order_job_identity(job)]:
                 jobs_to_collect_new.remove(j)
             time_expected=job['time_spend']*(job['niters']*job['npoints'])/  \
                            (job['niters_done']*job['npoints_done'])
@@ -2589,7 +2707,7 @@ RESTART = %(mint_mode)s
                     raise aMCatNLOError('Cannot determine number of iterations and PS points '+
                                         'for integration step %i' % step )
             elif ( req_acc > 0 and err/abs(tot) > req_acc*1.2 ) or step <= 0:
-                req_accABS=req_acc*abs(tot)/totABS # overal relative required accuracy on ABS Xsec.
+                req_accABS=req_acc*abs(tot)/totABS # overall relative required accuracy on ABS Xsec.
                 for job in jobs:
                     # skip jobs with 0 xsec
                     if job['resultABS'] == 0.:
@@ -3379,7 +3497,7 @@ RESTART = %(mint_mode)s
         # Recuperate the fraction of unstable PS points found in the runs for
         # the virtuals
         UPS_stat_finder = re.compile(
-             r"Satistics from MadLoop:.*"+\
+             r"(?:Statistics|Satistics) from MadLoop:.*"+\
              r"Total points tried\:\s+(?P<ntot>\d+).*"+\
              r"Stability unknown\:\s+(?P<nsun>\d+).*"+\
              r"Stable PS point\:\s+(?P<nsps>\d+).*"+\
@@ -3563,7 +3681,7 @@ RESTART = %(mint_mode)s
             except KeyError:
                     relevant_log_GV_files.append(log_file)
         
-        # Now we want to use the latest occurence of accumulated result in the log file
+        # Now we want to use the latest occurrence of accumulated result in the log file
         for gv_log in relevant_log_GV_files:
             logfile=open(gv_log,'r')
             log = logfile.read()
@@ -3642,7 +3760,7 @@ RESTART = %(mint_mode)s
             tmpStr = '\n    Max. MC err. on virt ratio from grids  %.1f %% (%s)'\
                                   %tuple(stats['virt_stats']['v_ratio_err_max'])
             debug_msg += tmpStr
-            # After all it was decided that it is better not to alarm the user unecessarily
+            # After all it was decided that it is better not to alarm the user unnecessarily
             # with such printout of the statistics.
 #            if stats['virt_stats']['v_ratio_err_max'][0]>100.0 or \
 #                                stats['virt_stats']['v_ratio_err_max'][0]>100.0:
@@ -3734,11 +3852,11 @@ RESTART = %(mint_mode)s
                                              (TimeList[0][0],TimeList[0][1])
 
         # =============================     
-        # == log file eror detection ==
+        # == log file error detection ==
         # =============================
         
         # Find the number of potential errors found in all log files
-        # This re is a simple match on a case-insensitve 'error' but there is 
+        # This re is a simple match on a case-insensitive 'error' but there is
         # also some veto added for excluding the sentence 
         #  "See Section 6 of paper for error calculation."
         # which appear in the header of lhapdf in the logs.
@@ -4468,7 +4586,7 @@ RESTART = %(mint_mode)s
         self.run_tag = self.run_card['run_tag']
 
         # Return the tag of the previous run having the required data for this
-        # tag/run to working wel.
+        # tag/run to working well.
         if level == 'parton':
             return
         elif level == 'pythia':
@@ -4694,7 +4812,7 @@ RESTART = %(mint_mode)s
             # as was used for the event generation. However, for the
             # event generation, LHAPDF was not used, so non-trivial to
             # see if if LHAPDF is available with the corresponding PDF
-            # set. If not found, give a warning and use build-in PDF
+            # set. If not found, give a warning and use built-in PDF
             # set instead.
             try:
                 lhapdfpath = subprocess.Popen([self.options['lhapdf'], '--prefix'], 
@@ -4741,11 +4859,11 @@ RESTART = %(mint_mode)s
 
     def run_reweight(self, only):
         """runs the reweight_xsec_events executables on each sub-event file generated
-        to compute on the fly scale and/or PDF uncertainities"""
+        to compute on the fly scale and/or PDF uncertainties"""
         logger.info('   Doing reweight')
         with open(pjoin(self.me_dir, 'SubProcesses', 'nevents_unweighted')) as file:
             lines = file.read().split('\n')
-        # loop over lines (all but the last one whith is empty) and check that the
+        # loop over lines (all but the last one with is empty) and check that the
         #  number of events is not 0
         evt_files = [line.split()[0] for line in lines[:-1] if line.split()[1] != '0']
         evt_wghts = [float(line.split()[3]) for line in lines[:-1] if line.split()[1] != '0']
@@ -5018,7 +5136,7 @@ RESTART = %(mint_mode)s
                              input_files=input_files, output_files=output_files,
                              required_output=required_output)
 
-#                # keep track of folders and arguments for splitted evt gen
+#                # keep track of folders and arguments for split evt gen
 #                subfolder=output_files[-1].split('/')[0]
 #                if len(args) == 4 and '_' in subfolder:
 #                    self.split_folders[pjoin(cwd,subfolder)] = [exe] + args
@@ -5178,7 +5296,7 @@ RESTART = %(mint_mode)s
     def activate_Pythia8_compilation(self, mode, options):
         """ Overwrite the files 'pythia8_control_setup.inc' and 'pythia8_opts' 
         # according to the interface options. If pythia_path is not specified, pythia8 will be considered
-        # as unavaialable and dummy entries will be filled in. Otherwise, these files will be set accordingly. """
+        # as unavailable and dummy entries will be filled in. Otherwise, these files will be set accordingly. """
         # Also write dummies if we do fixed-order for now
         if mode in ['NLO', 'LO'] or not self.run_card['mcatnlo_delta'] :
             # Write dummy entries
@@ -5193,7 +5311,7 @@ PYTHIA8LINKLIBS=""")
             if not self.options['pythia8_path']:
                 raise aMCatNLOError('Cannot find Pythia8 path in configuration file')
             os.environ["PYTHIA8DATA"] = pjoin(self.options['pythia8_path'], 'share/Pythia8/xmldoc')
-            # Write entries accoridng to the pythia8_path
+            # Write entries according to the pythia8_path
             # Probably need to do something a bit more careful to asses when '-lz' really is necessary
             open(pjoin(self.me_dir, 'SubProcesses', 'pythia8_opts'),'w').write(
 """PYTHIA8INCLUDE=-I%(pythia8_prefix)s/include
@@ -5397,7 +5515,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
 
         # Overwrite the files 'pythia8_control_setup.inc' and 'pythia8_opts' 
         # according to the interface options. If pythia_path is not specified, pythia8 will be considered
-        # as unavaialable and dummy entries will be filled in. Otherwise, these files will be set accordingly. 
+        # as unavailable and dummy entries will be filled in. Otherwise, these files will be set accordingly.
         self.activate_Pythia8_compilation(mode, options)
 
         #directory where to compile exe
@@ -5408,6 +5526,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         # If they exists, return
         if all([os.path.exists(pjoin(self.me_dir, 'SubProcesses', p_dir, exe)) \
                 for p_dir in p_dirs]) and options['nocompile']:
+            self.check_real_channels_nocompile(p_dirs,exe)
             return
 
         # rm links to lhapdflib/ PDFsets if exist
@@ -5433,7 +5552,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                 raise aMCatNLOError('Usage of LHAPDF with dressed-lepton collisions not possible')
 
             elif self.run_card['pdlabel'].startswith('emela'):
-                logger.warning('For informations on the simulation of leptonic collisions at NLO accuracy')
+                logger.warning('For information on the simulation of leptonic collisions at NLO accuracy')
                 logger.warning('please refer to arXiv:2207.03265 and to the FAQ')
                 logger.warning('https://answers.launchpad.net/mg5amcnlo/+faq/3324')
 
@@ -5594,7 +5713,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5622,7 +5742,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
@@ -5859,6 +5980,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
 
         if not mode =='onlyshower':
             self.run_card = self.banner.charge_card('run_card')
+            self.check_real_channels_mode(mode)
             self.run_tag = self.run_card['run_tag']
             #this is if the user did not provide a name for the current run
             if not hasattr(self, 'run_name') or not self.run_name:
