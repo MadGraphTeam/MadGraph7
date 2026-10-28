@@ -519,3 +519,37 @@ def test_nightly_jobs_cover_the_tier_within_the_budget(manifest):
     files = sorted(p.name for p in (root / "tests" / "unit").glob(
         "test_loop_v2_mqcd_nightly*.py"))  # fmt: skip
     assert files == sorted(Path(job["file"]).name for job in jobs)
+
+
+def test_ckm_relations_name_a_twin_and_model_entries(rows):
+    """PLAN §4.1: the H rows replace a second provider with the exact
+    CKM-factor relation to a diagonal twin."""
+
+    related = {name for name, row in rows.items() if row.ckm_relation}
+    assert {"H01", "H02"} <= related
+    for name in related:
+        relation = rows[name].ckm_relation
+        assert relation["twin_process"] != rows[name].process, name
+        assert relation["numerator"] and relation["denominator"], name
+
+
+def test_ckm_relation_rule():
+    relation = {"twin_process": "u d~ > w+ g", "numerator": ["CKM1x2"]}
+    row = _row(ckm_relation={**relation, "denominator": ["CKM1x1"]})
+    factor = Decimal("0.0535")
+    twin = _point("double-double", "2.5", ("1.5", "-0.75", "-0.25"))
+    exact = _point(
+        "double-double",
+        str(factor * Decimal("2.5")),
+        tuple(str(factor * Decimal(x)) for x in ("1.5", "-0.75", "-0.25")),
+    )
+    checks = mqcd.rule_ckm(row, 0, exact, twin, factor)
+    assert len(checks) == 4 and all(c.passed for c in checks)
+    off = _point(
+        "double-double",
+        str(factor * Decimal("2.5")),
+        (str(factor * Decimal("1.5") * (1 + Decimal("1e-23"))), *(
+            str(factor * Decimal(x)) for x in ("-0.75", "-0.25"))),
+    )  # fmt: skip
+    failed = [c for c in mqcd.rule_ckm(row, 0, off, twin, factor) if not c.passed]
+    assert [(c.coefficient, c.rule) for c in failed] == [("finite", "ckm")]

@@ -5603,7 +5603,16 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "ckm_relation": {
+    "twin_process": "u d~ > w+ g",
+    "numerator": [
+     "CKM1x2"
+    ],
+    "denominator": [
+     "CKM1x1"
+    ]
+   }
   },
   {
    "id": "H02",
@@ -5672,6 +5681,15 @@
    "pending": {
     "waits_for": "MQ-5F",
     "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
+   },
+   "ckm_relation": {
+    "twin_process": "g b > t w-",
+    "numerator": [
+     "CKM3x2"
+    ],
+    "denominator": [
+     "CKM3x3"
+    ]
    }
   },
   {
