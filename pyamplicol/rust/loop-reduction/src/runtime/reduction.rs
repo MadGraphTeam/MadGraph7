@@ -268,7 +268,7 @@ enum Plans {
 /// the fast path's snap sets to zero as before, and an external leg's
 /// squared mass is not given at all. Such a call routes on the given squared
 /// masses alone: a lane with a light squared mass is refused with
-/// [`LIGHT_MASS_NEEDS_INVARIANTS`] (rounded invariants cannot resolve so
+/// [`light_mass_needs_invariants`] (rounded invariants cannot resolve so
 /// light a mass: a formed `p² ≈ 0` may stand for a massless leg or for one
 /// of that mass), every other lane keeps the fast path. Every lane neither
 /// routed nor refused, and every call without such a lane, keeps the fast
@@ -285,13 +285,19 @@ struct FastPlan {
 }
 
 /// The status of a lane of a legacy binary64 fast plan that carries a squared
-/// mass in `(0, 1e-9)` while the call gives no invariant matrix
-/// ([`FastPlan`]): binary64 invariants formed from rounded shifts cannot
-/// resolve so light a mass. Pass the exact invariants (`s_matrix`), or use
-/// double-double or arbitrary precision.
-pub const LIGHT_MASS_NEEDS_INVARIANTS: &str = "InvalidInput(a squared mass below the binary64 fast \
-     path's absolute threshold 1e-9 needs the exact invariant matrix, which invariants formed from \
-     the rounded shifts cannot replace; pass s_matrix, or use double-double or arbitrary precision)";
+/// mass in `(0, threshold)` while the call gives no invariant matrix
+/// ([`FastPlan`]; `threshold` is the plan's, [`fast_engine_threshold`]):
+/// binary64 invariants formed from rounded shifts cannot resolve so light a
+/// mass. Pass the exact invariants (`s_matrix`), or use double-double or
+/// arbitrary precision. The message names the threshold the rule compared
+/// with (`1e-9` on the pinned NinjaRS).
+pub fn light_mass_needs_invariants(threshold: f64) -> String {
+    format!(
+        "InvalidInput(a squared mass below the binary64 fast path's absolute threshold \
+         {threshold:e} needs the exact invariant matrix, which invariants formed from the rounded \
+         shifts cannot replace; pass s_matrix, or use double-double or arbitrary precision)"
+    )
+}
 
 /// Where a lane of [`FastPlan`] is reduced.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -300,7 +306,7 @@ enum Route {
     Fast,
     /// The generic binary64 reduction (`FastPlan::exact`).
     Exact,
-    /// Not reduced: [`LIGHT_MASS_NEEDS_INVARIANTS`].
+    /// Not reduced: [`light_mass_needs_invariants`].
     Refused,
 }
 
@@ -380,6 +386,7 @@ impl FastPlan {
         }
         let count = |wanted: Route| routes.iter().filter(|&&route| route == wanted).count();
         self.exact_lanes += count(Route::Exact) as u64;
+        let threshold = self.threshold;
         let part = |wanted: Route| {
             (
                 kept(ids, 1, &routes, wanted),
@@ -444,7 +451,7 @@ impl FastPlan {
                     Route::Exact => exact.next(),
                     Route::Refused => Some(Lane {
                         id,
-                        status: LIGHT_MASS_NEEDS_INVARIANTS.into(),
+                        status: light_mass_needs_invariants(threshold),
                         value: None,
                     }),
                 }

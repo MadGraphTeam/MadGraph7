@@ -1106,12 +1106,18 @@ fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
 /// `fast-tensor`; the default `loop.engine`) route by the same rule: light
 /// lanes give the legacy generic binary64 plan's bits with the invariant
 /// matrix, not the massless lines' integrals the snap computed, and are
-/// refused without it (`LIGHT_MASS_NEEDS_INVARIANTS`; the next test); the
+/// refused without it (`light_mass_needs_invariants`; the next test); the
 /// lanes of an ordinary family keep the fast plan's bits beside them in one
 /// call, and a call without a light lane routes nothing.
 #[test]
 fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
-    use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
+    use rusticol_loop_reduction::runtime::light_mass_needs_invariants;
+    // The refusal names the threshold the rule compares with.
+    let refused = light_mass_needs_invariants(fast_engine_threshold());
+    assert!(
+        refused.contains("absolute threshold 1e-9 needs"),
+        "{refused}"
+    );
     let light = family_lanes(&light_families(), 300, "double");
     let massless: Vec<Family> = light_families()
         .into_iter()
@@ -1153,7 +1159,7 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
                         reduced
                             .statuses()
                             .iter()
-                            .all(|(_, status)| status == LIGHT_MASS_NEEDS_INVARIANTS),
+                            .all(|(_, status)| *status == refused),
                         "family {index}, {engine}"
                     );
                     assert_eq!(reduced.successful_values().rows(), 0);
@@ -1202,13 +1208,13 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
 /// plan given the exact invariants (the massless legs on their shells); the
 /// generic plan given the rounded `p²` instead computes a slightly off-shell
 /// box (it fails or is O(1) off). A light internal line is refused
-/// (`LIGHT_MASS_NEEDS_INVARIANTS`): rounded invariants cannot resolve it;
+/// (`light_mass_needs_invariants`): rounded invariants cannot resolve it;
 /// given the exact invariants it is routed and gives the generic plan's
 /// outcome (here its binary64 C0's failure), and beside it in one call the
 /// massless lane keeps its bits.
 #[test]
 fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
-    use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
+    use rusticol_loop_reduction::runtime::light_mass_needs_invariants;
     let energy = 500_f64;
     let (theta, phi) = (1.1_f64, 0.4_f64);
     let p3 = [
@@ -1308,7 +1314,7 @@ fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
         assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
         assert_eq!(
             refused.statuses(),
-            [(12, LIGHT_MASS_NEEDS_INVARIANTS.to_string())],
+            [(12, light_mass_needs_invariants(fast_engine_threshold()))],
             "{engine}"
         );
         assert_eq!(refused.successful_values().rows(), 0);
@@ -1334,7 +1340,7 @@ fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
             mixed.statuses(),
             [
                 (11, "success".to_string()),
-                (12, LIGHT_MASS_NEEDS_INVARIANTS.to_string())
+                (12, light_mass_needs_invariants(fast_engine_threshold()))
             ],
             "{engine}"
         );

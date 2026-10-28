@@ -403,7 +403,7 @@ where
 /// `runtime::PolynomialPlan`'s fast plans route every lane that reaches them
 /// to the generic binary64 reducer (`runtime::reaches_fast_threshold`), and
 /// without the invariant matrix refuse a lane with a light squared mass
-/// (`runtime::LIGHT_MASS_NEEDS_INVARIANTS`); a direct caller does the same
+/// (`runtime::light_mass_needs_invariants`); a direct caller does the same
 /// when it needs exact-zero classification.
 pub struct FastReducer<N: FastNumerator> {
     numerator: N,

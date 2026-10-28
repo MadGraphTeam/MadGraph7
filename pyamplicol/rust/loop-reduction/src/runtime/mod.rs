@@ -29,7 +29,7 @@ pub use exact::{ExactPolynomialEvaluator, decimal_rational};
 pub use master_cache::{MasterCache, MasterStatistics};
 pub use ninjars::fast::tensor_layout::monomials as tensor_monomials;
 pub use reduction::{
-    DecimalMomentum, LIGHT_MASS_NEEDS_INVARIANTS, PolynomialPlan, RawLane, ReductionBatch,
+    DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
 pub use schedule::{CoefficientKernelCache, CoefficientPlan};
 pub use states::{
