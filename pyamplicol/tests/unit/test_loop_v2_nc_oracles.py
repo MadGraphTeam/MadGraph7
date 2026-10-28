@@ -12,12 +12,16 @@ declaration (m-qcd PLAN §3.2 MQ-NC):
 
 * (a) NJet's ``NJetNc``: the full-colour virtual of massless five-flavour
   QCD at N_c = 2, 4, 5, 6 (``tests/fixtures/loop/nc/njet_nc_scan.json``,
-  NJet 2.1.1 in double-double; ``tools/loop_reference/njet/run_njet.py run
-  --nc``) against the scan of the top-free request (top vetoed, MB = 0), Born
-  and every Laurent coefficient within 1e-10 in binary64. Both keep the
-  N_c = 3 colour average, so no correction enters. Rows A01 (g g > g g) and
-  A08 (g g > g g g); the quark rows need NJet's quark amplitudes in the
-  driver (open).
+  NJet 2.1.1; ``tools/loop_reference/njet/run_njet.py run --nc``) against
+  the scan of the top-free request (top vetoed, MB = 0), Born and every
+  Laurent coefficient within 1e-10 in binary64. Rows A01 (g g > g g) and A08
+  (g g > g g g) in NJet's direct double-double mode, whose normalisation
+  keeps the N_c = 3 colour average; rows A09 (u u~ > g g g), A12 (u u~ > d
+  d~ g) and A13 (u u~ > u u~ g) through NJet's BLHA interface (its own
+  process mapping, every point re-evaluated in double-double), whose output
+  divides by the colour average at N_c: the fixture stores it times
+  avg(N_c)/avg(3), the scan's N_c = 3 average (the same correction brings
+  BLHA's gluon rows to the direct values within 3.2e-15).
 * (c) Catani at N_c = N: the poles of the renormalised virtual against
   Catani's operator with C_A = N, C_F = (N^2-1)/(2N), beta_0 at N and the
   colour-correlated Borns at N (``loop_nc_scan``'s ``catani`` patch). The
@@ -49,7 +53,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -183,6 +187,51 @@ def _njet_errors(model, name, index, values, cache):
     return out
 
 
+def test_njet_fixture_values_carry_the_n_c_3_colour_average():
+    """The fixture's BLHA rows are NJet's raw values times avg(N_c)/avg(3)
+    (``run_njet.colour_average`` of the BLHA process line's incoming legs:
+    N_c per quark, N_c^2 - 1 per gluon); the direct rows need none."""
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_njet", ROOT / "tools/loop_reference/njet/run_njet.py"
+    )
+    run_njet = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run_njet)
+    assert run_njet.colour_average([2, -2], Fraction(2)) == 4
+    assert run_njet.colour_average([21, 21], Fraction(4)) == 225
+    assert run_njet.colour_average([21, 2], Fraction(5)) == 120
+    processes = json.loads(NJET.read_text())["processes"]
+    blha = 0
+    with localcontext() as context:
+        context.prec = 40
+        for name, entry in processes.items():
+            options = entry["provider"]["options"]
+            if options["mode"] != "blha":
+                assert "colour_average" not in entry, name
+                continue
+            blha += 1
+            legs = len(entry["points"][0])
+            initial, _ = run_njet.blha_process(options["process"], legs)
+            for n, rows in entry["nc"].items():
+                factor = run_njet.colour_average(initial, Fraction(n))
+                factor /= run_njet.colour_average(initial, Fraction(3))
+                assert Fraction(entry["colour_average"][n]["factor"]) == factor
+                scale = Decimal(factor.numerator) / Decimal(factor.denominator)
+                for row in rows:
+                    for key in COEFFICIENTS:
+                        raw = (
+                            Decimal(row["njet"][key])
+                            if factor != 1
+                            else Decimal(row[key])
+                        )
+                        assert _relative(Decimal(row[key]), raw * scale) < Decimal(
+                            "1e-30"
+                        )
+    assert blha == 3
+
+
 @pytest.mark.loop_physics
 def test_full_colour_at_other_nc_equals_njet_on_gg_gg(
     loop_sm_compiled_model, loop_native, tmp_path
@@ -208,6 +257,43 @@ def test_full_colour_at_other_nc_equals_njet_on_gg_ggg(
         loop_sm_compiled_model, "gg_ggg", index, ("2", "4", "5", "6"), tmp_path
     )
     assert max(max(row) for row in errors.values()) <= Decimal("1e-10"), errors
+
+
+# Quark rows of the fixture (m-qcd PLAN §4.2 row ids): NJet's BLHA values
+# at the N_c = 3 colour average, two massless exact points each.
+NJET_QUARK_ROWS = {"A09": "uux_ggg", "A12": "uux_ddxg", "A13": "uux_uuxg"}
+
+
+@pytest.mark.loop_physics
+def test_full_colour_at_other_nc_equals_njet_on_uux_ddxg(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """A12 at its first point, N_c = 2 and 5: the scan equals NJet's
+    (colour average corrected) within 1e-10 (measured <= 2.4e-13); with
+    four quarks and a gluon it reaches the quark-line R2 and UV counterterms
+    and the U(1)-subtraction weights at N."""
+
+    errors = _njet_errors(loop_sm_compiled_model, "uux_ddxg", 0, ("2", "5"), tmp_path)
+    assert max(max(row) for row in errors.values()) <= Decimal("1e-10"), errors
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("index", (0, 1))
+@pytest.mark.parametrize("row", sorted(NJET_QUARK_ROWS))
+def test_full_colour_at_other_nc_equals_njet_on_quark_rows(
+    loop_sm_compiled_model, loop_native, tmp_path, row, index
+):
+    """A09, A12 and A13 at two points, N_c = 2, 4, 5, 6, within 1e-10
+    (measured <= 3.5e-12, A13 point 1 at N_c = 2; the others <= 6.1e-13)."""
+
+    errors = _njet_errors(
+        loop_sm_compiled_model,
+        NJET_QUARK_ROWS[row],
+        index,
+        ("2", "4", "5", "6"),
+        tmp_path,
+    )
+    assert max(max(r) for r in errors.values()) <= Decimal("1e-10"), (row, errors)
 
 
 # ------------------------------------------------------- (c) Catani at N
