@@ -169,8 +169,12 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
 # fixture. The first three exact points of g g > u u~ u u~ are outside the
 # binary64 scope of the O1 rule (full-colour estimates 9.5e-9, 1.1e-9 and
 # 4.1e-8 above its 1e-9 cap; true binary64 errors 6.6e-9, 3.5e-10 and 7.6e-8
-# against double-double), so binary64 takes the fourth (estimate 1.9e-11,
-# true error 1.0e-12) and double-double the first.
+# against double-double), so binary64 takes the fourth and double-double the
+# first. The fourth is not within 1e-12 either: its full-colour estimate is
+# 1.87e-11, and there the binary64 sum over the N_c powers is within 1.33e-12
+# of full colour and the NLC within 1.93e-12 of its kept powers (double-double
+# at the same point: 9.1e-29 and 1.2e-28, so this is binary64 conditioning),
+# which holds only under the O1 rule (``PROJECTION_O1`` below).
 PROJECTION_SLICES = {
     "gg_uuxuux": ("g g > u u~ u u~", 4, 0, (0,) * 6, {"double": 3, "double-double": 0}),
     # Another flavour and a crossing with identical quarks on both sides
@@ -178,7 +182,11 @@ PROJECTION_SLICES = {
     "ddx_ddxg": ("d d~ > d d~ g", 3, 0, (0,) * 5, {"double": 0, "double-double": 0}),
     "ug_uuux": ("u g > u u u~", 3, 0, (0,) * 5, {"double": 0, "double-double": 0}),
 }
-PROJECTION_PHYSICS = frozenset({"uux_uuxg"})
+# The default (physics) tier runs the native double-double parts check of
+# u u~ > u u~ g; its binary64 one (the Python reference path, which the
+# legacy and artifact LC/NLC controls of the same process also cover at the
+# physics tier) and every other id are nightly.
+PROJECTION_PHYSICS = frozenset({("uux_uuxg", "double-double")})
 PROJECTION_NAMES = (
     "uux_ddxssx",
     "uux_uuxg",
@@ -190,9 +198,11 @@ PROJECTION_NAMES = (
 # Binary64 (Python reference path) and double-double (native executor): the
 # parts over the N_c powers sum to full colour and the LC (NLC) slice is the
 # sum of its kept powers within 1e-12 and 1e-24 of each sector's largest
-# Laurent coefficient. In binary64 a value whose own stability estimate E
-# exceeds 1e-12 is held to E (capped at 1e-9; the O1 rule, HANDOFF §0.5),
-# which the double-double check then holds to 1e-24. A fixture's first point
+# Laurent coefficient. In binary64 the ids of ``PROJECTION_O1``, whose point
+# is not within 1e-12, are held to their own stability estimate E (capped at
+# 1e-9; the O1 rule, HANDOFF §0.5), which the double-double check then holds
+# to 1e-24; every other binary64 id is held strictly to 1e-12 (u u~ > d d~
+# s s~ included, as at the base, where E = 1.28e-11). A fixture's first point
 # is used unless ``PROJECTION_POINTS`` names another for a carrier: the first
 # point of u u~ > u u~ u u~ is outside binary64's 1e-12 (full-colour estimate
 # 3.9e-11, true binary64 error 1.95e-12 against double-double; its parts are
@@ -200,6 +210,7 @@ PROJECTION_NAMES = (
 # takes its second (estimate 4.0e-12, true error 2.7e-13).
 PROJECTION_CARRIERS = {"double": 1e-12, "double-double": 1e-24}
 PROJECTION_POINTS = {"uux_uuxuux": {"double": 1}}
+PROJECTION_O1 = frozenset({"gg_uuxuux"})
 O1_CAP = 1e-9
 
 
@@ -313,17 +324,18 @@ class _PowerParts:
             return self.evaluate(self.unpruned)
 
 
-@pytest.mark.parametrize("carrier", list(PROJECTION_CARRIERS))
 @pytest.mark.parametrize(
-    "name",
+    ("name", "carrier"),
     [
         pytest.param(
             name,
+            carrier,
             marks=pytest.mark.loop_physics
-            if name in PROJECTION_PHYSICS
+            if (name, carrier) in PROJECTION_PHYSICS
             else pytest.mark.loop_nightly,
         )
         for name in PROJECTION_NAMES
+        for carrier in PROJECTION_CARRIERS
     ],
 )
 def test_colour_projections_are_formal_nc_projections(
@@ -349,7 +361,7 @@ def test_colour_projections_are_formal_nc_projections(
     full, degrees = build("full"), projection.degrees
     lowest = projection.lowest
     parts = projection.parts
-    if carrier == "double":
+    if carrier == "double" and name in PROJECTION_O1:
         exact = evaluate(
             full, StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
         )
@@ -641,6 +653,7 @@ GRADE_SCAN_NAMES = (
     "gg_uuxuux",
 )
 GRADE_SCAN_TOLERANCE = 1e-14
+GRADE_SCAN_PHYSICS = frozenset({"uux_uuxg"})
 
 
 def _doubled_u1_weights(dag):
@@ -719,7 +732,7 @@ def _scaling_powers(plain, doubled):
         pytest.param(
             name,
             marks=pytest.mark.loop_physics
-            if name in PROJECTION_PHYSICS
+            if name in GRADE_SCAN_PHYSICS
             else pytest.mark.loop_nightly,
         )
         for name in GRADE_SCAN_NAMES
