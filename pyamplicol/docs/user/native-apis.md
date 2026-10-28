@@ -682,7 +682,7 @@ binary64 executor described above.
 | `rusticol-config: command not found` | Activate the same environment, set `RUSTICOL_CONFIG`, or use the supported checkout-local `.venv` workflow. |
 | `rusticol.h` / `rusticol.hpp` not found | Do not invoke the compiler without the flags emitted by `rusticol-config`. |
 | Empty `RUSTICOL_RUST_SOURCE` or `RUSTICOL_FORTRAN` | Verify `rusticol-config --rust-source` / `--fortran-source` in the active environment. |
-| ``version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so)`` | The loop SDK's shared release library needs a glibc that defines `GLIBC_ABI_GNU2_TLS` (2.43 or newer, or 2.42 with the stable-branch update): build and run on such a system, or link the static archive into an executable (a shared object linking it keeps the requirement; see [Native libraries and glibc](installation.md#native-libraries-and-glibc)). |
+| ``version `GLIBC_2.38' not found (required by .../librusticol_loop_sdk.so)`` | The loop SDK's shared release library needs glibc 2.38 or newer: build and run the client on such a system, or build the SDK from source on this host (see [Native libraries and glibc](installation.md#native-libraries-and-glibc)). |
 | Target incompatibility | Use a portable JIT artifact (compiled O1/O2, or eager/recurrence/OTF from a prepared JIT O2 pack), or regenerate C++/ASM/O0/O3 on the destination target. |
 
 See [Troubleshooting](troubleshooting.md) for a fuller decision tree.

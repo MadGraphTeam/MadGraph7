@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 #ifndef RUSTICOL_VIRTUAL_HPP
 #define RUSTICOL_VIRTUAL_HPP
-// The shared library's glibc floor (2.42 with the stable-branch update that
-// defines GLIBC_ABI_GNU2_TLS, or 2.43) and the opt-in compile-time check
+// The shared library's glibc floor (2.38) and the opt-in compile-time check
 // RUSTICOL_VIRTUAL_SHARED are described in rusticol_virtual.h.
 #include "rusticol_virtual.h"
 #include <cstdint>
