@@ -31,7 +31,9 @@ wrappers) make the linked natives need ``GLIBC_ABI_GNU2_TLS``, which only
 glibc builds carrying that ABI marker define. ``gmp-mpfr-sys`` does not rebuild
 when ``CC`` changes, so a target directory whose recorded C settings
 (``pyamplicol-c-dependencies.json``) differ first drops its ``gmp-mpfr-sys``
-outputs (``cargo clean -p gmp-mpfr-sys``); its own cache is keyed by ``CC``.
+outputs (``cargo clean -p gmp-mpfr-sys``); its own cache is keyed by ``CC``,
+so the first build on a host compiles GMP from source (GMP's configure needs
+``m4`` on ``PATH``).
 ``build-info.json`` records the C settings and the glibc versions each native
 library needs (its ELF version requirements).
 
@@ -50,6 +52,7 @@ import json
 import os
 import platform
 import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -235,7 +238,13 @@ def build(
                 if filename.name in _OUTPUTS:
                     artifacts[_OUTPUTS[filename.name]] = filename
     if process.wait() != 0:
-        raise SystemExit(f"error: cargo build failed ({process.returncode})")
+        hint = ""
+        if c_settings and shutil.which("m4", path=env.get("PATH")) is None:
+            hint = (
+                "; gmp-mpfr-sys builds GMP from source when its cache has no build "
+                f"for CC={c_settings['CC']!r}, and GMP's configure needs m4 on PATH"
+            )
+        raise SystemExit(f"error: cargo build failed ({process.returncode}){hint}")
     missing = sorted(set(_OUTPUTS.values()) - set(artifacts))
     if missing:
         raise SystemExit(f"error: missing cargo outputs: {missing}")
