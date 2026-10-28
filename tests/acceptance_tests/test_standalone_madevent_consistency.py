@@ -838,7 +838,8 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         return rc == 0
 
     # The CPU branch of run_perf_mode, where the per-event flavor ids are set
-    _FLVVEC_FROM = '    std::vector<unsigned int> flvVec( nevt, flavorID );\n#endif\n'
+    # (declared ahead of the CPU/GPU buffers, which copy it to the device)
+    _FLVVEC_FROM = '    std::vector<unsigned int> flvVec( nevt, flavorID );\n'
     _FLVVEC_TO = (
         '    std::vector<unsigned int> flvVec( nevt, flavorID );\n'
         '    if( const char* mgfl = getenv( "MG_FLVLIST" ) )\n'
@@ -848,8 +849,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         '      std::string mgtok;\n'
         '      while( std::getline( mgin, mgtok, \',\' ) ) mgids.push_back( (unsigned int)std::stoul( mgtok ) );\n'
         '      for( unsigned int ievt = 0; ievt < nevt; ievt++ ) flvVec[ievt] = mgids[ievt % mgids.size()];\n'
-        '    }\n'
-        '#endif\n')
+        '    }\n')
 
     def _lift_check_sa_flavor_cap(self, pdir):
         """Patch the shipped check_sa.cc (before _build_check_sa) so that,

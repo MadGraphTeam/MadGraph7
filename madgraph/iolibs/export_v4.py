@@ -8560,7 +8560,8 @@ C       stays correct for split-order processes.
             # width itself is dropped at runtime by the ALOHA propagator, for
             # spacelike momenta only, which also holds for every crossing of
             # this matrix element (aloha.t_channel_width, set at output from
-            # zero_tchannel_width). Standalone has no fake width variable.
+            # the zerowidth_tchannel option or --zerowidth_tchannel).
+            # Standalone has no fake width variable.
             helas_calls = [call.replace(',fk_', ',') for call in helas_calls]
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)

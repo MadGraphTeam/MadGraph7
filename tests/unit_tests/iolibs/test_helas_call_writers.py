@@ -890,9 +890,10 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         (standalone_rw, standalone_msP/msF, standalone with
         --zerowidth_tchannel=True) but not for standalone. The call itself
         keeps the width: the ALOHA propagator drops it at runtime for a
-        spacelike momentum (aloha.t_channel_width, set at output from
-        zero_tchannel_width), which also holds for every crossing of the
-        matrix element, where a t-channel propagator can be an s-channel one."""
+        spacelike momentum (aloha.t_channel_width, set at output from the
+        zerowidth_tchannel option or the --zerowidth_tchannel output option),
+        which also holds for every crossing of the matrix element, where a
+        t-channel propagator can be an s-channel one."""
 
         solution =['CALL VXXXXX(P(0,1),zero,NHEL(1),-1,W(1))',
                    'CALL VXXXXX(P(0,2),wmas,NHEL(2),-1,W(2))',
