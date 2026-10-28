@@ -71,27 +71,27 @@
    ],
    [
     "1302.1262368",
-    "682.9121804724384243403023909",
-    "512.1841353543288182552267932",
-    "-967.9370340144279972656732922"
+    "682.91218047243842434030239086",
+    "512.18413535432881825522679315",
+    "-967.93703401442799726567329218"
    ],
    [
     "1396.3209607098101518867913",
-    "360.0852923919427274323948956",
+    "360.08529239194272743239489561",
     "7.15194170312387843493629462",
-    "1337.935221619661007853239163"
+    "1337.93522161966100785323916284"
    ],
    [
-    "140.1569491859411906808115696",
+    "140.15694918594119068081156963",
     "-83.04686681867104937225233457",
     "70.44986610110278320079608485",
     "-88.10172917173137632235371781"
    ],
    [
-    "1161.39585330424865743239713",
+    "1161.39585330424865743239713037",
     "-959.9506060457101024004449519",
-    "-589.7859431585554798909591726",
-    "-281.8964584335016342652121528"
+    "-589.78594315855547989095917262",
+    "-281.89645843350163426521215285"
    ]
   ],
   [
@@ -108,25 +108,25 @@
     "-1500"
    ],
    [
-    "1346.297065266666666666666667",
-    "784.8961676005387091186605698",
-    "1046.528223467384945491547426",
-    "-267.0270988454646957616399404"
+    "1346.29706526666666666666666667",
+    "784.89616760053870911866056982",
+    "1046.52822346738494549154742643",
+    "-267.02709884546469576163994037"
    ],
    [
-    "337.5933588580939185853113401",
+    "337.59335885809391858531134012",
     "-71.18410703747558042843745395",
-    "-178.7703685537783741117180132",
-    "-216.8277062035967012928444194"
+    "-178.77036855377837411171801317",
+    "-216.82770620359670129284441945"
    ],
    [
-    "1207.667574875303005431356162",
-    "-626.2305723338762946541971235",
-    "-875.6499537600681717230583932",
-    "547.2762649335085074369942114"
+    "1207.66757487530300543135616166",
+    "-626.23057233387629465419712349",
+    "-875.64995376006817172305839324",
+    "547.27626493350850743699421141"
    ],
    [
-    "108.4420009999364093166658316",
+    "108.44200099993640931666583155",
     "-87.48148822918683403602599238",
     "7.89209884646160034322897998",
     "-63.42145988444711038250985159"
@@ -147,26 +147,26 @@
    ],
    [
     "562.8466739",
-    "419.8229594007311828780170632",
-    "314.8672195505483871585127974",
-    "-107.1200034205176715294009464"
+    "419.82295940073118287801706322",
+    "314.86721955054838715851279742",
+    "-107.12000342051767152940094639"
    ],
    [
-    "402.9908215169515856437408632",
-    "189.591273402767707343083116",
-    "142.193455052075780507312337",
-    "-276.2404253848046403140137188"
+    "402.99082151695158564374086322",
+    "189.59127340276770734308311604",
+    "142.19345505207578050731233703",
+    "-276.24042538480464031401371885"
    ],
    [
-    "171.8208572788784968425818512",
-    "-120.5944326170100762053331181",
+    "171.82085727887849684258185121",
+    "-120.59443261701007620533311806",
     "54.64084624779081109072249323",
-    "-109.4151622909523213482168632"
+    "-109.41516229095232134821686316"
    ],
    [
-    "862.3416473041699175136772856",
+    "862.34164730416991751367728557",
     "-488.8198001864888140157670612",
-    "-511.7015208504149787565476277",
+    "-511.70152085041497875654762768",
     "492.7755910962746331916315284"
    ]
   ],
@@ -185,27 +185,27 @@
    ],
    [
     "1302.1262368",
-    "682.9121804724384243403023909",
-    "512.1841353543288182552267932",
-    "-967.9370340144279972656732922"
+    "682.91218047243842434030239086",
+    "512.18413535432881825522679315",
+    "-967.93703401442799726567329218"
    ],
    [
     "1396.3209607098101518867913",
-    "360.0852923919427274323948956",
+    "360.08529239194272743239489561",
     "7.15194170312387843493629462",
-    "1337.935221619661007853239163"
+    "1337.93522161966100785323916284"
    ],
    [
-    "140.1569491859411906808115696",
+    "140.15694918594119068081156963",
     "-83.04686681867104937225233457",
     "70.44986610110278320079608485",
     "-88.10172917173137632235371781"
    ],
    [
-    "1161.39585330424865743239713",
+    "1161.39585330424865743239713037",
     "-959.9506060457101024004449519",
-    "-589.7859431585554798909591726",
-    "-281.8964584335016342652121528"
+    "-589.78594315855547989095917262",
+    "-281.89645843350163426521215285"
    ]
   ]
  ],
@@ -236,6 +236,7 @@
   "family": "regular",
   "family_values": [],
   "rotation": null,
+  "madloop_qp_point": null,
   "point_labels": [
    "regular",
    "regular",
@@ -261,7 +262,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -341,7 +344,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 2.1287175741230615e-16,
+    "max_sector_double_pole_relative_error": 2.3614277868758816e-16,
+    "reason": null
+   }
   },
   {
    "born": 3.07260813158559e-10,
@@ -394,7 +408,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 0.0,
+    "max_sector_double_pole_relative_error": 0.0,
+    "reason": null
+   }
   },
   {
    "born": 2.354908527439729e-09,
@@ -447,7 +472,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 7.025161299597004e-16,
+    "max_sector_double_pole_relative_error": 7.793147997562595e-16,
+    "reason": null
+   }
   },
   {
    "born": 9.71454154614416e-10,
@@ -500,7 +536,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 2.1287175741230615e-16,
+    "max_sector_double_pole_relative_error": 2.3614277868758816e-16,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -520,7 +567,7 @@
    "provider": "madloop",
    "process_name": "gg_ttxbbx_4fs",
    "host": "itphlies",
-   "cpu": 382,
+   "cpu": null,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ttxbbx_4fs/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -649,7 +696,7 @@
      }
     ]
    },
-   "process_wall_seconds": 170.82528544799425,
+   "process_wall_seconds": 692.8169802362099,
    "split_points": {
     "jobs": 4,
     "initial_call_seconds": [
@@ -658,13 +705,19 @@
      118.186214,
      115.006144
     ],
+    "process_wall_seconds": [
+     170.82528544799425,
+     172.4390449700877,
+     176.5184643480461,
+     173.03418547008187
+    ],
     "cpus": [
      382,
      292,
      76,
      101
     ],
-    "note": "one job per point: every point is also the job's initialisation point"
+    "note": "one job per point: every point is also the job's initialisation point; process_wall_seconds is the sum over the jobs, initial_call_seconds the first job's (all jobs listed here)"
    },
    "evaluation_seconds": [
     54.9683531,
@@ -675,6 +728,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_ttxbbx_4fs",
   "process": "gg_ttxbbx_4fs",

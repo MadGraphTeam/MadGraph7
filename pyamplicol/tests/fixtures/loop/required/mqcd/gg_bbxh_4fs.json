@@ -70,21 +70,21 @@
    ],
    [
     "1250.2659008",
-    "661.5738546503375260022451721",
-    "496.180390987753144501683879",
-    "-937.6927999859921796135172313"
+    "661.57385465033752600224517207",
+    "496.18039098775314450168387905",
+    "-937.69279998599217961351723132"
    ],
    [
-    "944.1945431369901310464047427",
-    "370.693764085755657183483195",
-    "-691.3846509498735321244519039",
-    "-525.4090244642978976088033023"
+    "944.19454313699013104640474271",
+    "370.69376408575565718348319497",
+    "-691.38465094987353212445190393",
+    "-525.40902446429789760880330231"
    ],
    [
-    "1805.539556063009868953595257",
-    "-1032.267618736093183185728367",
-    "195.2042599621203876227680249",
-    "1463.101824450290077222320534"
+    "1805.53955606300986895359525729",
+    "-1032.26761873609318318572836704",
+    "195.20425996212038762276802488",
+    "1463.10182445029007722232053363"
    ]
   ],
   [
@@ -102,21 +102,21 @@
    ],
    [
     "1564.5479008",
-    "937.5503648144238617086909762",
-    "1250.067153085898482278254635",
+    "937.55036481442386170869097624",
+    "1250.06715308589848227825463499",
     "-78.22704206183573065293931486"
    ],
    [
-    "418.1012576049416519269573391",
+    "418.10125760494165192695733907",
     "43.06618775059320710959607297",
-    "-142.1757892364700971467628659",
-    "390.7914022064089229355123506"
+    "-142.17578923647009714676286593",
+    "390.79140220640892293551235065"
    ],
    [
-    "1517.350841595058348073042661",
-    "-980.6165525650170688182870492",
-    "-1107.891363849428385131491769",
-    "-312.5643601445731922825730358"
+    "1517.35084159505834807304266093",
+    "-980.61655256501706881828704921",
+    "-1107.89136384942838513149176906",
+    "-312.56436014457319228257303579"
    ]
   ],
   [
@@ -134,20 +134,20 @@
    ],
    [
     "1093.10264",
-    "834.1950564545814275560485495",
+    "834.19505645458142755604854947",
     "625.6462923409360706670364121",
-    "327.9277607061458650242937916"
+    "327.92776070614586502429379158"
    ],
    [
-    "837.819913344409475597005782",
-    "220.3528501197308973057333436",
-    "-747.4068223244386933625601206",
-    "-307.8112742955172270349835892"
+    "837.81991334440947559700578202",
+    "220.35285011973089730573334364",
+    "-747.40682232443869336256012062",
+    "-307.81127429551722703498358916"
    ],
    [
-    "1069.077446655590524402994218",
-    "-1054.547906574312324861781893",
-    "121.7605299835026226955237085",
+    "1069.07744665559052440299421798",
+    "-1054.54790657431232486178189311",
+    "121.76052998350262269552370852",
     "-20.11648641062863798931020242"
    ]
   ],
@@ -166,21 +166,21 @@
    ],
    [
     "1250.2659008",
-    "661.5738546503375260022451721",
-    "496.180390987753144501683879",
-    "-937.6927999859921796135172313"
+    "661.57385465033752600224517207",
+    "496.18039098775314450168387905",
+    "-937.69279998599217961351723132"
    ],
    [
-    "944.1945431369901310464047427",
-    "370.693764085755657183483195",
-    "-691.3846509498735321244519039",
-    "-525.4090244642978976088033023"
+    "944.19454313699013104640474271",
+    "370.69376408575565718348319497",
+    "-691.38465094987353212445190393",
+    "-525.40902446429789760880330231"
    ],
    [
-    "1805.539556063009868953595257",
-    "-1032.267618736093183185728367",
-    "195.2042599621203876227680249",
-    "1463.101824450290077222320534"
+    "1805.53955606300986895359525729",
+    "-1032.26761873609318318572836704",
+    "195.20425996212038762276802488",
+    "1463.10182445029007722232053363"
    ]
   ]
  ],
@@ -211,6 +211,7 @@
   "family": "regular",
   "family_values": [],
   "rotation": null,
+  "madloop_qp_point": null,
   "point_labels": [
    "regular",
    "regular",
@@ -236,7 +237,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -316,7 +319,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.391998380759003e-16,
+    "max_sector_double_pole_relative_error": 3.762809743637343e-16,
+    "reason": null
+   }
   },
   {
    "born": 5.785335199425406e-10,
@@ -369,7 +383,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 9.114902115869256e-15,
+    "max_sector_double_pole_relative_error": 9.120030451483231e-15,
+    "reason": null
+   }
   },
   {
    "born": 1.0871217225129455e-10,
@@ -422,7 +447,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 2.3777828744447973e-16,
+    "max_sector_double_pole_relative_error": 2.6377207663091087e-16,
+    "reason": null
+   }
   },
   {
    "born": 1.905174416423069e-11,
@@ -475,7 +511,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.391998380759003e-16,
+    "max_sector_double_pole_relative_error": 3.762809743637343e-16,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -634,6 +681,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_bbxh_4fs",
   "process": "gg_bbxh_4fs",

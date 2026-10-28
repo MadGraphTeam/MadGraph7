@@ -57,98 +57,98 @@
  "points": [
   [
    [
-    "1999.999999999999882967724289",
+    "1999.9999999999998829677242892",
     "-0.00000000000011368683772162",
     "0",
-    "1999.999999999999882967724289"
+    "1999.9999999999998829677242892"
    ],
    [
-    "2000.000000000000003345437989",
+    "2000.00000000000000334543798918",
     "0",
     "0",
-    "-2000.000000000000003345437989"
+    "-2000.00000000000000334543798918"
    ],
    [
-    "1999.999879999995528123690747",
-    "-1058.300460927802532751229592",
-    "-793.7253456958518427200033329",
-    "1499.99990999999653462898723"
+    "1999.99987999999552812369074672",
+    "-1058.30046092780253275122959167",
+    "-793.72534569585184272000333294",
+    "1499.99990999999653462898723037"
    ],
    [
-    "800.0000480000018114878912456",
-    "423.320158971905925682222005",
+    "800.00004800000181148789124563",
+    "423.32015897190592568222200498",
     "317.9143833032982229269691743",
-    "-599.7754285537955192639225679"
+    "-599.77542855379551926392256786"
    ],
    [
-    "1200.000072000002546701580286",
-    "634.9803019558964933821698651",
-    "475.8109623925536197930341586",
-    "-900.2244814462011357427783625"
+    "1200.00007200000254670158028603",
+    "634.98030195589649338216986507",
+    "475.81096239255361979303415865",
+    "-900.22448144620113574277836248"
    ]
   ],
   [
    [
-    "400.0000000000000274623311809",
+    "400.000000000000027462331180885",
     "0",
     "-0.000000000000007105427357601",
-    "400.0000000000000274623311809"
+    "400.000000000000027462331180885"
    ],
    [
-    "399.9999999999999725376688191",
+    "399.999999999999972537668819115",
     "0",
     "0",
-    "-399.9999999999999725376688191"
+    "-399.999999999999972537668819115"
    ],
    [
-    "399.9999997599999801423109602",
-    "-247.6423225670602903392136795",
-    "-93.13044609359532444159412989",
-    "-299.9999998199999686066941629"
+    "399.999999759999980142310960218",
+    "-247.642322567060290339213679545",
+    "-93.130446093595324441594129894",
+    "-299.999999819999968606694162864"
    ],
    [
-    "160.0000000960000079430756159",
-    "99.05692896738995045780029614",
-    "37.24301003296962164768046932",
-    "120.0028460410568278276453584"
+    "160.000000096000007943075615913",
+    "99.056928967389950457800296135",
+    "37.243010032969621647680469323",
+    "120.002846041056827827645358389"
    ],
    [
-    "240.0000001440000119146134239",
-    "148.5853935996703398814133834",
+    "240.000000144000011914613423869",
+    "148.585393599670339881413383409",
     "55.88743606062569568848630297",
-    "179.9971537789431957037111662"
+    "179.997153778943195703711166246"
    ]
   ],
   [
    [
-    "875.0000000000000482417497769",
+    "875.00000000000004824174977688",
     "-0.0000000000000284217094304",
     "0",
-    "875.0000000000000482417497769"
+    "875.00000000000004824174977688"
    ],
    [
-    "875.0000000000000654450879447",
+    "875.00000000000006544508794473",
     "0",
     "0",
-    "-875.0000000000000654450879447"
+    "-875.00000000000006544508794473"
    ],
    [
-    "874.9999999947500555208534934",
-    "-368.7478813476333812104712706",
-    "276.5609110107250216969987378",
-    "743.7499999955375637822190268"
+    "874.99999999475005552085349336",
+    "-368.74788134763338121047127061",
+    "276.56091101072502169699873775",
+    "743.74999999553756378221902675"
    ],
    [
     "350.0000000021000232663936913",
     "147.4991525381683459272608161",
-    "-110.6223960792559353194519645",
-    "-297.5007319111608231994805164"
+    "-110.62239607925593531945196446",
+    "-297.50073191116082319948051638"
    ],
    [
-    "525.000000003150034899590537",
+    "525.00000000315003489959053695",
     "221.2487288094650068615010241",
-    "-165.9385149314690863775467733",
-    "-446.2492680843767577860766782"
+    "-165.93851493146908637754677329",
+    "-446.24926808437675778607667822"
    ]
   ]
  ],
@@ -181,6 +181,7 @@
    "1/100000"
   ],
   "rotation": null,
+  "madloop_qp_point": "each point is MadLoop's quadruple-precision point of its binary64 rounding (ImprovePSPoint=2, ORIG method of improve_ps.f, replicated at the construction precision)",
   "point_labels": [
    "collinear 1/1000",
    "collinear 1/10000",
@@ -228,7 +229,7 @@
  "loop_quark_flavours": 6,
  "rows": [
   {
-   "born": 104.31076213787301,
+   "born": 104.31076196877657,
    "finite": -662.0976284738761,
    "single_pole": -96.75863375314397,
    "double_pole": -22.854832693367726,
@@ -239,7 +240,8 @@
      {
       "QCD": 6,
       "QED": 0,
-      "born": 104.31076213787301
+      "born": 104.31076196877657,
+      "born_binary64_input": 104.31076213787301
      }
     ],
     "loop": [
@@ -257,11 +259,12 @@
      }
     ],
     "total": {
-     "born": 104.31076213787301,
+     "born": 104.31076196877657,
      "finite": -662.0976284738761,
      "single_pole": -96.75863375314397,
      "double_pole": -22.854832693367726,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "born_binary64_input": 104.31076213787301
     }
    },
    "born_from_madloop_double_pole": 104.31076196877657,
@@ -339,10 +342,22 @@
      "single_pole": 0.00010582679089165172,
      "double_pole": 3.1869283572072476e-05
     }
+   },
+   "born_madloop_binary64_input": 104.31076213787301,
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop_double_pole_over_universal_factor",
+    "madloop_point": "published point (quadruple precision)",
+    "born_double_pole_relative_mismatch": 1.6210833352130567e-09,
+    "max_sector_double_pole_relative_error": 1.6210833272430712e-09,
+    "reason": null
    }
   },
   {
-   "born": 260838.6979444878,
+   "born": 260837.4517874149,
    "finite": -3659311.642530973,
    "single_pole": -452820.2836332733,
    "double_pole": -57150.347751751324,
@@ -353,7 +368,8 @@
      {
       "QCD": 6,
       "QED": 0,
-      "born": 260838.6979444878
+      "born": 260837.4517874149,
+      "born_binary64_input": 260838.6979444878
      }
     ],
     "loop": [
@@ -371,11 +387,12 @@
      }
     ],
     "total": {
-     "born": 260838.6979444878,
+     "born": 260837.4517874149,
      "finite": -3659311.642530973,
      "single_pole": -452820.2836332733,
      "double_pole": -57150.347751751324,
-     "accuracy": 1.258052038233576e-06
+     "accuracy": 1.258052038233576e-06,
+     "born_binary64_input": 260838.6979444878
     }
    },
    "born_from_madloop_double_pole": 260837.4517874149,
@@ -453,10 +470,22 @@
      "single_pole": 0.002009132296986364,
      "double_pole": 0.001312266278276578
     }
+   },
+   "born_madloop_binary64_input": 260838.6979444878,
+   "reference": {
+    "status": "none",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop_double_pole_over_universal_factor",
+    "madloop_point": "published point (quadruple precision)",
+    "born_double_pole_relative_mismatch": 4.777500741692694e-06,
+    "max_sector_double_pole_relative_error": 4.777500741695492e-06,
+    "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 1.3e-6) and OpenLoops differs by 4.3e-5: good to ~1e-6 at best, no reference at M-QCD accuracies"
    }
   },
   {
-   "born": 10604663.237607706,
+   "born": 10655583.38859098,
    "finite": 38869593.61992362,
    "single_pole": 16998533.212804925,
    "double_pole": -2334673.5370351495,
@@ -467,7 +496,8 @@
      {
       "QCD": 6,
       "QED": 0,
-      "born": 10604663.237607706
+      "born": 10655583.38859098,
+      "born_binary64_input": 10604663.237607706
      }
     ],
     "loop": [
@@ -485,11 +515,12 @@
      }
     ],
     "total": {
-     "born": 10604663.237607706,
+     "born": 10655583.38859098,
      "finite": 38869593.61992362,
      "single_pole": 16998533.212804925,
      "double_pole": -2334673.5370351495,
-     "accuracy": 27.92929057043538
+     "accuracy": 27.92929057043538,
+     "born_binary64_input": 10604663.237607706
     }
    },
    "born_from_madloop_double_pole": 10655583.38859098,
@@ -567,6 +598,18 @@
      "single_pole": 1.0000000683062638,
      "double_pole": 0.2762331614186148
     }
+   },
+   "born_madloop_binary64_input": 10604663.237607706,
+   "reference": {
+    "status": "none",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop_double_pole_over_universal_factor",
+    "madloop_point": "published point (quadruple precision)",
+    "born_double_pole_relative_mismatch": 0.004778729528576971,
+    "max_sector_double_pole_relative_error": 0.004778729528576955,
+    "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 28) and MadLoop, Recola and OpenLoops disagree at O(1)"
    }
   }
  ],
@@ -872,6 +915,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "uux_ggg_collinear",
   "process": "uux_ggg",
@@ -880,6 +924,17 @@
    "recola",
    "openloops"
   ],
+  "second_provider_trigger": "diagnostic outside the \u00a74.1 triggers (recorded, not a trigger): the installed ppjjj library and Recola, < 1 min per run, to test MadLoop's quadruple-precision evaluation at the S2 limit points where no other cross-check exists; it exposed MadLoop's unstable collinear theta = 1e-4, 1e-5 evaluations",
+  "point_status": {
+   "1": {
+    "status": "none",
+    "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 1.3e-6) and OpenLoops differs by 4.3e-5: good to ~1e-6 at best, no reference at M-QCD accuracies"
+   },
+   "2": {
+    "status": "none",
+    "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 28) and MadLoop, Recola and OpenLoops disagree at O(1)"
+   }
+  },
   "madloop_accuracy": 1e-20,
   "exclude_providers": {
    "recola": "COLLIER double precision fails at small opening angles (1e-4 relative at theta = 1e-3)"

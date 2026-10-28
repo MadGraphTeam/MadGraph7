@@ -774,5 +774,5 @@
     }
   },
   "timing_only_runs": {},
-  "provenance_note": "MadLoop quadruple-precision reference run (accuracy 1e-11 requested, forced stability test, return code 328 at every point) merged with the committed Recola and OpenLoops values on 2026-10-28 (package mq-ref, m-qcd/PLAN.md \u00a73.2 MQ-REF item 7); nothing was regenerated (HANDOFF \u00a70.1)."
+  "provenance_note": "MadLoop quadruple-precision reference run (accuracy 1e-11 requested, forced stability test, return code 328 at every point) merged with the committed Recola and OpenLoops values on 2026-10-28 (package mq-ref, m-qcd/PLAN.md \u00a73.2 MQ-REF item 7); nothing was regenerated (HANDOFF \u00a70.1). The MadLoop production-setting timing run that the previous fixture listed as timing_only_runs['madloop-production'] (deviations against the then Recola-primary merge) is now providers.madloop.secondary_runs.production (same timings, statuses and estimates; deviations against the MadLoop reference run), the toolkit's place for a secondary run of a merged provider."
 }

@@ -235,7 +235,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -315,7 +317,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+    "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+    "reason": null
+   }
   },
   {
    "born": 3.5337038014349506e-09,
@@ -368,7 +381,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 9.363327081541241e-16,
+    "max_sector_double_pole_relative_error": 9.623176579995868e-16,
+    "reason": null
+   }
   },
   {
    "born": 1.4927555493611866e-09,
@@ -421,7 +445,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 1.0622671842962233e-12,
+    "max_sector_double_pole_relative_error": 1.0622139833960468e-12,
+    "reason": null
+   }
   },
   {
    "born": 1.435998444902697e-09,
@@ -474,7 +509,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+    "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -494,7 +540,7 @@
    "provider": "madloop",
    "process_name": "gg_uuxuux",
    "host": "itphlies",
-   "cpu": 315,
+   "cpu": null,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_uuxuux/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -626,7 +672,7 @@
      }
     ]
    },
-   "process_wall_seconds": 265.24391432479024,
+   "process_wall_seconds": 972.8336530849338,
    "split_points": {
     "jobs": 4,
     "initial_call_seconds": [
@@ -635,13 +681,19 @@
      215.87014,
      206.481909
     ],
+    "process_wall_seconds": [
+     265.24391432479024,
+     132.1278940050397,
+     304.8897888150532,
+     270.57205594005063
+    ],
     "cpus": [
      315,
      267,
      84,
      375
     ],
-    "note": "one job per point: every point is also the job's initialisation point"
+    "note": "one job per point: every point is also the job's initialisation point; process_wall_seconds is the sum over the jobs, initial_call_seconds the first job's (all jobs listed here)"
    },
    "evaluation_seconds": [
     61.9806135,
@@ -652,6 +704,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_uuxuux",
   "process": "gg_uuxuux",

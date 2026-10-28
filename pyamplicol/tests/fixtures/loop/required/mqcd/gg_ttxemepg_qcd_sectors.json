@@ -245,7 +245,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -325,7 +327,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 4.667660637101182e-15,
+    "max_sector_double_pole_relative_error": 4.694653526147732e-15,
+    "reason": null
+   }
   },
   {
    "born": 2.1370683147379555e-16,
@@ -378,7 +391,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 2.8838459582864727e-15,
+    "max_sector_double_pole_relative_error": 2.9005231205807123e-15,
+    "reason": null
+   }
   },
   {
    "born": 5.705259996600786e-15,
@@ -431,7 +455,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 8.296143268047563e-16,
+    "max_sector_double_pole_relative_error": 8.180509335852682e-16,
+    "reason": null
+   }
   },
   {
    "born": 6.60178224296382e-17,
@@ -484,7 +519,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 4.667660637101182e-15,
+    "max_sector_double_pole_relative_error": 4.694653526147732e-15,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -504,7 +550,7 @@
    "provider": "madloop",
    "process_name": "gg_ttxemepg_qcd",
    "host": "itphlies",
-   "cpu": 262,
+   "cpu": null,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ttxemepg_qcd_sectors/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -627,7 +673,7 @@
      }
     ]
    },
-   "process_wall_seconds": 1125.6545396030415,
+   "process_wall_seconds": 7315.972803843208,
    "split_points": {
     "jobs": 4,
     "initial_call_seconds": [
@@ -636,13 +682,19 @@
      1723.34538,
      1933.81055
     ],
+    "process_wall_seconds": [
+     1125.6545396030415,
+     2052.5450478978455,
+     1952.8720257522073,
+     2184.9011905901134
+    ],
     "cpus": [
      262,
      343,
      280,
      73
     ],
-    "note": "one job per point: every point is also the job's initialisation point"
+    "note": "one job per point: every point is also the job's initialisation point; process_wall_seconds is the sum over the jobs, initial_call_seconds the first job's (all jobs listed here)"
    },
    "evaluation_seconds": [
     317.444495,
@@ -653,6 +705,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_ttxemepg_qcd_sectors",
   "process": "gg_ttxemepg_qcd",

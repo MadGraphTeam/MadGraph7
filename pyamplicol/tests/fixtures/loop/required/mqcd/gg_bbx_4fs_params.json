@@ -72,15 +72,15 @@
    ],
    [
     "2000",
-    "1058.297845599243389105128226",
+    "1058.29784559924338910512822627",
     "793.7233841994325418288461697",
-    "-1499.996203120194567914367336"
+    "-1499.99620312019456791436733585"
    ],
    [
     "2000",
-    "-1058.297845599243389105128226",
+    "-1058.29784559924338910512822627",
     "-793.7233841994325418288461697",
-    "1499.996203120194567914367336"
+    "1499.99620312019456791436733585"
    ]
   ],
   [
@@ -98,15 +98,15 @@
    ],
    [
     "400",
-    "247.6266511040360534318587937",
-    "93.12455255194518248719476003",
-    "299.9810150242844951361509716"
+    "247.626651104036053431858793717",
+    "93.124552551945182487194760031",
+    "299.981015024284495136150971581"
    ],
    [
     "400",
-    "-247.6266511040360534318587937",
-    "-93.12455255194518248719476003",
-    "-299.9810150242844951361509716"
+    "-247.626651104036053431858793717",
+    "-93.124552551945182487194760031",
+    "-299.981015024284495136150971581"
    ]
   ],
   [
@@ -124,15 +124,15 @@
    ],
    [
     "875",
-    "368.7430048150066263165825365",
-    "-276.5572536112549697374369024",
-    "-743.7401642206772740266461801"
+    "368.74300481500662631658253652",
+    "-276.55725361125496973743690239",
+    "-743.74016422067727402664618011"
    ],
    [
     "875",
-    "-368.7430048150066263165825365",
-    "276.5572536112549697374369024",
-    "743.7401642206772740266461801"
+    "-368.74300481500662631658253652",
+    "276.55725361125496973743690239",
+    "743.74016422067727402664618011"
    ]
   ],
   [
@@ -150,15 +150,15 @@
    ],
    [
     "2000",
-    "1058.297845599243389105128226",
+    "1058.29784559924338910512822627",
     "793.7233841994325418288461697",
-    "-1499.996203120194567914367336"
+    "-1499.99620312019456791436733585"
    ],
    [
     "2000",
-    "-1058.297845599243389105128226",
+    "-1058.29784559924338910512822627",
     "-793.7233841994325418288461697",
-    "1499.996203120194567914367336"
+    "1499.99620312019456791436733585"
    ]
   ]
  ],
@@ -189,6 +189,7 @@
   "family": "regular",
   "family_values": [],
   "rotation": null,
+  "madloop_qp_point": null,
   "point_labels": [
    "regular",
    "regular",
@@ -214,7 +215,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -294,7 +297,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 7.416302726704739e-16,
+    "max_sector_double_pole_relative_error": 7.467628898401781e-16,
+    "reason": null
+   }
   },
   {
    "born": 2.3949767522597027,
@@ -347,7 +361,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 3.6992341274918766e-13,
+    "max_sector_double_pole_relative_error": 3.7005633886021435e-13,
+    "reason": null
+   }
   },
   {
    "born": 4.659600731119026,
@@ -400,7 +425,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 3.0498009454533665e-15,
+    "max_sector_double_pole_relative_error": 3.0709077708806094e-15,
+    "reason": null
+   }
   },
   {
    "born": 2.395205407411318,
@@ -453,7 +489,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 7.416302726704739e-16,
+    "max_sector_double_pole_relative_error": 7.467628898401781e-16,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -612,6 +659,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_bbx_4fs_params",
   "process": "gg_bbx_4fs_params",

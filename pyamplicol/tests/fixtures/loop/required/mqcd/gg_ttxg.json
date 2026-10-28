@@ -210,7 +210,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -290,7 +292,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 4.628044192344533e-15,
+    "max_sector_double_pole_relative_error": 4.761951898848274e-15,
+    "reason": null
+   }
   },
   {
    "born": 0.0007773065861736202,
@@ -343,7 +356,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 1.7156276505024748e-14,
+    "max_sector_double_pole_relative_error": 1.7123454270913512e-14,
+    "reason": null
+   }
   },
   {
    "born": 5.0647787261165714e-05,
@@ -396,7 +420,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 2.4082541607526807e-15,
+    "max_sector_double_pole_relative_error": 2.3746872502817563e-15,
+    "reason": null
+   }
   },
   {
    "born": 0.00026940807964210216,
@@ -449,7 +484,18 @@
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 4.628044192344533e-15,
+    "max_sector_double_pole_relative_error": 4.761951898848274e-15,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -611,6 +657,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gg_ttxg",
   "process": "gg_ttxg",

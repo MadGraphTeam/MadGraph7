@@ -209,7 +209,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -318,12 +320,23 @@
      "double_pole": -0.034737197174709036,
      "accuracy": 2.6147838436983822e-15,
      "status": 216,
-     "seconds": 0.000430041,
+     "seconds": 0.000425422,
      "universal_double_pole_relative_error": 1.1985239688179318e-15
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 1.2804903627705386e-15,
+    "max_sector_double_pole_relative_error": 1.1985239688179318e-15,
+    "reason": null
+   }
   },
   {
    "born": 0.6696050202153665,
@@ -342,12 +355,12 @@
      {
       "QCD": 2,
       "QED": 2,
-      "born": -7.228014483236696e-20
+      "born": -1.2570721855429154e-17
      },
      {
       "QCD": 0,
       "QED": 4,
-      "born": 3582980135.5551643
+      "born": 0.009618704121013098
      }
     ],
     "loop": [
@@ -389,7 +402,7 @@
      }
     ],
     "total": {
-     "born": 3582980136.2247696,
+     "born": 0.6792237243363796,
      "finite": 0.25635102390403347,
      "single_pole": 0.09333319711905298,
      "double_pole": -0.034016037218196765,
@@ -405,12 +418,23 @@
      "double_pole": -0.03353432524959485,
      "accuracy": 1.3614062988178706e-16,
      "status": 216,
-     "seconds": 0.000435101,
+     "seconds": 0.000441572,
      "universal_double_pole_relative_error": 2.0691914485415395e-15
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 2.1554347539815217e-15,
+    "max_sector_double_pole_relative_error": 2.0691914485415395e-15,
+    "reason": null
+   }
   },
   {
    "born": 0.6843619882806649,
@@ -492,12 +516,23 @@
      "double_pole": -0.03427336535810602,
      "accuracy": 5.3748089582613715e-15,
      "status": 216,
-     "seconds": 0.000433682,
+     "seconds": 0.000431881,
      "universal_double_pole_relative_error": 1.6196586081129862e-15
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 1.6222745325385303e-15,
+    "max_sector_double_pole_relative_error": 1.6196586081129862e-15,
+    "reason": null
+   }
   },
   {
    "born": 0.69362366599809,
@@ -579,12 +614,23 @@
      "double_pole": -0.034737197174709036,
      "accuracy": 1.2726030194802736e-15,
      "status": 216,
-     "seconds": 0.000456681,
+     "seconds": 0.000478871,
      "universal_double_pole_relative_error": 1.1985239688179318e-15
     }
    },
    "provider_pair_relative_errors": {},
-   "provider_pair_strict_relative_errors": {}
+   "provider_pair_strict_relative_errors": {},
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 1.2804903627705386e-15,
+    "max_sector_double_pole_relative_error": 1.1985239688179318e-15,
+    "reason": null
+   }
   }
  ],
  "per_helicity": null,
@@ -604,7 +650,7 @@
    "provider": "madloop",
    "process_name": "uux_ttx_mixed",
    "host": "itphlies",
-   "cpu": 45,
+   "cpu": 371,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/uux_ttx_mixed/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -637,6 +683,9 @@
     "mg5_quadruple_precision_model_function_repairs": [
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+    ],
+    "mg5_born_matrix_repairs": [
+     "born_matrix.f: zero-initialised JAMP in ML5_0_MATRIX (1 entries never assigned: [(2, 2)])"
     ],
     "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
@@ -728,7 +777,7 @@
     3,
     3
    ],
-   "initial_call_seconds": 0.034523345,
+   "initial_call_seconds": 0.016449321,
    "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
@@ -766,16 +815,17 @@
      }
     ]
    },
-   "process_wall_seconds": 0.05625907680951059,
+   "process_wall_seconds": 0.02868197811767459,
    "evaluation_seconds": [
-    0.000430041,
-    0.000435101,
-    0.000433682,
-    0.000456681
+    0.000425422,
+    0.000441572,
+    0.000431881,
+    0.000478871
    ]
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "uux_ttx_mixed",
   "process": "uux_ttx_mixed",

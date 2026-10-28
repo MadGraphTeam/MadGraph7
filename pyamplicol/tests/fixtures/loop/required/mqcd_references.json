@@ -6,13 +6,27 @@
   "squared_split_orders": "QCD^2, QED^2 = summed g_s and e powers of the interfering amplitudes; a loop sector's born_sector is its orders minus the correction step",
   "madloop_accuracy": "MadLoop's own estimate of the relative accuracy of a loop squared split order (ACC(i) of SLOOPMATRIX_THRES); 0.0 when its stability test found no difference",
   "per_helicity": "MadLoop SLOOPMATRIXHEL_THRES: colour average and identical-particle factor, no helicity average; HelConfigs.dat helicity labels",
+  "indexing": "rows, points, mu_r, point_labels, point_reference, provider_accuracy_per_sector and madloop_return_codes are aligned lists (row i = point i, 0-based); reference_notes and point_status keys are 0-based row indices; scale_variation's point and copy_of_point are 1-based point numbers (mqcd_campaign.py run --point), its row and copy_of_row the 0-based rows",
+  "point_reference": {
+   "status": "'ok': the row is a reference; 'none': no usable provider reference at this point (reason given), validate it by internal oracles only",
+   "comparison": "'relative': compare per coefficient relative to the reference value; 'absolute': a Born-zero point (\u00a74.1 S3), compare |value - reference| against the tolerance times absolute_scale = |Born| at row absolute_scale_row (the nearest regular point), never dividing by the vanishing Born",
+   "born_source": "which value the row's (and its sectors') 'born' is: 'madloop' = MadLoop's printed Born; 'madloop_double_pole_over_universal_factor' = at madloop_qp_point points, MadLoop's printed Born is its double-precision Born at the binary64 rounding of the point, not at the published point, so the reference Born is its quadruple-precision double pole over universal_double_pole_factor (the printed value is kept as born_madloop_binary64_input / born_binary64_input)",
+   "madloop_point": "the point MadLoop's loop values refer to: the published point (quadruple precision at a madloop_qp_point point), the binary64 rounding of the published point (double precision), or MadLoop's quadruple-precision repair of that rounding (~1e-16 from an exact published point)",
+   "born_double_pole_relative_mismatch": "MadLoop's printed (binary64-input) Born against the Born its double pole implies: for points rescued in quadruple precision at MadLoop's own repaired point, the sensitivity of the reference to the ~1e-16 displacement from the published point (the published point limits the reference at about this level, which MadLoop's accuracy does not show); at madloop_qp_point points, the binary64 condition of the point",
+   "max_sector_double_pole_relative_error": "largest violation of the universal double pole over the loop squared split orders (MadLoop's printed values); the merge refuses ok points above its tolerance"
+  },
+  "fixture_tolerance": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
   "madloop_settings": {
    "requested_relative_accuracy": 1e-13,
    "requested_relative_accuracy_reason": "m-qcd/PLAN.md \u00a71.4 rule 1 compares DD with the reference at 1e-12, so the reference must be well below it: MadLoop's double-precision evaluations reach estimates up to ~1e-11 at the plan's 1e-11 target (g g > t t~ g 9.6e-12, g g > t t~ h 7.8e-12); at 1e-13 every point whose double-precision estimate is worse is rescued in quadruple precision (stricter than the plan's 1e-11, never looser)",
    "special_points": "limit-point runs (S1-S3) request 1e-20, forcing MadLoop's quadruple-precision evaluation, at points that are MadLoop's own quadruple-precision projection of their binary64 rounding (supplied_points.py --madloop-qp-point)",
    "stability_check": "forced on every call",
    "rescue": "quadruple precision (MadLoop's own)",
-   "job_timeout_seconds": 2700
+   "job_timeout_seconds": 2700,
+   "plan_deviations_for_coordinator_ruling": [
+    "requested MadLoop accuracy 1e-13 instead of the 1e-11 of m-qcd/PLAN.md \u00a71.3/\u00a74.1 (stricter, never looser; reason above)",
+    "new MadLoop evaluations (no export regenerated) on the existing 2->5 exports of D07 (u u~ > e- e+ g g g), D08 (u u~ > e- e+ d d~ g) and E06 (g g > t t~ e- e+ g) for per-sector accuracies and the mu_R = mu_0/2 point: one job per point, each under timeout 2700 (largest 2185 s); \u00a73.2/\u00a74.3's 'nothing is regenerated for any 2->5' read as exports/generations (HANDOFF \u00a70.1)"
+   ]
   }
  },
  "rows": [
@@ -46,6 +60,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -108,7 +124,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -152,7 +170,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.940088887085218e-16,
+       "max_sector_double_pole_relative_error": 5.48013663691649e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.337090263269085e-16,
+       "max_sector_double_pole_relative_error": 1.4832602218476695e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.7220079852284703e-16,
+       "max_sector_double_pole_relative_error": 4.1288958132049115e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.940088887085218e-16,
+       "max_sector_double_pole_relative_error": 5.48013663691649e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -189,6 +253,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -251,7 +317,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -295,7 +363,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 8.249642310534061e-16,
+       "max_sector_double_pole_relative_error": 8.447527926179054e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.752478497320583e-16,
+       "max_sector_double_pole_relative_error": 2.881867392422428e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -327,6 +441,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > u u~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -389,7 +505,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -433,7 +551,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.545137222358084e-16,
+       "max_sector_double_pole_relative_error": 7.539903647754048e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.6665076935706935e-16,
+       "max_sector_double_pole_relative_error": 3.754456856079579e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.003304663094116e-16,
+       "max_sector_double_pole_relative_error": 5.123319808750988e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.545137222358084e-16,
+       "max_sector_double_pole_relative_error": 7.539903647754048e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -465,6 +629,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u g > u g QED=0 [virt=QCD]",
      "pdgs": [
@@ -527,7 +693,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -571,7 +739,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.984142590174031e-16,
+       "max_sector_double_pole_relative_error": 1.523802424616695e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.140153513663086e-16,
+       "max_sector_double_pole_relative_error": 3.947588457508405e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.421276211896408e-16,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.984142590174031e-16,
+       "max_sector_double_pole_relative_error": 1.523802424616695e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -605,6 +819,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > d d~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -667,7 +883,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -711,7 +929,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2492710728364073e-15,
+       "max_sector_double_pole_relative_error": 1.1693030794122705e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.9839487112980256e-16,
+       "max_sector_double_pole_relative_error": 3.3146038145371825e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 9.698245931153784e-16,
+       "max_sector_double_pole_relative_error": 1.0374222288520674e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2492710728364073e-15,
+       "max_sector_double_pole_relative_error": 1.1693030794122705e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -743,6 +1007,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > u u~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -805,7 +1071,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -849,7 +1117,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.0717168021731142e-15,
+       "max_sector_double_pole_relative_error": 1.0699886543757843e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.8827242585046602e-16,
+       "max_sector_double_pole_relative_error": 2.3496104472670277e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.1068960670682343e-16,
+       "max_sector_double_pole_relative_error": 1.9386788651553072e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.0717168021731142e-15,
+       "max_sector_double_pole_relative_error": 1.0699886543757843e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -905,6 +1219,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u > u u QED=0 [virt=QCD]",
      "pdgs": [
@@ -967,7 +1283,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -1011,7 +1329,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.1955807707027509e-16,
+       "max_sector_double_pole_relative_error": 1.4920661146767683e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.5890922482833676e-15,
+       "max_sector_double_pole_relative_error": 1.6113193590295376e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.1644140563147296e-15,
+       "max_sector_double_pole_relative_error": 1.245574750510571e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.1955807707027509e-16,
+       "max_sector_double_pole_relative_error": 1.4920661146767683e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -1047,6 +1411,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > g g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1110,7 +1476,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -1154,7 +1522,53 @@
       ]
      },
      "per_helicity": true,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.523734137137268e-14,
+       "max_sector_double_pole_relative_error": 4.5282318675298215e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.216428354026532e-15,
+       "max_sector_double_pole_relative_error": 9.20156682500416e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.5654572091735703e-14,
+       "max_sector_double_pole_relative_error": 1.5629329029180725e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.523734137137268e-14,
+       "max_sector_double_pole_relative_error": 4.5282318675298215e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -1189,6 +1603,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > g g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1252,7 +1668,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -1296,7 +1714,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0471671585554386e-14,
+       "max_sector_double_pole_relative_error": 5.045632811966597e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.489150717820864e-15,
+       "max_sector_double_pole_relative_error": 9.439146677714841e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 8.921928285216549e-15,
+       "max_sector_double_pole_relative_error": 8.996321123550896e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0471671585554386e-14,
+       "max_sector_double_pole_relative_error": 5.045632811966597e-14,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "uux_ggg_soft",
@@ -1307,6 +1771,11 @@
      "excluded_providers": {
       "recola": "COLLIER double precision fails in the soft limit (4.6e-9 at E/sqrt(s) = 1e-3, 6.0e-3 at 1e-5 against MadLoop QP and OpenLoops, which agree to 1.5e-14 and 2.5e-13)"
      },
+     "second_providers": [
+      "recola",
+      "openloops"
+     ],
+     "second_provider_trigger": "diagnostic outside the \u00a74.1 triggers (recorded, not a trigger): the installed ppjjj library and Recola, < 1 min per run, to test MadLoop's quadruple-precision evaluation at the S2 limit points where no other cross-check exists; it exposed MadLoop's unstable collinear theta = 1e-4, 1e-5 evaluations",
      "status": "committed",
      "madloop_process": "u u~ > g g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1404,7 +1873,31 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 1.2121992478050784e-13,
+       "max_sector_double_pole_relative_error": 1.212833637594762e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 2.7069141894858344e-11,
+       "max_sector_double_pole_relative_error": 2.7069167238236127e-11,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "uux_ggg_collinear",
@@ -1419,6 +1912,11 @@
      "excluded_providers": {
       "recola": "COLLIER double precision fails at small opening angles (1e-4 relative at theta = 1e-3)"
      },
+     "second_providers": [
+      "recola",
+      "openloops"
+     ],
+     "second_provider_trigger": "diagnostic outside the \u00a74.1 triggers (recorded, not a trigger): the installed ppjjj library and Recola, < 1 min per run, to test MadLoop's quadruple-precision evaluation at the S2 limit points where no other cross-check exists; it exposed MadLoop's unstable collinear theta = 1e-4, 1e-5 evaluations",
      "status": "committed",
      "madloop_process": "u u~ > g g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1522,7 +2020,42 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 1.6210833352130567e-09,
+       "max_sector_double_pole_relative_error": 1.6210833272430712e-09,
+       "reason": null
+      },
+      {
+       "status": "none",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 4.777500741692694e-06,
+       "max_sector_double_pole_relative_error": 4.777500741695492e-06,
+       "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 1.3e-6) and OpenLoops differs by 4.3e-5: good to ~1e-6 at best, no reference at M-QCD accuracies"
+      },
+      {
+       "status": "none",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 0.004778729528576971,
+       "max_sector_double_pole_relative_error": 0.004778729528576955,
+       "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 28) and MadLoop, Recola and OpenLoops disagree at O(1)"
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -1556,6 +2089,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > d d~ g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1619,7 +2154,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -1663,7 +2200,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0333614813613793e-14,
+       "max_sector_double_pole_relative_error": 5.03369095524848e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.0178444156941958e-14,
+       "max_sector_double_pole_relative_error": 1.0201882476864704e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.731415172573576e-14,
+       "max_sector_double_pole_relative_error": 1.726023824941113e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0333614813613793e-14,
+       "max_sector_double_pole_relative_error": 5.03369095524848e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -1722,6 +2305,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > u u~ g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1785,7 +2370,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -1829,7 +2416,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.0636202466255197e-14,
+       "max_sector_double_pole_relative_error": 4.0613158804589803e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 7.27466690530512e-15,
+       "max_sector_double_pole_relative_error": 7.16609732169251e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.1245373564789363e-16,
+       "max_sector_double_pole_relative_error": 1.696889224929993e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.0636202466255197e-14,
+       "max_sector_double_pole_relative_error": 4.0613158804589803e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -1935,6 +2568,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > g g g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -1999,7 +2634,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2043,7 +2680,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.766830244363139e-14,
+       "max_sector_double_pole_relative_error": 1.767769300323657e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.2429116859856257e-14,
+       "max_sector_double_pole_relative_error": 2.2353033684130325e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.3669347792268754e-14,
+       "max_sector_double_pole_relative_error": 3.367497571464436e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.766830244363139e-14,
+       "max_sector_double_pole_relative_error": 1.767769300323657e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -2077,6 +2760,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > u u~ u u~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -2141,7 +2826,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2185,7 +2872,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+       "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.363327081541241e-16,
+       "max_sector_double_pole_relative_error": 9.623176579995868e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.0622671842962233e-12,
+       "max_sector_double_pole_relative_error": 1.0622139833960468e-12,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+       "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -2217,6 +2950,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > d d~ s s~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -2281,7 +3016,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2325,7 +3062,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.6446406393599742e-13,
+       "max_sector_double_pole_relative_error": 1.6443478285883324e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.0308269502970765e-15,
+       "max_sector_double_pole_relative_error": 1.0005768281792755e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -2381,6 +3164,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > u u~ d d~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -2445,7 +3230,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2489,7 +3276,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.361142843641736e-15,
+       "max_sector_double_pole_relative_error": 2.4321715383271005e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1430570593837184e-15,
+       "max_sector_double_pole_relative_error": 1.2227291519198159e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0520111682434336e-15,
+       "max_sector_double_pole_relative_error": 4.903757424260687e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.361142843641736e-15,
+       "max_sector_double_pole_relative_error": 2.4321715383271005e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -2547,6 +3380,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > u u~ u u~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -2611,7 +3446,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2655,7 +3492,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.778034120851992e-15,
+       "max_sector_double_pole_relative_error": 2.6668793550838486e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.4528485845258147e-16,
+       "max_sector_double_pole_relative_error": 1.2087548834546158e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 7.346798936427125e-15,
+       "max_sector_double_pole_relative_error": 7.300994080607586e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.778034120851992e-15,
+       "max_sector_double_pole_relative_error": 2.6668793550838486e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -2829,6 +3712,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d > u d QED=0 [virt=QCD]",
      "pdgs": [
@@ -2891,7 +3776,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -2935,7 +3822,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.922366440120319e-16,
+       "max_sector_double_pole_relative_error": 7.062135349385684e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.09323396640992e-15,
+       "max_sector_double_pole_relative_error": 3.015865345492447e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.820495152015317e-16,
+       "max_sector_double_pole_relative_error": 6.01590260443718e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.922366440120319e-16,
+       "max_sector_double_pole_relative_error": 7.062135349385684e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -2967,6 +3900,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u~ u~ > u~ u~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -3029,7 +3964,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3073,7 +4010,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.586742312108251e-16,
+       "max_sector_double_pole_relative_error": 2.984132229353536e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.945461241416851e-16,
+       "max_sector_double_pole_relative_error": 7.43685858013634e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.6634486518781853e-16,
+       "max_sector_double_pole_relative_error": 2.0759579175176186e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.586742312108251e-16,
+       "max_sector_double_pole_relative_error": 2.984132229353536e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -3111,6 +4094,8 @@
      "note": "per-sector and per-helicity MadLoop run at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -3173,7 +4158,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3217,7 +4204,53 @@
       ]
      },
      "per_helicity": true,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.4349366244779384e-16,
+       "max_sector_double_pole_relative_error": 4.919761411933688e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 1.2232131683675422e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "gg_ttx_threshold",
@@ -3226,6 +4259,8 @@
      "note": "S1: threshold beta = 1e-1, 1e-2, 1e-3",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -3327,7 +4362,42 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 3.378845649171593e-16,
+       "max_sector_double_pole_relative_error": 1.8741095814003024e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 6.922974456842183e-16,
+       "max_sector_double_pole_relative_error": 5.759842609800104e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 1.0386993733961756e-15,
+       "max_sector_double_pole_relative_error": 9.602078392036685e-16,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "gg_ttx_mt170",
@@ -3336,6 +4406,8 @@
      "note": "S4: runtime MT = 170",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -3400,7 +4472,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3444,7 +4518,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.627580587641825e-16,
+       "max_sector_double_pole_relative_error": 7.352103984890495e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.552227818567276e-15,
+       "max_sector_double_pole_relative_error": 1.5989224588784464e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.410679645381169e-16,
+       "max_sector_double_pole_relative_error": 3.6696395051026263e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.627580587641825e-16,
+       "max_sector_double_pole_relative_error": 7.352103984890495e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -3500,6 +4620,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -3562,7 +4684,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3606,7 +4730,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.402451813852693e-16,
+       "max_sector_double_pole_relative_error": 5.992619844089659e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.1554347539815217e-15,
+       "max_sector_double_pole_relative_error": 2.0691914485415395e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2978196260308246e-15,
+       "max_sector_double_pole_relative_error": 1.417201282098863e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.402451813852693e-16,
+       "max_sector_double_pole_relative_error": 5.992619844089659e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -3641,6 +4811,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ g QED=0 [virt=QCD]",
      "pdgs": [
@@ -3704,7 +4876,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3748,7 +4922,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.628044192344533e-15,
+       "max_sector_double_pole_relative_error": 4.761951898848274e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.7156276505024748e-14,
+       "max_sector_double_pole_relative_error": 1.7123454270913512e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.4082541607526807e-15,
+       "max_sector_double_pole_relative_error": 2.3746872502817563e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.628044192344533e-15,
+       "max_sector_double_pole_relative_error": 4.761951898848274e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -3780,6 +5000,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -3844,7 +5066,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -3888,7 +5112,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.647246000229207e-16,
+       "max_sector_double_pole_relative_error": 5.155280329712085e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.625253304136332e-14,
+       "max_sector_double_pole_relative_error": 1.6226325764292072e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.2682168783338262e-14,
+       "max_sector_double_pole_relative_error": 1.2686841191275253e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.647246000229207e-16,
+       "max_sector_double_pole_relative_error": 5.155280329712085e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -3944,6 +5214,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > t t~ d d~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -4008,7 +5280,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4052,7 +5326,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.1365800058688887e-15,
+       "max_sector_double_pole_relative_error": 3.13152225757447e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.6678136456124011e-15,
+       "max_sector_double_pole_relative_error": 1.6651242891777744e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.2367093501702301e-15,
+       "max_sector_double_pole_relative_error": 1.2861616158370635e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.1365800058688887e-15,
+       "max_sector_double_pole_relative_error": 3.13152225757447e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4084,6 +5404,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -4153,7 +5475,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4197,7 +5521,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.431770998926234e-15,
+       "max_sector_double_pole_relative_error": 4.4246247497729726e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 8.606877535518391e-15,
+       "max_sector_double_pole_relative_error": 8.5557997802447e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 6.909444589257402e-16,
+       "max_sector_double_pole_relative_error": 7.664781201270055e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.5511198496241818e-15,
+       "max_sector_double_pole_relative_error": 1.59778115964024e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4230,6 +5600,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -4292,7 +5664,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4336,7 +5710,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.4349366244779384e-16,
+       "max_sector_double_pole_relative_error": 4.919761411933688e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 1.2232131683675422e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4374,6 +5794,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > b b~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -4441,7 +5863,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4485,7 +5909,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.2503512166910434e-16,
+       "max_sector_double_pole_relative_error": 2.496358351113501e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.816253176065927e-13,
+       "max_sector_double_pole_relative_error": 4.815976802863088e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.5935834658403226e-15,
+       "max_sector_double_pole_relative_error": 6.544454493959197e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.2503512166910434e-16,
+       "max_sector_double_pole_relative_error": 2.496358351113501e-16,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "gg_bbx_4fs_params",
@@ -4494,6 +5964,8 @@
      "note": "S4: runtime MB = 4.5, aS = 0.13 (cond(MB) and reglog CT terms)",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > b b~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -4564,7 +6036,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4608,7 +6082,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.416302726704739e-16,
+       "max_sector_double_pole_relative_error": 7.467628898401781e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.6992341274918766e-13,
+       "max_sector_double_pole_relative_error": 3.7005633886021435e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.0498009454533665e-15,
+       "max_sector_double_pole_relative_error": 3.0709077708806094e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.416302726704739e-16,
+       "max_sector_double_pole_relative_error": 7.467628898401781e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4643,6 +6163,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > g g QED=0 [virt=QCD]",
      "pdgs": [
@@ -4705,7 +6227,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4749,7 +6273,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.309491665683636e-16,
+       "max_sector_double_pole_relative_error": 3.6712834406879793e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.511781199148848e-16,
+       "max_sector_double_pole_relative_error": 6.666371929553658e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.705066665313913e-16,
+       "max_sector_double_pole_relative_error": 4.1101024776873666e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.309491665683636e-16,
+       "max_sector_double_pole_relative_error": 3.6712834406879793e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4782,6 +6352,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "b b~ > h QED=1 [virt=QCD]",
      "pdgs": [
@@ -4848,7 +6420,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -4892,7 +6466,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": null,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": null,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": null,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": null,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -4925,6 +6545,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "b b~ > h g QED=1 [virt=QCD]",
      "pdgs": [
@@ -4992,7 +6614,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5036,7 +6660,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.885755334416795e-16,
+       "max_sector_double_pole_relative_error": 8.747821690187261e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.519004552417627e-16,
+       "max_sector_double_pole_relative_error": 8.340977918143865e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.885755334416795e-16,
+       "max_sector_double_pole_relative_error": 8.747821690187261e-16,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "bbx_hg_4fs_z",
@@ -5045,6 +6715,8 @@
      "note": "non-gating diagnostic: the same construction with the beams on +-z",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "b b~ > h g QED=1 [virt=QCD]",
      "pdgs": [
@@ -5112,7 +6784,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5156,7 +6830,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.48059995741937e-14,
+       "max_sector_double_pole_relative_error": 5.489258110592204e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.71057353567501e-14,
+       "max_sector_double_pole_relative_error": 1.7099004732194922e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.7874100566277656e-14,
+       "max_sector_double_pole_relative_error": 4.787945416320001e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.258307880585068e-14,
+       "max_sector_double_pole_relative_error": 4.2426935197408205e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5189,6 +6909,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > b b~ h QED=1 [virt=QCD]",
      "pdgs": [
@@ -5257,7 +6979,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5301,7 +7025,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.391998380759003e-16,
+       "max_sector_double_pole_relative_error": 3.762809743637343e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.114902115869256e-15,
+       "max_sector_double_pole_relative_error": 9.120030451483231e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.3777828744447973e-16,
+       "max_sector_double_pole_relative_error": 2.6377207663091087e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.391998380759003e-16,
+       "max_sector_double_pole_relative_error": 3.762809743637343e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5334,6 +7104,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ b b~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -5403,7 +7175,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5447,7 +7221,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.1287175741230615e-16,
+       "max_sector_double_pole_relative_error": 2.3614277868758816e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 7.025161299597004e-16,
+       "max_sector_double_pole_relative_error": 7.793147997562595e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.1287175741230615e-16,
+       "max_sector_double_pole_relative_error": 2.3614277868758816e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5480,6 +7300,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u g > d t b~ QED=2 [virt=QCD]",
      "pdgs": [
@@ -5548,7 +7370,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5592,7 +7416,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.0723985346101926e-16,
+       "max_sector_double_pole_relative_error": 2.434184451012575e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.5992784321041167e-15,
+       "max_sector_double_pole_relative_error": 2.442434903369698e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.526376555268802e-15,
+       "max_sector_double_pole_relative_error": 7.616243502996264e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.0723985346101926e-16,
+       "max_sector_double_pole_relative_error": 2.434184451012575e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5624,6 +7494,10 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [
+      "recola"
+     ],
+     "second_provider_trigger": "\u00a74.1: the massive-charm rows C08 and C09, after the charm fix",
      "status": "committed",
      "madloop_process": "g g > c c~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -5693,7 +7567,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5738,7 +7614,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.500685034888048e-16,
+       "max_sector_double_pole_relative_error": 4.992697401739341e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.1251839981830605e-16,
+       "max_sector_double_pole_relative_error": 1.2481884825666292e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.470097962172413e-16,
+       "max_sector_double_pole_relative_error": 3.849447127541583e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.500685034888048e-16,
+       "max_sector_double_pole_relative_error": 4.992697401739341e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5770,6 +7692,10 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [
+      "recola"
+     ],
+     "second_provider_trigger": "\u00a74.1: the massive-charm rows C08 and C09, after the charm fix",
      "status": "committed",
      "madloop_process": "g s > w- c QED=1 [virt=QCD]",
      "pdgs": [
@@ -5839,7 +7765,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -5884,7 +7812,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.887793284260692e-16,
+       "max_sector_double_pole_relative_error": 3.9810504630081894e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2583245187613818e-15,
+       "max_sector_double_pole_relative_error": 1.328774049778949e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.887793284260692e-16,
+       "max_sector_double_pole_relative_error": 3.9810504630081894e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -5918,6 +7892,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ QED=2 [virt=QCD]",
      "pdgs": [
@@ -5980,7 +7956,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6024,7 +8002,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.823904594093881e-16,
+       "max_sector_double_pole_relative_error": 2.276204425445184e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.823904594093881e-16,
+       "max_sector_double_pole_relative_error": 2.276204425445184e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -6054,6 +8078,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ QED=2 [virt=QCD]",
      "pdgs": [
@@ -6116,7 +8142,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6160,7 +8188,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.8239045946562972e-16,
+       "max_sector_double_pole_relative_error": 1.1381022130735354e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.0104429781326255e-16,
+       "max_sector_double_pole_relative_error": 3.7569857828995366e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.8239045946562972e-16,
+       "max_sector_double_pole_relative_error": 1.1381022130735354e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -6197,6 +8271,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ g QED=2 [virt=QCD]",
      "pdgs": [
@@ -6260,7 +8336,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6304,7 +8382,53 @@
       ]
      },
      "per_helicity": true,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.037822677566389e-15,
+       "max_sector_double_pole_relative_error": 2.074429556109079e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.982691065539447e-16,
+       "max_sector_double_pole_relative_error": 6.151263041627378e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.985881070825158e-15,
+       "max_sector_double_pole_relative_error": 1.9826788293455554e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.037822677566389e-15,
+       "max_sector_double_pole_relative_error": 2.074429556109079e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -6336,6 +8460,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ g g QED=2 [virt=QCD]",
      "pdgs": [
@@ -6400,7 +8526,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6444,7 +8572,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.537871039063769e-15,
+       "max_sector_double_pole_relative_error": 7.5257161906875e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.223385935011425e-15,
+       "max_sector_double_pole_relative_error": 4.3787516963951046e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.3783142055464214e-15,
+       "max_sector_double_pole_relative_error": 3.459350420359412e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.95984647015658e-15,
+       "max_sector_double_pole_relative_error": 1.9682642344875e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -6481,6 +8655,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ g g g QED=2 [virt=QCD]",
      "pdgs": [
@@ -6546,7 +8722,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6590,7 +8768,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.423878111672917e-14,
+       "max_sector_double_pole_relative_error": 1.428277151447924e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.493802924855792e-15,
+       "max_sector_double_pole_relative_error": 5.55617718565006e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.3334218238635512e-15,
+       "max_sector_double_pole_relative_error": 2.4576624226553347e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.423878111672917e-14,
+       "max_sector_double_pole_relative_error": 1.428277151447924e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -6646,6 +8870,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ d d~ g QED=2 [virt=QCD]",
      "pdgs": [
@@ -6711,7 +8937,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6755,7 +8983,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.768855465016618e-15,
+       "max_sector_double_pole_relative_error": 4.7354296351352e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.5669004381244788e-14,
+       "max_sector_double_pole_relative_error": 1.5643738046562997e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.689051850620696e-16,
+       "max_sector_double_pole_relative_error": 3.9286434551260364e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1471030713147949e-14,
+       "max_sector_double_pole_relative_error": 1.152974172032905e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -6811,6 +9085,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ mu- mu+ QED=4 [virt=QCD]",
      "pdgs": [
@@ -6875,7 +9151,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -6919,7 +9197,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4882545802673103e-16,
+       "max_sector_double_pole_relative_error": 3.1053028242699693e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.094422188963625e-15,
+       "max_sector_double_pole_relative_error": 3.0667160054688396e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.3896448602777736e-16,
+       "max_sector_double_pole_relative_error": 1.491119717506077e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4882545802673103e-16,
+       "max_sector_double_pole_relative_error": 3.1053028242699693e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -6973,6 +9297,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > u u~ e+ e- QED=2 [virt=QCD]",
      "pdgs": [
@@ -7037,7 +9363,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7081,7 +9409,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.027566975833654e-15,
+       "max_sector_double_pole_relative_error": 2.0242975156589874e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.251342035181587e-15,
+       "max_sector_double_pole_relative_error": 1.1712414758902004e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.388779829467948e-15,
+       "max_sector_double_pole_relative_error": 3.40681065379815e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.027566975833654e-15,
+       "max_sector_double_pole_relative_error": 2.0242975156589874e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -7136,6 +9510,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > z g QED=1 [virt=QCD]",
      "pdgs": [
@@ -7198,7 +9574,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7242,7 +9620,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4711398065104894e-16,
+       "max_sector_double_pole_relative_error": 1.4512676960605666e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 8.6343290013694e-16,
+       "max_sector_double_pole_relative_error": 8.692846497451027e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.3468691057603859e-15,
+       "max_sector_double_pole_relative_error": 1.2943610121465698e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4711398065104894e-16,
+       "max_sector_double_pole_relative_error": 1.4512676960605666e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7274,6 +9698,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d~ > e+ ve g QED=2 [virt=QCD]",
      "pdgs": [
@@ -7337,7 +9763,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7381,7 +9809,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.800077193527998e-16,
+       "max_sector_double_pole_relative_error": 7.852940709214772e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.341226651800827e-16,
+       "max_sector_double_pole_relative_error": 1.5753693155893497e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.176002024680415e-16,
+       "max_sector_double_pole_relative_error": 6.079594941065012e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.800077193527998e-16,
+       "max_sector_double_pole_relative_error": 7.852940709214772e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7413,6 +9887,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u g > a u QED=1 [virt=QCD]",
      "pdgs": [
@@ -7475,7 +9951,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7519,7 +9997,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.335833083236828e-16,
+       "max_sector_double_pole_relative_error": 7.441901795364403e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.152464275478953e-16,
+       "max_sector_double_pole_relative_error": 4.877374599503517e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.276302846908512e-16,
+       "max_sector_double_pole_relative_error": 4.648054223506488e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.335833083236828e-16,
+       "max_sector_double_pole_relative_error": 7.441901795364403e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7551,6 +10075,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > z z QED=2 [virt=QCD]",
      "pdgs": [
@@ -7613,7 +10139,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7657,7 +10185,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.8375043990011955e-16,
+       "max_sector_double_pole_relative_error": 3.1927636726749656e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.09948117449554e-16,
+       "max_sector_double_pole_relative_error": 6.364072799886641e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.51311142910067e-16,
+       "max_sector_double_pole_relative_error": 1.5681618915483072e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 3.8375043990011955e-16,
+       "max_sector_double_pole_relative_error": 3.1927636726749656e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7689,6 +10263,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > w+ w- QED=2 [virt=QCD]",
      "pdgs": [
@@ -7756,7 +10332,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7800,7 +10378,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1085389896082031e-13,
+       "max_sector_double_pole_relative_error": 1.1081875620733606e-13,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.857675843638517e-14,
+       "max_sector_double_pole_relative_error": 9.856602258657954e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1085389896082031e-13,
+       "max_sector_double_pole_relative_error": 1.1081875620733606e-13,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7824,7 +10448,7 @@
      "WH": "0"
     },
     "scheme": "qcd",
-    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one, identical parameter values"
+    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one: the same QCD parameter values (default keeps MTA = ymtau = 1.777 where no_b_mass has 0; no tau enters these QCD rows)"
    },
    "note": "MQ-5F",
    "references": [
@@ -7835,6 +10459,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "b b~ > w+ w- QED=2 [virt=QCD]",
      "pdgs": [
@@ -7902,7 +10528,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -7946,7 +10574,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.801970299090796e-15,
+       "max_sector_double_pole_relative_error": 3.841028172923614e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.1734530232736096e-15,
+       "max_sector_double_pole_relative_error": 3.20605410062212e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.550945358479153e-15,
+       "max_sector_double_pole_relative_error": 4.54360694017585e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.801970299090796e-15,
+       "max_sector_double_pole_relative_error": 3.841028172923614e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -7978,6 +10652,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > z h QED=2 [virt=QCD]",
      "pdgs": [
@@ -8045,7 +10721,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8089,7 +10767,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.3455610057711944e-16,
+       "max_sector_double_pole_relative_error": 1.679239103821906e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.542902342719726e-16,
+       "max_sector_double_pole_relative_error": 4.2521033379494624e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.0004969871449586e-16,
+       "max_sector_double_pole_relative_error": 1.2482944858997187e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.3455610057711944e-16,
+       "max_sector_double_pole_relative_error": 1.679239103821906e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8121,6 +10845,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d > u d h QCD=0 QED=3 [virt=QCD]",
      "pdgs": [
@@ -8184,7 +10910,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8228,7 +10956,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.426791103602748e-16,
+       "max_sector_double_pole_relative_error": 3.0285973660787045e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 1.3174872268559985e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8260,6 +11034,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "e+ e- > u u~ g QED=2 [virt=QCD]",
      "pdgs": [
@@ -8323,7 +11099,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8367,7 +11145,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 9.95921865852717e-15,
+       "max_sector_double_pole_relative_error": 1.002671533820361e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1532329350096113e-14,
+       "max_sector_double_pole_relative_error": 1.1631520975273171e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.681600533302734e-15,
+       "max_sector_double_pole_relative_error": 6.670826424675482e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 5.0685309244288e-14,
+       "max_sector_double_pole_relative_error": 5.0760246399653705e-14,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8426,6 +11250,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "a g > u u~ QED=1 [virt=QCD]",
      "pdgs": [
@@ -8488,7 +11314,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8532,7 +11360,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.3265892421019415e-16,
+       "max_sector_double_pole_relative_error": 1.9536618253673292e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.500835044502089e-16,
+       "max_sector_double_pole_relative_error": 5.286561681515673e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.9496582470893673e-16,
+       "max_sector_double_pole_relative_error": 2.2900169588983216e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.3265892421019415e-16,
+       "max_sector_double_pole_relative_error": 1.9536618253673292e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8564,6 +11438,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "e- u > e- u QED=2 [virt=QCD]",
      "pdgs": [
@@ -8626,7 +11502,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8670,7 +11548,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.075282984104202e-16,
+       "max_sector_double_pole_relative_error": 3.3905929777969414e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.131541121044979e-16,
+       "max_sector_double_pole_relative_error": 4.80306233405785e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.075282984104202e-16,
+       "max_sector_double_pole_relative_error": 3.3905929777969414e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8704,6 +11628,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d~ > w+ a QED=2 [virt=QCD]",
      "pdgs": [
@@ -8771,7 +11697,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -8815,7 +11743,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1033952974063606e-15,
+       "max_sector_double_pole_relative_error": 1.0710156215731563e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.6165841270843381e-15,
+       "max_sector_double_pole_relative_error": 1.6391957749996936e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.711404077585392e-16,
+       "max_sector_double_pole_relative_error": 4.4098189864975296e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 1.1033952974063606e-15,
+       "max_sector_double_pole_relative_error": 1.0710156215731563e-15,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "udx_wpa_zero",
@@ -8824,6 +11798,8 @@
      "note": "S3: Born-zero points cos(u, photon) = -1/3 and one regular neighbour",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d~ > w+ a QED=2 [virt=QCD]",
      "pdgs": [
@@ -8925,7 +11901,42 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "absolute",
+       "absolute_scale_row": 2,
+       "absolute_scale": 6.658456992399537e-05,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 2.2473073951755247e-29,
+       "max_sector_double_pole_relative_error": 2.2473073951755247e-29,
+       "reason": "\u00a74.1 S3 Born-zero point: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
+      },
+      {
+       "status": "ok",
+       "comparison": "absolute",
+       "absolute_scale_row": 2,
+       "absolute_scale": 6.658456992399537e-05,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 8.302825971076069e-29,
+       "max_sector_double_pole_relative_error": 8.302825971076069e-29,
+       "reason": "\u00a74.1 S3 Born-zero point: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop_double_pole_over_universal_factor",
+       "madloop_point": "published point (quadruple precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -8958,6 +11969,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > e- e+ g QED=2 [virt=QCD]",
      "pdgs": [
@@ -9021,7 +12034,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9065,7 +12080,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.037822677566389e-15,
+       "max_sector_double_pole_relative_error": 2.074429556109079e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.982691065539447e-16,
+       "max_sector_double_pole_relative_error": 6.151263041627378e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.985881070825158e-15,
+       "max_sector_double_pole_relative_error": 1.9826788293455554e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.037822677566389e-15,
+       "max_sector_double_pole_relative_error": 2.074429556109079e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -9097,6 +12158,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g u > e+ ve d QED=2 [virt=QCD]",
      "pdgs": [
@@ -9160,7 +12223,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9204,7 +12269,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.964812760052526e-16,
+       "max_sector_double_pole_relative_error": 5.60488891735384e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.260195020383782e-16,
+       "max_sector_double_pole_relative_error": 6.822106283050914e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -9240,6 +12351,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ h QED=1 [virt=QCD]",
      "pdgs": [
@@ -9308,7 +12421,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9352,7 +12467,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.850796161313542e-15,
+       "max_sector_double_pole_relative_error": 3.844586736500339e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.2870070793104483e-14,
+       "max_sector_double_pole_relative_error": 2.2879886354528967e-14,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.0952721745035144e-15,
+       "max_sector_double_pole_relative_error": 1.2150067150782339e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 6.417993602189237e-16,
+       "max_sector_double_pole_relative_error": 5.695684054074576e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -9384,6 +12545,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ z QED=1 [virt=QCD]",
      "pdgs": [
@@ -9452,7 +12615,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9496,7 +12661,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.0828383152775765e-15,
+       "max_sector_double_pole_relative_error": 1.2012135933268298e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 9.564811724096282e-15,
+       "max_sector_double_pole_relative_error": 9.564332695278238e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.0310312034117754e-15,
+       "max_sector_double_pole_relative_error": 1.0007750873862086e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.406307367283505e-16,
+       "max_sector_double_pole_relative_error": 2.669363540726291e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -9555,6 +12766,8 @@
      "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g g > t t~ e- e+ g QED=2 [virt=QCD]",
      "pdgs": [
@@ -9620,7 +12833,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9664,7 +12879,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.667660637101182e-15,
+       "max_sector_double_pole_relative_error": 4.694653526147732e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 2.8838459582864727e-15,
+       "max_sector_double_pole_relative_error": 2.9005231205807123e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 8.296143268047563e-16,
+       "max_sector_double_pole_relative_error": 8.180509335852682e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+       "born_double_pole_relative_mismatch": 4.667660637101182e-15,
+       "max_sector_double_pole_relative_error": 4.694653526147732e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": [
@@ -9716,7 +12977,7 @@
      "WH": "0"
     },
     "scheme": "qcd",
-    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one, identical parameter values"
+    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one: the same QCD parameter values (default keeps MTA = ymtau = 1.777 where no_b_mass has 0; no tau enters these QCD rows)"
    },
    "note": null,
    "references": [
@@ -9727,6 +12988,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u b > d t QED=2 [virt=QCD]",
      "pdgs": [
@@ -9789,7 +13052,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9833,7 +13098,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.9293226683137964e-16,
+       "max_sector_double_pole_relative_error": 1.605176356244407e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.9474655807190861e-16,
+       "max_sector_double_pole_relative_error": 1.620271070314105e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.9293226683137964e-16,
+       "max_sector_double_pole_relative_error": 1.605176356244407e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -9857,7 +13168,7 @@
      "WH": "0"
     },
     "scheme": "qcd",
-    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one, identical parameter values"
+    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one: the same QCD parameter values (default keeps MTA = ymtau = 1.777 where no_b_mass has 0; no tau enters these QCD rows)"
    },
    "note": null,
    "references": [
@@ -9868,6 +13179,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "b u > d t QED=2 [virt=QCD]",
      "pdgs": [
@@ -9930,7 +13243,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -9974,7 +13289,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.0078267129818147e-16,
+       "max_sector_double_pole_relative_error": 1.670490903385861e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.960453475945021e-16,
+       "max_sector_double_pole_relative_error": 1.6310768638065287e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.955475188449961e-16,
+       "max_sector_double_pole_relative_error": 8.273590574632637e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.0078267129818147e-16,
+       "max_sector_double_pole_relative_error": 1.670490903385861e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10006,6 +13367,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u d~ > t b~ QED=2 [virt=QCD]",
      "pdgs": [
@@ -10068,7 +13431,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10112,7 +13477,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4010179070329634e-16,
+       "max_sector_double_pole_relative_error": 1.99762187973313e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 8.380784043514411e-16,
+       "max_sector_double_pole_relative_error": 7.968828566109998e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.4010179070329634e-16,
+       "max_sector_double_pole_relative_error": 1.99762187973313e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10138,7 +13549,7 @@
      "WH": "0"
     },
     "scheme": "qcd",
-    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one, identical parameter values"
+    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one: the same QCD parameter values (default keeps MTA = ymtau = 1.777 where no_b_mass has 0; no tau enters these QCD rows)"
    },
    "note": null,
    "references": [
@@ -10149,6 +13560,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g b > t w- QED=1 [virt=QCD]",
      "pdgs": [
@@ -10216,7 +13629,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10260,7 +13675,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2772108630755636e-16,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.993691431827675e-16,
+       "max_sector_double_pole_relative_error": 3.835106987416262e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.899377042941375e-16,
+       "max_sector_double_pole_relative_error": 3.992912083338108e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2772108630755636e-16,
+       "max_sector_double_pole_relative_error": 0.0,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10321,6 +13782,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > t t~ QCD=2 QED=2 [virt=QCD]",
      "pdgs": [
@@ -10387,7 +13850,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10459,7 +13924,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2804903627705386e-15,
+       "max_sector_double_pole_relative_error": 1.1985239688179318e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.1554347539815217e-15,
+       "max_sector_double_pole_relative_error": 2.0691914485415395e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.6222745325385303e-15,
+       "max_sector_double_pole_relative_error": 1.6196586081129862e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2804903627705386e-15,
+       "max_sector_double_pole_relative_error": 1.1985239688179318e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10493,6 +14004,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u s~ > w+ g QED=1 [virt=QCD]",
      "pdgs": [
@@ -10564,7 +14077,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10608,7 +14123,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.438647034234884e-16,
+       "max_sector_double_pole_relative_error": 4.791068111726758e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.652124319290674e-16,
+       "max_sector_double_pole_relative_error": 1.5575575045906806e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 7.792783562346594e-16,
+       "max_sector_double_pole_relative_error": 7.322557803733806e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.438647034234884e-16,
+       "max_sector_double_pole_relative_error": 4.791068111726758e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10640,6 +14201,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g s > t w- QED=1 [virt=QCD]",
      "pdgs": [
@@ -10711,7 +14274,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10755,7 +14320,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.9658907526888247e-16,
+       "max_sector_double_pole_relative_error": 3.4166633556052005e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.3045681512797493e-15,
+       "max_sector_double_pole_relative_error": 1.3358610561172353e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 1.1590236748138396e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.9658907526888247e-16,
+       "max_sector_double_pole_relative_error": 3.4166633556052005e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10787,6 +14398,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "g d > t w- QED=1 [virt=QCD]",
      "pdgs": [
@@ -10858,7 +14471,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -10902,7 +14517,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2596853299517795e-15,
+       "max_sector_double_pole_relative_error": 1.2899016226894866e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.6417231278035383e-15,
+       "max_sector_double_pole_relative_error": 1.7336379102702266e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.1365949294281334e-16,
+       "max_sector_double_pole_relative_error": 3.2817687095772295e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2596853299517795e-15,
+       "max_sector_double_pole_relative_error": 1.2899016226894866e-15,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -10934,6 +14595,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "p p > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -10996,7 +14659,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -11040,7 +14705,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": "P0_uux_ttx"
+     "subprocess": "P0_uux_ttx",
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.402451813852693e-16,
+       "max_sector_double_pole_relative_error": 5.992619844089659e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 2.1554347539815217e-15,
+       "max_sector_double_pole_relative_error": 2.0691914485415395e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 1.2978196260308246e-15,
+       "max_sector_double_pole_relative_error": 1.417201282098863e-15,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 6.402451813852693e-16,
+       "max_sector_double_pole_relative_error": 5.992619844089659e-16,
+       "reason": null
+      }
+     ]
     },
     {
      "run": "pp_ttx_P2_gg_ttx",
@@ -11049,6 +14760,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "p p > t t~ QED=0 [virt=QCD]",
      "pdgs": [
@@ -11111,7 +14824,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -11155,7 +14870,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": "P2_gg_ttx"
+     "subprocess": "P2_gg_ttx",
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.4349366244779384e-16,
+       "max_sector_double_pole_relative_error": 4.919761411933688e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 0.0,
+       "max_sector_double_pole_relative_error": 1.2232131683675422e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 4.418387058427887e-16,
+       "max_sector_double_pole_relative_error": 4.901402656593667e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
@@ -11187,6 +14948,8 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
      "status": "committed",
      "madloop_process": "u u~ > mu- mu+ QED=2 [virt=QCD]",
      "pdgs": [
@@ -11258,7 +15021,9 @@
      "scale_variation": {
       "point": 4,
       "copy_of_point": 1,
-      "mu_r_factor": "1/2"
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
      },
      "primary_provider": "madloop",
      "validated_providers": [
@@ -11302,7 +15067,53 @@
       ]
      },
      "per_helicity": false,
-     "subprocess": null
+     "subprocess": null,
+     "point_reference": [
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.145734074902063e-16,
+       "max_sector_double_pole_relative_error": 4.281197131101428e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 3.314954631672663e-16,
+       "max_sector_double_pole_relative_error": 2.0685057834705305e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.210387629657202e-16,
+       "max_sector_double_pole_relative_error": 4.3349882149592695e-16,
+       "reason": null
+      },
+      {
+       "status": "ok",
+       "comparison": "relative",
+       "absolute_scale_row": null,
+       "absolute_scale": null,
+       "born_source": "madloop",
+       "madloop_point": "binary64 rounding of the published point (double precision)",
+       "born_double_pole_relative_mismatch": 5.145734074902063e-16,
+       "max_sector_double_pole_relative_error": 4.281197131101428e-16,
+       "reason": null
+      }
+     ]
     }
    ],
    "existing_references": []
