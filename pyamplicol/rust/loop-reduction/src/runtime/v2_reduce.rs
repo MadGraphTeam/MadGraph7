@@ -162,7 +162,7 @@ pub fn reaches_fast_threshold(
 
 /// The squared masses' clause of [`reaches_fast_threshold`]: a squared mass
 /// `x` with `0 < |re x| + |im x| < threshold`.
-pub fn squared_mass_reaches_fast_threshold(masses: &[Complex<f64>], threshold: f64) -> bool {
+pub(super) fn squared_mass_reaches_fast_threshold(masses: &[Complex<f64>], threshold: f64) -> bool {
     masses.iter().any(|m| {
         let size = m.re.abs() + m.im.abs();
         size > 0. && size < threshold
@@ -172,7 +172,7 @@ pub fn squared_mass_reaches_fast_threshold(masses: &[Complex<f64>], threshold: f
 /// The invariants' clause of [`reaches_fast_threshold`]: an off-diagonal
 /// invariant `s` with `0 < |re s| + |im s| < threshold`, or within
 /// `(0, threshold)` of a real squared mass of the lane.
-pub fn invariant_reaches_fast_threshold(
+fn invariant_reaches_fast_threshold(
     n: usize,
     masses: &[Complex<f64>],
     s_matrix: &[Complex<f64>],

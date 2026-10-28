@@ -3,8 +3,8 @@
 //! Existing epsilon-sector reduction facade shared with non-Python callers.
 use super::fast::FastReductions;
 use super::v2_reduce::{
-    GENERIC_CHUNK_LANES, fast_engine_threshold, invariant_reaches_fast_threshold,
-    reaches_fast_threshold, squared_mass_reaches_fast_threshold,
+    GENERIC_CHUNK_LANES, fast_engine_threshold, reaches_fast_threshold,
+    squared_mass_reaches_fast_threshold,
 };
 use super::*;
 use crate::{
@@ -262,15 +262,17 @@ enum Plans {
 /// ([`reaches_fast_threshold`], the v2 engine's rule) is reduced instead by
 /// the generic binary64 reduction of the same numerator, which has none,
 /// built on first use under pyAmpliCol's library key. Without one the
-/// invariants are formed from the binary64 shifts, and below the thresholds
-/// they are indistinguishable from rounding (a massless leg at a generic
-/// angle gives `|p²| ~ 1e-11` at `E = 500`), which the fast path's snap sets
-/// to zero as before: such a call routes on the squared masses alone. A lane
-/// with a light squared mass takes the generic plan when its formed
-/// invariants keep clear of the thresholds, and is refused with
-/// [`LIGHT_MASS_NEEDS_INVARIANTS`] otherwise (rounded invariants cannot
-/// resolve the mass). Every other lane, and every call without a routed or
-/// refused lane, keeps the fast reduction's code path and bits.
+/// invariants are formed from the binary64 shifts, which are not given
+/// inputs: below the thresholds they are indistinguishable from rounding (a
+/// massless leg at a generic angle gives `|p²| ~ 1e-11` at `E = 500`), which
+/// the fast path's snap sets to zero as before, and an external leg's
+/// squared mass is not given at all. Such a call routes on the given squared
+/// masses alone: a lane with a light squared mass is refused with
+/// [`LIGHT_MASS_NEEDS_INVARIANTS`] (rounded invariants cannot resolve so
+/// light a mass: a formed `p² ≈ 0` may stand for a massless leg or for one
+/// of that mass), every other lane keeps the fast path. Every lane neither
+/// routed nor refused, and every call without such a lane, keeps the fast
+/// reduction's code path and bits.
 struct FastPlan {
     fast: FastReductions,
     expressions: [String; 3],
@@ -283,15 +285,13 @@ struct FastPlan {
 }
 
 /// The status of a lane of a legacy binary64 fast plan that carries a squared
-/// mass in `(0, 1e-9)` while the call gives no invariant matrix and an
-/// invariant formed from its shifts lies within `1e-9` of zero or of one of
-/// its squared masses ([`FastPlan`]): binary64 invariants formed from rounded
-/// shifts cannot resolve so light a mass. Pass the exact invariants
-/// (`s_matrix`), or use double-double or arbitrary precision.
+/// mass in `(0, 1e-9)` while the call gives no invariant matrix
+/// ([`FastPlan`]): binary64 invariants formed from rounded shifts cannot
+/// resolve so light a mass. Pass the exact invariants (`s_matrix`), or use
+/// double-double or arbitrary precision.
 pub const LIGHT_MASS_NEEDS_INVARIANTS: &str = "InvalidInput(a squared mass below the binary64 fast \
-     path's absolute threshold 1e-9 needs the exact invariant matrix: an invariant formed from the \
-     rounded shifts lies within 1e-9 of zero or of a squared mass; pass s_matrix, or use \
-     double-double or arbitrary precision)";
+     path's absolute threshold 1e-9 needs the exact invariant matrix, which invariants formed from \
+     the rounded shifts cannot replace; pass s_matrix, or use double-double or arbitrary precision)";
 
 /// Where a lane of [`FastPlan`] is reduced.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -302,19 +302,6 @@ enum Route {
     Exact,
     /// Not reduced: [`LIGHT_MASS_NEEDS_INVARIANTS`].
     Refused,
-}
-
-/// `(p_i - p_j)²` of one lane's `n` real shifts in binary64, row-major `n²`.
-fn shift_invariants(lane: &[FourMomentum<Complex<f64>>]) -> Vec<Complex<f64>> {
-    lane.iter()
-        .flat_map(|a| {
-            lane.iter().map(move |b| {
-                let (a, b) = (a.components(), b.components());
-                let d: [f64; 4] = std::array::from_fn(|mu| a[mu].re - b[mu].re);
-                Complex::new(d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3], 0.)
-            })
-        })
-        .collect()
 }
 
 /// The rows of `values` (`width` entries per lane) whose route is `wanted`.
@@ -366,18 +353,10 @@ impl FastPlan {
                             Route::Fast
                         }
                     }
-                    None if !squared_mass_reaches_fast_threshold(masses, self.threshold) => {
-                        Route::Fast
+                    None if squared_mass_reaches_fast_threshold(masses, self.threshold) => {
+                        Route::Refused
                     }
-                    None => {
-                        let invariants = shift_invariants(&shifts[lane * n..(lane + 1) * n]);
-                        if invariant_reaches_fast_threshold(n, masses, &invariants, self.threshold)
-                        {
-                            Route::Refused
-                        } else {
-                            Route::Exact
-                        }
-                    }
+                    None => Route::Fast,
                 }
             })
             .collect()

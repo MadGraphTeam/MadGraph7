@@ -1104,14 +1104,14 @@ fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
 
 /// The legacy engine's binary64 fast plans (`PolynomialPlan` `fast` and
 /// `fast-tensor`; the default `loop.engine`) route by the same rule: light
-/// lanes give the legacy generic binary64 plan's bits, with the invariant
-/// matrix and without it (then formed from the shifts, exact at these
-/// points; rounded ones: the next test), not the massless
-/// lines' integrals the snap computed; the lanes of an ordinary family keep
-/// the fast plan's bits beside them in one call, and a call without a light
-/// lane routes nothing.
+/// lanes give the legacy generic binary64 plan's bits with the invariant
+/// matrix, not the massless lines' integrals the snap computed, and are
+/// refused without it (`LIGHT_MASS_NEEDS_INVARIANTS`; the next test); the
+/// lanes of an ordinary family keep the fast plan's bits beside them in one
+/// call, and a call without a light lane routes nothing.
 #[test]
 fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
+    use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
     let light = family_lanes(&light_families(), 300, "double");
     let massless: Vec<Family> = light_families()
         .into_iter()
@@ -1131,19 +1131,33 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
     let dd = reduce(&mut reference, &dd, ReductionFrame::REVERSED);
     for (index, lanes) in light.iter().enumerate() {
         let want = values(&dd.direct[index].values().unwrap());
+        let generic = values(
+            &legacy_reduce(&mut legacy_plan(lanes, "generic"), lanes, true)
+                .values()
+                .unwrap(),
+        );
         for matrix in [true, false] {
-            let generic = values(
-                &legacy_reduce(&mut legacy_plan(lanes, "generic"), lanes, matrix)
-                    .values()
-                    .unwrap(),
-            );
             for engine in ["fast", "fast-tensor"] {
                 let mut plan = legacy_plan(lanes, engine);
-                let got = values(&legacy_reduce(&mut plan, lanes, matrix).values().unwrap());
-                assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64, "{engine}");
-                assert_eq!(got, generic, "family {index}, {engine}, matrix {matrix}");
-                let error = relative(&got, &want, 3);
-                assert!(error < 1e-12, "family {index}, {engine}: {error:e}");
+                let reduced = legacy_reduce(&mut plan, lanes, matrix);
+                if matrix {
+                    let got = values(&reduced.values().unwrap());
+                    assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64, "{engine}");
+                    assert_eq!(got, generic, "family {index}, {engine}");
+                    let error = relative(&got, &want, 3);
+                    assert!(error < 1e-12, "family {index}, {engine}: {error:e}");
+                } else {
+                    // Without the invariants a light lane is refused.
+                    assert_eq!(plan.take_exact_lanes(), 0, "{engine}");
+                    assert!(
+                        reduced
+                            .statuses()
+                            .iter()
+                            .all(|(_, status)| status == LIGHT_MASS_NEEDS_INVARIANTS),
+                        "family {index}, {engine}"
+                    );
+                    assert_eq!(reduced.successful_values().rows(), 0);
+                }
                 if singular[index] {
                     let snapped = values(
                         &legacy_reduce(&mut plan, &massless[index], matrix)
@@ -1187,9 +1201,10 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
 /// massless box keeps the fast plan (no lane routed) and equals the generic
 /// plan given the exact invariants (the massless legs on their shells); the
 /// generic plan given the rounded `p²` instead computes a slightly off-shell
-/// box, O(1) off. A light internal line at that point is refused
+/// box (it fails or is O(1) off). A light internal line is refused
 /// (`LIGHT_MASS_NEEDS_INVARIANTS`): rounded invariants cannot resolve it;
-/// given the exact invariants it is routed and equals the generic plan.
+/// given the exact invariants it is routed and equals the generic plan, and
+/// beside it in one call the massless lane keeps its bits.
 #[test]
 fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
     use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
@@ -1251,23 +1266,26 @@ fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
             .values()
             .unwrap(),
     );
-    let mut off_shell = legacy_plan(&massless, "generic");
-    let off_shell = values(
-        &off_shell
-            .evaluate_batch(
-                &massless.shifts,
-                &massless.masses,
-                &massless.scales,
-                &massless.coefficients,
-                Some(&rounded),
-            )
-            .unwrap()
-            .values()
-            .unwrap(),
+    // What routing on the formed invariants did (the re-audit of
+    // 2026-10-28): the generic plan at the rounded p² fails or is O(1) off.
+    let off_shell = legacy_plan(&massless, "generic")
+        .evaluate_batch(
+            &massless.shifts,
+            &massless.masses,
+            &massless.scales,
+            &massless.coefficients,
+            Some(&rounded),
+        )
+        .unwrap();
+    eprintln!(
+        "the generic plan at the rounded invariants: {:?}",
+        off_shell.statuses()
     );
-    let off = relative(&off_shell, &exact_generic, 3);
-    eprintln!("the generic plan at the rounded invariants: {off:e} off");
-    assert!(off > 1e-2, "{off:e}");
+    if let Ok(off_shell) = off_shell.values() {
+        let off = relative(&values(&off_shell), &exact_generic, 3);
+        eprintln!("{off:e} off");
+        assert!(off > 1e-2, "{off:e}");
+    }
     for engine in ["fast", "fast-tensor"] {
         let mut plan = legacy_plan(&massless, engine);
         let given = values(&legacy_reduce(&mut plan, &massless, true).values().unwrap());
