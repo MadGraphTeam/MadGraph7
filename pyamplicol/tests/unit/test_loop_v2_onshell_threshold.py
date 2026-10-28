@@ -33,6 +33,14 @@ in the production path (native executor, native inputs):
   and dimensionful parameter times 1e3, its square and the scale times 1e6)
   agree to binary64 accuracy, the light top routed in GeV (m^2 = 1e-12) and
   on the fast engine in MeV (1e-6);
+* a power-of-ten scan of the units (g g > t t~ in the default tier,
+  u u~ > d d~ g nightly; nothing routed): small units and the GeV-like range
+  keep the virtual and its estimate, while large factors with the beams along
+  z do not, which strict xfails pin: NinjaRS's light-like spinors take a beam
+  along -z, formed with a rounding residue above their absolute 1e-9 window,
+  in a cancelling form (silently 6-22 % off with checks off; the rescaled
+  check's false alarm on an exact value); the exact 90-degree rotation that
+  takes the beams off the z axis holds at the same factors;
 * where oneloopmaster's binary64 masters cannot evaluate the light lanes
   (g g > g g: a box of four light lines, D0 not finite), the point fails with
   the master's reason instead of taking the massless integral, and
@@ -53,6 +61,7 @@ in the production path (native executor, native inputs):
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -90,8 +99,16 @@ HEAVY_POINT = [
     ["500.0", "-281.47035367867784", "-225.17628294294227", "-300.23504392392306"],
 ]
 
+# loop_sm's other dimensionful inputs (value, mass dimension).
+UNITS = {
+    "MZ": ("91.188", 1),
+    "Gf": ("1.16639e-05", -2),
+    "MH": ("125", 1),
+    "ymt": ("173", 1),
+}
+
 # name: process, Born orders, loop orders, the model parameters that carry a
-# unit besides MT (value, mass dimension) for the unit test.
+# unit besides MT (value, mass dimension) for the unit tests.
 PROCESSES = {
     "epem_ttx": (
         "e+ e- > t t~",
@@ -101,6 +118,8 @@ PROCESSES = {
     ),
     "uux_gg": ("u u~ > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0}, {}),
     "gg_gg": ("g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0}, {}),
+    "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0}, UNITS),
+    "uux_ddxg": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}, UNITS),
 }
 
 
@@ -125,7 +144,7 @@ def executors(loop_sm_compiled_model, loop_native):
     return build
 
 
-def _parameters(name: str, mt: str, factor: int = 1) -> dict[str, str]:
+def _parameters(name: str, mt: str, factor: float = 1) -> dict[str, str]:
     """aS, MT and the process's other dimensionful inputs in units of
     GeV / ``factor``."""
 
@@ -190,7 +209,11 @@ def test_a_light_top_takes_the_exact_engine_and_agrees_with_mpfr(executors):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["epem_ttx", "uux_gg"])
+@pytest.mark.parametrize(
+    "name",
+    # u u~ > g g does not detect the snap (docstring): nightly.
+    ["epem_ttx", pytest.param("uux_gg", marks=pytest.mark.loop_nightly)],
+)
 def test_a_light_top_agrees_in_every_carrier(executors, name):
     """The light top in loop lines and legs (e+ e- > t t~, where the snap
     was 107 % off) and in a closed loop (u u~ > g g, smooth as m -> 0, where
@@ -216,11 +239,14 @@ def test_a_light_top_agrees_in_every_carrier(executors, name):
 @pytest.mark.parametrize(
     ("name", "mt", "routed_in_gev"),
     [
-        ("epem_ttx", LIGHT_MT, True),
-        ("uux_gg", LIGHT_MT, True),
-        ("uux_gg", "173", False),
+        pytest.param("epem_ttx", LIGHT_MT, True, id="epem_ttx-light"),
+        pytest.param("uux_gg", LIGHT_MT, True, id="uux_gg-light"),
+        # The heavy top routes nothing: a unit check of the fast engine,
+        # which the power-of-ten scan below makes in the default tier.
+        pytest.param(
+            "uux_gg", "173", False, id="uux_gg-loop_sm", marks=pytest.mark.loop_nightly
+        ),
     ],
-    ids=["epem_ttx-light", "uux_gg-light", "uux_gg-loop_sm"],
 )
 def test_the_virtual_is_unit_independent(executors, name, mt, routed_in_gev):
     """GeV against MeV: the same dimensionless virtual to binary64 accuracy
@@ -244,6 +270,161 @@ def test_the_virtual_is_unit_independent(executors, name, mt, routed_in_gev):
     assert estimate <= ESTIMATE_CAP, estimate
     error = deviation(_virtual(gev), _virtual(mev))
     assert error <= max(BINARY64, ESTIMATE_MARGIN * estimate), (error, estimate)
+
+
+# Units of the model far from GeV (genericity audit 2, G2-M3 item 3; the
+# evidence audit of 2026-10-28): every momentum and dimensionful parameter
+# times a power of ten f (the scale times f^2, G_F times f^-2). The virtual's
+# Laurent coefficients over the Born are dimensionless, so they must not move
+# beyond binary64 accuracy. g g > t t~: beams along z at E = 400, the top at
+# cos(theta) = 0.21, phi = 0.7 (MT = 173, mu_R^2 = 160000); u u~ > d d~ g:
+# the provider fixture's point 1 (mu_R = 700).
+_TOP = math.sqrt(400.0**2 - 173.0**2)
+_SIN = math.sqrt(1 - 0.21**2)
+_K = (_TOP * _SIN * math.cos(0.7), _TOP * _SIN * math.sin(0.7), _TOP * 0.21)
+UNIT_POINTS = {
+    "gg_ttx": (
+        [
+            [400.0, 0.0, 0.0, 400.0],
+            [400.0, 0.0, 0.0, -400.0],
+            [400.0, *_K],
+            [400.0, *(-k for k in _K)],
+        ],
+        160000.0,
+    ),
+    "uux_ddxg": (
+        [
+            [float(x) for x in leg]
+            for leg in json.loads(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "fixtures/loop/required/uux_ddxg.json"
+                ).read_text()
+            )["points"][1]
+        ],
+        700.0**2,
+    ),
+}
+# Owner of the large-unit defect (DESIGN §11.2 'Other thresholds'): the
+# strict xfails below turn into failures when the fix is pinned.
+NINJA_SPINORS = (
+    "pinned NinjaRS 41a4c00, fast/geometry.rs Spinor::new: a beam along -z "
+    "formed as a difference of loop shifts carries a rounding residue in "
+    "p0 + p3, below infrared_eps (1e-9, absolute) in GeV-like units and above "
+    "it at large energies in the model's units, where the cancelling "
+    "sqrt(p0 + p3) form divides rounding noise by its root (O(10 %) silent "
+    "errors); routed to the light-like spinor fix, "
+    "workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/NOTE.md"
+)
+
+
+def _x90(point):
+    """The exact rotation by 90 degrees about x: (E, x, y, z) -> (E, x, -z, y)
+    (the beams along -y and y)."""
+
+    return [[e, x, -z, y] for e, x, y, z in point]
+
+
+def _over_born(result) -> list[complex]:
+    (born,) = result.born.values()
+    (virtual,) = _virtual(result).values()
+    return [complex(x) / complex(born) for x in virtual.coefficients]
+
+
+def _unit_error(reference, result) -> float:
+    """Largest deviation of the virtual's Laurent coefficients over the Born,
+    relative to the largest reference coefficient."""
+
+    want = _over_born(reference)
+    got = _over_born(result)
+    return max(abs(a - b) for a, b in zip(got, want, strict=True)) / max(map(abs, want))
+
+
+@pytest.fixture(scope="module")
+def unit_references(executors):
+    """Per (process, frame): DoubleFloat and the rescaled check's estimate in
+    GeV, the reference of every factor."""
+
+    found = {}
+
+    def reference(name: str, frame: str):
+        if (name, frame) not in found:
+            executor = executors(name)
+            point, scale = UNIT_POINTS[name]
+            point = _x90(point) if frame == "x90" else point
+            point = [[repr(x) for x in leg] for leg in point]
+            parameters = _parameters(name, "173")
+            double_double = _evaluate(
+                executor, point, repr(scale), parameters, Precision.double_double()
+            )
+            checks = StabilityChecks(reduction_direction=True, rescaled=True)
+            gev = _evaluate(executor, point, repr(scale), parameters, stability=checks)
+            found[name, frame] = (double_double, gev.stability.relative)
+        return found[name, frame]
+
+    return reference
+
+
+def _units(name, factor, frame="z", *, defect=None, nightly=False):
+    marks = []
+    if defect is not None:
+        marks.append(
+            pytest.mark.xfail(
+                strict=True, raises=AssertionError, reason=f"{defect}: {NINJA_SPINORS}"
+            )
+        )
+    if nightly:
+        marks.append(pytest.mark.loop_nightly)
+    return pytest.param(
+        name, factor, frame, marks=marks, id=f"{name}-{factor:g}-{frame}"
+    )
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "factor", "frame"),
+    [
+        _units("gg_ttx", 1e-6),
+        _units("gg_ttx", 1e5),
+        _units("gg_ttx", 7e5, defect="22 % off, checks off"),
+        _units("gg_ttx", 1e6, defect="value exact; rescaled check 0.43"),
+        _units("gg_ttx", 7e5, "x90"),
+        _units("gg_ttx", 3e7, defect="9.7 % off, checks off", nightly=True),
+        _units("gg_ttx", 3e7, "x90", nightly=True),
+        _units("uux_ddxg", 1e-6, nightly=True),
+        _units("uux_ddxg", 1e4, defect="6.8 % off, checks off", nightly=True),
+        _units("uux_ddxg", 1e6, defect="5.7 % off, checks off", nightly=True),
+        _units("uux_ddxg", 1e6, "x90", nightly=True),
+    ],
+)
+def test_power_of_ten_units_keep_the_virtual_and_its_estimate(
+    executors, unit_references, name, factor, frame
+):
+    """Binary64 (the fast engine, nothing routed) in units of 1/f GeV against
+    DoubleFloat in GeV: with checks off, the virtual over the Born within
+    tenfold the GeV evaluation's own estimate (or 1e-12); with the rescaled
+    reduction check, an estimate below 1e-9. Small units and the GeV-like
+    range hold. With the beams along z, large factors do not (strict xfails,
+    NINJA_SPINORS: silently wrong values, a false alarm of the rescaled check
+    on an exact value, whose frame is 0.7 times the inputs); the exact
+    rotation of the same points by 90 degrees about x, which takes the beams
+    off the z axis, holds at the same factors: the defect is the beam axis'
+    spinor, not the units of the masses or invariants."""
+
+    executor = executors(name)
+    double_double, gev_estimate = unit_references(name, frame)
+    point, scale = UNIT_POINTS[name]
+    point = _x90(point) if frame == "x90" else point
+    point = [[repr(x * factor) for x in leg] for leg in point]
+    parameters = _parameters(name, "173", factor)
+    scaled = repr(scale * factor**2)
+    value = _evaluate(executor, point, scaled, parameters)
+    assert _routed(executor) == 0
+    error = _unit_error(double_double, value)
+    assert error <= max(BINARY64, ESTIMATE_MARGIN * gev_estimate), (error, gev_estimate)
+    checks = StabilityChecks(reduction_direction=True, rescaled=True)
+    estimate = _evaluate(executor, point, scaled, parameters, stability=checks)
+    assert estimate.stability.relative <= ESTIMATE_CAP, estimate.stability.relative
 
 
 # DoubleFloat on the box of four light lines (m^2/s ~ 1e-18): measured
