@@ -879,8 +879,7 @@
     }
    ],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "sp": "MQ-REF (supplied special points S1-S4)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -2043,10 +2042,7 @@
      }
     }
    ],
-   "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
-   "extras_pending": {
-    "sp": "MQ-REF (supplied special points S1-S4)"
-   }
+   "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json"
   },
   {
    "id": "B02",
@@ -2584,8 +2580,7 @@
    ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)",
-    "sp": "MQ-REF (supplied special points S1-S4)"
+    "ward": "MQ-WARD (generic native Ward input)"
    }
   },
   {
@@ -4545,10 +4540,7 @@
       ]
      }
     }
-   ],
-   "extras_pending": {
-    "sp": "MQ-REF (supplied special points S1-S4)"
-   }
+   ]
   },
   {
    "id": "D26",

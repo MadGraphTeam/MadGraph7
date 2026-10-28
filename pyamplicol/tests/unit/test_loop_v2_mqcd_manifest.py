@@ -118,6 +118,12 @@ def test_rows_are_well_formed(manifest, rows):
         for extra in set(row.extras) - mqcd.IMPLEMENTED_EXTRAS:
             assert extra in row.extras_pending, (name, extra)
         assert set(row.extras_pending) <= set(row.extras), name
+        # The special points (sp, PLAN §4.1 S1-S4) run as the row's gating
+        # variants.
+        if "sp" in row.extras and "sp" not in row.extras_pending:
+            assert any(
+                other.base == name and other.gating for other in rows.values()
+            ), name
         if row.restriction_code in codes:
             code = codes[row.restriction_code]
             assert row.restriction == code["restriction"], name
