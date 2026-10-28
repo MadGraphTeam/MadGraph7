@@ -372,18 +372,21 @@ def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(gener
 # ------------------------------------------------------- tree-engine parity
 
 
-def _tree_artifact(tmp: Path, process: str) -> Path:
-    """A tree LC artifact of ``process`` on the built-in Standard Model."""
+def _tree_artifact(tmp: Path, process: str, selectors: str = "") -> Path:
+    """A tree LC artifact of ``process`` on the built-in Standard Model (with
+    ``[process]`` selector lines)."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
 
+    tmp.mkdir(parents=True, exist_ok=True)
     card = tmp / "tree.toml"
     output = tmp / "tree"
     card.write_text(
         'action = "generate"\n[process]\n'
         f'entries = [{{expression={json.dumps(process)}, name="t"}}]\n'
-        'coupling_order_policy = "minimal"\n[color]\naccuracy = "lc"\n'
+        f'coupling_order_policy = "minimal"\n{selectors}\n[color]\n'
+        'accuracy = "lc"\n'
         f"[generation]\noutput = {json.dumps(str(output))}\n"
         "emit_api_bundle = false\n[generation.validation]\n"
         "post_build_validation = false\n"
@@ -436,6 +439,73 @@ def test_helicity_and_flow_ids_are_the_tree_engines(
                 continue
             ratios.append(born / expected)
     assert ratios and max(ratios) - min(ratios) <= 1e-10 * abs(ratios[0])
+
+
+@pytest.mark.loop_physics
+def test_public_colour_subset_selectors_are_the_tree_engines(
+    loop_sm_compiled_model, tmp_path
+):
+    """The public route's colour subset selectors keep the tree engine's
+    flows: ``selected_color_sector_ids`` those its leading-colour artifact
+    with the same selector computes (a folded sector: its flow and the
+    reflection), ``max_color_sectors`` and ``reference_color_order`` its
+    plan's sectors; a missing sector id is refused as the tree engine
+    refuses it; helicities alone keep every flow; no selector is no
+    selection."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.generation.loop_service import _v2_selection
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+
+    def chosen(process: str, **selectors):
+        fields = dict.fromkeys(
+            (
+                "max_color_sectors",
+                "reference_color_order",
+                "selected_color_sector_ids",
+                "selected_source_helicities",
+            )
+        )
+        fields.update(selectors)
+        backend = SimpleNamespace(_process_selection=SimpleNamespace(**fields))
+        return _v2_selection(backend, compiled, process, "p")
+
+    assert chosen("g g > g g g") is None
+    assert chosen("g g > g g g", selected_source_helicities={1: -1}) == (
+        lc.Selection(((1, -1),))
+    )
+    # Sector ids: the tree engine's artifact with the same selector.
+    for k, (process, ids) in enumerate(
+        (("g g > g g g", [0, 7]), ("u u~ > d d~ g", [1, 2]))
+    ):
+        selection = chosen(process, selected_color_sector_ids=ids)
+        tree = Runtime.load(
+            _tree_artifact(
+                tmp_path / str(k), process, f"selected_color_sector_ids = {ids}"
+            ),
+            process="t",
+        )
+        assert sorted(lc.flow_id(word) for word in selection.flows) == sorted(
+            tree.physics.color_ids
+        )
+    # A truncated plan (the tree engine's recurrence route refuses it, its
+    # plan keeps the reference sector and then enumerates up to the cap): the
+    # reference sector (1 3 2 4 5, folded with its reflection) and the first
+    # enumerated one (1 2 3 4 5 and its reflection).
+    assert chosen(
+        "g g > g g g", max_color_sectors=1, reference_color_order=(1, 3, 2, 4, 5)
+    ).flows == ((1, 2, 3, 4, 5), (1, 3, 2, 4, 5), (1, 5, 4, 2, 3), (1, 5, 4, 3, 2))
+    assert chosen("u u~ > d d~ g", max_color_sectors=2).flows == (
+        (2, 1, 3, 5, 4),
+        (2, 5, 1, 3, 4),
+    )
+    with pytest.raises(GenerationError, match="did not materialize"):
+        chosen("g g > g g g", selected_color_sector_ids=[99])
 
 
 # ------------------------------------------------------- MadLoop per helicity
