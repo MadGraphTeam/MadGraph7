@@ -20,6 +20,8 @@ python-generation-bridge = ["f64-symjit"]
 # feature is deliberately absent from production/default builds.
 on-the-fly-test-support = ["f64-symjit"]
 symbolica-runtime = ["dep:symbolica"]
+# Tiles of RUSTICOL_TILE_POINTS points (see src/engine/tile_override.rs).
+tile-override = []
 
 [dependencies]
 bincode.workspace = true

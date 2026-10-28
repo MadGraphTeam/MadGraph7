@@ -19,6 +19,7 @@ default = []
 extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy"]
 on-the-fly-test-support = ["rusticol-core/on-the-fly-test-support"]
+tile-override = ["rusticol-core/tile-override"]
 
 [dependencies]
 flate2.workspace = true

@@ -65,6 +65,21 @@ fn compiled_direct_cache_target_bytes() -> usize {
     COMPILED_DIRECT_CACHE_TARGET_BYTES
 }
 
+/// `RUSTICOL_TILE_POINTS=N` (feature `tile-override`) for a tile that the
+/// cache target sizes to `points`: N where that leaves a single point (a
+/// footprint above the cache target), `None` elsewhere.
+fn compiled_direct_tile_override(points: u32) -> RusticolResult<Option<u32>> {
+    #[cfg(feature = "tile-override")]
+    if let Some(tile) = super::tile_override::tile_override()? {
+        let collapsed = points == 1;
+        if collapsed {
+            return Ok(Some(tile));
+        }
+    }
+    let _ = points;
+    Ok(None)
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct CompiledDirectPrototypeTraffic {
     /// Direct source-wavefunction writes into canonical current planes.
@@ -293,14 +308,22 @@ impl CompiledDirectTileSizing {
         let capacity = u32::try_from(self.effective_tile_capacity).map_err(|_| {
             RusticolError::integrity("compiled Direct-Arena tile capacity exceeds u32")
         })?;
-        Ok(deterministic_point_tile_size_with_cache_footprint(
-            capacity,
-            usize::MAX,
-            compiled_direct_cache_target_bytes(),
-            self.physical_scalar_values_per_point,
-            self.execution_scalar_values_per_point
-                .max(reduction_scalars),
-        )? as usize)
+        let tile = |cache_target_bytes| {
+            deterministic_point_tile_size_with_cache_footprint(
+                capacity,
+                usize::MAX,
+                cache_target_bytes,
+                self.physical_scalar_values_per_point,
+                self.execution_scalar_values_per_point
+                    .max(reduction_scalars),
+            )
+        };
+        let points = tile(compiled_direct_cache_target_bytes())?;
+        if compiled_direct_tile_override(points)?.is_some() {
+            // the whole execution tile, which the override sized
+            return Ok(tile(usize::MAX)? as usize);
+        }
+        Ok(points as usize)
     }
 }
 
@@ -409,21 +432,32 @@ fn compiled_direct_tile_sizing(
                 )? as usize;
                 (capacity, capacity)
             } else {
-                let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
+                let tiles = |point_cap, cache_target_bytes| -> RusticolResult<(usize, usize)> {
+                    let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
+                        point_cap,
+                        usize::MAX,
+                        cache_target_bytes,
+                        physical_scalar_values_per_point,
+                        execution_scalar_values_per_point,
+                    )? as usize;
+                    let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
+                        point_cap,
+                        usize::MAX,
+                        cache_target_bytes,
+                        physical_scalar_values_per_point,
+                        hot_scalar_values_per_point,
+                    )? as usize;
+                    Ok((execution_capacity, reduction_capacity))
+                };
+                let (execution_capacity, reduction_capacity) = tiles(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    usize::MAX,
                     compiled_direct_cache_target_bytes(),
-                    physical_scalar_values_per_point,
-                    execution_scalar_values_per_point,
-                )? as usize;
-                let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
-                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    usize::MAX,
-                    compiled_direct_cache_target_bytes(),
-                    physical_scalar_values_per_point,
-                    hot_scalar_values_per_point,
-                )? as usize;
-                (execution_capacity, reduction_capacity)
+                )?;
+                // the reduction tile is the smaller: its footprint includes the execution's
+                match compiled_direct_tile_override(reduction_capacity as u32)? {
+                    Some(points) => tiles(points, usize::MAX)?,
+                    None => (execution_capacity, reduction_capacity),
+                }
             }
         }
     };

@@ -43,6 +43,59 @@ fn evaluate_direct_color_schedule(
     direct.evaluate_all(point_count)
 }
 
+/// Rows of a batch of `mappings` replay mappings × `points` points (a
+/// routed evaluation of several mappings at once) must hold every point of
+/// every mapping.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(super) fn check_replay_rows(rows: usize, mappings: usize, points: usize) -> RusticolResult<()> {
+    if mappings == 0 || mappings.checked_mul(points) != Some(rows) {
+        return Err(RusticolError::integrity(
+            "routed topology replay batch does not hold its mappings' points",
+        ));
+    }
+    Ok(())
+}
+
+/// The parts of batch rows `start..stop` (mapping-major, `points` rows per
+/// mapping), one per mapping: (mapping, first row from `start`, rows, first
+/// point of the mapping).
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(super) fn replay_segments(
+    start: usize,
+    stop: usize,
+    points: usize,
+) -> impl Iterator<Item = (usize, usize, usize, usize)> {
+    let mut row = start;
+    std::iter::from_fn(move || {
+        if row >= stop {
+            return None;
+        }
+        let mapping = row / points;
+        let segment_stop = ((mapping + 1) * points).min(stop);
+        let segment = (
+            mapping,
+            row - start,
+            segment_stop - row,
+            row - mapping * points,
+        );
+        row = segment_stop;
+        Some(segment)
+    })
+}
+
+/// Replay mappings per routed evaluation: with feature `tile-override` and
+/// `RUSTICOL_TILE_POINTS=N`, as many as fill N rows of `points` points each,
+/// so that one engine call covers several mappings; otherwise one.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn routed_replay_mappings_per_call(points: usize) -> RusticolResult<usize> {
+    #[cfg(feature = "tile-override")]
+    if let Some(tile) = super::tile_override::tile_override()? {
+        return Ok((tile as usize / points.max(1)).max(1));
+    }
+    let _ = points;
+    Ok(1)
+}
+
 impl ExecutionRuntime {
     fn has_compiled_symmetric_group_diagnostic(&self) -> bool {
         self.amplitude_stage.as_ref().is_some_and(|amplitude| {
@@ -875,35 +928,61 @@ impl ExecutionRuntime {
         let mut target_components = std::mem::take(&mut self.lc_replay_target_components_scratch);
         target_components.resize(target_scalar_count, 0.0);
         target_components.fill(0.0);
+        let mappings_per_call = routed_replay_mappings_per_call(batch.point_count())?;
+        // several mappings' permuted momenta, one after the other
+        let mut expanded_momenta = Vec::new();
         let result = (|| {
             for source_group in &selection.source_groups {
                 let materialized_sector_ids = source_group
                     .materialized_sector_ids
                     .as_ref()
                     .expect("topology-replay source cache preflighted");
-                for (mapping_index, replay_entry) in source_group
-                    .mapping_indices
-                    .iter()
-                    .copied()
-                    .zip(&source_group.entries)
+                for chunk_start in
+                    (0..source_group.mapping_indices.len()).step_by(mappings_per_call)
                 {
-                    let mapping = mappings.get(mapping_index).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "LC topology replay selection references an unknown mapping",
-                        )
-                    })?;
-                    let evaluation_view = if mapping.is_empty() {
-                        batch
+                    let chunk_end =
+                        (chunk_start + mappings_per_call).min(source_group.mapping_indices.len());
+                    let replay_entry = &source_group.entries[chunk_start..chunk_end];
+                    let chunk = &source_group.mapping_indices[chunk_start..chunk_end];
+                    let mut chunk_mappings = chunk.iter().map(|&mapping_index| {
+                        mappings.get(mapping_index).ok_or_else(|| {
+                            RusticolError::integrity(
+                                "LC topology replay selection references an unknown mapping",
+                            )
+                        })
+                    });
+                    let evaluation_view = if chunk.len() == 1 {
+                        let mapping = chunk_mappings.next().expect("one mapping")?;
+                        if mapping.is_empty() {
+                            batch
+                        } else {
+                            apply_lc_topology_label_permutation_from_view_into_flat(
+                                batch,
+                                self.external_count,
+                                mapping,
+                                &mut flat_momenta,
+                            )?;
+                            F64MomentumBatchView::from_contiguous_prevalidated(
+                                &flat_momenta,
+                                batch.point_count(),
+                                self.external_count,
+                                None,
+                            )?
+                        }
                     } else {
-                        apply_lc_topology_label_permutation_from_view_into_flat(
-                            batch,
-                            self.external_count,
-                            mapping,
-                            &mut flat_momenta,
-                        )?;
+                        expanded_momenta.clear();
+                        for mapping in chunk_mappings {
+                            apply_lc_topology_label_permutation_from_view_into_flat(
+                                batch,
+                                self.external_count,
+                                mapping?,
+                                &mut flat_momenta,
+                            )?;
+                            expanded_momenta.extend_from_slice(&flat_momenta);
+                        }
                         F64MomentumBatchView::from_contiguous_prevalidated(
-                            &flat_momenta,
-                            batch.point_count(),
+                            &expanded_momenta,
+                            chunk.len() * batch.point_count(),
                             self.external_count,
                             None,
                         )?
@@ -1339,13 +1418,14 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
-        replay_entry: &LcResolvedReplayEntry,
+        replay_entries: &[LcResolvedReplayEntry],
         source_component_count: usize,
         target_component_count: usize,
         target_point_count: usize,
         target_components: &mut [f64],
     ) -> RusticolResult<()> {
         let point_count = batch.point_count();
+        check_replay_rows(point_count, replay_entries.len(), target_point_count)?;
         let physics = self.physics.clone().ok_or_else(|| {
             RusticolError::invalid_argument(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
@@ -1390,19 +1470,24 @@ impl ExecutionRuntime {
                 selected_color_sector_ids,
                 point_stop - point_start,
             )?;
-            amplitude.reduce_planes_f64_routed_components_add_into(
-                direct.amplitude_planes()?,
-                &physics,
-                *normalization_factor,
-                selected_helicity_ids,
-                selected_color_ids,
-                replay_entry,
-                source_component_count,
-                target_component_count,
-                target_point_count,
-                point_start,
-                target_components,
-            )?;
+            let planes = direct.amplitude_planes()?;
+            for (mapping, row, rows, target_point_start) in
+                replay_segments(point_start, point_stop, target_point_count)
+            {
+                amplitude.reduce_planes_f64_routed_components_add_into(
+                    planes.rows(row, rows)?,
+                    &physics,
+                    *normalization_factor,
+                    selected_helicity_ids,
+                    selected_color_ids,
+                    &replay_entries[mapping],
+                    source_component_count,
+                    target_component_count,
+                    target_point_count,
+                    target_point_start,
+                    target_components,
+                )?;
+            }
             point_start = point_stop;
         }
         Ok(())

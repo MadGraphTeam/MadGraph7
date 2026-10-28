@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use super::evaluation::{check_replay_rows, replay_segments};
 use super::sources::RuntimeSourceState;
 use super::*;
 
@@ -935,12 +937,17 @@ impl ExecutionRuntime {
         selected_helicity_ids: &BTreeSet<String>,
         selected_color_ids: Option<&BTreeSet<String>>,
         selected_materialized_sector_ids: &BTreeSet<i64>,
-        replay_entry: &LcResolvedReplayEntry,
+        replay_entries: &[LcResolvedReplayEntry],
         source_component_count: usize,
         target_component_count: usize,
         target_point_count: usize,
         target_components: &mut [f64],
     ) -> RusticolResult<()> {
+        check_replay_rows(
+            batch.point_count(),
+            replay_entries.len(),
+            target_point_count,
+        )?;
         if selected_helicity_ids.len() != 1 {
             return Err(RusticolError::integrity(
                 "routed materialized-helicity execution requires one source helicity",
@@ -1035,20 +1042,25 @@ impl ExecutionRuntime {
                 false,
                 point_stop - point_start,
             )?;
-            amplitude.reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
-                direct.amplitude_planes()?,
-                physics,
-                *normalization_factor,
-                schedule.physical_helicity_index,
-                &schedule.root_factors,
-                selected_color_ids,
-                replay_entry,
-                source_component_count,
-                target_component_count,
-                target_point_count,
-                point_start,
-                target_components,
-            )?;
+            let planes = direct.amplitude_planes()?;
+            for (mapping, row, rows, target_point_start) in
+                replay_segments(point_start, point_stop, target_point_count)
+            {
+                amplitude.reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+                    planes.rows(row, rows)?,
+                    physics,
+                    *normalization_factor,
+                    schedule.physical_helicity_index,
+                    &schedule.root_factors,
+                    selected_color_ids,
+                    &replay_entries[mapping],
+                    source_component_count,
+                    target_component_count,
+                    target_point_count,
+                    target_point_start,
+                    target_components,
+                )?;
+            }
             point_start = point_stop;
         }
         Ok(())
