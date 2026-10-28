@@ -601,9 +601,8 @@ class NativeGeneration:
         """``build_schedules(families, catalogue, colour, ...)`` natively.
 
         Without ``frames`` the policy is ``cheapest(frame_rows(leg_rows),
-        model)``, the helicity rows of each leg (``leg_rows(blocks)``)
-        pricing a frame; without ``leg_rows`` two per leg, ``cheapest(lambda
-        mask: 2 ** mask.bit_count(), model)``. With ``frames`` (a family's stored frame,
+        model)``, the helicity rows of each leg (``leg_rows(blocks)``,
+        required) pricing a frame. With ``frames`` (a family's stored frame,
         e.g. ``_prune_colour``'s ``same_frame``) only that frame's trie is
         built. ``keep`` filters skeletons as ``SkeletonView(keep=...)``; it
         may also be a ``ReadingKeep`` of the base build. With a base build
@@ -673,14 +672,20 @@ class NativeGeneration:
         leg_rows: Sequence[int] | None = None,
     ) -> dict[str, Any]:
         if frames is None:
-            cheapest: dict[str, Any] = {"kind": "cheapest"}
-            if leg_rows is not None:
-                rows = [int(count) for count in leg_rows]
-                if len(rows) != len(self.legs) or min(rows, default=1) < 1:
-                    raise ValueError("leg_rows needs a positive count per leg")
-                cheapest["leg_rows"] = rows
+            # The cheapest frame prices a segment by its legs' helicity rows:
+            # the request's counts are required (no count per leg is assumed;
+            # genericity audit 2, m8).
+            if leg_rows is None:
+                raise ValueError(
+                    "the cheapest frame policy needs the helicity rows of every "
+                    "leg (leg_rows=generator_input.leg_rows(blocks))"
+                )
+            rows = [int(count) for count in leg_rows]
+            if len(rows) != len(self.legs) or min(rows, default=1) < 1:
+                raise ValueError("leg_rows needs a positive count per leg")
             return {
-                **cheapest,
+                "kind": "cheapest",
+                "leg_rows": rows,
                 "model": {
                     name: getattr(model, name)
                     for name in (

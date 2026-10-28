@@ -10,7 +10,9 @@ use rusticol_core::loop_runtime::LoopRuntimePlan;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime, is_v2_artifact};
+use rusticol_loop_reduction::v2_runtime::{
+    V2Poles, V2Runtime, decimal_parameter, is_v2_artifact, named_parameters,
+};
 use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
@@ -79,14 +81,31 @@ const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved)
     binary64 virtuals with model R2; resolved, correlated, verified and \
     rescued evaluations go through the Python API";
 
+/// The R2 strategy of a plan v4 process, as the Python API's
+/// `runtime.virtual.v2_r2_strategy`: v4 artifacts carry the model-supplied
+/// R2 rules only, so "auto" (the default) and "model" select them and
+/// "direct" is refused.
+fn v4_r2_strategy(strategy: &str) -> RusticolResult<()> {
+    match strategy {
+        "auto" | "model" => Ok(()),
+        "direct" => Err(RusticolError::compatibility(
+            "v2 virtual artifacts carry model-supplied R2 only",
+        )),
+        other => Err(invalid(format!(
+            "r2_strategy must be \"auto\", \"model\" or \"direct\", not {other:?}"
+        ))),
+    }
+}
+
 /// The poles an ordinary virtual returns (REQUIREMENTS_ADDENDUM I, the
 /// API's `poles` option): every Laurent coefficient (`All`), the finite part
 /// alone (`None`, whose pole-only work a plan v4 runtime skips natively; the
 /// pole entries are then quiet NaNs, absent), the bare loop's UV poles
 /// (`Uv`) or the renormalised virtual's IR poles (`Ir`), the split
 /// selections, which run the stored companion of the certified-scaleless
-/// families (`v2_runtime::V2Poles`). The finite part is the same in every
-/// selection. Plan v1-v3 runtimes serve `All` only.
+/// families (`v2_runtime::V2Poles`). These are the four selections of the
+/// Python API (`PoleSelection`: "all", "none", "uv", "ir"). The finite part
+/// is the same in every selection. Plan v1-v3 runtimes serve `All` only.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Poles {
     #[default]
@@ -200,6 +219,10 @@ impl Runtime {
     }
     /// A plan v4 process: its stored native program evaluates every point
     /// (no Python, no generation; `rusticol_loop_reduction::v2_runtime`).
+    /// `r2_strategy` "auto" (the C ABI's default) or "model" selects the
+    /// artifact's model R2; `parameters` are validated as a whole as the
+    /// Python API's `Runtime.load(..., model_parameters=...)` does (a
+    /// refusal opens nothing).
     fn open_v4(
         path: impl AsRef<Path>,
         process: Option<&str>,
@@ -207,7 +230,8 @@ impl Runtime {
         r2_strategy: &str,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
-        if r2_strategy != "model" || policy.is_some() {
+        v4_r2_strategy(r2_strategy)?;
+        if policy.is_some() {
             return Err(invalid(V4_ONLY_ORDINARY));
         }
         let mut native = V2Runtime::open(path, process, None)?;
@@ -250,7 +274,8 @@ impl Runtime {
     pub fn shape(&self) -> Shape {
         self.shape
     }
-    /// The pole selection of later evaluations (default all). A plan v4
+    /// The pole selection of later evaluations (default all): "all",
+    /// "none", "uv" or "ir", the Python API's four (`Poles`). A plan v4
     /// runtime serves all four; plan v1-v3 runtimes evaluate every pole.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
         if poles != Poles::All && matches!(self.engine, Engine::V3(_)) {
@@ -329,6 +354,14 @@ impl Runtime {
             "normalization":"physical couplings and inclusive initial spin/color average; resolved helicities retain that average"
         })).map_err(serialization)
     }
+    /// Update model parameters. A plan v4 process validates the whole
+    /// mapping first, as the Python API's `set_model_parameters` (in its
+    /// order and words): a value that is not a finite decimal, unknown
+    /// names, the renormalisation scale's parameter (set per point by
+    /// `mu_r2`) and a value other than the one generation fixed are refused
+    /// with a typed `ModelParameter` error, a complex value with a typed
+    /// `Compatibility` error, and a refused update changes nothing (its
+    /// revision is always 0).
     pub fn update_parameters(&mut self, values: &SourceOverrides) -> RusticolResult<u64> {
         match &mut self.engine {
             Engine::V3(native) => native.update_parameters(values),
@@ -384,7 +417,10 @@ impl Runtime {
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Engine::V4(native) = &mut self.engine {
-            if resolved || policy.is_some() || strategy.is_some_and(|s| s != "model") {
+            if let Some(strategy) = strategy {
+                v4_r2_strategy(strategy)?;
+            }
+            if resolved || policy.is_some() {
                 return Err(invalid(V4_ONLY_ORDINARY));
             }
             return Evaluation::from_v4(native, inputs, self.shape, self.poles);
@@ -427,18 +463,34 @@ impl Runtime {
     }
 }
 
-/// Real model parameter overrides (a plan v4 process takes real external
-/// parameters).
+/// Real model parameter overrides, read as the Python API reads them
+/// (`runtime.virtual._parameters`, then `artifact._real_parameters`): by
+/// name, every name nonempty ([`named_parameters`]: a typed
+/// `InvalidArgument` error otherwise, the Python `TypeError`), each real and
+/// imaginary part a finite decimal
+/// ([`decimal_parameter`]: a typed `ModelParameter` error otherwise, the
+/// Python `ValueError`), then a plan v4 process takes real external
+/// parameters only: a nonzero imaginary part is refused with a typed
+/// `Compatibility` error (the Python `CompatibilityError`, in its words).
 fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>> {
+    named_parameters(values.keys().map(String::as_str))?;
+    let mut imaginary = Vec::with_capacity(values.len());
+    for (name, [re, im]) in values {
+        decimal_parameter(re, &format!("parameter '{name}' real part"))?;
+        imaginary.push(decimal_parameter(
+            im,
+            &format!("parameter '{name}' imaginary part"),
+        )?);
+    }
     values
         .iter()
-        .map(|(name, [re, im])| {
-            let zero = im.trim().trim_start_matches(['-', '+']);
-            if zero.chars().all(|c| c == '0' || c == '.') && !zero.is_empty() {
+        .zip(imaginary)
+        .map(|((name, [re, _]), im)| {
+            if im.is_zero() {
                 Ok((name.as_str(), re.as_str()))
             } else {
-                Err(invalid(format!(
-                    "plan v4 model parameter {name:?} must be real"
+                Err(RusticolError::compatibility(format!(
+                    "parameter '{name}': v2 loop runtimes take real external parameters"
                 )))
             }
         })

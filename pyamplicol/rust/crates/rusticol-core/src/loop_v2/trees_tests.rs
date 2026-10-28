@@ -137,6 +137,55 @@ fn plan_masses_read_inputs_or_outputs() {
 }
 
 #[test]
+fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones() {
+    // Generation records every output that reads the scale
+    // (`native_trees._scale_outputs`); the batch-shared ones among them are
+    // the Born couplings, kernel constants and derived (external and loop)
+    // masses. Counterterm couplings (the usual NLO models' MU_R) are not.
+    let parameters = |scale_outputs: Option<Vec<(usize, String)>>| Parameters {
+        names: vec!["MU_R".into(), "aS".into()],
+        defaults: vec![Rational::from(91), Rational::from(0)],
+        saved: Vec::new(),
+        plane: None,
+        outputs: 6,
+        model: Vec::new(),
+        counterterm_model: Vec::new(),
+        couplings: vec![0],
+        counterterm_couplings: vec![1],
+        finite: Vec::new(),
+        constants: vec![2],
+        positive: vec![3, 4],
+        masses: Vec::new(),
+        derived_masses: vec![(6, 3)],
+        plan_masses: vec![None, Some(MassSource::Output(4))],
+        scale: Some(0),
+        scale_outputs,
+    };
+    let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
+        Some(
+            indices
+                .iter()
+                .map(|&o| (o, format!("output {o}")))
+                .collect(),
+        )
+    };
+    // An artifact written before the record: unknown.
+    assert_eq!(parameters(None).scale_dependent_shared(), None);
+    // NLOCT: only a counterterm coupling (and an unrelated output) reads it.
+    assert_eq!(
+        parameters(named(&[1, 5])).scale_dependent_shared(),
+        Some(Vec::<&str>::new())
+    );
+    // A running coupling and an MSbar mass: the Born coupling, a constant,
+    // the derived external mass and the loop mass are listed, in output order.
+    let running = parameters(named(&[0, 1, 2, 3, 4]));
+    assert_eq!(
+        running.scale_dependent_shared(),
+        Some(vec!["output 0", "output 2", "output 3", "output 4"])
+    );
+}
+
+#[test]
 fn slot_sets_without_a_finite_slot_are_pole_work() {
     // Slot table (epsilon powers): two finite slots, a 1/eps and a 1/eps^2
     // slot. masks[0] is every slot, then one set per slot, then a pole pair.

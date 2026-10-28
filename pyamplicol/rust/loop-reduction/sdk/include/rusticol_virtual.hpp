@@ -12,14 +12,21 @@
 #include <vector>
 
 namespace rusticol {
+// status(): the C function status (rusticol_virtual_function_status), e.g.
+// RUSTICOL_VIRTUAL_INVALID_ARGUMENT for a refused model parameter update.
 class VirtualError : public std::runtime_error {
 public:
-    explicit VirtualError(const std::string &message) : std::runtime_error(message) {}
+    explicit VirtualError(const std::string &message,
+                          int status = RUSTICOL_VIRTUAL_RUNTIME_ERROR)
+        : std::runtime_error(message), status_(status) {}
+    int status() const noexcept { return status_; }
+private:
+    int status_;
 };
 namespace virtual_detail {
 inline void check(int status) {
     if (status != RUSTICOL_VIRTUAL_OK)
-        throw VirtualError(rusticol_virtual_last_error_message());
+        throw VirtualError(rusticol_virtual_last_error_message(), status);
 }
 inline const char *optional_string(const std::optional<std::string> &value) {
     return value ? value->c_str() : nullptr;

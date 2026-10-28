@@ -78,6 +78,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from functools import cached_property
 from pathlib import Path
 from threading import RLock
@@ -758,7 +759,7 @@ def generate_process(
 
     from pyamplicol.correlators import CorrelatorConfig
 
-    from .assemble import LoopSlice
+    from .assemble import LoopSlice, resolve_request
     from .observables import ObservableSlice
     from .plan_export import export_plan
 
@@ -768,6 +769,9 @@ def generate_process(
             "plan v4 processes take their counterterms from the tree recursion; "
             f"counterterms={request.counterterms!r} is a test oracle"
         )
+    # The recorded recipe names the corrections the slice takes (a request
+    # that names none takes the model's strong correction).
+    request = resolve_request(compiled, request)
     declared = correlators is not None and bool(
         correlators.color_correlations
         or correlators.spin_correlations
@@ -1100,8 +1104,11 @@ class V2VirtualRuntime:
             self._member = _stored_member(group_member, str(selected["expression"]))
         record = self._native_process.record
         self._fixed = dict(record["fixed_parameters"])
+        self._prepared_fixed = frozenset(record.get("preparation_fixed_parameters", ()))
         self._scale_parameter = record["scale_parameter"]
-        self._executor = self._native_process.executor(native)
+        self._executor = self._native_process.executor(
+            native, externals=self._externals
+        )
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
@@ -1355,6 +1362,12 @@ class V2VirtualRuntime:
 
         if not points:
             return [], {}
+        if len({Fraction(scale) for scale in scales}) > 1 and self._scale_partitioned(
+            poles
+        ):
+            return self._run_per_scale(
+                points, scales, parameters, setting, poles, checks
+            )
         try:
             return (
                 list(
@@ -1371,6 +1384,53 @@ class V2VirtualRuntime:
             )
         except FailedPoints as failed:
             return list(failed.results), dict(failed.failures)
+
+    def _scale_partitioned(self, poles: PoleSelection) -> bool:
+        """Whether a batch of mixed mu_R^2 runs per scale: the stored tree
+        program (or, for "uv" and "ir", its certified-scaleless companion's)
+        has Born couplings, kernel constants or masses that depend on the
+        renormalisation scale (``native_trees.scale_dependent_shared``, a
+        running-coupling or MSbar-mass model), as the SDK's
+        ``V2Runtime::evaluate`` partitions."""
+
+        from .native_trees import scale_dependent_shared
+
+        process = self._native_process
+        trees = [process.trees]
+        if splits_poles(poles) and process.scaleless is not None:
+            trees.append(process.scaleless.trees)
+        return any(scale_dependent_shared(item) for item in trees)
+
+    def _run_per_scale(
+        self,
+        points: list[list[list[str]]],
+        scales: list[str],
+        parameters: dict[str, str],
+        setting: Any,
+        poles: PoleSelection,
+        checks: VirtualStabilityChecks,
+    ) -> tuple[list[Any], dict[int, list[str]]]:
+        """``_run`` per exact mu_R^2 (first-seen order), each part a batch of
+        one scale; results and failures in the caller's point order."""
+
+        parts: dict[Fraction, list[int]] = {}
+        for index, scale in enumerate(scales):
+            parts.setdefault(Fraction(scale), []).append(index)
+        results: list[Any] = [None] * len(points)
+        failures: dict[int, list[str]] = {}
+        for indices in parts.values():
+            found, failed = self._run(
+                [points[i] for i in indices],
+                [scales[i] for i in indices],
+                parameters,
+                setting,
+                poles,
+                checks,
+            )
+            for local, index in enumerate(indices):
+                results[index] = found[local]
+            failures.update({indices[local]: v for local, v in failed.items()})
+        return results, failures
 
     def _result(
         self,
@@ -1559,29 +1619,28 @@ class V2VirtualRuntime:
         self._observable_runtime().set_spin_correlation_vectors(vectors)
 
     def _checked_parameters(self, mapping: ModelParameters | None) -> dict[str, str]:
-        """Real values of external model parameters. Unknown names, the
-        renormalisation scale (``mu_r2`` sets it per point) and a value other
-        than the one a parameter was fixed to at generation are refused.
-        Other known parameters are accepted even where this process does not
-        use them, as by the legacy engine: e.g. a width that only loop
-        propagators carry does not enter (v2 virtuals are real on-shell)."""
+        """Real values of external model parameters, read and checked by
+        name (the SDK's order, ``v2_runtime::checked_parameters``: values
+        first, then names). Unknown names, the renormalisation scale
+        (``mu_r2`` sets it per point) and a value other than the one a
+        parameter was fixed to at generation (the record's
+        ``fixed_parameters``: the request's and those the model preparation
+        fixes) are refused. Other known parameters are accepted even where
+        this process does not use them, as by the legacy engine: e.g. a width
+        that only loop propagators carry does not enter (v2 virtuals are real
+        on-shell)."""
 
-        parameters = _real_parameters(mapping)
-        fixed = self._fixed
-        for name, value in parameters.items():
-            if name not in self._externals:
-                raise ValueError(f"unknown external parameter {name!r}")
-            if name == self._scale_parameter:
-                raise ValueError(
-                    f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
-                )
-            if name in fixed and Decimal(value) != Decimal(fixed[name]):
-                raise ValueError(
-                    f"parameter {name!r} was fixed to {fixed[name]} at generation "
-                    "([loop.preparation] fixed_parameters); regenerate the "
-                    "artifact to change it"
-                )
-        return parameters
+        from .assemble import check_model_parameters
+
+        if isinstance(mapping, Mapping) and all(isinstance(n, str) for n in mapping):
+            mapping = {name: mapping[name] for name in sorted(mapping)}
+        return check_model_parameters(
+            _real_parameters(mapping),
+            self._externals,
+            self._scale_parameter,
+            self._fixed,
+            self._prepared_fixed,
+        )
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:
         parameters = self._checked_parameters(mapping)
@@ -1593,7 +1652,9 @@ class V2VirtualRuntime:
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
-            self._executor = self._native_process.executor(self._native)
+            self._executor = self._native_process.executor(
+                self._native, externals=self._externals
+            )
             if self._observables is not None:
                 self._observables.clear()
 

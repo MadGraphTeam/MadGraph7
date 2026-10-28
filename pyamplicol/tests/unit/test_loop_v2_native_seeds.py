@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.loops.v2 import native_seeds
+from pyamplicol.loops.v2 import generator_input, native_seeds
 from pyamplicol.loops.v2.blocks import build_tree_blocks
 from pyamplicol.loops.v2.colour import (
     SeedColour,
@@ -142,10 +142,13 @@ def controls(loop_sm_compiled_model):
                 catalogue,
                 LoopOrderSelection(frozenset({"QCD"}), frozenset({loop})),
             )
+            leg_rows[name] = generator_input.leg_rows(blocks)
         return built[name]
 
     generations: dict = {}
+    leg_rows: dict = {}
     build.generations = generations  # type: ignore[attr-defined]
+    build.leg_rows = leg_rows  # type: ignore[attr-defined]
     return build
 
 
@@ -430,7 +433,7 @@ def test_retained_arena(controls, loop_native, tmp_path, monkeypatch):
     colour, generation, families, catalogue = _native_generation(
         controls, loop_native, "uux_ggg"
     )
-    plan = generation.schedules(colour)
+    plan = generation.schedules(colour, leg_rows=controls.leg_rows["uux_ggg"])
     base = generation.base
     assert base is not None and base.complete and base.plan is plan
     readings = rx.reading_skeletons(plan)
