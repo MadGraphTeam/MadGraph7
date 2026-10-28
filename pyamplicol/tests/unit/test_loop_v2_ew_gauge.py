@@ -1476,6 +1476,7 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
             key: row["neutral"][key] + row["charged"][key] for key in row["ct"]
         }
         uv = [row["ct"][k] - row["r2"][k] for k in keys]
+        offsets = {}
         for name, mine, want in (
             ("uv", laurent("uv_local", "uv_external_fields"), uv),
             ("r2", laurent("r2"), [row["r2"][k] for k in keys]),
@@ -1486,9 +1487,15 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
                 error = abs(found - expected) / scale
                 if index == 0 and name != "r2":
                     finite[name] = max(finite[name], error)
+                    offsets[name] = (found - expected, scale)
                     continue
                 worst[name] = max(worst[name], error)
                 assert error <= 1e-12, (name, mine, want)
+        # The whole finite-part difference is the UV component's: the bare
+        # loops and R2 equal MadLoop's to 1e-12 of the virtual.
+        (uv_offset, uv_scale), (offset, scale) = offsets["uv"], offsets["virtual"]
+        assert abs(offset - uv_offset) <= 1e-12 * scale, offsets
+        assert abs(uv_offset) <= 1e-9 * uv_scale, offsets
         # The opposite sign of the mixings would miss by twice theirs.
         assert abs(mixing["finite"]) > 1e-9 * abs(row["ct"]["finite"])
         single, double = (float(x.real) for x in map(complex, result.ir_poles[sector]))
@@ -1509,7 +1516,6 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     # (bWcft_UV_EW_R, dMB_bWcft_UV_EW_R) is off by 4.5e-11: consistent with
     # MadLoop's double-precision counterterm parameters (open, WP3.2 EWI-7:
     # a quadruple-precision MadLoop CT selection at this card decides it).
-    assert max(finite.values()) <= 1e-9, finite
     if max(finite.values()) > 1e-12:
         pytest.xfail(
             "finite parts of the UV component and the virtual off MadLoop's by "
