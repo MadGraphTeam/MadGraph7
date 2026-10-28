@@ -149,15 +149,36 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
         "parameter_overrides", spec.get("parameter_overrides", {})
     ).items():
         assert values[key] == value
-    # Provenance and MadLoop's accurate-mode settings.
+    # Provenance and MadLoop's evaluation settings.
     madloop = fixture["providers"]["madloop"]
+    settings = madloop["settings"]
     assert madloop["version"].startswith("MadLoop/MG5_aMC 3.7.0")
-    requested = run.get(
-        "madloop_accuracy", campaign["madloop_settings"]["requested_relative_accuracy"]
-    )
-    assert madloop["settings"]["requested_relative_accuracy"] == requested
-    assert madloop["settings"]["stability_check"] == "forced on every call"
     assert madloop["generation"]["status"] == "compiled"
+    assert settings["stability_check"] == "forced on every call"
+    evaluation = campaign["madloop_settings"]["evaluation"]
+    statuses = [row["madloop_status"] for row in fixture["rows"]]
+    if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
+        assert run["madloop_evaluation"]["reason"]
+        requested = run.get(
+            "madloop_accuracy",
+            campaign["madloop_settings"]["requested_relative_accuracy"],
+        )
+        assert settings["requested_relative_accuracy"] == requested
+        assert "quadruple_precision_stage" not in settings
+    else:
+        # Every point in MadLoop's quadruple-precision stage, every helicity
+        # configuration computed, no filter inherited from an earlier run.
+        assert settings["requested_relative_accuracy"] == (
+            evaluation["requested_relative_accuracy"]
+        )
+        assert settings["quadruple_precision_stage"]
+        assert settings["quadruple_precision_required"] is True
+        assert settings["MadLoopParams_overrides"] == evaluation["madloop_params"]
+        for key, value in evaluation["madloop_params"].items():
+            assert settings["MadLoopParams"][key] == value
+        assert all(status // 100 in (3, 4) for status in statuses), statuses
+        secondary = madloop["secondary_runs"]["mlstabthres"]
+        assert len(secondary["relative_deviation_from_reference_run"]) == len(statuses)
     # Points: on the scheme's mass shells, momentum conserving.
     masses = required_spec.masses(spec)
     assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
@@ -210,6 +231,51 @@ def test_per_helicity_rows_sum_to_the_summed_value(campaign: dict, run_id: str) 
                 abs(total - spins * summed[key])
                 <= 1e-12 * spins * abs(summed[key]) + 1e-300
             ), key
+
+
+HEL_RELATIVE_LIMIT = 1e-13
+
+
+def _strict(a: float, b: float) -> float:
+    scale = max(abs(a), abs(b))
+    return 0.0 if scale == 0 else abs(a - b) / scale
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"] if r.get("helicities")],
+)
+def test_per_helicity_entries_carry_reference_records(run_id: str) -> None:
+    """Quadruple-precision helicity entries take their Born from the
+    helicity-diagonal IR double pole; a vanishing helicity, or one whose
+    printed binary64 Born misses that Born by more than 1e-13 (suppressed
+    below the point's binary64 condition), is an absolute entry against the
+    point's summed |Born|."""
+    fixture = _fixture(run_id)
+    per = fixture["per_helicity"]
+    factor = fixture["universal_double_pole_factor"]
+    assert per["settings"]["MadLoopParams_overrides"] == {"HelicityFilterLevel": "0"}
+    for entries in per["rows"]:
+        summed = sum(abs(e["born"]) for e in entries)
+        for entry in entries:
+            record = entry["reference"]
+            assert record["status"] == "ok"
+            assert entry["status"] // 100 in (3, 4), entry["helicity"]
+            mismatch = record["born_double_pole_relative_mismatch"]
+            if factor:
+                assert (
+                    record["born_source"] == "madloop_double_pole_over_universal_factor"
+                )
+                assert entry["born"] == entry["double_pole"] / factor
+                assert mismatch == _strict(entry["born_binary64_input"], entry["born"])
+            else:
+                assert record["born_source"] == "madloop" and mismatch is None
+            vanishing = abs(entry["born"]) <= 1e-12 * summed
+            suppressed = mismatch is not None and mismatch > HEL_RELATIVE_LIMIT
+            absolute = vanishing or suppressed
+            assert record["comparison"] == ("absolute" if absolute else "relative")
+            assert record["absolute_scale"] == (summed if absolute else None)
+            assert bool(record["reason"]) == absolute
 
 
 def test_mixed_order_run_prints_every_squared_split_order() -> None:
@@ -457,6 +523,37 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
             assert (
                 by_run[run["id"]]["second_provider_trigger"]
                 == run["second_provider_trigger"]
+            )
+        # Each second provider's outcome, per point and coefficient.
+        outcome = by_run[run["id"]]["second_provider_outcome"]
+        assert set(outcome) == set(run.get("second_providers", []))
+        for provider, per_point in outcome.items():
+            assert provider in fixture["providers"], (run["id"], provider)
+            for row, recorded in zip(fixture["rows"], per_point, strict=True):
+                theirs = row["providers"][provider]
+                ours = row["providers"]["madloop"]
+                assert recorded == {
+                    k: _strict(ours[k], theirs[k]) for k in ("born", *LAURENT)
+                }
+        hel = by_run[run["id"]]["per_helicity_reference"]
+        if fixture.get("per_helicity"):
+            assert hel == [
+                [{"helicity": e["helicity"], **e["reference"]} for e in entries]
+                for entries in fixture["per_helicity"]["rows"]
+            ]
+        else:
+            assert hel is None
+        superseded = fixture["providers"]["madloop"].get("secondary_runs", {})
+        deviation = by_run[run["id"]]["batch2_relative_deviation"]
+        if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
+            assert deviation is None
+        else:
+            assert deviation == (
+                superseded["mlstabthres"]["relative_deviation_from_reference_run"]
+            )
+            assert (
+                superseded["mlstabthres"]["settings"]["requested_relative_accuracy"]
+                in (1e-13, 1e-20)
             )
         assert (
             fixture["tolerance_scope"] == manifest["conventions"]["fixture_tolerance"]
