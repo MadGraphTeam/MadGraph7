@@ -1418,10 +1418,14 @@ NamedVector<Value> Integrand::build_common_part(
             ? fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors))
             : fb.mul(diff_xs_acc, _flavor_factors.at(0));
     }
-    // weight_after_cuts is one by construction unless flavor or mirror sampling
-    // contribute to it (see build_channel_part)
+    // weight_after_cuts is one by construction unless flavor or mirror sampling,
+    // or the merging weights and the scale veto of the history over every
+    // diagram, contribute to it (see build_channel_part)
+    bool channel_mlm_weights = _energy_scale &&
+        !_energy_scale->mlm_history_per_diagram() &&
+        (_energy_scale->is_mlm() || _energy_scale->has_scale_veto());
     ValueVec weights_after_cuts;
-    if (has_multi_flavor || _has_mirror) {
+    if (has_multi_flavor || _has_mirror || channel_mlm_weights) {
         weights_after_cuts.push_back(args.at("weight_after_cuts"));
     }
     weights_after_cuts.push_back(diff_xs_acc);
