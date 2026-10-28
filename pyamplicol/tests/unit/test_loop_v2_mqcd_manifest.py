@@ -403,7 +403,9 @@ def test_field_factor_poles():
 
     # Units of alpha_s / 4 pi: Z_3 = 5/3 C_A - 4/3 T_F n_f, Z_2 = -C_F.
     gluon = Fraction(5, 3) * 3 - Fraction(4, 3) * Fraction(1, 2) * 6
-    assert mqcd.field_poles([(8, False)] * 4, 6) == 4 * gluon == 4
+    four = mqcd.field_poles([(8, False)] * 4, 6)
+    assert isinstance(four, Fraction) and four == 4 * gluon == 4
+    assert mqcd.field_poles([(8, False)], 5) == Fraction(5) - Fraction(10, 3)
     assert mqcd.field_poles([(3, False), (3, True), (1, False)], 5) == Fraction(-8, 3)
     with pytest.raises(ValueError):
         mqcd.field_poles([(6, False)], 5)
