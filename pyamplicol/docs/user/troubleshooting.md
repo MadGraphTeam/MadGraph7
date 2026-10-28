@@ -253,6 +253,34 @@ and ASM artifacts are target-specific and may require particular CPU features.
 Regenerate a target-specific artifact on the destination, or use a portable
 JIT configuration. See [Artifacts and Portability](artifacts-and-portability.md).
 
+## `NativePlatformError`: a native library needs a newer glibc
+
+```text
+NativePlatformError: Native library .../_rusticol.so needs the ELF version
+GLIBC_2.38, which this process's glibc 2.36 does not define. ...
+```
+
+A native library needs a glibc symbol version that the running glibc does not
+define: pyAmpliCol checks the versions `_rusticol.so` needs against the loaded
+glibc before loading it (a C library that is not glibc is named as such), and
+turns the dynamic loader's own missing-version refusal into the same error when
+it loads `pyamplicol._rusticol` (a library it depends on included) and
+Symbolica's extension at `import pyamplicol`. Other native code (numpy, the
+target-native libraries of C++ or ASM artifacts) reports the loader's error
+unchanged. The release native libraries built from a checkout with
+`tools/developer/build_loop_native.py` need glibc 2.38 or newer; a manylinux
+2.28 wheel needs glibc 2.28. Compare with `ldd --version`, then update glibc or
+run on a system or container that defines the missing versions, or build the
+native libraries from source on this host.
+
+A C, C++ or Fortran client of `librusticol_loop_sdk.so` means the same floor
+with the toolchain's or the loader's message: linking it with a toolchain on an
+older glibc fails with
+``librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38'``,
+and a client built on a newer glibc and run on an older one gets the dynamic
+loader's ``version `GLIBC_2.38' not found``. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+
 ## Artifact loading or an explicit checksum audit fails
 
 Treat a size/digest/path mismatch as a changed or incomplete artifact. Do not
