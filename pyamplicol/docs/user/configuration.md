@@ -670,7 +670,12 @@ generation, `process.selected_source_helicities` (leg label to helicity) and
 `process.selected_color_sector_ids` (sectors of the tree engine's
 leading-colour plan, after `reference_color_order` and `max_color_sectors`)
 prune the recursion to the selection: fewer Born rows, skeletons and tree
-currents. The artifact's `evaluate()` then returns the selection.
+currents. The artifact's `evaluate()` then returns the selection. A sector
+of a folded trace holds two flows, the sector's and its reflection, as in
+the tree engine. An evaluation-time selection costs at most one inclusive
+evaluation and runs only the loop families its flows read; a
+generation-time selection is cheaper still (u u~ > g g g, one helicity and
+one flow: about a quarter of the inclusive leading-colour time).
 
 ```toml
 [process]
