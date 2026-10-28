@@ -2,11 +2,14 @@
 """The native libraries' glibc floor and the load-time platform check.
 
 The loop engine's release natives may need at most glibc 2.42 (the documented
-floor: ``GLIBC_ABI_GNU2_TLS``, TLS descriptors). A toolchain change that raises
-it fails ``test_staged_natives_stay_within_the_documented_glibc_floor`` instead
-of users. Below a library's floor, ``import pyamplicol._rusticol`` raises
-``NativePlatformError`` before the library is opened, and a loader error naming
-a missing glibc version becomes the same error.
+floor: ``GLIBC_ABI_GNU2_TLS``, TLS descriptors, defined by glibc 2.43 and by
+glibc 2.42 builds with the stable-branch update that added it). A toolchain
+change that raises it fails
+``test_staged_natives_stay_within_the_documented_glibc_floor`` instead of users.
+When the running glibc lacks a version a library needs (an older release, or an
+ABI marker its libc.so.6 does not define), ``import pyamplicol._rusticol``
+raises ``NativePlatformError`` before the library is opened, and a loader error
+naming a missing glibc version becomes the same error.
 """
 
 from __future__ import annotations
@@ -230,10 +233,49 @@ def test_an_older_faked_glibc_refuses_the_rusticol_import_before_dlopen() -> Non
 
 
 def test_loader_version_errors_become_the_typed_error(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(native_loader, "running_glibc", lambda: "2.40")
     error = native_loader.translate_loader_error(ImportError(LOADER_MESSAGE))
     assert isinstance(error, NativePlatformError)
     assert error.library == "/opt/pyamplicol/librusticol_loop_sdk.so"
-    assert (error.required, error.version_name) == ("2.42", "GLIBC_ABI_GNU2_TLS")
+    assert (error.required, error.found, error.version_name) == (
+        "2.42",
+        "2.40",
+        "GLIBC_ABI_GNU2_TLS",
+    )
+    assert "requires glibc >= 2.42 (it needs the ELF version GLIBC_ABI_GNU2_TLS, " in (
+        str(error)
+    )
+    assert "glibc 2.43 or newer, or an updated glibc 2.42 build" in str(error)
+    assert "but this process runs glibc 2.40. Run it on" in str(error)
+
+    # A glibc 2.42 without the stable-branch update: the release is not older,
+    # this build lacks the marker. No "requires >= 2.42 but runs 2.42".
+    monkeypatch.setattr(native_loader, "running_glibc", lambda: "2.42")
+    lacking = native_loader.translate_loader_error(ImportError(LOADER_MESSAGE))
+    assert lacking is not None
+    assert (lacking.required, lacking.found) == ("2.42", "2.42")
+    text = str(lacking)
+    assert text.startswith(
+        "Native library /opt/pyamplicol/librusticol_loop_sdk.so needs the ELF "
+        "version GLIBC_ABI_GNU2_TLS, which glibc 2.43 and newer define, as do "
+        "glibc 2.42 builds with the stable-branch update that added it, but not "
+        "the glibc 2.42 release, but this process runs glibc 2.42, which does "
+        "not define it. Update this system's glibc (glibc 2.43 or newer, or an "
+        "updated glibc 2.42 build)"
+    ), text
+    assert "requires glibc >= 2.42" not in text
+
+    # A third-party library (Symbolica's extension): its own build is the remedy.
+    dependency = native_loader.translate_loader_error(
+        ImportError(
+            "/lib/libc.so.6: version `GLIBC_2.43' not found (required by "
+            "/site-packages/symbolica/core.abi3.so)"
+        )
+    )
+    assert dependency is not None
+    assert dependency.library == "/site-packages/symbolica/core.abi3.so"
+    assert "Install a build of that library made for this glibc" in str(dependency)
+    assert "pyAmpliCol's native libraries" not in str(dependency)
     numbered = native_loader.translate_loader_error(
         OSError("libc.so.6: version `GLIBC_2.43' not found (required by x.so)")
     )
@@ -242,7 +284,7 @@ def test_loader_version_errors_become_the_typed_error(monkeypatch, tmp_path) -> 
         OSError("libc.so.6: version `GLIBC_ABI_NEW' not found (required by x.so)")
     )
     assert unknown is not None and unknown.required is None
-    assert "a glibc that provides GLIBC_ABI_NEW" in str(unknown)
+    assert "a glibc that provides the ELF version GLIBC_ABI_NEW" in str(unknown)
     assert native_loader.translate_loader_error(ImportError("no module x")) is None
 
     # Through the guarded extension loader: the pre-check passes (the library
@@ -280,6 +322,119 @@ def test_a_c_library_that_is_not_glibc_is_named(monkeypatch) -> None:
         native_loader.check_native_library(sdk)
     assert error.value.found is None
     assert error.value.required is not None
+
+
+def test_abi_markers_are_decided_by_the_running_libc_definitions(
+    monkeypatch,
+) -> None:
+    """A marker missing from this libc.so.6 is refused whatever the release."""
+
+    sdk = _staged_build() / "librusticol_loop_sdk.so"
+    requirements = native_loader._glibc_requirements(sdk) or []
+    markers = sorted(
+        {name for _, name in requirements if name in native_loader.GLIBC_ABI_MARKERS}
+    )
+    assert "GLIBC_ABI_GNU2_TLS" in markers, f"{sdk}: no TLS-descriptor marker"
+    files = {file for file, name in requirements if name in markers}
+    assert files == {"libc.so.6"}
+    numbered = native_loader.glibc_floor(
+        name for _, name in requirements if name not in markers
+    )
+    assert numbered is not None and numbered[0] < (2, 42)
+    asked: list[str] = []
+
+    def definitions(defined):
+        def read(soname):
+            asked.append(soname)
+            return defined
+
+        return read
+
+    def check(found, defined):
+        monkeypatch.setattr(native_loader, "running_glibc", lambda: found)
+        monkeypatch.setattr(
+            native_loader, "glibc_version_definitions", definitions(defined)
+        )
+        native_loader.check_native_library(sdk)
+
+    every = frozenset(markers)
+    without = every - {"GLIBC_ABI_GNU2_TLS"}
+    # glibc 2.42 without the stable-branch update (or a newer glibc that lacks
+    # it): refused, "does not define it", not "requires 2.42 but runs 2.42".
+    for found in ("2.42", "2.44"):
+        with pytest.raises(NativePlatformError) as refused:
+            check(found, without)
+        error = refused.value
+        assert (error.required, error.found, error.version_name) == (
+            "2.42",
+            found,
+            "GLIBC_ABI_GNU2_TLS",
+        )
+        assert f"this process runs glibc {found}, which does not define it" in (
+            str(error)
+        )
+        assert "Update this system's glibc (glibc 2.43 or newer" in str(error)
+    check("2.42", every)
+    check("2.44", every)
+    assert set(asked) == {"libc.so.6"}
+    # Below the floor the release decides, before any definition is read.
+    asked.clear()
+    with pytest.raises(NativePlatformError, match=r"runs glibc 2\.41\. Run it"):
+        check("2.41", every)
+    assert asked == []
+    # Definitions unreadable: the release decides.
+    check("2.42", None)
+
+
+def test_a_marker_this_libc_does_not_define_is_refused_before_the_loader(
+    tmp_path,
+) -> None:
+    """Real definitions, no faked version: the i386 marker on x86-64."""
+
+    running = native_loader.running_glibc()
+    defined = native_loader.glibc_version_definitions()
+    assert running is not None and defined is not None
+    assert "GLIBC_ABI_GNU_TLS" not in defined, "an x86-64 libc.so.6 lacks it"
+    library = _patched(
+        _staged_build() / "librusticol_loop_sdk.so",
+        tmp_path / "marker.so",
+        "GLIBC_ABI_GNU2_TLS",
+        "GLIBC_ABI_GNU_TLS",
+    )
+    lacking = native_loader._release(running) >= (2, 42)
+    expected = (
+        f"this process runs glibc {running}, which does not define it"
+        if lacking
+        else f"this process runs glibc {running}."
+    )
+    with pytest.raises(NativePlatformError) as refused:
+        native_loader.check_native_library(library)
+    assert refused.value.version_name == "GLIBC_ABI_GNU_TLS"
+    assert expected in str(refused.value)
+    with pytest.raises(OSError, match="version `GLIBC_ABI_GNU_TLS' not found") as raw:
+        ctypes.CDLL(str(library))
+    translated = native_loader.translate_loader_error(raw.value, library)
+    assert translated is not None and expected in str(translated)
+
+
+def test_running_libc_definitions_match_readelf() -> None:
+    path = native_loader._mapped_object("libc.so.6")
+    assert path is not None and Path(path).is_file()
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        pytest.skip("readelf (binutils) is not on PATH: no independent ELF reader")
+    output = subprocess.run(
+        [readelf, "-V", "--wide", path], check=True, capture_output=True, text=True
+    ).stdout
+    section = output.split("Version definition section", 1)[1]
+    section = section.split("Version needs section", 1)[0]
+    expected = {
+        line.split("Name: ", 1)[1].split()[0]
+        for line in section.splitlines()
+        if "Name: GLIBC_" in line and "Parent" not in line
+    }
+    assert native_loader.glibc_version_definitions() == frozenset(expected)
+    assert native_loader._mapped_object("no-such-library.so.1") is None
 
 
 def test_running_glibc_reads_confstr(monkeypatch) -> None:

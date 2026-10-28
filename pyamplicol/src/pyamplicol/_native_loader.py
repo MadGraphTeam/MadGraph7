@@ -8,20 +8,22 @@ by ``tools/developer/build_loop_native.py``) need ``GLIBC_ABI_GNU2_TLS`` (TLS
 descriptors), which glibc 2.43 and newer define, and glibc 2.42 builds that
 include the stable-branch update adding it; a wheel built in a manylinux
 container needs less. Before ``pyamplicol._rusticol`` is loaded,
-:func:`check_native_library` reads that file's requirements: numbered versions
-(``GLIBC_2.38``) are compared with the running glibc's release
-(``os.confstr("CS_GNU_LIBC_VERSION")``), ABI markers (``GLIBC_ABI_*``, no
-release number) are looked up in the version definitions of the running
-process's own ``libc.so.6``. A missing version, or a C library that is not
-glibc, gets :class:`pyamplicol.api.errors.NativePlatformError` naming the
-required and the running version instead of the dynamic loader's raw
+:func:`check_native_library` reads that file's requirements and compares their
+newest release (for an ABI marker such as ``GLIBC_ABI_GNU2_TLS``, which carries
+no number, the oldest release that can define it) with the running glibc
+(``os.confstr("CS_GNU_LIBC_VERSION")``); at or above it, each ABI marker must
+also be defined by the running process's own ``libc.so.6``. A glibc below the
+floor, one lacking a marker, or a C library that is not glibc gets
+:class:`pyamplicol.api.errors.NativePlatformError` naming the required and the
+running version instead of the dynamic loader's raw
 "version `GLIBC_ABI_GNU2_TLS' not found". A loader error of that kind that
 still happens (a dependency's requirement, a library whose requirements could
 not be read) becomes the same error (:func:`translate_loader_error`).
 
 The normal path reads a few kilobytes of ELF headers once per process (the
-library's and, for an ABI marker, the running ``libc.so.6``'s); nothing here
-imports :mod:`pyamplicol.api` unless an error is raised.
+library's and, for an ABI marker, ``/proc/self/maps`` and the running
+``libc.so.6``'s: below 1 ms); nothing here imports :mod:`pyamplicol.api` unless
+an error is raised.
 """
 
 from __future__ import annotations
@@ -54,18 +56,18 @@ class AbiMarker(NamedTuple):
 
 #: glibc's ABI marker versions carry no release number. Whether the running
 #: glibc defines one is read from its libc.so.6 (:func:`glibc_version_definitions`);
-#: this table names the releases for the messages, and decides only when that
-#: file cannot be read. GLIBC_ABI_DT_RELR came with glibc 2.36. The x86 markers
-#: were added on glibc master after the 2.42 release (BZ #33129, #33212,
-#: #33221): the glibc 2.42 release does not define them (its source tarball has
-#: none), glibc 2.43 does, and they were cherry-picked to the
-#: release/2.42/master stable branch (3970785b, d0f72b96), so updated 2.42
-#: builds do too. Checked on x86-64 libc.so.6 builds: glibc 2.40 defines only
-#: GLIBC_ABI_DT_RELR; updated 2.42 builds and 2.44 also GLIBC_ABI_DT_X86_64_PLT
-#: and GLIBC_ABI_GNU2_TLS. GLIBC_ABI_GNU_TLS is i386's (from the same patch
-#: series; no i386 libc.so.6 checked). Numbered versions GLIBC_x.y[.z] name
-#: their release. Another GLIBC_ name is unknown: the check then leaves the
-#: decision to the loader (and translates its error), and
+#: this table names the releases for the messages and the floor pin, and
+#: decides only when that file cannot be read. GLIBC_ABI_DT_RELR came with
+#: glibc 2.36. The x86 markers were added on glibc master after the 2.42
+#: release (BZ #33129, #33212, #33221): the glibc 2.42 release does not define
+#: them (its source tarball has none), glibc 2.43 does, and they were
+#: cherry-picked to the release/2.42/master stable branch (3970785b, d0f72b96),
+#: so updated 2.42 builds do too. Checked on x86-64 libc.so.6 builds: glibc
+#: 2.40 defines only GLIBC_ABI_DT_RELR; updated 2.42 builds and 2.44 also
+#: GLIBC_ABI_DT_X86_64_PLT and GLIBC_ABI_GNU2_TLS. GLIBC_ABI_GNU_TLS is i386's
+#: (same patch series; no i386 libc.so.6 checked). Numbered versions
+#: GLIBC_x.y[.z] name their release. Another GLIBC_ name is unknown: the check
+#: then leaves the decision to the loader (and translates its error), and
 #: tests/unit/test_native_glibc_floor.py fails so that this table is extended.
 GLIBC_ABI_MARKERS: dict[str, AbiMarker] = {
     "GLIBC_ABI_DT_RELR": AbiMarker((2, 36), (2, 36)),
@@ -288,15 +290,11 @@ def _version(release: tuple[int, ...]) -> str:
     return ".".join(map(str, release))
 
 
-def _own_library(library: str | None) -> bool:
-    if library is None:
-        return True
-    path = os.path.abspath(library)
+def _is_pyamplicol_library(path: str) -> bool:
     package = os.path.dirname(os.path.abspath(__file__))
-    name = os.path.basename(path)
-    return path.startswith(package + os.sep) or name.startswith(
-        ("_rusticol", "librusticol")
-    )
+    return os.path.abspath(path).startswith(package + os.sep) or os.path.basename(
+        path
+    ).startswith(("_rusticol", "librusticol"))
 
 
 def _error(
@@ -306,6 +304,7 @@ def _error(
     version_name: str,
     found: str | None,
     loader_message: str | None = None,
+    own: bool = True,
 ) -> NativePlatformError:
     """The NativePlatformError for ``version_name`` missing from glibc ``found``.
 
@@ -351,7 +350,7 @@ def _error(
         else f"Run it on a Linux system or container with {newer}"
     )
     subject = f"Native library {library}" if library else "A native library"
-    if _own_library(library):
+    if own:
         remedy = (
             f"{where} (`ldd --version` shows the version), or build pyAmpliCol's "
             "native libraries from source on this host so that they link "
@@ -386,13 +385,15 @@ def _error(
 def check_native_library(path: str | os.PathLike[str]) -> None:
     """Raise NativePlatformError if the running glibc lacks a version ``path`` needs.
 
-    Numbered versions are compared with the running glibc's release. An ABI
-    marker its first upstream release does not guarantee (glibc 2.42 for
-    ``GLIBC_ABI_GNU2_TLS``) must be defined by the running process's library it
-    is required from (``libc.so.6``); if that file cannot be read, the oldest
-    release that can define it decides (:data:`GLIBC_ABI_MARKERS`). The
-    ``pyamplicol._rusticol`` import calls it before ``dlopen``. Internal: not a
-    public API.
+    The library's floor is the newest release among its requirements (for an
+    ABI marker, the oldest release that can define it, :data:`GLIBC_ABI_MARKERS`:
+    2.42 for ``GLIBC_ABI_GNU2_TLS``); a running glibc below it is refused. At or
+    above it, each ABI marker must also be defined by the running process's
+    library it is required from (``libc.so.6``), since a release number does not
+    decide that (glibc 2.42 builds without the stable-branch update lack
+    ``GLIBC_ABI_GNU2_TLS``; markers are per architecture); if that file cannot
+    be read, the release alone decides. The ``pyamplicol._rusticol`` import
+    calls it before ``dlopen``. Internal: not a public API.
     """
 
     requirements = _glibc_requirements(path)
@@ -401,27 +402,18 @@ def check_native_library(path: str | os.PathLike[str]) -> None:
         return
     library = os.fspath(path)
     found = running_glibc()
-    if found is None:
-        raise _error(library, required=floor[0], version_name=floor[1], found=None)
-    running = _release(found)
+    if found is None or _release(found) < floor[0]:
+        raise _error(library, required=floor[0], version_name=floor[1], found=found)
     assert requirements is not None
-    numbered = glibc_floor(
-        name for _, name in requirements if name not in GLIBC_ABI_MARKERS
-    )
-    if numbered is not None and running < numbered[0]:
-        raise _error(
-            library, required=numbered[0], version_name=numbered[1], found=found
-        )
     for file, name in sorted(set(requirements)):
         marker = GLIBC_ABI_MARKERS.get(name)
         if marker is None:
             continue
-        if running >= marker.release:
-            continue
         defined = glibc_version_definitions(file)
-        if name in (defined or ()) or (defined is None and running >= marker.earliest):
-            continue
-        raise _error(library, required=marker.earliest, version_name=name, found=found)
+        if defined is not None and name not in defined:
+            raise _error(
+                library, required=marker.earliest, version_name=name, found=found
+            )
 
 
 def translate_loader_error(
@@ -431,25 +423,28 @@ def translate_loader_error(
 
     Matches the dynamic loader's ``version `GLIBC_...' not found (required by
     LIBRARY)`` in the ImportError of an extension module or the OSError of
-    ``ctypes.CDLL``; the error names LIBRARY (else ``library``).
+    ``ctypes.CDLL``; the error names LIBRARY (else ``library``, the library
+    being loaded, which is taken to be pyAmpliCol's).
     """
 
     text = str(error)
     match = _LOADER_MISSING_VERSION.search(text)
     if match is None:
         return None
+    loading = None if library is None else os.fspath(library)
     needing = _LOADER_REQUIRED_BY.search(text, match.end())
-    if needing is not None:
-        library = needing.group(1)
-    elif library is None:
-        library = getattr(error, "path", None)
+    named = needing.group(1) if needing is not None else loading
+    if named is None:
+        named = getattr(error, "path", None)
     name = match.group(1)
     return _error(
-        None if library is None else os.fspath(library),
+        named,
         required=glibc_release(name),
         version_name=name,
         found=running_glibc(),
         loader_message=text,
+        # A dependency's own requirement (Symbolica's extension): its remedy.
+        own=named is None or named == loading or _is_pyamplicol_library(named),
     )
 
 
