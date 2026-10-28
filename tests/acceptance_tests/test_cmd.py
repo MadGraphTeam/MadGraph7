@@ -4439,6 +4439,16 @@ for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
                                                     dtype=np.int32),
             pos=[1, 2], allow_hel=allow12))
             for h3, h4 in itertools.product([-1, 1], repeat=2)])
+# the 81 81 > 81 81 branch matches, but no ordering of the legs is in the
+# table (and no folded crossing serves it): NaN from every entry point
+res['unresolved'] = []
+for pdgs in ([2, 2, 1, 1], [2, 1, 1, 1]):
+    arr = np.array(pdgs, dtype=np.int32)
+    p = np.asfortranarray(mom.T)
+    res['unresolved'].append([
+        repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1)),
+        cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                              allow_hel=[-1, 1], alphas=0.118, scale2=0.))])
 json.dump(res, open(outfile, 'w'))
 '''
 
@@ -4521,6 +4531,15 @@ json.dump(res, open(outfile, 'w'))
                                         for z in expanded['dens'][i]))
             for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
                 self._assert_same_inter(got, ref, scale)
+        # a PDG branch that matches (81 81 > 81 81) on a flavor combination
+        # no ordering of the table holds: smatrixhel misses like the density
+        # (crossed fallback, then NaN). It used to call SMATRIXHEL with the
+        # 0 flavor index and keep FOUND, answering a silent number.
+        for out in (folded, expanded):
+            self.assertEqual(len(out['unresolved']), 2)
+            for sm, dens in out['unresolved']:
+                self.assertEqual(sm, 'nan')
+                self.assertTrue(all(math.isnan(x) for z in dens for x in z))
 
     def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
         """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the

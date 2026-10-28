@@ -7792,6 +7792,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # same permutation (FLAVOR_ORDER_HEL), so that each leg
                     # keeps its helicity (left unrepaired, it answered 0).
                     smtext.append(repair)
+                    # as for the density: an ordering the repair could not
+                    # resolve is a miss (crossed fallback, then NaN), not a
+                    # SMATRIXHEL call with the 0 flavor index
+                    smtext.append(' if (%sget_flavor_index(flavor).eq.0) then'
+                                  % prefix)
+                    smtext.append(' found = .false.')
+                    smtext.append(' else')
                     smtext.append(' nhelfix = nhel')
                     smtext.append(' if (nhel.ge.1) then')
                     smtext.append(' call %sget_nhel_idx(%sget_flavor_index('
@@ -7812,24 +7819,23 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                               'flavor), ans)' % (prefix, momenta, 'nhelfix'
                                                  if use_repair else 'nhel',
                                                  prefix))
+                if use_repair:
+                    smtext.append(' endif')
             # No PDG branch matched: try the folded crossings, and otherwise
             # report the miss (FOUND, see the template): every entry point
             # answers NaN with an ERROR line for a process it does not serve.
-            # The density and get_all_inter also try them after a branch
-            # whose ordering did not resolve: a folded crossing may serve a
+            # Every entry point also tries them after a branch whose
+            # ordering did not resolve: a folded crossing may serve a
             # flavor combination the matched matrix element does not hold.
-            text.append(' else')
-            smtext.append(' else')
-            text.append(' found = .false.')
-            if n_ext in crossed_next:
-                smtext.append(' call %(f2py_prefix)sf77_crossed_smatrixhel('
-                              'pdgs, lpdgs, procid, npdg, p, nhel, ans, found)')
-            else:
-                smtext.append(' found = .false.')
-            text.append(' endif')
-            smtext.append(' endif')
+            for lines in (text, smtext):
+                lines.append(' else')
+                lines.append(' found = .false.')
+                lines.append(' endif')
             if n_ext in crossed_next:
                 text.append(' if (.not.found) call %(fct_cross)s')
+                smtext.append(' if (.not.found) call %(f2py_prefix)s'
+                              'f77_crossed_smatrixhel(pdgs, lpdgs, procid,'
+                              ' npdg, p, nhel, ans, found)')
         #close the function: any other NPDG is not served
         for lines in (text, smtext):
             lines.append(' else')
