@@ -603,6 +603,8 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
         (tmp_path / f"{name}.{tier}.json").write_text(json.dumps(data))
 
     record("A01", "default", True)
+    record("A01@sectors", "nightly", True)
+    record("A06", "nightly", True)  # its gating variant A06@sectors not run
     record("A09", "default", True)
     record("A09@soft", "nightly", False)
     record("C04", "nightly", True)
@@ -615,6 +617,7 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
     assert rows["A09"]["status"] == "fail"
     assert rows["C04"]["status"] == "pass"
     assert rows["A02"]["status"] == "not-run"
+    assert rows["A06"]["status"] == "not-run"
     assert rows["C09"]["status"] == "pending"
     assert data["smokes_and_expansions"]["smoke:no_masses"]["passed"]
     assert len(data["rows"]) == 76

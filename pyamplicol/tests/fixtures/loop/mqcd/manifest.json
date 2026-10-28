@@ -193,13 +193,11 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1165,
+    "seconds": 1186,
     "rows": [
-     "A09",
-     "A09@collinear",
-     "A09@soft",
      "B05",
-     "E06"
+     "B05@sectors",
+     "C05"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
    },
@@ -222,73 +220,98 @@
    },
    {
     "job": 4,
-    "seconds": 1189,
+    "seconds": 1195,
     "rows": [
-     "A14",
-     "A18",
-     "A22",
      "B07",
      "C06",
-     "C08"
+     "D05",
+     "D08",
+     "D08@sectors",
+     "E06",
+     "E06@sectors"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1183,
+    "seconds": 1196,
     "rows": [
-     "A05",
-     "A13",
-     "A15",
-     "A19",
+     "A09",
+     "A09@collinear",
+     "A09@soft",
+     "A14",
+     "A18",
      "A20",
+     "A20@sectors",
      "A21",
+     "A21@sectors",
+     "A22",
      "B01",
      "B01@mt170",
+     "B01@sectors",
      "B01@threshold",
-     "B03",
-     "B06",
-     "C01",
-     "C01@params",
-     "C02",
-     "C05",
-     "D05",
      "D07",
-     "D08",
-     "D25",
-     "D25@zero",
-     "E01",
-     "E02",
-     "F01",
-     "H01",
-     "M01@P0",
-     "M01@P2"
+     "D07@sectors"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_5.py"
    },
    {
     "job": 6,
-    "seconds": 1183,
+    "seconds": 1193,
     "rows": [
      "A01",
+     "A01@sectors",
      "A02",
+     "A02@madloop",
+     "A06",
+     "A06@sectors",
+     "A12",
+     "A12@sectors",
+     "A13",
+     "A13@sectors",
+     "A15",
+     "A19",
+     "A19@sectors",
+     "B02",
+     "B02@madloop",
+     "B03",
+     "B06",
+     "C01",
+     "C01@params",
+     "C02",
+     "D06",
+     "D06@madloop",
+     "D09",
+     "D09@sectors",
+     "D10",
+     "D10@sectors",
+     "D25",
+     "D25@zero",
+     "E01",
+     "E02",
+     "F01",
+     "M01@P0",
+     "M01@P2"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
+   },
+   {
+    "job": 7,
+    "seconds": 1064,
+    "rows": [
      "A03",
      "A04",
-     "A06",
+     "A05",
      "A07",
-     "A12",
      "A25",
      "A26",
-     "B02",
      "B08",
      "C03",
      "C04",
      "C07",
+     "C08",
      "D01",
      "D02",
-     "D06",
-     "D09",
-     "D10",
      "D11",
      "D12",
      "D13",
@@ -308,9 +331,10 @@
      "F04",
      "G01",
      "G02",
+     "H01",
      "R01"
     ],
-    "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_7.py"
    }
   ]
  },
@@ -388,6 +412,31 @@
     "aS": "0.118",
     "MT": "173"
    },
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_gg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -457,7 +506,32 @@
    "parameters": {
     "aS": "0.118",
     "MT": "173"
-   }
+   },
+   "variants": [
+    {
+     "name": "madloop",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (uux_gg); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_gg.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "A03",
@@ -718,7 +792,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_uux_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "A07",
@@ -1076,6 +1175,31 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1147,6 +1271,31 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1514,7 +1663,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_ddxssx_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "A20",
@@ -1580,7 +1754,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxddx_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "A21",
@@ -1649,6 +1848,31 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxuux_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -2167,6 +2391,29 @@
        3
       ]
      }
+    },
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector and per-helicity MadLoop run at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
     }
    ],
    "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ttx_sectors.json"
@@ -2233,7 +2480,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "madloop",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (uux_ttx); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_ttx.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "B03",
@@ -2440,7 +2712,29 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxgg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "B06",
@@ -3529,7 +3823,32 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "notes": "the fixture's exact rational points (precision_points, exactly massless with exact momentum conservation); its rounded RAMBO points are off shell at binary64 rounding, which double-double resolves (Catani vs the virtual at 4e-14)"
+   "notes": "the fixture's exact rational points (precision_points, exactly massless with exact momentum conservation); its rounded RAMBO points are off shell at binary64 rounding, which double-double resolves (Catani vs the virtual at 4e-14)",
+   "variants": [
+    {
+     "name": "madloop",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (uux_emepgg); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepgg.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "D07",
@@ -3594,7 +3913,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepggg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "D08",
@@ -3660,7 +4004,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepddxg_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "D09",
@@ -3723,7 +4092,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_emepmummp_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "D10",
@@ -3788,7 +4182,32 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/uux_uuxepem_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "D11",
@@ -5104,7 +5523,32 @@
      "note": "MadLoop binary64 (status 216, own accuracy 5.44e-12) 1.38e-12 from DD; OpenLoops 2.0e-14, Recola 9.2e-13"
     }
    ],
-   "vanishing": []
+   "vanishing": [],
+   "variants": [
+    {
+     "name": "sectors",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "MQ-REF's MadLoop run of the row (per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points); quadruple precision at every point (fix round 2)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttxemepg_qcd_sectors.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "F01",
