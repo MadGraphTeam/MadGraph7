@@ -17,6 +17,11 @@ struct GpuTypes {
     using FOut = gpu::GpuTensorView<double, dim>;
     template <int dim>
     using IOut = gpu::GpuTensorView<me_int_t, dim>;
+    // single inputs are broadcast through a zero batch stride on the GPU
+    template <int dim>
+    using FSIn = const gpu::GpuTensorView<double, dim>;
+    template <int dim>
+    using ISIn = const gpu::GpuTensorView<me_int_t, dim>;
     using FVal = double;
     using IVal = me_int_t;
     using BVal = bool;

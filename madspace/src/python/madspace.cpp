@@ -4232,10 +4232,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         "set_lib_path", &set_lib_path, py::arg("lib_path"), pydoc::doc("set_lib_path")
     );
     m.def(
-        "set_simd_vector_size",
-        &set_simd_vector_size,
-        py::arg("vector_size"),
-        pydoc::doc("set_simd_vector_size")
+        "set_simd_mode",
+        &set_simd_mode,
+        py::arg("simd_mode"),
+        pydoc::doc("set_simd_mode")
+    );
+    m.def(
+        "supported_simd_modes",
+        &supported_simd_modes,
+        pydoc::doc("supported_simd_modes")
     );
 
     auto abort_check_function = [] {

@@ -125,9 +125,9 @@ KERNELSPEC void kernel_com_cos_theta_window(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> pt_min,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> pt_min,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> r_out,
     FOut<T, 0> det
 ) {
@@ -145,9 +145,9 @@ KERNELSPEC void kernel_com_cos_theta_window_inverse(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> pt_min,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> pt_min,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> r_cos_theta,
     FOut<T, 0> det
 ) {

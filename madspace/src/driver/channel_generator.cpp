@@ -386,6 +386,7 @@ void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
     _unweighted_count = _weight_file.event_count();
     _unweighted_accept_count = accept_count;
     _status.count_unweighted = accept_count;
+    _expected_unweighted = accept_count;
 }
 
 void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
@@ -683,6 +684,7 @@ std::size_t ChannelEventGenerator::next_vegas_batch_size() {
 
 void ChannelEventGenerator::clear_events() {
     _status.count_unweighted = 0;
+    _expected_unweighted = 0;
     if (!_max_weight_fixed) {
         _max_weight = 0;
     }
@@ -703,8 +705,11 @@ void ChannelEventGenerator::clear_events() {
 }
 
 void ChannelEventGenerator::update_max_weight(Tensor weights) {
-    if (_max_weight_fixed ||
-        _status.count_unweighted > _config.freeze_max_weight_after) {
+    // Freeze on the expected unweighted count of the committed generate stages
+    // rather than on count_unweighted: the latter is advanced by the unweight
+    // stages, whose commits interleave with the generate stages depending on
+    // thread timing, which made the freeze point (and the run) timing-dependent.
+    if (_max_weight_fixed || _expected_unweighted > _config.freeze_max_weight_after) {
         return;
     }
 
@@ -724,6 +729,13 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
     apply_truncation_budget();
+    // expected accepted events of this job, against the max weight it will be
+    // unweighted with (see prepare_unweight_job)
+    if (_max_weight > 0) {
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            _expected_unweighted += std::min(std::abs(w_view[i]) / _max_weight, 1.);
+        }
+    }
 }
 
 void ChannelEventGenerator::set_target_count(std::size_t target_count) {
@@ -735,7 +747,7 @@ void ChannelEventGenerator::set_target_count(std::size_t target_count) {
     // channel that has met its smaller target is not revisited. Tighten the cap
     // now; unweight_all() re-unweights the whole file against it at the end.
     if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
-        _status.count_unweighted <= _config.freeze_max_weight_after) {
+        _expected_unweighted <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
 }
@@ -756,6 +768,7 @@ void ChannelEventGenerator::apply_truncation_budget() {
         if (w_sum / w > max_truncation) {
             if (_max_weight < w) {
                 _status.count_unweighted *= _max_weight / w;
+                _expected_unweighted *= _max_weight / w;
                 _max_weight = w;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;

@@ -18,7 +18,7 @@ KERNELSPEC void kernel_sample_discrete(
 
 template <typename T>
 KERNELSPEC void kernel_sample_discrete_inverse(
-    IIn<T, 0> index, IIn<T, 0> option_count, FOut<T, 0> r, FOut<T, 0> det
+    IIn<T, 0> index, ISIn<T, 0> option_count, FOut<T, 0> r, FOut<T, 0> det
 ) {
     IVal<T> opt_count_i(option_count), index_i(index);
     FVal<T> opt_count_f(opt_count_i), index_f(index_i);
@@ -87,7 +87,7 @@ KERNELSPEC void backward_kernel_sample_discrete_probs_inverse(
     FVal<T> det_grad_out(0.);
     auto prob = probs.gather(index) / prob_norm;
     for (std::size_t i = 0; i < probs.size(); ++i) {
-        probs_grad[i] = where(
+        probs_grad[i] += where(
             zero_norm,
             0.,
             (where(index == i, FVal<T>(1.), 0.) - prob) / prob_norm * det_grad

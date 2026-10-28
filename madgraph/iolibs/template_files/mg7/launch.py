@@ -520,7 +520,7 @@ class MadgraphProcess:
         self.subprocess_data = kept
 
     def init_backend(self) -> None:
-        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        ms.set_simd_mode(self.run_card["run"]["madspace_cpu_mode"])
 
     def init_event_dir(self) -> None:
         output_dir = self.run_card["gridpack"]["output_dir"]
