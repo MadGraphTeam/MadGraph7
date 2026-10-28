@@ -533,6 +533,12 @@ def test_per_helicity_rows_take_the_helicity_average():
     assert "suppressed helicity" in failed[0].note
     madloop[3]["finite"] = 2e-10
     assert all(c.passed for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118))
+    # An entry MQ-REF records as no reference is reported, not compared.
+    madloop[3]["finite"] = 1.0
+    madloop[3]["reference"] = {"status": "none", "reason": "unstable helicity"}
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    (none,) = [c for c in checks if c.sector == "h+++"]
+    assert none.passed and not none.asserted and "unstable" in none.note
     del madloop[3]["reference"]
     # A configuration MadLoop has and we do not (or the reverse) fails.
     failed = mqcd.rule_hel(_row(), 0, rows, madloop[:3], 0.118)
