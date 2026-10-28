@@ -208,6 +208,60 @@ KERNELSPEC FVal<T> compute_scale(
     return sqrt(dj_clus<T>(momentum1, momentum2, mass1, mass2, hadronic, jet_radius));
 }
 
+// Two candidate clusterings whose measures agree to this relative precision are
+// taken to be equal, and settled by order rather than by rounding.
+constexpr double TIE_TOLERANCE = 1e-12;
+
+// Whether a candidate clustering takes over from the best one found so far.
+//
+// A resonant candidate beats a non-resonant one, then the smaller measure wins.
+// Measures that are equal in exact arithmetic are common: with two massless
+// partons left in the final state they balance in transverse momentum, so
+// clustering either one into the beam it travels along scores the same mT.
+// Comparing the rounded values then hands the step to whichever came out an
+// ulp lower, which a rotation about the beam axis can change, and which beam
+// takes the parton decides where that beam's line ends and so mu_F.
+//
+// Settle such ties the way madevent's cluster.f does in exact arithmetic: it
+// keeps the first of two equal candidates, looping over the later leg on the
+// outside and its partner, beams first, on the inside. cluster.f keeps the
+// surviving legs in their original order with the mother in the earlier
+// slot, as the slots here are kept, so its loop order is the order of
+// (particle2, particle1). That also covers the tie DJ makes between a beam
+// clustering and a massless-massive final-state pair on the same parton:
+// the beam comes first.
+template <typename T>
+KERNELSPEC bool candidate_wins(
+    FVal<T> scale,
+    int data,
+    bool resonant,
+    int best_next_state,
+    FVal<T> best_scale,
+    int best_data,
+    bool best_resonant
+) {
+    if (best_next_state == -1) {
+        return true;
+    }
+    if (resonant != best_resonant) {
+        return resonant;
+    }
+    if (scale < best_scale * (1.0 - TIE_TOLERANCE)) {
+        return true;
+    }
+    if (scale > best_scale * (1.0 + TIE_TOLERANCE)) {
+        return false;
+    }
+    int particle1 = data & 0xFF, particle2 = (data >> 8) & 0xFF;
+    int best_particle1 = best_data & 0xFF, best_particle2 = (best_data >> 8) & 0xFF;
+    if (particle2 != best_particle2) {
+        return particle2 < best_particle2;
+    }
+    // The same pair reached through another graph scores the same; the first
+    // one listed stands.
+    return particle1 < best_particle1;
+}
+
 // Update momenta and the separately-tracked masses after one clustering step.
 // Based on update_momenta from Template/NLO/SubProcesses/cluster.f
 template <typename T>
@@ -372,13 +426,11 @@ KERNELSPEC int mlm_clustering_walk(
 
     int win_next_state = -1, win_data = 0, win_trace = TRACE_FIRST;
     bool win_resonant = false;
-    bool win_initial = false;
     FVal<T> win_scale = SCALE_MAX * 10.;
     // The best of the candidates the flavours of the event forbid, taken only
     // when a state offers nothing else, so that the walk can always go on.
     int alt_next_state = -1, alt_data = 0, alt_trace = TRACE_FIRST;
     bool alt_resonant = false;
-    bool alt_initial = false;
     FVal<T> alt_scale = SCALE_MAX * 10.;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
@@ -438,40 +490,33 @@ KERNELSPEC int mlm_clustering_walk(
 
         // The MG5 fortran code extracted the resonance structure from the integration
         // channel. This is not always possible in MG7, so prefer resonant configs
-        // over non-resonant ones
-        // madevent's cluster.f keeps the first of two equal candidates, and it
-        // always tries a leg against the beams before the final-state legs. Under
-        // the madevent measure an initial-state clustering and a massless-massive
-        // final-state one can tie exactly, so settle that tie the same way
-        // whatever order the state machine lists them in.
+        // over non-resonant ones. Ties go the way cluster.f's loop order takes
+        // them whatever order the state machine lists the candidates in, see
+        // candidate_wins.
         bool forbidden = (trace_data & TRACE_SAME_FLAVOR) &&
             leg_flavor[particle1] != 0 && leg_flavor[particle2] != 0 &&
             leg_flavor[particle1] != leg_flavor[particle2];
         if (forbidden) {
-            bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
-                is_initial && !alt_initial &&
-                !(scale > alt_scale * (1.0 + 1e-12));
-            if (alt_next_state == -1 || (!alt_resonant && resonant) ||
-                (alt_resonant == resonant && (scale < alt_scale || beats_on_tie))) {
+            if (candidate_wins<T>(
+                    scale, data, resonant, alt_next_state, alt_scale, alt_data,
+                    alt_resonant
+                )) {
                 alt_next_state = next_state;
                 alt_scale = scale;
                 alt_data = data;
                 alt_trace = trace_data;
                 alt_resonant = resonant;
-                alt_initial = is_initial;
             }
         } else {
-            bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
-                is_initial && !win_initial &&
-                !(scale > win_scale * (1.0 + 1e-12));
-            if (win_next_state == -1 || (!win_resonant && resonant) ||
-                (win_resonant == resonant && (scale < win_scale || beats_on_tie))) {
+            if (candidate_wins<T>(
+                    scale, data, resonant, win_next_state, win_scale, win_data,
+                    win_resonant
+                )) {
                 win_next_state = next_state;
                 win_scale = scale;
                 win_data = data;
                 win_trace = trace_data;
                 win_resonant = resonant;
-                win_initial = is_initial;
             }
         }
         if (is_last && win_next_state == -1) {
@@ -480,7 +525,6 @@ KERNELSPEC int mlm_clustering_walk(
             win_data = alt_data;
             win_trace = alt_trace;
             win_resonant = alt_resonant;
-            win_initial = alt_initial;
         }
         if (is_last) {
             int p1_win = win_data & 0xFF;
@@ -561,13 +605,11 @@ KERNELSPEC int mlm_clustering_walk(
             win_data = 0;
             win_trace = TRACE_FIRST;
             win_resonant = false;
-            win_initial = false;
             win_scale = SCALE_MAX * 10.;
             alt_next_state = -1;
             alt_data = 0;
             alt_trace = TRACE_FIRST;
             alt_resonant = false;
-            alt_initial = false;
             alt_scale = SCALE_MAX * 10.;
         } else {
             state += STATE_ITEM_SIZE;
@@ -804,7 +846,25 @@ KERNELSPEC int mlm_clustering_walk(
     }
     FVal<T> pdf_scale_val[2] = {-1.0, -1.0};
 
-    if (scale_scheme == SCALES_MADEVENT) {
+    // pdf_reweighting == 2 under clustering_mean: walk the beam lines as
+    // madevent does below, but keep only the pdf half of it - the lowered
+    // leading scale, the ladder and the per-beam scale it ends at, which is
+    // also the factorisation scale then reported. mu_R, the alpha_s vertex
+    // scales, the jet scales and the merging-jet gating are put back to
+    // clustering_mean's after the walk. Without it clustering_mean evaluates
+    // both beam densities at the softest clustering scale, with no ladder.
+    bool mean_with_ladder = scale_scheme != SCALES_MADEVENT && pdf_reweighting == 2;
+    FVal<T> mean_ren_scale = ren_scale_val;
+    FVal<T> mean_alphas_step[N_EXT_MAX - 3];
+    FVal<T> mean_outgoing[N_EXT_MAX];
+    for (int i = 0; i < cluster_max; ++i) {
+        mean_alphas_step[i] = alphas_step[i];
+    }
+    for (int i = 0; i < n_part - 2; ++i) {
+        mean_outgoing[i] = outgoing_scales[i];
+    }
+
+    if (scale_scheme == SCALES_MADEVENT || mean_with_ladder) {
         // madevent clusters one step further than this kernel does: its loop
         // runs all the way to the 2 -> 1 configuration, so it has one more
         // scale than cluster_max. That last step absorbs whatever is left of
@@ -1371,6 +1431,19 @@ KERNELSPEC int mlm_clustering_walk(
                 }
             }
         }
+    }
+    if (mean_with_ladder) {
+        ren_scale_val = mean_ren_scale;
+        for (int i = 0; i < cluster_max; ++i) {
+            alphas_step[i] = mean_alphas_step[i];
+        }
+        for (int i = 0; i < n_part - 2; ++i) {
+            outgoing_scales[i] = mean_outgoing[i];
+        }
+        for (int i = 0; i < n_part; ++i) {
+            merging_jet[i] = false;
+        }
+        have_merging_jets = false;
     }
 
     // The merging cut. A matrix-element jet below xqcut is radiation the parton

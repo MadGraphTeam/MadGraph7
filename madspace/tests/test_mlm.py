@@ -299,7 +299,10 @@ def test_factorization_scale_does_not_exceed_renormalization_scale(process):
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     ren, fac1, fac2, _, _ = run(
-        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids,
+            clustering_mean_pdf_ladder=False,
+        ), momenta
     )
     assert np.array_equal(fac1, fac2)
     assert np.all(fac1 <= ren * (1.0 + 1e-12))
@@ -351,7 +354,10 @@ def test_longitudinal_boosts_barely_change_the_scales(process):
     So: pin that the effect stays small rather than asserting exact invariance.
     """
     _, diagrams, pdg_ids = process
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams)
 
     rapidity = 0.3
@@ -378,7 +384,10 @@ def test_longitudinal_boosts_barely_change_the_scales(process):
 def test_scales_are_azimuthally_invariant(process):
     """Rotating the event around the beam axis must not change any scale."""
     _, diagrams, pdg_ids = process
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams)
 
     angle = 0.7
@@ -393,6 +402,104 @@ def test_scales_are_azimuthally_invariant(process):
     assert ren_r == pytest.approx(ren, rel=1e-9)
     assert fac_r == pytest.approx(fac, rel=1e-9)
     assert_jet_scales_agree(out, out_r)
+
+
+# The schemes whose factorisation scale comes out of madevent's beam-line walk
+# (setclscales in Template/LO/SubProcesses/reweight.f) rather than from the
+# softest clustering.
+BEAM_LINE_SCHEMES = {
+    "madevent": {"scale_scheme": "madevent"},
+    "clustering_mean_pdf_ladder": {"clustering_mean_pdf_ladder": True},
+}
+
+# What the beam-line walk hands the pdf reweighting, all of it built from
+# transverse masses and invariants.
+LADDER_OUTPUTS = ["pdf_scale1", "pdf_scale2", "pdf_rw_x", "pdf_rw_q_num", "pdf_rw_q_den"]
+
+
+def rotate_about_beam(momenta, angle):
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    rotated = momenta.copy()
+    px, py = momenta[..., 1], momenta[..., 2]
+    rotated[..., 1] = cos_a * px - sin_a * py
+    rotated[..., 2] = sin_a * px + cos_a * py
+    return rotated
+
+
+@pytest.mark.parametrize("scheme", sorted(BEAM_LINE_SCHEMES))
+def test_beam_line_scales_are_azimuthally_invariant(process, scheme):
+    """The same for the schemes that walk the beam lines, which are more
+    sensitive to the choice of history: which beam takes a parton decides where
+    that beam's line stops being a QCD line, and with it mu_F.
+
+    Equal measures are common there. With two massless partons left in the
+    final state they balance in transverse momentum, so clustering either one
+    into the beam it travels along scores the same. Settled by rounding, a
+    rotation moved mu_F from 832 to 1195 GeV for one ttgg event in 200; the
+    tie now goes the way cluster.f's loop order takes it, so nothing may
+    change, not even which leg a jet scale is booked against.
+    """
+    _, diagrams, pdg_ids = process
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, **BEAM_LINE_SCHEMES[scheme]
+    )
+    momenta = sample_momenta(diagrams)
+    for angle in (0.7, -2.5):
+        rotated = rotate_about_beam(momenta, angle)
+        ren, fac1, fac2, out, diagram = run(clustering, momenta)
+        ren_r, fac1_r, fac2_r, out_r, diagram_r = run(clustering, rotated)
+        assert ren_r == pytest.approx(ren, rel=1e-9)
+        assert fac1_r == pytest.approx(fac1, rel=1e-9)
+        assert fac2_r == pytest.approx(fac2, rel=1e-9)
+        assert np.array_equal(diagram_r, diagram)
+        assert_jet_scales_agree(out, out_r, max_flip_fraction=0.0)
+        ladder = pdf_outputs(clustering, momenta)
+        ladder_r = pdf_outputs(clustering, rotated)
+        for name in LADDER_OUTPUTS:
+            assert ladder_r[name] == pytest.approx(ladder[name], rel=1e-9), name
+
+
+@pytest.mark.parametrize("scheme", sorted(BEAM_LINE_SCHEMES))
+def test_beam_line_scales_barely_change_under_longitudinal_boosts(process, scheme):
+    """As test_longitudinal_boosts_barely_change_the_scales, for the schemes
+    that walk the beam lines: the measures and the transverse masses the walk
+    reads are boost invariant, but the 1 + 1e-6 against-the-beam penalty is
+    not, so a boost may change the history of an event with two close
+    candidates. Where it leaves the history alone, everything has to agree.
+    """
+    _, diagrams, pdg_ids = process
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, **BEAM_LINE_SCHEMES[scheme]
+    )
+    momenta = sample_momenta(diagrams)
+
+    rapidity = 0.3
+    cosh_y, sinh_y = np.cosh(rapidity), np.sinh(rapidity)
+    boosted = momenta.copy()
+    energy, pz = momenta[..., 0], momenta[..., 3]
+    boosted[..., 0] = cosh_y * energy + sinh_y * pz
+    boosted[..., 3] = sinh_y * energy + cosh_y * pz
+
+    ren, fac1, fac2, out, diagram = run(clustering, momenta)
+    ren_b, fac1_b, fac2_b, out_b, diagram_b = run(clustering, boosted)
+    alphas, _ = alphas_outputs(clustering, momenta)
+    alphas_b, _ = alphas_outputs(clustering, boosted)
+
+    # The history, step by step. The vertex scales alone do not tell: when the
+    # penalty moves from one beam to the other, the parton goes to the other
+    # beam at the same unpenalised scale, and the later steps that move are
+    # often non-QCD ones, which carry no alpha_s scale.
+    unchanged = (diagram_b == diagram) & np.isclose(alphas_b, alphas, rtol=1e-9).all(
+        axis=1
+    )
+    assert unchanged.mean() > 0.8, (
+        f"only {unchanged.mean():.0%} of events keep their clustering history "
+        "under a longitudinal boost"
+    )
+    assert ren_b[unchanged] == pytest.approx(ren[unchanged], rel=1e-9)
+    assert fac1_b[unchanged] == pytest.approx(fac1[unchanged], rel=1e-9)
+    assert fac2_b[unchanged] == pytest.approx(fac2[unchanged], rel=1e-9)
+    assert_jet_scales_agree(out[unchanged], out_b[unchanged])
 
 
 def test_scales_are_homogeneous_for_a_single_clustering():
@@ -473,7 +580,10 @@ def test_renormalization_scale_is_a_geometric_mean(process):
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     ren, fac, _, out, _ = run(
-        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids,
+            clustering_mean_pdf_ladder=False,
+        ), momenta
     )
     assert np.all(ren >= fac * (1.0 - 1e-12))
     # mu_F is the smallest QCD clustering scale, so every jet scale - each of
@@ -555,10 +665,12 @@ def test_resonant_clustering_uses_the_invariant_mass():
     resonance branch off entirely."""
     momenta = sample_momenta(z_to_bb_diagram(W_Z))
     resonant = make_clustering(
-        z_to_bb_diagram(W_Z), external_pdg_ids=Z_TO_BB_PDGS, bw_cutoff=15.0
+        z_to_bb_diagram(W_Z), external_pdg_ids=Z_TO_BB_PDGS, bw_cutoff=15.0,
+        clustering_mean_pdf_ladder=False,
     )
     non_resonant = make_clustering(
-        z_to_bb_diagram(0.0), external_pdg_ids=Z_TO_BB_PDGS
+        z_to_bb_diagram(0.0), external_pdg_ids=Z_TO_BB_PDGS,
+        clustering_mean_pdf_ladder=False,
     )
 
     ren_res, fac_res, _, _, _ = run(resonant, momenta)
@@ -672,7 +784,10 @@ def test_single_clustering_scale_matches_the_measures():
         }
     ]
     pdg_ids = [21, 21, 21, 21]
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams, batch_size=128, seed=99)
     ren, fac, _, _, _ = run(clustering, momenta)
 
@@ -729,7 +844,8 @@ def test_kt_measure_matches_the_fortran():
     ]
     pdg_ids = [21, 21, 21, 21, 21]
     clustering = make_clustering(
-        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius
+        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius,
+        clustering_mean_pdf_ladder=False,
     )
     momenta = sample_momenta(diagrams, batch_size=128, seed=99)
     _, fac, _, _, _ = run(clustering, momenta)
@@ -1491,6 +1607,56 @@ def test_pdf_reweighting_off_leaves_the_density_where_the_scale_is(
     assert np.all(out["pdf_rw_active"] == 0.0)
 
 
+def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
+    t_channel_momenta,
+):
+    """The ladder under clustering_mean is madevent's pdf half grafted onto
+    clustering_mean: the densities, the factorisation scales they end at and
+    every ladder slot are madevent's, while mu_R, the jet scales, the alpha_s
+    vertex scales and the xqcut veto stay clustering_mean's."""
+    scheme = ms.MLMClustering.ScaleScheme
+    mean = t_channel_clustering(
+        scale_scheme=scheme.clustering_mean, xqcut=20.0,
+        clustering_mean_pdf_ladder=False,
+    )
+    madevent = t_channel_clustering(scale_scheme=scheme.madevent, xqcut=20.0)
+    # on by default
+    ladder = t_channel_clustering(scale_scheme=scheme.clustering_mean, xqcut=20.0)
+    # switched off, clustering_mean keeps the density at its scale
+    assert np.all(pdf_outputs(mean, t_channel_momenta)["pdf_rw_active"] == 0.0)
+
+    ren, _, _, jets, diagram, veto = run_all(ladder, t_channel_momenta)
+    ren_m, _, _, jets_m, diagram_m, veto_m = run_all(mean, t_channel_momenta)
+    assert np.array_equal(ren, ren_m)
+    assert np.array_equal(jets, jets_m)
+    assert np.array_equal(diagram, diagram_m)
+    assert np.array_equal(veto, veto_m)
+    for got, want in zip(
+        alphas_outputs(ladder, t_channel_momenta),
+        alphas_outputs(mean, t_channel_momenta),
+    ):
+        assert np.array_equal(got, want)
+
+    _, fact1, fact2, _, _ = run(ladder, t_channel_momenta)
+    _, fact1_e, fact2_e, _, _ = run(madevent, t_channel_momenta)
+    assert np.array_equal(fact1, fact1_e)
+    assert np.array_equal(fact2, fact2_e)
+    out = pdf_outputs(ladder, t_channel_momenta)
+    out_e = pdf_outputs(madevent, t_channel_momenta)
+    assert (out["pdf_rw_active"] == 1.0).any()
+    for name in PDF_OUTPUTS:
+        assert np.array_equal(out[name], out_e[name]), name
+
+    # and the switch is inert without pdf_reweighting
+    off = t_channel_clustering(
+        scale_scheme=scheme.clustering_mean, xqcut=20.0, pdf_reweighting=False,
+    )
+    _, fact1_o, fact2_o, _, _ = run(off, t_channel_momenta)
+    _, fact1_m, fact2_m, _, _ = run(mean, t_channel_momenta)
+    assert np.array_equal(fact1_o, fact1_m)
+    assert np.array_equal(fact2_o, fact2_m)
+
+
 def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
     """The point of the whole thing: with it on, the density is asked for at or
     below the factorisation scale, and for a real part of the sample strictly
@@ -1576,11 +1742,12 @@ def test_pdf_steps_name_a_real_beam(t_channel_momenta):
 
 
 def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
-    """There is no beam parton line to walk without madevent's scale scheme, so
-    asking for the reweighting there must do nothing rather than something
-    arbitrary."""
+    """Under clustering_mean with the ladder switched off there is no beam
+    parton line to walk, so asking for the reweighting there must do nothing
+    rather than something arbitrary."""
     clustering = t_channel_clustering(
-        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean
+        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean,
+        clustering_mean_pdf_ladder=False,
     )
     _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
     out = pdf_outputs(clustering, t_channel_momenta)

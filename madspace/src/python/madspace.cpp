@@ -1924,7 +1924,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 AlphasScheme,
                 bool,
                 ClusteringMeasure,
-                ClusteringHistory>(),
+                ClusteringHistory,
+                bool>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
@@ -1942,7 +1943,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alphas_scheme") = AlphasScheme::per_vertex,
             py::arg("pdf_reweighting") = true,
             py::arg("clustering_measure") = ClusteringMeasure::fxfx,
-            py::arg("clustering_history") = ClusteringHistory::all_diagrams
+            py::arg("clustering_history") = ClusteringHistory::all_diagrams,
+            py::arg("clustering_mean_pdf_ladder") = true
         )
         .def_property_readonly(
             "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
@@ -2399,7 +2401,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 std::size_t,
                 const std::optional<CustomFunction>&,
-                const std::optional<PdfGrid>&>(),
+                const std::optional<PdfGrid>&,
+                int>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2430,6 +2433,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("compressed_channel_weight_count") = 50,
             py::arg("custom_bias") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
+            py::arg("mlm_history_qcd_power") = -1,
             pydoc::doc("Integrand::Integrand")
         )
         .def(

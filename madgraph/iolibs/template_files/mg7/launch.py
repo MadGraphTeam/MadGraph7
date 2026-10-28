@@ -1151,12 +1151,15 @@ class MadgraphProcess:
         else:
             config.alps = [1.0]
         # the pdf reweighting ladder of an MLM sample under madevent's scale
-        # scheme, varied as madevent's systematics vary it; a varied scale is
-        # kept inside the PDF grid, where LHAPDF freezes it for madevent
+        # scheme (or clustering_mean's with clustering_mean_pdf_ladder), varied
+        # as madevent's systematics vary it; a varied scale is kept inside the
+        # PDF grid, where LHAPDF freezes it for madevent
         beam = self.run_card["beam"]
         config.pdf_ladder = bool(
             self.mlm_clustering and not self.is_decay and not self.leptonic
-            and beam["scale_scheme"] == "madevent" and beam["pdf_reweighting"])
+            and beam["pdf_reweighting"]
+            and (beam["scale_scheme"] == "madevent"
+                 or beam["clustering_mean_pdf_ladder"]))
         if config.pdf_ladder:
             config.ladder_min_scale = float(self.min_pdf_scale)
             config.ladder_max_scale = float(self.max_scale)
@@ -2942,6 +2945,9 @@ class MadgraphSubprocess:
                         ms.MLMClustering.ClusteringHistory,
                         self.process.run_card["beam"]["clustering_history"],
                     ),
+                    clustering_mean_pdf_ladder=self.process.run_card["beam"][
+                        "clustering_mean_pdf_ladder"
+                    ],
                 ),
                 min_scale=min_scale,
                 max_scale=max_scale,
@@ -3670,6 +3676,11 @@ class MadgraphSubprocess:
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
+        # With an MLM history picked per diagram, the cross section at the
+        # scales of that history is the first matrix-element evaluation rescaled
+        # by alpha_s and PDF ratios when every diagram has the same power of
+        # alpha_s (-1: mixed powers, evaluate the matrix element again)
+        mlm_history_qcd_power = int(self.meta.get("qcd_power", -1))
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3703,6 +3714,7 @@ class MadgraphSubprocess:
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
+                mlm_history_qcd_power,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
