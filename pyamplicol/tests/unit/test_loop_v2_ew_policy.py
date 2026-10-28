@@ -129,7 +129,13 @@ def test_external_photons_without_the_convention_are_refused_before_the_trees(
 ):
     """u u~ > a g [QCD QED] (widths fixed to zero): an on-shell photon takes
     alpha(0) (EWI-6b); where the convention cannot be applied the request is
-    refused, naming it, before any tree is built."""
+    refused, naming it, before any tree is built. A veto of a loop species
+    on the G_mu UFO, whose electroweak counterterms declare no loop content,
+    is refused first, in the model preparation (``refusals``
+    "veto-unlabelled-counterterms", WP3.2 EWI-5); the convention's own
+    refusal of the veto is checked with that guard disabled."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
     monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
     process, born = PHOTON_JET
@@ -137,6 +143,14 @@ def test_external_photons_without_the_convention_are_refused_before_the_trees(
     request_ = SliceRequest(
         process, born, PHOTON_JET_LOOPS, corrections=("QCD", "QED"), **options, **GMU
     )
+    if "particle_veto" in options:
+        with pytest.raises(LoopRequestUnsupported) as vetoed:
+            LoopSlice.generate(request.getfixturevalue(model), request_, loop_native)
+        assert vetoed.value.key == "veto-unlabelled-counterterms"
+        assert "removes the species [23]" in str(vetoed.value)
+        monkeypatch.setattr(
+            assemble, "require_labelled_counterterms_for_veto", lambda *args: None
+        )
     with pytest.raises(ExternalPhotonError, match=reason) as refused:
         LoopSlice.generate(request.getfixturevalue(model), request_, loop_native)
     message = str(refused.value)
