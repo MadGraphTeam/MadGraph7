@@ -3,6 +3,7 @@
   "schemes": {
     "qcd": {
       "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+      "restriction": "no_b_mass",
       "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
       "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
@@ -55,6 +56,72 @@
         "WTau": "0"
       },
       "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "qcd-4fs": {
+      "description": "QCD corrections in the MG5 loop_sm model at its default restriction (four-flavour scheme): massive b (MB = ymb = 4.7) and tau (MTA = ymtau = 1.777) at the card values, alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, all widths zero (= the no_widths restriction), four active flavours (b and top decoupled from alpha_s), six quark flavours in loops, Feynman gauge.",
+      "restriction": "default",
+      "madloop_model": "{mg5}/models/loop_sm",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777"},
+      "fixed_parameters": {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 4,
+      "loop_quark_flavours": 6
+    },
+    "qcd-cmass": {
+      "description": "QCD corrections in the MG5 loop_sm-c_mass model: massive c (MC = ymc = 1.55) and b (MB = ymb = 4.7), tau at the card value, alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, all widths zero, three active flavours, six quark flavours in loops, Feynman gauge.",
+      "restriction": "c_mass",
+      "madloop_model": "{mg5}/models/loop_sm-c_mass",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173", "MC": "1.55", "ymc": "1.55", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777"},
+      "fixed_parameters": {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 3,
+      "loop_quark_flavours": 6
+    },
+    "qcd-ckm": {
+      "description": "QCD corrections in the MG5 loop_sm-zeromass_ckm model: massless b and tau, non-diagonal CKM from the Wolfenstein card values (lamWS, AWS, rhoWS, etaWS), alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, all widths zero, five active flavours, six quark flavours in loops, Feynman gauge.",
+      "restriction": "zeromass_ckm",
+      "madloop_model": "{mg5}/models/loop_sm-zeromass_ckm",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173", "lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "qcd-ckm4": {
+      "description": "QCD corrections in the MG5 loop_sm-ckm model: massive b (MB = ymb = 4.7) and tau at the card values, non-diagonal CKM from the Wolfenstein card values, alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, all widths zero, four active flavours, six quark flavours in loops, Feynman gauge.",
+      "restriction": "ckm",
+      "madloop_model": "{mg5}/models/loop_sm-ckm",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777", "lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"},
+      "fixed_parameters": {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 4,
+      "loop_quark_flavours": 6
+    },
+    "qcd-lmass": {
+      "description": "QCD corrections in the MG5 loop_sm-lepton_masses model: massive e (Me = yme = 5.11e-4), mu (MM = ymm = 0.10566) and tau (1.777), massive b (MB = ymb = 4.7), alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, all widths zero, four active flavours, six quark flavours in loops, Feynman gauge.",
+      "restriction": "lepton_masses",
+      "madloop_model": "{mg5}/models/loop_sm-lepton_masses",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173", "Me": "0.000511", "yme": "0.000511", "MM": "0.10566", "ymm": "0.10566", "MTA": "1.777", "ymtau": "1.777", "MB": "4.7", "ymb": "4.7"},
+      "fixed_parameters": {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 4,
+      "loop_quark_flavours": 6
+    },
+    "qcd-widths": {
+      "description": "The qcd scheme (MG5 loop_sm-no_b_mass) with the colourless widths at the card values (WZ = 2.441404, WW = 2.0476, WH = 6.38233934e-03; fixed widths in the propagators, real masses elsewhere) and a stable top (WT = 0).",
+      "restriction": "no_b_mass",
+      "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WZ": "2.441404", "WW": "2.0476", "WH": "0.00638233934"},
+      "electroweak_inputs": "alpha_fixed",
       "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
@@ -322,6 +389,585 @@
       "scheme": "qcd",
       "madloop": {"process": "u u~ > u u~ e+ e- QED=2 [virt=QCD]"},
       "recola": {"process": "u u~ -> u u~ e+ e-"}
+    },
+    {
+      "name": "uux_gg",
+      "role": "mqcd",
+      "mqcd_row": "A02",
+      "pdgs": [2, -2, 21, 21],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > g g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_uux",
+      "role": "mqcd",
+      "mqcd_row": "A03",
+      "pdgs": [21, 21, 2, -2],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > u u~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "ug_ug",
+      "role": "mqcd",
+      "mqcd_row": "A04",
+      "pdgs": [2, 21, 2, 21],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u g > u g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uux_ddx",
+      "role": "mqcd",
+      "mqcd_row": "A05",
+      "pdgs": [2, -2, 1, -1],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > d d~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uu_uu",
+      "role": "mqcd",
+      "mqcd_row": "A07",
+      "pdgs": [2, 2, 2, 2],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u > u u QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ggg",
+      "role": "mqcd",
+      "mqcd_row": "A08",
+      "pdgs": [21, 21, 21, 21, 21],
+      "born_orders": {"QCD": 3, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > g g g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uux_ggg",
+      "role": "mqcd",
+      "mqcd_row": "A09",
+      "pdgs": [2, -2, 21, 21, 21],
+      "born_orders": {"QCD": 3, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > g g g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uux_gggg",
+      "role": "mqcd",
+      "mqcd_row": "A15",
+      "pdgs": [2, -2, 21, 21, 21, 21],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > g g g g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_uuxuux",
+      "role": "mqcd",
+      "mqcd_row": "A18",
+      "pdgs": [21, 21, 2, -2, 2, -2],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > u u~ u u~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "ud_ud",
+      "role": "mqcd",
+      "mqcd_row": "A25",
+      "pdgs": [2, 1, 2, 1],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u d > u d QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uxux_uxux",
+      "role": "mqcd",
+      "mqcd_row": "A26",
+      "pdgs": [-2, -2, -2, -2],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u~ u~ > u~ u~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uux_ttx",
+      "role": "mqcd",
+      "mqcd_row": "B02",
+      "pdgs": [2, -2, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > t t~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttxg",
+      "role": "mqcd",
+      "mqcd_row": "B03",
+      "pdgs": [21, 21, 6, -6, 21],
+      "born_orders": {"QCD": 3, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "uux_ttxddx",
+      "role": "mqcd",
+      "mqcd_row": "B06",
+      "pdgs": [2, -2, 6, -6, 1, -1],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > t t~ d d~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttxttx",
+      "role": "mqcd",
+      "mqcd_row": "B07",
+      "pdgs": [21, 21, 6, -6, 6, -6],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ t t~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttx_4fs",
+      "role": "mqcd",
+      "mqcd_row": "B08",
+      "pdgs": [21, 21, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > t t~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_bbx_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C01",
+      "pdgs": [21, 21, 5, -5],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > b b~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "gg_gg_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C02",
+      "pdgs": [21, 21, 21, 21],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > g g QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "bbx_h_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C03",
+      "pdgs": [5, -5, 25],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "b b~ > h QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "bbx_hg_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C04",
+      "pdgs": [5, -5, 25, 21],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "b b~ > h g QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "gg_bbxh_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C05",
+      "pdgs": [21, 21, 5, -5, 25],
+      "born_orders": {"QCD": 2, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > b b~ h QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttxbbx_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C06",
+      "pdgs": [21, 21, 6, -6, 5, -5],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > t t~ b b~ QED=0 [virt=QCD]"}
+    },
+    {
+      "name": "ug_dtbx_4fs",
+      "role": "mqcd",
+      "mqcd_row": "C07",
+      "pdgs": [2, 21, 1, 6, -5],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "u g > d t b~ QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ccx_cmass",
+      "role": "mqcd",
+      "mqcd_row": "C08",
+      "pdgs": [21, 21, 4, -4],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-cmass",
+      "madloop": {"process": "g g > c c~ QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> c c~"}
+    },
+    {
+      "name": "gs_wmc_cmass",
+      "role": "mqcd",
+      "mqcd_row": "C09",
+      "pdgs": [21, 3, -24, 4],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-cmass",
+      "madloop": {"process": "g s > w- c QED=1 [virt=QCD]"},
+      "recola": {"process": "g s -> W- c"}
+    },
+    {
+      "name": "uux_emep",
+      "role": "mqcd",
+      "mqcd_row": "D01",
+      "pdgs": [2, -2, 11, -11],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_emep_widths",
+      "role": "mqcd",
+      "mqcd_row": "D02",
+      "pdgs": [2, -2, 11, -11],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd-widths",
+      "madloop": {"process": "u u~ > e- e+ QED=2 [virt=QCD]"},
+      "madloop_export_of": "uux_emep"
+    },
+    {
+      "name": "uux_emepg",
+      "role": "mqcd",
+      "mqcd_row": "D05",
+      "pdgs": [2, -2, 11, -11, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_emepgg",
+      "role": "mqcd",
+      "mqcd_row": "D06",
+      "pdgs": [2, -2, 11, -11, 21, 21],
+      "born_orders": {"QCD": 2, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ g g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_zg",
+      "role": "mqcd",
+      "mqcd_row": "D11",
+      "pdgs": [2, -2, 23, 21],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > z g QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "udx_epveg",
+      "role": "mqcd",
+      "mqcd_row": "D12",
+      "pdgs": [2, -1, -11, 12, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u d~ > e+ ve g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "ug_au",
+      "role": "mqcd",
+      "mqcd_row": "D13",
+      "pdgs": [2, 21, 22, 2],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u g > a u QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "uux_zz",
+      "role": "mqcd",
+      "mqcd_row": "D15",
+      "pdgs": [2, -2, 23, 23],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > z z QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_wpwm",
+      "role": "mqcd",
+      "mqcd_row": "D16",
+      "pdgs": [2, -2, 24, -24],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > w+ w- QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "bbx_wpwm",
+      "role": "mqcd",
+      "mqcd_row": "D17",
+      "pdgs": [5, -5, 24, -24],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "b b~ > w+ w- QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_zh",
+      "role": "mqcd",
+      "mqcd_row": "D18",
+      "pdgs": [2, -2, 23, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > z h QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "ud_udh",
+      "role": "mqcd",
+      "mqcd_row": "D19",
+      "pdgs": [2, 1, 2, 1, 25],
+      "born_orders": {"QCD": 0, "QED": 3},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u d > u d h QCD=0 QED=3 [virt=QCD]"}
+    },
+    {
+      "name": "epem_uuxg",
+      "role": "mqcd",
+      "mqcd_row": "D20",
+      "pdgs": [-11, 11, 2, -2, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "e+ e- > u u~ g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "ag_uux",
+      "role": "mqcd",
+      "mqcd_row": "D23",
+      "pdgs": [22, 21, 2, -2],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "a g > u u~ QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "emu_emu",
+      "role": "mqcd",
+      "mqcd_row": "D24",
+      "pdgs": [11, 2, 11, 2],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "e- u > e- u QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "udx_wpa",
+      "role": "mqcd",
+      "mqcd_row": "D25",
+      "pdgs": [2, -1, 24, 22],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u d~ > w+ a QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "uux_emepg_4fs",
+      "role": "mqcd",
+      "mqcd_row": "D26",
+      "pdgs": [2, -2, 11, -11, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "u u~ > e- e+ g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "gu_epved",
+      "role": "mqcd",
+      "mqcd_row": "D27",
+      "pdgs": [21, 2, -11, 12, 1],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g u > e+ ve d QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttxh",
+      "role": "mqcd",
+      "mqcd_row": "E01",
+      "pdgs": [21, 21, 6, -6, 25],
+      "born_orders": {"QCD": 2, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ h QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttxz",
+      "role": "mqcd",
+      "mqcd_row": "E02",
+      "pdgs": [21, 21, 6, -6, 23],
+      "born_orders": {"QCD": 2, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ z QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "ub_dt",
+      "role": "mqcd",
+      "mqcd_row": "F01",
+      "pdgs": [2, 5, 1, 6],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u b > d t QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "bu_dt",
+      "role": "mqcd",
+      "mqcd_row": "F02",
+      "pdgs": [5, 2, 1, 6],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "b u > d t QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "udx_tbx",
+      "role": "mqcd",
+      "mqcd_row": "F03",
+      "pdgs": [2, -1, 6, -5],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u d~ > t b~ QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "gb_twm",
+      "role": "mqcd",
+      "mqcd_row": "F04",
+      "pdgs": [21, 5, 6, -24],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g b > t w- QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "uux_ttx_mixed",
+      "role": "mqcd",
+      "mqcd_row": "G02",
+      "pdgs": [2, -2, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "born_orders_all": [{"QCD": 2, "QED": 0}, {"QCD": 0, "QED": 2}],
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > t t~ QCD=2 QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "usx_wpg_ckm",
+      "role": "mqcd",
+      "mqcd_row": "H01",
+      "pdgs": [2, -3, 24, 21],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-ckm",
+      "madloop": {"process": "u s~ > w+ g QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "gs_twm_ckm",
+      "role": "mqcd",
+      "mqcd_row": "H02",
+      "pdgs": [21, 3, 6, -24],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-ckm",
+      "madloop": {"process": "g s > t w- QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "gd_twm_ckm4",
+      "role": "mqcd",
+      "mqcd_row": "H03",
+      "pdgs": [21, 1, 6, -24],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-ckm4",
+      "madloop": {"process": "g d > t w- QED=1 [virt=QCD]"}
+    },
+    {
+      "name": "pp_ttx",
+      "role": "mqcd",
+      "mqcd_row": "M01",
+      "pdgs": [21, 21, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "p p > t t~ QED=0 [virt=QCD]"},
+      "multiparticle": true
+    },
+    {
+      "name": "uux_mummp_lmass",
+      "role": "mqcd",
+      "mqcd_row": "R01",
+      "pdgs": [2, -2, 13, -13],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd-lmass",
+      "madloop": {"process": "u u~ > mu- mu+ QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "gg_ttx_mt170",
+      "role": "mqcd",
+      "mqcd_row": "B01",
+      "pdgs": [21, 21, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ QED=0 [virt=QCD]"},
+      "madloop_export_of": "gg_ttx",
+      "parameter_overrides": {"MT": "170"}
+    },
+    {
+      "name": "gg_bbx_4fs_params",
+      "role": "mqcd",
+      "mqcd_row": "C01",
+      "pdgs": [21, 21, 5, -5],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "g g > b b~ QED=0 [virt=QCD]"},
+      "madloop_export_of": "gg_bbx_4fs",
+      "parameter_overrides": {"MB": "4.5", "aS": "0.13"}
     }
   ]
 }
