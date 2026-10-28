@@ -51,9 +51,10 @@ QCD = {
 }
 
 
-def _points(name: str, count: int = 1):
+def _points(name: str, count: int = 1, start: int = 0):
     fixture = json.loads((LEGACY / f"{name}.json").read_text())
-    return fixture["points"][:count], fixture["scales_squared"][:count]
+    stop = start + count
+    return fixture["points"][start:stop], fixture["scales_squared"][start:stop]
 
 
 def _options() -> dict:
@@ -279,16 +280,21 @@ def _thirds(count: int) -> list[list[str]]:
 @pytest.mark.loop_physics
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
-    ("process", "points", "executors", "resolved"),
+    ("process", "points", "start", "executors", "resolved"),
     [
-        ("u u~ > g g g", "uux_ggg", ("python", "native"), True),
-        ("g g > g g g", "uux_ggg", ("native",), True),
-        ("u u~ > g g g g", "uux_uuxuux.lc", ("native",), False),
-        ("g g > g g g g", "uux_uuxuux.lc", ("native",), False),
+        ("u u~ > g g g", "uux_ggg", 0, ("python", "native"), True),
+        # The first point is outside binary64's 1e-12 for g g > g g g (LC
+        # estimate 1.7e-9, true error 1.6e-10 against double-double; the
+        # binary64 flow groups sum to it within 8.4e-11), the second at its
+        # edge (estimate 1.1e-12); the third has estimate 7.9e-14 (every
+        # flow group's below 1.1e-13) and true error 6.1e-15.
+        ("g g > g g g", "uux_ggg", 2, ("native",), True),
+        ("u u~ > g g g g", "uux_uuxuux.lc", 0, ("native",), False),
+        ("g g > g g g g", "uux_uuxuux.lc", 0, ("native",), False),
     ],
 )
 def test_runtime_selections_partition_the_inclusive_value_nightly(
-    generate, process, points, executors, resolved
+    generate, process, points, start, executors, resolved
 ):
     """Mixed and pure-gluon rows to 2->4 (native; three flow groups and the
     two helicity halves as complete sets; binary64 and double-double)."""
@@ -297,7 +303,7 @@ def test_runtime_selections_partition_the_inclusive_value_nightly(
     flows = _runtime(observables).selection_catalogue().flows
     assert_complete_sets(
         observables,
-        _points(points),
+        _points(points, start=start),
         executors=executors,
         groups=_thirds(len(flows)),
         resolved=resolved,
