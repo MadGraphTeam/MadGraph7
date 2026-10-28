@@ -289,15 +289,15 @@ def _thirds(count: int) -> list[list[str]]:
         # edge (estimate 1.1e-12); the third has estimate 7.9e-14 (every
         # flow group's below 1.1e-13) and true error 6.1e-15.
         ("g g > g g g", "uux_ggg", 2, ("native",), True),
-        ("u u~ > g g g g", "uux_uuxuux.lc", 0, ("native",), False),
-        ("g g > g g g g", "uux_uuxuux.lc", 0, ("native",), False),
     ],
 )
 def test_runtime_selections_partition_the_inclusive_value_nightly(
     generate, process, points, start, executors, resolved
 ):
-    """Mixed and pure-gluon rows to 2->4 (native; three flow groups and the
-    two helicity halves as complete sets; binary64 and double-double)."""
+    """Mixed and pure-gluon 2->3 rows of the Python and native slices (three
+    flow groups and the two helicity halves as complete sets; binary64 and
+    double-double); 2->4 and 2->5 run on their stored artifacts
+    (``test_stored_selections_partition_the_inclusive_value``)."""
 
     observables = generate(process)
     flows = _runtime(observables).selection_catalogue().flows
@@ -308,68 +308,6 @@ def test_runtime_selections_partition_the_inclusive_value_nightly(
         groups=_thirds(len(flows)),
         resolved=resolved,
     )
-
-
-# The 2->5 row's point (``tests/fixtures/loop/required/uux_ggggg.json``,
-# MadLoop's and Recola's) and its double-double / binary64 identity budgets.
-SEVEN_LEG_POINT = 0
-
-
-@pytest.mark.loop_physics
-@pytest.mark.loop_nightly
-def test_runtime_selections_partition_the_inclusive_value_seven_legs(generate):
-    """u u~ > g g g g g at leading colour (the 2->5 row, nightly): three
-    groups of its 120 flows and the two halves of its 128 helicity rows sum
-    to the inclusive value, binary64 and double-double. One native plan holds
-    the inclusive column and every selection column
-    (``observables.NativeObservables``: one export, one compilation), as a
-    runtime's selections would each run their own."""
-
-    from fractions import Fraction
-
-    from pyamplicol.loops.v2.assemble import Precision
-    from pyamplicol.loops.v2.observables import INCLUSIVE, Column, NativeObservables
-
-    observables = generate("u u~ > g g g g g")
-    catalogue = _runtime(observables).selection_catalogue()
-    assert (len(catalogue.rows), len(catalogue.flows)) == (128, 120)
-    flows = [
-        frozenset(f.basis for f in catalogue.flows[k::3] if f.basis is not None)
-        for k in range(3)
-    ]
-    half = len(catalogue.rows) // 2
-    halves = [frozenset(catalogue.rows[:half]), frozenset(catalogue.rows[half:])]
-    columns = [
-        Column(INCLUSIVE, observables.history(INCLUSIVE)),
-        *(lc.column(None, basis) for basis in flows),
-        *(lc.column(rows, None) for rows in halves),
-    ]
-    native = NativeObservables(observables, columns)
-    reference = json.loads(
-        (ROOT / "tests/fixtures/loop/required/uux_ggggg.json").read_text()
-    )
-    point = [reference["points"][SEVEN_LEG_POINT]]
-    scale = [str(Fraction(reference["mu_r"][SEVEN_LEG_POINT]) ** 2)]
-    for precision, tolerance in (
-        (Precision.double(), Decimal(DOUBLE)),
-        (Precision.double_double(), DOUBLE_DOUBLE),
-    ):
-        (result,) = native.evaluate(
-            point, scale, parameters=PARAMETERS, precision=precision
-        )
-
-        def coefficients(key, result=result):
-            return [Decimal(str(x)) for x in result[key].totals[:4]]
-
-        inclusive = coefficients(INCLUSIVE)
-        size = max(abs(x) for x in inclusive)
-        for parts in (columns[1:4], columns[4:]):
-            total = [
-                sum(values)
-                for values in zip(*(coefficients(c.key) for c in parts), strict=True)
-            ]
-            for a, b in zip(total, inclusive, strict=True):
-                assert abs(a - b) <= tolerance * size, (precision, a, b)
 
 
 @pytest.mark.loop_physics
@@ -576,6 +514,86 @@ def test_public_colour_subset_selectors_are_the_tree_engines(
         chosen("g g > g g g", selected_color_sector_ids=[99])
 
 
+# The stored complete-set rows: per process MadLoop's committed reference
+# whose first point is taken, and the (helicity rows, flows) counts.
+STORED_ROWS = {
+    "u u~ > g g g g": ("uux_uuxuux", (64, 24)),
+    "g g > g g g g": ("uux_uuxuux", (64, 120)),
+    "u u~ > g g g g g": ("uux_ggggg", (128, 120)),
+}
+O1_CAP = 1e-9
+
+
+@pytest.mark.loop_physics
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("process", list(STORED_ROWS))
+def test_stored_selections_partition_the_inclusive_value(artifacts, process):
+    """2->4 and the 2->5 row at leading colour on their public artifacts
+    (nightly): three groups of the flows and the two halves of the helicity
+    rows (stored selections, ``native_observables.selection_parts``) sum to
+    the inclusive value at the first point of MadLoop's committed reference:
+    in double-double to 1e-24; in binary64 under the O1 rule (m-qcd PLAN
+    §1.4 rule 2: 1e-12, or the largest stability estimate E of the
+    evaluations, one exact rotation and the reduction direction, when
+    1e-12 < E <= 1e-9)."""
+
+    from fractions import Fraction
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import VirtualStabilityChecks
+
+    name, counts = STORED_ROWS[process]
+    key = process.replace(" ", "").replace(">", "_").replace("~", "x")
+    runtime = Runtime.load(
+        artifacts(key, "", process=process), process="p", model_parameters=PARAMETERS
+    )
+    flows = [a.id for a in runtime.physics.born_anchored_color_components]
+    helicities = [h.id for h in runtime.physics.helicities]
+    assert (len(helicities), len(flows)) == counts
+    reference = json.loads(
+        (ROOT / f"tests/fixtures/loop/required/{name}.json").read_text()
+    )
+    point = [reference["points"][0]]
+    scale = [str(Fraction(reference["mu_r"][0]) ** 2)]
+    half = len(helicities) // 2
+    partitions = (
+        [{"color_flows": flows[k::3]} for k in range(3)],
+        [{"helicities": helicities[:half]}, {"helicities": helicities[half:]}],
+    )
+    checks = VirtualStabilityChecks(("z:3/5:4/5",), True)
+    for arithmetic in ("double", "double-double"):
+        estimates = []
+
+        def values(arithmetic=arithmetic, estimates=estimates, **selectors):
+            result = runtime.evaluate(
+                point,
+                mu_r2=scale,
+                arithmetic=arithmetic,
+                stability_checks=checks if arithmetic == "double" else None,
+                **selectors,
+            )
+            if result.stability is not None:
+                estimates.append(result.stability[0].relative)
+            return [Decimal(str(x)) for x in _values(result)]
+
+        inclusive = values()
+        size = max(abs(x) for x in inclusive)
+        totals = [
+            [
+                sum(parts)
+                for parts in zip(*(values(**s) for s in partition), strict=True)
+            ]
+            for partition in partitions
+        ]
+        tolerance = DOUBLE_DOUBLE
+        if arithmetic == "double":
+            assert max(estimates) <= O1_CAP, (process, estimates)
+            tolerance = Decimal(max(DOUBLE, max(estimates)))
+        for total in totals:
+            for a, b in zip(total, inclusive, strict=True):
+                assert abs(a - b) <= tolerance * size, (arithmetic, a, b, tolerance)
+
+
 # ------------------------------------------------------- MadLoop per helicity
 
 MQCD = ROOT / "tests" / "fixtures" / "loop" / "required" / "mqcd"
@@ -701,15 +719,20 @@ def test_single_helicities_equal_madloop_per_helicity(
 
 @pytest.fixture(scope="module")
 def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
-    """The public LC artifacts of u u~ > d d~ g: inclusive, and with the tree
-    engine's selectors (sector 2, legs 1 and 5 fixed)."""
+    """The public LC artifacts of a process (u u~ > d d~ g by default):
+    inclusive, or with the tree engine's selectors."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
 
     built = {}
 
-    def build(key: str, selectors: str, accuracy: str = "lc") -> Path:
+    def build(
+        key: str,
+        selectors: str,
+        accuracy: str = "lc",
+        process: str = "u u~ > d d~ g",
+    ) -> Path:
         if key not in built:
             tmp = tmp_path_factory.mktemp(key)
             card = tmp / "card.toml"
@@ -719,9 +742,10 @@ def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
                     output=json.dumps(str(tmp / "artifact")),
                     selectors=selectors,
                     accuracy=accuracy,
+                    process=json.dumps(process),
                 )
             )
-            processes = ProcessSet((ProcessRequest.parse("u u~ > d d~ g", name="p"),))
+            processes = ProcessSet((ProcessRequest.parse(process, name="p"),))
             generator = Generator(resolve_config(card))
             if accuracy != "lc":
                 built[key] = generator.plan(processes)
@@ -738,7 +762,7 @@ action = "generate"
 [model]
 source = {model}
 [process]
-entries = [{{expression="u u~ > d d~ g", name="p"}}]
+entries = [{{expression={process}, name="p"}}]
 loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
 {selectors}
