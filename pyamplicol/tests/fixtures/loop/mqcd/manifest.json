@@ -1345,7 +1345,8 @@
     "format": "required",
     "path": "tests/fixtures/loop/required/mqcd/gg_uuxuux.json",
     "providers": [
-     "madloop"
+     "madloop",
+     "openloops"
     ]
    },
    "points": {
@@ -2664,7 +2665,8 @@
     "format": "required",
     "path": "tests/fixtures/loop/required/mqcd/gg_bbx_4fs.json",
     "providers": [
-     "madloop"
+     "madloop",
+     "recola"
     ]
    },
    "points": {
@@ -2712,7 +2714,8 @@
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/gg_bbx_4fs_params.json",
       "providers": [
-       "madloop"
+       "madloop",
+       "recola"
       ]
      },
      "points": {
