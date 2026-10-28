@@ -24,15 +24,14 @@ reduction-direction estimate, itself within 1e-9 of the scale; the Born
   ``tools/loop_benchmark`` processes up to seven legs (g g > g g g, quark
   lines with every gluon leg in turn, massive tops, g g > g g g g,
   u u~ > g g g g g), stream point 0.
-* Opt-in (``PYAMPLICOL_WARD_SEVEN_GLUONS=1``, nightly): g g > g g g g g, legs
-  1, 4 and 7 (about 1.5 h, 40 GB: the generation alone takes 45 to 60 min);
-  its record is the MQ-WARD campaign evidence.
+* Nightly, ADDENDUM H's seven-gluon check: g g > g g g g g, legs 1, 4 and 7
+  (the MQ-WARD campaign: generation 168 s, binary64 72 s and double-double
+  721 s on 12 threads, 27 GB).
 """
 
 from __future__ import annotations
 
 import json
-import os
 from fractions import Fraction
 from pathlib import Path
 
@@ -112,9 +111,10 @@ def _evaluate(executor, point, scale, wards, carrier, checks=True):
 def test_ward_identity_on_native_inputs(slices, name):
     """Every gluon leg, c = 1 and i, binary64 and double-double, native
     inputs: the Born and the virtual vanish (``ward.ward_row``). Measured at
-    the first legacy point: binary64 virtual up to 2.2e-12 (g g > g g) and
-    6e-10 (u u~ > g g g, c p_j unnormalised) of the scale, each within its
-    estimate; double-double below 1e-27 of it."""
+    the first legacy point: the binary64 virtual at most 1.6e-15 (g g > g g)
+    and 6.0e-13 (u u~ > g g g) of the physical scale, within 1.5 and 0.8
+    times its estimate; double-double 1.8e-31 and 1.7e-28; the Born ratio
+    below 3e-17 (binary64) and 3e-33 (double-double)."""
 
     slice_ = slices(name)
     legs = DEFAULT[name][3]
@@ -272,14 +272,13 @@ def test_ward_identity_ladder(key, tmp_path, loop_native, loop_sm_ufo):
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.skipif(
-    os.environ.get("PYAMPLICOL_WARD_SEVEN_GLUONS") != "1",
-    reason="opt-in (PYAMPLICOL_WARD_SEVEN_GLUONS=1): about 1.5 h and 40 GB",
-)
 def test_seven_gluon_ward_identity(tmp_path, loop_native, loop_sm_ufo):
     """ADDENDUM H's seven-gluon Ward check: g g > g g g g g (top-free, NJet's
     scheme), legs 1, 4 and 7, c = 1 and i, binary64 and double-double, native
-    inputs (the MQ-WARD campaign configuration)."""
+    inputs (the MQ-WARD campaign configuration; about 20 min on 12 threads
+    and 27 GB). Measured: the binary64 virtual at most 2.9e-10 of the
+    physical scale (0.5 of its estimate, the estimate 6.6e-10 of the scale),
+    double-double 2.8e-26; the Born ratio 9.8e-16 and 5.3e-32."""
 
     del loop_native, loop_sm_ufo
     data = _campaign(
