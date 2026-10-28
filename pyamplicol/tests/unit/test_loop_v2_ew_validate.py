@@ -714,12 +714,16 @@ def test_ghost_vertices_are_read_on_their_own_legs_with_field_signs(loop_gmu_ufo
         ),
     )
     builder = catalogue._CatalogueBuilder(compiled, CompiledUFOModel(compiled))
-    signs = builder._signs()
-    assert signs.product(["W+", "W-"]) == 1
-    assert signs.product(["G+", "G-"]) == 1
+    closed, signs = builder._signs(), builder._signs(conjugates=True)
+    for solver in (closed, signs):
+        assert solver.product(["W+", "W-"]) == 1
+        assert solver.product(["G+", "G-"]) == 1
+        assert solver.product(["G0"]) == -1
+    # The closed vertices leave the charged families apart; the conjugate
+    # readings tie them, with one free sign per family.
+    assert closed.product(["W-", "G+"]) is None
     assert signs.product(["W-", "G+"]) == signs.product(["W+", "G-"]) == -1
-    assert signs.product(["G0"]) == -1
-    assert signs.product(["W-"]) is None  # one free sign per family
+    assert signs.product(["W-"]) is None
     rules = conjugate_vertex_rules(
         {
             "particles": [
@@ -745,7 +749,13 @@ def test_ghost_vertices_are_read_on_their_own_legs_with_field_signs(loop_gmu_ufo
             continue
         assert rules[term.vertex] == term.vertex
         bosons = [name for name in term.particles if name not in ghosts]
-        assert builder.reading_sign(term) == signs.product(bosons, gauge=True)
+        if sorted(term.particles) == sorted(
+            next(r.antiname for r in compiled.ir.particles if r.name == name)
+            for name in term.particles
+        ):
+            assert builder.reading_sign(term) == closed.product(bosons)
+        else:
+            assert builder.reading_sign(term) == signs.product(bosons, gauge=True)
         if {"W+", "W-"} & set(bosons):
             w_ghosts += 1
     assert w_ghosts == 8  # the A, Z and W ghosts' vertices with a W leg

@@ -551,6 +551,7 @@ class _CatalogueBuilder:
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
         self._reading_signs: dict[int, int] = {}
         self._field_signs: _FieldSigns | None = None
+        self._conjugate_signs: _FieldSigns | None = None
 
     # -- species -----------------------------------------------------------
 
@@ -762,9 +763,10 @@ class _CatalogueBuilder:
         # s(W-) s(G+) = -1 on the SM): ``gauge`` sets the free one to +1,
         # which every ghost loop, charge-balanced, cancels.
         if any(record.ghost_number for record in records):
-            sign = self._signs().product(
+            closed = self._closed(term.particles)
+            sign = self._signs(conjugates=not closed).product(
                 (record.name for record in records if not record.ghost_number),
-                gauge=not self._closed(term.particles),
+                gauge=not closed,
             )
             if sign is None:
                 raise LoopKernelCatalogueError(
@@ -846,40 +848,52 @@ class _CatalogueBuilder:
             "mixed momentum parity or exchange symmetry)"
         )
 
-    def _signs(self) -> _FieldSigns:
+    def _signs(self, *, conjugates: bool = False) -> _FieldSigns:
         """Field signs of the tree engine's basis, from the reading signs of
         the model's closed boson vertices of every colour (module
-        docstring). A vertex without a reading sign fixes no field sign (a
-        segment of it is refused by ``reading_sign`` itself)."""
+        docstring); with ``conjugates`` also from the boson vertices not
+        closed under conjugation, read through their conjugate rules (the
+        signs of the ghost vertices not closed under conjugation; the closed
+        ones keep the closed vertices' equations alone). A vertex without a
+        reading sign fixes no field sign (a segment of it is refused by
+        ``reading_sign`` itself)."""
 
+        if conjugates:
+            if self._conjugate_signs is None:
+                self._conjugate_signs = self._solve_signs(conjugates=True)
+            return self._conjugate_signs
         if self._field_signs is None:
-            equations = []
-            for term in self.compiled.ir.vertex_terms:
-                records = tuple(self.particles[name] for name in term.particles)
-                if any(
-                    record.ghost_number
-                    or record.spin == _FERMION_SPIN
-                    or record.auxiliary_kind is not None
-                    for record in records
-                ):
-                    continue
-                if not self._closed(term.particles):
-                    # A boson vertex read through its conjugate rule: the
-                    # tree engine's reading against the own-leg one is a
-                    # product of field signs too (WP3.2 EWI-7), which ties
-                    # the charged fields' signs together (W G H, W G G0,
-                    # W G A, W G Z).
+            self._field_signs = self._solve_signs(conjugates=False)
+        return self._field_signs
+
+    def _solve_signs(self, *, conjugates: bool) -> _FieldSigns:
+        equations = []
+        for term in self.compiled.ir.vertex_terms:
+            records = tuple(self.particles[name] for name in term.particles)
+            if any(
+                record.ghost_number
+                or record.spin == _FERMION_SPIN
+                or record.auxiliary_kind is not None
+                for record in records
+            ):
+                continue
+            if not self._closed(term.particles):
+                # A boson vertex read through its conjugate rule: the
+                # tree engine's reading against the own-leg one is a
+                # product of field signs too (WP3.2 EWI-7), which ties
+                # the charged fields' signs together (W G H, W G G0,
+                # W G A, W G Z).
+                if conjugates:
                     sign = self._conjugate_reading_sign(term, records)
                     if sign is not None:
                         equations.append((term.particles, sign))
-                    continue
-                try:
-                    sign = self.reading_sign(term)
-                except LoopKernelCatalogueError:
-                    continue
-                equations.append((term.particles, sign))
-            self._field_signs = _FieldSigns(equations)
-        return self._field_signs
+                continue
+            try:
+                sign = self.reading_sign(term)
+            except LoopKernelCatalogueError:
+                continue
+            equations.append((term.particles, sign))
+        return _FieldSigns(equations)
 
     def _conjugate_reading_sign(
         self, term: CompiledVertexTerm, records: tuple[CompiledParticleRecord, ...]
