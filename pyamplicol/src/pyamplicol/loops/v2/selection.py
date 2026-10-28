@@ -36,6 +36,106 @@ from . import reference_executor as rx
 
 
 @dataclass(frozen=True)
+class Selection:
+    """A generation-time leading-colour selection (``SliceRequest.selection``;
+    the public route's ``[process]`` selectors): the Born helicity of some
+    legs (label, helicity) and the colour flows kept (tree-engine words;
+    ``None`` keeps every flow). The generation prunes the recursion to them:
+    the Born closure keeps the selected flows' tensors only, so the seed
+    table, the colour pruning of the skeletons, the Born and counterterm
+    bras and the tree program follow (``restrict_born_terms``), and the
+    blocks keep the selected helicity rows only (``restrict_rows``)."""
+
+    helicities: tuple[tuple[int, int], ...] = ()
+    flows: tuple[tuple[int, ...], ...] | None = None
+
+    def __post_init__(self) -> None:
+        helicities = tuple(
+            sorted({(int(label), int(h)) for label, h in self.helicities})
+        )
+        if len({label for label, _h in helicities}) != len(helicities):
+            raise ValueError("a selection names one helicity per leg")
+        object.__setattr__(self, "helicities", helicities)
+        if self.flows is not None:
+            flows = tuple(sorted({tuple(int(x) for x in w) for w in self.flows}))
+            if not flows:
+                raise ValueError("a colour-flow selection keeps at least one flow")
+            object.__setattr__(self, "flows", flows)
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "helicities": [list(pair) for pair in self.helicities],
+            "flows": None if self.flows is None else [list(w) for w in self.flows],
+        }
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> Selection:
+        flows = record["flows"]
+        return cls(
+            tuple((int(a), int(b)) for a, b in record["helicities"]),
+            None if flows is None else tuple(tuple(int(x) for x in w) for w in flows),
+        )
+
+
+def restrict_born_terms(
+    born_terms: Mapping[Any, tuple[Any, ...]],
+    legs: Sequence[Any],
+    flows: Sequence[Sequence[int]],
+) -> dict[Any, tuple[Any, ...]]:
+    """The Born closure's terms with the colour components of the selected
+    flows only (``Selection.flows``, tree words; ``colour.outer_flow`` keys):
+    the Born basis (``assemble._born_tensors``) is then those flows' tensors.
+
+    At leading colour this is the selection's bra: distinct flows do not
+    interfere at the leading power, nor does a flow with a Born tensor of no
+    flow (U(1) and Fierz pieces), so the Born of the kept terms is the
+    selected flows' and the seeds, counterterm and field bras keep them only.
+    A selected flow without a Born tensor is refused, as is a selection
+    that keeps none of the closure."""
+
+    from dataclasses import replace
+
+    from .colour import outer_flow
+
+    representations = {leg.label: leg.representation for leg in legs}
+    wanted = {}
+    for word in flows:
+        key = outer_flow(word, representations)
+        if key is None:
+            raise ValueError(f"colour flow {list(word)} has no planar reading")
+        wanted[key] = tuple(word)
+    out: dict[Any, tuple[Any, ...]] = {}
+    seen = set()
+    for order, terms in born_terms.items():
+        kept = []
+        for term in terms:
+            items = tuple(
+                item for item in term.colour.terms if _item_flow(item) in wanted
+            )
+            seen.update(_item_flow(item) for item in items)
+            if items:
+                kept.append(replace(term, colour=replace(term.colour, terms=items)))
+        out[order] = tuple(kept)
+    missing = [list(word) for key, word in wanted.items() if key not in seen]
+    if missing:
+        raise ValueError(f"the selected colour flows {missing} have no Born tensor")
+    return out
+
+
+def _item_flow(item: Any) -> Any:
+    from .colour import _canonical_rotation
+
+    colour = item.tensor
+    strings = tuple(
+        sorted(
+            (s.fundamental_label, *s.adjoint_labels, s.antifundamental_label)
+            for s in colour.open_strings
+        )
+    )
+    return strings, tuple(_canonical_rotation(tuple(t)) for t in colour.traces)
+
+
+@dataclass(frozen=True)
 class Flow:
     """One leading-colour flow: its tree-engine ID and word, its Born basis
     element (``None``: no Born tensor of that flow, so it contributes
@@ -88,17 +188,8 @@ def flow_id(word: Sequence[int]) -> str:
 def _tensor_flow(tensor: Any) -> Any:
     """The ``colour.sector_flow`` key of a one-term literal Born tensor."""
 
-    from .colour import _canonical_rotation
-
     (term,) = tensor.terms
-    colour = term.tensor
-    strings = tuple(
-        sorted(
-            (s.fundamental_label, *s.adjoint_labels, s.antifundamental_label)
-            for s in colour.open_strings
-        )
-    )
-    return strings, tuple(_canonical_rotation(tuple(t)) for t in colour.traces)
+    return _item_flow(term)
 
 
 def leading_colour_plan(

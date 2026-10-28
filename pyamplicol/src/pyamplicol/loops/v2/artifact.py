@@ -160,6 +160,8 @@ def _encode_field(name: str, value: Any) -> Any:
 
     if name == "colour_declaration":
         return None if value is None else value.to_dict()
+    if name == OPTIONAL_REQUEST_FIELD:
+        return value.record()
     if name == "loop_orders" and not isinstance(value, Mapping):
         return [_orders_record(orders) for orders in value]
     if isinstance(value, Mapping):
@@ -178,6 +180,10 @@ def _decode_field(name: str, value: Any) -> Any:
         from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 
         return None if value is None else LoopColorDeclaration.from_dict(value)
+    if name == OPTIONAL_REQUEST_FIELD:
+        from .selection import Selection
+
+        return Selection.from_record(value)
     if name == "loop_orders" and isinstance(value, list):
         return tuple(dict(orders) for orders in value)
     if isinstance(value, Mapping):
@@ -187,16 +193,25 @@ def _decode_field(name: str, value: Any) -> Any:
     return value
 
 
+# The request field recorded only when set: a leading-colour selection
+# (``selection.Selection``), so requests without one keep their records'
+# bytes.
+OPTIONAL_REQUEST_FIELD = "selection"
+
+
 def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
     """The JSON record of a ``SliceRequest`` (every dataclass field, so a new
-    request field is recorded and restored without an edit here) and its
-    resolved correlator declarations: the artifact's generation recipe."""
+    request field is recorded and restored without an edit here; the
+    selection only when set) and its resolved correlator declarations: the
+    artifact's generation recipe."""
 
     from dataclasses import fields
 
     record: dict[str, object] = {
         item.name: _encode_field(item.name, getattr(request, item.name))
         for item in fields(request)
+        if item.name != OPTIONAL_REQUEST_FIELD
+        or getattr(request, item.name) is not None
     }
     record["correlators"] = None if correlators is None else correlators.to_json_dict()
     return record
@@ -211,6 +226,8 @@ def request_from_record(record: Mapping[str, Any]) -> Any:
     from .assemble import SliceRequest
 
     known = {item.name for item in fields(SliceRequest)}
+    if OPTIONAL_REQUEST_FIELD not in record:
+        known.discard(OPTIONAL_REQUEST_FIELD)
     if set(record) != known | {"correlators"}:
         raise ArtifactError(
             "the loop request record does not match this pyAmpliCol build "

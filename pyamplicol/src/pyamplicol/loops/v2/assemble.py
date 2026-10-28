@@ -1398,8 +1398,18 @@ class SliceRequest:
     # recursion over the CT-lowered model (``ct_closure``), "sites" from the
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
+    # A leading-colour selection (MQ-SELECT, ``selection.Selection``): the
+    # Born helicities of some legs and the colour flows kept, to which the
+    # generation prunes its recursion; None (the default) keeps every
+    # helicity and flow (the request record then has no entry).
+    selection: Any = None
 
     def __post_init__(self) -> None:
+        if self.selection is not None and self.accuracy != "lc":
+            raise ValueError(
+                "helicity and colour-flow selection is a leading-colour option "
+                "(accuracy='lc')"
+            )
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
@@ -2103,6 +2113,15 @@ class LoopSlice:
                 f"the Born root closure at leg 1 has no terms at the Born "
                 f"orders {sorted(missing)} of the tree program"
             )
+        if request.selection is not None and request.selection.flows is not None:
+            # A leading-colour selection keeps its flows' Born tensors only
+            # (``selection.restrict_born_terms``): the basis, the seed table,
+            # the colour pruning and the Born and counterterm bras follow.
+            from .selection import restrict_born_terms
+
+            born_terms = restrict_born_terms(
+                born_terms, closure.legs, request.selection.flows
+            )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
             colour, readings, basis, compress=request.compress_colour
@@ -2299,7 +2318,9 @@ class LoopSlice:
             )
 
     def _prune_colour(
-        self, observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = ()
+        self,
+        observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = (),
+        basis: frozenset[int] | None = None,
     ) -> None:
         """LC and NLC: drop, before any numerics, every skeleton whose seed
         cells all lie below the N_c powers the projection keeps (design §7.5,
@@ -2310,6 +2331,11 @@ class LoopSlice:
         """
 
         accuracy = self.request.accuracy
+        selection = self.request.selection
+        if basis is None and selection is not None and selection.flows is not None:
+            # A colour-flow selection's Born basis is its flows' tensors
+            # (``selection.restrict_born_terms``): pruned ring-aware below.
+            basis = frozenset(range(len(self.basis)))
         grades = self._born_grades()
         criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
@@ -2324,16 +2350,31 @@ class LoopSlice:
                     for a, loop in sector_pairs
                     if loop == order
                     for b, born_orders in enumerate(self.basis.orders)
-                    if a in born_orders
+                    if a in born_orders and (basis is None or b in basis)
                     for power, value in table.cells[c][b].items()
                     for grade in grades.get((b, a), ())
                 )
             return found
 
-        def keep(skeleton) -> bool:
+        def own(skeleton) -> bool:
             return any(
                 class_live(c, skeleton.orders) for c, _x in self.class_of[skeleton]
             )
+
+        keep = own
+        if basis is not None:
+            # Basis elements ``basis`` only (a colour-flow selection): a
+            # skeleton is kept when its ring (``SkeletonView`` readings,
+            # rotations and the reflection) is live in the plan's reading of
+            # that ring, whose seed it dresses, or in its own.
+            view = SkeletonView(self.loop_catalogue, self.colour)
+            rings: dict[Any, bool] = {}
+            for reading in rx.reading_skeletons(self.plan):
+                ring = view.view(reading).canonical
+                rings[ring] = rings.get(ring, False) or own(reading)
+
+            def keep(skeleton) -> bool:
+                return rings.get(view.view(skeleton).canonical, False) or own(skeleton)
 
         # Each surviving family keeps its frame, so the pruned schedules dress
         # the remaining skeletons exactly as before (dropped ones contributed
