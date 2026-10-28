@@ -1211,27 +1211,25 @@ fn rotated(p: &[f64; 4]) -> [f64; 4] {
     [p[0], x, y, z]
 }
 
-/// Ninja's light-like spinor branch (`ninjars fast/geometry.rs:65-73` at
-/// 41a4c00; DESIGN §11.2 'Other thresholds on the binary64 path'): a cut
-/// basis vector with `|p⁰ ∓ p³| < infrared_eps` (absolute, `1e-9` in the
-/// model's units) takes the spinor of the beam axis, dropping its transverse
-/// momentum (up to `√(2E·1e-9)`). Not routed: no mass or invariant is near a
-/// threshold. A massless box whose outgoing legs are `1e-6` from the beam
-/// axis at `E = 500` (`p⁰ - p³ = 2.5e-10`), with a rank-3 numerator built
-/// from four-vectors, against the same lanes rotated (momenta and numerator
-/// vectors): the generic engine agrees with DoubleFloat in both frames, the
-/// fast engine only in the rotated one, and the difference of the two fast
-/// frames is the fast engine's error, so a rotation check sees it.
+/// Ninja's light-like spinors (`ninjars fast/geometry.rs:62-104` at 41a4c00;
+/// DESIGN §11.2 'Other thresholds on the binary64 path'). The fast engine
+/// builds each cut basis' complex vectors from the spinors of two light-like
+/// vectors: within `infrared_eps` (absolute, `1e-9` in the model's units) of
+/// `p⁰ = ±p³` it takes the beam axis' spinor and drops the transverse
+/// momentum, and outside it divides by `√(p⁰ + p³)`, formed by cancellation
+/// near the `-z` axis (relative error ≈ `2.2e-16/θ²` at an angle `θ` from
+/// it). Neither is routed: no mass or invariant is near a threshold. A
+/// massless rank-3 box with beams along `x` and the outgoing legs at `θ` from
+/// the `z` axis (`s = 4E²`, `t ≈ u ≈ -2E²`, `E = 500`; the branch for
+/// `θ < 2e-6`) against the same lanes rotated (momenta and the numerator's
+/// four-vectors): the generic engine agrees with DoubleFloat in both frames,
+/// the fast engine only in the rotated one, and its error is silent (the lane
+/// succeeds) and as large as the two frames' difference, so a rotation check
+/// sees it. Pins the pinned NinjaRS's behaviour (the upstream note
+/// `workspace/reports/engine-v2/upstream/ninjars-lightlike-spinor/`).
 #[test]
-fn a_rotation_check_sees_the_lightlike_spinor_branch() {
-    let (energy, angle) = (500_f64, 1e-6_f64);
-    let point = [
-        [energy, 0., 0., energy],
-        [energy, 0., 0., -energy],
-        [energy, energy * angle.sin(), 0., energy * angle.cos()],
-        [energy, -energy * angle.sin(), 0., -energy * angle.cos()],
-    ];
-    assert!(point[2][0] - point[2][3] < ninjars::fast::FastOptions::default().infrared_eps);
+fn a_rotation_check_sees_ninjas_lightlike_spinor_errors() {
+    let energy = 500_f64;
     let factors = [
         ([1.3, 0.2, -0.7, 0.4], 2.0e2),
         ([0.5, -1.1, 0.3, 0.9], -1.5e2),
@@ -1242,69 +1240,88 @@ fn a_rotation_check_sees_the_lightlike_spinor_branch() {
         masses: vec![0.; 4],
         rank: 3,
     };
-    let frame = |rotate: bool, arithmetic: &str| {
-        let r = |p: &[f64; 4]| if rotate { rotated(p) } else { *p };
-        let momenta = point.map(|p| r(&p));
-        let mut lanes = lanes_at(&family, &[momenta], &[7], arithmetic);
-        // The massless legs on their shells exactly, as the executor binds
-        // them (DESIGN §11.1): no invariant near a threshold.
-        let n = family.legs.len();
-        let mut matrix = values(&lanes.matrix);
-        for i in 0..n {
-            for j in [(i + 1) % n, (i + n - 1) % n] {
-                matrix[i * n + j] = [0., 0.];
+    // (θ, the fast engine's least error): the cancellation (1e-3, 1e-5) and
+    // the branch (1e-6, 1e-8; measured 7.1e-10, 6.2e-6, 8.8e-6, 8.8e-8).
+    for (angle, least) in [(1e-3, 1e-10), (1e-5, 1e-6), (1e-6, 1e-6), (1e-8, 1e-8)] {
+        let point = [
+            [energy, energy, 0., 0.],
+            [energy, -energy, 0., 0.],
+            [
+                energy,
+                energy * f64::sin(angle),
+                0.,
+                energy * f64::cos(angle),
+            ],
+            [
+                energy,
+                -energy * f64::sin(angle),
+                0.,
+                -energy * f64::cos(angle),
+            ],
+        ];
+        let frame = |rotate: bool, arithmetic: &str| {
+            let r = |p: &[f64; 4]| if rotate { rotated(p) } else { *p };
+            let momenta = point.map(|p| r(&p));
+            let mut lanes = lanes_at(&family, &[momenta], &[7], arithmetic);
+            // The massless legs on their shells exactly, as the executor
+            // binds them (DESIGN §11.1): no invariant near a threshold.
+            let n = family.legs.len();
+            let mut matrix = values(&lanes.matrix);
+            for i in 0..n {
+                for j in [(i + 1) % n, (i + n - 1) % n] {
+                    matrix[i * n + j] = [0., 0.];
+                }
             }
+            let batch = |entries: &[[f64; 2]]| {
+                Batch::from_decimal(
+                    complex_decimal(entries),
+                    1,
+                    entries.len(),
+                    arithmetic,
+                    None,
+                    Some(vec![7]),
+                )
+                .unwrap()
+            };
+            lanes.matrix = batch(&matrix);
+            lanes.coefficients = batch(&product_numerator(&factors.map(|(a, b)| (r(&a), b))));
+            lanes
+        };
+        let run = |engine: &str, arithmetic: &str, rotate: bool| {
+            let lanes = frame(rotate, arithmetic);
+            let mut reducer = V2Reducer::new(arithmetic, None, engine, true).unwrap();
+            let out = reduce(&mut reducer, &[lanes], ReductionFrame::REVERSED);
+            assert_eq!(reducer.take_exact_lanes(), 0);
+            assert_eq!(
+                statuses(&out.direct),
+                [["success"]],
+                "{engine} {arithmetic}"
+            );
+            (
+                values(&out.direct[0].values().unwrap()),
+                values(&out.check.as_ref().unwrap()[0].values().unwrap()),
+            )
+        };
+        let (reference, _) = run("generic", "double-double", false);
+        let error = |x: &[[f64; 2]]| relative(x, &reference, 3);
+        for rotate in [false, true] {
+            let (generic, _) = run("generic", "double", rotate);
+            assert!(
+                error(&generic) < 1e-13,
+                "θ = {angle:e}: {:e}",
+                error(&generic)
+            );
         }
-        lanes.matrix = Batch::from_decimal(
-            complex_decimal(&matrix),
-            1,
-            n * n,
-            arithmetic,
-            None,
-            Some(vec![7]),
-        )
-        .unwrap();
-        let coefficients = product_numerator(&factors.map(|(a, b)| (r(&a), b)));
-        lanes.coefficients = Batch::from_decimal(
-            complex_decimal(&coefficients),
-            1,
-            coefficients.len(),
-            arithmetic,
-            None,
-            Some(vec![7]),
-        )
-        .unwrap();
-        lanes
-    };
-    let run = |engine: &str, arithmetic: &str, rotate: bool| {
-        let lanes = frame(rotate, arithmetic);
-        let mut reducer = V2Reducer::new(arithmetic, None, engine, true).unwrap();
-        let out = reducer
-            .reduce(&[group(&lanes)], ReduceOptions::default())
-            .unwrap();
-        assert_eq!(reducer.take_exact_lanes(), 0);
-        assert!(
-            out.direct[0].statuses().iter().all(|(_, s)| s == "success"),
-            "{engine} {arithmetic} rotated {rotate}: {:?}",
-            out.direct[0].statuses()
+        let (fast, reversed) = run("fast", "double", false);
+        let (fast_rotated, _) = run("fast", "double", true);
+        let (wrong, seen) = (error(&fast), relative(&fast, &fast_rotated, 3));
+        assert!(error(&fast_rotated) < 1e-13, "θ = {angle:e}");
+        assert!(wrong > least, "θ = {angle:e}: {wrong:e}");
+        assert!(seen > 0.5 * wrong && seen < 2. * wrong, "θ = {angle:e}");
+        eprintln!(
+            "θ = {angle:e}: fast {wrong:e}, rotation check {seen:e}, \
+             reduction-direction check {:e}",
+            relative(&fast, &reversed, 3)
         );
-        values(&out.direct[0].values().unwrap())
-    };
-    let reference = run("generic", "double-double", false);
-    let rotated_reference = run("generic", "double-double", true);
-    let generic = [
-        run("generic", "double", false),
-        run("generic", "double", true),
-    ];
-    let fast = [run("fast", "double", false), run("fast", "double", true)];
-    let e = |x: &[[f64; 2]]| relative(x, &reference, 3);
-    eprintln!(
-        "dd rotated {:e}; generic {:e} {:e}; fast {:e} {:e}; fast frames {:e}",
-        relative(&rotated_reference, &reference, 3),
-        e(&generic[0]),
-        e(&generic[1]),
-        e(&fast[0]),
-        e(&fast[1]),
-        relative(&fast[0], &fast[1], 3)
-    );
+    }
 }
