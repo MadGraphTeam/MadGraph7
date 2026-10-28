@@ -1996,11 +1996,19 @@ class _RealArguments:
       imaginary part +0 in every carrier and evaluator, decided once;
     * any other argument of the five helpers above is normalised at runtime
       as MadLoop does: ``if(imaginary_part(z) == 0, real_part(z), z)``.
+
+    With ``signed`` only the arguments that are manifestly real and not
+    manifestly non-negative (``is_nonnegative``) are projected, and nothing
+    is normalised at runtime: the form of the native lane's counterterm and
+    field couplings (``native_trees._parameter_program``), whose other
+    arguments are off the negative real axis or not exactly real.
     """
 
-    def __init__(self, reals: Iterable[Any], library: Any):
+    def __init__(self, reals: Iterable[Any], library: Any, *, signed: bool = False):
         from symbolica import Expression
 
+        self.signed = signed
+        self._nonnegative: dict[Any, bool] = {}
         self.reals = frozenset(reals) | {Expression.PI, Expression.E}
         self.real_part = library.predicates["real_part"]
         self.imaginary_part = library.predicates["imaginary_part"]
@@ -2041,6 +2049,37 @@ class _RealArguments:
         else:
             found = atom.get_name() in self.projections
         self._real[atom] = found
+        return found
+
+    def is_nonnegative(self, atom: Any) -> bool:
+        """Whether ``atom`` (manifestly real) is manifestly non-negative: a
+        non-negative number or pi or e, an even power of a real, a rational
+        power of a non-negative, and sums and products of non-negatives."""
+
+        from symbolica import AtomType, Expression
+
+        found = self._nonnegative.get(atom)
+        if found is not None:
+            return found
+        kind = atom.get_type()
+        if kind == AtomType.Num:
+            number = _exact_number(atom)
+            found = number is not None and number >= 0
+        elif kind == AtomType.Var:
+            found = atom in (Expression.PI, Expression.E)
+        elif kind in (AtomType.Add, AtomType.Mul):
+            found = all(self.is_nonnegative(child) for child in atom)
+        elif kind == AtomType.Pow:
+            base, exponent = list(atom)
+            number = _exact_number(exponent)
+            found = number is not None and (
+                (number.denominator == 1 and number.numerator % 2 == 0)
+                and self.is_real(base)
+                or self.is_nonnegative(base)
+            )
+        else:
+            found = False
+        self._nonnegative[atom] = found
         return found
 
     def __call__(self, atom: Any) -> Any:
@@ -2087,6 +2126,8 @@ class _RealArguments:
 
         if self._wrapped(atom):
             return self.real_part(atom)
+        if self.signed:
+            return atom
         if normalised and atom.get_type() != AtomType.Num and not self.is_real(atom):
             return self.choose(
                 self.equal(self.imaginary_part(atom), self.zero),
@@ -2103,7 +2144,11 @@ class _RealArguments:
         from symbolica import AtomType
 
         compound = (AtomType.Add, AtomType.Mul, AtomType.Pow)
-        return atom.get_type() in compound and self.is_real(atom)
+        return (
+            atom.get_type() in compound
+            and self.is_real(atom)
+            and not (self.signed and self.is_nonnegative(atom))
+        )
 
 
 def _nonfinite_at_defaults(plan: Any) -> set[tuple[str, int]]:

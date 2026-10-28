@@ -252,7 +252,7 @@ def _plane_applications(
     the inputs' order and names, and at the state's ``real_points``, rows of
     the real inputs it runs at, which certify its real-axis evaluation
     there: the parameter program's are the request's parameter values,
-    ``_request_point``). A disagreement, or an output reading a branch-cut or
+    ``_request_points``). A disagreement, or an output reading a branch-cut or
     discontinuous function of its inputs in a state without real points, is
     the listed refusal ``plane-mismatch`` naming the output: ``where(state
     index, output index)`` describes it (``_PlaneOutputs.where`` for a tree
@@ -293,20 +293,24 @@ def _plane_applications(
     return tuple(out)
 
 
-def _request_point(slice_: Any, parameters: Mapping[str, Any]) -> tuple[float, ...]:
-    """The parameter program's real inputs at the request's parameter values,
-    in binary64: each external parameter's value fixed at generation
+def _request_points(
+    slice_: Any, parameters: Mapping[str, Any]
+) -> list[tuple[float, ...]]:
+    """The parameter program's real points (the plane check's real-axis
+    rows): one, its inputs at the request's parameter values in binary64,
+    each external parameter's value fixed at generation
     (``LoopSlice.fixed_parameters``), else its default (the batch's values
-    without a caller's, ``batch_parameters``); the plane check's real-axis
-    row of the parameter program."""
+    without a caller's, ``batch_parameters``)."""
 
     fixed = slice_.fixed_parameters
-    return tuple(
-        float(Fraction(fixed.get(name, default)))
-        for name, default in zip(
-            parameters["names"], parameters["defaults"], strict=True
+    return [
+        tuple(
+            float(Fraction(fixed.get(name, default)))
+            for name, default in zip(
+                parameters["names"], parameters["defaults"], strict=True
+            )
         )
-    )
+    ]
 
 
 @dataclass(frozen=True)
@@ -790,7 +794,7 @@ def export_trees(
                 parameter_outputs,
                 (trees.compiled, None if ct is None else ct.rows.compiled),
             ).where,
-            {len(kernels): [_request_point(slice_, parameters)]},
+            {len(kernels): _request_points(slice_, parameters)},
         ),
         () if counterterms is None else counterterms.tensors,
     )
@@ -1448,12 +1452,46 @@ def _parameter_program(
             replacements.append(Replacement(symbol, symbol_of[name]))
         plan_inputs.append(replacements)
 
-    def column_value(column: int, diagnostic: bool = False) -> Any:
-        """A scalar-plan column (or its diagnostic) on the program's inputs."""
+    # The counterterm and field couplings take MadLoop's side of every branch
+    # cut whose argument is manifestly real and not manifestly non-negative,
+    # as the counterterm lowering does (``ct_recursion._RealArguments``, here
+    # ``signed``): such an argument is exactly on the cut at real masses
+    # (the Z's (MZ^2 (MZ^2 - 4 MW^2))^(1/2) of the G_mu UFO's B0 helpers), and
+    # its zero imaginary part is the sign of a negated real's, -0 in the
+    # binary64 plane application and +0 in Symbolica's evaluator (the plane
+    # check's real point, ``_request_points``). The projection keeps every
+    # value; the arguments that are not manifestly real keep their form.
+    sides: dict[int, Any] = {}
+
+    def madloop_side(p: int, value: Any) -> Any:
+        found = sides.get(p)
+        if found is None:
+            from .ct_recursion import _RealArguments
+
+            plan = plans[p]
+            reals = {
+                symbol
+                for symbol, kind in zip(
+                    plan.input_symbols, plan.external_types, strict=True
+                )
+                if kind == "real"
+            }
+            found = sides[p] = _RealArguments(
+                reals, plan.program.library, signed=True
+            )
+        return found(value)
+
+    def column_value(
+        column: int, diagnostic: bool = False, counterterm: bool = False
+    ) -> Any:
+        """A scalar-plan column (or its diagnostic) on the program's inputs;
+        a counterterm or field coupling's on MadLoop's side of its cuts."""
 
         p, local = located[column]
         expression = plans[p].expressions[local]
         value = expression.diagnostic if diagnostic else expression.value
+        if counterterm:
+            value = madloop_side(p, value)
         return value.replace_multiple(plan_inputs[p])
 
     coupling_outputs = []
@@ -1481,10 +1519,12 @@ def _parameter_program(
             finite.append(
                 output(
                     ("diagnostic", name, power, grade),
-                    lambda column=column: column_value(column, diagnostic=True),
+                    lambda column=column: column_value(
+                        column, diagnostic=True, counterterm=True
+                    ),
                 )
             )
-        return column_value(column)
+        return column_value(column, counterterm=True)
 
     every_input = [item for replacements in plan_inputs for item in replacements]
     for slot in counterterm_couplings:

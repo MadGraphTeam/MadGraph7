@@ -787,10 +787,11 @@ soon as the photons' alpha(0) convention is known; QCD corrections to such
 processes are available) and a program whose binary64 SymJIT application
 disagrees with its exact evaluator at the generation's check ("plane-mismatch",
 naming the output: a model coupling by its UFO coupling and vertex, a
-counterterm coupling with its epsilon power, or a kernel; seen for a
-square-root argument on its branch cut, e.g. `g g > t t~` with QCD and QED
-corrections on `loop_qcd_qed_sm_Gmu`, refused at its `UV_GTTLEW`
-counterterm, and loop_sm with `MW` made a card input).
+counterterm coupling with its epsilon power, or a kernel). The check compares
+at complex points off the real axis and at the request's parameter values,
+so it depends neither on the parameters' names nor on their order; it
+refuses a branch cut taken on different sides at those values, or a branch
+cut of a program's inputs that no real point certifies.
 
 A `particle_veto` drops every counterterm whose declared loop particles include
 a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for

@@ -866,13 +866,14 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 # status DECISIONS 2026-10-26 ~21:10 item 6, user-confirmed 2026-10-27
 # ~19:20) the check certifies the translation at complex rows off the real
 # axis, whatever the order and names, and the real-axis evaluation at the
-# request's parameter values (``native_trees._request_point``), where the
+# request's parameter values (``native_trees._request_points``), where the
 # argument is positive: both variants take the native route
 # (``test_loop_v2_ew_native.py`` holds the model-free tests).
-def _former_probes(count: int) -> tuple[float, ...]:
-    """The former real probes of ``count`` inputs, by input index."""
+def _former_probes(count: int) -> list[tuple[float, ...]]:
+    """The former real probes of ``count`` inputs: two rows, by input index."""
 
-    return tuple(0.5 + (0.6180339887498949 * (k + 1)) % 1.0 for k in range(count))
+    values = [0.5 + (0.6180339887498949 * (k + 1)) % 1.0 for k in range(2 * count)]
+    return [tuple(values[:count]), tuple(values[count:])]
 
 
 @pytest.mark.parametrize(
@@ -902,7 +903,7 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch
     assert _route(slice_) == "native-v2"
     monkeypatch.setattr(
         native_trees,
-        "_request_point",
+        "_request_points",
         lambda _slice, record: _former_probes(len(record["names"])),
     )
     with pytest.raises(NativeExportUnsupported) as refused:
@@ -914,7 +915,7 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch
     # runtime's term id (``native_trees._output_label``).
     assert re.search(r"\(model coupling \w+ of vertex \w+ \(", message), message
     assert "derived_coupling_" not in message, message
-    assert "real-axis probe row 0" in message, message
+    assert "real-axis probe row" in message, message
     assert "exact evaluator;" not in message
 
 

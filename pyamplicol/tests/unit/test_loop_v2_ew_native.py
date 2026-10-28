@@ -11,7 +11,7 @@ binary64 plane application with its exact evaluator
   declaration order, names and values;
 * at the real inputs the program runs at, which certify its real-axis
   evaluation there: the parameter program's row is the request's parameter
-  values (``native_trees._request_point``). A program that reads a branch-cut
+  values (``native_trees._request_points``). A program that reads a branch-cut
   or discontinuous function of its inputs and has no real point is refused.
 
 Evidence for the choice (slice-status DECISIONS 2026-10-26 ~21:10 item 6,
@@ -191,11 +191,71 @@ def test_the_parameter_programs_real_point_is_the_requests_values():
 
     from types import SimpleNamespace
 
-    from pyamplicol.loops.v2.native_trees import _request_point
+    from pyamplicol.loops.v2.native_trees import _request_points
 
     slice_ = SimpleNamespace(fixed_parameters={"WZ": "0", "MB": "0"})
     record = {"names": ["MZ", "WZ", "MB", "MU_R"], "defaults": ["22797/250", "2.4952", "4.7", "91.188"]}
-    assert _request_point(slice_, record) == (91.188, 0.0, 0.0, 91.188)
+    assert _request_points(slice_, record) == [(91.188, 0.0, 0.0, 91.188)]
+
+
+@pytest.mark.loop_fast
+def test_counterterm_couplings_take_madloops_side_of_real_cuts(loop_native):
+    """The native lane's counterterm and field couplings project every
+    branch-cut argument that is manifestly real and not manifestly
+    non-negative on the real axis (``ct_recursion._RealArguments`` with
+    ``signed``; ``native_trees._parameter_program``): the plane application
+    and the exact evaluator then take MadLoop's +0 side at a real point on the
+    cut (the G_mu UFO's (MZ^2 (MZ^2 - 4 MW^2))^(1/2) at the card's masses),
+    where without it they disagree; manifestly non-negative arguments
+    (log(mu^2/m^2)) and arguments that are not manifestly real keep their
+    form, and every value is unchanged."""
+
+    from types import SimpleNamespace
+
+    from symbolica import E, Expression, S
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.ct_recursion import _RealArguments
+
+    predicates = {
+        name: symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+        for name in ("equal", "real_part", "imaginary_part")
+    }
+    library = SimpleNamespace(
+        predicates=predicates, choose=symbols.qualified("symbolica::if"), zero=E("0"),
+        helpers={},
+    )
+    mw, mz, mu, z = S("ewn_mw", "ewn_mz", "ewn_mu", "ewn_z")
+    side = _RealArguments({mw, mz, mu}, library, signed=True)
+    cut = (mz**4 * (1 - 4 * mw**2 / mz**2)) ** E("1/2")
+    projected = side(cut)
+    assert projected == predicates["real_part"](mz**4 * (1 - 4 * mw**2 / mz**2)) ** E(
+        "1/2"
+    )
+    for kept in (E("log(ewn_mu^2/ewn_mz^2)"), E("sqrt(ewn_mw)"), E("sqrt(ewn_z - ewn_mw)")):
+        kept = kept.replace(E("ewn_mu"), mu)
+        assert side(kept) == kept
+    point = [[80.419, 91.188]]
+
+    def state(expression) -> bytes:
+        return bytes(
+            Expression.evaluator_multiple([expression], [mw, mz], jit_compile=False).save()
+        )
+
+    with pytest.raises(loop_native.PlaneMismatchError, match="real-axis probe row 0"):
+        loop_native.compile_v2_plane(state(cut), 2, False, point)
+    plane, inputs, outputs = loop_native.compile_v2_plane(
+        state(projected), 2, False, point
+    )
+    rows = [[complex(x) for x in point[0]]]
+    exact = Expression.evaluator_multiple([cut], [mw, mz], jit_compile=False)
+    expected = np.asarray(exact.evaluate_complex(rows))
+    got = _plane_values(plane, inputs, outputs, rows)
+    assert expected[0, 0].imag > 0 and expected[0, 0].real == 0
+    assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
 
 
 # ------------------------------------------------- electroweak processes

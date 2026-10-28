@@ -241,7 +241,10 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
     assert outputs(4, 0) == "parameter-program output 0 (model MWx)"
     assert "output 1 of saved evaluator 0" in refused((state,))
     # Without a real point: refused naming the output too.
-    assert refused((state,), outputs, None).startswith(
+    parameter_outputs = native_trees._PlaneOutputs(
+        {"interactions": empty}, keys, (model, None)
+    ).where
+    assert refused((state,), parameter_outputs, None).startswith(
         "plane-mismatch: parameter-program output 1 (model coupling GC_100 of "
         "vertex V_77 (W+ a)): loop v2 trees: output 1 reads a branch-cut"
     )
