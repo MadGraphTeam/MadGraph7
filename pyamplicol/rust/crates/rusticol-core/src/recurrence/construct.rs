@@ -4376,31 +4376,27 @@ impl StructuralFeasibilityIndex {
 /// pair that closes in other chirality states. Templates carry no Dirac-Weyl
 /// closure, so that complement would close on nothing and its diagrams (the
 /// top t channel of b b~ > w+ w-) would be dropped without an error: the
-/// recurrence refuses the request instead, with the listed key
-/// `dirac-weyl-closure`.
+/// recurrence (here, in its structural-demand pass) and the on-the-fly lane
+/// (`on_the_fly::sweep::build_selected_closures`,
+/// `on_the_fly::coupling_policy`) refuse the request instead, with the listed
+/// key `dirac-weyl-closure`.
 #[derive(Debug)]
-struct DiracWeylClosureGuard {
+pub(crate) struct DiracWeylClosureGuard {
     /// Ordered (particle, particle) pairs of fermion current states that
     /// some closure row joins.
     closable: BTreeSet<(i32, i32)>,
 }
 
 impl DiracWeylClosureGuard {
-    fn new(
-        template: &OwnedRecurrenceTemplateInput,
-        catalog: &TemplateCatalog<'_>,
+    /// The guard of the closures joining the current-state pairs `pairs`.
+    pub(crate) fn from_state_pairs(
+        states: &[super::template::CurrentStateRow],
+        pairs: impl IntoIterator<Item = (u32, u32)>,
     ) -> RusticolResult<Self> {
         let mut closable = BTreeSet::new();
-        for closure in &template.closures {
-            let states = catalog.u32_sequence(
-                closure.input_state_sequence_id,
-                "Dirac-Weyl guard closure input states",
-            )?;
-            let [left, right] = states else {
-                return Err(invalid("direct recurrence requires binary prepared closures"));
-            };
-            let left = Self::state(template, *left)?;
-            let right = Self::state(template, *right)?;
+        for (left, right) in pairs {
+            let left = Self::state(states, left)?;
+            let right = Self::state(states, right)?;
             if Self::fermion(left) && Self::fermion(right) {
                 closable.insert((left.particle_id, right.particle_id));
                 closable.insert((right.particle_id, left.particle_id));
@@ -4409,12 +4405,31 @@ impl DiracWeylClosureGuard {
         Ok(Self { closable })
     }
 
-    fn state(
+    fn of_template(
         template: &OwnedRecurrenceTemplateInput,
+        catalog: &TemplateCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let mut pairs = Vec::with_capacity(template.closures.len());
+        for closure in &template.closures {
+            let states = catalog.u32_sequence(
+                closure.input_state_sequence_id,
+                "Dirac-Weyl guard closure input states",
+            )?;
+            let [left, right] = states else {
+                return Err(invalid(
+                    "direct recurrence requires binary prepared closures",
+                ));
+            };
+            pairs.push((*left, *right));
+        }
+        Self::from_state_pairs(&template.current_states, pairs)
+    }
+
+    fn state(
+        states: &[super::template::CurrentStateRow],
         state_template_id: u32,
     ) -> RusticolResult<&super::template::CurrentStateRow> {
-        template
-            .current_states
+        states
             .get(state_template_id as usize)
             .ok_or_else(|| invalid("Dirac-Weyl guard references an absent current state"))
     }
@@ -4425,16 +4440,16 @@ impl DiracWeylClosureGuard {
 
     /// Refuses a closure anchor and complement state that no closure row
     /// joins, when they are a Dirac and a Weyl state of a closable fermion
-    /// pair.
-    fn check(
+    /// pair; `context` names the closure (its LC sector or query).
+    pub(crate) fn check(
         &self,
-        template: &OwnedRecurrenceTemplateInput,
+        states: &[super::template::CurrentStateRow],
         anchor_state: u32,
         complement_state: u32,
-        sector_id: u32,
+        context: impl std::fmt::Display,
     ) -> RusticolResult<()> {
-        let anchor = Self::state(template, anchor_state)?;
-        let complement = Self::state(template, complement_state)?;
+        let anchor = Self::state(states, anchor_state)?;
+        let complement = Self::state(states, complement_state)?;
         if !Self::fermion(anchor)
             || !Self::fermion(complement)
             || (anchor.chirality == 0) == (complement.chirality == 0)
@@ -4450,15 +4465,15 @@ impl DiracWeylClosureGuard {
             (complement, anchor)
         };
         Err(invalid(format!(
-            "dirac-weyl-closure: LC sector {sector_id} would close a Dirac \
-             (chirality-0) current of particle {} on a Weyl (chirality {}) \
-             current of particle {}; a fermion line that joins massive and \
-             massless fermions through a chiral vertex (a massive internal or \
-             external fermion on a line with a massless sink) has no Dirac-Weyl \
-             closure contraction in the recurrence, which would drop that \
-             line's diagrams. Keep the light fermion massive in the tree model \
-             (the default restriction with its mass fixed to zero) or use the \
-             loop engine, whose Born closes at a vertex",
+            "dirac-weyl-closure: {context} would close a Dirac (chirality-0) \
+             current of particle {} on a Weyl (chirality {}) current of \
+             particle {}; a fermion line that joins massive and massless \
+             fermions through a chiral vertex (a massive internal or external \
+             fermion on a line with a massless sink) has no Dirac-Weyl closure \
+             contraction in the tree recurrence, which would drop that line's \
+             diagrams. Keep the light fermion massive in the tree model (the \
+             default restriction with its mass fixed to zero) or use the loop \
+             engine, whose Born closes at a vertex",
             dirac.particle_id, weyl.chirality, weyl.particle_id,
         )))
     }
@@ -4485,7 +4500,7 @@ impl StructuralDemandIndex {
         }
         let transitions = prepared_transitions.structural_transitions();
         let full_support = TransientSupportKey::full(feasibility.source_count)?;
-        let dirac_weyl = DiracWeylClosureGuard::new(template, catalog)?;
+        let dirac_weyl = DiracWeylClosureGuard::of_template(template, catalog)?;
         let mut demanded = BTreeMap::<TransientSupportKey, BTreeSet<StructuralState>>::new();
         for sector_id in materialized_sectors.iter().copied() {
             let sector = process
@@ -4545,10 +4560,10 @@ impl StructuralDemandIndex {
                     }
                     if !state_pair_closes {
                         dirac_weyl.check(
-                            template,
+                            &template.current_states,
                             anchor.state_template_id,
                             complement.state_template_id,
-                            sector_id,
+                            format_args!("LC sector {sector_id}"),
                         )?;
                     }
                 }

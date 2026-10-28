@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
+use crate::recurrence::construct::DiracWeylClosureGuard;
 use crate::recurrence::contact_orbit_owner::ContactOrbitParentTopologyDomain;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, bincode::Encode, bincode::Decode)]
@@ -428,6 +429,7 @@ fn closure_has_canonical_anchor(
 }
 
 fn collect_viable_total_orders(
+    templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
     grammar: &PreparedOnTheFlyGrammarV1,
     nodes: &[GlobalTopologyNode],
@@ -435,6 +437,9 @@ fn collect_viable_total_orders(
 ) -> RusticolResult<Vec<Box<[u32]>>> {
     let source_count = seed.source_anchors.len();
     let mut totals = Vec::new();
+    let states = &templates.input().current_states;
+    let dirac_weyl =
+        DiracWeylClosureGuard::from_state_pairs(states, grammar.closures.keys().copied())?;
     let pair_index = SupportSizePairIndex::new(nodes.iter().map(|node| node.key.support.len()));
     for (left_index, left) in nodes.iter().enumerate() {
         // Physical closure below requires a singleton canonical anchor.
@@ -456,6 +461,13 @@ fn collect_viable_total_orders(
                 left.key.current_state_template_id,
                 right.key.current_state_template_id,
             )) else {
+                // A singleton anchor against its complement (either order).
+                dirac_weyl.check(
+                    states,
+                    left.key.current_state_template_id,
+                    right.key.current_state_template_id,
+                    "the coupling-order policy's closure",
+                )?;
                 continue;
             };
             for closure in rows {
@@ -598,7 +610,7 @@ pub(super) fn resolve_on_the_fly_coupling_policy_from_grammar_v1(
     }
     let mut census = OnTheFlyCouplingPolicyCensusV1::default();
     let nodes = build_global_topologies(templates, seed, grammar, &mut census)?;
-    let totals = collect_viable_total_orders(seed, grammar, &nodes, &mut census)?;
+    let totals = collect_viable_total_orders(templates, seed, grammar, &nodes, &mut census)?;
     let effective_limits = minimal_envelope(&totals, seed.coupling_hierarchies())?
         .unwrap_or_else(|| seed.explicit_coupling_limits().to_vec());
     Ok(OnTheFlyResolvedCouplingPolicyV1 {

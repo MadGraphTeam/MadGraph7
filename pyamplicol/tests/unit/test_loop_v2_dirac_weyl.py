@@ -131,9 +131,7 @@ def _mass(compiled, process: str, value: str | None) -> str:
 
     if value is not None:
         return value
-    (charm,) = (
-        record for record in compiled.ir.particles if int(record.pdg_code) == 4
-    )
+    (charm,) = (record for record in compiled.ir.particles if int(record.pdg_code) == 4)
     return str(compiled.parameter_defaults[str(charm.mass)][0])
 
 
@@ -153,8 +151,8 @@ def _point(masses) -> list[list[str]]:
         p, q = momentum(m1, m2), momentum(m3, m4)
         e1, e2 = (p * p + m1 * m1).sqrt(), (p * p + m2 * m2).sqrt()
         e3, e4 = (q * q + m3 * m3).sqrt(), (q * q + m4 * m4).sqrt()
-        v = [q * Decimal(4) / 5 * Decimal(5) / 13, q * Decimal(4) / 5 * Decimal(12) / 13]
-        v.append(q * Decimal(3) / 5)
+        transverse = q * Decimal(4) / 5
+        v = [transverse * 5 / 13, transverse * 12 / 13, q * Decimal(3) / 5]
         legs = [[e1, 0, 0, p], [e2, 0, 0, -p], [e3, *v], [e4, *(-x for x in v)]]
         return [[format(+Decimal(x), "f") for x in leg] for leg in legs]
 
@@ -259,12 +257,12 @@ def test_the_loop_born_dag_records_a_dirac_weyl_root(restricted):
         process, model=model, max_coupling_orders=bounds, loop_born=True
     )
     marked = [
-        root for root in dag.amplitude_roots if root.contraction_ir == DIRAC_WEYL_CLOSURE
+        root
+        for root in dag.amplitude_roots
+        if root.contraction_ir == DIRAC_WEYL_CLOSURE
     ]
     assert marked
-    assert {root.coupling_orders for root in _born_roots(dag, model)} == {
-        (("QED", 2),)
-    }
+    assert {root.coupling_orders for root in _born_roots(dag, model)} == {(("QED", 2),)}
 
 
 def _equal_routes(restricted, loop_native, process, carriers):
@@ -317,9 +315,7 @@ def test_the_no_b_mass_class_equals_the_massive_b_route(
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(("restriction", "process"), CLASS)
-def test_the_dirac_weyl_class_generates(
-    restricted, loop_native, restriction, process
-):
+def test_the_dirac_weyl_class_generates(restricted, loop_native, restriction, process):
     """The restricted-UFO class generates and its renormalised virtual has
     Catani's poles (double-double) at a point."""
 

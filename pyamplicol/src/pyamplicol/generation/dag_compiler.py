@@ -43,10 +43,10 @@ from .dag_ordering import (
     _complex_weight_mul,
     _direct_contraction_ir,
     _labels_mask,
-    _loop_born_direct_contraction_ir,
     _labels_projected_to_word,
     _lc_all_adjoint_symmetry_order_variants,
     _lc_color_order_reachable_masks,
+    _loop_born_direct_contraction_ir,
     _mask_labels,
 )
 from .dag_reachability import (

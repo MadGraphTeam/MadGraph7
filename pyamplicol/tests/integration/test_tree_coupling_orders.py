@@ -589,7 +589,9 @@ _MASSLESS_B_RECURRENCE_REFUSALS = (
     "e+ e- > b b~ w+ w-",
 )
 _DIRAC_WEYL_CLOSURE = r"Dirac \(chirality-0\) current cannot close on a Weyl"
-_RECURRENCE_DIRAC_WEYL_CLOSURE = r"dirac-weyl-closure: LC sector \d+ would close a Dirac"
+_RECURRENCE_DIRAC_WEYL_CLOSURE = (
+    r"dirac-weyl-closure: LC sector \d+ would close a Dirac"
+)
 
 
 def test_eager_lane_refuses_a_massless_line_through_a_massive_fermion(
@@ -677,6 +679,34 @@ def test_recurrence_lane_refuses_the_radiative_dirac_weyl_class(
     model = sm_model if restriction == "default" else sm_no_b_mass_model
     with pytest.raises(GenerationError, match=_RECURRENCE_DIRAC_WEYL_CLOSURE):
         _runtime(model, process, tmp_path / "artifact")
+
+
+@pytest.mark.parametrize(
+    ("restriction", "process"),
+    [
+        ("default", _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION),
+        ("no_b_mass", "b b~ > w+ w-"),
+    ],
+)
+def test_on_the_fly_lane_refuses_dirac_weyl_closures(
+    sm_model: ModelSource,
+    sm_no_b_mass_model: ModelSource,
+    tmp_path: Path,
+    restriction: str,
+    process: str,
+) -> None:
+    """The on-the-fly lane closed its selected LC flows on the same
+    template closures and dropped the same channels (b b~ > w+ w-: 24.0
+    against MadGraph's 0.060 at the first point); it refuses them too."""
+
+    model = sm_model if restriction == "default" else sm_no_b_mass_model
+    with pytest.raises(
+        GenerationError, match=r"dirac-weyl-closure: .* would close a Dirac"
+    ):
+        _runtime(
+            model, process, tmp_path / "artifact", accuracy="lc",
+            execution_mode="on-the-fly",
+        )  # fmt: skip
 
 
 def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
