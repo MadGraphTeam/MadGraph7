@@ -85,7 +85,8 @@
   }
  },
  "madloop_settings": {
-  "requested_relative_accuracy": 1e-11,
+  "requested_relative_accuracy": 1e-13,
+  "requested_relative_accuracy_reason": "m-qcd/PLAN.md \u00a71.4 rule 1 compares DD with the reference at 1e-12, so the reference must be well below it: MadLoop's double-precision evaluations reach estimates up to ~1e-11 at the plan's 1e-11 target (g g > t t~ g 9.6e-12, g g > t t~ h 7.8e-12); at 1e-13 every point whose double-precision estimate is worse is rescued in quadruple precision (stricter than the plan's 1e-11, never looser)",
   "special_points": "limit-point runs (S1-S3) request 1e-20, forcing MadLoop's quadruple-precision evaluation, at points that are MadLoop's own quadruple-precision projection of their binary64 rounding (supplied_points.py --madloop-qp-point)",
   "stability_check": "forced on every call",
   "rescue": "quadruple precision (MadLoop's own)",
@@ -103,7 +104,9 @@
     "nc",
     "ap"
    ],
-   "runs": [],
+   "runs": [
+    "gg_gg_sectors"
+   ],
    "existing_fixtures": [
     "v2/gg_gg_providers.json"
    ]
@@ -170,7 +173,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_uux_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_uux.json"
    ]
@@ -235,7 +240,9 @@
    "extras": [
     "nc"
    ],
-   "runs": [],
+   "runs": [
+    "uux_ddxg_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_ddxg.json"
    ]
@@ -251,7 +258,9 @@
     "nc",
     "ap"
    ],
-   "runs": [],
+   "runs": [
+    "uux_uuxg_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_uuxg.json"
    ]
@@ -310,7 +319,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_ddxssx_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_ddxssx.json"
    ]
@@ -323,7 +334,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_uuxddx_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_uuxddx.json"
    ]
@@ -338,7 +351,9 @@
    "extras": [
     "nc"
    ],
-   "runs": [],
+   "runs": [
+    "uux_uuxuux_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_uuxuux.json"
    ]
@@ -473,7 +488,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "gg_ttxgg_sectors"
+   ],
    "existing_fixtures": [
     "required/gg_ttxgg.json"
    ]
@@ -716,7 +733,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_emepggg_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_emepggg.json"
    ]
@@ -729,7 +748,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_emepddxg_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_emepddxg.json"
    ]
@@ -742,7 +763,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_emepmummp_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_emepmummp.json"
    ]
@@ -755,7 +778,9 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "uux_uuxepem_sectors"
+   ],
    "existing_fixtures": [
     "required/uux_uuxepem.json"
    ],
@@ -1012,11 +1037,13 @@
    "reference_kind": "E",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "gg_ttxemepg_qcd_sectors"
+   ],
    "existing_fixtures": [
     "required/gg_ttxemepg_qcd.json"
    ],
-   "note": "point 2: rule 1 outlier (DD vs MadLoop 1.43e-8, vs OpenLoops 5.8e-13)"
+   "note": "point 2: the plan lists a rule 1 outlier (DD vs MadLoop 1.43e-8, vs OpenLoops 5.8e-13); the provider references themselves do not show it: at that point MadLoop (quadruple precision, code 328) = OpenLoops to 6.0e-13 in the finite part (committed fixture and the 1e-13 rerun alike) and Recola is the outlier (1.0e-8); MQ-VALIDATE re-checks the DD comparison"
   },
   {
    "row": "F01",
@@ -1180,6 +1207,17 @@
  ],
  "runs": [
   {
+   "id": "gg_gg_sectors",
+   "process": "gg_gg",
+   "export": "runs/g1/gg_gg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "v2/gg_gg_providers.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
    "id": "uux_gg",
    "process": "uux_gg",
    "export": "runs/mqcd/uux_gg/madloop-export",
@@ -1210,6 +1248,17 @@
    "points": {
     "generator": "exact"
    }
+  },
+  {
+   "id": "uux_uux_sectors",
+   "process": "uux_uux",
+   "export": "runs/required/uux_uux/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_uux.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
   },
   {
    "id": "uu_uu",
@@ -1291,6 +1340,28 @@
    "note": "S2: collinear gluon pair theta = 1e-3, 1e-5 (small Gram determinants)"
   },
   {
+   "id": "uux_ddxg_sectors",
+   "process": "uux_ddxg",
+   "export": "runs/required/uux_ddxg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_ddxg.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_uuxg_sectors",
+   "process": "uux_uuxg",
+   "export": "runs/required/uux_uuxg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_uuxg.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
    "id": "uux_gggg",
    "process": "uux_gggg",
    "export": "runs/mqcd/uux_gggg/madloop-export",
@@ -1307,6 +1378,39 @@
     "generator": "exact"
    },
    "split_points": true
+  },
+  {
+   "id": "uux_ddxssx_sectors",
+   "process": "uux_ddxssx",
+   "export": "runs/required/uux_ddxssx/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_ddxssx.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_uuxddx_sectors",
+   "process": "uux_uuxddx",
+   "export": "runs/required/uux_uuxddx/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_uuxddx.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_uuxuux_sectors",
+   "process": "uux_uuxuux",
+   "export": "runs/required/uux_uuxuux/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_uuxuux.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
   },
   {
    "id": "ud_ud",
@@ -1330,7 +1434,8 @@
    "export": "runs/required/gg_ttx/madloop-export",
    "points": {
     "generator": "fixture",
-    "fixture": "required/gg_ttx.json"
+    "fixture": "required/gg_ttx.json",
+    "half_scale_point": true
    },
    "helicities": "all",
    "note": "per-sector and per-helicity MadLoop run at the committed fixture's points"
@@ -1377,6 +1482,18 @@
    "points": {
     "generator": "exact"
    }
+  },
+  {
+   "id": "gg_ttxgg_sectors",
+   "process": "gg_ttxgg",
+   "export": "runs/required/gg_ttxgg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/gg_ttxgg.json",
+    "half_scale_point": true
+   },
+   "split_points": true,
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
   },
   {
    "id": "uux_ttxddx",
@@ -1547,6 +1664,50 @@
    }
   },
   {
+   "id": "uux_emepggg_sectors",
+   "process": "uux_emepggg",
+   "export": "runs/required/uux_emepggg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_emepggg.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_emepddxg_sectors",
+   "process": "uux_emepddxg",
+   "export": "runs/required/uux_emepddxg/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_emepddxg.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_emepmummp_sectors",
+   "process": "uux_emepmummp",
+   "export": "runs/required/uux_emepmummp/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_emepmummp.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
+   "id": "uux_uuxepem_sectors",
+   "process": "uux_uuxepem",
+   "export": "runs/required/uux_uuxepem/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_uuxepem.json",
+    "half_scale_point": true
+   },
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
+  },
+  {
    "id": "uux_zg",
    "process": "uux_zg",
    "export": "runs/mqcd/uux_zg/madloop-export",
@@ -1695,6 +1856,18 @@
     "generator": "supplied",
     "family": "regular"
    }
+  },
+  {
+   "id": "gg_ttxemepg_qcd_sectors",
+   "process": "gg_ttxemepg_qcd",
+   "export": "runs/required/gg_ttxemepg_qcd/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/gg_ttxemepg_qcd.json",
+    "half_scale_point": true
+   },
+   "split_points": true,
+   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points"
   },
   {
    "id": "ub_dt",

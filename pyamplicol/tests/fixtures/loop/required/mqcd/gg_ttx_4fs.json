@@ -260,7 +260,7 @@
      "double_pole": -0.11325564357904935,
      "accuracy": 2.9446693867975453e-15,
      "status": 216,
-     "seconds": 0.001029214,
+     "seconds": 0.001784716,
      "universal_double_pole_relative_error": 4.901402656593667e-16
     }
    },
@@ -313,7 +313,7 @@
      "double_pole": -0.11283301482182942,
      "accuracy": 1.216519831774676e-15,
      "status": 216,
-     "seconds": 0.001047724,
+     "seconds": 0.001772496,
      "universal_double_pole_relative_error": 4.919761411933688e-16
     }
    },
@@ -366,7 +366,7 @@
      "double_pole": -0.11345355140621377,
      "accuracy": 2.584708575676701e-15,
      "status": 216,
-     "seconds": 0.001048834,
+     "seconds": 0.001761745,
      "universal_double_pole_relative_error": 1.2232131683675422e-16
     }
    },
@@ -419,7 +419,7 @@
      "double_pole": -0.11325564357904935,
      "accuracy": 4.1374581667049204e-15,
      "status": 216,
-     "seconds": 0.001033314,
+     "seconds": 0.001778095,
      "universal_double_pole_relative_error": 4.901402656593667e-16
     }
    },
@@ -444,7 +444,7 @@
    "provider": "madloop",
    "process_name": "gg_ttx_4fs",
    "host": "itphlies",
-   "cpu": 333,
+   "cpu": 292,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ttx_4fs/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -475,7 +475,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -555,8 +555,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.044225775,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.031800884,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -573,12 +573,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.05926664499565959,
+   "process_wall_seconds": 0.053017713129520416,
    "evaluation_seconds": [
-    0.001029214,
-    0.001047724,
-    0.001048834,
-    0.001033314
+    0.001784716,
+    0.001772496,
+    0.001761745,
+    0.001778095
    ]
   }
  },

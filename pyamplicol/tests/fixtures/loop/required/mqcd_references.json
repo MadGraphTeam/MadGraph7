@@ -7,7 +7,8 @@
   "madloop_accuracy": "MadLoop's own estimate of the relative accuracy of a loop squared split order (ACC(i) of SLOOPMATRIX_THRES); 0.0 when its stability test found no difference",
   "per_helicity": "MadLoop SLOOPMATRIXHEL_THRES: colour average and identical-particle factor, no helicity average; HelConfigs.dat helicity labels",
   "madloop_settings": {
-   "requested_relative_accuracy": 1e-11,
+   "requested_relative_accuracy": 1e-13,
+   "requested_relative_accuracy_reason": "m-qcd/PLAN.md \u00a71.4 rule 1 compares DD with the reference at 1e-12, so the reference must be well below it: MadLoop's double-precision evaluations reach estimates up to ~1e-11 at the plan's 1e-11 target (g g > t t~ g 9.6e-12, g g > t t~ h 7.8e-12); at 1e-13 every point whose double-precision estimate is worse is rescued in quadruple precision (stricter than the plan's 1e-11, never looser)",
    "special_points": "limit-point runs (S1-S3) request 1e-20, forcing MadLoop's quadruple-precision evaluation, at points that are MadLoop's own quadruple-precision projection of their binary64 rounding (supplied_points.py --madloop-qp-point)",
    "stability_check": "forced on every call",
    "rescue": "quadruple precision (MadLoop's own)",
@@ -37,7 +38,123 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "gg_gg_sectors",
+     "fixture": "required/mqcd/gg_gg_sectors.json",
+     "process_key": "gg_gg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "g g > g g QED=0 [virt=QCD]",
+     "pdgs": [
+      21,
+      21,
+      21,
+      21
+     ],
+     "born_orders": {
+      "QCD": 2,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 2,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "1000",
+      "1000",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      216,
+      216,
+      216,
+      216
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=6,QED^2=0": 5.116181088978378e-16
+      },
+      {
+       "QCD^2=6,QED^2=0": 1.216862792548955e-15
+      },
+      {
+       "QCD^2=6,QED^2=0": 1.4023914108076528e-15
+      },
+      {
+       "QCD^2=6,QED^2=0": 1.5252219480518504e-15
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 4,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "v2/gg_gg_providers.json",
@@ -618,7 +735,123 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_uux_sectors",
+     "fixture": "required/mqcd/uux_uux_sectors.json",
+     "process_key": "uux_uux",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > u u~ QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      2,
+      -2
+     ],
+     "born_orders": {
+      "QCD": 2,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 2,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      216,
+      216,
+      216,
+      216
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=6,QED^2=0": 8.368529873770396e-17
+      },
+      {
+       "QCD^2=6,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=6,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=6,QED^2=0": 6.230937831538184e-16
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 4,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_uux.json",
@@ -885,23 +1118,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=8,QED^2=0": 2.596368218003218e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 8.947151637702862e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 1.0429968692546357e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 3.366630144688228e-13
+       "QCD^2=8,QED^2=0": 6.684242510963587e-16
       }
      ],
      "squared_split_orders": {
@@ -1027,23 +1260,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=8,QED^2=0": 1.2596777461681355e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 3.352373801789654e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 1.7788288629069597e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 1.149379613570409e-13
+       "QCD^2=8,QED^2=0": 1.1137399356303263e-15
       }
      ],
      "squared_split_orders": {
@@ -1315,7 +1548,124 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_ddxg_sectors",
+     "fixture": "required/mqcd/uux_ddxg_sectors.json",
+     "process_key": "uux_ddxg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > d d~ g QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      1,
+      -1,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 5,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      216,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=0": 5.024923485404505e-14
+      },
+      {
+       "QCD^2=8,QED^2=0": 2.6996545058378415e-16
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_ddxg.json",
@@ -1364,7 +1714,124 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_uuxg_sectors",
+     "fixture": "required/mqcd/uux_uuxg_sectors.json",
+     "process_key": "uux_uuxg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > u u~ g QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      2,
+      -2,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 5,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=0": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_uuxg.json",
@@ -1540,23 +2007,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=10,QED^2=0": 1.3146883672654965e-12
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 4.234730045953327e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 8.523439804950728e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 1.7146182535101072e-12
+       "QCD^2=10,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -1682,23 +2149,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
+      329,
       328,
-      328,
-      328,
-      328
+      329,
+      329
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=10,QED^2=0": 1.0143923873434083e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
        "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 2.79801951471494e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 1.5205538575402938e-13
+       "QCD^2=10,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -1742,7 +2209,125 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_ddxssx_sectors",
+     "fixture": "required/mqcd/uux_ddxssx_sectors.json",
+     "process_key": "uux_ddxssx",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > d d~ s s~ QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      1,
+      -1,
+      3,
+      -3
+     ],
+     "born_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 4,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 6,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      211,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 6.566905076114568e-14
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 10,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_ddxssx.json",
@@ -1788,7 +2373,125 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_uuxddx_sectors",
+     "fixture": "required/mqcd/uux_uuxddx_sectors.json",
+     "process_key": "uux_uuxddx",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > u u~ d d~ QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      2,
+      -2,
+      1,
+      -1
+     ],
+     "born_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 4,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 6,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 10,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_uuxddx.json",
@@ -1836,7 +2539,125 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_uuxuux_sectors",
+     "fixture": "required/mqcd/uux_uuxuux_sectors.json",
+     "process_key": "uux_uuxuux",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > u u~ u u~ QED=0 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      2,
+      -2,
+      2,
+      -2
+     ],
+     "born_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 4,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 6,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 10,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_uuxuux.json",
@@ -2340,21 +3161,27 @@
       "MW": "80.4190024457561601055171371731",
       "alpha": "0.00754677111397888413442308708219"
      },
-     "points": 3,
+     "points": 4,
      "mu_r": [
       "1000",
       "700",
-      "1400"
+      "1400",
+      "500"
      ],
      "point_family": "exact terminating decimals",
      "point_labels": null,
-     "scale_variation": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
      "primary_provider": "madloop",
      "validated_providers": [
       "madloop"
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
+      216,
       216,
       216,
       216
@@ -2368,6 +3195,9 @@
       },
       {
        "QCD^2=6,QED^2=0": 2.4873780118430916e-15
+      },
+      {
+       "QCD^2=6,QED^2=0": 3.912338772221663e-15
       }
      ],
      "squared_split_orders": {
@@ -2882,23 +3712,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
+      329,
       328,
-      216,
-      216,
-      328
+      328,
+      329
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=8,QED^2=0": 5.459291845087147e-13
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 9.596798753337066e-12
+       "QCD^2=8,QED^2=0": 2.929533057810365e-17
       },
       {
-       "QCD^2=8,QED^2=0": 1.9707342597487578e-12
+       "QCD^2=8,QED^2=0": 0.0
       },
       {
-       "QCD^2=8,QED^2=0": 3.410458083641957e-13
+       "QCD^2=8,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -2942,7 +3772,125 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "gg_ttxgg_sectors",
+     "fixture": "required/mqcd/gg_ttxgg_sectors.json",
+     "process_key": "gg_ttxgg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "g g > t t~ g g QED=0 [virt=QCD]",
+     "pdgs": [
+      21,
+      21,
+      6,
+      -6,
+      21,
+      21
+     ],
+     "born_orders": {
+      "QCD": 4,
+      "QED": 0
+     },
+     "born_orders_all": [
+      {
+       "QCD": 4,
+       "QED": 0
+      }
+     ],
+     "loop_orders": {
+      "QCD": 6,
+      "QED": 0
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      },
+      {
+       "QCD^2=10,QED^2=0": 8.237085576007687e-16
+      },
+      {
+       "QCD^2=10,QED^2=0": 7.86915823156446e-15
+      },
+      {
+       "QCD^2=10,QED^2=0": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 0
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 10,
+        "QED": 0
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/gg_ttxgg.json",
@@ -3068,23 +4016,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=10,QED^2=0": 7.350751452901749e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 8.722899279356444e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 3.0692333821994603e-12
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 3.1339777117625728e-12
+       "QCD^2=10,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -3215,8 +4163,8 @@
      "madloop_return_codes": [
       216,
       216,
-      216,
-      216
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
@@ -3226,10 +4174,10 @@
        "QCD^2=10,QED^2=0": 4.417919734196002e-14
       },
       {
-       "QCD^2=10,QED^2=0": 1.8292495016556817e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 1.2198473004516951e-13
+       "QCD^2=10,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -4317,23 +5265,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      217,
       328,
-      216,
-      217
+      328,
+      217,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=6,QED^2=2": 1.0565325687654348e-13
+       "QCD^2=6,QED^2=2": 0.0
       },
       {
        "QCD^2=6,QED^2=2": 9.460019899999959e-16
       },
       {
-       "QCD^2=6,QED^2=2": 2.1478321997419166e-12
+       "QCD^2=6,QED^2=2": 5.5409409431771953e-14
       },
       {
-       "QCD^2=6,QED^2=2": 3.3903117806858975e-13
+       "QCD^2=6,QED^2=2": 0.0
       }
      ],
      "squared_split_orders": {
@@ -4463,23 +5411,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=10,QED^2=0": 5.090043347836756e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 1.599351411050654e-12
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 6.952116142986019e-13
+       "QCD^2=10,QED^2=0": 0.0
       },
       {
-       "QCD^2=10,QED^2=0": 7.775320104077299e-13
+       "QCD^2=10,QED^2=0": 0.0
       }
      ],
      "squared_split_orders": {
@@ -5463,7 +6411,7 @@
       216,
       216,
       216,
-      216
+      328
      ],
      "provider_accuracy_per_sector": [
       {
@@ -5476,7 +6424,7 @@
        "QCD^2=6,QED^2=4": 6.604619392760703e-14
       },
       {
-       "QCD^2=6,QED^2=4": 1.4376010724202275e-13
+       "QCD^2=6,QED^2=4": 0.0
       }
      ],
      "squared_split_orders": {
@@ -5525,7 +6473,126 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_emepggg_sectors",
+     "fixture": "required/mqcd/uux_emepggg_sectors.json",
+     "process_key": "uux_emepggg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > e- e+ g g g QED=2 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      11,
+      -11,
+      21,
+      21,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 5,
+      "QED": 2
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      216,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=8,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=4": 5.0300794905174236e-14
+      },
+      {
+       "QCD^2=8,QED^2=4": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_emepggg.json",
@@ -5571,7 +6638,126 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_emepddxg_sectors",
+     "fixture": "required/mqcd/uux_emepddxg_sectors.json",
+     "process_key": "uux_emepddxg",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > e- e+ d d~ g QED=2 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      11,
+      -11,
+      1,
+      -1,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 5,
+      "QED": 2
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      216,
+      216,
+      216,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=8,QED^2=4": 9.110137186471961e-14
+      },
+      {
+       "QCD^2=8,QED^2=4": 5.168187803612218e-14
+      },
+      {
+       "QCD^2=8,QED^2=4": 4.722055954401262e-14
+      },
+      {
+       "QCD^2=8,QED^2=4": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_emepddxg.json",
@@ -5617,7 +6803,125 @@
     "scheme": "qcd"
    },
    "note": null,
-   "references": [],
+   "references": [
+    {
+     "run": "uux_emepmummp_sectors",
+     "fixture": "required/mqcd/uux_emepmummp_sectors.json",
+     "process_key": "uux_emepmummp",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > e- e+ mu- mu+ QED=4 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      11,
+      -11,
+      13,
+      -13
+     ],
+     "born_orders": {
+      "QCD": 0,
+      "QED": 4
+     },
+     "born_orders_all": [
+      {
+       "QCD": 0,
+       "QED": 4
+      }
+     ],
+     "loop_orders": {
+      "QCD": 2,
+      "QED": 4
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      216,
+      216,
+      216,
+      216
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=2,QED^2=8": 6.524256139279034e-14
+      },
+      {
+       "QCD^2=2,QED^2=8": 4.71467604386343e-14
+      },
+      {
+       "QCD^2=2,QED^2=8": 9.148160618787691e-14
+      },
+      {
+       "QCD^2=2,QED^2=8": 1.7710051863860626e-14
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 0,
+        "QED": 8
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 2,
+        "QED": 8
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_emepmummp.json",
@@ -5661,7 +6965,125 @@
     "scheme": "qcd"
    },
    "note": "22x case (MQ-STAB)",
-   "references": [],
+   "references": [
+    {
+     "run": "uux_uuxepem_sectors",
+     "fixture": "required/mqcd/uux_uuxepem_sectors.json",
+     "process_key": "uux_uuxepem",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "u u~ > u u~ e+ e- QED=2 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      2,
+      -2,
+      -11,
+      11
+     ],
+     "born_orders": {
+      "QCD": 2,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 2,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 4,
+      "QED": 2
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=6,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=6,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=6,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=6,QED^2=4": 0.0
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 4,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/uux_uuxepem.json",
@@ -6200,22 +7622,22 @@
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
       216,
+      328,
       216,
-      216,
-      216
+      328
      ],
      "provider_accuracy_per_sector": [
       {
        "QCD^2=2,QED^2=4": 9.876587874541617e-14
       },
       {
-       "QCD^2=2,QED^2=4": 1.2070429555611079e-13
+       "QCD^2=2,QED^2=4": 0.0
       },
       {
        "QCD^2=2,QED^2=4": 4.760363333199821e-14
       },
       {
-       "QCD^2=2,QED^2=4": 1.0794947847871007e-13
+       "QCD^2=2,QED^2=4": 0.0
       }
      ],
      "squared_split_orders": {
@@ -6910,22 +8332,22 @@
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
       216,
+      328,
       216,
-      216,
-      216
+      328
      ],
      "provider_accuracy_per_sector": [
       {
        "QCD^2=4,QED^2=4": 9.314368901269761e-14
       },
       {
-       "QCD^2=4,QED^2=4": 2.5787340628227755e-13
+       "QCD^2=4,QED^2=4": 0.0
       },
       {
        "QCD^2=4,QED^2=4": 5.0171403029264066e-14
       },
       {
-       "QCD^2=4,QED^2=4": 1.6150003245963167e-13
+       "QCD^2=4,QED^2=4": 0.0
       }
      ],
      "squared_split_orders": {
@@ -7357,23 +8779,23 @@
      ],
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
-      216,
-      216,
-      216,
-      216
+      328,
+      328,
+      328,
+      328
      ],
      "provider_accuracy_per_sector": [
       {
-       "QCD^2=2,QED^2=4": 1.0540553336103776e-13
+       "QCD^2=2,QED^2=4": 0.0
       },
       {
-       "QCD^2=2,QED^2=4": 1.2330556995730108e-13
+       "QCD^2=2,QED^2=4": 0.0
       },
       {
-       "QCD^2=2,QED^2=4": 8.434361624164671e-13
+       "QCD^2=2,QED^2=4": 0.0
       },
       {
-       "QCD^2=2,QED^2=4": 9.407957572826491e-13
+       "QCD^2=2,QED^2=4": 0.0
       }
      ],
      "squared_split_orders": {
@@ -7895,22 +9317,22 @@
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
       216,
-      211,
+      328,
       216,
-      216
+      328
      ],
      "provider_accuracy_per_sector": [
       {
        "QCD^2=6,QED^2=2": 6.541715789702647e-14
       },
       {
-       "QCD^2=6,QED^2=2": 7.800242593516572e-12
+       "QCD^2=6,QED^2=2": 3.5534100061226574e-15
       },
       {
        "QCD^2=6,QED^2=2": 1.7571303513791295e-14
       },
       {
-       "QCD^2=6,QED^2=2": 1.195090069696765e-13
+       "QCD^2=6,QED^2=2": 0.0
       }
      ],
      "squared_split_orders": {
@@ -8039,22 +9461,22 @@
      "validation_status": "single provider; no cross-check",
      "madloop_return_codes": [
       216,
-      217,
+      328,
       216,
-      216
+      328
      ],
      "provider_accuracy_per_sector": [
       {
        "QCD^2=6,QED^2=2": 5.618779114562349e-14
       },
       {
-       "QCD^2=6,QED^2=2": 2.5195811738359993e-12
+       "QCD^2=6,QED^2=2": 3.4929498713306077e-15
       },
       {
        "QCD^2=6,QED^2=2": 1.7129359243233964e-14
       },
       {
-       "QCD^2=6,QED^2=2": 2.836204245871317e-13
+       "QCD^2=6,QED^2=2": 3.5177727080570185e-15
       }
      ],
      "squared_split_orders": {
@@ -8124,8 +9546,127 @@
     },
     "scheme": "qcd"
    },
-   "note": "point 2: rule 1 outlier (DD vs MadLoop 1.43e-8, vs OpenLoops 5.8e-13)",
-   "references": [],
+   "note": "point 2: the plan lists a rule 1 outlier (DD vs MadLoop 1.43e-8, vs OpenLoops 5.8e-13); the provider references themselves do not show it: at that point MadLoop (quadruple precision, code 328) = OpenLoops to 6.0e-13 in the finite part (committed fixture and the 1e-13 rerun alike) and Recola is the outlier (1.0e-8); MQ-VALIDATE re-checks the DD comparison",
+   "references": [
+    {
+     "run": "gg_ttxemepg_qcd_sectors",
+     "fixture": "required/mqcd/gg_ttxemepg_qcd_sectors.json",
+     "process_key": "gg_ttxemepg_qcd",
+     "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "status": "committed",
+     "madloop_process": "g g > t t~ e- e+ g QED=2 [virt=QCD]",
+     "pdgs": [
+      21,
+      21,
+      6,
+      -6,
+      11,
+      -11,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 5,
+      "QED": 2
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+     },
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "parameter_overrides": {},
+     "derived_parameters": {
+      "MW": "80.4190024457561601055171371731",
+      "alpha": "0.00754677111397888413442308708219"
+     },
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "exact terminating decimals",
+     "point_labels": null,
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2"
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "validation_status": "single provider; no cross-check",
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=8,QED^2=4": 1.8588580391639694e-16
+      },
+      {
+       "QCD^2=8,QED^2=4": 9.68099780735447e-16
+      },
+      {
+       "QCD^2=8,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=8,QED^2=4": 7.329486765489067e-16
+      }
+     ],
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 8,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
    "existing_references": [
     {
      "fixture": "required/gg_ttxemepg_qcd.json",

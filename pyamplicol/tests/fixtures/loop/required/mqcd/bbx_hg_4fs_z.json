@@ -286,7 +286,7 @@
      "double_pole": -0.00012393967445652806,
      "accuracy": 1.5785861125324188e-14,
      "status": 217,
-     "seconds": 0.001211315,
+     "seconds": 0.004277854,
      "universal_double_pole_relative_error": 5.489258110592204e-14
     }
    },
@@ -339,7 +339,7 @@
      "double_pole": -0.00012998501891811214,
      "accuracy": 1.781769349702398e-14,
      "status": 217,
-     "seconds": 0.001248035,
+     "seconds": 0.001433715,
      "universal_double_pole_relative_error": 1.7099004732194922e-14
     }
    },
@@ -392,7 +392,7 @@
      "double_pole": -0.0001970064000410696,
      "accuracy": 2.0284247466169027e-14,
      "status": 217,
-     "seconds": 0.001237495,
+     "seconds": 0.004381965,
      "universal_double_pole_relative_error": 4.787945416320001e-14
     }
    },
@@ -403,7 +403,7 @@
    "born": 0.002199819043846993,
    "finite": 0.0034447977154435337,
    "single_pole": 0.001445129242066568,
-   "double_pole": -0.00012393967445651597,
+   "double_pole": -0.000123939674456516,
    "madloop_accuracy": 1.74539726490107e-14,
    "madloop_status": 217,
    "sectors": {
@@ -420,7 +420,7 @@
       "QED": 2,
       "finite": 0.0034447977154435337,
       "single_pole": 0.001445129242066568,
-      "double_pole": -0.00012393967445651597,
+      "double_pole": -0.000123939674456516,
       "accuracy": 1.74539726490107e-14,
       "born_sector": {
        "QCD": 2,
@@ -432,21 +432,21 @@
      "born": 0.002199819043846993,
      "finite": 0.0034447977154435337,
      "single_pole": 0.001445129242066568,
-     "double_pole": -0.00012393967445651597,
+     "double_pole": -0.000123939674456516,
      "accuracy": 1.74539726490107e-14
     }
    },
-   "born_from_madloop_double_pole": 0.0021998190438468988,
+   "born_from_madloop_double_pole": 0.002199819043846899,
    "providers": {
     "madloop": {
      "born": 0.002199819043846993,
      "finite": 0.0034447977154435337,
      "single_pole": 0.001445129242066568,
-     "double_pole": -0.00012393967445651597,
+     "double_pole": -0.000123939674456516,
      "accuracy": 1.74539726490107e-14,
      "status": 217,
-     "seconds": 0.001235335,
-     "universal_double_pole_relative_error": 4.264563073966289e-14
+     "seconds": 0.001290225,
+     "universal_double_pole_relative_error": 4.2426935197408205e-14
     }
    },
    "provider_pair_relative_errors": {},
@@ -470,7 +470,7 @@
    "provider": "madloop",
    "process_name": "bbx_hg_4fs",
    "host": "itphlies",
-   "cpu": 175,
+   "cpu": 324,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/bbx_hg_4fs_z/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -501,7 +501,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -581,8 +581,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.026714236,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.040264172,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -599,12 +599,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.04307650099508464,
+   "process_wall_seconds": 0.06882093497551978,
    "evaluation_seconds": [
-    0.001211315,
-    0.001248035,
-    0.001237495,
-    0.001235335
+    0.004277854,
+    0.001433715,
+    0.004381965,
+    0.001290225
    ]
   }
  },

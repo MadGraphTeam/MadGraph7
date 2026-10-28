@@ -285,7 +285,7 @@
      "double_pole": -2.0735045799017526e-08,
      "accuracy": 3.667279639990109e-15,
      "status": 216,
-     "seconds": 0.000944304,
+     "seconds": 0.000956954,
      "universal_double_pole_relative_error": 2.074429556109079e-15
     }
    },
@@ -338,7 +338,7 @@
      "double_pole": -1.6136795457230627e-08,
      "accuracy": 3.807171455956913e-14,
      "status": 216,
-     "seconds": 0.000948054,
+     "seconds": 0.000979974,
      "universal_double_pole_relative_error": 6.151263041627378e-16
     }
    },
@@ -391,7 +391,7 @@
      "double_pole": -2.8369840248999063e-08,
      "accuracy": 7.39200740967116e-15,
      "status": 216,
-     "seconds": 0.000936634,
+     "seconds": 0.004042003,
      "universal_double_pole_relative_error": 1.9826788293455554e-15
     }
    },
@@ -444,7 +444,7 @@
      "double_pole": -2.0735045799017526e-08,
      "accuracy": 9.472758807751494e-15,
      "status": 216,
-     "seconds": 0.000931174,
+     "seconds": 0.000982433,
      "universal_double_pole_relative_error": 2.074429556109079e-15
     }
    },
@@ -779,7 +779,7 @@
    }
   ],
   "settings": {
-   "requested_relative_accuracy": 1e-11,
+   "requested_relative_accuracy": 1e-13,
    "stability_check": "forced on every call",
    "helicities": "all MadLoop helicity configurations"
   },
@@ -1692,12 +1692,12 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 216,
+     "status": 328,
      "born": 3.2695027177252716e-07,
-     "finite": 4.8570098385744034e-08,
-     "single_pole": -2.175850923504935e-08,
-     "double_pole": -3.479457276901989e-08,
-     "accuracy": 1.3055865095655482e-13
+     "finite": 4.857009838574413e-08,
+     "single_pole": -2.17585092350492e-08,
+     "double_pole": -3.479457276901988e-08,
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2448,12 +2448,12 @@
       1
      ],
      "madloop_index": 8,
-     "status": 216,
+     "status": 328,
      "born": 1.953310956041097e-07,
-     "finite": 3.265249934118452e-08,
-     "single_pole": -1.8731088077220816e-08,
-     "double_pole": -2.0787448755442967e-08,
-     "accuracy": 2.3131053072063016e-13
+     "finite": 3.265249934118454e-08,
+     "single_pole": -1.8731088077220906e-08,
+     "double_pole": -2.078744875544298e-08,
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2464,12 +2464,12 @@
       -1
      ],
      "madloop_index": 9,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2480,12 +2480,12 @@
       1
      ],
      "madloop_index": 10,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2496,12 +2496,12 @@
       -1
      ],
      "madloop_index": 11,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2512,12 +2512,12 @@
       1
      ],
      "madloop_index": 12,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2528,12 +2528,12 @@
       -1
      ],
      "madloop_index": 13,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2544,12 +2544,12 @@
       1
      ],
      "madloop_index": 14,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2560,12 +2560,12 @@
       -1
      ],
      "madloop_index": 15,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2576,12 +2576,12 @@
       1
      ],
      "madloop_index": 16,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2592,12 +2592,12 @@
       -1
      ],
      "madloop_index": 17,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2608,12 +2608,12 @@
       1
      ],
      "madloop_index": 18,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2624,12 +2624,12 @@
       -1
      ],
      "madloop_index": 19,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2640,12 +2640,12 @@
       1
      ],
      "madloop_index": 20,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2656,12 +2656,12 @@
       -1
      ],
      "madloop_index": 21,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2672,12 +2672,12 @@
       1
      ],
      "madloop_index": 22,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2688,12 +2688,12 @@
       -1
      ],
      "madloop_index": 23,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2704,12 +2704,12 @@
       1
      ],
      "madloop_index": 24,
-     "status": 216,
+     "status": 318,
      "born": 0.0,
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 2.3131053072063016e-13
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2720,12 +2720,12 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 216,
+     "status": 328,
      "born": 4.139396638840997e-07,
-     "finite": 6.819058183887151e-08,
-     "single_pole": -3.969434707202432e-08,
-     "double_pole": -4.405212351993262e-08,
-     "accuracy": 1.6080046675984472e-13
+     "finite": 6.819058183887153e-08,
+     "single_pole": -3.9694347072024256e-08,
+     "double_pole": -4.4052123519932625e-08,
+     "accuracy": 0.0
     },
     {
      "helicity": [
@@ -2858,7 +2858,7 @@
    "provider": "madloop",
    "process_name": "uux_emepg",
    "host": "itphlies",
-   "cpu": 244,
+   "cpu": 112,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/uux_emepg/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -2892,7 +2892,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -2969,8 +2969,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.044088614,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.046921114,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -2987,12 +2987,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.05801973002962768,
+   "process_wall_seconds": 0.07451316504739225,
    "evaluation_seconds": [
-    0.000944304,
-    0.000948054,
-    0.000936634,
-    0.000931174
+    0.000956954,
+    0.000979974,
+    0.004042003,
+    0.000982433
    ]
   }
  },
