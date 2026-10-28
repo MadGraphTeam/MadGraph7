@@ -216,7 +216,7 @@ class MECmdShell(IOTests.IOTestManager):
 
     def test_raise_invalid_path_hwpp(self):
         """test that an exception is raised when trying to shower with hwpp without
-        having set the corresponding pahts"""
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
@@ -241,7 +241,7 @@ class MECmdShell(IOTests.IOTestManager):
 
     def test_raise_invalid_path_py8(self):
         """test that an exception is raised when trying to shower with py8 without
-        having set the corresponding pahts"""
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()

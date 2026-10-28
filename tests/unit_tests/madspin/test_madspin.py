@@ -1220,7 +1220,7 @@ class TestEvent(unittest.TestCase):
     
     
     def test_madspin_event(self):
-        """check the reading/writting of the events inside MadSpin"""
+        """check the reading/writing of the events inside MadSpin"""
         
         inputfile = open(pjoin(MG5DIR, 'tests', 'input_files', 'madspin_event.lhe'))
         
@@ -1283,7 +1283,7 @@ class TestEvent(unittest.TestCase):
 #aMCatNLO 2  5  4  4  4 0.40498390E+02 0.40498390E+02 9  0  0 0.99999997E+00 0.68201705E+00 0.15135239E+01 0.00000000E+00 0.00000000E+00
   <mgrwgt>
   some information
-  <scale> even more infor
+  <scale> even more info
   </mgrwgt>
   <clustering>
   blabla

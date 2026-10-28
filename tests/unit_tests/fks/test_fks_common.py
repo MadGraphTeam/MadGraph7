@@ -2774,7 +2774,7 @@ class TestFKSCommon(unittest.TestCase):
                        coeff = fractions.Fraction(-1,1),
                        is_imaginary = False))
         ####FINAL-FINIAL
-        #FINAL state quark with FINIAL state quark
+        #FINAL state quark with FINAL state quark
         pairs.append([MG.Leg({'id' : 1, 'state' : True, 'number' : 1 }),
                       MG.Leg({'id' : 2, 'state' : True, 'number' : 2 })])
         replacs.append([[1, -3001], [2, -3002]])

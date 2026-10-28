@@ -1,6 +1,6 @@
       Program DRIVER
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
       use mint_module
       use FKSParams
@@ -233,7 +233,7 @@ c      deepdebug=.False.
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       include 'pmass.inc'
      
@@ -1072,7 +1072,7 @@ ccc             111    ---> all non_diagonal
 
 
 
-          ! extra initialisation calls: skip the first point
+          ! extran initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
 

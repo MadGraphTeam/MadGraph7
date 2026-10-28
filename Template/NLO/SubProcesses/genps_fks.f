@@ -835,7 +835,7 @@ c better compute it again to set all the common blocks correctly.
 
       subroutine generate_tau_y_wrapper(
      $     qmass,qwidth,totmass,stot,rndx,tau_born,ycm_born,ycmhat,xjac)
-      ! generates tau and y, calling the functions that correpsond to the
+      ! generates tau and y, calling the functions that correspond to the
       ! case at hand
       implicit none
 
@@ -3473,7 +3473,7 @@ c
       p1(2) = pt*sin(phi)
 c
       call rotxxx(p1,pa_cms,p1)          !Rotate back to pa_cms frame
-      call boostx(p1,ptot,p1)            !boost back to lab fram
+      call boostx(p1,ptot,p1)            !boost back to lab frame
       do i=0,3
          pr(i)=pa(i)-p1(i)               !Return remainder of momentum
       enddo
@@ -4596,7 +4596,7 @@ C dressed lepton stuff
         stop 1
       endif
 
-      ! if tau is generated accodring to a BW, then force the momentum
+      ! if tau is generated according to a BW, then force the momentum
       ! mapping with event projection
       use_evpr = generate_with_bw
 
@@ -4665,7 +4665,7 @@ C dressed lepton stuff
       ! now we are done. We must call the following function 
       ! in order to (re-)generate tau and ycm
       ! from x1 and x2. It also (re-)checks that tau_born 
-      ! is pysical, and otherwise sets xjac0=-1000
+      ! is physical, and otherwise sets xjac0=-1000
       call get_tau_y_from_x12(x1_ee, x2_ee, omx_ee(1), omx_ee(2), tau_born, ycm_born, ycmhat, xjac0) 
 
       x1bk=x1_ee

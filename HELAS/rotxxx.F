@@ -1,7 +1,7 @@
       subroutine rotxxx(p,q , prot)
 c
-c This subroutine performs the spacial rotation of a four-momentum.
-c the momentum p is assumed to be given in the frame where the spacial
+c This subroutine performs the spatial rotation of a four-momentum.
+c the momentum p is assumed to be given in the frame where the spatial
 c component of q points the positive z-axis.  prot is the momentum p
 c rotated to the frame where q is given.
 c
@@ -38,7 +38,7 @@ c
       endif
       if (qt2+abs(q(3)).eq.rZero) then
          write(stdo,*)
-     &   ' helas-warn  : q(0:3) in rotxxx has zero spacial momentum'
+     &   ' helas-warn  : q(0:3) in rotxxx has zero spatial momentum'
       endif
 #endif
 

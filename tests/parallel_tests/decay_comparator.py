@@ -47,7 +47,7 @@ from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 
 
 class DecayComparator(object):
-    """base object to run comparaison test"""
+    """base object to run comparison test"""
     
     def __init__(self, model):
         

@@ -54,7 +54,7 @@ c...now open the file we wrote and read it
 
       subroutine upyinit(nevt,istr)
 C
-C   Pythia initialization
+C   Pythian initialization
 C
 #include "pydat1.inc"
 #include "stdlun.inc"

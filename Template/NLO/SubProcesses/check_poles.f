@@ -1,6 +1,6 @@
       Program DRIVER
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
       use mint_module
       use FKSParams
@@ -82,7 +82,7 @@ C-----
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       include 'pmass.inc'
      
@@ -222,7 +222,7 @@ c initialization
 
           CALL UPDATE_AS_PARAM()
           call sborn_frame(p_born, born)
-          ! extra initialisation calls: skip the first point
+          ! extran initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
 c The virtual must be evaluated in the same frame as the Born above: the

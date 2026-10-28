@@ -211,7 +211,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0D0)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
@@ -291,7 +291,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0E0_16)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
@@ -844,19 +844,19 @@ C     1 -> LOOPTOOLS
 C     2 -> AVH
 C     3 -> QCDLOOP
       IF (CTLOOPLIBRARY.EQ.1) THEN
-        WRITE(*,*) 'Warning in Ninja initialization. LoopTools is not'
+        WRITE(*,*) 'Warning in Ninjan initialization. LoopTools is not'
      $   //' supported by the Ninja interface. It will use OneLOop'
      $   //' instead.'
         LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.EQ.3) THEN
-        WRITE(*,*) 'Warning in Ninja initialization. LoopTools is not'
+        WRITE(*,*) 'Warning in Ninjan initialization. LoopTools is not'
      $   //' supported by the Ninja interface. It will use OneLOop'
      $   //' instead.'
         LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.EQ.2) THEN
         LOOPLIB = 1
       ELSE
-        WRITE(*,*) 'Error in Ninja initialization. Loop library ID='
+        WRITE(*,*) 'Error in Ninjan initialization. Loop library ID='
      $   ,CTLOOPLIBRARY,' is not supported. Change variable'
      $   //' CTLoopLibrary in MadLoopParams.dat.'
         STOP 1

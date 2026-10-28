@@ -464,7 +464,7 @@ in presence of majorana particle/flow violation"""
                     else:
                         massless = True
                         self.denominator = None
-                # 1D is a multiplication of standar propagator -> later
+                # 1D is a multiplication of standard propagator -> later
                 elif propa in [[],['1D']]:
                     massless = False
                     self.denominator = None
@@ -597,7 +597,7 @@ in presence of majorana particle/flow violation"""
         return text
 
     def get_custom_propa(self, propas, spin, id):
-        """Return the ALOHA object associated to the user define propagator"""
+        """Return the ALOHAn object associated to the user define propagator"""
 
         basicPole = "(P(-1,id)**2 - Mass(id) * Mass(id) + complex(0,1) * Mass(id) * Width(id))"
         if isinstance(propas, str):
@@ -834,7 +834,7 @@ in presence of majorana particle/flow violation"""
 
 class CombineRoutineBuilder(AbstractRoutineBuilder):
     """A special builder for combine routine if needed to write those
-        explicitely.
+        explicitly.
     """
     def __init__(self, l_lorentz, model=None):
         """ initialize the run
@@ -1037,7 +1037,7 @@ class AbstractALOHAModel(dict):
             if info_key in returned_dict:
                 continue
             elif not init:
-                # need to create the aloha object
+                # need to create the alohan object
                 lorentz = eval('self.model.lorentz.%s' % lorentzname)
                 abstract = AbstractRoutineBuilder(lorentz)
                 routine = abstract.compute_routine(outgoing, tag, factorize=False)                
@@ -1233,7 +1233,7 @@ class AbstractALOHAModel(dict):
                                          routines=routines)
             
         
-        # Build mutiple lorentz call
+        # Build multiple lorentz call
         for list_l_name, tag, outgoing in data:
             if len(list_l_name) ==1:
                 continue
@@ -1287,7 +1287,7 @@ class AbstractALOHAModel(dict):
                             
     def compute_aloha(self, builder, symmetry=None, routines=None, tag=[]):
         """ define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines."""
 
         name = builder.name
@@ -1319,7 +1319,7 @@ class AbstractALOHAModel(dict):
 
     def compute_aloha_without_kernel(self, builder, symmetry=None, routines=None):
         """define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines. 
         Compare to compute_aloha, each routines are computed independently.
         """
@@ -1358,7 +1358,7 @@ class AbstractALOHAModel(dict):
 #               pjoin(output_dir, 'additional_aloha_function.f') )
 #            else:
 #                logger.warning('''Some function present in the lorentz structure are 
-#                not recognized. Please edit the code to add the defnition of such function.''')
+#                not recognized. Please edit the code to add the definition of such a function.''')
 #                logger.info('list of missing fct: %s .' % \
 #                            ','.join([a[0] for a in aloha_lib.KERNEL.unknow_fct]))
 #        

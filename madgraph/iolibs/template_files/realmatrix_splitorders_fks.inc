@@ -76,7 +76,7 @@ enddo
 do i = 1, nsqampso
  if (keep_order(i)) then
     ANS_SUMMED = ANS_SUMMED + ANS(I)
-C   keep track of the separate pieces correspoinding to different coupling combinations
+C   keep track of the separate pieces corresponding to different coupling combinations
     do j = 1, nsplitorders
       amp_orders(j) = GETORDPOWFROMINDEX%(proc_prefix)s(j, i)
     enddo

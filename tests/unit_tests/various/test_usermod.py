@@ -39,7 +39,7 @@ pjoin = os.path.join
 import cmath
 
 #
-# UFO CLASS SINCE THEY WILL BE USEFULL!
+# UFO CLASS SINCE THEY WILL BE USEFUL!
 #
 
 class UFOBaseClass(object):
@@ -451,7 +451,7 @@ QED = CouplingOrder(name = 'QED',
 
 
         
-        #format the ouptut
+        #format the output
         target = target.replace('0.0,','0,')
         target = target.replace('1/3,','0.333333333333,')
         target = target.replace('2/3,','0.666666666667,')
@@ -708,7 +708,7 @@ class Test_ADDON_UFO(unittest.TestCase):
         self.assertEqual(H.name, 'H3')
         
         ###################################################
-        ##  ALL THOSE TEST WERE NOT CHEKING MASS / WIDTH ##
+        ##  ALL THOSE TESTS WERE NOT CHECKING MASS / WIDTH ##
         ###################################################                       
         # plugin to zero -> keep the one of the model
         H = Particle(pdg_code = 25,

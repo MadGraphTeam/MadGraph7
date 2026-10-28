@@ -298,7 +298,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 
         if proc['perturbation_couplings'] and proc['orders'] and not proc['squared_orders']:
             if any(val not in [0,99] for val in proc['orders'].values()):
-                message = "Potentially ambigious syntax detected. Note that the syntax of paper 1804.10017 (used in 3.0.x) is not used anymore (since version 3.1.0).\n" +\
+                message = "Potentially ambiguous syntax detected. Note that the syntax of paper 1804.10017 (used in 3.0.x) is not used anymore (since version 3.1.0).\n" +\
                     'If you want to follow the syntax of that paper, you can just replace "QED" by "aEW" and "QCD" by "aS".\n' +\
                     'More information here: http://amcatnlo.cern.ch/co.htm\n'
                 if not self.options['acknowledged_v3.1_syntax']:
@@ -379,7 +379,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
                         add_on = 'qcd_qed_'
                     else:
                         raise MadGraph5Error(
-                          "The pertubation coupling cannot be '%s'"\
+                          "The perturbation coupling cannot be '%s'"\
                                     %str(coupling_type)+" in SM loop processes")
 
                     logger.info("MadGraph7 now loads 'loop_%s%s'."%(add_on,model_name))
@@ -844,7 +844,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
         if argss[0] in ['stability', 'profile']:
             stab_statistics = int(argss[1])
             argss = argss[:1]+argss[2:]
-        # Remove the extra options
+        # Remove the extran options
         i=-1
         while argss[i].startswith('--'):
             i=i-1
@@ -943,7 +943,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
 
         cpu_time1 = time.time()
 
-        # Decide here wether one needs a LoopMultiProcess or a MultiProcess
+        # Decide here whether one needs a LoopMultiProcess or a MultiProcess
         multiprocessclass=None
         if myprocdef['perturbation_couplings']!=[]:
             multiprocessclass=loop_diagram_generation.LoopMultiProcess

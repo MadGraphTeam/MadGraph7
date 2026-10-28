@@ -973,7 +973,7 @@ c     &        '             : q**2 = ',q(0)**2-qq
 c      endif
 c      if (qq.eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
+c     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
 c      endif
 c#endif
 
@@ -1060,7 +1060,7 @@ c     &        '             : q**2 = ',q(0)**2-qq
 c      endif
 c      if (qq.eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
+c     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
 c      endif
 c#endif
 
@@ -1157,8 +1157,8 @@ c
       end
       subroutine rotxxx(p,q , prot)
 c
-c This subroutine performs the spacial rotation of a four-momentum.
-c the momentum p is assumed to be given in the frame where the spacial
+c This subroutine performs the spatial rotation of a four-momentum.
+c the momentum p is assumed to be given in the frame where the spatial
 c component of q points the positive z-axis.  prot is the momentum p
 c rotated to the frame where q is given.
 c
@@ -1195,7 +1195,7 @@ c     &        ' helas-error : q(0:3) in rotxxx is zero momentum'
 c      endif
 c      if (qt2+abs(q(3)).eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in rotxxx has zero spacial momentum'
+c     &   ' helas-warn  : q(0:3) in rotxxx has zero spatial momentum'
 c      endif
 c#endif
 
@@ -1457,7 +1457,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1522,7 +1522,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       end if
 
       if ( nhel.le.1 ) then
-c constract spinor-
+c contract spinor-
        nh = -nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1803,7 +1803,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
 
        if ( rmass.ne.rZero ) then
@@ -1881,7 +1881,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       endif
 
       if ( nhel.le.1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = -nsr
 
       if ( rmass.ne.rZero ) then

@@ -118,7 +118,7 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(output, ' 1') 
 
     def test_reshape_FFV_coeff(self):
-        """ test the possiblity to reshape FFV vertex"""
+        """ test the possibility to reshape FFV vertex"""
 
         import madgraph.models as ufomodels
         ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
@@ -794,7 +794,7 @@ class TestGetLuarkPDG(unittest.TestCase):
         self.assertEqual(model.get_lepton_pdgs(), [-82,-15, -13, -11, 11, 13, 15,82])
 
 class TestImportUFONoSideEffect(unittest.TestCase):
-    """Test class for the the possible side effect on a UFO model loaded when
+    """Test class for the possible side effect on a UFO model loaded when
        converting it to a MG5 model"""
 
     def test_ImportUFONoSideEffectLO(self):
@@ -872,7 +872,7 @@ class TestImportUFONoSideEffect(unittest.TestCase):
         self.assertEqual(original_all_CTvertices,ufo_model.all_CTvertices)
         self.assertEqual(original_all_CTparameters,ufo_model.all_CTparameters)
 
-        # Also test that one new lorentz struture has been added within the model
+        # Also test that one new lorentz structure has been added within the model
         # and that the associate optimization is working as expected.
         self.assertEqual(len(original_all_lorentz) + 1, len(model['lorentz']))
         new_l = [l for l  in model['lorentz'] if l not in original_all_lorentz][0]
@@ -1506,7 +1506,7 @@ class TestBenchmarkModel(unittest.TestCase):
         
         
     def test_use_as_benchmark(self):
-        """check that the value inside the restrict card overwritte the default
+        """check that the value inside the restrict card overwrite the default
         parameter such that this option can be use for benchmark point"""
         
         params_ext = self.model['parameters'][('external',)]
@@ -2083,7 +2083,7 @@ class TestLorentzStructureCanonicalisation(unittest.TestCase):
     """
 
     def test_symmetry_is_carried_by_the_structure(self):
-        """is_symmetric lives on the aloha object, and defaults to False."""
+        """is_symmetric lives on the alohan object, and defaults to False."""
         import aloha.aloha_object as aloha_object
         import aloha.aloha_lib as aloha_lib
         self.assertFalse(aloha_lib.FactoryLorentz.is_symmetric)

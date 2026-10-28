@@ -118,7 +118,7 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
 
     # find the real diagrams that have i and j attached to the same vertex
     # check that the order of the interaction is QCD
-    # cehck also that the id of the third leg is id_ij
+    # check also that the id of the third leg is id_ij
     real_confs_new = copy.deepcopy(real_confs)
     for diag in real_confs_new:
         for vert in diag['diagram'].get('vertices'):
@@ -172,7 +172,7 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
             counts = []
             for il in range(nlegs_b):
                 counts.append([l['number'] for v in diag['diagram']['vertices'] for l in v['legs']].count(il+1))
-            # normally all the occurences should be odd (and !=0)
+            # normally all the occurrences should be odd (and !=0)
             # (each entry should be 1 for the external leg +2 for each internal one)
             even_list = [c / 2 * 2 == c for c in counts]
             if any(even_list):
@@ -459,7 +459,7 @@ def ij_final(pair):
                 set = 1
 
 def insert_legs(leglist_orig, leg, split,pert='QCD'):
-    """Returns a new leglist with leg splitted into split.
+    """Returns a new leglist with leg split into split.
     The convention is to remove leg ij, replace it with leg j, and put
     i at the end of the group of legs with the same color(charge) representation
     """
@@ -594,7 +594,7 @@ def find_pert_particles_interactions(model, pert_order = 'QCD'): #test written
     pert_parts = []
     soft_parts = []
     for i, ii in model.get('interaction_dict').items():
-        # i want interections of pert_order: 1 (from LO to NLO), 
+        # i want interactions of pert_order: 1 (from LO to NLO),
         # without any other orders
         # and of "base" type
         if ii.get('type') != 'base': continue
@@ -988,7 +988,7 @@ class FKSLegList(MG.LegList):
 
 
 class FKSLeg(MG.Leg):
-    """a class for FKS legs: it inherits from the ususal leg class, with two
+    """a class for FKS legs: it inherits from the usual leg class, with two
     extra keys in the dictionary: 
     -'fks', whose value can be 'i', 'j' or 'n' (for "normal" particles) 
     -'color', which gives the color of the leg

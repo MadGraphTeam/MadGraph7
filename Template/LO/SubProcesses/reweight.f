@@ -791,7 +791,7 @@ c        jlast is last parton on this side This means
 c        the last cluster which is still QCD.
          jlast(i)=0
 c        jcentral is the central scale vertex on this side. i.e it stops
-c        when the T channel particles is not colored anymore.
+c        when the T channel particle is not colored anymore.
          jcentral(i)=0
 c        qcdline gives whether this IS line is QCD
          qcdline(i)=isqcd(ipdgcl(ibeam(i),igraphs(1),iproc))
@@ -1482,7 +1482,7 @@ c     ipart gives external particle number chain
 
       if(ickkw.le.0.and..not.use_syst) return
 
-c   Set mimimum kt scale, depending on highest mult or not
+c   Set minimum kt scale, depending on highest mult or not
       if(hmult.or.ickkw.eq.1)then
         pt2min=0
       else
@@ -1530,7 +1530,7 @@ c     Store pdf information for systematics studies (initial)
                 s_qpdf(1,j,ivec)=sqrt(q2fact(j))
             enddo
            endif
-         asref=0 ! usefull for syscalc
+         asref=0 ! useful for syscalc
          goto 100
       endif
 

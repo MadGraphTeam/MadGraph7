@@ -65,7 +65,7 @@ def check_html_page(cls, link):
     with misc.chdir(cwd):
         for path in pattern.findall(text):
             if not path:
-                continue # means is just a linke starting with #
+                continue # means is just a line starting with #
             cls.assertTrue(os.path.exists(path), '%s/%s' %(cwd,path))
     return True
     
@@ -2533,7 +2533,7 @@ class TestMECmdShell(unittest.TestCase):
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2634,7 +2634,7 @@ C
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -3092,7 +3092,7 @@ C
         if syst:
             # check that the html has the information
             self.assertIn('syst', data[0].parton)
-            # check that the code was runned correctly
+            # check that the code was run correctly
             fsock = open('%s/Events/%s/parton_systematics.log' % \
                   (self.run_dir, data[0]['run_name']),'r')
             text = fsock.read()
@@ -3530,7 +3530,7 @@ class TestMEfromfile(unittest.TestCase):
         """
         This test is checking that the scale in auto_dsig are correctly assigned
         in 3.6.2, a wrong Q2FACT(IB(1)) was used instead of Q2FACT(1).
-        Leading to an assymetry in the DY +1j process.
+        Leading to an asymmetry in the DY +1j process.
         This acceptance test is there to prevent such type of error
         """
 

@@ -380,7 +380,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         new_process_content = []
         
         # First find the coupling and suppress the coupling from process_str
-        #But first ensure that coupling are define whithout spaces:
+        #But first ensure that coupling are define without spaces:
         process_str = process_str.replace(' =', '=')
         process_str = process_str.replace('= ', '=')
         process_str = process_str.replace(',',' , ')
@@ -407,7 +407,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
 
     #===============================================================================
-    # write a initial states map, useful for the fast PDF NLO interface
+    # write an initial states map, useful for the fast PDF NLO interface
     #===============================================================================
     def write_maxproc_files(self, nmaxpdf, subproc_path):
         """write the c++ and fortran header files with the max number of pdf pairs
@@ -428,11 +428,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
 
 
     #===============================================================================
-    # write a initial states map, useful for the fast PDF NLO interface
+    # write an initial states map, useful for the fast PDF NLO interface
     #===============================================================================
     def write_init_map(self, file_pos, initial_states):
         """ Write an initial state process map. Each possible PDF
-        combination gets an unique identifier."""
+        combination gets a unique identifier."""
         
         text=''
         i=0
@@ -1181,7 +1181,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
     def write_amp_split_orders_file(self, writer, amp_split_orders):
         """ write the include file with the information of the coupling power for the 
-        differen entries in the amp_split array"""
+        different entries in the amp_split array"""
         text = "integer iaso, amp_split_orders(%d, nsplitorders)\n" % len(amp_split_orders)
 
         for i, amp_orders in enumerate(amp_split_orders):
@@ -1207,7 +1207,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_a0gmuconv_file(self, writer, matrix_element):
-        """writes an include file with the informations about the 
+        """writes an include file with the information about the
         alpha0 < > gmu conversion, to be used when the process has
         tagged photons
         """
@@ -1235,7 +1235,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """writes the function that computes the rescaling factor needed in
         the case of external photons.
         If split types does not contain [QED] or if there are not tagged photons,
-        dummy informations are filled
+        dummy information is filled
         """
 
         # get the model parameters
@@ -1287,7 +1287,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_orders_file(self, writer, matrix_element):
-        """writes the include file with the informations about coupling orders.
+        """writes the include file with the information about coupling orders.
         In particular this file should contain the constraints requested by the user
         for all the orders which are split"""
 
@@ -1538,7 +1538,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     def write_configs_and_props_info_file(self, filename, matrix_element):
-        """writes the configs_and_props_info.inc file that cointains
+        """writes the configs_and_props_info.inc file that contains
         all the (real-emission) configurations (IFOREST) as well as
         the masses and widths of intermediate particles"""
         lines = []
@@ -1580,7 +1580,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 mapconfigs.append(helas_diag.get('number'))
                 lines.append("# Diagram %d for nFKSprocess %d" % \
                                  (helas_diag.get('number'),iFKS))
-                # Correspondance between the config and the amplitudes
+                # Correspondence between the config and the amplitudes
                 lines.append("C   %4d   %4d   %4d " % (iFKS,iconfig,
                                                            helas_diag.get('number')))
     
@@ -1686,7 +1686,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                     mapconfigs.append(helas_diag.get('number'))
                     lines.append("# Diagram %d for nFKSprocess %d" % \
                                      (helas_diag.get('number'),iFKS))
-                    # Correspondance between the config and the amplitudes
+                    # Correspondence between the config and the amplitudes
                     lines.append("C   %4d   %4d   %4d " % (iFKS,iconfig,
                                                            helas_diag.get('number')))
 
@@ -1853,7 +1853,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
     def write_leshouche_info_file(self, filename, matrix_element):
         """writes the leshouche_info.inc file which contains 
-        the LHA informations for all the real emission processes
+        the LHA information for all the real emission processes
         """
         lines = []
         lines.append("# I -> IDUP_D")
@@ -1998,7 +1998,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                                         fortran_model, 'real', "%d" % (n+1))
             if n == 0:
                 writer.writelines("""
-      block data initialize_real_diagram_weights
+      block datan initialize_real_diagram_weights
       implicit none
       include 'real_matrix_weights.inc'
       data get_real_diagram_weights /.false./
@@ -3345,7 +3345,7 @@ Parameters              %(params)s\n\
 
         replace_dict = {}
 
-        # number of matrix elmenets
+        # number of matrix elements
         replace_dict['ngoldstone_me'] = max(len(goldstone_mes),1)
         # identical particle factors
         if goldstone_mes:
@@ -3845,7 +3845,7 @@ Parameters              %(params)s\n\
         replace_dict['reshuffle_calls'] = 'pass_reshuffle = .true.\n'
 
         pdgs_in, pdgs_out = pdgs
-        # make sure all the lists have lenght = 2. In case, pad with zero's
+        # make sure all the lists have length = 2. In case, pad with zero's
         for resh_list in [legs, pdgs_in, pdgs_out]:
             while len(resh_list) < 2:
                 if resh_list == legs:
@@ -4038,7 +4038,7 @@ Parameters              %(params)s\n\
     # write_fks_info_file
     #===============================================================================
     def write_fks_info_file(self, writer, fksborn, fortran_model): #test_written
-        """Writes the content of fks_info.inc, which lists the informations on the 
+        """Writes the content of fks_info.inc, which lists the information on the
         possible splittings of the born ME.
         nconfs is always >=1 (use a fake configuration for LOonly).
         The fake configuration use an 'antigluon' (id -21, color=8) as i_fks and 
@@ -4289,7 +4289,7 @@ Parameters              %(params)s\n\
                     color_flow_list = []
     
                 else:
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs:
                         repr_dict[l.get('number')] = \
@@ -4357,7 +4357,7 @@ Parameters              %(params)s\n\
             mapconfigs.append(helas_diag.get('number'))
             lines.append("# Diagram %d, Amplitude %d" % \
                          (helas_diag.get('number'),helas_diag.get('amplitudes')[0]['number']))
-            # Correspondance between the config and the amplitudes
+            # Correspondence between the config and the amplitudes
             lines.append("data mapconfig(%4d)/%4d/" % (iconfig,
                                                      helas_diag.get('amplitudes')[0]['number']))
     
@@ -4510,7 +4510,7 @@ Parameters              %(params)s\n\
     #===============================================================================
 
     def get_fks_j_from_i_lines(self, me, i = 0): #test written
-        """generate the lines for fks.inc describing initializating the
+        """generate the lines for fks.inc describing initializing the
         fks_j_from_i array"""
         lines = []
         if not me.isfinite:
@@ -4561,7 +4561,7 @@ Parameters              %(params)s\n\
                     nflow = 1
     
                 else:
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs:
                         repr_dict[l.get('number')] = \
@@ -4646,7 +4646,7 @@ Parameters              %(params)s\n\
                 else:
                     # in this case the last particle (-21) has two color indices
                     # and it has to be emitted by j_fks
-                    # First build a color representation dictionnary
+                    # First build a color representation dictionary
                     repr_dict = {}
                     for l in legs[:-1]:
                         repr_dict[l.get('number')] = \
@@ -4695,7 +4695,7 @@ Parameters              %(params)s\n\
     def get_den_factor_lines(self, fks_born, born_me=None):
         """returns the lines with the information on the denominator keeping care
         of the identical particle factors in the various real emissions
-        If born_me is procided, it is used instead of fksborn.born_me"""
+        If born_me is provided, it is used instead of fksborn.born_me"""
         
         compensate = True
         if not born_me:
@@ -5773,7 +5773,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     def trim_born_dir(self, born_path):
         """Delete every file in born_path that 'check_fks' does not need.
 
-        The Born-only check links only the FKSSA objects (born, sborn_sf, the
+        The Born-only check links only the FKSSAn objects (born, sborn_sf, the
         b_sf_* color/charge links, ...) and nothing else, so the rest of the
         full FKS directory -- the one-loop virtuals (V*/MadLoop), the
         real-emission matrix elements (matrix_*.f), and the whole

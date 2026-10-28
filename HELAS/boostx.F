@@ -62,7 +62,7 @@ c
       endif
       if (qq.eq.rZero) then
          write(stdo,*)
-     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
+     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
       endif
 #endif
 
@@ -151,7 +151,7 @@ c
       endif
       if (qq.eq.rZero) then
          write(stdo,*)
-     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
+     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
       endif
 #endif
 
