@@ -522,6 +522,78 @@ def test_renamed_scale_and_moved_alpha_s_give_the_same_virtual(models, loop_nati
     _assert_same_values(*results)
 
 
+# Identical-flavour lines at leading and next-to-leading colour (genericity
+# audit 2, G2-M1 acceptance (iii)): the blocks of one colour word reached
+# with several U(1)-subtraction grades are split by grade
+# (``generation.dag_grades``) whatever the quark is called or numbered and
+# wherever its legs stand. Leg i of the permuted request is leg
+# PERMUTED_LEGS[i] of u u~ > u u~ g: the loop requests close at an antiquark
+# instead of a quark, and the gluon comes first in the final state.
+UUX_UUXG = ("u u~ > u u~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}, ("QCD",))
+PERMUTED_UUX_UUXG = "u~ u > g u~ u"
+PERMUTED_LEGS = (1, 0, 4, 3, 2)
+
+
+def _mixed_grade_words(slice_) -> int:
+    """How many (word, particle) pairs of the slice's loop-side blocks come
+    in several N_c grades (separate blocks after the split)."""
+
+    grades: dict = {}
+    for block in slice_.blocks.blocks:
+        if block.key.auxiliary_kind is None:
+            grades.setdefault((block.key.word, block.key.particle_id), set()).add(
+                block.colour_flow.nc_grade
+            )
+    return sum(len(found) > 1 for found in grades.values())
+
+
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_renamed_quarks_and_permuted_legs_give_the_same_projections(
+    models, loop_native, accuracy
+):
+    """LC and NLC of u u~ > u u~ g (two identical-flavour lines): with the
+    quark renamed and renumbered (``quarks``: uq, PDG 9000002) the slice
+    splits the same blocks by grade and gives the same decisions and values,
+    and so does the leg order u~ u > g u~ u at the permuted point (binary64,
+    every component within 1e-12 of the largest coefficient)."""
+
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from tools.loop_reference import legacy_capture
+
+    options = {
+        "accuracy": accuracy,
+        "colour_declaration": LoopColorDeclaration.from_dict(
+            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+        ),
+        "colour_contraction": "direct",
+    }
+    fixture = ROOT / "tests/fixtures/loop/legacy/uux_uuxg.json"
+    point = json.loads(fixture.read_text())["points"][0]
+    original, _ = _slice(models, loop_native, "loop_sm", None, *UUX_UUXG, **options)
+    renamed, rename = _slice(
+        models, loop_native, "loop_sm", "quarks", *UUX_UUXG, **options
+    )
+    permuted, _ = _slice(
+        models,
+        loop_native,
+        "loop_sm",
+        None,
+        PERMUTED_UUX_UUXG,
+        *UUX_UUXG[1:],
+        **options,
+    )
+    split = _mixed_grade_words(original)
+    assert split > 0
+    assert _mixed_grade_words(renamed) == split
+    assert _mixed_grade_words(permuted) > 0
+    _assert_same_decisions(original, renamed, rename)
+    reference = _evaluate(original, point, ORIGINAL)
+    _assert_same_values(reference, _evaluate(renamed, point, rename), rename)
+    _assert_same_values(
+        reference, _evaluate(permuted, [point[i] for i in PERMUTED_LEGS], ORIGINAL)
+    )
+
+
 # Photon-only QED corrections (Z, W, H and the Goldstones vetoed), widths
 # zero outside the complex-mass scheme (``test_loop_v2_ew`` LADDER rung
 # uudd_qed_photon_uv).
