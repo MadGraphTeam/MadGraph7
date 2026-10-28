@@ -1003,3 +1003,44 @@ def test_one_and_two_point_loops_do_not_depend_on_their_reading(
     worst = max(deviations[lane] for lane in rings)
     assert worst <= 1e-30, worst
     print(f"{len(rings)} one- and two-point families, worst {worst:.1e}")
+
+
+# ---------------------------------------------------------- [U2] for EW
+
+
+def test_doublet_breaking_vetoes_of_electroweak_corrections_are_refused(
+    loop_gmu_ufo,
+):
+    """The [U2] anomaly guard for electroweak corrections (WP3.2 EWI-7,
+    "check and complete"): a particle_veto that breaks an anomaly-free
+    multiplet (the b of the third quark doublet) removes a species
+    perturbative in the electromagnetic correction, so on the G_mu UFO,
+    whose electroweak UV counterterms declare no loop content, the request
+    is refused in the model preparation, before any tree, with
+    ``veto-unlabelled-counterterms``; QCD corrections with the same veto
+    pass this preparation (their anomalous Levi-Civita cells are the
+    counterterm guard's, ``ct_recursion`` "Anomalous vetoes",
+    ``test_loop_v2_ct_cancellation``). About 40 s."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    compiled = _gmu(loop_gmu_ufo)
+
+    def request(corrections, loop_orders):
+        return SliceRequest(
+            "g g > t t~",
+            {"QCD": 2, "QED": 0},
+            loop_orders,
+            corrections=corrections,
+            particle_veto=(5,),
+            fixed_parameters=G_MU_FIXED,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        )
+
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        prepare_request_model(compiled, request(("QCD", "QED"), {"QCD": 2, "QED": 2}))
+    assert refused.value.key == "veto-unlabelled-counterterms"
+    assert "removes the species [5]" in str(refused.value)
+    prepare_request_model(compiled, request(("QCD",), {"QCD": 4, "QED": 0}))
