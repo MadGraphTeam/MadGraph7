@@ -177,15 +177,21 @@ def test_a_loop_vertex_the_tree_model_lacks_is_a_listed_refusal(
 
 @pytest.mark.loop_nightly
 def test_the_reproducer_generates_with_catani_poles(gmu_models, loop_native):
-    """The reproducer generates (about 5 minutes, 9 GB) and its virtual's
-    poles are the Catani operator's at an exact on-shell point (binary64)."""
+    """The reproducer generates (about 5 minutes, 9 GB; 150 families) and its
+    virtual's poles are the Catani operator's at an exact on-shell point,
+    evaluated with 32 digits (measured equal to the printed digits; binary64
+    misses them by 2e-11 and 1.2e-12 of the largest coefficient, its
+    conditioning at this point: the finite part moves by 2e-10)."""
 
-    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision
 
     compiled = gmu_models()
     slice_ = LoopSlice.generate(compiled, _request(compiled, *REPRODUCER), loop_native)
     result = slice_.evaluate(
-        POINT, "1000000", parameters={"aS": "0.118", "MT": "173", "ymt": "173"}
+        POINT,
+        "1000000",
+        parameters={"aS": "0.118", "MT": "173", "ymt": "173"},
+        precision=Precision.arbitrary(32),
     )
     (sector,) = result.components["virtual"]
     virtual = [
@@ -207,4 +213,6 @@ POINT = [
     ["121.270270752", "69.955105794048", "94.519074392064", "29.64635420544"],
     ["303.290625", "-174.6954", "-232.9272", "-84.921375"],
 ]
-CATANI_TOLERANCE = 1e-9
+# As the electroweak Catani checks (``test_loop_v2_ew_gauge.py``: 1e-12 of the
+# largest coefficient).
+CATANI_TOLERANCE = 1e-12
