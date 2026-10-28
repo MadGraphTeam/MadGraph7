@@ -600,6 +600,22 @@ double-double accuracy. To go beyond binary64 accuracy, supply momenta that are
 on shell and conserve momentum to the digits wanted (exact decimals or
 rationals): a point off its shells by a relative δ moves the result at order δ.
 
+**Light masses in binary64.** The fast binary64 reduction compares squared
+masses and invariants with an absolute constant, 1e-9 in the model's units: it
+would treat a smaller one as zero and an invariant that close to a squared mass
+as on that shell. A `double` evaluation never applies these: a loop whose
+squared masses or invariants at a point fall in that window (a keV-scale
+internal mass in GeV, the electron mass in TeV) is reduced by the exact generic
+binary64 engine instead, so its integrals do not depend on the units; only the
+cost of those loops changes (the legacy engine keeps both shortcuts). The
+artifact's generation filters list the masses this light at the generation
+parameters (`binary64_exact_engine`: the threshold and each squared mass); a
+parameter override is checked again at evaluation. Binary64 itself limits light
+loops far below the other scales: a box with three or four light lines can lose
+several digits, and one beside a massive leg can fail with a non-finite master
+integral (the point then fails rather than returning the massless value). Use
+the stability checks, and `double-double` where binary64 fails.
+
 #### Ultraviolet and infrared poles
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
