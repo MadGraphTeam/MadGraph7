@@ -1010,7 +1010,22 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 1,
+     "sector": "QCD^10",
+     "coefficient": "finite",
+     "E": 4.74e-06,
+     "true_error": 2.5e-07
+    },
+    {
+     "point": 1,
+     "sector": "QCD^10",
+     "coefficient": "single_pole",
+     "E": 2.21e-06,
+     "true_error": 1.59e-07
+    }
+   ],
    "reference_outliers": [],
    "vanishing": [],
    "inputs": "native",
