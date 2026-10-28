@@ -340,9 +340,11 @@ pub struct LoopV2Sector {
 /// `color_correlations` are the declared directed colour histories (by id,
 /// besides the Born metric "born"), `spin_correlations` the declared spin
 /// classes (one-based legs) and `resolved` that helicity/colour resolved
-/// output is served (always: observable columns are contracted directly, and
-/// `color_contraction` is "auto" or "direct" since generation refuses the
-/// forced seed FFT). `poles` lists the pole selections an evaluation may
+/// output is served (always: observable columns are contracted directly).
+/// `color_contraction` is the requested seed contraction ("auto", "direct"
+/// or "fft"; DESIGN.md §7.3): the certified pairs of the stored seed Fourier
+/// record are contracted by the symmetric-group FFT under "auto" and "fft".
+/// `poles` lists the pole selections an evaluation may
 /// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
 /// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
 /// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
@@ -830,7 +832,7 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
-            && matches!(metadata.color_contraction.as_str(), "auto" | "direct"),
+            && matches!(metadata.color_contraction.as_str(), "auto" | "direct" | "fft"),
         "unsupported contribution, convention or feature declaration",
     )?;
     require(

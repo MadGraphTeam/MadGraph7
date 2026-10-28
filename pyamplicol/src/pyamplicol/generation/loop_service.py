@@ -231,9 +231,14 @@ def _prepare(
     projected = run.color.accuracy in ("lc", "nlc")
     if projected or (consider_fft and run.resolved_color.contraction != "direct"):
         color_data = resolve_loop_color_declaration(compiled.raw_loop_model)
-        if color_data is None and (
-            projected or run.color.contraction == "symmetric-group-fft"
-        ):
+        # The legacy engine's FFT needs the formal-colour continuation; v2
+        # detects and certifies its seed orbits on the exact seed cells
+        # (``loops.v2.colour.seed_fourier``), so at full colour it needs none.
+        legacy_fft = (
+            run.color.contraction == "symmetric-group-fft"
+            and run.loop.engine is not LoopEngine.V2
+        )
+        if color_data is None and (projected or legacy_fft):
             raise GenerationError(
                 "LC/NLC or forced FFT loop generation requires explicit source colour "
                 "data in the prepared model; attach a LoopColorDeclaration with "
@@ -1137,11 +1142,15 @@ def _compare_validation_result(
 
 # --------------------------------------------------------------------- engine v2
 
-# The forced seed FFT is refused (``_v2_blockers``): the native executor
-# contracts the exported seed weights directly.
+# The seed contraction policy of a v2 request (design §7.3): "auto"
+# contracts the certified symmetric-group orbit pairs with the FFT and the
+# rest directly, "direct" every weight directly, and the forced FFT requires
+# a certified pair (refused at generation otherwise, ``LoopSlice.
+# _plan_contraction``).
 _V2_CONTRACTION = {
     ColorContraction.AUTO: "auto",
     ColorContraction.DIRECT: "direct",
+    ColorContraction.SYMMETRIC_GROUP_FFT: "fft",
 }
 
 
@@ -1156,12 +1165,6 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     admit (e.g. chiral loop-fermion vertices, WP3.2)."""
     run = backend._run_config
     reasons = []
-    if run.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
-        reasons.append(
-            "the native v2 executor contracts seed columns directly; "
-            "color.contraction='symmetric-group-fft' is unavailable with "
-            "loop.engine='v2' (use 'auto' or 'direct')"
-        )
     preparation = run.loop.preparation
     if preparation is not None and preparation.covariant_multiplets:
         reasons.append("v2 virtuals take no loop.preparation covariant multiplets")

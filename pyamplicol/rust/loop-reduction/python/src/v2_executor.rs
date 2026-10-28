@@ -20,7 +20,8 @@ use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
 use rusticol_core::loop_execution::v2::{
-    PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
+    Contraction, PointNumerators, PointResult, Report, Schedule, V2Executor as Executor,
+    V2Options,
 };
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
@@ -677,7 +678,7 @@ impl V2Executor {
     /// columns to the tree program and `plan_components` replaces its plan
     /// Born components (an observable column set's plan).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
@@ -690,6 +691,7 @@ impl V2Executor {
         trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
+        fourier: Option<String>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -734,8 +736,17 @@ impl V2Executor {
         if trees.is_none() && (columns.is_some() || plan_components.is_some()) {
             return Err(error("observable columns need a tree program"));
         }
+        let mut executor = Executor::new(plan, lanes, threads).map_err(error)?;
+        if let Some(record) = fourier {
+            // The seed FFT needs square roots: the exact carrier contracts
+            // directly (`loop_v2::fourier`).
+            if matches!(carrier, Carriers::Exact) {
+                return Err(error("the exact carrier contracts seeds directly"));
+            }
+            executor = executor.with_fourier(record.as_bytes()).map_err(error)?;
+        }
         Ok(Self {
-            executor: Executor::new(plan, lanes, threads).map_err(error)?,
+            executor,
             carrier,
             engine: engine.to_owned(),
             backend: None,
@@ -789,6 +800,20 @@ impl V2Executor {
     #[getter]
     fn lanes(&self) -> usize {
         self.executor.lanes()
+    }
+
+    /// The certified seed FFT (`fourier=`): `{"jobs", "pairs", "covered",
+    /// "group_order"}`, or None when every seed is contracted directly.
+    #[getter]
+    fn fourier(&self) -> Option<BTreeMap<&'static str, usize>> {
+        self.executor.fourier().map(|fourier| {
+            BTreeMap::from([
+                ("jobs", fourier.jobs()),
+                ("pairs", fourier.pairs()),
+                ("covered", fourier.covered()),
+                ("group_order", fourier.group_order()),
+            ])
+        })
     }
 
     #[getter]
@@ -872,7 +897,7 @@ impl V2Executor {
     /// `part_chunks` chunks) and the others by B. `poles` is `"all"`, `"none"`
     /// or `"split"` (each lane's UV residue as a fourth column, DESIGN.md
     /// §12.4); `master_poles` selects the masters' residues (generic engine).
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both"))]
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto"))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -888,6 +913,7 @@ impl V2Executor {
         schedule: &str,
         part_chunks: Option<usize>,
         master_poles: &str,
+        contraction: &str,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -906,6 +932,12 @@ impl V2Executor {
                 "B" => Schedule::B,
                 "M" => Schedule::M,
                 _ => return Err(error("an evaluation runs schedule B or M")),
+            },
+            contraction: match contraction {
+                "auto" => Contraction::Auto,
+                "direct" => Contraction::Direct,
+                "fft" => Contraction::Fft,
+                _ => return Err(error("contraction must be auto, direct or fft")),
             },
             ..V2Options::default()
         };
