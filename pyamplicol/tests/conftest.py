@@ -134,7 +134,7 @@ def _missing_input(name: str) -> str:
     variables, candidates = _EXTERNAL_INPUTS[name]
     if name in _OPT_IN_INPUTS:
         return f"{name} unavailable; set {variables[0]}"
-    looked = ", ".join(str(path) for path in candidates) or "none"
+    looked = ", ".join(str(path) for path in dict.fromkeys(candidates)) or "none"
     return (
         f"{name} unavailable: set {' or '.join(variables)}; default locations "
         f"looked at: {looked} ({_WORKSPACE_ORIGIN})"
