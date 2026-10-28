@@ -49,6 +49,7 @@ from pyamplicol.models.loading import (
 
 from .blocks import TreeBlocks, _blocks, vetoed_particle_ids
 from .ct_recursion import (
+    AnomalousVetoError,
     CountertermRecursion,
     UnloweredCountertermError,
     _physical,
@@ -912,6 +913,7 @@ def lowered_counterterm_model(
     declaration: Any = None,
     request: tuple[Any, Any, Any] | None = None,
     order_limits: Mapping[str, int] | None = None,
+    allow_anomalous_veto: bool = False,
 ) -> Any:
     """The CT-lowered model of ``compiled`` for the closure, cached.
 
@@ -931,6 +933,8 @@ def lowered_counterterm_model(
     ``order_limits`` (``program_order_limits``): at g g > g g g g, 9 of
     loop_sm's 96 vertices and only its QCD counterterms. Without ``request``
     the whole model is prepared without bounds and lowered.
+    ``allow_anomalous_veto`` is the [U2] override (``ct_recursion``, "Anomalous
+    vetoes").
     """
 
     from .ct_recursion import lower_model_counterterms
@@ -943,6 +947,7 @@ def lowered_counterterm_model(
         None if declaration is None else repr(declaration),
         None if request is None else request[0],
         None if order_limits is None else tuple(sorted(order_limits.items())),
+        bool(allow_anomalous_veto),
     )
     found = _LOWERED.get(key)
     if found is None or found[0] is not compiled:
@@ -975,6 +980,7 @@ def lowered_counterterm_model(
             continuation=continuation,
             order_limits=order_limits,
             species_orders=prepared.structure.perturbative_species_orders,
+            allow_anomalous_veto=key[-1],
         )
         found = _LOWERED[key] = (compiled, lowered)
         while len(_LOWERED) > _LOWERED_KEPT:
@@ -998,6 +1004,7 @@ def counterterm_program_blocks(
     scope: Any = None,
     stage: Callable[[str, Callable[[], Any]], Any] | None = None,
     u1_grades: bool = False,
+    allow_anomalous_veto: bool = False,
 ) -> CountertermBlocks:
     """The CT program (``CountertermBlocks``) of a request (design §6.1).
 
@@ -1016,7 +1023,10 @@ def counterterm_program_blocks(
 
     A rule the lowering cannot lower is inert when its vertex enters no tree
     of the program (``InsertionReachability``, REQUIREMENTS_ADDENDUM J); the
-    request is refused (``UnloweredCountertermError``) when one can enter.
+    request is refused (``UnloweredCountertermError``) when one can enter,
+    with ``AnomalousVetoError`` when one of them holds a Levi-Civita cell
+    the veto keeps from cancelling and ``allow_anomalous_veto`` (the [U2]
+    override, ``ct_recursion``) is not set.
     """
 
     from pyamplicol.processes.model import build_model_process_ir
@@ -1038,6 +1048,7 @@ def counterterm_program_blocks(
             order_limits=None
             if scope is None
             else program_order_limits(compiled, born_orders, selection.loop_orders),
+            allow_anomalous_veto=allow_anomalous_veto,
         ),
     )
     rules = prepared.counterterms.rules
@@ -1070,7 +1081,11 @@ def counterterm_program_blocks(
         def fields(name: str) -> str:
             return " ".join(particles[p] for p in rules[name].particle_pdgs)
 
-        raise UnloweredCountertermError(
+        anomalous = any(
+            rule_key(rules[name]) in lowered.anomalous_veto
+            for name in recursion.residual
+        )
+        raise (AnomalousVetoError if anomalous else UnloweredCountertermError)(
             "counterterm rules the tree recursion cannot lower, whose "
             "vertices can enter a tree of the request: "
             + "; ".join(

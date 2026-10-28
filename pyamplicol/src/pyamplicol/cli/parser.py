@@ -389,6 +389,17 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--allow-anomalous-veto",
+        dest="generation.allow_anomalous_veto",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: lower the Levi-Civita counterterms a --particle-veto "
+            "keeps from cancelling (e.g. a veto breaking a quark doublet), "
+            "refused by default; recorded in the artifact"
+        ),
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,

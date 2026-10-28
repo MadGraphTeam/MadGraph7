@@ -7,6 +7,7 @@
 mod batch;
 mod dual_weights;
 mod exact;
+mod model_proofs;
 mod physical;
 mod portable;
 mod stability;
@@ -267,6 +268,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     v2_colour::register(module)?;
     v2_lower::register(module)?;
     v2_seeds::register(module)?;
+    model_proofs::register(module)?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
     Ok(())
 }

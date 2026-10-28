@@ -151,12 +151,12 @@ def _ufo_contraction(compiled, lorentz, spins, currents, momenta, open_leg):
     """Numerically contract a normalized UFO Lorentz tensor with spenso."""
 
     from pyamplicol._internal.physics.symbols import symbols
-    from pyamplicol.loops.v2.catalogue import ufo_levi_civita_tensor
     from pyamplicol.models import compiler_symbolica as sym
+    from pyamplicol.models.tensors import levi_civita_tensor
 
     model_symbols = symbols.model(compiled.name)
     library = sym.TensorLibrary.hep_lib_atom()
-    library.register(ufo_levi_civita_tensor())
+    library.register(levi_civita_tensor())
     names = [
         sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))
         for leg in range(len(spins))
@@ -490,7 +490,6 @@ def test_propagator_numerators_equal_the_ufo_declaration(compiled, catalogue):
 
 def test_counterterm_sites_equal_the_ufo_counterterm_vertex(compiled, catalogue):
     from pyamplicol._internal.physics.symbols import symbols
-    from pyamplicol.loops.v2.catalogue import _with_levi_civita
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.tensors import normalize_lorentz_expression
 
@@ -530,7 +529,7 @@ def test_counterterm_sites_equal_the_ufo_counterterm_vertex(compiled, catalogue)
             )
         }
         normalized = normalize_lorentz_expression(
-            _with_levi_civita(lorentz[binding.lorentz_name]["structure"]),
+            lorentz[binding.lorentz_name]["structure"],
             spins,
             model_symbols=symbols.model(compiled.name),
         ).expression
@@ -539,7 +538,8 @@ def test_counterterm_sites_equal_the_ufo_counterterm_vertex(compiled, catalogue)
         )
         assert _zero(actual - expected), binding.key
     # The Levi-Civita R2 vertices with a Z have kernels (Epsilon with ALOHA's
-    # components, ``test_loop_v2_levi_civita``); nothing is unsupported.
+    # components, ``models.tensors.LEVI_CIVITA``, ``test_loop_v2_levi_civita``);
+    # nothing is unsupported.
     assert not catalogue.unsupported_counterterms
     assert {"V_GGZ", "V_GGGZ"} <= {
         binding.vertex

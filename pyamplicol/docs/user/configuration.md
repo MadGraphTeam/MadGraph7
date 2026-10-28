@@ -740,6 +740,18 @@ of NJet. A vetoed particle cannot be external. The veto is stored with the
 artifact's generation request and in its generation filters; it is available
 with `loop.engine = "v2"` only.
 
+Anomalous vetoes. A veto can keep model counterterms from cancelling that
+cancel with every flavour admitted: vetoing `d s b` (or `t`) in a request with
+a Z and gluons leaves the axial Levi-Civita R2 of the Z with gluons
+(`R2_GGZ`, `R2_GGGVa`), which cancels between the members of complete quark
+doublets, uncancelled. Such a request is refused by default
+(`AnomalousVetoError`, naming the counterterm and the override). `[generation]
+allow_anomalous_veto = true` (CLI `--allow-anomalous-veto`; Python
+`SliceRequest(allow_anomalous_veto=True)`) lowers those counterterms as tree
+vertices and records the choice: the artifact's request record and its
+generation filters (`allow_anomalous_veto`, `counterterms_anomalous_veto`:
+rule -> cells). It needs a `particle_veto`.
+
 Widths. v2 virtuals use real on-shell masses: loop propagators carry no width and
 the model counterterms renormalise the real mass. A coloured particle that a
 tree current propagates (the top in `g g > t t~`) must therefore have a zero

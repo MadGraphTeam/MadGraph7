@@ -1500,8 +1500,8 @@ def counterterm_metric_lorentz(name: str) -> dict[str, Any] | None:
 def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
     """Why the tree compiler cannot normalise Lorentz structure ``name``.
 
-    ``None`` when it can. The tree vocabulary has no Levi-Civita tensor, which
-    some CT vertices (e.g. the gluon-gluon-Z R2) use.
+    ``None`` when it can, the Levi-Civita tensor of some CT vertices (e.g. the
+    gluon-gluon-Z R2) included (``counterterm_lorentz_levi_civita``).
     """
 
     from .._internal.physics.symbols import symbols
@@ -1519,6 +1519,24 @@ def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
     except (NotImplementedError, ValueError) as error:
         return str(error)
     return None
+
+
+def counterterm_lorentz_levi_civita(compiled: CompiledModel, name: str) -> bool:
+    """Whether the normalised Lorentz structure ``name`` contracts the
+    Levi-Civita tensor (``tensors.LEVI_CIVITA``, UFO ``Epsilon``)."""
+
+    from .._internal.physics.symbols import symbols
+    from .tensors import LEVI_CIVITA, normalize_lorentz_expression
+
+    (record,) = (
+        item for item in compiled.model["lorentz_structures"] if item["name"] == name
+    )
+    heads = normalize_lorentz_expression(
+        str(record["structure"]),
+        tuple(int(value) for value in record["spins"]),
+        model_symbols=symbols.model(compiled.name),
+    ).tensor_heads
+    return LEVI_CIVITA.rsplit("::", 1)[-1] in heads
 
 
 def _orders_within(

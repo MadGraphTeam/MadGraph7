@@ -43,12 +43,14 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 116
+    assert len(FIELD_REGISTRY) == 117
     assert FIELD_REGISTRY["loop.engine"].default == "legacy"
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].default is None
     assert FIELD_REGISTRY["generation.particle_veto"].kind == "list_str"
     assert FIELD_REGISTRY["generation.particle_veto"].default == ()
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
@@ -480,6 +482,12 @@ def test_particle_veto_is_a_v2_virtual_generation_option() -> None:
         GenerationConfig(particle_veto=[""])
     with pytest.raises(ConfigurationError, match="list of strings"):
         GenerationConfig(particle_veto="t")
+    # [U2]: the override of an anomalous veto accompanies a veto.
+    assert GenerationConfig(particle_veto=["t"], allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match=r"requires generation\.particle_veto"):
+        GenerationConfig(allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match="must be a boolean"):
+        GenerationConfig(particle_veto=["t"], allow_anomalous_veto="yes")
 
 
 def test_cpp_flags_cannot_hide_target_cpu_requirements() -> None:

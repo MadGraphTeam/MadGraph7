@@ -651,6 +651,26 @@ class GeneratedProcess:
             return {}
         return dict(sorted(program.recursion.inert.items()))
 
+    def anomalous_veto_counterterms(self) -> dict[str, list[str]]:
+        """The CT rules of the request with a Levi-Civita cell its
+        ``particle_veto`` keeps from cancelling that cancels without it
+        (``ct_recursion``, "Anomalous vetoes"; [U2]), by name, with those
+        cells: lowered under ``allow_anomalous_veto``, the generation
+        record's ``counterterms_anomalous_veto``."""
+
+        from .ct_recursion import rule_key
+
+        program = self.slice.counterterm_program
+        if program is None:
+            return {}
+        recursion = program.recursion
+        anomalous = recursion.model.anomalous_veto
+        return {
+            name: sorted(str(cell) for cell in anomalous[rule_key(rule)])
+            for name, rule in sorted(recursion.rules.items())
+            if rule_key(rule) in anomalous
+        }
+
     def native_fallbacks(self) -> dict[str, str]:
         """The generation stages that took the tree engine instead of the
         native loop-request DAG builder, each with the listed feature it
