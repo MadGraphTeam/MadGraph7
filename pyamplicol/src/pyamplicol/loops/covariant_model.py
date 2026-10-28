@@ -287,8 +287,10 @@ def with_source_repairs(model: Any) -> Any:
 
     from dataclasses import replace
 
+    from pyamplicol.models.loop_import import RawLoopModel
+
     raw = model.raw_loop_model
-    if raw is None:
+    if not isinstance(raw, RawLoopModel):
         return model
     repaired = repair_source_declarations(raw)
     if repaired is raw:

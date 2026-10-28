@@ -203,9 +203,12 @@ def test_shipped_loop_sm_is_verbatim_and_selected_by_name(loop_sm_ufo, tmp_path)
     """The installed loop_sm is MG5_aMC 3.7.0's byte for byte; a bare name
     selects it (card, API), an existing path of that name wins."""
 
+    from pyamplicol._internal.packaged_models import (
+        packaged_ufo_model,
+        packaged_ufo_models,
+    )
     from pyamplicol.api.requests import ModelSource
     from pyamplicol.config import resolve_config
-    from pyamplicol.models.packaged import packaged_ufo_model, packaged_ufo_models
 
     shipped = packaged_ufo_model("loop_sm")
     assert shipped is not None and "loop_sm" in packaged_ufo_models()
@@ -236,18 +239,18 @@ def test_shipped_profile_declares_loop_sm_by_its_declarations(loop_sm_ufo):
     declaration the loop_sm tests state; an explicit or source declaration
     wins; another source gets none."""
 
+    from pyamplicol._internal.packaged_models import packaged_ufo_model
+    from pyamplicol.loops.shipped_profiles import (
+        LOOP_SM_SCHEME,
+        shipped_loop_profile,
+        source_declarations_digest,
+    )
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         resolve_loop_model_declaration,
         with_loop_model_declaration,
     )
     from pyamplicol.models.loop_import import load_raw_loop_model
-    from pyamplicol.models.loop_profiles import (
-        LOOP_SM_SCHEME,
-        shipped_loop_profile,
-        source_declarations_digest,
-    )
-    from pyamplicol.models.packaged import packaged_ufo_model
 
     digests = set()
     for source in (loop_sm_ufo, packaged_ufo_model("loop_sm")):
@@ -399,6 +402,9 @@ def _public_and_view(
         name: _values(runtime.evaluate(points, mu_r2=[8315.0] * len(points)))
         for name, runtime in runs.items()
     }
+    for born, laurent in values["public"]:
+        assert all(value != 0 for value in born)
+        assert all(sector[0] != 0 for sector in laurent)
     return runs, values
 
 
@@ -491,7 +497,6 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
             "no_b_mass",
             {"WT": "0", "WZ": "0", "WW": "0", "WH": "0"},
         ),
-        ("decay-process", "t > b w+", None, None),
     ],
 )
 def test_loop_sm_refusals_fire_in_the_dry_run(
@@ -549,11 +554,11 @@ def test_madloop_syntax_is_the_listed_refusal_naming_the_setting(expression):
 
 
 @pytest.mark.loop_physics
-def test_madloop_brackets_and_decay_chains_refuse_in_the_cli_dry_run(tmp_path):
+def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
     """``pyamplicol generate --dry-run``: '[QCD]' (a bracket of no particles,
     found at the model's process expansion) is the plan's unsupported
-    feature; a decay chain is refused when the request is parsed (exit 2).
-    Both name the key."""
+    feature; a decay chain and a 1 -> n decay are refused when the request
+    is parsed (exit 2). Each names its key."""
 
     from pyamplicol.cli import run_cli
 
@@ -582,7 +587,110 @@ def test_madloop_brackets_and_decay_chains_refuse_in_the_cli_dry_run(tmp_path):
     assert code == 0
     (feature,) = json.loads(stdout)["unsupported_features"]
     assert feature.startswith("madloop-syntax: "), feature
-    code, _, stderr = dry_run("t > b w+, w+ > e+ ve")
-    assert code == 2
-    assert "madloop-syntax: " in stderr, stderr
+    for expression, key in (
+        ("t > b w+, w+ > e+ ve", "madloop-syntax"),
+        ("t > b w+", "decay-process"),
+    ):
+        code, _, stderr = dry_run(expression)
+        assert code == 2
+        assert f"{key}: " in stderr, stderr
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    "expression", ["t > b w+", "z > e+ e- g", "p > t b~ e+ ve", "2*g > g g g"]
+)
+def test_decays_are_the_listed_refusal_tree_and_loop_alike(expression):
+    """One initial-state slot is a 1 -> n decay (``decay-process``), refused
+    by the product-wide parser; two slots (``2*g``) are a collision."""
+
+    from pyamplicol.api import ProcessRequest
+    from pyamplicol.processes.refusals import ProcessRequestUnsupported
+
+    if expression.startswith("2*"):
+        assert ProcessRequest.parse(expression).expression == expression
+        return
+    with pytest.raises(ProcessRequestUnsupported) as refused:
+        ProcessRequest.parse(expression)
+    assert refused.value.key == "decay-process"
+
+
+# ---------------------------------------------------------------- self-test
+
+
+@pytest.mark.loop_physics
+def test_self_test_evaluates_a_virtual_on_the_shipped_loop_sm(loop_native):
+    """``pyamplicol self-test``'s virtual: generated through the public route
+    on the shipped loop_sm (no checkout input), = MadLoop at its points."""
+
+    from pyamplicol.diagnostics import _virtual_check, run_self_test
+
+    check = _virtual_check()
+    assert check.status == "pass", check.detail
+    assert "MadLoop" in check.detail and "full colour" in check.detail
+    assert "Symbolica" in check.detail
+    assert "physics-virtual" in {item.name for item in run_self_test().checks}
+
+
+@pytest.mark.loop_fast
+def test_self_test_virtual_failure_names_the_reason_and_licence(monkeypatch):
+    from pyamplicol import diagnostics
+    from pyamplicol._internal import selftest_virtual
+
+    def refuse():
+        raise RuntimeError("generation refused")
+
+    monkeypatch.setattr(selftest_virtual, "run_virtual_self_test", refuse)
+    check = diagnostics._virtual_check()
+    assert check.status == "fail"
+    assert "generation refused" in check.detail and "Symbolica" in check.detail
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("key", ["majorana-fermion", "multi-fermion-contact"])
+def test_majorana_and_contact_vertices_are_listed_refusals(loop_sm_ufo, key):
+    """The model preparation refuses a self-conjugate fermion and a vertex of
+    more than two fermions with their listed keys (loop_sm doctored: the
+    electron neutrino made self-conjugate; the u u~ G vertex given a d d~
+    pair)."""
+
+    from symbolica import is_licensed
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+    if not is_licensed():
+        pytest.skip("source preparation requires licensed Symbolica")
+    raw = load_raw_loop_model(loop_sm_ufo)
+    payload = raw.to_dict()
+    particles = {
+        record["name"]: record for record in payload["collections"]["particles"]
+    }
+    if key == "majorana-fermion":
+        particles["ve"]["fields"]["antiname"] = "ve"
+    else:
+        vertex = next(
+            record
+            for record in payload["collections"]["vertices"]
+            if sorted(ref["name"] for ref in record["fields"]["particles"])
+            == ["G", "u", "u~"]
+        )
+
+        def ref(name):
+            record = particles[name]
+            return dict(
+                kind="reference", collection="particles", id=record["id"], name=name
+            )
+
+        vertex["fields"]["particles"] = [ref(n) for n in ("u~", "u", "d~", "d")]
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        prepare_loop_request_model(
+            RawLoopModel.from_dict(payload),
+            born_order_bounds={"QCD": 2, "QED": 0},
+            loop_order_bounds={"QCD": 4, "QED": 0},
+            fixed_parameters={"MB": "0", "ymb": "0"},
+            certify_primitives=False,
+        )
+    assert refused.value.key == key

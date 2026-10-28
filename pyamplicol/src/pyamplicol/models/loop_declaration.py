@@ -133,7 +133,7 @@ def resolve_loop_model_declaration(
 ) -> LoopModelDeclaration:
     """Use an explicit whole config declaration, otherwise the source
     declaration, otherwise the shipped profile of the exact source
-    (``loop_profiles.shipped_loop_profile``).
+    (``loops.shipped_profiles.shipped_loop_profile``).
 
     Partial config declarations fail; they are never completed from unrelated
     source fields. The chosen declaration covers the selected joint correction
@@ -145,10 +145,10 @@ def resolve_loop_model_declaration(
         if payload is not None:
             declaration = LoopModelDeclaration.from_dict(payload)
         else:
-            from .loop_profiles import shipped_loop_profile
+            from pyamplicol.loops.shipped_profiles import shipped_loop_profile
 
             # A source pyAmpliCol ships the declaration of (by the digest of
-            # its declarations, ``loop_profiles``), e.g. MG5_aMC's loop_sm.
+            # its declarations, ``loops.shipped_profiles``), e.g. MG5_aMC's loop_sm.
             profile = shipped_loop_profile(raw)
             if profile is None:
                 raise ValueError(

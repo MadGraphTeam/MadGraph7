@@ -232,8 +232,10 @@ carry a `ValueError` message instead of a code; they are marked below.
 A one-loop v2 request is refused at generation, with a typed error whose
 message starts with the rule's key and names the rule and the remedy, rather
 than stored with a value it does not compute exactly. `generate --dry-run
---json` lists the keys (`estimated_coverage.loop_admission_refusals` and
-`native_export_refusals`).
+--json` lists the keys (`estimated_coverage.loop_admission_refusals`,
+`process_request_refusals` and `native_export_refusals`). MG5_aMC's loop_sm
+ships with pyAmpliCol; see [One-loop QCD on loop_sm](loop-sm-and-madloop.md)
+for its declaration, restriction recipes and the MadLoop syntax mapping.
 
 | Feature | Status | Condition and consequence |
 | --- | --- | --- |
@@ -242,6 +244,13 @@ than stored with a value it does not compute exactly. `generate --dry-run
 | Loop vertex the restricted tree model lacks | rejected | `loop-vertex-outside-tree-model`: a loop vertex at a coupling order the request's tree model does not hold, while its couplings there are not shown to vanish at the restriction, named with its particles and orders when a loop of the request uses it. Vertices whose couplings vanish identically at the restriction (decided from the coupling values, e.g. the off-diagonal CKM W vertices at `loop_qcd_qed_sm_Gmu`'s diagonal-CKM default) are no loop vertices and are not refused. |
 | Fermion line changing colour representation | rejected | `fermion-line-representation`: a vertex joining a coloured and a colour-singlet fermion (a leptoquark) that a tree or loop of the request can use, named, before any tree is built; veto one of its particles or bound its coupling order. |
 | On-shell external photons with electroweak corrections | rejected | `external-photon-alpha0`: their alpha(0) convention is not part of the stored native programs yet; refused as soon as it is known. QCD corrections are available. |
+| Decay requests | rejected | `decay-process`: a 1 -> n request (one initial particle), tree and one-loop alike. |
+| MG5_aMC process syntax | rejected | `madloop-syntax`: NLO brackets (`[virt=QCD]`, `[QCD]`), coupling-order constraints (`QED=2`, `QCD^2==4`), `/`, `$`, decay chains and `@N` inside the expression; the message names the run-card setting (`process.loop_coupling_orders`, `process.max_coupling_orders`, `generation.particle_veto`). |
+| Loop-induced processes | rejected | `loop-induced`: no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, `g g > a a`). |
+| Coloured widths | rejected | `coloured-width`: a coloured particle with a nonzero width in a tree current (the top at every loop_sm restriction but `no_widths`); fix the width to zero in `[loop.preparation] fixed_parameters` (`WT = "0"`) or take `restriction = "no_widths"`. |
+| Dirac-Weyl closures | rejected | `dirac-weyl-closure`: a fermion line joining massive and massless fermions through a chiral vertex whose massive current closes on a massless one (`b b~ > w+ w-` on `loop_sm-no_b_mass`); keep the mass in the tree model and fix it to zero in `[loop.preparation] fixed_parameters`. |
+| Lorentz slot arity | conditional | a vertex referencing a constant scalar tensor with fewer slots than particles (loop_sm's `V_1001` with `SSS1`) is repaired by structure to the model's unique same-valued tensor of the right slots and recorded (`pyamplicol_source_repairs`); any other mismatch is `lorentz-slot-arity` when a request reaches the vertex. |
+| Majorana fermions, multi-fermion contacts | rejected | `majorana-fermion`, `multi-fermion-contact`: at model preparation. |
 | SymJIT plane check | conditional | `plane-mismatch`: a stored program whose binary64 SymJIT application disagrees with its exact evaluator at the generation's check (seen for square-root arguments on their branch cut, which depends on the model's parameter declaration order) is refused, naming the output (a model coupling by its UFO coupling and vertex, a counterterm coupling with its epsilon power, or a kernel); e.g. `g g > t t~` with QCD and QED corrections on `loop_qcd_qed_sm_Gmu` (its `UV_GTTLEW` counterterm). |
 
 ## Related pages

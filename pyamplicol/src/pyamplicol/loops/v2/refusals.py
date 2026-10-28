@@ -74,6 +74,24 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   not hold at the order a loop position takes it has no structure to read:
   the request is refused when a loop position uses it
   (``colour.SeedColour.states``), naming the vertex and the order.
+* The QCD guards of the public route (m-qcd MQ-MODEL; user rulings
+  2026-10-28 ~15:25): ``loop-induced`` (no Born amplitude within the
+  request's coupling-order limits, ``generation.loop_service._v2_request``),
+  ``coloured-width`` (a coloured particle with a nonzero width in a tree
+  current, ``artifact.require_zero_coloured_widths``), ``dirac-weyl-closure``
+  (a massive Dirac current closing on a massless Weyl one,
+  ``generation.dag_ordering._direct_contraction_ir``, shared with tree
+  requests and therefore also a ``ValueError``,
+  ``LoopRequestUnsupportedValue``), and at model preparation
+  (``loops.covariant_model.build_covariant_structure``)
+  ``lorentz-slot-arity`` (a vertex tensor whose slots do not match its
+  particles once the structural source repair,
+  ``covariant_model.repair_source_declarations``, has moved the constant
+  scalar ones), ``majorana-fermion`` and ``multi-fermion-contact``. Each is
+  decided by structure: widths, masses and chiralities, spin slots, the
+  self-conjugacy of a fermion, the number of fermions at a vertex.
+  Process-request refusals (1 -> n decays, MG5_aMC syntax) are listed in
+  ``processes.refusals``.
 """
 
 from __future__ import annotations
@@ -533,6 +551,7 @@ __all__ = [
     "LOOP_ADMISSION_REFUSALS",
     "LoopAdmissionRefusal",
     "LoopRequestUnsupported",
+    "LoopRequestUnsupportedValue",
     "listed_refusal_keys",
     "mixed_grade_blocks",
     "representation_changing_vertices",

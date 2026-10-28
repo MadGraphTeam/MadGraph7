@@ -204,6 +204,33 @@ def _physics_check() -> DiagnosticCheck:
     )
 
 
+def _virtual_check() -> DiagnosticCheck:
+    """A one-loop virtual on the shipped loop_sm against MadLoop
+    (``_internal.selftest_virtual``); the Symbolica licence state is always
+    named, so a licence failure is never silent."""
+
+    try:
+        from .licensing import detect_symbolica_license
+
+        state = detect_symbolica_license(suggest=False, json_mode=True)
+        mode = "licensed" if state.licensed else "restricted single-core"
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual", "fail", f"Symbolica unavailable: {exc}"
+        )
+    try:
+        from ._internal.selftest_virtual import run_virtual_self_test
+
+        summary, _worst = run_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "fail",
+            f"{type(exc).__name__}: {exc} (Symbolica {mode})",
+        )
+    return DiagnosticCheck("physics-virtual", "pass", f"{summary}; Symbolica {mode}")
+
+
 def _symbolica_check() -> DiagnosticCheck:
     try:
         from .licensing import detect_symbolica_license
@@ -251,6 +278,7 @@ def run_self_test() -> DiagnosticReport:
         _native_check(required=True),
         _sdk_check(required=True),
         _physics_check(),
+        _virtual_check(),
     )
     return DiagnosticReport(__version__, checks)
 

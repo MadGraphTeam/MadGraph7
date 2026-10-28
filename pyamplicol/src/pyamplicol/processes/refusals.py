@@ -150,6 +150,23 @@ def refuse_order_brackets(
         )
 
 
+def refuse_decay_syntax(expression: str) -> None:
+    """Refuse (``decay-process``) an expression one of whose processes has a
+    single initial-state slot (repetitions such as ``2*g`` count their
+    slots; a multiparticle label or anonymous bracket is one slot)."""
+
+    from .core_syntax import _split_repeat_token, _tokenize_side, split_process_set
+
+    for process in split_process_set(" ".join(str(expression).split())):
+        initial, separator, _final = process.partition(">")
+        if not separator:
+            continue
+        slots = sum(
+            _split_repeat_token(token)[0] for token in _tokenize_side(initial.strip())
+        )
+        refuse_decay(process, slots)
+
+
 def refuse_decay(expression: str, initial_count: int) -> None:
     """Refuse (``decay-process``) a request with one initial particle."""
 
@@ -167,6 +184,7 @@ __all__ = [
     "ProcessRequestUnsupported",
     "listed_process_refusal_keys",
     "refuse_decay",
+    "refuse_decay_syntax",
     "refuse_madloop_syntax",
     "refuse_order_brackets",
 ]

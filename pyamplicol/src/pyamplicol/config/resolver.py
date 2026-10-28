@@ -265,7 +265,7 @@ def _coerce(
             if value in {"built-in-sm", "builtin_sm"} or is_sm_heft_alias(value):
                 result = value
             else:
-                from ..models.packaged import resolve_model_path
+                from .._internal.packaged_models import resolve_model_path
 
                 # A bare name of a shipped UFO model ("loop_sm") selects it
                 # when no such path exists next to the card.

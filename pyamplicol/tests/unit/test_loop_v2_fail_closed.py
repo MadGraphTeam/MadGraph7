@@ -139,6 +139,13 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "veto-unlabelled-counterterms",
         # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
         "loop-vertex-outside-tree-model",
+        # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``).
+        "loop-induced",
+        "coloured-width",
+        "dirac-weyl-closure",
+        "lorentz-slot-arity",
+        "majorana-fermion",
+        "multi-fermion-contact",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")

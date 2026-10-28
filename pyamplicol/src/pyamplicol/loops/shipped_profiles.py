@@ -13,7 +13,7 @@ directory itself and every restriction of either have the same digest: a
 restriction lives in the source's metadata, not in its declarations.
 
 An explicit ``[loop.model]`` or a declaration in the model's own metadata
-always wins (``loop_declaration.resolve_loop_model_declaration``). Like every
+always wins (``models.loop_declaration.resolve_loop_model_declaration``). Like every
 declaration, a profile is declared, not certified.
 """
 
@@ -24,10 +24,13 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .loop_declaration import LoopModelDeclaration, LoopSchemeDeclaration
+from pyamplicol.models.loop_declaration import (
+    LoopModelDeclaration,
+    LoopSchemeDeclaration,
+)
 
 if TYPE_CHECKING:
-    from .loop_import import RawLoopModel
+    from pyamplicol.models.loop_import import RawLoopModel
 
 
 @dataclass(frozen=True, slots=True)
