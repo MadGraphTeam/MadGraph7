@@ -51,10 +51,12 @@ class NativePlatformError(DependencyError):
     (``GLIBC_2.38``, or an ABI marker such as ``GLIBC_ABI_GNU2_TLS``). Raised
     before ``pyamplicol._rusticol`` is loaded when the running glibc does not
     define one of them, or when the process does not run on glibc at all; and
-    in place of the dynamic loader's "version `GLIBC_...' not found" error for
-    any native library, a dependency's included. The dynamic loader would
-    refuse the library for the same reason. It is not an ImportError, so code
-    that treats a missing optional module as absent does not hide it.
+    in place of the dynamic loader's "version `GLIBC_...' not found" error when
+    it loads ``pyamplicol._rusticol`` (a library it depends on included) or
+    Symbolica's extension at ``import pyamplicol``; other native code reports
+    the loader's error unchanged. The dynamic loader would refuse the library
+    for the same reason. It is not an ImportError, so code that treats a
+    missing optional module as absent does not hide it.
 
     Attributes: ``library`` (path, if known), ``missing`` (the version names
     the running glibc does not define, numbered ones first), ``required`` (the

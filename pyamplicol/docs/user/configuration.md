@@ -647,9 +647,11 @@ kinematics.
 checkout with `tools/developer/build_loop_native.py` (`_rusticol.so`,
 `librusticol_loop_sdk.so`) need glibc 2.38 or newer; the manylinux 2.28 wheels
 need glibc 2.28. On an older glibc, importing the extension fails at once with
-`NativePlatformError` naming the missing versions and the running glibc, and C,
-C++ or Fortran programs linked against `librusticol_loop_sdk.so` are stopped by
-the dynamic loader with ``version `GLIBC_2.38' not found``; see
+`NativePlatformError` naming the missing versions and the running glibc. C,
+C++ or Fortran programs fail to link against `librusticol_loop_sdk.so` with a
+toolchain on an older glibc (``undefined reference to `__isoc23_strtol@GLIBC_2.38'``), and a
+program built on a newer glibc is stopped by the dynamic loader on an older one
+(``version `GLIBC_2.38' not found``); see
 [Native libraries and glibc](installation.md#native-libraries-and-glibc).
 
 #### Ultraviolet and infrared poles

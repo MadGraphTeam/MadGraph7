@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 """The native libraries' glibc requirements and the load-time platform check.
 
-The release natives built by ``tools/developer/build_loop_native.py`` need at
-most ``GLIBC_2.38`` and no glibc ABI marker (the build compiles its C
+The release natives built by ``tools/developer/build_loop_native.py`` need
+``GLIBC_2.38`` at most and no glibc ABI marker (the build compiles its C
 dependencies with the traditional TLS dialect, so no ``GLIBC_ABI_GNU2_TLS``).
-A toolchain change that raises that floor fails
-``test_staged_natives_stay_within_the_documented_glibc_floor`` instead of
+A toolchain change that moves that floor fails
+``test_staged_natives_stay_within_the_documented_glibc_floor`` (the measured
+requirement is pinned exactly, so the documented floor follows it) instead of
 users. Before ``pyamplicol._rusticol`` is loaded, every glibc version it needs
 is looked up in the version definitions of the glibc libraries this process
 has loaded; a missing one raises ``NativePlatformError``, and the dynamic
@@ -23,6 +24,7 @@ import importlib.machinery
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import textwrap
@@ -64,7 +66,7 @@ def _staged_build() -> Path:
     return build
 
 
-def _assert_within_floor(path: Path) -> None:
+def _assert_documented_floor(path: Path) -> None:
     names = native_loader.glibc_version_requirements(path)
     assert names, f"{path} declares no glibc version requirement"
     markers = [name for name in names if native_loader.numbered_release(name) is None]
@@ -76,9 +78,9 @@ def _assert_within_floor(path: Path) -> None:
     )
     newest = max(names, key=lambda name: native_loader.numbered_release(name) or ())
     release = native_loader.numbered_release(newest)
-    assert release is not None and release <= DOCUMENTED_FLOOR, (
-        f"{path} needs {newest}, above the documented floor glibc 2.38: update "
-        "DOCUMENTED_FLOOR, docs/user/installation.md, the SDK README and "
+    assert release == DOCUMENTED_FLOOR, (
+        f"{path} needs {newest} at most, not the documented floor GLIBC_2.38: "
+        "update DOCUMENTED_FLOOR, docs/user/installation.md, the SDK README and "
         "headers, and DESIGN §12.1"
     )
 
@@ -183,7 +185,7 @@ class _Stubs:
                 "-o",
                 str(library),
             )
-            assert native_loader.glibc_version_requirements(library) == tuple(
+            assert sorted(native_loader.glibc_version_requirements(library) or ()) == (
                 sorted(versions)
             )
             self.built[key] = library
@@ -203,47 +205,61 @@ def _running_libc() -> tuple[str, frozenset[str]]:
     return loaded
 
 
-def _readelf_requirements(path: Path) -> tuple[str, ...]:
+def _readelf_versions(path: Path) -> str:
     readelf = shutil.which("readelf")
     if readelf is None:
         pytest.fail("readelf (binutils) is not on PATH: no independent ELF reader")
-    output = subprocess.run(
+    return subprocess.run(
         [readelf, "-V", "--wide", str(path)],
         check=True,
         capture_output=True,
         text=True,
     ).stdout
+
+
+def _readelf_requirements(path: Path) -> tuple[str, ...]:
+    output = _readelf_versions(path)
     names: set[str] = set()
     needs = False
     for line in output.splitlines():
         if line.startswith("Version "):
             needs = line.startswith("Version needs section")
         elif needs and "Name: GLIBC_" in line:
-            names.add(line.split("Name: ", 1)[1].split()[0])
+            # A weak need ("Flags: WEAK") is not enforced by the dynamic loader.
+            name, _, flags = line.split("Name: ", 1)[1].partition("Flags: ")
+            if "WEAK" not in flags.split("Version:")[0]:
+                names.add(name.split()[0])
     return tuple(sorted(names))
 
 
 def test_staged_natives_stay_within_the_documented_glibc_floor() -> None:
     build = _staged_build()
     for name in NATIVES:
-        _assert_within_floor(build / name)
+        _assert_documented_floor(build / name)
 
 
 def test_elf_requirements_match_readelf(stubs) -> None:
     build = _staged_build()
-    built = stubs.library("GLIBC_2.2.5", "GLIBC_ABI_GNU2_TLS", "GLIBC_2.43")
+    built = stubs.library("GLIBC_2.29", "GLIBC_ABI_GNU2_TLS", "GLIBC_2.43", "GLIBC_2.3")
+    # By release (GLIBC_2.3 before GLIBC_2.29), then the markers.
+    assert native_loader.glibc_version_requirements(built) == (
+        "GLIBC_2.3",
+        "GLIBC_2.29",
+        "GLIBC_2.43",
+        "GLIBC_ABI_GNU2_TLS",
+    )
     for path in (*(build / name for name in NATIVES), built):
-        assert native_loader.glibc_version_requirements(path) == (
-            _readelf_requirements(path)
-        )
+        requirements = native_loader.glibc_version_requirements(path)
+        assert sorted(requirements or ()) == list(_readelf_requirements(path))
 
 
-def test_the_floor_pin_fails_on_a_raised_requirement_or_an_abi_marker(stubs) -> None:
-    _assert_within_floor(stubs.library("GLIBC_2.2.5", "GLIBC_2.38"))
-    with pytest.raises(AssertionError, match=r"needs GLIBC_2\.39, above"):
-        _assert_within_floor(stubs.library("GLIBC_2.2.5", "GLIBC_2.39"))
+def test_the_floor_pin_fails_on_a_changed_requirement_or_an_abi_marker(stubs) -> None:
+    _assert_documented_floor(stubs.library("GLIBC_2.2.5", "GLIBC_2.38"))
+    for changed in ("GLIBC_2.39", "GLIBC_2.37"):
+        with pytest.raises(AssertionError, match=rf"needs {changed} at most, not"):
+            _assert_documented_floor(stubs.library("GLIBC_2.2.5", changed))
     with pytest.raises(AssertionError, match=r"needs \['GLIBC_ABI_GNU2_TLS'\]"):
-        _assert_within_floor(stubs.library("GLIBC_2.2.5", "GLIBC_ABI_GNU2_TLS"))
+        _assert_documented_floor(stubs.library("GLIBC_2.2.5", "GLIBC_ABI_GNU2_TLS"))
 
 
 def test_a_version_the_running_glibc_lacks_is_refused_before_loading(stubs) -> None:
@@ -285,6 +301,62 @@ def test_a_version_the_running_glibc_lacks_is_refused_before_loading(stubs) -> N
         f"{major}.{minor + 1}",
     )
     assert f"The dynamic loader reported: {loader.value}" in str(translated)
+
+
+def _weakened(library: Path, version: str, into: Path) -> Path:
+    """A copy of ``library`` whose need for ``version`` is weak (VER_FLG_WEAK).
+
+    GNU ld emits no weak version needs, so the flag is set in the file.
+    """
+
+    data = bytearray(library.read_bytes())
+    with open(library, "rb") as stream:
+        elf = native_loader._Elf(stream)
+        need = struct.Struct(elf.order + "HHIII")
+        auxiliary = struct.Struct(elf.order + "IHHII")
+        patched = 0
+        for kind, offset, _, link, entries in elf.sections:
+            if kind != native_loader._SHT_GNU_VERNEED:
+                continue
+            strings = elf._strings(link)
+            position = offset
+            for _ in range(entries):
+                _, count, _, first, following = need.unpack_from(data, position)
+                at = position + first
+                for _ in range(count):
+                    _, flags, _, name, step = auxiliary.unpack_from(data, at)
+                    if native_loader._string(strings, name) == version:
+                        struct.pack_into(elf.order + "H", data, at + 4, flags | 0x2)
+                        patched += 1
+                    at += step
+                position += following
+    assert patched == 1
+    into.write_bytes(bytes(data))
+    return into
+
+
+def test_a_weak_version_need_is_not_enforced(stubs, tmp_path) -> None:
+    """ld.so accepts a library whose weak version need the libc lacks."""
+
+    running = native_loader.running_glibc()
+    assert running is not None, "this test host runs glibc"
+    major, minor = map(int, running.split(".")[:2])
+    above = f"GLIBC_{major}.{minor + 1}"
+    library = _weakened(
+        stubs.library("GLIBC_2.2.5", above), above, tmp_path / "weak.so"
+    )
+    readelf = _readelf_versions(library)
+    assert any(
+        f"Name: {above}" in line and "Flags: WEAK" in line
+        for line in readelf.splitlines()
+    ), readelf
+    assert native_loader.glibc_version_requirements(library) == ("GLIBC_2.2.5",)
+    native_loader.check_native_library(library)
+    # The loader passes its version check too: it fails only on the stub
+    # symbols, which the running libc.so.6 does not define.
+    with pytest.raises(OSError, match="undefined symbol") as loader:
+        ctypes.CDLL(str(library))
+    assert "not found" not in str(loader.value)
 
 
 def test_abi_markers_are_looked_up_in_the_running_libc(stubs) -> None:
@@ -335,7 +407,7 @@ def test_a_faked_older_glibc_is_refused_before_loading(monkeypatch, stubs) -> No
     assert (
         "needs the ELF versions GLIBC_2.38, GLIBC_ABI_GNU2_TLS, which this "
         "process's glibc 2.37 does not define. Run it on a Linux system or "
-        "container whose glibc defines them (glibc 2.38 or newer at least); "
+        "container whose glibc defines them (at least glibc 2.38); "
         "`readelf -V`"
     ) in str(error)
     # A glibc library not loaded into this process is left to the loader.

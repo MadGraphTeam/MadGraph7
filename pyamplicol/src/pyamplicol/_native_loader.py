@@ -48,6 +48,7 @@ _LOADER_REQUIRED_BY = r" \(required by ([^()]+)\)"
 _SHT_GNU_VERDEF = 0x6FFFFFFD
 _SHT_GNU_VERNEED = 0x6FFFFFFE
 _VER_FLG_BASE = 0x1
+_VER_FLG_WEAK = 0x2
 
 
 def running_glibc() -> str | None:
@@ -158,7 +159,11 @@ class _Elf:
         return self.read(offset, size)
 
     def version_needs(self) -> dict[str, list[str]]:
-        """Needed library (``vn_file``) -> the version names needed from it."""
+        """Needed library (``vn_file``) -> the version names needed from it.
+
+        Weak needs (``VER_FLG_WEAK``) are left out: the dynamic loader accepts
+        a library whose weak version need the loaded library does not define.
+        """
 
         need = struct.Struct(self.order + "HHIII")
         auxiliary = struct.Struct(self.order + "IHHII")
@@ -173,8 +178,9 @@ class _Elf:
                 names = needs.setdefault(_string(strings, file), [])
                 at = position + first
                 for _ in range(count):
-                    _, _, _, name, step = auxiliary.unpack_from(data, at)
-                    names.append(_string(strings, name))
+                    _, flags, _, name, step = auxiliary.unpack_from(data, at)
+                    if not flags & _VER_FLG_WEAK:
+                        names.append(_string(strings, name))
                     if step == 0:
                         break
                     at += step
@@ -235,7 +241,10 @@ def _version_definitions(
 
 
 def glibc_version_requirements(path: str | os.PathLike[str]) -> tuple[str, ...] | None:
-    """The sorted ``GLIBC_*`` versions an ELF file needs (as ``readelf -V``).
+    """The ``GLIBC_*`` versions an ELF file needs (``readelf -V``), by release.
+
+    Numbered versions by release, then ABI markers; weak needs, which the
+    dynamic loader does not enforce, are left out.
 
     None if the file is not a readable ELF file with section headers (a Mach-O
     or PE library, a stripped section table): then nothing is checked.
@@ -244,8 +253,8 @@ def glibc_version_requirements(path: str | os.PathLike[str]) -> tuple[str, ...] 
     needs = _version_needs(path)
     if needs is None:
         return None
-    return tuple(
-        sorted({name for names in needs.values() for name in names if _is_glibc(name)})
+    return _ordered(
+        name for names in needs.values() for name in names if _is_glibc(name)
     )
 
 
@@ -337,10 +346,15 @@ def _error(
             check = "`readelf -V` of a system's libc.so.6 lists the versions it defines"
         else:
             check = "`ldd --version` shows the glibc release"
+        if required is None:
+            release = ""
+        elif markers:
+            release = f" (at least glibc {required})"
+        else:
+            release = f" ({newer})"
         where = (
             f"Run it on a Linux system or container whose glibc defines {it}"
-            f"{f' ({newer} at least)' if markers and newer else ''}"
-            f"{f' ({newer})' if newer and not markers else ''}; {check}"
+            f"{release}; {check}"
         )
     if own:
         remedy = (

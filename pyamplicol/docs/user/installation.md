@@ -107,11 +107,16 @@ instance a locally built Symbolica, whose own requirements can be higher), the
 remedy is a build of that library for this glibc.
 
 C, C++ and Fortran clients of `librusticol_loop_sdk.so` do not see
-`NativePlatformError`, which belongs to the Python package: on an older glibc
-the dynamic loader stops them before `main` with
+`NativePlatformError`, which belongs to the Python package. The library's
+symbols bind numbered glibc versions (`__isoc23_strtol@GLIBC_2.38`, for
+instance), so linking a client executable with a toolchain on an older glibc
+fails at link time with
+`` librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38' ``.
+A client built on glibc 2.38 or newer and run on an older glibc is stopped by
+the dynamic loader before `main` with
 `` version `GLIBC_2.38' not found (required by .../librusticol_loop_sdk.so) ``.
-C and C++ clients can define `RUSTICOL_VIRTUAL_SHARED` to stop at compile time
-instead (see "glibc floor (Linux)" in the loop SDK's
+C and C++ clients of the release build can define `RUSTICOL_VIRTUAL_SHARED` to
+stop at compile time instead (see "glibc floor (Linux)" in the loop SDK's
 `rust/loop-reduction/sdk/README.md`).
 
 ## Create an editable examples workspace

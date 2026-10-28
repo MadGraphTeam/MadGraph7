@@ -192,14 +192,17 @@ evaluate pyAmpliCol artifacts.
 
 ### C library of the receiving host
 
-Artifacts hold no native code, but the receiving host must load pyAmpliCol's
-native libraries, so its glibc must define the symbol versions the installed
-libraries need. A manylinux 2.28 wheel needs glibc 2.28; the release native
-libraries built from a checkout with `tools/developer/build_loop_native.py`
-need glibc 2.38. A glibc that lacks a needed version is refused when the
-extension loads, with a `NativePlatformError` naming the missing versions and
-the running glibc. See
-[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+Portable artifacts (the rows of the portability matrix that can move) hold no
+native code, but the receiving host must load pyAmpliCol's native libraries,
+so its glibc must define the symbol versions the installed libraries need. A
+manylinux 2.28 wheel needs glibc 2.28; the release native libraries built from
+a checkout with `tools/developer/build_loop_native.py` need glibc 2.38. A glibc
+that lacks a needed version is refused when the extension loads, with a
+`NativePlatformError` naming the missing versions and the running glibc. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc). The
+target-native libraries of C++ and ASM artifacts are built on the producing
+host and checked by the dynamic loader alone; regenerate such artifacts on the
+destination.
 
 ### Bitwise reproducibility
 
