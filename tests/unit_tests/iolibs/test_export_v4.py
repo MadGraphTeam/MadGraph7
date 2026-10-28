@@ -11297,8 +11297,12 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
             self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
                           'F77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
                           'PROCID,NPDG,P,LNHEL,POS,', text)
-            self.assertIn('ELSECALLF77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
                           'NPDG,P,NHEL,ANS,FOUND)', text)
+            # smatrixhel too: no SMATRIXHEL call at the 0 flavor index
+            self.assertIn('IF(M0_GET_FLAVOR_INDEX(FLAVOR).EQ.0)THENFOUND='
+                          '.FALSE.ELSENHELFIX=NHEL', text)
             # second pass: smatrixhel for a helicity code too (re-keyed
             # with the legs), the density and get_all_inter with POS moved
             self.assertNotIn('IF(NHEL.LT.1)NPASS=2', text)
