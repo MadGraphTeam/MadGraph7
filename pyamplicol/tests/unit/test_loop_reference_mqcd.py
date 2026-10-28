@@ -662,6 +662,7 @@ def test_every_point_has_one_binding_reference(campaign: dict, manifest: dict) -
             fixture = json.loads((FIXTURES / ref["fixture"]).read_text())
             if ref.get("kind") != "provider reference":
                 assert "point_binding" not in ref
+                expected.append({"fixture": ref["fixture"], "rows": None})
                 continue
             assert ref["points"] == len(fixture["points"]) == len(ref["point_binding"])
             codes = [

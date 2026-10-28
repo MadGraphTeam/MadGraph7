@@ -4,7 +4,7 @@
  "conventions": {
   "laurent": "MadLoop/BLHA C_eps = (4 pi)^eps / Gamma(1 - eps); physical couplings; initial spin/colour average and final identical-particle factor included",
   "squared_split_orders": "QCD^2, QED^2 = summed g_s and e powers of the interfering amplitudes; a loop sector's born_sector is its orders minus the correction step",
-  "binding_references": "per row, the fixtures and rows (0-based) that are the row's rule 1 reference: every ok row of the campaign runs, and the rows of an existing reference that no campaign run re-evaluates. An existing reference's point_binding names, per point, the run row superseding it (the same exact point and mu_R, MadLoop's quadruple-precision stage, an ok record) with the strict relative deviation |a - b| / max(|a|, |b|) of its values from the superseding ones; a superseded point is no reference (its accuracy is not listed), while its other providers' values stay the second-provider values of rule 1 (ii) at that point",
+  "binding_references": "per row, the fixtures and rows (0-based) that are the row's rule 1 reference: every ok row of the campaign runs, and the rows of an existing reference that no campaign run re-evaluates ('rows' None: an existing control fixture, not a provider merge, whose own format names its points). An existing reference's point_binding names, per point, the run row superseding it (the same exact point and mu_R, MadLoop's quadruple-precision stage, an ok record) with the strict relative deviation |a - b| / max(|a|, |b|) of its values from the superseding ones; a superseded point is no reference (its accuracy is not listed), while its other providers' values stay the second-provider values of rule 1 (ii) at that point",
   "evaluation_precision": "MadLoop's arithmetic per point from its return code 100 H + 10 T + U: H = 1, 2 double, 3 quadruple, 4 quadruple whose stability test failed (only at points with status 'none' or a declared outlier); None where the fixture keeps no code",
   "madloop_accuracy": "MadLoop's own ACC(i) of SLOOPMATRIX_THRES per point and loop squared split order: ONE number over the three Laurent coefficients (madloop_settings.madloop_accuracy_definition), not a per-coefficient relative accuracy. At double-precision points it is the binary64 estimate, which does not bound a cancelling coefficient (required/uux_uux.json point 1: 0.0 with a single pole 1.2e-12 off the quadruple-precision value). In the quadruple-precision evaluation 0.0 means its two quadruple-precision evaluations (propagators in original and reversed order) printed identical binary64 values for all three coefficients; that test does not see an error both share: against mq-validate's double-double values MadLoop quadruple-precision points with accuracy 0.0 differ by up to ~3.6e-13 (e.g. E01 point 1, B03 point 1 with Ninja 3.4e-13) and by 3.5e-12 or more at the g g > u u~ u u~ outliers, so an accuracy of 0.0 never satisfies rule 1 (i) and every rule 1 failure at such a point is an outlier needing a ruling",
   "outliers": "per reference run, the rule 1 reference outliers (m-qcd/PLAN.md \u00a71.4: the manifest names every one), keyed by 0-based row: the fixture's reference.outlier record (rule, ruling, the state of conditions i and ii, provider evidence)",
@@ -3590,7 +3590,12 @@
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "multiquark-sevenleg-component-control.json",
+     "rows": null
+    }
+   ]
   },
   {
    "row": "A23",
@@ -7856,6 +7861,10 @@
    ],
    "binding_references": [
     {
+     "fixture": "dilepton-two-gluon.json",
+     "rows": null
+    },
+    {
      "fixture": "required/mqcd/uux_emepgg.json",
      "rows": [
       0,
@@ -10123,7 +10132,12 @@
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "required/top-pair-ee-model-control.json",
+     "rows": null
+    }
+   ]
   },
   {
    "row": "D23",
@@ -11303,7 +11317,12 @@
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "top-pair-higgs-model.json",
+     "rows": null
+    }
+   ]
   },
   {
    "row": "E06",
@@ -12162,7 +12181,12 @@
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "mixed-uudd-sm-qcd-control.json",
+     "rows": null
+    }
+   ]
   },
   {
    "row": "G02",
