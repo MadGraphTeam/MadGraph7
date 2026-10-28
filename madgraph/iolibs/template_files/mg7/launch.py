@@ -1243,6 +1243,18 @@ class MadgraphProcess:
             nb_core = os.cpu_count() or 1
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
+        # --hel_recycling is a CPU build: on a cuda/hip device the same output
+        # compiles the plain matrix element (see backend/gpu/SigmaKin.cc)
+        recycled = [
+            os.path.basename(meta["path"]) for meta in self.subprocess_data
+            if os.path.isfile(os.path.join(meta["path"], "HelRecycling.inc"))
+        ]
+        gpu_backends = [b for b in resolved if b.startswith(("cuda", "hip"))]
+        if recycled and gpu_backends:
+            logger.info(
+                "--hel_recycling is CPU only: the %s build of %s uses the plain "
+                "matrix element", "/".join(gpu_backends), ", ".join(recycled)
+            )
         for backend in resolved:
             missing = [
                 meta for meta in self.subprocess_data

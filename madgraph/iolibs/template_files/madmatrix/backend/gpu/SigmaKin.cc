@@ -162,7 +162,13 @@ namespace madmatrix
 #define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
 // The --hel_recycling warm-up probe hook that a recycled output's diagram calls
 // carry after every amplitude: the probe and the recycled build are CPU only
-// (see backend/{cpu,simd}/SigmaKin.cc), so it is nothing here.
+// (see backend/{cpu,simd}/SigmaKin.cc), so it is nothing here. The GPU backend
+// never builds the recycled block, by design: it makes every helicity row of an
+// event in one thread and keeps every amplitude of every row until the color
+// flows (g g > t t~ g g g: 3.9 MB of amplitudes and 0.5 MB of wavefunctions per
+// event), where a GPU thread holds one helicity of one event; and the GPU
+// already runs the helicities in parallel (blockIdx.y). A recycled output
+// built for cuda/hip is the plain matrix element (madmatrix.mk says so).
 #define MG_HR_PROBE_AMP( NAMP )
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
