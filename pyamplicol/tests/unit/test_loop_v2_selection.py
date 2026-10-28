@@ -310,6 +310,68 @@ def test_runtime_selections_partition_the_inclusive_value_nightly(
     )
 
 
+# The 2->5 row's point (``tests/fixtures/loop/required/uux_ggggg.json``,
+# MadLoop's and Recola's) and its double-double / binary64 identity budgets.
+SEVEN_LEG_POINT = 0
+
+
+@pytest.mark.loop_physics
+@pytest.mark.loop_nightly
+def test_runtime_selections_partition_the_inclusive_value_seven_legs(generate):
+    """u u~ > g g g g g at leading colour (the 2->5 row, nightly): three
+    groups of its 120 flows and the two halves of its 128 helicity rows sum
+    to the inclusive value, binary64 and double-double. One native plan holds
+    the inclusive column and every selection column
+    (``observables.NativeObservables``: one export, one compilation), as a
+    runtime's selections would each run their own."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.observables import INCLUSIVE, Column, NativeObservables
+
+    observables = generate("u u~ > g g g g g")
+    catalogue = _runtime(observables).selection_catalogue()
+    assert (len(catalogue.rows), len(catalogue.flows)) == (128, 120)
+    flows = [
+        frozenset(f.basis for f in catalogue.flows[k::3] if f.basis is not None)
+        for k in range(3)
+    ]
+    half = len(catalogue.rows) // 2
+    halves = [frozenset(catalogue.rows[:half]), frozenset(catalogue.rows[half:])]
+    columns = [
+        Column(INCLUSIVE, observables.history(INCLUSIVE)),
+        *(lc.column(None, basis) for basis in flows),
+        *(lc.column(rows, None) for rows in halves),
+    ]
+    native = NativeObservables(observables, columns)
+    reference = json.loads(
+        (ROOT / "tests/fixtures/loop/required/uux_ggggg.json").read_text()
+    )
+    point = [reference["points"][SEVEN_LEG_POINT]]
+    scale = [str(Fraction(reference["mu_r"][SEVEN_LEG_POINT]) ** 2)]
+    for precision, tolerance in (
+        (Precision.double(), Decimal(DOUBLE)),
+        (Precision.double_double(), DOUBLE_DOUBLE),
+    ):
+        (result,) = native.evaluate(
+            point, scale, parameters=PARAMETERS, precision=precision
+        )
+
+        def coefficients(key, result=result):
+            return [Decimal(str(x)) for x in result[key].totals[:4]]
+
+        inclusive = coefficients(INCLUSIVE)
+        size = max(abs(x) for x in inclusive)
+        for parts in (columns[1:4], columns[4:]):
+            total = [
+                sum(values)
+                for values in zip(*(coefficients(c.key) for c in parts), strict=True)
+            ]
+            for a, b in zip(total, inclusive, strict=True):
+                assert abs(a - b) <= tolerance * size, (precision, a, b)
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("process", "points", "flow", "helicities"),
