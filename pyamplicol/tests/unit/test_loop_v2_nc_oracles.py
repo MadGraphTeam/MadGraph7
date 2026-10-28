@@ -61,9 +61,30 @@ COEFFICIENTS = ("born", "finite", "single_pole", "double_pole")
 OTHER_NC = ("2", "4")
 
 
+# A t t~ h point (massless initial state, exact decimals; the generator has
+# no construction for an unpaired massive leg): e+ e- > t t~ h's first.
+TTH_POINT = json.loads(
+    (ROOT / "tests/fixtures/loop/top-pair-higgs-model.json").read_text()
+)["points"][0]
+
+
+# A g g > b b~ point at MB = 47/10 exactly (sqrt(s) = 470.047, the b at
+# |p| = 234.9765 along (3/5, 0, 4/5)): the generator's search for a massive
+# pair of this mass does not end.
+BBX_POINT = [
+    ["235.0235", "0", "0", "235.0235"],
+    ["235.0235", "0", "0", "-235.0235"],
+    ["235.0235", "140.9859", "0", "187.9812"],
+    ["235.0235", "-140.9859", "0", "-187.9812"],
+]
+POINTS = {"tth": TTH_POINT, "bbx": BBX_POINT}
+
+
 def _point(masses):
     from tools.loop_reference import exact_points
 
+    if masses in POINTS:
+        return POINTS[masses]
     point = exact_points.generate(list(masses), count=1)[0]
     return [[exact_points.decimal_string(x) for x in p] for p in point]
 
@@ -217,15 +238,10 @@ def test_poles_at_other_nc_equal_catani_on_gg_gg(
 CATANI_ROWS = {
     # Row: process, Born orders, external masses, fixed parameters.
     "B03": ("g g > t t~ g", {"QCD": 3, "QED": 0}, (0, 0, 173, 173, 0), {"WT": "0"}),
-    # MB = 4.7 exactly (the default restriction's card value).
-    "C01": (
-        "g g > b b~",
-        {"QCD": 2, "QED": 0},
-        (0, 0, Fraction(47, 10), Fraction(47, 10)),
-        {},
-    ),
+    # MB = 4.7, the default restriction's card value.
+    "C01": ("g g > b b~", {"QCD": 2, "QED": 0}, "bbx", {}),
     "D05": ("u u~ > e- e+ g", {"QCD": 1, "QED": 2}, (0,) * 5, {}),
-    "E01": ("g g > t t~ h", {"QCD": 2, "QED": 1}, (0, 0, 173, 173, 125), {"WT": "0"}),
+    "E01": ("g g > t t~ h", {"QCD": 2, "QED": 1}, "tth", {"WT": "0"}),
     # 5FS on the default restriction (MB = ymb = 0) until MQ-5F.
     "F01": (
         "u b > d t",
