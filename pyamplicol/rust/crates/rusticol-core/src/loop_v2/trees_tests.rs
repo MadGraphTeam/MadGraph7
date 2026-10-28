@@ -137,42 +137,6 @@ fn plan_masses_read_inputs_or_outputs() {
 }
 
 #[test]
-fn slot_sets_without_a_finite_slot_are_pole_work() {
-    // Slot table (epsilon powers): two finite slots, a 1/eps and a 1/eps^2
-    // slot. masks[0] is every slot, then one set per slot, then a pole pair.
-    let powers = [0, -1, 0, -2];
-    let masks = vec![
-        vec![0, 1, 2, 3],
-        vec![0],
-        vec![1],
-        vec![2],
-        vec![3],
-        vec![1, 3],
-    ];
-    assert_eq!(
-        pole_slot_sets(&masks, &powers).unwrap(),
-        vec![false, false, true, false, true, true]
-    );
-    // A pole-only table skips every current; a finite-only one none.
-    assert_eq!(
-        pole_slot_sets(&[vec![0, 1]], &[-1, -2]).unwrap(),
-        vec![true]
-    );
-    assert_eq!(pole_slot_sets(&[vec![0, 1]], &[0, 0]).unwrap(), vec![false]);
-    // Malformed sets are refused: none, an empty set, slots out of order or
-    // repeated, a slot outside the table.
-    for bad in [
-        vec![],
-        vec![vec![]],
-        vec![vec![1, 0]],
-        vec![vec![0, 0]],
-        vec![vec![4]],
-    ] {
-        assert!(pole_slot_sets(&bad, &powers).is_err(), "{bad:?}");
-    }
-}
-
-#[test]
 fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones() {
     // Generation records every output that reads the scale
     // (`native_trees._scale_outputs`); the batch-shared ones among them are
@@ -219,4 +183,40 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         running.scale_dependent_shared(),
         Some(vec!["output 0", "output 2", "output 3", "output 4"])
     );
+}
+
+#[test]
+fn slot_sets_without_a_finite_slot_are_pole_work() {
+    // Slot table (epsilon powers): two finite slots, a 1/eps and a 1/eps^2
+    // slot. masks[0] is every slot, then one set per slot, then a pole pair.
+    let powers = [0, -1, 0, -2];
+    let masks = vec![
+        vec![0, 1, 2, 3],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![3],
+        vec![1, 3],
+    ];
+    assert_eq!(
+        pole_slot_sets(&masks, &powers).unwrap(),
+        vec![false, false, true, false, true, true]
+    );
+    // A pole-only table skips every current; a finite-only one none.
+    assert_eq!(
+        pole_slot_sets(&[vec![0, 1]], &[-1, -2]).unwrap(),
+        vec![true]
+    );
+    assert_eq!(pole_slot_sets(&[vec![0, 1]], &[0, 0]).unwrap(), vec![false]);
+    // Malformed sets are refused: none, an empty set, slots out of order or
+    // repeated, a slot outside the table.
+    for bad in [
+        vec![],
+        vec![vec![]],
+        vec![vec![1, 0]],
+        vec![vec![0, 0]],
+        vec![vec![4]],
+    ] {
+        assert!(pole_slot_sets(&bad, &powers).is_err(), "{bad:?}");
+    }
 }
