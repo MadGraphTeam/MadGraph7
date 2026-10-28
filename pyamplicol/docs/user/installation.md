@@ -63,45 +63,64 @@ See [Native APIs](native-apis.md) for the generated driver workflow.
 
 On Linux, every native library records the glibc versions it needs (its ELF
 version requirements, `readelf -V`). The wheels above are built in a
-manylinux 2.28 container and need glibc 2.28 or newer. The release native libraries of
-the one-loop engine (`loop.engine = "v2"`), built from a checkout with
+manylinux 2.28 container and need glibc 2.28 or newer, one-loop engine
+included. The release native libraries built from a checkout with
 `tools/developer/build_loop_native.py` — the Python extension `_rusticol.so`
-and the loop SDK's shared library `librusticol_loop_sdk.so` — need
-**glibc 2.42 or newer**: they may require `GLIBC_ABI_GNU2_TLS` (TLS
-descriptors), which glibc 2.42 introduced. Check the running glibc with
-`ldd --version` or
-`python -c "import os; print(os.confstr('CS_GNU_LIBC_VERSION'))"`.
+and the loop SDK's shared library `librusticol_loop_sdk.so` — may need more:
+they can require `GLIBC_ABI_GNU2_TLS` (TLS descriptors). glibc 2.43 and newer
+define that version, and so do glibc 2.42 builds that include the
+stable-branch update adding it; the glibc 2.42 release itself does not. Such a
+library needs **glibc 2.42 with that update, or glibc 2.43 or newer**. Check the
+running glibc with `ldd --version` or
+`python -c "import os; print(os.confstr('CS_GNU_LIBC_VERSION'))"`, and whether
+it defines the version with
+`readelf -V /path/to/libc.so.6 | grep GLIBC_ABI_GNU2_TLS` (`ldd` of any
+program shows the `libc.so.6` it uses).
 
 pyAmpliCol checks this when it loads the extension. Before
-`pyamplicol._rusticol` is opened, it compares the newest glibc version the
-file requires with the running one, so an older glibc fails cleanly at load
-time with `pyamplicol.NativePlatformError` (a `DependencyError`) instead of
-the dynamic loader's raw message:
+`pyamplicol._rusticol` is opened, it compares the newest glibc release the file
+requires with the running one and checks that the running `libc.so.6` defines
+each `GLIBC_ABI_*` version the file requires. An older glibc, or a 2.42 build
+without the update, fails cleanly at load time with
+`pyamplicol.NativePlatformError` (a `DependencyError`) instead of the dynamic
+loader's raw message:
 
 ```text
-pyamplicol.api.errors.NativePlatformError: Native library .../pyamplicol/_rusticol.so
-requires glibc >= 2.42 (it needs the ELF version GLIBC_ABI_GNU2_TLS), but this
-process runs glibc 2.40. Run it on a Linux system or container with glibc 2.42
-or newer (`ldd --version` shows the version), or build pyAmpliCol's native
-libraries from source on this host so that they link against its glibc (see
-'Native libraries and glibc' in docs/user/installation.md).
+pyamplicol.api.errors.NativePlatformError: Native library
+.../pyamplicol/_rusticol.so requires glibc >= 2.42 (it needs the ELF version
+GLIBC_ABI_GNU2_TLS, which glibc 2.43 and newer define, as do glibc 2.42 builds
+with the stable-branch update that added it; the glibc 2.42 release does not),
+but this process runs glibc 2.40. Run it on a Linux system or container with
+glibc 2.43 or newer, or an updated glibc 2.42 build (`ldd --version` shows the
+version), or build pyAmpliCol's native libraries from source on this host so
+that they link against its glibc (see 'Native libraries and glibc' in
+docs/user/installation.md).
 ```
 
-The error's attributes `library`, `required`, `found` and `version_name` carry
-the same facts. The floor is read from the installed library itself, so a
-library built against an older glibc (a wheel, or a source build on that host)
-is accepted wherever it can load. A C library that is not glibc (for example
-musl) is named as such. If the loader still reports a missing glibc version
-(for instance one required by a dependency such as a locally built Symbolica),
-that error is translated into the same `NativePlatformError`, with the
-loader's text appended.
+On a glibc 2.42 without the update, the message says instead that this
+process runs glibc 2.42, "which does not define it", and asks to update glibc.
 
-C, C++ and Fortran clients of `librusticol_loop_sdk.so` meet the same floor
-when the loader starts them; on an older glibc it reports
+The error's attributes carry the same facts: `library`, `required` (the oldest
+glibc release that can provide the version, `"2.42"`), `found` (the running
+glibc) and `version_name`. The floor is read from the installed library
+itself, so a library built against an older glibc (a wheel, or a source build
+on that host) is accepted wherever it can load. A C library that is not glibc
+(for example musl) is named as such. If the loader still reports a missing
+glibc version, that error is translated into the same `NativePlatformError`
+with the loader's text appended; when the library it names is a dependency's
+(for instance a locally built Symbolica), the remedy is a build of that
+library for this glibc.
+
+C, C++ and Fortran clients of `librusticol_loop_sdk.so` do not see
+`NativePlatformError`, which belongs to the Python package: the dynamic loader
+stops them before `main` with
 `` version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so) ``.
-C and C++ clients can define `RUSTICOL_VIRTUAL_SHARED` to stop at compile
-time instead, and the static archives do not carry the floor (see the loop
-SDK's `rust/loop-reduction/sdk/README.md`, "glibc floor").
+C and C++ clients can define `RUSTICOL_VIRTUAL_SHARED` to stop at compile time
+instead (release numbers only). An executable that links the static archive
+does not carry the floor; a shared object that links it keeps the TLS
+descriptors and should be linked on a glibc that defines `GLIBC_ABI_GNU2_TLS`
+(see "glibc floor (Linux)" in the loop SDK's
+`rust/loop-reduction/sdk/README.md`).
 
 ## Create an editable examples workspace
 
@@ -238,12 +257,14 @@ python -c 'import platform; print(platform.system(), platform.machine())'
 
 If no wheel matches, use the tagged source installation above.
 
-### `NativePlatformError: Native library ... requires glibc >= 2.42`
+### `NativePlatformError`: a native library needs a newer glibc
 
-The native libraries need a newer glibc than this system runs (see
-[Native libraries and glibc](#native-libraries-and-glibc)). Use a system or
-container with that glibc, or build the native libraries from source on this
-host.
+The native libraries need a glibc version this system does not provide: an
+older glibc release, or (message "which does not define it") a glibc 2.42
+build without the stable-branch update that defines `GLIBC_ABI_GNU2_TLS` (see
+[Native libraries and glibc](#native-libraries-and-glibc)). Update glibc or use
+a system or container with glibc 2.43 or newer (or an updated 2.42), or build
+the native libraries from source on this host.
 
 ### `pyamplicol: command not found`
 

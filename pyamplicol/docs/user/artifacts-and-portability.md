@@ -193,8 +193,11 @@ evaluate pyAmpliCol artifacts.
 ### C library of the receiving host
 
 Artifacts hold no native code, but the receiving host must load pyAmpliCol's
-native libraries. On Linux, the one-loop engine's release natives need
-glibc 2.42 or newer (`GLIBC_ABI_GNU2_TLS`); an older glibc is refused when the
+native libraries, so its glibc must provide what the installed libraries need.
+A manylinux 2.28 wheel needs glibc 2.28. The release native libraries built
+from a checkout with `tools/developer/build_loop_native.py` can need
+`GLIBC_ABI_GNU2_TLS`: glibc 2.42 with the stable-branch update that defines
+it, or glibc 2.43 or newer. A glibc that lacks it is refused when the
 extension loads, with a `NativePlatformError` naming the required and the
 running version. See
 [Native libraries and glibc](installation.md#native-libraries-and-glibc).

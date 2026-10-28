@@ -257,14 +257,20 @@ JIT configuration. See [Artifacts and Portability](artifacts-and-portability.md)
 
 ```text
 NativePlatformError: Native library .../_rusticol.so requires glibc >= 2.42 (it
-needs the ELF version GLIBC_ABI_GNU2_TLS), but this process runs glibc 2.40. ...
+needs the ELF version GLIBC_ABI_GNU2_TLS, ...), but this process runs glibc
+2.40. ...
 ```
 
-The one-loop engine's release native libraries need glibc 2.42 or newer, and
-pyAmpliCol refuses them before loading on an older glibc (or on a C library
-that is not glibc). Compare with `ldd --version`, then run on a system or
-container with glibc >= 2.42, or build the native libraries from source on
-this host. A C, C++ or Fortran client of `librusticol_loop_sdk.so` sees the
+The installed native libraries need a glibc version this system does not
+provide, and pyAmpliCol refuses them before loading (also on a C library that
+is not glibc). The release native libraries built from a checkout with
+`tools/developer/build_loop_native.py` can need `GLIBC_ABI_GNU2_TLS`, which
+glibc 2.43 and newer define, as do glibc 2.42 builds with the stable-branch
+update that added it (the glibc 2.42 release does not: the message then says
+that glibc 2.42 "does not define it"); a manylinux 2.28 wheel needs glibc
+2.28. Compare with `ldd --version`, then update glibc or run on a system or
+container that provides the version, or build the native libraries from source
+on this host. A C, C++ or Fortran client of `librusticol_loop_sdk.so` sees the
 dynamic loader's ``version `GLIBC_ABI_GNU2_TLS' not found`` instead; it means
 the same floor. See
 [Native libraries and glibc](installation.md#native-libraries-and-glibc).
