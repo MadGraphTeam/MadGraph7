@@ -852,6 +852,10 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices):
     assert refused.value.feature == "plane-mismatch"
     message = str(refused.value)
     assert re.search(r"parameter-program output \d+ \(\w", message), message
+    # A derived coupling is named by its UFO coupling and vertex, not by the
+    # runtime's term id (``native_trees._output_label``).
+    assert re.search(r"\(model coupling \w+ of vertex \w+ \(", message), message
+    assert "derived_coupling_" not in message, message
     assert "exact evaluator;" not in message
 
 
