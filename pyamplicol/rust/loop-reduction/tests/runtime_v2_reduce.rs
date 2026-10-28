@@ -1203,8 +1203,9 @@ fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
 /// generic plan given the rounded `p²` instead computes a slightly off-shell
 /// box (it fails or is O(1) off). A light internal line is refused
 /// (`LIGHT_MASS_NEEDS_INVARIANTS`): rounded invariants cannot resolve it;
-/// given the exact invariants it is routed and equals the generic plan, and
-/// beside it in one call the massless lane keeps its bits.
+/// given the exact invariants it is routed and gives the generic plan's
+/// outcome (here its binary64 C0's failure), and beside it in one call the
+/// massless lane keeps its bits.
 #[test]
 fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
     use rusticol_loop_reduction::runtime::LIGHT_MASS_NEEDS_INVARIANTS;
@@ -1298,11 +1299,9 @@ fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
         assert!(relative(&given, &exact_generic, 3) < 1e-12, "{engine}");
     }
     let (light, _) = lanes_of(vec![0., 0., 0., LIGHT], 12);
-    let generic = values(
-        &legacy_reduce(&mut legacy_plan(&light, "generic"), &light, true)
-            .values()
-            .unwrap(),
-    );
+    // The generic plan's outcome, a failure of its binary64 C0 here
+    // (`MasterFailed`), which the routed lane reproduces.
+    let generic = legacy_reduce(&mut legacy_plan(&light, "generic"), &light, true);
     for engine in ["fast", "fast-tensor"] {
         let mut plan = legacy_plan(&light, engine);
         let refused = legacy_reduce(&mut plan, &light, false);
@@ -1313,9 +1312,14 @@ fn the_legacy_fast_plans_without_invariants_route_on_the_squared_masses() {
             "{engine}"
         );
         assert_eq!(refused.successful_values().rows(), 0);
-        let given = values(&legacy_reduce(&mut plan, &light, true).values().unwrap());
+        let given = legacy_reduce(&mut plan, &light, true);
         assert_eq!(plan.take_exact_lanes(), 1, "{engine}");
-        assert_eq!(given, generic, "{engine}");
+        assert_eq!(given.statuses(), generic.statuses(), "{engine}");
+        assert_eq!(
+            values(&given.successful_values()),
+            values(&generic.successful_values()),
+            "{engine}"
+        );
         // In one call beside the massless lane, which keeps its bits.
         let both = concatenated(&massless, &light);
         let mut plan = legacy_plan(&both, engine);
