@@ -601,3 +601,21 @@ def test_supplied_points_refuse_unreachable_configurations() -> None:
         supplied_points.generate(massive, "regular", count=11)
     with pytest.raises(ValueError, match="no room"):
         supplied_points.generate([F(0), F(0), F(173), F(0)], "soft", values=[F(1, 2)])
+
+
+def test_parse_rows_without_sectors_reads_the_new_driver_output() -> None:
+    """The G1 benchmark's MadLoop runs call parse_rows without step/born_so on
+    the driver's full output (LOOP_SO and SECTORS lines included)."""
+    from tools.loop_reference import references
+
+    stdout = (
+        "SPLIT_ORDER_INDICES 1 1 1 1\n"
+        "LOOP_SO 1 6 0\n"
+        "INITIAL_CALL_SECONDS 0.1 1 216\n"
+        "ROW 1 216 0.1 1.0 2.0 3.0 -0.05 1e-15 1.0 2.0 3.0 -0.05\n"
+        "SECTORS 1 216 1.0 2.0 3.0 -0.05 1.0 2.0 3.0 -0.05 1e-15 1e-15\n"
+    )
+    rows, extra = references.parse_rows(stdout, "madloop", 1)
+    assert rows[0]["finite"] == 2.0 and rows[0]["status"] == 216
+    assert "sectors" not in rows[0] and "squared_split_orders" not in extra
+    assert extra["initialization_calls"] == 1
