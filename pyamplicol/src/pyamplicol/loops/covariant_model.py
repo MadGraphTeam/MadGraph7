@@ -207,9 +207,11 @@ def _constant_structure(record) -> Any:
     return value if value.get_type() == AtomType.Num else None
 
 
-def repair_source_declarations(raw: Any) -> Any:
+def repair_source_declarations(raw: Any, within: Any = None) -> Any:
     """``raw`` with its constant-tensor slot-arity defects repaired, or ``raw``
-    itself when it has none (the rule is idempotent).
+    itself when it has none (the rule is idempotent). ``within``, if given,
+    restricts the rule to those ``(collection, vertex id)`` pairs (the
+    vertices a request reaches).
 
     A vertex (tree or counterterm) whose particles are all scalars and that
     references a constant Lorentz tensor with a different number of (scalar)
@@ -228,6 +230,8 @@ def repair_source_declarations(raw: Any) -> Any:
     repairs = []
     for collection in ("vertices", "counterterm_vertices"):
         for vertex in raw.collections.get(collection, ()):
+            if within is not None and (collection, vertex["id"]) not in within:
+                continue
             fields = vertex["fields"]
             spins = tuple(
                 abs(int(_reference(raw, ref, "particles")["fields"]["spin"]))
