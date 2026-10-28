@@ -26,7 +26,7 @@ pub(crate) mod on_the_fly;
 pub mod process;
 mod program;
 mod relation;
-mod symmetric_group_fft;
+pub(crate) mod symmetric_group_fft;
 pub mod template;
 pub(crate) mod template_json;
 

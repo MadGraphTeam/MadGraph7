@@ -13,7 +13,7 @@
 
 use super::dress::{Carrier, LaneData};
 use super::kernels::lane_vector_len;
-use super::plan::LoopProgramV4;
+use super::plan::{LoopProgramV4, Seed};
 use rayon::prelude::*;
 
 /// Seeds of one chunk: per seed key, `rows × columns` lane vectors in object
@@ -23,14 +23,32 @@ pub struct Seeds<T> {
 }
 
 /// `U0` of every seed key of the plan (classes, then keys, on parallel
-/// threads).
+/// threads), every weight contracted directly.
 pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T, L>) -> Seeds<T> {
+    contract(plan, &plan.seed_classes, None, data)
+}
+
+/// Contributions added to a seed class's direct sum: per class record its
+/// (Born row, weight column, lane vector) terms (the symmetric-group FFT of
+/// the certified orbit pairs, [`super::fourier`]).
+pub type ClassTerms<'a, T> = [Vec<(usize, usize, &'a [T])>];
+
+/// [`seeds`] with the seed classes `classes` (the plan's, or the plan's
+/// without the weights another contraction covers) and that contraction's
+/// `extra` terms per class, added to every observable column of their weight
+/// column that keeps their row.
+pub fn contract<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    classes: &[Seed],
+    extra: Option<&ClassTerms<'_, T>>,
+    data: &LaneData<T, L>,
+) -> Seeds<T> {
     let v = lane_vector_len(L);
     let columns = plan.columns;
-    let classes: Vec<Vec<T>> = plan
-        .seed_classes
+    let classes: Vec<Vec<T>> = classes
         .par_iter()
-        .map(|seed| {
+        .enumerate()
+        .map(|(class, seed)| {
             let weights: Vec<Vec<(usize, T, T)>> = seed
                 .columns
                 .iter()
@@ -61,6 +79,17 @@ pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T
                             target_re[l] += re.clone() * c + im.clone() * d;
                             target_im[l] += im.clone() * c - re.clone() * d;
                         }
+                    }
+                }
+            }
+            for &(h, w, lanes) in extra.map_or(&[][..], |extra| &extra[class]) {
+                for (o, &column) in plan.column_weights.iter().enumerate() {
+                    if column != w || !plan.column_rows.keeps(h, o) {
+                        continue;
+                    }
+                    let target = &mut out[(h * columns + o) * v..][..v];
+                    for (t, x) in target.iter_mut().zip(lanes) {
+                        *t += x;
                     }
                 }
             }

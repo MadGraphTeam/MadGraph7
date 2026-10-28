@@ -842,8 +842,20 @@ The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 MG5_aMC's `loop_qcd_qed_sm` needs
 `[loop.preparation] compatibility = "gmu_particle_anti"` with either engine (its
 `G-` loses the Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
-goldstoneboson"); `loop.preparation.covariant_multiplets` and
-`color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
+goldstoneboson"); `loop.preparation.covariant_multiplets` needs
+`engine = "legacy"`. With `engine = "v2"`, `color.contraction` selects the
+seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
+the certified symmetric-group orbit pairs of the external gluons with the FFT
+and the rest directly, `direct` contracts everything directly, and
+`symmetric-group-fft` requires a certified pair (a process with fewer than two
+external gluons has none and is refused at generation with the listed
+`forced-seed-fft-unserved`, as are declared correlations with a forced FFT,
+since observable columns are contracted directly). The FFT and the direct
+contraction are equal up to rounding in every arithmetic; each evaluation
+reports the algorithm it ran. The orbits are those of the loop's own seed
+tables (the external gluons' permutations, certified on the exact colour
+weights): loop requests keep the default `color.fft_basis = "adjoint"`, and
+`"trace"` is refused unless the contraction is `direct`. A dry run
 (`generate --dry-run`) reports what the model preparation refuses (the
 veto refusal "veto-unlabelled-counterterms" included); the rest of loop
 admission is checked by the generation only, and the dry run lists what it
