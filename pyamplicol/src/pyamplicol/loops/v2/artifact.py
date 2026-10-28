@@ -683,6 +683,53 @@ class GeneratedProcess:
 
         return fallback_record(self.slice)
 
+    def binary64_exact_engine(self) -> dict[str, Any]:
+        """The routing of light masses in binary64 (genericity audit 2,
+        G2-M3; DESIGN §11.2 'Absolute thresholds'): the masses of the process
+        (loop lines of both plans, external legs) whose binary64 square at the
+        generation parameters (the model's defaults and the request's fixed
+        parameters) lies strictly between 0 and the fast engine's absolute
+        threshold in the model's units (``V2_FAST_ENGINE_THRESHOLD`` of the
+        loop module), by mass parameter, with that square and the threshold.
+        Binary64 lanes with such a mass take the exact generic engine
+        (``v2_reduce::reaches_fast_threshold``); the runtime decides per lane
+        again, on the point's invariants and any parameter override. The
+        generation record's ``binary64_exact_engine``; empty when no mass is
+        that light (the record then has no entry, so such artifacts keep
+        their bytes)."""
+
+        from .assemble import Precision, _leg_masses, _mass_values
+
+        slice_ = self.slice
+        threshold = float(slice_.native.V2_FAST_ENGINE_THRESHOLD)
+        parameters = slice_.request.fixed_parameters
+        digits = Precision.double().working_digits
+        lines = {
+            mass
+            for plan in (self.exported, self.scaleless_exported)
+            if plan is not None
+            for mass in plan.masses
+            if not mass.massless
+        }
+        squares = {
+            mass.mass: float(value)
+            for mass, value in _mass_values(
+                slice_.compiled, parameters, lines, digits
+            ).items()
+        }
+        for leg, value in zip(
+            slice_.families.legs, _leg_masses(slice_, parameters, digits), strict=True
+        ):
+            squares[leg.mass.mass] = float(value)
+        light = {
+            name: repr(value)
+            for name, value in sorted(squares.items())
+            if 0 < abs(value) < threshold
+        }
+        if not light:
+            return {}
+        return {"threshold": repr(threshold), "squared_masses": light}
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))

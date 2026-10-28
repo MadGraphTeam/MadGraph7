@@ -28,7 +28,9 @@ pub use dual_weights::DualBornWeights;
 pub use exact::{ExactPolynomialEvaluator, decimal_rational};
 pub use master_cache::{MasterCache, MasterStatistics};
 pub use ninjars::fast::tensor_layout::monomials as tensor_monomials;
-pub use reduction::{DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch};
+pub use reduction::{
+    DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
+};
 pub use schedule::{CoefficientKernelCache, CoefficientPlan};
 pub use states::{
     PartialStates, on_shell_wavefunctions_batch, wavefunctions_batch, wavefunctions_partial_batch,
@@ -36,8 +38,9 @@ pub use states::{
 pub use v2_execution::{TypedBatch, V2ReductionBackend};
 pub use v2_poles::{UvResidues, uv_residue};
 pub use v2_reduce::{
-    FamilyGroup, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Output, V2Reducer,
-    shift_coefficients, tensor_rank, true_rank,
+    FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
+    V2Output, V2Reducer, fast_engine_threshold, reaches_fast_threshold, shift_coefficients,
+    tensor_rank, true_rank,
 };
 pub use v2_seeds::V2SeedFourier;
 

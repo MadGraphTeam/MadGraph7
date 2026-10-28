@@ -398,8 +398,13 @@ where
 
 /// Binary64 specialization using NinjaRS's own tensor or generic numerator.
 /// Real shifts and complex masses follow `FastInput`'s documented contract.
-/// The native master provider applies its fixed 1e-9 on-shell threshold. Use
-/// the generic binary64 reducer when the caller needs exact-zero classification.
+/// The native master provider applies its fixed 1e-9 on-shell threshold and
+/// the engine its `infrared_eps`, absolute constants in the model's units:
+/// `runtime::PolynomialPlan`'s fast plans route every lane that reaches them
+/// to the generic binary64 reducer (`runtime::reaches_fast_threshold`), and
+/// without the invariant matrix refuse a lane with a light squared mass
+/// (`runtime::light_mass_needs_invariants`); a direct caller does the same
+/// when it needs exact-zero classification.
 pub struct FastReducer<N: FastNumerator> {
     numerator: N,
     amplitude: FastAmplitude,

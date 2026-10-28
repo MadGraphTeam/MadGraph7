@@ -79,11 +79,14 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
 
     /// The master integrals inside the `reduction` stage (binary64 fast
     /// engine: canonicalisation, cache and oneloopmaster; oneloopmaster
-    /// alone) and the master rows requested and evaluated.
+    /// alone), the master rows requested and evaluated, and the lanes the
+    /// fast engine left to the exact binary64 engine (inputs at its absolute
+    /// thresholds, `v2_reduce` module docs).
     fn take_statistics(&mut self) -> BackendStatistics {
         let Some(masters) = self.reducer.take_master_statistics() else {
             return BackendStatistics::default();
         };
+        let exact = self.reducer.take_exact_lanes();
         BackendStatistics {
             seconds: vec![
                 ("reduction: masters", masters.nanoseconds as f64 * 1e-9),
@@ -95,6 +98,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
             counts: vec![
                 ("master requests", masters.total_requests()),
                 ("master evaluations", masters.total_evaluated()),
+                ("binary64 lanes on the exact engine", exact),
             ],
         }
     }

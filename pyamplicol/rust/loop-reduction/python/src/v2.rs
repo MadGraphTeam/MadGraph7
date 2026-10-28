@@ -101,6 +101,12 @@ impl V2Reducer {
                 .collect()
         })
     }
+    /// Lanes the fast engine left to the generic binary64 engine since the
+    /// last call (inputs at its absolute thresholds; 0 for the generic
+    /// engines).
+    fn take_exact_lanes(&mut self) -> u64 {
+        self.0.take_exact_lanes()
+    }
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
     /// same for the relabelled frame when `check` is set (else None). The
     /// default frame is `ReductionFrame::REVERSED`.
@@ -227,6 +233,13 @@ fn v2_tensor_monomials(rank: usize) -> Vec<[u32; 4]> {
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    // The binary64 fast engine's absolute routing threshold in model units
+    // (`runtime::fast_engine_threshold`): the generation record of light
+    // masses compares with it (`GeneratedProcess.binary64_exact_engine`).
+    module.add(
+        "V2_FAST_ENGINE_THRESHOLD",
+        rusticol_loop_reduction::runtime::fast_engine_threshold(),
+    )?;
     module.add_class::<V2Reducer>()?;
     module.add_class::<V2SeedFourier>()?;
     module.add_function(wrap_pyfunction!(v2_tensor_monomials, module)?)

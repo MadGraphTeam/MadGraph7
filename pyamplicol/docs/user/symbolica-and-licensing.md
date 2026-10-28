@@ -75,7 +75,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
-| Virtual (one-loop) evaluation at f64, v2 engine | No (native code) | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
+| Virtual (one-loop) evaluation at f64, v2 engine | No (native code), except loops at light masses | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. |
 | Virtual evaluation in double-double or arbitrary precision, and legacy-engine virtuals (Python and native SDK) | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
@@ -134,7 +134,13 @@ to the personal license or to the restricted mode, as the Python side does.
   unlicensed processes (for example a Monte Carlo farm) evaluate virtuals
   concurrently; it does not depend on the package key either. On an x86-64
   CPU without AVX and FMA3, where SymJIT cannot compile, f64 evaluates the
-  saved Symbolica states instead, under the package key.
+  saved Symbolica states instead, under the package key. One more exception:
+  a loop whose squared masses or invariants at a point lie strictly between
+  0 and 1e-9 in the model's units (a keV-scale mass in GeV; see "Light
+  masses in binary64" in the configuration guide) is reduced by the exact
+  generic engine, which uses Symbolica in the native code under the package
+  key. Such evaluations also run in concurrent unlicensed processes, but
+  they need the package key (or a personal licence) as double-double does.
 - Double-double and arbitrary-precision virtual evaluation, and the legacy
   loop engine at every precision (Python and the C/C++/Fortran SDK), decode
   saved Symbolica evaluator states natively under the package key, so they
