@@ -4105,7 +4105,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # momentum does not see the side flip. The flag is the slot's own
         # (wf); a crossing records only partners whose '*' legs pair up
         # (crossing_flavor_pairing). CPU: the gathered xmom slot s; GPU: the
-        # input slot xperm[s] (offshell_mass keeps the pole mass there).
+        # input slot xperm[s], whose momentum (the thread's own event) gives
+        # the invariant mass there too (backend/gpu/SigmaKin.cc).
         offshell = spin != 1 and wf.get('offshell')
         if offshell:
             mass = 'offshell_mass<M_ACCESS>( m_pars->%s, xmom, %d )' % (wf.get('mass'), s)
