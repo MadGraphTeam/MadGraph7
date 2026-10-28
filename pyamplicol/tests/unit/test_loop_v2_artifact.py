@@ -503,6 +503,7 @@ def test_slice_request_records_round_trip():
     from pyamplicol.api.errors import ArtifactError
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
     from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.selection import Selection
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 
     declaration = LoopColorDeclaration.from_dict(
@@ -526,6 +527,7 @@ def test_slice_request_records_round_trip():
         colour_contraction="direct",
         compatibility="gmu_particle_anti",
         counterterms="sites",
+        selection=Selection(((1, -1),), ((1, 2, 3, 4),)),
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     for item in fields(SliceRequest):
@@ -537,6 +539,9 @@ def test_slice_request_records_round_trip():
     assert request_from_record(record) == request
     single = request_record(default)
     assert single["loop_orders"] == {"QCD": 4}
+    # The selection is recorded only when set (requests without one keep
+    # their records' bytes).
+    assert "selection" not in single
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
         request_from_record({**record, "future_option": 1})
