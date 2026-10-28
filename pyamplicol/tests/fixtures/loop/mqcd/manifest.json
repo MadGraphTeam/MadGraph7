@@ -995,6 +995,8 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "inputs": "native",
+   "catani": "none",
    "extras_pending": {
     "ward": "MQ-WARD (generic native Ward input)"
    }
@@ -1460,7 +1462,9 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "inputs": "native",
+   "catani": "none"
   },
   {
    "id": "A24",
@@ -1531,7 +1535,9 @@
    "vanishing": [],
    "particle_veto": [
     6
-   ]
+   ],
+   "inputs": "native",
+   "catani": "none"
   },
   {
    "id": "A25",
@@ -4776,8 +4782,21 @@
     "mixed-born-orders",
     "massive:top"
    ],
-   "predicted_sectors": [],
-   "unpredicted_sectors": [],
+   "predicted_sectors": [
+    {
+     "QCD": 6
+    }
+   ],
+   "unpredicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],

@@ -99,8 +99,11 @@ def test_rows_are_the_plan_rows(rows):
         f"{block}{number}" for block, ids in PLAN_ROWS.items() for number in ids.split()
     }
     assert len(expected) == 76
-    assert set(rows) == expected
-    assert {name for name, row in rows.items() if row.tier == "default"} == DEFAULT_TIER
+    core = {name: row for name, row in rows.items() if row.base is None}
+    assert set(core) == expected
+    assert {name for name, row in core.items() if row.tier == "default"} == DEFAULT_TIER
+    # Variants (a second reference of a row) carry their base row's id.
+    assert all(name.split("@")[0] == row.base for name, row in rows.items() if row.base)
 
 
 def test_rows_are_well_formed(manifest, rows):
@@ -132,6 +135,14 @@ def test_rows_are_well_formed(manifest, rows):
         else:
             assert row.pending is None and row.reference is not None, name
             assert row.reference["format"] in mqcd.REFERENCE_FORMATS, name
+        assert row.inputs in ("python", "native"), name
+        # The native-input route forms no Catani prediction: such a row says
+        # so (rule 4 recorded as not formed).
+        assert row.catani == ("none" if row.inputs == "native" else "python"), name
+        if row.base is not None:
+            base = rows[row.base]
+            assert row.tier == "nightly" and row.process == base.process, name
+            assert row.reference != base.reference, name
         if isinstance(row.loop_orders, dict):
             # One loop order: the Born's plus the correction's two powers.
             assert row.loop_orders == {
@@ -141,6 +152,7 @@ def test_rows_are_well_formed(manifest, rows):
 
 
 def test_features_cover_the_plan(manifest, rows):
+    rows = {name: row for name, row in rows.items() if row.base is None}
     assert set(manifest["features"]) == FEATURES
     covered = {feature for row in rows.values() for feature in row.features}
     assert covered == FEATURES

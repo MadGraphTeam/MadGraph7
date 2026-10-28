@@ -9,6 +9,11 @@ against the counterterms and the Feynman-gauge field factors with n_f from
 the request) and ``ap`` (rule 6, 40 digits against double-double and against
 60 digits). One test id per row, so the nightly jobs split per row; the
 manifest lists the pending rows and extras with the package each waits for.
+A row's variants (``<id>@<name>``: a runtime parameter change on the same
+generation) are ids of their own; a non-gating variant (a diagnostic twin)
+is listed in the manifest and left to the campaign CLI. Rows on the
+native-input route (heavy 2->4/2->5 gluon rows) record rule 4 as not formed
+(no native Catani prediction, WP3.1 I5c).
 """
 
 from __future__ import annotations
