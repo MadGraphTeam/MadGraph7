@@ -4865,7 +4865,9 @@ pub(crate) use evaluator::symjit_plane::{
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
 ))]
-pub(crate) use evaluator::symjit_plane::compile_symbolica_evaluator_to_plane_application_bytes;
+pub(crate) use evaluator::symjit_plane::{
+    compile_symbolica_evaluator_to_plane_application_bytes, real_axis_sensitive_outputs,
+};
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_plane::{
     PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_cpu_features,

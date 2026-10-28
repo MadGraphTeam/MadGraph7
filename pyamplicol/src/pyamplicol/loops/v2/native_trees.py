@@ -144,12 +144,17 @@ NATIVE_EXPORT_REFUSALS = (
         "plane-mismatch",
         "a tree-program kernel or parameter-program output whose binary64 "
         "SymJIT plane application disagrees with its exact evaluator at the "
-        "plane check's probes (e.g. a square-root argument on its branch cut "
-        "there, which SymJIT and Symbolica sign differently)",
+        "plane check's rows (complex rows off the real axis: a translation "
+        "error; the parameter program's request values: a branch side that "
+        "SymJIT and Symbolica take differently there, e.g. a negated real "
+        "under a square root, -0 against +0), or that reads a branch-cut or "
+        "discontinuous function of its inputs in a program without a real "
+        "point to certify it at",
         "WP3.2 EWI-N (ew-native)",
-        "a plane check that does not depend on the model's parameter "
-        "declaration order or names (slice-status DECISIONS 2026-10-26 ~21:10 "
-        "item 6, user-confirmed 2026-10-27 ~19:20)",
+        "a request whose values put such an argument on its cut: the argument "
+        "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
+        "takes it, ct_recursion._RealArguments) with the first model that "
+        "needs it",
     ),
     NativeExportRefusal(
         "external-photon-alpha0",
@@ -237,29 +242,40 @@ _PLANES_KEPT = 4096
 
 
 def _plane_applications(
-    states: Sequence[bytes], where: Callable[[int, int], str] | None = None
+    states: Sequence[bytes],
+    where: Callable[[int, int], str] | None = None,
+    real_points: Mapping[int, Sequence[Sequence[float]]] | None = None,
 ) -> tuple[bytes, ...]:
     """The binary64 SymJIT plane application of each saved exact evaluator
     (storage-v4 IR; the native ``compile_v2_plane`` checks it against the
-    evaluator). A disagreement is the listed refusal ``plane-mismatch``
-    naming the output: ``where(state index, output index)`` describes it
-    (``_PlaneOutputs.where`` for a tree program's states; by default the
-    indices)."""
+    evaluator off the real axis, which certifies the translation whatever
+    the inputs' order and names, and at the state's ``real_points``, rows of
+    the real inputs it runs at, which certify its real-axis evaluation
+    there: the parameter program's are the request's parameter values,
+    ``_request_point``). A disagreement, or an output reading a branch-cut or
+    discontinuous function of its inputs in a state without real points, is
+    the listed refusal ``plane-mismatch`` naming the output: ``where(state
+    index, output index)`` describes it (``_PlaneOutputs.where`` for a tree
+    program's states; by default the indices)."""
 
     from pyamplicol.loops.native import load_loop_native
 
     native = load_loop_native()
+    points = real_points or {}
     out = []
     for index, state in enumerate(states):
-        key = hashlib.sha256(state).digest()
+        rows = [[float(x) for x in row] for row in points.get(index, ())]
+        digest = hashlib.sha256(state)
+        digest.update(json.dumps([[x.hex() for x in row] for row in rows]).encode())
+        key = digest.digest()
         plane = _PLANES.get(key)
         if plane is None:
             try:
                 compiled, _inputs, _outputs = native.compile_v2_plane(
-                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
+                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False, rows or None
                 )
             except native.PlaneMismatchError as error:
-                message, output, _row, _imaginary = error.args
+                message, output, *_probe = error.args
                 described = (
                     where(index, output)
                     if where is not None
@@ -275,6 +291,22 @@ def _plane_applications(
             _PLANES.move_to_end(key)
         out.append(plane)
     return tuple(out)
+
+
+def _request_point(slice_: Any, parameters: Mapping[str, Any]) -> tuple[float, ...]:
+    """The parameter program's real inputs at the request's parameter values,
+    in binary64: each external parameter's value fixed at generation
+    (``LoopSlice.fixed_parameters``), else its default (the batch's values
+    without a caller's, ``batch_parameters``); the plane check's real-axis
+    row of the parameter program."""
+
+    fixed = slice_.fixed_parameters
+    return tuple(
+        float(Fraction(fixed.get(name, default)))
+        for name, default in zip(
+            parameters["names"], parameters["defaults"], strict=True
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -758,6 +790,7 @@ def export_trees(
                 parameter_outputs,
                 (trees.compiled, None if ct is None else ct.rows.compiled),
             ).where,
+            {len(kernels): [_request_point(slice_, parameters)]},
         ),
         () if counterterms is None else counterterms.tensors,
     )

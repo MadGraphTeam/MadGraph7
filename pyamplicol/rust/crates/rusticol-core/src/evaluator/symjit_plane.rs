@@ -854,6 +854,104 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
     ))
 }
 
+/// The outputs of a binary64 Symbolica evaluator whose values at real inputs
+/// are not decided by the values off the real axis: those reading, on an
+/// argument that depends on the inputs, a function with a branch cut on the
+/// real axis (`log`, `sqrt`, `arg`, a power with a slot exponent: its side
+/// there is a signed zero's, and SymJIT and Symbolica's evaluator sign a
+/// negated real's zero imaginary part differently), a discontinuous one
+/// (pyAmpliCol's predicates `truth`, `equal`, `less`, `less_equal`) or any
+/// function this rule does not know, a selection on such a condition
+/// (`Join`), or written after a jump on such a condition. `exp`, `sin`,
+/// `cos`, `conj`, `abs` and the predicates `real_part` and `imaginary_part`
+/// are continuous and do not count. Sub-evaluator calls are read through
+/// their bodies ([`InlinedProgram`]). The plane check
+/// (`loop_v2::trees::compile_plane_application_checked`) certifies these
+/// outputs only at real inputs it is given.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+pub(crate) fn real_axis_sensitive_outputs(
+    evaluator: &symbolica::evaluate::ExpressionEvaluator<symbolica::domains::float::Complex<f64>>,
+) -> RusticolResult<Vec<usize>> {
+    use symbolica::evaluate::{Instruction as I, Slot};
+    let exported = evaluator.export_instructions();
+    let program = InlinedProgram::of(&exported)?;
+    // Per slot: (depends on the inputs, real-axis sensitive).
+    let mut temporaries = vec![(false, false); program.temporaries];
+    let mut outputs = vec![(false, false); exported.output_count];
+    let read = |slot: &Slot, temporaries: &[(bool, bool)], outputs: &[(bool, bool)]| match *slot
+    {
+        Slot::Param(_) => (true, false),
+        Slot::Const(_) => (false, false),
+        Slot::Temp(i) => temporaries.get(i).copied().unwrap_or((true, true)),
+        Slot::Out(i) => outputs.get(i).copied().unwrap_or((true, true)),
+    };
+    let fold = |slots: &[Slot], temporaries: &[(bool, bool)], outputs: &[(bool, bool)]| {
+        slots.iter().fold((false, false), |(d, s), slot| {
+            let (a, b) = read(slot, temporaries, outputs);
+            (d || a, s || b)
+        })
+    };
+    // After a jump on an input-dependent condition every write is sensitive
+    // (the evaluator's control flow runs forward).
+    let mut controlled = false;
+    for row in &program.rows {
+        let (destination, (dependent, sensitive)) = match row {
+            I::Add(o, args, _) | I::Mul(o, args, _) => (o, fold(args, &temporaries, &outputs)),
+            I::Pow(o, base, _, _) => (o, read(base, &temporaries, &outputs)),
+            I::Powf(o, base, exponent, _) => {
+                let (d, s) = fold(&[*base, *exponent], &temporaries, &outputs);
+                (o, (d, s || d))
+            }
+            I::Fun(o, call, _) => {
+                let (symbol, _tags, args) = &**call;
+                let (d, s) = fold(args, &temporaries, &outputs);
+                let continuous = if symbol.get_namespace() == "symbolica" {
+                    matches!(
+                        symbol.get_stripped_name(),
+                        "exp" | "sin" | "cos" | "conj" | "abs"
+                    )
+                } else {
+                    matches!(
+                        symbol.get_name(),
+                        "pyamplicol_scalar_v1::real_part" | "pyamplicol_scalar_v1::imaginary_part"
+                    )
+                };
+                (o, (d, s || (d && !continuous)))
+            }
+            I::Assign(o, value) => (o, read(value, &temporaries, &outputs)),
+            I::Join(o, condition, yes, no) => {
+                let (c, cs) = read(condition, &temporaries, &outputs);
+                let (d, s) = fold(&[*yes, *no], &temporaries, &outputs);
+                (o, (c || d, s || cs || c))
+            }
+            I::IfElse(condition, _) => {
+                let (c, cs) = read(condition, &temporaries, &outputs);
+                controlled |= c || cs;
+                continue;
+            }
+            I::Goto(_) | I::Label(_) => continue,
+        };
+        let value = (dependent || controlled, sensitive || controlled);
+        match *destination {
+            Slot::Temp(i) if i < temporaries.len() => temporaries[i] = value,
+            Slot::Out(i) if i < outputs.len() => outputs[i] = value,
+            _ => {
+                return Err(RusticolError::serialization(
+                    "a Symbolica instruction writes outside its temporaries and outputs",
+                ));
+            }
+        }
+    }
+    Ok(outputs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, &(_, sensitive))| sensitive.then_some(index))
+        .collect())
+}
+
 /// Symbolica's instruction export with every sub-evaluator call inlined.
 ///
 /// A call `dst = f(args)` of a sub-evaluator `f` becomes `f`'s body with its

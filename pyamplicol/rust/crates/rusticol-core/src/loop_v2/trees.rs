@@ -74,9 +74,13 @@ pub const TREE_SCHEMA: u32 = 4;
 /// input and output counts. The evaluator is the one binary64 would run
 /// without it (its coefficients, registered constants included, cast as
 /// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
-/// storage-v4 IR (`evaluator::symjit_plane`). The plane check's refusal is
-/// a value: `Ok(Err(mismatch))` when the plane application disagrees with
-/// its exact evaluator at the check's probes (the generation refuses the
+/// storage-v4 IR (`evaluator::symjit_plane`). `real_points` are rows of real
+/// input values at which the program runs (the parameter program: the
+/// request's parameter values), the plane check's real-axis rows
+/// ([`verify_plane`]). The plane check's refusal is a value:
+/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
+/// evaluator at the check's probes, or when an output's real-axis value
+/// cannot be certified without a real point (the generation refuses the
 /// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
 /// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
@@ -84,6 +88,7 @@ pub fn compile_plane_application_checked(
     saved: &[u8],
     opt_level: u8,
     compress: bool,
+    real_points: &[Vec<f64>],
 ) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
     let zero = 0.0_f64;
@@ -96,71 +101,155 @@ pub fn compile_plane_application_checked(
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
             &evaluator, opt_level, compress,
         )?;
+    if let Some(point) = real_points.iter().find(|point| point.len() != inputs) {
+        return Err(invalid(format!(
+            "plane check: a real point of {} values for a program of {inputs} inputs",
+            point.len()
+        )));
+    }
+    let sensitive = if real_points.is_empty() {
+        crate::engine::real_axis_sensitive_outputs(&evaluator)?
+    } else {
+        Vec::new()
+    };
+    if let Some(&output) = sensitive.first() {
+        return Ok(Err(PlaneMismatch {
+            output,
+            probe: PlaneProbe::NoRealPoint,
+        }));
+    }
     Ok(
-        match verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))? {
+        match verify_plane(
+            &plane,
+            evaluator.into_batch_evaluator(),
+            (inputs, outputs),
+            real_points,
+        )? {
             Some(mismatch) => Err(mismatch),
             None => Ok((plane, inputs, outputs)),
         },
     )
 }
 
-/// The first disagreement of a plane application with its exact evaluator at
-/// the plane check's probes ([`compile_plane_application_checked`]): the
-/// output index, the probe row, the real or imaginary part, and the two
-/// binary64 values.
+/// What the plane check refuses ([`compile_plane_application_checked`]): the
+/// output and how.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaneMismatch {
     pub output: usize,
-    pub row: usize,
-    pub imaginary: bool,
-    pub plane: f64,
-    pub exact: f64,
+    pub probe: PlaneProbe,
+}
+
+/// How a plane check refuses an output ([`PlaneMismatch`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlaneProbe {
+    /// The plane application and its exact evaluator disagree at a probe row
+    /// (off the real axis, or one of the caller's real points), in the real or
+    /// imaginary part, with the two binary64 values.
+    Row {
+        row: usize,
+        real_axis: bool,
+        imaginary: bool,
+        plane: f64,
+        exact: f64,
+    },
+    /// The output's value at real inputs depends on a branch side or a
+    /// discontinuity (`engine::real_axis_sensitive_outputs`) and the caller
+    /// gave no real point to certify it at.
+    NoRealPoint,
 }
 
 impl std::fmt::Display for PlaneMismatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "the SymJIT plane application disagrees with its exact evaluator at \
-             output {} ({} part, probe row {}: {:e} against {:e})",
-            self.output,
-            if self.imaginary { "imaginary" } else { "real" },
-            self.row,
-            self.plane,
-            self.exact
-        )
+        match &self.probe {
+            PlaneProbe::Row {
+                row,
+                real_axis,
+                imaginary,
+                plane,
+                exact,
+            } => write!(
+                f,
+                "the SymJIT plane application disagrees with its exact evaluator at \
+                 output {} ({} part, {} probe row {row}: {plane:e} against {exact:e})",
+                self.output,
+                if *imaginary { "imaginary" } else { "real" },
+                if *real_axis { "real-axis" } else { "complex" },
+            ),
+            PlaneProbe::NoRealPoint => write!(
+                f,
+                "output {} reads a branch-cut or discontinuous function of the \
+                 inputs, whose side at real inputs only a real point of the \
+                 program can certify, and none was given",
+                self.output
+            ),
+        }
     }
 }
 
 /// The plane check: the first disagreement of a plane application with its
-/// evaluator at two fixed real points (inputs in (0.5, 1.5)), or `None`. A
-/// translation error (a constant or a function read wrongly) changes an
-/// output at O(1), while the two evaluations' rounding differs by orders of
-/// magnitude less (the criterion of the tree engine's exporter,
-/// `symbolica_helpers._verify_symjit_plane_constants`).
+/// evaluator, or `None`. A translation error (a constant or a function read
+/// wrongly) changes an output at O(1), while the two evaluations' rounding
+/// differs by orders of magnitude less (the criterion of the tree engine's
+/// exporter, `symbolica_helpers._verify_symjit_plane_constants`).
+///
+/// Its rows: two complex rows off the real axis (real parts in (0.5, 1.5),
+/// imaginary parts of either sign in 0.25..0.75 in magnitude, a deterministic
+/// low-discrepancy sequence), where no input-dependent argument sits on a
+/// branch cut, so the check certifies the translation whatever the inputs'
+/// order, names and values; then `real_points`, the real inputs at which the
+/// program runs, which certify the real-axis evaluation there (a signed
+/// zero's side of a cut, a predicate's branch). SymJIT gives a negated real
+/// a -0 imaginary part where Symbolica's evaluator gives +0 (`sqrt(-x)` at
+/// x > 0: -i sqrt(x) against +i sqrt(x)), so a real probe placed on a cut
+/// refuses a correct translation; the former real probes, assigned by input
+/// index, made the verdict depend on the parameters' declaration order.
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
     mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
+    real_points: &[Vec<f64>],
 ) -> RusticolResult<Option<PlaneMismatch>> {
-    const ROWS: usize = 2;
+    const OFF_AXIS: usize = 2;
     let (inputs, outputs) = shape;
-    // A low-discrepancy sequence: deterministic, distinct per input.
-    let values: Vec<Complex<f64>> = (0..ROWS * inputs)
+    let rows = OFF_AXIS + real_points.len();
+    let mut values = off_axis_probes(inputs, OFF_AXIS);
+    for point in real_points {
+        values.extend(point.iter().map(|&x| Complex::new(x, 0.0)));
+    }
+    let mut expected = vec![Complex::new(0.0, 0.0); rows * outputs];
+    evaluator
+        .evaluate_batch(&values, &mut expected, rows)
+        .map_err(|e| invalid(format!("plane check: {e}")))?;
+    let got = evaluate_plane_application(plane, shape, &values, rows)?;
+    Ok(first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
+        if let PlaneProbe::Row { row, real_axis, .. } = &mut mismatch.probe {
+            if *row >= OFF_AXIS {
+                *row -= OFF_AXIS;
+                *real_axis = true;
+            }
+        }
+        mismatch
+    }))
+}
+
+/// `rows` rows of `inputs` complex probe values off the real axis: real parts
+/// 0.5 + frac(k / phi) and imaginary parts 0.25 + 0.5 frac(k / rho) (phi the
+/// golden ratio, rho the plastic number: a two-dimensional low-discrepancy
+/// sequence, every value distinct), positive in even rows and negative in
+/// odd rows (both half-planes).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
+    (0..rows * inputs)
         .map(|k| {
+            let n = (k + 1) as f64;
+            let sign = if (k / inputs.max(1)) % 2 == 0 { 1.0 } else { -1.0 };
             Complex::new(
-                0.5 + (0.618_033_988_749_894_8 * (k + 1) as f64).fract(),
-                0.0,
+                0.5 + (0.618_033_988_749_894_8 * n).fract(),
+                sign * (0.25 + 0.5 * (0.754_877_666_246_692_7 * n).fract()),
             )
         })
-        .collect();
-    let mut expected = vec![Complex::new(0.0, 0.0); ROWS * outputs];
-    evaluator
-        .evaluate_batch(&values, &mut expected, ROWS)
-        .map_err(|e| invalid(format!("plane check: {e}")))?;
-    let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
-    Ok(first_mismatch(&expected, &got, outputs))
+        .collect()
 }
 
 /// The first value where `got` (the plane application's rows) and `expected`
@@ -189,10 +278,13 @@ fn first_mismatch(
             let value = index / 2;
             return Some(PlaneMismatch {
                 output: value % outputs.max(1),
-                row: value / outputs.max(1),
-                imaginary: index % 2 == 1,
-                plane: g,
-                exact: e,
+                probe: PlaneProbe::Row {
+                    row: value / outputs.max(1),
+                    real_axis: false,
+                    imaginary: index % 2 == 1,
+                    plane: g,
+                    exact: e,
+                },
             });
         }
     }

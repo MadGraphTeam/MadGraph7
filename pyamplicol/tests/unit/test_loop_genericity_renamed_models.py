@@ -857,70 +857,56 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 
 
 # loop_sm with MW a card input reaches the native export, whose SymJIT plane
-# check (rusticol-core loop_v2/trees.rs ``verify_plane``, from
-# artifact-portability) compares the plane application with the exact
-# evaluator at real inputs 0.5 + frac(0.618 (k + 1)), assigned by input index.
-# Where MW > MZ there, the argument of the W coupling's (1 - MW^2/MZ^2)^(-1/2)
-# is a negated real: SymJIT's product with the real constant -1 gives it a
-# -0 imaginary part, Symbolica's complex product +0, so the two take opposite
-# sides of the cut (a sign) and the export is refused, as the listed
-# ``plane-mismatch`` naming the parameter-program output (package
-# fail-closed; ``test_plane_mismatch_names_the_parameter_program_output``
-# below). Which input gets which probe depends on the parameter order, so on
-# the names (G_mu's card-input MW passes). It is WP3.2 EWI-N's defect
-# (ew-native), which also owns the same refusal of g g > t t~ EW's parameter
-# program on G_mu (slice-status UPDATE 2026-10-26 ~07:25): the plane check
-# must not depend on the declaration order or names, by evidence either the
-# SymJIT fix (if its signed-zero branch is a defect against Symbolica), a
-# branch-cut-consistent comparison or off-axis probes that still certify the
-# real-axis evaluation (DECISIONS 2026-10-26 ~21:10 item 6, confirmed by the
-# user 2026-10-27 ~19:20; it supersedes the ~10:10 routing). Reproducers: the model-free
-# ``test_plane_check_accepts_a_negated_real_on_a_branch_cut`` below and
-# ``test_mw_nature_takes_the_same_native_route[loop_sm]`` (--runxfail).
-PLANE_CHECK_OWNER = (
-    "SymJIT plane check at real probe inputs on a branch cut (SymJIT gives a "
-    "negated real a -0 imaginary part, Symbolica +0; rusticol-core "
-    "loop_v2/trees.rs verify_plane), refused as the listed plane-mismatch: "
-    "WP3.2 EWI-N (ew-native), the same refusal as EWI-N's g g > t t~ EW "
-    "parameter program; slice-status DECISIONS 2026-10-26 ~21:10 item 6 "
-    "(user-confirmed 2026-10-27 ~19:20)"
-)
+# check (rusticol-core loop_v2/trees.rs ``verify_plane``) once compared the
+# plane application with the exact evaluator at real inputs 0.5 + frac(0.618
+# (k + 1)), assigned by input index: where MW > MZ there, the argument of the
+# W coupling's (1 - MW^2/MZ^2)^(-1/2) was a negated real, which SymJIT signs
+# -0 and Symbolica +0, so the export was refused depending on the parameter
+# order (G_mu's card-input MW passed). Since WP3.2 EWI-N (ew-native; slice-
+# status DECISIONS 2026-10-26 ~21:10 item 6, user-confirmed 2026-10-27
+# ~19:20) the check certifies the translation at complex rows off the real
+# axis, whatever the order and names, and the real-axis evaluation at the
+# request's parameter values (``native_trees._request_point``), where the
+# argument is positive: both variants take the native route
+# (``test_loop_v2_ew_native.py`` holds the model-free tests).
+def _former_probes(count: int) -> tuple[float, ...]:
+    """The former real probes of ``count`` inputs, by input index."""
+
+    return tuple(0.5 + (0.6180339887498949 * (k + 1)) % 1.0 for k in range(count))
 
 
 @pytest.mark.parametrize(
-    "name",
-    [
-        # The routes differ (the variant's export is refused).
-        pytest.param(
-            "loop_sm",
-            marks=pytest.mark.xfail(
-                strict=True, raises=AssertionError, reason=PLANE_CHECK_OWNER
-            ),
-        ),
-        # Derived masses are parameter-program outputs since
-        # generation-scale-2's M1/M2 (fix round 1): G_mu's MW takes the native
-        # route whether a card input or derived.
-        pytest.param("gmu", marks=pytest.mark.loop_nightly),
-    ],
+    "name", ["loop_sm", pytest.param("gmu", marks=pytest.mark.loop_nightly)]
 )
 def test_mw_nature_takes_the_same_native_route(w_slices, name):
+    """Derived masses are parameter-program outputs (generation-scale-2's
+    M1/M2), and the plane check does not depend on the parameter order: MW
+    takes the native route whether a card input or derived."""
+
     assert _route(w_slices(name, "mass")) == _route(w_slices(name, None))
+    assert _route(w_slices(name, None)) == "native-v2"
 
 
-def test_plane_mismatch_names_the_parameter_program_output(w_slices):
-    """Until EWI-N: the loop_sm variant's export is refused as the listed
-    ``plane-mismatch`` (a ``GenerationError`` at generation, no raw
-    ``ValueError``), naming the parameter-program output, with no stale
-    advice; the original exports natively."""
+def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch):
+    """At the former real probes as its real point, the loop_sm variant's
+    parameter program is refused as the listed ``plane-mismatch`` (a
+    ``GenerationError`` at generation, no raw ``ValueError``), naming the
+    parameter-program output, with no stale advice; at the request's values
+    it exports natively."""
 
+    from pyamplicol.loops.v2 import native_trees
     from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
     from pyamplicol.loops.v2.plan_export import export_plan
 
-    assert _route(w_slices("loop_sm", None)) == "native-v2"
+    slice_ = w_slices("loop_sm", "mass")
+    assert _route(slice_) == "native-v2"
+    monkeypatch.setattr(
+        native_trees,
+        "_request_point",
+        lambda _slice, record: _former_probes(len(record["names"])),
+    )
     with pytest.raises(NativeExportUnsupported) as refused:
-        export_plan(
-            w_slices("loop_sm", "mass"), forward=False, trees=True, born_squared=True
-        )
+        export_plan(slice_, forward=False, trees=True, born_squared=True)
     assert refused.value.feature == "plane-mismatch"
     message = str(refused.value)
     assert re.search(r"parameter-program output \d+ \(\w", message), message
@@ -928,21 +914,30 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices):
     # runtime's term id (``native_trees._output_label``).
     assert re.search(r"\(model coupling \w+ of vertex \w+ \(", message), message
     assert "derived_coupling_" not in message, message
+    assert "real-axis probe row 0" in message, message
     assert "exact evaluator;" not in message
 
 
 @pytest.mark.parametrize(
-    "text", ["sqrt(1 - x^2/y^2)", "(1 - x^2/y^2)^(-1/2)", "sqrt(-x)"]
+    "text", ["sqrt(1 - x^2/y^2)", "(1 - x^2/y^2)^(-1/2)", "sqrt(1 - y^2/x^2)"]
 )
-@pytest.mark.xfail(strict=True, raises=ValueError, reason=PLANE_CHECK_OWNER)
-def test_plane_check_accepts_a_negated_real_on_a_branch_cut(loop_native, text):
-    """The mechanism of the loop_sm refusal above, model-free and in a second:
-    the native plane check of a program whose square-root argument is a
-    negated real at the check's real probes (x = 1.118 > y = 0.736 in row 0)."""
+def test_plane_check_accepts_the_w_coupling_in_either_parameter_order(
+    loop_native, text
+):
+    """The mechanism of the former loop_sm refusal, model-free and in a
+    second: a square-root argument that the former real probes (x = 1.118 >
+    y = 0.736) put on its cut, checked at the request's point with x = MW,
+    y = MZ, or with the inputs declared the other way round (the last
+    case): accepted, and refused only at a real point on the cut."""
 
     from symbolica import E, Expression, S
 
-    state = Expression.evaluator_multiple(
-        [E(text)], [S("x"), S("y")], jit_compile=False
-    ).save()
-    loop_native.compile_v2_plane(bytes(state), 2, False)
+    state = bytes(
+        Expression.evaluator_multiple(
+            [E(text)], [S("x"), S("y")], jit_compile=False
+        ).save()
+    )
+    point = [80.419, 91.188] if "x^2/y^2" in text else [91.188, 80.419]
+    assert loop_native.compile_v2_plane(state, 2, False, [point])
+    with pytest.raises(ValueError, match="real-axis probe row 0"):
+        loop_native.compile_v2_plane(state, 2, False, [point[::-1]])

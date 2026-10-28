@@ -177,13 +177,14 @@ def test_export_refuses_external_photons_with_the_listed_key():
 
 @pytest.mark.loop_fast
 def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
-    """A square-root argument on its branch cut at the plane check's real
-    probes (x = 1.118 > y = 0.736 in row 0: SymJIT and Symbolica give the
-    negated real opposite signed zeros) is refused as ``plane-mismatch``,
-    naming the output: a tree program's kernel by its class and index, a
-    parameter-program output by its key, a derived coupling by its UFO
-    coupling and vertex, a counterterm coefficient with its epsilon power
-    and N_c grade."""
+    """A square-root argument on its branch cut at a real point of the
+    plane check (x = 1.118 > y = 0.736: SymJIT and Symbolica give the
+    negated real opposite signed zeros), or a program reading a branch cut
+    of its inputs without a real point (``test_loop_v2_ew_native.py``), is
+    refused as ``plane-mismatch``, naming the output: a tree program's
+    kernel by its class and index, a parameter-program output by its key, a
+    derived coupling by its UFO coupling and vertex, a counterterm
+    coefficient with its epsilon power and N_c grade."""
 
     from types import SimpleNamespace
 
@@ -197,9 +198,11 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
         ).save()
     )
 
-    def refused(states, where=None) -> str:
+    on_the_cut = {0: [[1.118, 0.736]]}
+
+    def refused(states, where=None, points=on_the_cut) -> str:
         with pytest.raises(native_trees.NativeExportUnsupported) as error:
-            native_trees._plane_applications(states, where)
+            native_trees._plane_applications(states, where, points)
         assert error.value.feature == "plane-mismatch"
         return str(error.value)
 
@@ -218,7 +221,8 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
     assert message.startswith(
         "plane-mismatch: parameter-program output 1 (model coupling GC_100 of "
         "vertex V_77 (W+ a)): loop v2 trees: the SymJIT plane application "
-        "disagrees with its exact evaluator at output 1 (imaginary part, probe row 0"
+        "disagrees with its exact evaluator at output 1 (imaginary part, real-axis "
+        "probe row 0"
     ), message
     assert message.count("probe row") == 1
     assert "keep this program on the exact evaluator" not in message
@@ -236,13 +240,19 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
     assert outputs(2, 3) == "output 3 of vertex kernel 0 of the counterterm program"
     assert outputs(4, 0) == "parameter-program output 0 (model MWx)"
     assert "output 1 of saved evaluator 0" in refused((state,))
-    # A program off the cut compiles as before.
+    # Without a real point: refused naming the output too.
+    assert refused((state,), outputs, None).startswith(
+        "plane-mismatch: parameter-program output 1 (model coupling GC_100 of "
+        "vertex V_77 (W+ a)): loop v2 trees: output 1 reads a branch-cut"
+    )
+    # Off the cut it compiles as before.
     off = bytes(
         Expression.evaluator_multiple(
             [E("sqrt(1 + x^2/y^2)")], [S("x"), S("y")], jit_compile=False
         ).save()
     )
-    assert native_trees._plane_applications((off,), outputs)
+    assert native_trees._plane_applications((off,), outputs, on_the_cut)
+    assert native_trees._plane_applications((state,), outputs, {0: [[0.736, 1.118]]})
 
 
 # ---------------------------------------------------- G2-M1: N_c exactness

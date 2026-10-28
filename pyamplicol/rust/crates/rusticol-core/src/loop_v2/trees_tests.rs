@@ -237,16 +237,44 @@ fn plane_mismatch_names_the_output_row_and_part() {
         mismatch,
         PlaneMismatch {
             output: 1,
-            row: 1,
-            imaginary: true,
-            plane: 2.0,
-            exact: -2.0
+            probe: PlaneProbe::Row {
+                row: 1,
+                real_axis: false,
+                imaginary: true,
+                plane: 2.0,
+                exact: -2.0
+            }
         }
     );
     let text = mismatch.to_string();
     assert!(
-        text.contains("output 1 (imaginary part, probe row 1"),
+        text.contains("output 1 (imaginary part, complex probe row 1"),
         "{text}"
     );
     assert!(!text.contains("exact evaluator;"), "{text}");
+    let text = PlaneMismatch {
+        output: 3,
+        probe: PlaneProbe::NoRealPoint,
+    }
+    .to_string();
+    assert!(text.starts_with("output 3 reads a branch-cut"), "{text}");
+}
+
+#[test]
+fn off_axis_probes_are_distinct_and_off_the_real_axis() {
+    // Two rows of five inputs: every imaginary part at least 0.25 in
+    // magnitude, positive in the first row and negative in the second, every
+    // value distinct, real parts in (0.5, 1.5).
+    let probes = off_axis_probes(5, 2);
+    assert_eq!(probes.len(), 10);
+    for (k, z) in probes.iter().enumerate() {
+        assert!(z.re > 0.5 && z.re < 1.5, "{z:?}");
+        assert!(z.im.abs() >= 0.25 && z.im.abs() <= 0.75, "{z:?}");
+        assert_eq!(z.im > 0.0, k < 5, "{z:?}");
+    }
+    for (i, a) in probes.iter().enumerate() {
+        for b in &probes[i + 1..] {
+            assert!(a.re != b.re && a.im != b.im, "{a:?} {b:?}");
+        }
+    }
 }
