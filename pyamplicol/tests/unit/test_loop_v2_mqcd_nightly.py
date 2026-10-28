@@ -8,8 +8,12 @@ the extras the harness checks: ``hel`` (per-helicity double-double against
 MadLoop's SLOOPMATRIXHEL rows within 1e-12), ``uv`` (rule 5, the bare loop's
 UV poles against the counterterms and the Feynman-gauge field factors with
 n_f from the request) and ``ap`` (rule 6, 40 digits against double-double and
-against 60 digits). One test id per row, so the nightly jobs split per row; the
-manifest lists the pending rows and extras with the package each waits for.
+against 60 digits) and ``sp`` (the special-point variants). The tier is split
+into file jobs (manifest ``nightly_jobs``, rows packed by measured cost into
+jobs within PLAN §3.2's 30 minutes): this module is job 1 plus the smokes
+and the M01 expansion, test_loop_v2_mqcd_nightly_<job>.py the others; one
+test id per row. The manifest lists the pending rows and extras with the
+package each waits for.
 A row's variants (``<id>@<name>``: a runtime parameter change on the same
 generation) are ids of their own; a non-gating variant (a diagnostic twin)
 is listed in the manifest and left to the campaign CLI. Rows on the
@@ -21,30 +25,13 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit.loop_mqcd_tiers import nightly_module
 from tools.loop_benchmark import mqcd
 
 TIER = "nightly"
-ROWS = sorted(
-    name
-    for name, row in mqcd.rows().items()
-    if row.active
-    and row.gating
-    and (row.tier_points(TIER) or set(row.extras) & mqcd.IMPLEMENTED_EXTRAS)
-)
-
-
-@pytest.fixture(scope="module")
-def campaign(loop_sm_ufo, loop_native, tmp_path_factory):
-    return mqcd.Campaign(loop_sm_ufo, loop_native, tmp_path_factory.mktemp("mqcd"))
-
-
-@pytest.mark.loop_nightly
-@pytest.mark.parametrize("name", ROWS)
-def test_row_meets_the_acceptance_rules(campaign, name):
-    report = campaign.report(name, TIER)
-    mqcd.write_result(report)
-    assert report.checks, name
-    assert report.passed, report.describe()
+# Nightly file job 1 (manifest ``nightly_jobs``; the other jobs are
+# test_loop_v2_mqcd_nightly_<job>.py), plus the smokes and the M01 expansion.
+campaign, test_row_meets_the_acceptance_rules = nightly_module(1)
 
 
 SMOKES = mqcd.load_manifest()["smokes"]["same_request"]

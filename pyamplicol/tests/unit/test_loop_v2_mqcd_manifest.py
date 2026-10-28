@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -493,3 +494,28 @@ def test_per_helicity_rows_take_the_helicity_average():
     # A configuration MadLoop has and we do not (or the reverse) fails.
     failed = mqcd.rule_hel(_row(), 0, rows, madloop[:3], 0.118)
     assert not failed[0].passed and failed[0].coefficient == "helicity rows"
+
+
+def test_nightly_jobs_cover_the_tier_within_the_budget(manifest):
+    """PLAN §3.2 acceptance: each nightly file job <= 30 min. The jobs
+    partition the nightly row ids (a row's variants in its job, which reuse
+    its generation), each job has its module, and its measured cost is
+    within the budget."""
+
+    jobs = manifest["nightly_jobs"]["jobs"]
+    assigned = [name for job in jobs for name in job["rows"]]
+    assert len(assigned) == len(set(assigned))
+    assert sorted(assigned) == mqcd.nightly_ids(manifest)
+    owner = {name: job["job"] for job in jobs for name in job["rows"]}
+    for name in assigned:
+        base = name.split("@")[0]
+        if "@" in name and base in owner:
+            assert owner[name] == owner[base], name
+    root = mqcd.ROOT
+    for job in jobs:
+        assert job["seconds"] <= 30 * 60, job
+        text = (root / job["file"]).read_text()
+        assert f"nightly_module({job['job']})" in text, job["file"]
+    files = sorted(p.name for p in (root / "tests" / "unit").glob(
+        "test_loop_v2_mqcd_nightly*.py"))  # fmt: skip
+    assert files == sorted(Path(job["file"]).name for job in jobs)

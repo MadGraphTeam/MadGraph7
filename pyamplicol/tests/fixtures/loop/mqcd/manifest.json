@@ -187,6 +187,133 @@
   },
   "lc_every_restriction": "MQ-NC"
  },
+ "nightly_jobs": {
+  "budget_seconds": 1200,
+  "measurement": "seconds per nightly test id, campaign run of 2026-10-28 (one process per id, shared host at load ~100, start-up included)",
+  "jobs": [
+   {
+    "job": 1,
+    "seconds": 1165,
+    "rows": [
+     "A09",
+     "A09@collinear",
+     "A09@soft",
+     "B05",
+     "E06"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
+   },
+   {
+    "job": 2,
+    "seconds": 1355,
+    "rows": [
+     "A24"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_2.py"
+   },
+   {
+    "job": 3,
+    "seconds": 1176,
+    "rows": [
+     "A08",
+     "A23"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_3.py"
+   },
+   {
+    "job": 4,
+    "seconds": 1189,
+    "rows": [
+     "A14",
+     "A18",
+     "A22",
+     "B07",
+     "C06",
+     "C08"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_4.py"
+   },
+   {
+    "job": 5,
+    "seconds": 1183,
+    "rows": [
+     "A05",
+     "A13",
+     "A15",
+     "A19",
+     "A20",
+     "A21",
+     "B01",
+     "B01@mt170",
+     "B01@threshold",
+     "B03",
+     "B06",
+     "C01",
+     "C01@params",
+     "C02",
+     "C05",
+     "D05",
+     "D07",
+     "D08",
+     "D25",
+     "D25@zero",
+     "E01",
+     "E02",
+     "F01",
+     "H01",
+     "M01@P0",
+     "M01@P2"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_5.py"
+   },
+   {
+    "job": 6,
+    "seconds": 1183,
+    "rows": [
+     "A01",
+     "A02",
+     "A03",
+     "A04",
+     "A06",
+     "A07",
+     "A12",
+     "A25",
+     "A26",
+     "B02",
+     "B08",
+     "C03",
+     "C04",
+     "C07",
+     "D01",
+     "D02",
+     "D06",
+     "D09",
+     "D10",
+     "D11",
+     "D12",
+     "D13",
+     "D15",
+     "D16",
+     "D17",
+     "D18",
+     "D19",
+     "D20",
+     "D21",
+     "D23",
+     "D24",
+     "D26",
+     "D27",
+     "E05",
+     "F02",
+     "F04",
+     "G01",
+     "G02",
+     "R01"
+    ],
+    "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
+   }
+  ]
+ },
  "rows": [
   {
    "id": "A01",
