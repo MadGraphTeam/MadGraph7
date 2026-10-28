@@ -1132,10 +1132,13 @@ def _scale_dependent(exported: Any, first: Any, other: Any) -> str:
     value (kernel constants, squared masses, the legs' squared masses): the
     points of a batch differ in their renormalisation scale only, so these
     depend on it (a running-coupling or MSbar-mass model; the native inputs
-    record them, ``native_trees.scale_dependent_shared``). Names them."""
+    record them, ``native_trees.scale_dependent_shared``). Names them as the
+    native record does (``native_trees._output_label``)."""
+
+    from .native_trees import _output_label
 
     labels = (
-        [f"kernel constant {key!r}" for key, _flips in exported.constants],
+        [_output_label(("constant", key, flips)) for key, flips in exported.constants],
         [f"mass {name}" for name in exported.masses],
         [f"mass of leg {i + 1}" for i in range(len(first[2]))],
     )

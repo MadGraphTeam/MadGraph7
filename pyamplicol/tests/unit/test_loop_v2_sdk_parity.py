@@ -1012,8 +1012,11 @@ def test_a_mixed_scale_batch_of_a_running_coupling_is_refused_by_name(
         ValueError,
         match=r"kernel constant .* depend on the renormalisation scale: the "
         r"points of one batch need equal kernel constants and masses",
-    ):
+    ) as refused:
         oracle.evaluate([GG_POINT, GG_POINT], SCALES)
+    # Named as the native record names them (``_output_label``: the value's
+    # form), not by the key's repr.
+    assert "'param'" not in str(refused.value), str(refused.value)
     # So do the Python API's colour-correlated and helicity-resolved calls,
     # which take one scale per call (``docs/user/configuration.md``).
     from pyamplicol import Runtime
