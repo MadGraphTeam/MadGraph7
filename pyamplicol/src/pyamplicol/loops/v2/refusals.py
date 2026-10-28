@@ -14,17 +14,18 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
 * ``colour-accuracy-nc-exact`` (G2-M1): leading and next-to-leading colour
   project the exact colour cells at formal N_c, which needs every loop-side
   tree block to have one N_c grade (``BlockColourFlow.nc_grade``, design
-  §3.2 item 4). A block whose trees mix U(1)-subtraction grades (its
-  ``nc_grade`` is ``None``: identical-flavour quark lines, from
-  u u~ > u u~ g up, or a photon and a U(1) piece joining one pair) is not
-  exact in N_c, so such a request is refused at LC and NLC
+  §3.2 item 4 and §3.3). LC and NLC requests compile their loop-request
+  DAGs with the N_c grade split (``generation.dag_grades`` and the native
+  ``loop_v2::dag::grades``), which copies every current whose derivations
+  mix U(1)-subtraction grades into one current per grade, so every block of
+  such a request has one grade and the guard passes (identical-flavour quark
+  lines included). The rule is a guard only: a block whose trees still mix
+  grades (its ``nc_grade`` is ``None``, i.e. a DAG compiled without the
+  split) is not exact in N_c, so such a request is refused at LC and NLC
   (``require_nc_exact``, right after the trees are built) and every export
   asserts it again (``require_formal_nc_tables``): the native runtime and the
   SDKs can never serve a grade-0 projection of such blocks. Full colour keeps
-  every power at N_c = 3 and is exact. The criterion is N_c-exactness itself,
-  so the guard stays correct once the grade split
-  (``generation.dag_grades``, package identical-flavour-lc) makes those
-  blocks exact.
+  every power at N_c = 3, is exact without grades and never splits.
 * ``fermion-line-representation`` (G2-m1): the loop-request blocks sign
   coloured fermion lines by their colour flow and colour-singlet ones by the
   Wick order of their external fermions (``generation.fermion_ordering``,
@@ -66,14 +67,16 @@ LOOP_ADMISSION_REFUSALS = (
     LoopAdmissionRefusal(
         "colour-accuracy-nc-exact",
         "a leading- or next-to-leading-colour request whose loop-side tree "
-        "currents are not exact in N_c (blocks whose trees mix "
-        "U(1)-subtraction grades, e.g. identical-flavour quark lines from "
-        "u u~ > u u~ g up)",
+        "currents are not exact in N_c (blocks whose trees still mix "
+        "U(1)-subtraction grades: a loop-request DAG compiled without the "
+        "N_c grade split)",
         "LC and NLC project the colour cells at formal N_c, which needs every "
-        "tree block to have one N_c grade (design §3.2 item 4)",
-        'full colour (color.accuracy = "full") is exact for these processes',
-        "identical-flavour-lc (the N_c grade split, generation.dag_grades)",
-        "every block of an LC/NLC request one grade; the guard then passes",
+        "tree block to have one N_c grade (design §3.2 item 4, §3.3)",
+        'full colour (color.accuracy = "full") is exact without grades',
+        "none: a guard only (LC and NLC compile with the N_c grade split, "
+        "generation.dag_grades and loop_v2::dag::grades, so every block of "
+        "their requests has one grade)",
+        "none (kept as the guard of the grade split)",
     ),
     LoopAdmissionRefusal(
         "fermion-line-representation",

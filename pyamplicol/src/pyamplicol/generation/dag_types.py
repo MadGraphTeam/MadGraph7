@@ -94,10 +94,13 @@ class ColorState:
     current's ``ordered_external_labels``.
 
     ``nc_grade`` is the N_c grade (minus the number of U(1)-subtraction
-    auxiliaries of its trees) of a loop-request current whose derivations
-    mixed grades and was split into one current per grade
-    (``generation.dag_grades.split_u1_grades``); ``None`` for every other
-    current, whose grade its derivations fix.
+    auxiliaries of its trees) of every current of a loop-request block whose
+    trees have several grades (``generation.dag_grades.split_u1_grades``): a
+    current whose own derivations mixed grades is split into one current per
+    grade, and a current of one grade in such a block (it mixes across its
+    helicity rows) takes its grade as a label. ``None`` for every current of
+    a block of one grade (its derivations fix it) and in a DAG compiled
+    without the split.
     """
 
     accuracy: str

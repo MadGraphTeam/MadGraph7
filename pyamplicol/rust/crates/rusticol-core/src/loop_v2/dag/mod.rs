@@ -107,8 +107,11 @@ pub struct Species {
 }
 
 /// `ColorState` of `generation/dag_types.py`. `nc_grade` is the N_c grade
-/// of a current split per grade ([`grades`]); `None` elsewhere (and absent
-/// from the JSON tables then).
+/// of every current of a block whose trees have several grades ([`grades`]:
+/// a current whose own derivations mix grades is split into one current per
+/// grade, a current of one grade in such a block takes its grade as a
+/// label); `None` for the currents of a block of one grade and without the
+/// split (and absent from the JSON tables then).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColourState {
     pub accuracy: String,
