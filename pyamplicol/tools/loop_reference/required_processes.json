@@ -458,7 +458,9 @@
       "born_orders": {"QCD": 3, "QED": 0},
       "correction": "QCD",
       "scheme": "qcd",
-      "madloop": {"process": "u u~ > g g g QED=0 [virt=QCD]"}
+      "madloop": {"process": "u u~ > g g g QED=0 [virt=QCD]"},
+      "recola": {"process": "u u~ -> g g g"},
+      "openloops": {"process": "2 -2 -> 21 21 21", "library": "ppjjj"}
     },
     {
       "name": "uux_gggg",
