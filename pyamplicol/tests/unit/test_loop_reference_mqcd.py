@@ -178,8 +178,17 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
         for key, value in evaluation["madloop_params"].items():
             assert settings["MadLoopParams"][key] == value
         assert all(status // 100 in (3, 4) for status in statuses), statuses
-        secondary = madloop["secondary_runs"]["mlstabthres"]
-        assert len(secondary["relative_deviation_from_reference_run"]) == len(statuses)
+        # A point whose quadruple-precision stability test failed (4xx) is no
+        # reference unless declared: status 'none' or a rule 1 outlier.
+        for status, row in zip(statuses, fixture["rows"], strict=True):
+            if status // 100 == 4:
+                record = row["reference"]
+                assert record["status"] == "none" or record["outlier"], status
+        # The batch-2 evaluation it supersedes, where the run had one.
+        secondary = madloop.get("secondary_runs", {}).get("mlstabthres")
+        if secondary is not None:
+            deviation = secondary["relative_deviation_from_reference_run"]
+            assert len(deviation) == len(statuses)
     # Points: on the scheme's mass shells, momentum conserving.
     masses = required_spec.masses(spec)
     assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
@@ -248,21 +257,23 @@ def _strict(a: float, b: float) -> float:
 )
 def test_per_helicity_entries_carry_reference_records(run_id: str) -> None:
     """Quadruple-precision helicity entries take their Born from the
-    helicity-diagonal IR double pole; a vanishing helicity, or one whose
-    printed binary64 Born misses that Born by more than 1e-13 (suppressed
-    below the point's binary64 condition), is an absolute entry against the
-    point's summed |Born|."""
+    helicity-diagonal IR double pole. Only a vanishing helicity (<= 1e-12 of
+    the summed Born) is an absolute entry (§1.4: absolute only for what
+    vanishes identically); every other entry is strictly relative, and every
+    committed entry is a reference: at points that are not MadLoop's own
+    quadruple-precision points a printed binary64 Born more than 1e-13 off the
+    quadruple-precision one (a point-sensitive helicity) would not be one."""
     fixture = _fixture(run_id)
     per = fixture["per_helicity"]
     factor = fixture["universal_double_pole_factor"]
+    qp_point = bool(fixture["point_construction"].get("madloop_qp_point"))
     assert per["settings"]["MadLoopParams_overrides"] == {"HelicityFilterLevel": "0"}
     assert per["settings"]["quadruple_precision_stage"]
     for entries in per["rows"]:
         summed = sum(abs(e["born"]) for e in entries)
         for entry in entries:
             record = entry["reference"]
-            assert record["status"] == "ok"
-            assert entry["status"] // 100 in (3, 4), entry["helicity"]
+            assert entry["status"] // 100 == 3, entry["helicity"]
             mismatch = record["born_double_pole_relative_mismatch"]
             if factor:
                 assert (
@@ -273,11 +284,12 @@ def test_per_helicity_entries_carry_reference_records(run_id: str) -> None:
             else:
                 assert record["born_source"] == "madloop" and mismatch is None
             vanishing = abs(entry["born"]) <= 1e-12 * summed
-            suppressed = mismatch is not None and mismatch > HEL_RELATIVE_LIMIT
-            absolute = vanishing or suppressed
-            assert record["comparison"] == ("absolute" if absolute else "relative")
-            assert record["absolute_scale"] == (summed if absolute else None)
-            assert bool(record["reason"]) == absolute
+            assert record["comparison"] == ("absolute" if vanishing else "relative")
+            assert record["absolute_scale"] == (summed if vanishing else None)
+            assert bool(record["reason"]) == vanishing
+            assert record["status"] == "ok", entry["helicity"]
+            if not (qp_point or vanishing):
+                assert mismatch is None or mismatch <= HEL_RELATIVE_LIMIT
 
 
 def test_mixed_order_run_prints_every_squared_split_order() -> None:
@@ -316,7 +328,10 @@ def test_madloop_born_split_orders_read_from_the_born_matrix(tmp_path: Path) -> 
 # Physics consistency of the committed references (pure JSON).
 
 UNIVERSAL_POLE_TOLERANCE = 1e-10
-RG_TOLERANCE = 1e-11
+# The worst residual over the campaign is 1.0e-13 of the scale below
+# (u u~ > w+ w- finite): ten times headroom, and a reference error at rule 1's
+# 1e-12 shows.
+RG_TOLERANCE = 1e-12
 RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
 # At a regular point MadLoop's printed Born (double precision at the binary64
 # input) and the Born its quadruple-precision double pole implies are the same
@@ -324,9 +339,9 @@ RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
 # (u u~ > w+ w-: gauge cancellations of the slightly off-shell binary64 W
 # momenta), while a loop defect shows above it (C01 point 1 before
 # HelicityFilterLevel 0: 4.8e-13). An ok point above the floor (or above ten
-# times MadLoop's own accuracy, where that is larger) must be a named outlier.
+# times MadLoop's own accuracy, where that is larger) must be a declared
+# outlier (reference.outlier).
 REGULAR_IR_FLOOR = 2e-13
-OUTLIER = "OUTLIER"
 # Limit points (madloop_qp_point): the printed Born's binary64 condition, bounded
 # by 1e3 binary64 epsilons times the family's observed sensitivity (soft E/sqrt(s)
 # = v: 1/v; threshold beta: 1/beta^2; collinear theta: 1/theta^3; the
@@ -343,6 +358,19 @@ def _reference_born(sectors: dict) -> dict:
     return {(s["QCD"], s["QED"]): s["born"] for s in sectors["born"]}
 
 
+def _printed(row: dict) -> dict:
+    """The MadLoop row as printed (binary64 Borns where the reference Born is
+    the double pole over the factor), the input of sector_pole_error."""
+    sectors = json.loads(json.dumps(row["sectors"]))
+    for born in sectors["born"]:
+        born["born"] = born.get("born_binary64_input", born["born"])
+    return {
+        "born": row.get("born_madloop_binary64_input", row["born"]),
+        "double_pole": row["providers"]["madloop"]["double_pole"],
+        "sectors": sectors,
+    }
+
+
 @pytest.mark.parametrize("run_id", RUN_IDS)
 def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
     """D_s = factor * Born(born sector of s) per loop squared split order at
@@ -354,9 +382,13 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
     partner IS that sector's double pole over the factor, so the per-sector
     relation holds there by construction; the falsifiable quantity is the
     printed binary64 Born's mismatch."""
+    from tools.loop_reference import references
+
     fixture = _fixture(run_id)
-    run = fixture["mqcd_run"]
     factor = fixture["universal_double_pole_factor"]
+    coupling = float(
+        Decimal({**fixture["parameters"], **fixture["fixed_parameters"]}["aS"])
+    )
     construction = fixture["point_construction"]
     family = construction.get("family")
     values = construction.get("family_values") or []
@@ -399,7 +431,11 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
             assert mismatch == pytest.approx(
                 reference["born_double_pole_relative_mismatch"], rel=1e-6, abs=1e-300
             )
-        error = reference["max_sector_double_pole_relative_error"]
+        # The recorded violation is the one of every sector's printed values.
+        error = references.sector_pole_error(
+            _printed(row), factor, coupling, reference["absolute_scale"]
+        )
+        assert error == reference["max_sector_double_pole_relative_error"], index
         if construction.get("madloop_qp_point"):
             if family in FAMILY_SENSITIVITY:
                 value = float(Fraction(values[index]))
@@ -410,11 +446,9 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
                 index,
                 bound,
             )
-        else:
+        elif not reference["outlier"]:
             accuracy = max(s["accuracy"] for s in sectors["loop"])
-            note = run.get("reference_notes", {}).get(str(index), "")
-            if OUTLIER not in note:
-                assert error <= max(10 * accuracy, REGULAR_IR_FLOOR), (index, error)
+            assert error <= max(10 * accuracy, REGULAR_IR_FLOOR), (index, error)
 
 
 @pytest.mark.parametrize("run_id", RUN_IDS)
@@ -533,13 +567,14 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
     for run in _runs(campaign):
         fixture = _fixture(run["id"])
         records = [row["reference"] for row in fixture["rows"]]
-        assert by_run[run["id"]]["point_reference"] == records
+        listed = by_run[run["id"]]
         declared = run.get("point_status", {})
         for index, record in enumerate(records):
             status = declared.get(str(index), {})
             assert record["status"] == status.get("status", "ok"), (run["id"], index)
             assert record["comparison"] == status.get("comparison", "relative")
             assert record["absolute_scale_row"] == status.get("scale_row")
+            assert record["outlier"] == status.get("outlier")
             if record["comparison"] == "absolute":
                 scale_row = fixture["rows"][record["absolute_scale_row"]]
                 assert scale_row["reference"]["comparison"] == "relative"
@@ -548,8 +583,22 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                     abs(fixture["rows"][index]["born"])
                     <= 1e-12 * record["absolute_scale"]
                 )
+        # The manifest names every rule 1 outlier and every binding row.
+        assert listed["outliers"] == {
+            str(i): r["outlier"] for i, r in enumerate(records) if r["outlier"]
+        }
+        assert listed["binding_rows"] == [
+            i for i, r in enumerate(records) if r["status"] == "ok"
+        ]
+        codes = [row["madloop_status"] for row in fixture["rows"]]
+        assert listed["madloop_return_codes"] == codes
+        assert listed["evaluation_precision"] == [
+            {3: "quadruple", 4: "quadruple (unstable)"}.get(c // 100, "double")
+            for c in codes
+        ]
         projected = bool(run["points"].get("madloop_qp_point"))
         assert bool(fixture["point_construction"].get("madloop_qp_point")) == projected
+        assert listed["madloop_qp_point"] == projected
         for row in fixture["rows"]:
             source = row["reference"]["born_source"]
             if projected:
@@ -567,12 +616,9 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                 assert row["born"] == row["providers"]["madloop"]["born"]
         if run.get("second_providers"):
             assert run["second_provider_trigger"], run["id"]
-            assert (
-                by_run[run["id"]]["second_provider_trigger"]
-                == run["second_provider_trigger"]
-            )
+            assert listed["second_provider_trigger"] == run["second_provider_trigger"]
         # Each second provider's outcome, per point and coefficient.
-        outcome = by_run[run["id"]]["second_provider_outcome"]
+        outcome = listed["second_provider_outcome"]
         assert set(outcome) == set(run.get("second_providers", []))
         for provider, per_point in outcome.items():
             assert provider in fixture["providers"], (run["id"], provider)
@@ -582,23 +628,9 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                 assert recorded == {
                     k: _strict(ours[k], theirs[k]) for k in ("born", *LAURENT)
                 }
-        hel = by_run[run["id"]]["per_helicity_reference"]
-        if fixture.get("per_helicity"):
-            assert hel == [
-                [{"helicity": e["helicity"], **e["reference"]} for e in entries]
-                for entries in fixture["per_helicity"]["rows"]
-            ]
-        else:
-            assert hel is None
         superseded = fixture["providers"]["madloop"].get("secondary_runs", {})
-        deviation = by_run[run["id"]]["batch2_relative_deviation"]
-        if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
-            assert deviation is None
-        else:
-            assert (
-                deviation
-                == (superseded["mlstabthres"]["relative_deviation_from_reference_run"])
-            )
+        if "mlstabthres" in superseded:
+            assert run.get("madloop_evaluation", {}).get("mode") != "mlstabthres"
             assert superseded["mlstabthres"]["settings"][
                 "requested_relative_accuracy"
             ] in (1e-13, 1e-20)
@@ -607,12 +639,105 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
         )
 
 
-def test_no_required_fixture_names_an_old_working_root() -> None:
+def _values(fixture: dict, index: int) -> dict:
+    row = fixture["rows"][index]
+    if "born" in row:
+        return row
+    return row["providers"][fixture.get("primary_provider", "madloop")]
+
+
+def test_every_point_has_one_binding_reference(campaign: dict, manifest: dict) -> None:
+    """An existing reference's point is superseded exactly where a campaign
+    run of the row re-evaluates the same exact point and mu_R in MadLoop's
+    quadruple-precision stage with an ok, non-outlier record (deviation
+    recorded); every other point stays binding, and binding_references lists
+    each reference's binding rows once."""
+    runs = {run["id"]: run for run in _runs(campaign)}
+    rows = {row["row"]: row for row in campaign["rows"]}
+    superseded_any = False
+    for entry in manifest["rows"]:
+        row = rows[entry["row"]]
+        expected = []
+        for ref in entry["existing_references"]:
+            fixture = json.loads((FIXTURES / ref["fixture"]).read_text())
+            if ref.get("kind") != "provider reference":
+                assert "point_binding" not in ref
+                continue
+            assert ref["points"] == len(fixture["points"]) == len(ref["point_binding"])
+            codes = [
+                r.get("madloop_status", r["providers"].get("madloop", {}).get("status"))
+                for r in fixture["rows"]
+            ]
+            assert ref["madloop_return_codes"] == codes
+            reruns = [
+                r
+                for r in row["runs"]
+                if runs[r]["points"].get("generator") == "fixture"
+                and runs[r]["points"]["fixture"] == ref["fixture"]
+            ]
+            for index, binding in enumerate(ref["point_binding"]):
+                candidates = []
+                for rerun in reruns:
+                    other = _fixture(rerun)
+                    point = [[str(x) for x in leg] for leg in fixture["points"][index]]
+                    assert point == other["points"][index]
+                    assert Fraction(str(fixture["mu_r"][index])) == Fraction(
+                        other["mu_r"][index]
+                    )
+                    record = other["rows"][index]["reference"]
+                    code = other["rows"][index]["madloop_status"]
+                    if (
+                        record["status"] == "ok"
+                        and code // 100 == 3
+                        and not record["outlier"]
+                    ):
+                        candidates.append((rerun, other))
+                if not candidates:
+                    assert binding == {"binding": True}, (ref["fixture"], index)
+                    continue
+                superseded_any = True
+                rerun, other = candidates[0]
+                assert binding["binding"] is False
+                assert binding["superseded_by"] == {
+                    "fixture": f"required/mqcd/{rerun}.json",
+                    "row": index,
+                }
+                old, new = _values(fixture, index), other["rows"][index]
+                assert binding["strict_relative_deviation"] == {
+                    k: _strict(old[k], new[k]) for k in ("born", *LAURENT)
+                }
+                assert ref["provider_accuracy_per_sector"][index] is None
+            chosen = [i for i, b in enumerate(ref["point_binding"]) if b["binding"]]
+            if chosen:
+                expected.append({"fixture": ref["fixture"], "rows": chosen})
+        for ref in entry["references"]:
+            if ref["binding_rows"]:
+                expected.append(
+                    {"fixture": ref["fixture"], "rows": ref["binding_rows"]}
+                )
+        assert entry["binding_references"] == expected, entry["row"]
+        if row.get("helicity_reference"):
+            assert entry["helicity_reference"] == (
+                f"required/mqcd/{row['helicity_reference']}.json"
+            )
+            assert _fixture(row["helicity_reference"])["per_helicity"]
+        else:
+            assert "helicity_reference" not in entry
+            assert not any(runs[r].get("helicities") for r in row["runs"])
+    assert superseded_any
+    # A06 point 1: the double-precision single pole of the existing fixture is
+    # 1.2e-12 off; the quadruple-precision rerun binds there.
+    a06 = next(e for e in manifest["rows"] if e["row"] == "A06")
+    binding = a06["existing_references"][0]["point_binding"][1]
+    assert binding["superseded_by"]["fixture"] == "required/mqcd/uux_uux_sectors.json"
+    assert binding["strict_relative_deviation"]["single_pole"] > 1e-12
+
+
+def test_no_required_fixture_names_a_host_path() -> None:
     offenders = [
         str(path.relative_to(FIXTURES))
         for path in sorted((FIXTURES / "required").rglob("*.json"))
-        if "pyLoopAmpliCol" in path.read_text()
-        or "/shared/external" in path.read_text()
+        if re.search(r"/shared/|/home/|pyLoopAmpliCol", path.read_text())
     ]
     assert not offenders, offenders
 
@@ -796,7 +921,7 @@ def test_quadruple_stage_bypasses_only_the_double_precision_acceptance() -> None
         )
 
 
-def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None:
+def test_per_helicity_records_compare_absolutely_only_vanishing_helicities() -> None:
     from tools.loop_reference import references
 
     factor = -0.25
@@ -804,21 +929,68 @@ def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None
     suppressed = {"status": 328, "born": 4e-11, "double_pole": factor * 4.0001e-11}
     vanishing = {"status": 328, "born": 1e-30, "double_pole": 0.0}
     double = {"status": 216, "born": 0.5, "double_pole": factor * 0.5}
-    entries = [dict(e) for e in (regular, suppressed, vanishing, double)]
-    references.per_helicity_reference(entries, factor)
-    records = [e["reference"] for e in entries]
-    assert [r["comparison"] for r in records] == [
-        "relative",
-        "absolute",
-        "absolute",
-        "relative",
-    ]
-    assert entries[0]["born"] == regular["double_pole"] / factor
-    assert entries[0]["born_binary64_input"] == 1.0
-    assert (
-        records[3]["born_source"] == "madloop"
-        and "born_binary64_input" not in entries[3]
+    unstable = {"status": 428, "born": 0.25, "double_pole": factor * 0.25}
+    cases = (regular, suppressed, vanishing, double, unstable)
+    for qp_point, sensitive in ((False, "none"), (True, "ok")):
+        entries = [dict(e) for e in cases]
+        references.per_helicity_reference(entries, factor, qp_point)
+        records = [e["reference"] for e in entries]
+        assert [r["comparison"] for r in records] == [
+            "relative",
+            "relative",
+            "absolute",
+            "relative",
+            "relative",
+        ]
+        # A point-sensitive helicity is no reference at an exact point, a
+        # relative one at MadLoop's own quadruple-precision point; an unstable
+        # quadruple-precision entry is never one.
+        assert [r["status"] for r in records] == ["ok", sensitive, "ok", "ok", "none"]
+        assert entries[0]["born"] == regular["double_pole"] / factor
+        assert entries[0]["born_binary64_input"] == 1.0
+        assert (
+            records[3]["born_source"] == "madloop"
+            and "born_binary64_input" not in entries[3]
+        )
+        summed = sum(abs(e["born"]) for e in entries)
+        assert records[2]["absolute_scale"] == summed
+        assert records[0]["absolute_scale"] is records[1]["absolute_scale"] is None
+        assert "vanishing" in records[2]["reason"] and "428" in records[4]["reason"]
+        assert bool(records[1]["reason"]) == (not qp_point)
+
+
+def test_merge_refuses_an_undeclared_unstable_point_and_records_outliers() -> None:
+    from tools.loop_reference import references
+
+    factor, coupling = -0.05, 0.118
+    good = _madloop_row({(4, 0): 0.69}, {}, factor)
+    unstable = dict(_madloop_row({(4, 0): 0.71}, {}, factor), status=429)
+    with pytest.raises(SystemExit, match="unstable"):
+        references.madloop_references(
+            [{"born": 0.69}, {"born": 0.71}],
+            [good, unstable],
+            "madloop",
+            factor,
+            coupling,
+            {},
+            False,
+            2e-8,
+        )
+    outlier = {"rule": 1, "ruling": "pending", "conditions": {"i": "fails"}}
+    declared = references.point_statuses(
+        json.dumps({"1": {"outlier": outlier, "reason": "synthetic"}}), 2
     )
-    summed = sum(abs(e["born"]) for e in entries)
-    assert records[1]["absolute_scale"] == records[2]["absolute_scale"] == summed
-    assert "suppressed" in records[1]["reason"] and "vanishing" in records[2]["reason"]
+    rows = [{"born": 0.69}, {"born": 0.71}]
+    references.madloop_references(
+        rows, [good, unstable], "madloop", factor, coupling, declared, False, 2e-8
+    )
+    assert rows[0]["reference"]["outlier"] is None
+    assert rows[1]["reference"]["outlier"] == outlier
+    assert rows[1]["reference"]["status"] == "ok"
+    for bad in (
+        {"status": "none", "outlier": outlier, "reason": "x"},
+        {"outlier": {"rule": 1}, "reason": "x"},
+        {"outlier": {**outlier, "other": 1}, "reason": "x"},
+    ):
+        with pytest.raises(SystemExit, match="outlier"):
+            references.point_statuses(json.dumps({"0": bad}), 2)

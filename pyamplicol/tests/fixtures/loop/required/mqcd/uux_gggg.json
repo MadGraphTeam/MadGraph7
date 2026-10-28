@@ -327,6 +327,7 @@
     "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 1.766830244363139e-14,
     "max_sector_double_pole_relative_error": 1.767769300323657e-14,
+    "outlier": null,
     "reason": null
    }
   },
@@ -391,6 +392,7 @@
     "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 2.2429116859856257e-14,
     "max_sector_double_pole_relative_error": 2.2353033684130325e-14,
+    "outlier": null,
     "reason": null
    }
   },
@@ -455,6 +457,7 @@
     "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 3.3669347792268754e-14,
     "max_sector_double_pole_relative_error": 3.367497571464436e-14,
+    "outlier": null,
     "reason": null
    }
   },
@@ -519,6 +522,7 @@
     "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 1.766830244363139e-14,
     "max_sector_double_pole_relative_error": 1.767769300323657e-14,
+    "outlier": null,
     "reason": null
    }
   }

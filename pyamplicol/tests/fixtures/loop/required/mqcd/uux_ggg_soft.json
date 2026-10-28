@@ -315,6 +315,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 1.2121992478050784e-13,
     "max_sector_double_pole_relative_error": 1.212833637594762e-13,
+    "outlier": null,
     "reason": null
    }
   },
@@ -443,6 +444,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 2.7069141894858344e-11,
     "max_sector_double_pole_relative_error": 2.7069167238236127e-11,
+    "outlier": null,
     "reason": null
    }
   }

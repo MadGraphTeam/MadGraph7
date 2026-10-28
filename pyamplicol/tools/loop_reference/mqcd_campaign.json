@@ -219,10 +219,12 @@
     "hel"
    ],
    "runs": [
-    "gg_ggg"
+    "gg_ggg",
+    "gg_ggg_hel"
    ],
    "existing_fixtures": [],
-   "note": "+ NJet (nc)"
+   "note": "+ NJet (nc)",
+   "helicity_reference": "gg_ggg_hel"
   },
   {
    "row": "A09",
@@ -462,7 +464,8 @@
    ],
    "existing_fixtures": [
     "required/gg_ttx.json"
-   ]
+   ],
+   "helicity_reference": "gg_ttx_sectors"
   },
   {
    "row": "B02",
@@ -720,7 +723,8 @@
    "runs": [
     "uux_emepg"
    ],
-   "existing_fixtures": []
+   "existing_fixtures": [],
+   "helicity_reference": "uux_emepg"
   },
   {
    "row": "D06",
@@ -1287,8 +1291,21 @@
    "export": "runs/g1/gg_ggg/madloop-export",
    "points": {
     "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ggg_hel",
+   "process": "gg_ggg",
+   "export": "runs/g1/gg_ggg/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular",
+    "count": 3,
+    "half_scale_point": false,
+    "madloop_qp_point": true
    },
-   "helicities": "all"
+   "helicities": "all",
+   "note": "per-helicity reference at MadLoop's own quadruple-precision points (published to 30 digits): its quadruple-precision values refer to the published point, so every non-vanishing helicity is a strictly relative reference, including those suppressed by 1e-11 .. 1e-4 of the summed Born, whose values at the exact points of gg_ggg depend on MadLoop's 1e-16 repair of the binary64 rounding (gg_ggg's per-helicity run is superseded)"
   },
   {
    "id": "uux_ggg",
@@ -1407,13 +1424,65 @@
    },
    "split_points": true,
    "second_providers": [
-    "openloops"
+    "openloops",
+    "recola"
    ],
-   "second_provider_trigger": "\u00a74.1: rule 1 (DD against MadLoop) exceeded 1e-12 at points 0, 2, 3 (mq-validate finding F3: MadLoop's CutTools quadruple-precision values, return code 329, 3.5e-12 .. 1.2e-11 off); the installed ppjjjj library, no installation; outcome recorded in the fixture's provider pairs",
+   "second_provider_trigger": "\u00a74.1: rule 1 (DD against MadLoop) exceeded 1e-12 at points 0, 2, 3 (mq-validate finding F3: MadLoop's CutTools quadruple-precision values, return code 329, 3.5e-12 .. 1.2e-11 off); the installed ppjjjj library and Recola (a third independent value for the user's ruling, audit of fix round 2), no installation; outcome recorded in the fixture's provider pairs",
+   "point_status": {
+    "0": {
+     "outlier": {
+      "rule": 1,
+      "ruling": "pending: routed to the user via the coordinator",
+      "conditions": {
+       "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+       "ii": "holds: OpenLoops (ppjjjj, binary64) = DD to 5.5e-13 (mq-validate F3)"
+      },
+      "providers": {
+       "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+       "openloops": "misses the universal double pole by 3.5e-14; MadLoop - OpenLoops: finite 4.0e-12, double pole 3.1e-13",
+       "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+      }
+     },
+     "reason": "rule 1 outlier at point 0: no provider value satisfies rule 1 (i) here; ruling pending"
+    },
+    "2": {
+     "outlier": {
+      "rule": 1,
+      "ruling": "pending: routed to the user via the coordinator",
+      "conditions": {
+       "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+       "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 1.2e-12 (mq-validate F3)"
+      },
+      "providers": {
+       "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 1.1e-12",
+       "openloops": "misses the universal double pole by 1.2e-13; MadLoop - OpenLoops: finite 5.2e-12, double pole 1.2e-12",
+       "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+      }
+     },
+     "reason": "rule 1 outlier at point 2: no provider value satisfies rule 1 (i) here; ruling pending"
+    },
+    "3": {
+     "outlier": {
+      "rule": 1,
+      "ruling": "pending: routed to the user via the coordinator",
+      "conditions": {
+       "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+       "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 2.6e-12 (mq-validate F3)"
+      },
+      "providers": {
+       "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+       "openloops": "misses the universal double pole by 4.7e-14; MadLoop - OpenLoops: finite 1.4e-11, double pole 4.0e-13",
+       "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+      }
+     },
+     "reason": "rule 1 outlier at point 3: no provider value satisfies rule 1 (i) here; ruling pending"
+    }
+   },
    "reference_notes": {
-    "0": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 3.5e-13 (OpenLoops 3.5e-14); MadLoop - OpenLoops (ppjjjj, binary64): finite 4.0e-12, double pole 3.1e-13; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)",
-    "2": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 1.1e-12 (OpenLoops 1.2e-13); MadLoop - OpenLoops (ppjjjj, binary64): finite 5.2e-12, double pole 1.2e-12; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)",
-    "3": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 3.5e-13 (OpenLoops 4.7e-14); MadLoop - OpenLoops (ppjjjj, binary64): finite 1.4e-11, double pole 4.0e-13; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)"
+    "0": "OUTLIER (rule 1): reference.outlier; OpenLoops satisfies (ii) only, (i) fails",
+    "1": "MadLoop's quadruple-precision stage takes Ninja (328) and agrees with OpenLoops to 1e-12",
+    "2": "OUTLIER (rule 1): reference.outlier; no provider is a 1e-12 reference",
+    "3": "OUTLIER (rule 1): reference.outlier; no provider is a 1e-12 reference"
    }
   },
   {
