@@ -1503,10 +1503,12 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     # MadLoop's by one amount (1.05e-17 at point 0: 1.3e-10 of the UV
     # component's largest coefficient, 4e-11 of the virtual's), the same in
     # binary64, double-double and 40 digits on this side; R2 and every pole
-    # agree to 1e-13. Open (WP3.2 EWI-7): MadLoop's double-precision
-    # counterterm parameters at the massive-b card, or a counterterm
-    # parameter of the massive b, decided against the UFO's own evaluation
-    # (``test_loop_v2_ew`` oracle) at this card.
+    # agree to 1e-13. At this card the counterterm parameters of the plan in
+    # double-double equal the UFO's own 40-digit evaluation to 4e-26, while
+    # the UFO's binary64 evaluation of the massive b's field counterterms
+    # (bWcft_UV_EW_R, dMB_bWcft_UV_EW_R) is off by 4.5e-11: consistent with
+    # MadLoop's double-precision counterterm parameters (open, WP3.2 EWI-7:
+    # a quadruple-precision MadLoop CT selection at this card decides it).
     assert max(finite.values()) <= 1e-9, finite
     if max(finite.values()) > 1e-12:
         pytest.xfail(
