@@ -770,6 +770,16 @@ names the rule, for example:
   joins a coloured and a colour-singlet fermion ...", before any tree is
   built. Veto a particle of the vertex (`particle_veto`) or bound its
   coupling order so that the request cannot use it;
+- a loop vertex that the request's restricted tree model does not hold while
+  its couplings are not shown to vanish at the model's restriction:
+  "loop-vertex-outside-tree-model: ... the loop vertex V (...) at the
+  coupling orders {...} has no term in the request's tree model ...". A
+  vertex whose couplings vanish identically at the restriction (decided from
+  their values: e.g. the W vertices of the off-diagonal CKM elements at the
+  diagonal-CKM default restriction of `loop_qcd_qed_sm_Gmu`) is simply no
+  loop vertex, so `g t > t u u~` with QCD and QED corrections generates.
+  Choose a restriction under which the vertex's couplings vanish exactly or
+  one that keeps it, or veto or bound it out of the loops;
 - fermions outside the loop sign rule: vertices joining two or more fermion
   lines (four-fermion contact vertices: "a loop vertex joins more than one
   fermion line"), fermions in colour representations other than singlets and
