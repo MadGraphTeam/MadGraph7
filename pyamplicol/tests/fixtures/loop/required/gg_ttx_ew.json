@@ -18,7 +18,7 @@
   },
   "scheme": "ew-gmu",
   "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
-  "source": "independent references: MadLoop/MG5_aMC 3.7.0; Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3; OpenLoops 2.1.5",
+  "source": "independent references: MadLoop/MG5_aMC 3.7.0; Recola2 2.2.5 (tree ${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3; OpenLoops 2.1.5",
   "scope": "Independent provider references at exact on-shell decimal points; binary64 provider arithmetic; timings are single-run by-products, not benchmarks.",
   "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
   "normalization": {
@@ -420,7 +420,7 @@
       "process_name": "gg_ttx_ew",
       "host": "itphlies",
       "cpu": 289,
-      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx_ew/points.json",
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/gg_ttx_ew/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
         "absent_card_parameters_fixed_to_zero": [
@@ -446,8 +446,8 @@
       },
       "generation": {
         "process_name": "gg_ttx_ew",
-        "mg5": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
-        "model": "/shared/external/pyLoopAmpliCol/workspace/reference/models/loop_qcd_qed_sm_Gmu_py3",
+        "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+        "model": "${LOOP_REFERENCE_ROOT}/models/loop_qcd_qed_sm_Gmu_py3",
         "command": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2==4 QED^2==2",
         "host": "itphlies",
         "status": "compiled",
@@ -480,28 +480,28 @@
       "version": "MadLoop/MG5_aMC 3.7.0",
       "provenance": {
         "MG5_aMC": {
-          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+          "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
           "version": "3.7.0"
         },
         "reducer_libraries": {
           "libcts.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
             "version": null
           },
           "libiregi.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
             "version": null
           },
           "libninja.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
             "version": "1.2.0"
           },
           "libavh_olo.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
             "version": "3.6"
           },
           "libcollier.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
             "version": "1.2.9"
           }
         }
@@ -586,10 +586,10 @@
       "process_name": "gg_ttx_ew",
       "host": "itphlies",
       "cpu": 294,
-      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx_ew/points.json",
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/gg_ttx_ew/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
-        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0",
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
         "commands": [
           "mass W 80.419 0",
           "mass Z 91.188 0",
@@ -625,24 +625,24 @@
         "mu_uv=mu_ir=mu_r": true
       },
       "provenance": {
-        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0",
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
         "self_reported_version": "2.2.5",
         "linked": {
           "librecola.so": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0/librecola.so",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0/librecola.so",
             "version": "2.2.5"
           },
           "libcollier.so": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/COLLIER-1.2.8/libcollier.so",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/COLLIER-1.2.8/libcollier.so",
             "version": "1.2.8"
           },
           "libmodelfile.so": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/models/SM_2.2.3/libmodelfile.so",
+            "path": "${LOOP_REFERENCE_ROOT}/models/SM_2.2.3/libmodelfile.so",
             "version": "2.2.3"
           }
         }
       },
-      "version": "Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
+      "version": "Recola2 2.2.5 (tree ${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
       "generation_seconds": 1.49972832,
       "initial_call_seconds": 0.017837224,
       "process_wall_seconds": 1.5817308470141143,
@@ -657,7 +657,7 @@
       "process_name": "gg_ttx_ew",
       "host": "itphlies",
       "cpu": 295,
-      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx_ew/points.json",
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/gg_ttx_ew/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
         "commands": [
@@ -695,12 +695,12 @@
       "version": "OpenLoops 2.1.5",
       "provenance": {
         "openloops": {
-          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5",
+          "path": "${LOOP_REFERENCE_ROOT}/sources/OpenLoops-2.1.5",
           "release": "2.1.5"
         },
         "linked": {
           "libopenloops.so.2": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5/lib/libopenloops.so.2.1.5",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/OpenLoops-2.1.5/lib/libopenloops.so.2.1.5",
             "version": null
           }
         }

@@ -1,0 +1,1813 @@
+{
+ "description": "M-QCD validation campaign (workspace/reports/engine-v2/m-qcd/PLAN.md \u00a74): the rows of \u00a74.2 and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/mqcd/<run>/ and their merged references are committed as tests/fixtures/loop/required/mqcd/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py.",
+ "restriction_codes": {
+  "5F": {
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd"
+  },
+  "5F*": {
+   "restriction": "default",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd",
+   "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one, identical parameter values"
+  },
+  "4F": {
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-4fs",
+   "note": "= no_widths"
+  },
+  "CM": {
+   "restriction": "c_mass",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-cmass"
+  },
+  "ZC": {
+   "restriction": "zeromass_ckm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-ckm"
+  },
+  "CK": {
+   "restriction": "ckm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-ckm4"
+  },
+  "LM": {
+   "restriction": "lepton_masses",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-lmass"
+  },
+  "W": {
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "WT": "0"
+   },
+   "scheme": "qcd-widths",
+   "note": "colourless widths at the card values"
+  }
+ },
+ "madloop_settings": {
+  "requested_relative_accuracy": 1e-11,
+  "special_points": "limit-point runs (S1-S3) request 1e-20, forcing MadLoop's quadruple-precision evaluation, at points that are MadLoop's own quadruple-precision projection of their binary64 rounding (supplied_points.py --madloop-qp-point)",
+  "stability_check": "forced on every call",
+  "rescue": "quadruple precision (MadLoop's own)",
+  "job_timeout_seconds": 2700
+ },
+ "rows": [
+  {
+   "row": "A01",
+   "class": "Q-massless",
+   "process": "g g > g g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "d",
+   "extras": [
+    "nc",
+    "ap"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "v2/gg_gg_providers.json"
+   ]
+  },
+  {
+   "row": "A02",
+   "class": "Q-massless",
+   "process": "u u~ > g g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_gg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A03",
+   "class": "Q-massless",
+   "process": "g g > u u~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_uux"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A04",
+   "class": "Q-massless",
+   "process": "u g > u g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "d",
+   "extras": [],
+   "runs": [
+    "ug_ug"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A05",
+   "class": "Q-massless",
+   "process": "u u~ > d d~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "uv"
+   ],
+   "runs": [
+    "uux_ddx"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A06",
+   "class": "Q-massless",
+   "process": "u u~ > u u~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_uux.json"
+   ]
+  },
+  {
+   "row": "A07",
+   "class": "Q-massless",
+   "process": "u u > u u",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uu_uu"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A08",
+   "class": "Q-massless",
+   "process": "g g > g g g",
+   "restriction_code": "5F",
+   "reference_kind": "R",
+   "tier": "n",
+   "extras": [
+    "nc",
+    "ward",
+    "hel"
+   ],
+   "runs": [
+    "gg_ggg"
+   ],
+   "existing_fixtures": [],
+   "note": "+ NJet (nc)"
+  },
+  {
+   "row": "A09",
+   "class": "Q-massless",
+   "process": "u u~ > g g g",
+   "restriction_code": "5F",
+   "reference_kind": "R",
+   "tier": "d",
+   "extras": [
+    "nc",
+    "sp:S2"
+   ],
+   "runs": [
+    "uux_ggg",
+    "uux_ggg_soft",
+    "uux_ggg_collinear"
+   ],
+   "existing_fixtures": [],
+   "note": "+ NJet, BDK (nc)"
+  },
+  {
+   "row": "A12",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "d",
+   "extras": [
+    "nc"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_ddxg.json"
+   ]
+  },
+  {
+   "row": "A13",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "nc",
+    "ap"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_uuxg.json"
+   ]
+  },
+  {
+   "row": "A14",
+   "class": "Q-massless",
+   "process": "g g > g g g g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_gggg.json"
+   ],
+   "note": "MadLoop QP values committed into the fixture (never regenerated)"
+  },
+  {
+   "row": "A15",
+   "class": "Q-massless",
+   "process": "u u~ > g g g g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "nc"
+   ],
+   "runs": [
+    "uux_gggg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A18",
+   "class": "Q-massless",
+   "process": "g g > u u~ u u~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "nc"
+   ],
+   "runs": [
+    "gg_uuxuux"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A19",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ s s~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_ddxssx.json"
+   ]
+  },
+  {
+   "row": "A20",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ d d~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_uuxddx.json"
+   ]
+  },
+  {
+   "row": "A21",
+   "class": "Q-massless",
+   "process": "u u~ > u u~ u u~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "nc"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_uuxuux.json"
+   ]
+  },
+  {
+   "row": "A22",
+   "class": "Q-massless",
+   "process": "u u~ > d d~ s s~ g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "multiquark-sevenleg-component-control.json"
+   ],
+   "note": "Recola <= 4e-11 (existing control)"
+  },
+  {
+   "row": "A23",
+   "class": "Q-massless",
+   "process": "u u~ > g g g g g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_ggggg.json"
+   ]
+  },
+  {
+   "row": "A24",
+   "class": "Q-massless",
+   "process": "g g > g g g g g (top veto)",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "uv"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_ggggg_njet.json"
+   ],
+   "note": "NJet double-double; no MadLoop (HANDOFF \u00a70.1)",
+   "primary_provider": "njet"
+  },
+  {
+   "row": "A25",
+   "class": "Q-massless",
+   "process": "u d > u d",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ud_ud"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "A26",
+   "class": "Q-massless",
+   "process": "u~ u~ > u~ u~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uxux_uxux"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "B01",
+   "class": "Q-top",
+   "process": "g g > t t~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "d",
+   "extras": [
+    "ap",
+    "uv",
+    "hel",
+    "sp:S1",
+    "sp:S4"
+   ],
+   "runs": [
+    "gg_ttx_sectors",
+    "gg_ttx_threshold",
+    "gg_ttx_mt170"
+   ],
+   "existing_fixtures": [
+    "required/gg_ttx.json"
+   ]
+  },
+  {
+   "row": "B02",
+   "class": "Q-top",
+   "process": "u u~ > t t~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_ttx"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "B03",
+   "class": "Q-top",
+   "process": "g g > t t~ g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "nc",
+    "ward"
+   ],
+   "runs": [
+    "gg_ttxg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "B05",
+   "class": "Q-top",
+   "process": "g g > t t~ g g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_ttxgg.json"
+   ]
+  },
+  {
+   "row": "B06",
+   "class": "Q-top",
+   "process": "u u~ > t t~ d d~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_ttxddx"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "B07",
+   "class": "Q-top",
+   "process": "g g > t t~ t t~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttxttx"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "B08",
+   "class": "Q-top",
+   "process": "g g > t t~ (4F)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttx_4fs"
+   ],
+   "existing_fixtures": [],
+   "note": "plain loop_sm with WT = 0 (= no_widths smoke)"
+  },
+  {
+   "row": "C01",
+   "class": "Q-heavy",
+   "process": "g g > b b~",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "d",
+   "extras": [
+    "nc",
+    "ap",
+    "ward",
+    "sp:S4"
+   ],
+   "runs": [
+    "gg_bbx_4fs",
+    "gg_bbx_4fs_params"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C02",
+   "class": "Q-heavy",
+   "process": "g g > g g (b decoupled)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "uv"
+   ],
+   "runs": [
+    "gg_gg_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C03",
+   "class": "Q-heavy",
+   "process": "b b~ > h",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "bbx_h_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C04",
+   "class": "Q-heavy",
+   "process": "b b~ > h g (x-rotated)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "bbx_hg_4fs",
+    "bbx_hg_4fs_z"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C05",
+   "class": "Q-heavy",
+   "process": "g g > b b~ h",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_bbxh_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C06",
+   "class": "Q-heavy",
+   "process": "g g > t t~ b b~",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttxbbx_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C07",
+   "class": "Q-singletop",
+   "process": "u g > d t b~ (4FS t-channel)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ug_dtbx_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C08",
+   "class": "Q-heavy",
+   "process": "g g > c c~",
+   "restriction_code": "CM",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ccx_cmass"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "C09",
+   "class": "Q-heavy",
+   "process": "g s > w- c",
+   "restriction_code": "CM",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gs_wmc_cmass"
+   ],
+   "existing_fixtures": [],
+   "note": "MQ-5F (Dirac-Weyl closure)"
+  },
+  {
+   "row": "D01",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "d",
+   "extras": [
+    "ap"
+   ],
+   "runs": [
+    "uux_emep"
+   ],
+   "existing_fixtures": [],
+   "note": "+ analytic form factor"
+  },
+  {
+   "row": "D02",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ (widths)",
+   "restriction_code": "W",
+   "reference_kind": "R",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_emep_widths"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D05",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g",
+   "restriction_code": "5F",
+   "reference_kind": "R",
+   "tier": "d",
+   "extras": [
+    "nc",
+    "ward",
+    "uv",
+    "hel"
+   ],
+   "runs": [
+    "uux_emepg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D06",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g g",
+   "restriction_code": "5F",
+   "reference_kind": "R",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_emepgg"
+   ],
+   "existing_fixtures": [
+    "dilepton-two-gluon.json"
+   ],
+   "note": "existing LC/NLC test (ew_lines:943)"
+  },
+  {
+   "row": "D07",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ g g g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_emepggg.json"
+   ]
+  },
+  {
+   "row": "D08",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ d d~ g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_emepddxg.json"
+   ]
+  },
+  {
+   "row": "D09",
+   "class": "Q-EWBorn",
+   "process": "u u~ > e- e+ mu- mu+",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_emepmummp.json"
+   ]
+  },
+  {
+   "row": "D10",
+   "class": "Q-EWBorn",
+   "process": "u u~ > u u~ e+ e-",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/uux_uuxepem.json"
+   ],
+   "note": "22x case (MQ-STAB)"
+  },
+  {
+   "row": "D11",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_zg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D12",
+   "class": "Q-EWBorn",
+   "process": "u d~ > e+ ve g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_epveg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D13",
+   "class": "Q-EWBorn",
+   "process": "u g > a u",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ug_au"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D15",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z z",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_zz"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D16",
+   "class": "Q-EWBorn",
+   "process": "u u~ > w+ w-",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_wpwm"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D17",
+   "class": "Q-EWBorn",
+   "process": "b b~ > w+ w-",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "bbx_wpwm"
+   ],
+   "existing_fixtures": [],
+   "note": "MQ-5F"
+  },
+  {
+   "row": "D18",
+   "class": "Q-EWBorn",
+   "process": "u u~ > z h",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_zh"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D19",
+   "class": "Q-EWBorn",
+   "process": "u d > u d h QCD=0 (VBF)",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ud_udh"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D20",
+   "class": "Q-EWBorn",
+   "process": "e+ e- > u u~ g",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "epem_uuxg"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D21",
+   "class": "Q-ttX",
+   "process": "e+ e- > t t~",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/top-pair-ee-model-control.json"
+   ],
+   "note": "committed from runs/top-pair-ee-model-control.json"
+  },
+  {
+   "row": "D23",
+   "class": "Q-EWBorn",
+   "process": "a g > u u~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ag_uux"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D24",
+   "class": "Q-EWBorn",
+   "process": "e- u > e- u",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "emu_emu"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D25",
+   "class": "Q-EWBorn",
+   "process": "u d~ > w+ a (radiation zero)",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "sp:S3"
+   ],
+   "runs": [
+    "udx_wpa",
+    "udx_wpa_zero"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D26",
+   "class": "Q-heavy",
+   "process": "u u~ > e- e+ g (4F twin of D05)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_emepg_4fs"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "D27",
+   "class": "Q-EWBorn",
+   "process": "g u > e+ ve d",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gu_epved"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "E01",
+   "class": "Q-ttX",
+   "process": "g g > t t~ h",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "nc",
+    "ward",
+    "uv"
+   ],
+   "runs": [
+    "gg_ttxh"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "E02",
+   "class": "Q-ttX",
+   "process": "g g > t t~ z",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttxz"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "E05",
+   "class": "Q-ttX",
+   "process": "e+ e- > t t~ h",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "top-pair-higgs-model.json"
+   ]
+  },
+  {
+   "row": "E06",
+   "class": "Q-ttX",
+   "process": "g g > t t~ e- e+ g",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_ttxemepg_qcd.json"
+   ],
+   "note": "point 2: rule 1 outlier (DD vs MadLoop 1.43e-8, vs OpenLoops 5.8e-13)"
+  },
+  {
+   "row": "F01",
+   "class": "Q-singletop",
+   "process": "u b > d t",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "nc",
+    "uv",
+    "ap"
+   ],
+   "runs": [
+    "ub_dt"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "F02",
+   "class": "Q-singletop",
+   "process": "b u > d t",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "bu_dt"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "F03",
+   "class": "Q-singletop",
+   "process": "u d~ > t b~",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "d",
+   "extras": [],
+   "runs": [
+    "udx_tbx"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "F04",
+   "class": "Q-singletop",
+   "process": "g b > t w-",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "gb_twm"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "G01",
+   "class": "Q-mixed",
+   "process": "u u~ > d d~ QED<=2, full SM, every split order",
+   "restriction_code": "5F",
+   "reference_kind": "E",
+   "tier": "d",
+   "extras": [
+    "uv"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "mixed-uudd-sm-qcd-control.json"
+   ],
+   "note": "+ photon-only controls"
+  },
+  {
+   "row": "G02",
+   "class": "Q-mixed",
+   "process": "u u~ > t t~ QED<=2, every split order",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_ttx_mixed"
+   ],
+   "existing_fixtures": []
+  },
+  {
+   "row": "H01",
+   "class": "Q-CKM",
+   "process": "u s~ > w+ g",
+   "restriction_code": "ZC",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "uv"
+   ],
+   "runs": [
+    "usx_wpg_ckm"
+   ],
+   "existing_fixtures": [],
+   "note": "+ CKM-factor relation to u d~ > w+ g on zeromass_ckm"
+  },
+  {
+   "row": "H02",
+   "class": "Q-CKM",
+   "process": "g s > t w-",
+   "restriction_code": "ZC",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gs_twm_ckm"
+   ],
+   "existing_fixtures": [],
+   "note": "MQ-5F; + CKM-factor relation to g b > t w- (massless b)"
+  },
+  {
+   "row": "H03",
+   "class": "Q-CKM",
+   "process": "g d > t w-",
+   "restriction_code": "CK",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gd_twm_ckm4"
+   ],
+   "existing_fixtures": [],
+   "note": "MQ-5F; recorded single-provider exception"
+  },
+  {
+   "row": "M01",
+   "class": "Q-multi",
+   "process": "p p > t t~ (multiparticle label)",
+   "restriction_code": "5F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "pp_ttx_P0_uux_ttx",
+    "pp_ttx_P2_gg_ttx"
+   ],
+   "existing_fixtures": [],
+   "note": "one MadLoop export; one run per SubProcesses/P* directory"
+  },
+  {
+   "row": "R01",
+   "class": "Q-heavy",
+   "process": "u u~ > mu- mu+ (massive muons)",
+   "restriction_code": "LM",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_mummp_lmass"
+   ],
+   "existing_fixtures": []
+  }
+ ],
+ "runs": [
+  {
+   "id": "uux_gg",
+   "process": "uux_gg",
+   "export": "runs/mqcd/uux_gg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_uux",
+   "process": "gg_uux",
+   "export": "runs/mqcd/gg_uux/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "ug_ug",
+   "process": "ug_ug",
+   "export": "runs/mqcd/ug_ug/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_ddx",
+   "process": "uux_ddx",
+   "export": "runs/mqcd/uux_ddx/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uu_uu",
+   "process": "uu_uu",
+   "export": "runs/mqcd/uu_uu/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ggg",
+   "process": "gg_ggg",
+   "export": "runs/g1/gg_ggg/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "helicities": "all"
+  },
+  {
+   "id": "uux_ggg",
+   "process": "uux_ggg",
+   "export": "runs/g1/uux_ggg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_ggg_soft",
+   "process": "uux_ggg",
+   "export": "runs/g1/uux_ggg/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "soft",
+    "values": [
+     "1/1000",
+     "1/100000"
+    ],
+    "half_scale_point": false,
+    "madloop_qp_point": true
+   },
+   "second_providers": [
+    "recola",
+    "openloops"
+   ],
+   "madloop_accuracy": 1e-20,
+   "exclude_providers": {
+    "recola": "COLLIER double precision fails in the soft limit (4.6e-9 at E/sqrt(s) = 1e-3, 6.0e-3 at 1e-5 against MadLoop QP and OpenLoops, which agree to 1.5e-14 and 2.5e-13)"
+   },
+   "note": "S2: soft gluon E/sqrt(s) = 1e-3, 1e-5"
+  },
+  {
+   "id": "uux_ggg_collinear",
+   "process": "uux_ggg",
+   "export": "runs/g1/uux_ggg/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "collinear",
+    "values": [
+     "1/1000",
+     "1/10000",
+     "1/100000"
+    ],
+    "half_scale_point": false,
+    "madloop_qp_point": true
+   },
+   "second_providers": [
+    "recola",
+    "openloops"
+   ],
+   "madloop_accuracy": 1e-20,
+   "exclude_providers": {
+    "recola": "COLLIER double precision fails at small opening angles (1e-4 relative at theta = 1e-3)"
+   },
+   "reference_notes": {
+    "0": "MadLoop quadruple precision at its own projected point (published); OpenLoops reads the binary64 rounding of the point, whose Born condition (~1e7: MadLoop's double-precision Born at the binary64 point differs from its quadruple-precision one by 1.6e-9) limits the provider comparison to ~1e-8",
+    "1": "REFERENCE GOOD TO ~1e-6 ONLY: MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 1.3e-6) and OpenLoops differs by 4.3e-5; not a 1e-12 reference (rule 1 outlier without a confirming provider)",
+    "2": "NO PROVIDER REFERENCE: MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 28; OneLOop: 'input does not seem to represent hard kinematics') and MadLoop, Recola and OpenLoops disagree at O(1); validate by internal oracles only"
+   },
+   "note": "S2: collinear gluon pair theta = 1e-3, 1e-5 (small Gram determinants)"
+  },
+  {
+   "id": "uux_gggg",
+   "process": "uux_gggg",
+   "export": "runs/mqcd/uux_gggg/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "split_points": true
+  },
+  {
+   "id": "gg_uuxuux",
+   "process": "gg_uuxuux",
+   "export": "runs/mqcd/gg_uuxuux/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "split_points": true
+  },
+  {
+   "id": "ud_ud",
+   "process": "ud_ud",
+   "export": "runs/mqcd/ud_ud/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uxux_uxux",
+   "process": "uxux_uxux",
+   "export": "runs/mqcd/uxux_uxux/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttx_sectors",
+   "process": "gg_ttx",
+   "export": "runs/required/gg_ttx/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/gg_ttx.json"
+   },
+   "helicities": "all",
+   "note": "per-sector and per-helicity MadLoop run at the committed fixture's points"
+  },
+  {
+   "id": "gg_ttx_threshold",
+   "process": "gg_ttx",
+   "export": "runs/required/gg_ttx/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "threshold",
+    "values": [
+     "1/10",
+     "1/100",
+     "1/1000"
+    ],
+    "half_scale_point": false,
+    "madloop_qp_point": true
+   },
+   "madloop_accuracy": 1e-20,
+   "note": "S1: threshold beta = 1e-1, 1e-2, 1e-3"
+  },
+  {
+   "id": "gg_ttx_mt170",
+   "process": "gg_ttx_mt170",
+   "export": "runs/required/gg_ttx/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "note": "S4: runtime MT = 170"
+  },
+  {
+   "id": "uux_ttx",
+   "process": "uux_ttx",
+   "export": "runs/mqcd/uux_ttx/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttxg",
+   "process": "gg_ttxg",
+   "export": "runs/mqcd/gg_ttxg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_ttxddx",
+   "process": "uux_ttxddx",
+   "export": "runs/mqcd/uux_ttxddx/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttxttx",
+   "process": "gg_ttxttx",
+   "export": "runs/mqcd/gg_ttxttx/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "split_points": true
+  },
+  {
+   "id": "gg_ttx_4fs",
+   "process": "gg_ttx_4fs",
+   "export": "runs/mqcd/gg_ttx_4fs/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_bbx_4fs",
+   "process": "gg_bbx_4fs",
+   "export": "runs/mqcd/gg_bbx_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gg_bbx_4fs_params",
+   "process": "gg_bbx_4fs_params",
+   "export": "runs/mqcd/gg_bbx_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "note": "S4: runtime MB = 4.5, aS = 0.13 (cond(MB) and reglog CT terms)"
+  },
+  {
+   "id": "gg_gg_4fs",
+   "process": "gg_gg_4fs",
+   "export": "runs/mqcd/gg_gg_4fs/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "bbx_h_4fs",
+   "process": "bbx_h_4fs",
+   "export": "runs/mqcd/bbx_h_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "rest"
+   }
+  },
+  {
+   "id": "bbx_hg_4fs",
+   "process": "bbx_hg_4fs",
+   "export": "runs/mqcd/bbx_hg_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular",
+    "rotate": "x"
+   }
+  },
+  {
+   "id": "bbx_hg_4fs_z",
+   "process": "bbx_hg_4fs",
+   "export": "runs/mqcd/bbx_hg_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "note": "non-gating diagnostic: the same construction with the beams on +-z"
+  },
+  {
+   "id": "gg_bbxh_4fs",
+   "process": "gg_bbxh_4fs",
+   "export": "runs/mqcd/gg_bbxh_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gg_ttxbbx_4fs",
+   "process": "gg_ttxbbx_4fs",
+   "export": "runs/mqcd/gg_ttxbbx_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "split_points": true
+  },
+  {
+   "id": "ug_dtbx_4fs",
+   "process": "ug_dtbx_4fs",
+   "export": "runs/mqcd/ug_dtbx_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gg_ccx_cmass",
+   "process": "gg_ccx_cmass",
+   "export": "runs/mqcd/gg_ccx_cmass/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ]
+  },
+  {
+   "id": "gs_wmc_cmass",
+   "process": "gs_wmc_cmass",
+   "export": "runs/mqcd/gs_wmc_cmass/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ]
+  },
+  {
+   "id": "uux_emep",
+   "process": "uux_emep",
+   "export": "runs/mqcd/uux_emep/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_emep_widths",
+   "process": "uux_emep_widths",
+   "export": "runs/mqcd/uux_emep/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "uux_emep"
+   }
+  },
+  {
+   "id": "uux_emepg",
+   "process": "uux_emepg",
+   "export": "runs/g1/uux_emepg/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "helicities": "all"
+  },
+  {
+   "id": "uux_emepgg",
+   "process": "uux_emepgg",
+   "export": "runs/g1/uux_emepgg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_zg",
+   "process": "uux_zg",
+   "export": "runs/mqcd/uux_zg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_epveg",
+   "process": "udx_epveg",
+   "export": "runs/mqcd/udx_epveg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "ug_au",
+   "process": "ug_au",
+   "export": "runs/mqcd/ug_au/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_zz",
+   "process": "uux_zz",
+   "export": "runs/mqcd/uux_zz/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_wpwm",
+   "process": "uux_wpwm",
+   "export": "runs/mqcd/uux_wpwm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "bbx_wpwm",
+   "process": "bbx_wpwm",
+   "export": "runs/mqcd/bbx_wpwm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "uux_zh",
+   "process": "uux_zh",
+   "export": "runs/mqcd/uux_zh/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ud_udh",
+   "process": "ud_udh",
+   "export": "runs/mqcd/ud_udh/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "epem_uuxg",
+   "process": "epem_uuxg",
+   "export": "runs/mqcd/epem_uuxg/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "ag_uux",
+   "process": "ag_uux",
+   "export": "runs/mqcd/ag_uux/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "emu_emu",
+   "process": "emu_emu",
+   "export": "runs/mqcd/emu_emu/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_wpa",
+   "process": "udx_wpa",
+   "export": "runs/mqcd/udx_wpa/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "udx_wpa_zero",
+   "process": "udx_wpa",
+   "export": "runs/mqcd/udx_wpa/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "radiation-zero",
+    "count": 2,
+    "zero_cosine": "-1/3",
+    "neighbour_cosine": "-1/5",
+    "half_scale_point": false,
+    "madloop_qp_point": true
+   },
+   "madloop_accuracy": 1e-20,
+   "note": "S3: Born-zero points cos(u, photon) = -1/3 and one regular neighbour"
+  },
+  {
+   "id": "uux_emepg_4fs",
+   "process": "uux_emepg_4fs",
+   "export": "runs/mqcd/uux_emepg_4fs/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gu_epved",
+   "process": "gu_epved",
+   "export": "runs/mqcd/gu_epved/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttxh",
+   "process": "gg_ttxh",
+   "export": "runs/mqcd/gg_ttxh/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gg_ttxz",
+   "process": "gg_ttxz",
+   "export": "runs/mqcd/gg_ttxz/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ub_dt",
+   "process": "ub_dt",
+   "export": "runs/mqcd/ub_dt/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "bu_dt",
+   "process": "bu_dt",
+   "export": "runs/mqcd/bu_dt/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_tbx",
+   "process": "udx_tbx",
+   "export": "runs/mqcd/udx_tbx/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gb_twm",
+   "process": "gb_twm",
+   "export": "runs/mqcd/gb_twm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "uux_ttx_mixed",
+   "process": "uux_ttx_mixed",
+   "export": "runs/mqcd/uux_ttx_mixed/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "usx_wpg_ckm",
+   "process": "usx_wpg_ckm",
+   "export": "runs/mqcd/usx_wpg_ckm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gs_twm_ckm",
+   "process": "gs_twm_ckm",
+   "export": "runs/mqcd/gs_twm_ckm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gd_twm_ckm4",
+   "process": "gd_twm_ckm4",
+   "export": "runs/mqcd/gd_twm_ckm4/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "pp_ttx_P0_uux_ttx",
+   "process": "pp_ttx",
+   "export": "runs/mqcd/pp_ttx/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     2,
+     -2,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P0_uux_ttx",
+   "pdgs": [
+    2,
+    -2,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_P2_gg_ttx",
+   "process": "pp_ttx",
+   "export": "runs/mqcd/pp_ttx/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "subprocess": "P2_gg_ttx",
+   "pdgs": [
+    21,
+    21,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "uux_mummp_lmass",
+   "process": "uux_mummp_lmass",
+   "export": "runs/mqcd/uux_mummp_lmass/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  }
+ ]
+}

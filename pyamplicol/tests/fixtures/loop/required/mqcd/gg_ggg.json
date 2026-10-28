@@ -1,0 +1,3009 @@
+{
+ "process": "g g > g g g QED=0 [virt=QCD]",
+ "name": "gg_ggg",
+ "pdgs": [
+  21,
+  21,
+  21,
+  21,
+  21
+ ],
+ "correction": "QCD",
+ "born_orders": {
+  "QCD": 3,
+  "QED": 0
+ },
+ "loop_orders": {
+  "QCD": 5,
+  "QED": 0
+ },
+ "scheme": "qcd",
+ "scheme_description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+ "restriction": "no_b_mass",
+ "madloop_model": "loop_sm-no_b_mass",
+ "gauge": "Feynman",
+ "parameter_overrides": {},
+ "born_orders_all": [
+  {
+   "QCD": 3,
+   "QED": 0
+  }
+ ],
+ "squared_split_orders": {
+  "born": [
+   {
+    "index": 1,
+    "QCD": 6,
+    "QED": 0
+   }
+  ],
+  "loop": [
+   {
+    "index": 1,
+    "QCD": 8,
+    "QED": 0
+   }
+  ]
+ },
+ "source": "independent references: MadLoop/MG5_aMC 3.7.0",
+ "scope": "Independent provider references at exact on-shell decimal points; MadLoop in double precision (return codes 216); timings are single-run by-products, not benchmarks.",
+ "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 6,
+  "denominator": 1536
+ },
+ "normalization_denominator": 1536,
+ "points": [
+  [
+   [
+    "512",
+    "0",
+    "0",
+    "512"
+   ],
+   [
+    "512",
+    "0",
+    "0",
+    "-512"
+   ],
+   [
+    "79.596704",
+    "-44.628535296",
+    "-65.904713728",
+    "0.70557312"
+   ],
+   [
+    "510.528296",
+    "294.540535296",
+    "399.120713728",
+    "120.77942688"
+   ],
+   [
+    "433.875",
+    "-249.912",
+    "-333.216",
+    "-121.485"
+   ]
+  ],
+  [
+   [
+    "781.25",
+    "0",
+    "0",
+    "781.25"
+   ],
+   [
+    "781.25",
+    "0",
+    "0",
+    "-781.25"
+   ],
+   [
+    "53.6763296",
+    "-28.6462826496",
+    "-44.5950435328",
+    "8.474723712"
+   ],
+   [
+    "778.7736704",
+    "449.1550826496",
+    "605.2734435328",
+    "195.939276288"
+   ],
+   [
+    "730.05",
+    "-420.5088",
+    "-560.6784",
+    "-204.414"
+   ]
+  ],
+  [
+   [
+    "400",
+    "0",
+    "0",
+    "400"
+   ],
+   [
+    "400",
+    "0",
+    "0",
+    "-400"
+   ],
+   [
+    "101.0176",
+    "-57.4046208",
+    "-82.9394944",
+    "-5.505024"
+   ],
+   [
+    "398.9824",
+    "230.2046208",
+    "313.3394944",
+    "89.505024"
+   ],
+   [
+    "300",
+    "-172.8",
+    "-230.4",
+    "-84"
+   ]
+  ],
+  [
+   [
+    "512",
+    "0",
+    "0",
+    "512"
+   ],
+   [
+    "512",
+    "0",
+    "0",
+    "-512"
+   ],
+   [
+    "79.596704",
+    "-44.628535296",
+    "-65.904713728",
+    "0.70557312"
+   ],
+   [
+    "510.528296",
+    "294.540535296",
+    "399.120713728",
+    "120.77942688"
+   ],
+   [
+    "433.875",
+    "-249.912",
+    "-333.216",
+    "-121.485"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "700",
+  "1400",
+  "500"
+ ],
+ "point_construction": {
+  "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+  "cuts": {
+   "min_2pipj_over_s": "1/1000",
+   "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+   "resonances": [
+    "91.188",
+    "125",
+    "173"
+   ]
+  },
+  "sqrt_s": [
+   "1024",
+   "1562.5",
+   "800",
+   "1024"
+  ],
+  "scale_variation": {
+   "point": 4,
+   "copy_of_point": 1,
+   "mu_r_factor": "1/2"
+  }
+ },
+ "parameters": {
+  "aS": "0.118",
+  "aEWM1": "132.507",
+  "Gf": "0.0000116639",
+  "MZ": "91.188",
+  "MH": "125",
+  "MT": "173",
+  "ymt": "173"
+ },
+ "fixed_parameters": {
+  "MB": "0",
+  "ymb": "0",
+  "MTA": "0",
+  "ymtau": "0",
+  "WT": "0",
+  "WW": "0",
+  "WZ": "0",
+  "WH": "0"
+ },
+ "derived_parameters": {
+  "MW": "80.4190024457561601055171371731",
+  "alpha": "0.00754677111397888413442308708219"
+ },
+ "active_flavours": 5,
+ "loop_quark_flavours": 6,
+ "rows": [
+  {
+   "born": 0.4699827681523551,
+   "finite": -0.6986966365053782,
+   "single_pole": -0.43504903868860356,
+   "double_pole": -0.13239614287344836,
+   "madloop_accuracy": 2.596368218003218e-13,
+   "madloop_status": 216,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "born": 0.4699827681523551
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "finite": -0.6986966365053782,
+      "single_pole": -0.43504903868860356,
+      "double_pole": -0.13239614287344836,
+      "accuracy": 2.596368218003218e-13,
+      "born_sector": {
+       "QCD": 6,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 0.4699827681523551,
+     "finite": -0.6986966365053782,
+     "single_pole": -0.43504903868860356,
+     "double_pole": -0.13239614287344836,
+     "accuracy": 2.596368218003218e-13
+    }
+   },
+   "born_from_madloop_double_pole": 0.4699827681523729,
+   "providers": {
+    "madloop": {
+     "born": 0.4699827681523551,
+     "finite": -0.6986966365053782,
+     "single_pole": -0.43504903868860356,
+     "double_pole": -0.13239614287344836,
+     "accuracy": 2.596368218003218e-13,
+     "status": 216,
+     "seconds": 0.251563048,
+     "universal_double_pole_relative_error": 3.794490592698628e-14
+    }
+   },
+   "provider_pair_relative_errors": {},
+   "provider_pair_strict_relative_errors": {}
+  },
+  {
+   "born": 0.4818452363447734,
+   "finite": -0.47182465256211326,
+   "single_pole": -0.2520795226535004,
+   "double_pole": -0.1357378505701084,
+   "madloop_accuracy": 8.947151637702862e-13,
+   "madloop_status": 216,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "born": 0.4818452363447734
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "finite": -0.47182465256211326,
+      "single_pole": -0.2520795226535004,
+      "double_pole": -0.1357378505701084,
+      "accuracy": 8.947151637702862e-13,
+      "born_sector": {
+       "QCD": 6,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 0.4818452363447734,
+     "finite": -0.47182465256211326,
+     "single_pole": -0.2520795226535004,
+     "double_pole": -0.1357378505701084,
+     "accuracy": 8.947151637702862e-13
+    }
+   },
+   "born_from_madloop_double_pole": 0.4818452363447702,
+   "providers": {
+    "madloop": {
+     "born": 0.4818452363447734,
+     "finite": -0.47182465256211326,
+     "single_pole": -0.2520795226535004,
+     "double_pole": -0.1357378505701084,
+     "accuracy": 8.947151637702862e-13,
+     "status": 216,
+     "seconds": 0.256525528,
+     "universal_double_pole_relative_error": 6.543336408891907e-15
+    }
+   },
+   "provider_pair_relative_errors": {},
+   "provider_pair_strict_relative_errors": {}
+  },
+  {
+   "born": 0.5106243550100663,
+   "finite": -1.214406720188573,
+   "single_pole": -0.6336092750902567,
+   "double_pole": -0.14384505058843766,
+   "madloop_accuracy": 1.0429968692546357e-13,
+   "madloop_status": 216,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "born": 0.5106243550100663
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "finite": -1.214406720188573,
+      "single_pole": -0.6336092750902567,
+      "double_pole": -0.14384505058843766,
+      "accuracy": 1.0429968692546357e-13,
+      "born_sector": {
+       "QCD": 6,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 0.5106243550100663,
+     "finite": -1.214406720188573,
+     "single_pole": -0.6336092750902567,
+     "double_pole": -0.14384505058843766,
+     "accuracy": 1.0429968692546357e-13
+    }
+   },
+   "born_from_madloop_double_pole": 0.5106243550100429,
+   "providers": {
+    "madloop": {
+     "born": 0.5106243550100663,
+     "finite": -1.214406720188573,
+     "single_pole": -0.6336092750902567,
+     "double_pole": -0.14384505058843766,
+     "accuracy": 1.0429968692546357e-13,
+     "status": 216,
+     "seconds": 0.249298229,
+     "universal_double_pole_relative_error": 4.592321369067917e-14
+    }
+   },
+   "provider_pair_relative_errors": {},
+   "provider_pair_strict_relative_errors": {}
+  },
+  {
+   "born": 0.4699827681523551,
+   "finite": -0.36352487927303423,
+   "single_pole": -0.25150901238911827,
+   "double_pole": -0.13239614287344836,
+   "madloop_accuracy": 3.366630144688228e-13,
+   "madloop_status": 216,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "born": 0.4699827681523551
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "finite": -0.36352487927303423,
+      "single_pole": -0.25150901238911827,
+      "double_pole": -0.13239614287344836,
+      "accuracy": 3.366630144688228e-13,
+      "born_sector": {
+       "QCD": 6,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 0.4699827681523551,
+     "finite": -0.36352487927303423,
+     "single_pole": -0.25150901238911827,
+     "double_pole": -0.13239614287344836,
+     "accuracy": 3.366630144688228e-13
+    }
+   },
+   "born_from_madloop_double_pole": 0.4699827681523729,
+   "providers": {
+    "madloop": {
+     "born": 0.4699827681523551,
+     "finite": -0.36352487927303423,
+     "single_pole": -0.25150901238911827,
+     "double_pole": -0.13239614287344836,
+     "accuracy": 3.366630144688228e-13,
+     "status": 216,
+     "seconds": 0.248561966,
+     "universal_double_pole_relative_error": 3.794490592698628e-14
+    }
+   },
+   "provider_pair_relative_errors": {},
+   "provider_pair_strict_relative_errors": {}
+  }
+ ],
+ "per_helicity": {
+  "provider": "madloop",
+  "run": "madloop-hel",
+  "normalization": "MadLoop SLOOPMATRIXHEL_THRES: |M_h|^2 with the colour average and identical-particle factor but no helicity average (sum over all configurations = HELAVGFACTOR x summed value); helicity labels in MadLoop's HelConfigs.dat convention",
+  "helicities": [
+   {
+    "madloop_index": 1,
+    "helicity": [
+     -1,
+     -1,
+     -1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 2,
+    "helicity": [
+     -1,
+     -1,
+     -1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 3,
+    "helicity": [
+     -1,
+     -1,
+     -1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 4,
+    "helicity": [
+     -1,
+     -1,
+     -1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 5,
+    "helicity": [
+     -1,
+     -1,
+     1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 6,
+    "helicity": [
+     -1,
+     -1,
+     1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 7,
+    "helicity": [
+     -1,
+     -1,
+     1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 8,
+    "helicity": [
+     -1,
+     -1,
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 9,
+    "helicity": [
+     -1,
+     1,
+     -1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 10,
+    "helicity": [
+     -1,
+     1,
+     -1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 11,
+    "helicity": [
+     -1,
+     1,
+     -1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 12,
+    "helicity": [
+     -1,
+     1,
+     -1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 13,
+    "helicity": [
+     -1,
+     1,
+     1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 14,
+    "helicity": [
+     -1,
+     1,
+     1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 15,
+    "helicity": [
+     -1,
+     1,
+     1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 16,
+    "helicity": [
+     -1,
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 17,
+    "helicity": [
+     1,
+     -1,
+     -1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 18,
+    "helicity": [
+     1,
+     -1,
+     -1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 19,
+    "helicity": [
+     1,
+     -1,
+     -1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 20,
+    "helicity": [
+     1,
+     -1,
+     -1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 21,
+    "helicity": [
+     1,
+     -1,
+     1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 22,
+    "helicity": [
+     1,
+     -1,
+     1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 23,
+    "helicity": [
+     1,
+     -1,
+     1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 24,
+    "helicity": [
+     1,
+     -1,
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 25,
+    "helicity": [
+     1,
+     1,
+     -1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 26,
+    "helicity": [
+     1,
+     1,
+     -1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 27,
+    "helicity": [
+     1,
+     1,
+     -1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 28,
+    "helicity": [
+     1,
+     1,
+     -1,
+     1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 29,
+    "helicity": [
+     1,
+     1,
+     1,
+     -1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 30,
+    "helicity": [
+     1,
+     1,
+     1,
+     -1,
+     1
+    ]
+   },
+   {
+    "madloop_index": 31,
+    "helicity": [
+     1,
+     1,
+     1,
+     1,
+     -1
+    ]
+   },
+   {
+    "madloop_index": 32,
+    "helicity": [
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   }
+  ],
+  "settings": {
+   "requested_relative_accuracy": 1e-11,
+   "stability_check": "forced on every call",
+   "helicities": "all MadLoop helicity configurations"
+  },
+  "rows": [
+   [
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 1,
+     "status": 216,
+     "born": 0.5310653824464222,
+     "finite": -0.7982051160187609,
+     "single_pole": -0.4915913939194124,
+     "double_pole": -0.14960337487677358,
+     "accuracy": 6.214056213463226e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 2,
+     "status": 216,
+     "born": 0.0002878911206901322,
+     "finite": -0.00033046323831112135,
+     "single_pole": -0.00026649222863123277,
+     "double_pole": -8.110015202627557e-05,
+     "accuracy": 3.733654813054406e-12
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 3,
+     "status": 328,
+     "born": 3.625350744962974e-11,
+     "finite": 4.4464521946410695e-08,
+     "single_pole": -3.35587911560502e-11,
+     "double_pole": -1.0212767098577122e-11,
+     "accuracy": 1.0520851568504746e-14
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 4,
+     "status": 318,
+     "born": 3.435546571037401e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.0520851568504746e-14
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 5,
+     "status": 216,
+     "born": 0.27016191853228094,
+     "finite": -0.40568300521262113,
+     "single_pole": -0.25008083468635334,
+     "double_pole": -0.0761057604421998,
+     "accuracy": 6.436117493515984e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 6,
+     "status": 216,
+     "born": 7.645948923434347e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.436117493515984e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 7,
+     "status": 216,
+     "born": 2.3191678344494545e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.436117493515984e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 8,
+     "status": 216,
+     "born": 1.4939207341366642e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.436117493515984e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 9,
+     "status": 216,
+     "born": 1.1131301135533377e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.436117493515984e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 10,
+     "status": 216,
+     "born": 0.045945877629069994,
+     "finite": -0.064909145586676,
+     "single_pole": -0.04253072931336151,
+     "double_pole": -0.012943148964671181,
+     "accuracy": 2.0305179015490035e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 11,
+     "status": 216,
+     "born": 0.011145193709987613,
+     "finite": -0.014927534845153745,
+     "single_pole": -0.010316773588489285,
+     "double_pole": -0.003139648427067181,
+     "accuracy": 6.384808458657355e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 12,
+     "status": 328,
+     "born": 2.008443453602252e-05,
+     "finite": -1.8595550239256702e-07,
+     "single_pole": -1.859156234992967e-05,
+     "double_pole": -5.657870553033836e-06,
+     "accuracy": 0.0
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 13,
+     "status": 328,
+     "born": 1.8709444477436644e-05,
+     "finite": -4.125266466370357e-06,
+     "single_pole": -1.7318775040005945e-05,
+     "double_pole": -5.270530010827059e-06,
+     "accuracy": 1.99752691682353e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 14,
+     "status": 216,
+     "born": 0.07672070320751802,
+     "finite": -0.10750914175021736,
+     "single_pole": -0.07101806797974539,
+     "double_pole": -0.0216125481007447,
+     "accuracy": 2.6531576294431835e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 15,
+     "status": 216,
+     "born": 0.004599775743474362,
+     "finite": -0.006008551031022458,
+     "single_pole": -0.004257875290297969,
+     "double_pole": -0.0012957763726380235,
+     "accuracy": 5.422041083072724e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 16,
+     "status": 216,
+     "born": 1.048248306321682e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.422041083072724e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 17,
+     "status": 216,
+     "born": 1.048248306321682e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.422041083072724e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 18,
+     "status": 216,
+     "born": 0.004599775743474362,
+     "finite": -0.0060274940591345215,
+     "single_pole": -0.004257875290297914,
+     "double_pole": -0.0012957763726380211,
+     "accuracy": 2.8871750517508544e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 19,
+     "status": 216,
+     "born": 0.07672070320751802,
+     "finite": -0.10762735102858609,
+     "single_pole": -0.0710180679797178,
+     "double_pole": -0.021612548100744942,
+     "accuracy": 4.700952571227352e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 20,
+     "status": 328,
+     "born": 1.8709444477436644e-05,
+     "finite": -3.7143653656792273e-06,
+     "single_pole": -1.7318775040006056e-05,
+     "double_pole": -5.270530010827059e-06,
+     "accuracy": 4.0091591881777755e-15
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 21,
+     "status": 216,
+     "born": 2.008443453602252e-05,
+     "finite": -4.439645599146578e-07,
+     "single_pole": -1.8591562349933796e-05,
+     "double_pole": -5.657870553035767e-06,
+     "accuracy": 4.102566498360006e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 22,
+     "status": 216,
+     "born": 0.011145193709987613,
+     "finite": -0.014912185825796936,
+     "single_pole": -0.010316773588515116,
+     "double_pole": -0.0031396484270670858,
+     "accuracy": 5.920928676812697e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 23,
+     "status": 216,
+     "born": 0.045945877629069994,
+     "finite": -0.06491472656822561,
+     "single_pole": -0.04253072931336091,
+     "double_pole": -0.012943148964671199,
+     "accuracy": 3.8230930014841315e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 24,
+     "status": 216,
+     "born": 1.1131301135533377e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.8230930014841315e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 25,
+     "status": 216,
+     "born": 1.4939207341366642e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.8230930014841315e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 26,
+     "status": 216,
+     "born": 2.3191678344494545e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.8230930014841315e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 27,
+     "status": 216,
+     "born": 7.645948923434347e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.8230930014841315e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 28,
+     "status": 216,
+     "born": 0.27016191853228094,
+     "finite": -0.40612663968697127,
+     "single_pole": -0.25008083468635256,
+     "double_pole": -0.07610576044219969,
+     "accuracy": 5.438448133591166e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 29,
+     "status": 216,
+     "born": 3.435546571037401e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.438448133591166e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 30,
+     "status": 328,
+     "born": 3.625350744962974e-11,
+     "finite": 4.568977771833805e-08,
+     "single_pole": -3.3558791156300835e-11,
+     "double_pole": -1.0212767098577122e-11,
+     "accuracy": 1.0238444953023639e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 31,
+     "status": 216,
+     "born": 0.0002878911206901322,
+     "finite": -0.0003336995473756332,
+     "single_pole": -0.00026649222863128037,
+     "double_pole": -8.110015202627782e-05,
+     "accuracy": 1.344228494259707e-12
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 32,
+     "status": 216,
+     "born": 0.5310653824464222,
+     "finite": -0.7972631122250178,
+     "single_pole": -0.4915913939194184,
+     "double_pole": -0.14960337487677347,
+     "accuracy": 5.730724595140398e-13
+    }
+   ],
+   [
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 1,
+     "status": 216,
+     "born": 0.4669544350758818,
+     "finite": -0.4647402496153884,
+     "single_pole": -0.2442893323752523,
+     "double_pole": -0.13154304857758956,
+     "accuracy": 8.057501892664827e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 2,
+     "status": 328,
+     "born": 8.613788957928101e-06,
+     "finite": 1.1657667746285395e-05,
+     "single_pole": -4.506342794263396e-06,
+     "double_pole": -2.4265409517863595e-06,
+     "accuracy": 0.0
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 3,
+     "status": 328,
+     "born": 4.7135506558847295e-11,
+     "finite": 5.049237708465356e-08,
+     "single_pole": -2.4659154221141546e-11,
+     "double_pole": -1.3278272489689835e-11,
+     "accuracy": 5.639808187775877e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 4,
+     "status": 318,
+     "born": 1.0368641024531616e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.639808187775877e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 5,
+     "status": 216,
+     "born": 0.3512548103739044,
+     "finite": -0.34916327139931735,
+     "single_pole": -0.18376054851239237,
+     "double_pole": -0.09894997265978916,
+     "accuracy": 5.227612052991151e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 6,
+     "status": 216,
+     "born": 6.622340429749786e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.227612052991151e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 7,
+     "status": 216,
+     "born": 5.034133655412921e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.227612052991151e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 8,
+     "status": 216,
+     "born": 3.726853458340364e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.227612052991151e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 9,
+     "status": 216,
+     "born": 1.4017214426764582e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.227612052991151e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 10,
+     "status": 216,
+     "born": 0.05973717769602498,
+     "finite": -0.05405613716689464,
+     "single_pole": -0.03125177567908635,
+     "double_pole": -0.01682821679652588,
+     "accuracy": 1.030071432501749e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 11,
+     "status": 216,
+     "born": 0.009040138621483807,
+     "finite": -0.007546631705486204,
+     "single_pole": -0.004729389556105988,
+     "double_pole": -0.0025466454636901073,
+     "accuracy": 4.208317501019237e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 12,
+     "status": 328,
+     "born": 1.1689296474666061e-06,
+     "finite": 6.800902121976316e-06,
+     "single_pole": -6.115308512423009e-07,
+     "double_pole": -3.2929244879221704e-07,
+     "accuracy": 0.0
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 13,
+     "status": 328,
+     "born": 3.2704676529647924e-07,
+     "finite": 3.1882587583979515e-06,
+     "single_pole": -1.7109599984150382e-07,
+     "double_pole": -9.213046349487159e-08,
+     "accuracy": 9.257533524759211e-15
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 14,
+     "status": 216,
+     "born": 0.07071333811439029,
+     "finite": -0.06339083472728443,
+     "single_pole": -0.036994003826495134,
+     "double_pole": -0.019920247827074508,
+     "accuracy": 1.7630274524659419e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 15,
+     "status": 216,
+     "born": 0.005980462995355502,
+     "finite": -0.00484369655678305,
+     "single_pole": -0.003128706363380082,
+     "double_pole": -0.0016847218384093642,
+     "accuracy": 1.018173602193836e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 16,
+     "status": 216,
+     "born": 1.8522140375654574e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.018173602193836e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 17,
+     "status": 216,
+     "born": 1.8522140375654574e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.018173602193836e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 18,
+     "status": 216,
+     "born": 0.005980462995355502,
+     "finite": -0.004866124404267404,
+     "single_pole": -0.003128706363379559,
+     "double_pole": -0.00168472183840937,
+     "accuracy": 6.145291049301885e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 19,
+     "status": 216,
+     "born": 0.07071333811439029,
+     "finite": -0.06352664371147808,
+     "single_pole": -0.03699400382651927,
+     "double_pole": -0.0199202478270746,
+     "accuracy": 4.217835566666843e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 20,
+     "status": 328,
+     "born": 3.2704676529647924e-07,
+     "finite": 3.2369809233192044e-06,
+     "single_pole": -1.7109599984150236e-07,
+     "double_pole": -9.213046349487159e-08,
+     "accuracy": 1.2817629410689e-15
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 21,
+     "status": 216,
+     "born": 1.1689296474666061e-06,
+     "finite": 6.768522943865881e-06,
+     "single_pole": -6.115308512397319e-07,
+     "double_pole": -3.2929244879106746e-07,
+     "accuracy": 5.947995164293795e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 22,
+     "status": 328,
+     "born": 0.009040138621483807,
+     "finite": -0.007530768499575096,
+     "single_pole": -0.004729389556098895,
+     "double_pole": -0.002546645463685848,
+     "accuracy": 1.7573578325416384e-16
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 23,
+     "status": 216,
+     "born": 0.05973717769602498,
+     "finite": -0.05399592280583374,
+     "single_pole": -0.03125177567907923,
+     "double_pole": -0.01682821679652584,
+     "accuracy": 6.059879016106049e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 24,
+     "status": 216,
+     "born": 1.4017214426764582e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.059879016106049e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 25,
+     "status": 216,
+     "born": 3.726853458340364e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.059879016106049e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 26,
+     "status": 216,
+     "born": 5.034133655412921e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.059879016106049e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 27,
+     "status": 216,
+     "born": 6.622340429749786e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.059879016106049e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 28,
+     "status": 216,
+     "born": 0.3512548103739044,
+     "finite": -0.3499542229244329,
+     "single_pole": -0.18376054851239332,
+     "double_pole": -0.09894997265978914,
+     "accuracy": 9.168141968202273e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 29,
+     "status": 216,
+     "born": 1.0368641024531616e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 9.168141968202273e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 30,
+     "status": 328,
+     "born": 4.7135506558847295e-11,
+     "finite": 5.152497142186814e-08,
+     "single_pole": -2.465915422122688e-11,
+     "double_pole": -1.3278272489689835e-11,
+     "accuracy": 1.9440878353347508e-15
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 31,
+     "status": 328,
+     "born": 8.613788957928101e-06,
+     "finite": 1.135743370051202e-05,
+     "single_pole": -4.506342794263396e-06,
+     "double_pole": -2.4265409517863595e-06,
+     "accuracy": 0.0
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 32,
+     "status": 216,
+     "born": 0.4669544350758818,
+     "finite": -0.46372721851571375,
+     "single_pole": -0.24428933237530512,
+     "double_pole": -0.13154304857758944,
+     "accuracy": 1.0028985939874318e-12
+    }
+   ],
+   [
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 1,
+     "status": 216,
+     "born": 0.6647174850877302,
+     "finite": -1.5920810876556144,
+     "single_pole": -0.8248160506522575,
+     "double_pole": -0.18725374011504758,
+     "accuracy": 1.9808275207497035e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 2,
+     "status": 216,
+     "born": 0.0025965526761240194,
+     "finite": -0.005925071106283757,
+     "single_pole": -0.0032219376978604476,
+     "double_pole": -0.0007314599223243942,
+     "accuracy": 5.022236602099335e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 3,
+     "status": 328,
+     "born": 2.7842327070253755e-11,
+     "finite": 4.224686582078514e-08,
+     "single_pole": -3.454820846570029e-11,
+     "double_pole": -7.843301842149625e-12,
+     "accuracy": 1.548502423213471e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 4,
+     "status": 318,
+     "born": 2.9113338490400675e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.548502423213471e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 5,
+     "status": 216,
+     "born": 0.20748162107791535,
+     "finite": -0.4964108586688819,
+     "single_pole": -0.2574539937938156,
+     "double_pole": -0.05844845430362831,
+     "accuracy": 4.5410015674877986e-14
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 6,
+     "status": 216,
+     "born": 9.99620595843384e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.5410015674877986e-14
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 7,
+     "status": 216,
+     "born": 2.2125471164767225e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.5410015674877986e-14
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 8,
+     "status": 216,
+     "born": 1.5066024074923833e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.5410015674877986e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 9,
+     "status": 216,
+     "born": 1.3479628718118053e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.5410015674877986e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 10,
+     "status": 216,
+     "born": 0.03528596933319283,
+     "finite": -0.08126826118757877,
+     "single_pole": -0.0437846672033924,
+     "double_pole": -0.00994020750086545,
+     "accuracy": 8.886090953536423e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 11,
+     "status": 216,
+     "born": 0.014886506057446095,
+     "finite": -0.03320084086961629,
+     "single_pole": -0.018471951482756578,
+     "double_pole": -0.004193592013195492,
+     "accuracy": 1.7008035288518703e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 12,
+     "status": 216,
+     "born": 0.00013505771194370167,
+     "finite": -0.00024339156383672094,
+     "single_pole": -0.00016758663804491565,
+     "double_pole": -3.8046331351575445e-05,
+     "accuracy": 1.3649878687472073e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 13,
+     "status": 216,
+     "born": 0.0002089510600907375,
+     "finite": -0.0004111427318601919,
+     "single_pole": -0.0002592773501979008,
+     "double_pole": -5.886240151762604e-05,
+     "accuracy": 4.220562366943222e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 14,
+     "status": 216,
+     "born": 0.09240398573792231,
+     "finite": -0.21182516944573343,
+     "single_pole": -0.11465967465988389,
+     "double_pole": -0.026030595432099936,
+     "accuracy": 1.327750865496849e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 15,
+     "status": 216,
+     "born": 0.0035325812499252345,
+     "finite": -0.007729454237359585,
+     "single_pole": -0.004383410667746871,
+     "double_pole": -0.0009951431490048024,
+     "accuracy": 3.503224793873116e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 16,
+     "status": 216,
+     "born": 1.2111745302941568e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.503224793873116e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 17,
+     "status": 216,
+     "born": 1.2111745302941568e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.503224793873116e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 18,
+     "status": 216,
+     "born": 0.0035325812499252345,
+     "finite": -0.007744795216452343,
+     "single_pole": -0.004383410667746761,
+     "double_pole": -0.0009951431490047588,
+     "accuracy": 1.901496114961917e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 19,
+     "status": 216,
+     "born": 0.09240398573792231,
+     "finite": -0.21193930921902915,
+     "single_pole": -0.1146596746598323,
+     "double_pole": -0.026030595432101025,
+     "accuracy": 6.030487074896441e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 20,
+     "status": 216,
+     "born": 0.0002089510600907375,
+     "finite": -0.0004092235104700138,
+     "single_pole": -0.00025927735019794484,
+     "double_pole": -5.8862401517627435e-05,
+     "accuracy": 5.073231335559114e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 21,
+     "status": 216,
+     "born": 0.00013505771194370167,
+     "finite": -0.00024393361240672223,
+     "single_pole": -0.00016758663804487565,
+     "double_pole": -3.80463313515702e-05,
+     "accuracy": 7.560104910828948e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 22,
+     "status": 216,
+     "born": 0.014886506057446095,
+     "finite": -0.03318437962990098,
+     "single_pole": -0.01847195148280506,
+     "double_pole": -0.0041935920131945074,
+     "accuracy": 3.34124973992981e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 23,
+     "status": 216,
+     "born": 0.03528596933319283,
+     "finite": -0.0812979414581349,
+     "single_pole": -0.043784667203392635,
+     "double_pole": -0.009940207500865526,
+     "accuracy": 1.3451470877064892e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 24,
+     "status": 216,
+     "born": 1.3479628718118053e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3451470877064892e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 25,
+     "status": 216,
+     "born": 1.5066024074923833e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3451470877064892e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 26,
+     "status": 216,
+     "born": 2.2125471164767225e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3451470877064892e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 27,
+     "status": 216,
+     "born": 9.99620595843384e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 1.3451470877064892e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 28,
+     "status": 216,
+     "born": 0.20748162107791535,
+     "finite": -0.4966591488119023,
+     "single_pole": -0.2574539937938141,
+     "double_pole": -0.058448454303627606,
+     "accuracy": 2.6002867989040372e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 29,
+     "status": 216,
+     "born": 2.9113338490400675e-29,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.6002867989040372e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 30,
+     "status": 328,
+     "born": 2.7842327070253755e-11,
+     "finite": 4.341174530292718e-08,
+     "single_pole": -3.454820846592018e-11,
+     "double_pole": -7.843301842149625e-12,
+     "accuracy": 1.6174141941248345e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 31,
+     "status": 216,
+     "born": 0.0025965526761240194,
+     "finite": -0.005940747046067875,
+     "single_pole": -0.0032219376978605365,
+     "double_pole": -0.0007314599223243855,
+     "accuracy": 3.7640792490031224e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 32,
+     "status": 216,
+     "born": 0.6647174850877302,
+     "finite": -1.5911122104415043,
+     "single_pole": -0.8248160506522748,
+     "double_pole": -0.18725374011504858,
+     "accuracy": 1.1163294635591739e-13
+    }
+   ],
+   [
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 1,
+     "status": 216,
+     "born": 0.5310653824464222,
+     "finite": -0.4194718315206924,
+     "single_pole": -0.28419707892323653,
+     "double_pole": -0.14960337487677358,
+     "accuracy": 7.047601470639559e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 2,
+     "status": 216,
+     "born": 0.0002878911206901322,
+     "finite": -0.00012515151338856557,
+     "single_pole": -0.00015406354519124061,
+     "double_pole": -8.110015202627557e-05,
+     "accuracy": 4.865953015706164e-12
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 3,
+     "status": 328,
+     "born": 3.625350744962974e-11,
+     "finite": 4.4490376408786337e-08,
+     "single_pole": -1.9400889715919484e-11,
+     "double_pole": -1.0212767098577122e-11,
+     "accuracy": 8.409411915265766e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 4,
+     "status": 318,
+     "born": 3.435546571037401e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 8.409411915265766e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 5,
+     "status": 216,
+     "born": 0.27016191853228094,
+     "finite": -0.21301499457957365,
+     "single_pole": -0.14457584813659063,
+     "double_pole": -0.0761057604421998,
+     "accuracy": 7.491568202066655e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 6,
+     "status": 216,
+     "born": 7.645948923434347e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.491568202066655e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 7,
+     "status": 216,
+     "born": 2.3191678344494545e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.491568202066655e-13
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 8,
+     "status": 216,
+     "born": 1.4939207341366642e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.491568202066655e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 9,
+     "status": 216,
+     "born": 1.1131301135533377e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.491568202066655e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 10,
+     "status": 216,
+     "born": 0.045945877629069994,
+     "finite": -0.03214249628364154,
+     "single_pole": -0.02458771488850305,
+     "double_pole": -0.012943148964671181,
+     "accuracy": 2.7345412793699677e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 11,
+     "status": 217,
+     "born": 0.011145193709987613,
+     "finite": -0.006979255857787841,
+     "single_pole": -0.005964296678003417,
+     "double_pole": -0.003139648427078038,
+     "accuracy": 9.108316974439792e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 12,
+     "status": 328,
+     "born": 2.008443453602252e-05,
+     "finite": 1.4137410528488278e-05,
+     "single_pole": -1.0748088306312525e-05,
+     "double_pole": -5.657870553033836e-06,
+     "accuracy": 0.0
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 13,
+     "status": 328,
+     "born": 1.8709444477436644e-05,
+     "finite": 9.217515029636355e-06,
+     "single_pole": -1.0012269005883241e-05,
+     "double_pole": -5.270530010827059e-06,
+     "accuracy": 1.67583173165733e-15
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 14,
+     "status": 216,
+     "born": 0.07672070320751802,
+     "finite": -0.052795193382989894,
+     "single_pole": -0.04105671441825054,
+     "double_pole": -0.0216125481007447,
+     "accuracy": 1.6641344649227547e-12
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 15,
+     "status": 216,
+     "born": 0.004599775743474362,
+     "finite": -0.0027281862532329195,
+     "single_pole": -0.002461547811637488,
+     "double_pole": -0.0012957763726380235,
+     "accuracy": 7.216857984763421e-13
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 16,
+     "status": 216,
+     "born": 1.048248306321682e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.216857984763421e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 17,
+     "status": 216,
+     "born": 1.048248306321682e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 7.216857984763421e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 18,
+     "status": 216,
+     "born": 0.004599775743474362,
+     "finite": -0.002747129281345041,
+     "single_pole": -0.002461547811637435,
+     "double_pole": -0.0012957763726380211,
+     "accuracy": 5.248612844671465e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 19,
+     "status": 216,
+     "born": 0.07672070320751802,
+     "finite": -0.05291340266139665,
+     "single_pole": -0.041056714418222756,
+     "double_pole": -0.021612548100744942,
+     "accuracy": 5.09625931480771e-12
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 20,
+     "status": 328,
+     "born": 1.8709444477436644e-05,
+     "finite": 9.628416130327855e-06,
+     "single_pole": -1.0012269005883295e-05,
+     "double_pole": -5.270530010827059e-06,
+     "accuracy": 6.651170183162383e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 21,
+     "status": 328,
+     "born": 2.008443453602252e-05,
+     "finite": 1.3879401470926126e-05,
+     "single_pole": -1.0748088306312864e-05,
+     "double_pole": -5.657870553033836e-06,
+     "accuracy": 1.2069065298460138e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 22,
+     "status": 328,
+     "born": 0.011145193709987613,
+     "finite": -0.006963906838501583,
+     "single_pole": -0.005964296678161901,
+     "double_pole": -0.0031396484270705305,
+     "accuracy": 4.858306928163998e-16
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 23,
+     "status": 216,
+     "born": 0.045945877629069994,
+     "finite": -0.032148077265192025,
+     "single_pole": -0.02458771488850242,
+     "double_pole": -0.012943148964671199,
+     "accuracy": 4.711309691635436e-13
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 24,
+     "status": 216,
+     "born": 1.1131301135533377e-31,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.711309691635436e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 25,
+     "status": 216,
+     "born": 1.4939207341366642e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.711309691635436e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 26,
+     "status": 216,
+     "born": 2.3191678344494545e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.711309691635436e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 27,
+     "status": 216,
+     "born": 7.645948923434347e-32,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 4.711309691635436e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 28,
+     "status": 216,
+     "born": 0.27016191853228094,
+     "finite": -0.21345862905392532,
+     "single_pole": -0.14457584813658986,
+     "double_pole": -0.07610576044219969,
+     "accuracy": 6.448209850017782e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 29,
+     "status": 216,
+     "born": 3.435546571037401e-30,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.448209850017782e-13
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 30,
+     "status": 328,
+     "born": 3.625350744962974e-11,
+     "finite": 4.571563218071412e-08,
+     "single_pole": -1.9400889716077336e-11,
+     "double_pole": -1.0212767098577122e-11,
+     "accuracy": 2.2270098956160533e-15
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 31,
+     "status": 216,
+     "born": 0.0002878911206901322,
+     "finite": -0.00012838782245301676,
+     "single_pole": -0.00015406354519128612,
+     "double_pole": -8.110015202627782e-05,
+     "accuracy": 1.5349277212670378e-12
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 32,
+     "status": 216,
+     "born": 0.5310653824464222,
+     "finite": -0.41852982772694136,
+     "single_pole": -0.28419707892324275,
+     "double_pole": -0.14960337487677347,
+     "accuracy": 6.357862322440549e-13
+    }
+   ]
+  ]
+ },
+ "primary_provider": "madloop",
+ "universal_double_pole_factor": -0.28170424927265475,
+ "maximum_provider_relative_error": null,
+ "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
+ "maximum_universal_double_pole_relative_error": 4.592321369067917e-14,
+ "tolerance": 2e-08,
+ "validation_status": "single provider; no cross-check",
+ "validated_providers": [
+  "madloop"
+ ],
+ "excluded_providers": {},
+ "providers": {
+  "madloop": {
+   "provider": "madloop",
+   "process_name": "gg_ggg",
+   "host": "itphlies",
+   "cpu": 346,
+   "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ggg/points.json",
+   "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+   "settings": {
+    "absent_card_parameters_fixed_to_zero": [
+     "MB",
+     "ymb"
+    ],
+    "MadLoopParams": {
+     "MLReductionLib": "6|7|1",
+     "COLLIERGlobalCache": "-1",
+     "MLStabThres": "1.000000d-03",
+     "ImprovePSPoint": "2"
+    },
+    "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173 # mt\n      15 0 # mta\n      23 91.188 # mz\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 132.507 # aewm1\n      2 0.0000116639 # gf\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173 # ymt\n      15 0 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+    "export": "${LOOP_REFERENCE_ROOT}/runs/g1/gg_ggg/madloop-export",
+    "fortran_flags": {
+     "export_make_opts": {
+      "GLOBAL_FLAG": "-O",
+      "ALOHA_FLAG": "",
+      "MATRIX_FLAG": ""
+     },
+     "mg5_production": {
+      "GLOBAL_FLAG": "-O",
+      "ALOHA_FLAG": "",
+      "MATRIX_FLAG": ""
+     },
+     "production_build": true,
+     "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+    },
+    "mg5_quadruple_precision_model_function_repairs": [
+     "added KIND=16 to 19 CMPLX calls in MP_ functions",
+     "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+    ],
+    "requested_relative_accuracy": 1e-11,
+    "stability_check": "forced on every call"
+   },
+   "generation": {
+    "process_name": "gg_ggg",
+    "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+    "model": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/models/loop_sm-no_b_mass",
+    "command": "g g > g g g QED=0 [virt=QCD]",
+    "host": "itphlies",
+    "pid": 248962,
+    "status": "compiled",
+    "graph_generation_s": 11.597355749108829,
+    "process": "Process: g g > g g g QED=0 [ virt = QCD ]",
+    "born": 25,
+    "loops": 2075,
+    "identified_loop_records": 1139,
+    "count_convention": "loops: sum of native diagram.multiplier",
+    "born_orders": [
+     {
+      "QCD": 3,
+      "QED": 0,
+      "count": 25
+     }
+    ],
+    "loop_orders": [
+     {
+      "QCD": 5,
+      "QED": 0,
+      "count": 2075
+     }
+    ],
+    "UVCT_diagrams": 50,
+    "attached_CT_vertices": 1255,
+    "source_export_s": 28.751117693958804,
+    "fortran_flags": {
+     "GLOBAL_FLAG": "-O",
+     "ALOHA_FLAG": "",
+     "MATRIX_FLAG": ""
+    },
+    "compile_s": 6.643208839930594,
+    "compile_jobs": 8
+   },
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "provenance": {
+    "MG5_aMC": {
+     "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+     "version": "3.7.0"
+    },
+    "reducer_libraries": {
+     "libcts.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+      "version": null
+     },
+     "libiregi.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+      "version": null
+     },
+     "libninja.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+      "version": "1.2.0"
+     },
+     "libavh_olo.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+      "version": "3.6"
+     },
+     "libcollier.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+      "version": "1.2.9"
+     }
+    }
+   },
+   "split_order_indices": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "initial_call_seconds": 4.16327162,
+   "initialization_calls": 5,
+   "squared_split_orders": {
+    "born": [
+     {
+      "index": 1,
+      "QCD": 6,
+      "QED": 0
+     }
+    ],
+    "loop": [
+     {
+      "index": 1,
+      "QCD": 8,
+      "QED": 0
+     }
+    ]
+   },
+   "process_wall_seconds": 5.187055920949206,
+   "evaluation_seconds": [
+    0.251563048,
+    0.256525528,
+    0.249298229,
+    0.248561966
+   ]
+  }
+ },
+ "timing_only_runs": {},
+ "mqcd_run": {
+  "id": "gg_ggg",
+  "process": "gg_ggg",
+  "export": "runs/g1/gg_ggg/madloop-export",
+  "helicities": "all",
+  "points": {
+   "generator": "exact"
+  }
+ }
+}
