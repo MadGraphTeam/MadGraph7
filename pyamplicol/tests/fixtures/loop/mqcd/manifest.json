@@ -362,14 +362,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~20 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_uux.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -387,11 +394,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "A04",
@@ -423,16 +426,23 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~20 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ug_ug.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -450,11 +460,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "A05",
@@ -486,14 +492,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_ddx.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -513,11 +526,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "A06",
@@ -614,14 +623,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~20 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uu_uu.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -639,11 +655,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "A08",
@@ -675,14 +687,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "R runs/g1/gg_ggg (+NJet)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ggg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -705,10 +724,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R runs/g1/gg_ggg (+NJet))"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "ward": "MQ-WARD (generic native Ward input)",
@@ -745,16 +760,23 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "E + R runs/g1/uux_ggg",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_ggg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -777,10 +799,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: E + R runs/g1/uux_ggg)"
-   },
    "notes": "quark-three-gluon-component-control.json has no points of its own; the accurate run on runs/g1/uux_ggg comes from MQ-REF",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
@@ -961,11 +979,12 @@
    "scheme": "qcd",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E fixture (Recola + OpenLoops; MadLoop QP to be committed by MQ-REF)",
+   "reference_legend": "E fixture (MadLoop QP committed by MQ-REF, + Recola, OpenLoops)",
    "reference": {
     "format": "required",
     "path": "tests/fixtures/loop/required/gg_gggg.json",
     "providers": [
+     "madloop",
      "recola",
      "openloops"
     ]
@@ -1031,14 +1050,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3-5 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_gggg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1059,10 +1085,8 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
-   },
+   "inputs": "native",
+   "catani": "none",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1097,14 +1121,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_uuxuux.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1122,13 +1153,80 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 0,
+     "sector": "QCD^10",
+     "coefficient": "finite",
+     "E": 2.6e-08,
+     "true_error": 1.05e-08
+    },
+    {
+     "point": 0,
+     "sector": "QCD^10",
+     "coefficient": "single_pole",
+     "E": 2.43e-09,
+     "true_error": 3.11e-10
+    },
+    {
+     "point": 0,
+     "sector": "QCD^10",
+     "coefficient": "double_pole",
+     "E": 1.87e-09,
+     "true_error": 5.48e-10
+    },
+    {
+     "point": 1,
+     "sector": "QCD^10",
+     "coefficient": "finite",
+     "E": 1.82e-09,
+     "true_error": 3.58e-10
+    },
+    {
+     "point": 2,
+     "sector": "QCD^10",
+     "coefficient": "finite",
+     "E": 5.8e-08,
+     "true_error": 5.55e-08
+    },
+    {
+     "point": 2,
+     "sector": "QCD^10",
+     "coefficient": "single_pole",
+     "E": 1.24e-08,
+     "true_error": 2.23e-09
+    },
+    {
+     "point": 2,
+     "sector": "QCD^10",
+     "coefficient": "double_pole",
+     "E": 1.21e-08,
+     "true_error": 4.19e-10
+    },
+    {
+     "point": 3,
+     "sector": "QCD^10",
+     "coefficient": "finite",
+     "E": 8.69e-08,
+     "true_error": 4.52e-08
+    },
+    {
+     "point": 3,
+     "sector": "QCD^10",
+     "coefficient": "single_pole",
+     "E": 5.37e-09,
+     "true_error": 1.01e-09
+    },
+    {
+     "point": 3,
+     "sector": "QCD^10",
+     "coefficient": "double_pole",
+     "E": 1.87e-09,
+     "true_error": 5.48e-10
+    }
+   ],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1569,14 +1667,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ud_ud.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1594,11 +1699,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "A26",
@@ -1630,14 +1731,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uxux_uxux.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1655,11 +1763,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "B01",
@@ -1734,6 +1838,49 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "variants": [
+    {
+     "name": "threshold",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S1: top-pair threshold points (beta = 1e-1, 1e-2, 1e-3), MadLoop in quadruple precision",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_threshold.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     }
+    },
+    {
+     "name": "mt170",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S4: MT = 170 at run time",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_ttx_mt170.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "hel": "MQ-REF (per-helicity SLOOPMATRIXHEL references)",
     "sp": "MQ-REF (supplied special points S1-S4)"
@@ -1833,14 +1980,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~20-60 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttxg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1859,13 +2013,59 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 0,
+     "sector": "QCD^8",
+     "coefficient": "finite",
+     "E": 1.96e-09,
+     "true_error": 1.06e-09
+    },
+    {
+     "point": 0,
+     "sector": "QCD^8",
+     "coefficient": "single_pole",
+     "E": 1.92e-09,
+     "true_error": 6.76e-10
+    },
+    {
+     "point": 0,
+     "sector": "QCD^8",
+     "coefficient": "double_pole",
+     "E": 1.23e-09,
+     "true_error": 1.18e-09
+    },
+    {
+     "point": 1,
+     "sector": "QCD^8",
+     "coefficient": "single_pole",
+     "E": 1.54e-09,
+     "true_error": 1.05e-10
+    },
+    {
+     "point": 3,
+     "sector": "QCD^8",
+     "coefficient": "finite",
+     "E": 2.14e-09,
+     "true_error": 7.69e-10
+    },
+    {
+     "point": 3,
+     "sector": "QCD^8",
+     "coefficient": "single_pole",
+     "E": 1.5e-08,
+     "true_error": 1.17e-08
+    },
+    {
+     "point": 3,
+     "sector": "QCD^8",
+     "coefficient": "double_pole",
+     "E": 1.23e-09,
+     "true_error": 1.18e-09
+    }
+   ],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20-60 s)"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "ward": "MQ-WARD (generic native Ward input)"
@@ -1966,14 +2166,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15-60 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_ttxddx.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1992,11 +2199,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-60 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "B07",
@@ -2028,14 +2231,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~1-4 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttxttx.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2054,11 +2264,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~1-4 min)"
-   }
+   "vanishing": []
   },
   {
    "id": "B08",
@@ -2086,14 +2292,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s (4F: plain loop_sm, WT = 0; = no_widths smoke)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttx_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2112,11 +2325,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s (4F: plain loop_sm, WT = 0; = no_widths smoke))"
-   }
+   "vanishing": []
   },
   {
    "id": "C01",
@@ -2144,16 +2353,23 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_bbx_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2179,10 +2395,29 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
-   },
+   "variants": [
+    {
+     "name": "params",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "S4: MB = 4.5, aS = 0.13 at run time (cond(MB) and reglog CT terms)",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/gg_bbx_4fs_params.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "ward": "MQ-WARD (generic native Ward input)",
@@ -2215,14 +2450,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s (b decoupled)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_gg_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2243,11 +2485,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s (b decoupled))"
-   }
+   "vanishing": []
   },
   {
    "id": "C03",
@@ -2275,14 +2513,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/bbx_h_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2301,11 +2546,12 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~10 s)"
-   }
+   "vanishing": [
+    {
+     "sector": "QCD^2 QED^2",
+     "coefficient": "double_pole"
+    }
+   ]
   },
   {
    "id": "C04",
@@ -2333,14 +2579,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (x-rotated points)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/bbx_hg_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2360,10 +2613,29 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s (x-rotated points))"
-   }
+   "variants": [
+    {
+     "name": "z",
+     "gating": false,
+     "tier": "nightly",
+     "notes": "the +-z beam-axis twin of the x-rotated points: a non-gating diagnostic (PLAN \u00a74.1)",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/bbx_hg_4fs_z.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
   },
   {
    "id": "C05",
@@ -2391,14 +2663,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~20-60 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_bbxh_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2417,11 +2696,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20-60 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "C06",
@@ -2449,14 +2724,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~1-4 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttxbbx_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2475,11 +2757,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~1-4 min)"
-   }
+   "vanishing": []
   },
   {
    "id": "C07",
@@ -2507,14 +2785,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~20-60 s (4FS t-channel)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ug_dtbx_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2533,11 +2818,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20-60 s (4FS t-channel))"
-   }
+   "vanishing": []
   },
   {
    "id": "C08",
@@ -2565,14 +2846,22 @@
    "gauge": "unitary",
    "scheme": "qcd-cmass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s (+ Recola)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ccx_cmass.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2590,11 +2879,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s (+ Recola))"
-   }
+   "vanishing": []
   },
   {
    "id": "C09",
@@ -2624,12 +2909,20 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N, S ~15 s (+ Recola; MQ-5F)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gs_wmc_cmass.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2651,7 +2944,7 @@
    "vanishing": [],
    "pending": {
     "waits_for": "MQ-5F",
-    "reason": "public-route or admission package: MQ-5F"
+    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
    }
   },
   {
@@ -2684,16 +2977,23 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s (+ analytic form factor)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_emep.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2714,10 +3014,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-MODEL",
-    "reason": "public-route or admission package: MQ-MODEL"
-   },
    "notes": "stock loop_sm on the public route needs the SSS1 repair (MQ-MODEL); its reference is new (MQ-REF)"
   },
   {
@@ -2742,19 +3038,29 @@
     "ymb": "0",
     "MTA": "0",
     "ymtau": "0",
-    "WT": "0"
+    "WT": "0",
+    "WZ": "2.441404",
+    "WW": "2.0476",
+    "WH": "0.00638233934"
    },
    "gauge": "unitary",
    "scheme": "qcd-widths",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "run on D01 with card widths",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_emep_widths.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2773,11 +3079,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-MODEL",
-    "reason": "public-route or admission package: MQ-MODEL"
-   }
+   "vanishing": []
   },
   {
    "id": "D05",
@@ -2809,16 +3111,23 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "R runs/g1/uux_emepg",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_emepg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2842,10 +3151,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R runs/g1/uux_emepg)"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "ward": "MQ-WARD (generic native Ward input)",
@@ -3207,14 +3512,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15-30 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_zg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3232,11 +3544,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-30 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D12",
@@ -3268,14 +3576,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/udx_epveg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3293,11 +3608,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D13",
@@ -3329,14 +3640,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ug_au.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3354,11 +3672,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D15",
@@ -3390,14 +3704,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_zz.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3415,11 +3736,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D16",
@@ -3451,14 +3768,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_wpwm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3474,13 +3798,38 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 0,
+     "sector": "QCD^2 QED^4",
+     "coefficient": "finite",
+     "E": 3.93e-09,
+     "true_error": 3.06e-11
+    },
+    {
+     "point": 0,
+     "sector": "QCD^2 QED^4",
+     "coefficient": "single_pole",
+     "E": 3.18e-09,
+     "true_error": 9.81e-13
+    },
+    {
+     "point": 3,
+     "sector": "QCD^2 QED^4",
+     "coefficient": "finite",
+     "E": 6.86e-09,
+     "true_error": 2.97e-11
+    },
+    {
+     "point": 3,
+     "sector": "QCD^2 QED^4",
+     "coefficient": "single_pole",
+     "E": 1.76e-09,
+     "true_error": 4.23e-13
+    }
+   ],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D17",
@@ -3512,14 +3861,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (MQ-5F)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/bbx_wpwm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3537,11 +3893,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "public-route or admission package: MQ-5F"
-   }
+   "vanishing": []
   },
   {
    "id": "D18",
@@ -3573,14 +3925,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_zh.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3598,11 +3957,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D19",
@@ -3634,14 +3989,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~20-60 s (VBF, QCD=0)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ud_udh.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3659,11 +4021,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~20-60 s (VBF, QCD=0))"
-   }
+   "vanishing": []
   },
   {
    "id": "D20",
@@ -3695,14 +4053,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/epem_uuxg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3720,11 +4085,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D21",
@@ -3756,9 +4117,16 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
-   "reference_legend": "E runs/top-pair-ee-model-control.json (MQ-REF commits it)",
-   "reference": null,
+   "status": "active",
+   "reference_legend": "E required/top-pair-ee-model-control.json (committed by MQ-REF; MadLoop binary64)",
+   "reference": {
+    "format": "process-control",
+    "path": "tests/fixtures/loop/required/top-pair-ee-model-control.json",
+    "key": "ee",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
@@ -3781,11 +4149,16 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: E runs/top-pair-ee-model-control.json (MQ-REF commits it))"
-   }
+   "vanishing": [
+    {
+     "sector": "total",
+     "coefficient": "double_pole"
+    },
+    {
+     "sector": "QCD^2 QED^4",
+     "coefficient": "double_pole"
+    }
+   ]
   },
   {
    "id": "D23",
@@ -3817,14 +4190,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ag_uux.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3841,11 +4221,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D24",
@@ -3877,14 +4253,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/emu_emu.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3901,11 +4284,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "D25",
@@ -3937,14 +4316,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/udx_wpa.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -3967,10 +4353,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s)"
-   },
    "extras_pending": {
     "sp": "MQ-REF (supplied special points S1-S4)"
    }
@@ -4001,14 +4383,21 @@
    "gauge": "unitary",
    "scheme": "qcd-4fs",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s (4F twin of D05)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_emepg_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4027,11 +4416,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s (4F twin of D05))"
-   }
+   "vanishing": []
   },
   {
    "id": "D27",
@@ -4063,14 +4448,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gu_epved.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4088,11 +4480,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "E01",
@@ -4124,14 +4512,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~30-90 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttxh.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4155,10 +4550,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~30-90 s)"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
     "ward": "MQ-WARD (generic native Ward input)"
@@ -4194,14 +4585,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~30-120 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gg_ttxz.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4219,11 +4617,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~30-120 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "E05",
@@ -4410,14 +4804,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/ub_dt.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4440,10 +4841,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-MODEL",
-    "reason": "public-route or admission package: MQ-MODEL"
-   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -4478,14 +4875,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/bu_dt.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4503,11 +4907,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   },
   {
    "id": "F03",
@@ -4541,14 +4941,21 @@
    "tier": "default",
    "status": "pending",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/udx_tbx.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4568,8 +4975,8 @@
    "reference_outliers": [],
    "vanishing": [],
    "pending": {
-    "waits_for": "MQ-MODEL",
-    "reason": "public-route or admission package: MQ-MODEL"
+    "waits_for": "MQ-5F",
+    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
    }
   },
   {
@@ -4602,14 +5009,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~20 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gb_twm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4630,10 +5044,6 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~20 s)"
-   },
    "extras_pending": {
     "ward": "MQ-WARD (generic native Ward input)"
    }
@@ -4765,14 +5175,21 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15-30 s (driver item 4)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_ttx_mixed.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4799,11 +5216,16 @@
    ],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15-30 s (driver item 4))"
-   }
+   "vanishing": [
+    {
+     "sector": "QCD^2 QED^2",
+     "coefficient": "born"
+    },
+    {
+     "sector": "QCD^4 QED^2",
+     "coefficient": "double_pole"
+    }
+   ]
   },
   {
    "id": "H01",
@@ -4823,6 +5245,10 @@
    "restriction": "zeromass_ckm",
    "restriction_code": "ZC",
    "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
     "WT": "0",
     "WW": "0",
     "WZ": "0",
@@ -4831,14 +5257,21 @@
    "gauge": "unitary",
    "scheme": "qcd-ckm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s + CKM-factor relation",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/usx_wpg_ckm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4858,11 +5291,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~15 s + CKM-factor relation)"
-   }
+   "vanishing": []
   },
   {
    "id": "H02",
@@ -4882,6 +5311,10 @@
    "restriction": "zeromass_ckm",
    "restriction_code": "ZC",
    "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
     "WT": "0",
     "WW": "0",
     "WZ": "0",
@@ -4892,12 +5325,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N, S ~15 s + CKM-factor relation (MQ-5F)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gs_twm_ckm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4919,7 +5359,7 @@
    "vanishing": [],
    "pending": {
     "waits_for": "MQ-5F",
-    "reason": "public-route or admission package: MQ-5F"
+    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
    }
   },
   {
@@ -4950,12 +5390,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N, S ~15 s (single-provider exception; MQ-5F)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/gd_twm_ckm4.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4977,7 +5424,7 @@
    "vanishing": [],
    "pending": {
     "waits_for": "MQ-5F",
-    "reason": "public-route or admission package: MQ-5F"
+    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
    }
   },
   {
@@ -5012,12 +5459,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N multi-P ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P0_uux_ttx.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5038,8 +5492,8 @@
    "reference_outliers": [],
    "vanishing": [],
    "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~1-2 min)"
+    "waits_for": "MQ-VALIDATE",
+    "reason": "per-subprocess references exist (MQ-REF); the multiparticle subprocess check (public-route expansion against MadLoop's P directories) is not in the harness yet"
    }
   },
   {
@@ -5068,14 +5522,21 @@
    "gauge": "unitary",
    "scheme": "qcd-lmass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_mummp_lmass.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5093,11 +5554,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "pending": {
-    "waits_for": "MQ-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~15 s)"
-   }
+   "vanishing": []
   }
  ]
 }

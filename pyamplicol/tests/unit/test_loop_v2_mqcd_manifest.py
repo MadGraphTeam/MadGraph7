@@ -190,8 +190,13 @@ def test_active_references_agree_with_their_rows(manifest, rows):
             process = data["process"].split(" [")[0]
             tokens = [aliases.get(t, t) for t in process.split() if "=" not in t]
             assert " ".join(tokens) == row.process, name
-            assert data["born_orders"] == dict(row.born_orders), name
-            assert data["loop_orders"] == dict(row.loop_orders), name
+            # A mixed-order request lists every Born order (``born_orders_all``,
+            # MQ-REF); the row holds their bounds and every loop order.
+            borns = data.get("born_orders_all", [data["born_orders"]])
+            bounds = {k: max(o.get(k, 0) for o in borns) for k in row.born_orders}
+            assert bounds == dict(row.born_orders), name
+            if len(borns) == 1:
+                assert data["loop_orders"] == dict(row.loop_orders), name
         for point in reference.points:
             assert len(point) == len(row.process.replace(">", "").split()), name
 
@@ -208,7 +213,8 @@ def test_listings_name_real_points_and_coefficients(rows):
             # Listed with E and its true error (PLAN §1.4 rule 2).
             assert entry["E"] > mqcd.O1_CAP and entry["true_error"] >= 0, name
         for entry in row.vanishing:
-            assert entry["coefficient"] in mqcd.LAURENT, name
+            # A Laurent coefficient, or a colour-forbidden Born sector.
+            assert entry["coefficient"] in mqcd.COEFFICIENTS, name
 
 
 def test_pending_rows_and_extras_name_their_package(rows):
