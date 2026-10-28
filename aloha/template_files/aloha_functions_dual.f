@@ -581,7 +581,7 @@ c
 c input:
 c       complex p(0:3)         : four-momentum of vector boson
 c       real    fmass          : mass          of vector boson
-c       integer nhel = -1, 0, 1: helicity      of bector boson
+c       integer nhel = -1, 0, 1: helicity      of vector boson
 c       integer nsv  = -1 or 1 : +1 for final, -1 for initial
 c
 c output:
@@ -713,7 +713,7 @@ c
 
       subroutine pxxxxx(p,tmass,nhel,nst,tc)
          print*, "The pxxxxx subroutine for PSEUDOR is not (yet) "//
-     1           "implementated in dual computation"
+     1           "implemented in dual computation"
          stop
       end
 
@@ -1000,8 +1000,8 @@ c
 c This subroutine computes the spin projector for an onium states.
 c
 c input:
-c       dual    fq(1:8)        : spinor of first consituent (particle)
-c       dual    fqb(1:8)       : spinor of second consituent (anti-particle)
+c       dual    fq(1:8)        : spinor of first constituent (particle)
+c       dual    fqb(1:8)       : spinor of second constituent (anti-particle)
 c       real    p(0:3)         : four-momentum of bound state
 c       real    m(0:3)         : mass          of bound state
 c       integer sz             : z component of the spin

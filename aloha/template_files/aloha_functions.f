@@ -1457,7 +1457,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1522,7 +1522,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       end if
 
       if ( nhel.le.1 ) then
-c constract spinor-
+c contract spinor-
        nh = -nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1803,7 +1803,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
 
        if ( rmass.ne.rZero ) then
@@ -1881,7 +1881,7 @@ c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
       endif
 
       if ( nhel.le.1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = -nsr
 
       if ( rmass.ne.rZero ) then

@@ -304,7 +304,7 @@ class Banner(dict):
     ############################################################################
     def check_pid(self, pid2label, forbidden_pids=None):
         """special routine removing width/mass of particles not present in the model
-        This is usefull in case of loop model card, when we want to use the non
+        This is useful in case of loop model card, when we want to use the non
         loop model."""
         
         if not hasattr(self, 'param_card'):
@@ -638,7 +638,7 @@ class Banner(dict):
         elif len(arg) == 0:
             return card
         else:
-            raise Exception("Unknow command")
+            raise Exception("Unknown command")
     
     #convenient alias
     get = get_detail
@@ -1469,7 +1469,7 @@ class ConfigFile(dict):
         if not isinstance(value, str):
             # just have to check that we have the correct format
             if isinstance(value, targettype):
-                pass # assignement at the end
+                pass # assignment at the end
             elif isinstance(value, numbers.Number) and issubclass(targettype, numbers.Number):
                 try:
                     new_value = targettype(value)
@@ -1543,7 +1543,7 @@ class ConfigFile(dict):
                         if value == new_value:
                             value = new_value
                         else:
-                            raise InvalidCmd("incorect input: %s need an integer for %s" % (value,name))
+                            raise InvalidCmd("incorrect input: %s need an integer for %s" % (value,name))
                      
             elif targettype == float:
                 if value.endswith(('k', 'M')) and value[:-1].isdigit():
@@ -1699,7 +1699,7 @@ class DensityCard(ConfigFile):
         
         text = ""
         for line in open(template,'r'):
-            #the goal of this block is to separate what is a commment from what is not
+            #the goal of this block is to separate what is a comment from what is not
             nline = line.split("#")
             if len(nline) == 2: #separating cases with comment lines or without
                 command = nline[0] #if there is a command it is in this object
@@ -1867,11 +1867,32 @@ class RivetCard(ConfigFile):
       Give weight names in case the jet merging is used to use for Rivet runs
         '''
 
-        if self['weight_name'] == "default":
-            if runcard['ickkw'] == 0:
-                self['weight_name'] = "None"
-            else:
-                self['weight_name'] = "Weight_MERGING={0}".str(round(py8card['JetMatching:qCut'],3))
+        if self['weight_name'] != "default":
+            return
+
+        # Same run-type classification and automatic merging scale as
+        # do_pythia8/setup_Pythia8RunAndCard in madevent_interface.py
+        # (ktdurham/ptlund/xqcut are LO-only: absent from RunCardNLO)
+        ickkw = int(runcard['ickkw'])
+        ktdurham = runcard['ktdurham'] if 'ktdurham' in runcard else 0.0
+        ptlund = runcard['ptlund'] if 'ptlund' in runcard else 0.0
+        if ickkw == 1:
+            # MLM
+            scale = py8card['JetMatching:qCut']
+            if scale == -1.0:
+                scale = 1.5*runcard['xqcut']
+        elif ickkw == 2 or ktdurham > 0.0 or ptlund > 0.0:
+            # CKKW-L
+            scale = py8card['Merging:TMS']
+            if scale == -1.0:
+                scale = ptlund if ptlund > 0.0 else ktdurham
+        else:
+            self['weight_name'] = "None"
+            return
+
+        # MG5aMC_PY8_interface names the HepMC weights with
+        # 'fixed << setprecision(3)' (e.g. Weight_MERGING=30.000)
+        self['weight_name'] = "Weight_MERGING=%.3f" % scale
 
     def setRelevantParamCard(self, f_params, f_relparams):
 
@@ -1942,6 +1963,8 @@ class ProcCharacteristic(ConfigFile):
         # to reconstruct the LO reweighting info for systematics on outputs that
         # do not write an <mgrwt> block (see Event.reconstruct_lo_weight).
         self.add_param('single_qcd_order', -1)
+        # default of real_channels_x0 chosen from the real-emission diagrams
+        self.add_param('real_channels_x0', -1.0)
     
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -2121,9 +2144,9 @@ class PY8Card(ConfigFile):
         self.add_param("TimeShower:alphaSvalue", 0.118, hidden=True, always_write_to_card=False,
             comment='Reminder: Parameter below is shower tune dependent.')
         self.add_param("hadronlevel:all", True, hidden=True, always_write_to_card=False,
-            comment='This allows to turn on/off hadronization alltogether.')
+            comment='This allows to turn on/off hadronization altogether.')
         self.add_param("partonlevel:mpi", True, hidden=True, always_write_to_card=False,
-            comment='This allows to turn on/off MPI alltogether.')
+            comment='This allows to turn on/off MPI altogether.')
         self.add_param("Beams:setProductionScalesFromLHEF", False, hidden=True, 
             always_write_to_card=False,
             comment='This parameter is automatically set to True by MadGraph7 when doing MLM merging with PY8.')
@@ -2152,7 +2175,7 @@ class PY8Card(ConfigFile):
         self.add_param("Merging:applyVeto", False, hidden=True, always_write_to_card=False,
           comment='Do veto externally (e.g. in SysCalc).')
         self.add_param("Merging:includeWeightInXsection", True, hidden=True, always_write_to_card=False,
-          comment='If turned off, then the option belows forces PY8 to keep the original weight.')                       
+          comment='If turned off, then the option below forces PY8 to keep the original weight.')
         self.add_param("Merging:muRen", 91.188, hidden=True, always_write_to_card=False,
                       comment='Set renormalization scales of the 2->2 process.')
         self.add_param("Merging:muFacInME", 91.188, hidden=True, always_write_to_card=False,
@@ -2167,7 +2190,7 @@ class PY8Card(ConfigFile):
         self.add_param("Merging:Dparameter", 0.4, hidden=True, always_write_to_card=False)        
         self.add_param("Merging:doPTLundMerging", False, hidden=True, always_write_to_card=False)
 
-        # Special Pythia8 paremeters useful to simplify the shower.
+        # Special Pythia8 parameters useful to simplify the shower.
         self.add_param("BeamRemnants:primordialKT", True, hidden=True, always_write_to_card=False, comment="see http://home.thep.lu.se/~torbjorn/pythia82html/BeamRemnants.html")
         self.add_param("PartonLevel:Remnants", True, hidden=True, always_write_to_card=False, comment="Master switch for addition of beam remnants. Cannot be used to generate complete events")
         self.add_param("Check:event", True, hidden=True, always_write_to_card=False, comment="check physical sanity of the events")
@@ -2304,7 +2327,7 @@ class PY8Card(ConfigFile):
             elif isinstance(value, list):
                 formatv = 'list'
             else:
-                logger.debug("unknow format for pythia8_formatting: %s" , value)
+                logger.debug("unknown format for pythia8_formatting: %s" , value)
                 formatv = 'str'
         else:
             assert formatv
@@ -2477,7 +2500,7 @@ class PY8Card(ConfigFile):
                         # Remove this subrun ID from the list
                         subruns.pop(subruns.index(int(value)))
                     else:
-                        # Unknow subrun, create a dummy one
+                        # Unknown subrun, create a dummy one
                         DummySubrun=PY8SubRun()
                         # Remove all of its variables (so that nothing is overwritten)
                         DummySubrun.clear()
@@ -2691,7 +2714,7 @@ class PY8Card(ConfigFile):
                         self.subruns[int(value)].read(finput,read_subrun=True,
                                                                   setter=setter)
                     else:
-                        # Unknow subrun, create a dummy one
+                        # Unknown subrun, create a dummy one
                         NewSubrun=PY8SubRun()
                         NewSubrun.read(finput,read_subrun=True, setter=setter)
                         self.add_subrun(NewSubrun)
@@ -2758,7 +2781,7 @@ class RunBlock(object):
               block need to be inserted
         template_on: information to include is block is active
         template_off: information to include is block is not active
-        on_fields/off_fields: paramater associated to the block
+        on_fields/off_fields: parameter associated to the block
                can be specify but are otherwise automatically but 
                otherwise determined from the template.
        
@@ -2947,7 +2970,7 @@ class RunCard(ConfigFile):
 
             target_class.fill_post_set_from_blocks()
             out = super(RunCard, cls).__new__(target_class, finput, **opt)
-            if not isinstance(out, RunCard): #should not happen but in presence of missmatch of library loaded.
+            if not isinstance(out, RunCard): #should not happen but in presence of mismatch of library loaded.
                 out.__init__(finput, **opt)
             return out
         else:
@@ -3089,7 +3112,7 @@ class RunCard(ConfigFile):
                 self.add_unknown_entry(name, value, unknown_warning)
             else:
                 self.set( name, value, user=True)
-        # parameter not set in the run_card can be set to compatiblity value
+        # parameter not set in the run_card can be set to compatibility value
         if consistency:
                 try:
                     self.check_validity()
@@ -3099,7 +3122,7 @@ class RunCard(ConfigFile):
                     else:
                         raise
     def add_unknown_entry(self, name, value, unknow_warning):
-        """function to add an entry to the run_card when the associated parameter does not exists.
+        """function to add an entry to the run_card when the associated parameter does not exist.
            This is based on the guess_entry_fromname for the various syntax providing input.
            This then call add_param accordingly.
 
@@ -3293,7 +3316,7 @@ class RunCard(ConfigFile):
                         if f in to_write:
                             to_write.remove(f)
                 else:
-                    #partial writting -> add only what is needed
+                    #partial writing -> add only what is needed
                     to_add = []
                     for line in b.get_template(self).split('\n'):               
                         nline = line.split('#')[0]
@@ -3362,7 +3385,7 @@ class RunCard(ConfigFile):
             output_file.write(text)
 
     def get_last_value_include(self, output_dir):
-        """For paraeter in self.fct_mod
+        """For parameter in self.fct_mod
         parse the associate inc file to get the value of the previous run.
         We return a dictionary {name: old_value}
         if inc file does not exist we will return the current value (i.e. set has no change)
@@ -3393,7 +3416,7 @@ class RunCard(ConfigFile):
     def get_value_from_include(self, path, list_of_params, output_dir):
         """for a given include file return the current value of the requested parameter
         return a dictionary {name: value}
-        if path does not exists return the current value in self for all parameter"""
+        if path does not exist return the current value in self for all parameter"""
 
         #WARNING DOES NOT HANDLE LIST/DICT so far
         # handle case where file is missing
@@ -3522,10 +3545,10 @@ class RunCard(ConfigFile):
         """
 
         if outdir is None:
-            #to let some unnitest to go trough
+            #to let some unnitest to go through
             return
 
-        # step 1: extract all function name and function defintion
+        # step 1: extract all function name and function definition
         # structure is {filetomod:[[function_names], [function_defs]]}
         with misc.TMP_directory() as tmpdir:
             to_mod = {}
@@ -3583,7 +3606,7 @@ class RunCard(ConfigFile):
 
 
         # step 3: if some previously edited file are not in to_mod:
-        # .       remove the orginal file by the .orig and remove the .orig
+        # .       remove the original file by the .orig and remove the .orig
         all_files = set(self.dummy_fct_file.values())
         for path in all_files:
             if path not in to_mod and os.path.exists(pjoin(outdir,path+'.orig')):
@@ -3716,7 +3739,7 @@ class RunCard(ConfigFile):
             elif isinstance(value, str):
                 formatv = 'str'
             else:
-                logger.debug("unknow format for f77_formatting: %s" , str(value))
+                logger.debug("unknown format for f77_formatting: %s" , str(value))
                 formatv = 'str'
                 value = str(value).lower()
         else:
@@ -3777,7 +3800,7 @@ class RunCard(ConfigFile):
 
 
     def update_system_parameter_for_include(self):
-        """update hidden system only parameter for the correct writtin in the 
+        """update hidden system only parameter for the correct writing in the
         include"""
         return
 
@@ -4105,7 +4128,7 @@ template_on = \
   %(nb_proton1)s    = nb_proton1 # number of proton for the first beam
   %(nb_neutron1)s    = nb_neutron1 # number of neutron for the first beam
   %(mass_ion1)s = mass_ion1 # mass of the heavy ion (first beam)
-# Note that seting differently the two beams only work if you use 
+# Note that setting the two beams differently only works if you use
 # group_subprocess=False when generating your matrix-element
   %(nb_proton2)s    = nb_proton2 # number of proton for the second beam
   %(nb_neutron2)s    = nb_neutron2 # number of neutron for the second beam
@@ -4305,9 +4328,9 @@ class PDLabelBlock(RunBlock):
                     if card['pdlabel'] != card['pdlabel1']:
                         dict.__setitem__(card, 'pdlabel', card['pdlabel1'])
                 elif card['pdlabel1'] in sum(card.allowed_lep_densities.values(),[]):
-                    raise InvalidRunCard("Assymetric beam pdf not supported for e e collision with ISR/bemstralung option") 
+                    raise InvalidRunCard("Asymmetric beam pdf not supported for e e collision with ISR/beamstrahlung option")
                 elif card['pdlabel2'] in sum(card.allowed_lep_densities.values(),[]):
-                    raise InvalidRunCard("Assymetric beam pdf not supported for e e collision with ISR/bemstralung option")
+                    raise InvalidRunCard("Asymmetric beam pdf not supported for e e collision with ISR/beamstrahlung option")
                 elif card['pdlabel1'] == 'none':
                     dict.__setitem__(card, 'pdlabel', card['pdlabel2'])
                 elif card['pdlabel2'] == 'none':
@@ -4320,7 +4343,7 @@ class PDLabelBlock(RunBlock):
 
         if isinstance(card['lpp1'],int) and isinstance(card['lpp2'],int) and \
             abs(card['lpp1']) == 1 == abs(card['lpp2']) and card['pdlabel1'] != card['pdlabel2']:
-            raise InvalidRunCard("Assymetric beam pdf not supported for proton-proton collision") 
+            raise InvalidRunCard("Asymmetric beam pdf not supported for proton-proton collision")
 
     def status(self, card):
         """return False if template_off to be used, True if template_on to be used"""
@@ -4566,7 +4589,7 @@ class RunCardLO(RunCard):
         self.add_param("pdfwgt", True, hidden=True)
         self.add_param("asrwgtflavor", 5, hidden=True,                          comment = 'highest quark flavor for a_s reweighting in MLM')
         self.add_param("clusinfo", True, hidden=True)
-        self.add_param("custom_fcts",[],typelist="str", include=False,           comment="list of files containing function that overwritte dummy function of the code (like adding cuts/...)")
+        self.add_param("custom_fcts",[],typelist="str", include=False,           comment="list of files containing functions that overwrite dummy functions in the code (like adding cuts/...)")
         #format output / boost
         self.add_param("lhe_version", 3.0, hidden=True)
         self.add_param("boost_event", "False", hidden=True, include=False,      comment="allow to boost the full event. The boost put at rest the sume of 4-momenta of the particle selected by the filter defined here. example going to the higgs rest frame: lambda p: p.pid==25")
@@ -4704,7 +4727,7 @@ class RunCardLO(RunCard):
         self.add_param("xqcut", 0.0, cut=True)
         self.add_param("use_syst", True, comment='Add in the lhef file information needed for the computation of systematic uncertainty (scale variation and pdf)')
         self.add_param('systematics_program', 'systematics', include=False, hidden=True, comment='Choose which program to use for systematics computation: none, systematics, syscalc')
-        self.add_param('systematics_arguments', ['--mur=0.5,1,2', '--muf=0.5,1,2', '--pdf=errorset'], include=False, hidden=True, comment='Choose the argment to pass to the systematics command. like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
+        self.add_param('systematics_arguments', ['--mur=0.5,1,2', '--muf=0.5,1,2', '--pdf=errorset'], include=False, hidden=True, comment='Choose the arguments to pass to the systematics command, like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
         
         self.add_param("sys_scalefact", "0.5 1 2", include=False, hidden=True)
         self.add_param("sys_alpsfact", "None", include=False, hidden=True)
@@ -4724,7 +4747,7 @@ class RunCardLO(RunCard):
         self.add_param('job_strategy', 0, hidden=True, include=False, allowed=[0,1,2], comment='see appendix of 1507.00020 (page 26)')
         self.add_param('hard_survey', 0, hidden=True, include=False, comment='force to have better estimate of the integral at survey for difficult mode like VBF')
         self.add_param('tmin_for_channel', -1., hidden=True, comment='limit the non-singular reach of --some-- channel of integration related to T-channel diagram')
-        self.add_param("second_refine_treshold", 0.9, hidden=True, include=False, comment="set a treshold to bypass the use of a second refine. if the ratio of cross-section after survey by the one of the first refine is above the treshold, the  second refine will not be done.")
+        self.add_param("second_refine_treshold", 0.9, hidden=True, include=False, comment="set a threshold to bypass the use of a second refine. if the ratio of cross-section after survey by the one of the first refine is above the threshold, the  second refine will not be done.")
         self.add_param('survey_splitting', -1, hidden=True, include=False, comment="for loop-induced control how many core are used at survey for the computation of a single iteration.")
         self.add_param('survey_nchannel_per_job', 2, hidden=True, include=False, comment="control how many Channel are integrated inside a single job on cluster/multicore")
         self.add_param('refine_evt_by_job', -1, hidden=True, include=False, comment="control the maximal number of events for the first iteration of the refine (larger means less jobs)")
@@ -4734,7 +4757,7 @@ class RunCardLO(RunCard):
         #hel recycling
         self.add_param('hel_recycling', True, hidden=True, include=False, comment='allowed to deactivate helicity optimization at run-time --code needed to be generated with such optimization--')
         self.add_param('hel_filtering', True,  hidden=True, include=False, comment='filter in advance the zero helicities when doing helicity per helicity optimization.')
-        self.add_param('hel_splitamp', True, hidden=True, include=False, comment='decide if amplitude aloha call can be splitted in two or not when doing helicity per helicity optimization.')
+        self.add_param('hel_splitamp', True, hidden=True, include=False, comment='decide if amplitude aloha call can be split in two or not when doing helicity per helicity optimization.')
         self.add_param('hel_zeroamp', True, hidden=True, include=False, comment='decide if zero amplitude can be removed from the computation when doing helicity per helicity optimization.')
         self.add_param('SDE_strategy', 1, allowed=[1,2], fortran_name="sde_strat", comment="decide how Multi-channel should behaves \"1\" means full single diagram enhanced (hep-ph/0208156), \"2\" use the product of the denominator")
         self.add_param('global_flag', '-O', include=False, hidden=True, comment='global fortran compilation flag, suggestion -fbound-check',
@@ -4743,9 +4766,9 @@ class RunCardLO(RunCard):
                        fct_mod=(self.make_clean, ('Source/DHELAS'),{}))
         self.add_param('matrix_flag', '', include=False, hidden=True, comment='fortran compilation flag	for the	matrix-element files, suggestion -O3',
                        fct_mod=(self.make_Ptouch, ('matrix'),{}))        
-        self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parralelism run', 
+        self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parallel runs',
                        fortran_name='WARP_SIZE', fct_mod=(self.reset_simd,(),{}))
-        self.add_param('nb_warp', 1, include='vector.inc', hidden=True, comment='number of warp for parralelism run', 
+        self.add_param('nb_warp', 1, include='vector.inc', hidden=True, comment='number of warps for parallel runs',
                        fortran_name='NB_WARP', fct_mod=(self.reset_simd,(),{}))
         self.add_param('vecsize_memmax', 0, include='vector.inc', system=True)
 
@@ -4941,8 +4964,8 @@ class RunCardLO(RunCard):
                     self['fixed_fac_scale1'] = self['fixed_fac_scale']
                     self['fixed_fac_scale2'] = self['fixed_fac_scale']
             elif self['lpp1'] !=0 or self['lpp2']!=0:
-                logger.warning('fixed_fac_scale1 not defined whithin your run_card. Using default value: %s', self['fixed_fac_scale1'])
-                logger.warning('fixed_fac_scale2 not defined whithin your run_card. Using default value: %s', self['fixed_fac_scale2'])
+                logger.warning('fixed_fac_scale1 not defined within your run_card. Using default value: %s', self['fixed_fac_scale1'])
+                logger.warning('fixed_fac_scale2 not defined within your run_card. Using default value: %s', self['fixed_fac_scale2'])
 
         # check if lpp = 
         if self['pdlabel'] not in sum(self.allowed_lep_densities.values(),[]):
@@ -5021,7 +5044,7 @@ class RunCardLO(RunCard):
             raise Exception("Maximum 25 different pdgs are allowed for pdg specific cut")
         
         if any(int(pdg)<0 for pdg in pdg_to_cut):
-            logger.warning('PDG specific cuts are always applied symmetrically on particles/anti-particles. Always use positve PDG codes')
+            logger.warning('PDG specific cuts are always applied symmetrically on particles/anti-particles. Always use positive PDG codes')
             raise MadGraph5Error('Some PDG specific cuts are defined using negative pdg code')
         
         
@@ -5507,7 +5530,7 @@ class MadAnalysis5Card(dict):
         self['inputs']    = []
         # None is the default stdout level, it will be set automatically by MadGraph7
         self['stdout_lvl'] = None
-        # These two dictionaries are formated as follows:
+        # These two dictionaries are formatted as follows:
         #     {'analysis_name':
         #          {'reconstructions' : ['associated_reconstructions_name']}
         #          {'commands':['analysis command lines here']}    }
@@ -5818,7 +5841,7 @@ class MadAnalysis5Card(dict):
         
         submit_command = 'submit %s'%submit_folder+'_%s'
         
-        # Keep track of the reconstruction outpus in the MA5 workflow
+        # Keep track of the reconstruction outputs in the MA5 workflow
         # Keys are reconstruction names and values are .lhe.gz reco file paths.
         # We put by default already the lhco/root ones present
         reconstruction_outputs = {
@@ -5921,7 +5944,7 @@ template_on = \
 running_block_nlo = RunBlock('RUNNING', template_on=template_on, template_off="")
     
 class RunCardNLO(RunCard):
-    """A class object for the run_card for a (aMC@)NLO pocess"""
+    """A class object for the run_card for a (aMC@)NLO process"""
      
     LO = False
     
@@ -5958,6 +5981,8 @@ class RunCardNLO(RunCard):
         self.add_param('niters_fo_grid', 4, include=False)
         self.add_param('npoints_fo', 10000, include=False)        
         self.add_param('niters_fo', 6, include=False)
+        self.add_param('real_channels_x0', -1.0, hidden=True,
+                       comment='Separate hard real-emission integration channels for fixed-order NLO: 0 < x0 < 1 enables f(x)=1/(1+(x/x0)^2); all other values disable them. The default of a process is chosen at output from its real-emission diagrams.')
         #seed and collider
         self.add_param('iseed', 0)
         self.add_param('lpp1', 1, fortran_name='lpp(1)',
@@ -6037,7 +6062,7 @@ class RunCardNLO(RunCard):
         self.add_param('pdf_set_max', 244700, hidden=True)
         self.add_param('store_rwgt_info', False)
         self.add_param('systematics_program', 'none', include=False, hidden=True, comment='Choose which program to use for systematics computation: none, systematics')
-        self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the argment to pass to the systematics command. like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
+        self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the arguments to pass to the systematics command, like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
 
         #frame in which to evaluate the matrix-element (polarization)
         self.add_param("me_frame", [1,2], hidden=True, include=False, comment="choose lorentz frame where to evaluate the matrix-element [for non lorentz invariant matrix-element/polarization]:\n  the entries are the leg numbers of the process as written by the user; the rest-frame of their momentum sum is used.\n  [1,2] (the initial state) and the full final state both mean the partonic center of mass, and are skipped rather than applied.\n  Define the frame from final-state particles only: a frame built from the initial state is not infrared safe at NLO.")
@@ -6079,7 +6104,7 @@ class RunCardNLO(RunCard):
         self.add_param('lhe_version', 3, hidden=True, include=False)
         
         # customization
-        self.add_param("custom_fcts",[],typelist="str", include=False,           comment="list of files containing function that overwritte dummy function of the code (like adding cuts/...)")
+        self.add_param("custom_fcts",[],typelist="str", include=False,           comment="list of files containing functions that overwrite dummy functions in the code (like adding cuts/...)")
 
         #internal variable related to FO_analyse_card
         self.add_param('FO_LHE_weight_ratio',1e-3, hidden=True, system=True)
@@ -6263,7 +6288,7 @@ class RunCardNLO(RunCard):
         if len(self['dynamical_scale_choice']) != len(set(self['dynamical_scale_choice'])):
                 raise InvalidRunCard("'dynamical_scale_choice' has two or more identical entries. They have to be all different for the code to work correctly.")
             
-        # Check that lenght of lists are consistent
+        # Check that length of lists are consistent
         if self['lpp1'] == self['lpp2'] == 2:
             if not self['rw_fscale'] == [1.0]:
                 self['rw_fscale'] = [1.0]
@@ -6293,7 +6318,7 @@ class RunCardNLO(RunCard):
         if self['rw_fscale'][0] != 1.0 and 1.0 in self['rw_fscale']:
             a=self['rw_fscale'].index(1.0)
             self['rw_fscale'][0],self['rw_fscale'][a]=self['rw_fscale'][a],self['rw_fscale'][0]
-    # check that all elements of rw_rscale and rw_fscale are diffent.
+    # check that all elements of rw_rscale and rw_fscale are different.
         if len(self['rw_rscale']) != len(set(self['rw_rscale'])):
                 raise InvalidRunCard("'rw_rscale' has two or more identical entries. They have to be all different for the code to work correctly.")
         if len(self['rw_fscale']) != len(set(self['rw_fscale'])):
@@ -6385,7 +6410,7 @@ class RunCardNLO(RunCard):
             raise Exception("Maximum 25 different PDGs are allowed for PDG specific cut")
         
         if any(int(pdg)<0 for pdg in pdg_to_cut):
-            logger.warning('PDG specific cuts are always applied symmetrically on particles/anti-particles. Always use positve PDG codes')
+            logger.warning('PDG specific cuts are always applied symmetrically on particles/anti-particles. Always use positive PDG codes')
             raise MadGraph5Error('Some PDG specific cuts are defined using negative PDG codes')
         
         
@@ -6451,6 +6476,10 @@ class RunCardNLO(RunCard):
 
         for block in self.blocks:
             block.create_default_for_process(self, proc_characteristic, history, proc_def)
+
+        # real-emission integration channels when the real-emission diagrams
+        # have propagators that the Born channels do not follow (export_fks)
+        self['real_channels_x0'] = proc_characteristic['real_channels_x0']
 
         # check for beam_id
         beam_id = set()
@@ -6902,7 +6931,7 @@ class RunCardMG7(RunCard):
 
         # ------------------------- [postprocessing] -------------------
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
-            comment="threshold in mm below which the livetime is not written; -1 disables")
+            comment="threshold in mm below which the lifetime is not written; -1 disables")
         self.add_toml_param('postprocessing', 'systematics', False,
             comment="legacy systematics.py run on the lhe file; use [systematics] instead")
         self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
@@ -9153,7 +9182,7 @@ class RunCardIterator(object):
                                    param, values[pos])
             
             
-            # retrun the current param_card up to next iteration
+            # return the current param_card up to next iteration
             yield self.run_card
         
     

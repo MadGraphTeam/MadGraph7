@@ -132,7 +132,7 @@ c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
       common/ParamCardPath/ParamCardPath
 
 c     *********************************************************************
-c     Try to find a correspondance in ident_card
+c     Try to find a correspondence in ident_card
 c
 
       IdentCardPath=''

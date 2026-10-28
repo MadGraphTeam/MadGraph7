@@ -107,7 +107,7 @@ def canonicalize_lorentz_structure(structure):
                   sort_args, structure)
 
 class UFOImportError(MadGraph5Error):
-    """ a error class for wrong import of UFO model""" 
+    """ an error class for wrong import of UFO model"""
 
 class InvalidModel(MadGraph5Error):
     """ a class for invalid Model """
@@ -243,6 +243,53 @@ def import_model_from_db(model_name, local_dir=False):
             proc = misc.call('tar -xzpvf tmp.tgz', shell=True, cwd=target)#, stdout=devnull, stderr=devnull)
     if proc:
         raise Exception("Impossible to unpack the model. Please install it manually")
+
+    # some models of the database are still written for python2 only.
+    # convert them (in place) such that the model can be loaded directly.
+    model_dir = pjoin(target, model_name)
+    if os.path.isdir(model_dir):
+        convert_model_py2_to_py3(model_dir)
+    return True
+
+py2_raise_pattern = re.compile('raise (\\w+)\\s*,\\s*["\']([^"]+)["\']')
+def convert_model_py2_to_py3(model_dir, force=False):
+    """modify (in place) a python2-only UFO model to make it compatible with
+    both python2 and python3. Returns True if the model was modified.
+    Without the force option, models which look already python3 compatible
+    are left untouched."""
+
+    obj_lib = pjoin(model_dir, 'object_library.py')
+    if not os.path.exists(obj_lib):
+        return False
+    text = open(obj_lib).read()
+    if not force and '.iteritems()' not in text and not py2_raise_pattern.search(text):
+        return False
+    logger.info("model %s is python2 only. Converting it to be python3 compatible (in place)", model_dir)
+
+    #Object_library
+    #(.iteritems() -> .items())
+    text = text.replace('.iteritems()', '.items()')
+    # raise UFOError, "" -> raise UFOError("")
+    text = py2_raise_pattern.sub(r'raise \g<1>("\g<2>")', text)
+    open(obj_lib, 'w').write(text)
+
+    # write_param_card.dat -> copy the one of the sm model
+    files.cp(pjoin(MG5DIR, 'models','sm','write_param_card.py'),
+             pjoin(model_dir, 'write_param_card.py'))
+
+    # __init__.py check that function_library and object_library are imported
+    text = open(pjoin(model_dir, '__init__.py')).read()
+    mod = False
+    # import function_library
+    # from . import function_library
+    to_check =  ['object_library', 'function_library']
+    for lib in to_check:
+        if 'import %s' % lib in text:
+            continue
+        mod = True
+        text = "import %s \n" % lib + text
+    if mod:
+        open(pjoin(model_dir, '__init__.py'),'w').write(text)
     return True
 
 def get_path_restrict(model_name, restrict=True):
@@ -913,7 +960,7 @@ class UFOMG5Converter(object):
         self.particles = base_objects.ParticleList()
         self.interactions = base_objects.InteractionList()
         self.last_interaction_id = 0 # see get_new_interaction_id
-        self.non_qcd_gluon_emission = 0 # vertex where a gluon is emitted withou QCD interaction
+        self.non_qcd_gluon_emission = 0 # vertex where a gluon is emitted without QCD interaction
                                   # only trigger if all particles are of QCD type (not h>gg)
         self.colored_scalar = False # in presence of color scalar particle the running of a_s is modified
                                     # This is not supported by madevent/systematics
@@ -1017,7 +1064,7 @@ class UFOMG5Converter(object):
                              "You can ONLY run at fix scale")
             self.model['limitations'].append('fix_scale')
 
-        # Find which particles is in the 3/3bar color states (retrun {id: 3/-3})
+        # Find which particles are in the 3/3bar color states (return {id: 3/-3})
         color_info = self.find_color_anti_color_rep()
 
         # load the lorentz structure.
@@ -1097,7 +1144,7 @@ class UFOMG5Converter(object):
             all_orders = self.ufomodel.all_orders
         except AttributeError:
             if self.perturbation_couplings:
-                raise MadGraph5Error("The loop model MG5 attemps to import does not specify the attribute 'all_order'.") 
+                raise MadGraph5Error("The loop model that MG5 attempts to import does not specify the attribute 'all_order'.")
             else:
                 pass            
 
@@ -1107,7 +1154,7 @@ class UFOMG5Converter(object):
                 hierarchy[order.name]=order.hierarchy
         except AttributeError:
             if self.perturbation_couplings:
-                raise MadGraph5Error('The loop model MG5 attemps to import does not specify an order hierarchy.') 
+                raise MadGraph5Error('The loop model that MG5 attempts to import does not specify an order hierarchy.')
             else:
                 pass
         else:
@@ -1123,7 +1170,7 @@ class UFOMG5Converter(object):
                 coupling_order_counterterms[order.name]=order.expansion_order                
         except AttributeError:
             if self.perturbation_couplings:
-                raise MadGraph5Error('The loop model MG5 attemps to import does not specify an expansion_order for all coupling orders.') 
+                raise MadGraph5Error('The loop model that MG5 attempts to import does not specify an expansion_order for all coupling orders.')
             else:
                 pass
         else:
@@ -1202,7 +1249,7 @@ class UFOMG5Converter(object):
                 del interaction['couplings'][key]
                 
         
-        # we want to check if the same coupling is used for two lorentz strucutre 
+        # we want to check if the same coupling is used for two lorentz structure
         # for the same color structure. 
         to_lor = {}
         for (color, lor), coup in interaction['couplings'].items():
@@ -1842,7 +1889,7 @@ class UFOMG5Converter(object):
                 self.particles.remove(particle)
                 vector = [p for p in self.particles if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
                 if len(vector) != 1:
-                    raise Exception("Failed to idendity goldstone/boson relation")
+                    raise Exception("Failed to identify the Goldstone/boson relation")
                 
                 self.merge_goldstone_with_vector(particle, vector[0])
                 if not particle.get('self_antipart') and particle.get('is_part'):
@@ -1880,7 +1927,7 @@ class UFOMG5Converter(object):
 
 
         # now loop over goldstone interaction, identify if the a vector interactions
-        # does exists and act accordingly (call dedicated routine)
+        # does exist and act accordingly (call dedicated routine)
         for vertex in goldstone_interactions:
             self.interactions.remove(vertex)
 
@@ -1952,12 +1999,12 @@ class UFOMG5Converter(object):
     def check_model_all(self):
         """check that the model is consistent"""
 
-        #check that aS parameters is assigned to sminputs#3
+        #check that the aS parameter is assigned to sminputs#3
         self.check_model_aS()
 
 
     def check_model_aS(self):
-        """check that aS parameters is assigned to sminputs#3"""
+        """check that the aS parameter is assigned to sminputs#3"""
 
         for param in self.ufomodel.all_parameters:
             if param.name == 'aS':
@@ -2144,7 +2191,7 @@ class UFOMG5Converter(object):
         new_formfact = lor_orig.formfactors if hasattr(lor_orig, 'formfactors') else None
 
         if change_number:
-            #need to check that the new structure does not exists yet
+            #need to check that the new structure does not exist yet
             all_prev_expr = [(l.structure,l.spins) for l in self.model.get('lorentz')]
             if (new_expr,new_spins) in all_prev_expr:
                 return self.model.get('lorentz')[all_prev_expr.index((new_expr,new_spins))]
@@ -2226,7 +2273,7 @@ class UFOMG5Converter(object):
         # check how to translate the color:
         # the translate_color track the index of the color in gold_vertex (key)
         # and the value is associate to the identical color in vertex. 
-        # If that color does not exists it is added to the mix (should never happen. I guess)
+        # If that color does not exist it is added to the mix (should never happen. I guess)
         translate_color = {}
         for i, color in enumerate(gold_vertex.get('color')):
             if color in vertex.get('color'):
@@ -2393,7 +2440,7 @@ class UFOMG5Converter(object):
         counterterms = {}
         
         # MG5 have only one entry for particle and anti particles.
-        #UFO has two. use the color to avoid duplictions
+        #UFO has two. use the color to avoid duplications
         pdg = particle_info.pdg_code
         if pdg in self.incoming or (pdg not in self.outcoming and pdg <0):
             return
@@ -2564,7 +2611,7 @@ class UFOMG5Converter(object):
         
         # First define a list of regular expressions for each CT parameter 
         # and put them in a dictionary whose keys are the CT parameter names
-        # and the values are a tuple with the substituting patter in the first
+        # and the values are a tuple with the substituting pattern in the first
         # entry and the list of substituting functions (one for each pole)
         # as the second entry of this tuple.
         CTparameter_patterns = {}
@@ -2751,12 +2798,12 @@ class UFOMG5Converter(object):
 #            intType='UVmass'
 
         # Now we create a couplings dictionary for each element of the loop_particles list
-        # and for each expansion order of the laurent serie in the coupling.
+        # and for each expansion order of the Laurent series in the coupling.
         # and for each coupling order
         # Format is new_couplings[loop_particles][laurent_order] and each element
         # is a couplings dictionary.
         order_to_interactions= {}
-        # will contains the new coupling of form
+        # will contain the new coupling of form
         #new_couplings=[[{} for j in range(0,3)] for i in \
         #               range(0,max(1,len(interaction_info.loop_particles)))]
         # So sort all entries in the couplings dictionary to put them a the
@@ -3258,7 +3305,7 @@ class OrganizeModelExpression:
     complex_number = re.compile(r'''complex\((?P<real>[^,\(\)]+),(?P<imag>[^,\(\)]+)\)''')
     expo_expr = re.compile(r'''(?P<expr>[\w.]+)\s*\*\*\s*(?P<expo>[+-]?[\d.]+)''')
     cmath_expr = re.compile(r'''cmath.(?P<operation>\w+)\((?P<expr>\w+)\)''')
-    #operation is usualy sqrt / sin / cos / tan
+    #operation is usually sqrt / sin / cos / tan
     conj_expr = re.compile(r'''complexconjugate\((?P<expr>\w+)\)''')
     
     #RE expression for is_event_dependent
@@ -3456,7 +3503,7 @@ class OrganizeModelExpression:
             except KeyError:
                 self.couplings[depend_on] = [parameter]
             if coupling.value not in self.all_expr:
-                # the if statement is only to prevent overwritting definition in all_expr
+                # the if statement is only to prevent overwriting definition in all_expr
                 # when a coupling is equal to a single parameter
                 # note that coupling are always mapped to complex, while parameter can be real.
                 self.all_expr[coupling.value] = parameter 
@@ -3491,7 +3538,7 @@ class OrganizeModelExpression:
 
 
     def shorten_expr(self, expr):
-        """ apply the rules of contraction and fullfill
+        """ apply the rules of contraction and fill
         self.params with dependent part"""
         try:
             expr = self.complex_number.sub(self.shorten_complex, expr)
@@ -3557,7 +3604,7 @@ class OrganizeModelExpression:
         return output        
         
     def shorten_conjugate(self, matchobj):
-        """add the short expression, and retrun the nice string associate"""
+        """add the short expression, and return the nice string associate"""
         
         expr = matchobj.group('expr')
         output = 'conjg__%s' % (expr)
@@ -3903,7 +3950,7 @@ class RestrictModel(model_reader.ModelReader):
         """ Simplifies the 'if' statements in the pythonic UFO expressions
         of parameters using the default variables specified in the restrict card.
         It returns a list of objects (parameters or couplings) and the new
-        expression that they should take. Model definitions include all definitons
+        expression that they should take. Model definitions include all definitions
         of the model functions and parameters."""
         
         param_modifications = []
@@ -3949,7 +3996,7 @@ class RestrictModel(model_reader.ModelReader):
         # Extract external parameters
         external_parameters = self['parameters'][('external',)]
         
-        # define usefull variable to detect identical input
+        # define useful variable to detect identical input
         block_value_to_var={} #(lhablok, value): list_of_var
         mult_param = set([])  # key of the previous dict with more than one
                               #parameter.
@@ -4268,7 +4315,7 @@ class RestrictModel(model_reader.ModelReader):
             
 
         if simplify:
-            # check if the parameters is still useful:
+            # check if the parameters are still useful:
             re_str = '|'.join(special_parameters)
             if len(re_str) > 25000: # size limit on mac
                 split = len(special_parameters) // 2
@@ -4461,7 +4508,7 @@ class RestrictModel(model_reader.ModelReader):
         #create new_name
         ii = len(names[0])
         while ii>1:
-            #do not count the initial "u/d letter whcih indicates the sign"
+            #do not count the initial "u/d letter which indicates the sign"
             if not all(n[1:].startswith(names[0][1:ii]) for n in names[1:]):
                 ii -=1
             else:

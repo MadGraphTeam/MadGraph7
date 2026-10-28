@@ -721,28 +721,35 @@ class MadgraphProcess:
         """Make sure the requested LHAPDF set is available, downloading it into
         the first writable PDF directory if needed, and return the (possibly
         updated) LHAPDF resolution. Nothing is downloaded when the set is
-        already present."""
+        already present. LHAPDF itself is not needed: madspace reads the grid
+        files directly, so without a usable lhapdf-config (or when 'lhapdf
+        install' fails) the set is fetched straight from the LHAPDF server."""
         paths = lhapdf_paths()
         if paths.find_set(pdf_set):
-            return paths
-        if not paths.config:
-            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
             return paths
         if not paths.download_path:
             logger.debug("no writable PDF directory: cannot download %s", pdf_set)
             return paths
-        try:
-            from madgraph.interface.common_run_interface import CommonRunCmd
-            os.makedirs(paths.download_path, exist_ok=True)
-            logger.info("PDF set %s not found; downloading into %s",
-                        pdf_set, paths.download_path)
-            CommonRunCmd.install_lhapdf_pdfset_static(
-                paths.config, paths.download_path, pdf_set)
-        except Exception as err:
-            logger.warning("Could not download PDF set %s: %s", pdf_set, err)
-            return paths
+        logger.info("PDF set %s not found; downloading into %s",
+                    pdf_set, paths.download_path)
+        if paths.config:
+            try:
+                from madgraph.interface.common_run_interface import CommonRunCmd
+                os.makedirs(paths.download_path, exist_ok=True)
+                CommonRunCmd.install_lhapdf_pdfset_static(
+                    paths.config, paths.download_path, pdf_set)
+            except Exception as err:
+                logger.debug("lhapdf could not install %s: %s", pdf_set, err)
+        if not os.path.isdir(os.path.join(paths.download_path, pdf_set)):
+            try:
+                misc.download_lhapdf_set(pdf_set, paths.download_path)
+            except Exception as err:
+                logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+                return paths
         global _LHAPDF
         _LHAPDF = paths.with_data_path(paths.download_path)
+        # subprocesses (systematics, MadSpin, reweight) find it here too
+        os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
         return _LHAPDF
 
     def _no_pdf_message(self, pdf_set: str) -> str:
@@ -752,14 +759,21 @@ class MadgraphProcess:
         if self.lhapdf.config:
             found = "using lhapdf-config: %s" % self.lhapdf.config
         else:
-            found = ("no usable lhapdf-config was found, so the set could not "
-                     "be downloaded automatically")
+            found = "no lhapdf-config found (not needed for the download)"
+        if self.lhapdf.download_path:
+            download = ("the download from %s into %s failed (see the "
+                        "warning above)" % (misc.LHAPDF_SETS_URL,
+                                            self.lhapdf.download_path))
+        else:
+            download = "no writable directory to download the set into"
         return (
             "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
+            "  %s\n"
             "Fix this in one of the following ways:\n"
+            "  * check the set name against %s/pdfsets.index and your network\n"
             "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
             "  * point MadGraph at an existing one:\n"
             "        MG7> set lhapdf /path/to/lhapdf-config\n"
@@ -768,7 +782,7 @@ class MadgraphProcess:
             "        lhapdf = /path/to/lhapdf-config\n"
             "    to %s\n"
             "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
-            % (pdf_set, searched, found,
+            % (pdf_set, searched, found, download, misc.LHAPDF_SETS_URL,
                os.path.join("Cards", "me5_configuration.txt"), pdf_set))
 
     def init_beam(self) -> None:
@@ -1613,7 +1627,13 @@ class MadgraphProcess:
             # rather than dividing by it: that asks for the smallest networks and
             # leaves MadNIS off, which is what an empty subprocess wants.
             rsd = (variance * count_opt)**0.5 / mean if mean else 0.
-            subproc.set_madnis_auto_settings(rsd)
+            subproc.set_madnis_auto_settings(
+                rsd,
+                min(
+                    (channel.phasespace_mapping.random_dim() for channel in ps.channels),
+                    default=0,
+                ),
+            )
             chan_offset += len(ps.channels)
             if subproc.madnis_settings["enable"]:
                 madnis_enabled = True
@@ -1661,9 +1681,15 @@ class MadgraphProcess:
 
         verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
+        trained_phasespaces = []
         training_args = []
         self.event_generator = None
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            if not subproc.madnis_supported:
+                # no flow for a one-dimensional phase space: keep its VEGAS
+                # channels, and their event generators, from the survey
+                madnis_phasespaces.append(phasespace)
+                continue
             for channel in phasespace.channels:
                 channel.event_generator = None
 
@@ -1697,6 +1723,7 @@ class MadgraphProcess:
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
+            trained_phasespaces.append(phasespace)
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -1729,7 +1756,7 @@ class MadgraphProcess:
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
-            madnis_phasespaces, madnis_training.active_channels()
+            trained_phasespaces, madnis_training.active_channels()
         ):
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
@@ -2670,6 +2697,8 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        # set from the survey by set_madnis_auto_settings
+        self.madnis_supported = True
         self.multi_channel_data = None
 
         self.unmerged_meta = None
@@ -3214,7 +3243,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
-    def set_madnis_auto_settings(self, rsd: float):
+    def set_madnis_auto_settings(self, rsd: float, random_dim: int):
+        """Choose the MadNIS settings of this subprocess from the relative
+        spread rsd of the survey. random_dim is the smallest number of random
+        numbers of its channels: a normalizing flow needs at least two, so a
+        one-dimensional phase space (a 2 -> 1 process) never uses MadNIS."""
         madnis_args = self.process.run_card["madnis"]
         n_out = len(self.meta["outgoing"])
         n_events = self.process.run_card["generation"]["events"]
@@ -3247,6 +3280,14 @@ class MadgraphSubprocess:
             run_card_value = madnis_args[key]
             if run_card_value != "auto":
                 self.madnis_settings[key] = run_card_value
+        self.madnis_supported = random_dim >= 2
+        if not self.madnis_supported and self.madnis_settings["enable"]:
+            logger.warning(
+                "MadNIS disabled for subprocess %s: its phase space has %d "
+                "random dimension(s), a normalizing flow needs at least 2",
+                self.subproc_id, random_dim,
+            )
+            self.madnis_settings["enable"] = False
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
@@ -3606,6 +3647,19 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
         if _LHAPDF.config:
             os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
     return _LHAPDF
+
+
+def lhapdf_index_paths() -> list:
+    """The PDF directories to look an lhaid up in. Without LHAPDF there may be
+    no pdfsets.index anywhere yet, so fetch one into the download directory."""
+
+    paths = lhapdf_paths()
+    data_paths = list(paths.data_paths)
+    if not any(os.path.exists(os.path.join(p, "pdfsets.index")) for p in data_paths) \
+            and paths.download_path \
+            and misc.download_lhapdf_index(paths.download_path):
+        data_paths.append(paths.download_path)
+    return data_paths
 
 
 class MG7Cmd(Cmd):
@@ -4032,7 +4086,7 @@ def build_selector_cmd(mother=None):
                     # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
                     # beam or for both) onto the per-beam [beam] entries
                     if rest and nlow in run_card.lo_beam_params:
-                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        data_paths = lhapdf_index_paths() if nlow == "lhaid" else ()
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:

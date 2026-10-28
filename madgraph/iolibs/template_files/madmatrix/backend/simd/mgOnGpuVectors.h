@@ -148,7 +148,7 @@ namespace madmatrix
   };
 
 #ifdef MGONGPU_SIMD_DENOM64
-  // complex type to hold 2x the SIMD lane, operators work on both halfs (autovector) narrow to cxtype
+  // complex type to hold 2x the SIMD lane, operators work on both halves (autovector) narrow to cxtype
   class cxtype_denom_sv
   {
   public:
