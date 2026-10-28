@@ -144,6 +144,13 @@ def test_rows_are_well_formed(manifest, rows):
             assert row.pending is None and row.reference is not None, name
             assert row.reference["format"] in mqcd.REFERENCE_FORMATS, name
         assert row.inputs in ("python", "native"), name
+        # A checked per-helicity extra has MadLoop's per-helicity rows (the
+        # row's reference or MQ-REF's per-helicity run of the row).
+        if row.status == "active" and "hel" in set(row.extras) - set(
+            row.extras_pending
+        ):
+            found = mqcd.helicity_reference(row)
+            assert found["rows"] and found["rows"][0], name
         # The native-input route forms no Catani prediction: such a row says
         # so (rule 4 recorded as not formed).
         assert row.catani == ("none" if row.inputs == "native" else "python"), name
@@ -491,27 +498,42 @@ def test_per_helicity_rows_take_the_helicity_average():
     madloop[2]["finite"] = 4.0 * (1 + 2e-12)
     failed = [c for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118) if not c.passed]
     assert [(c.sector, c.coefficient) for c in failed] == [("h-++", "finite")]
-    # MQ-REF's record compares a suppressed helicity absolutely against the
-    # summed Born (its F for the Laurent coefficients).
-    madloop[2]["reference"] = {
-        "status": "ok",
+    madloop[2]["finite"] = 4.0
+    # A vanishing helicity (our double-double Born an exact zero, MadLoop's
+    # its rounding) is compared absolutely against the summed Born (its F
+    # for the Laurent coefficients), also when MQ-REF's record says so.
+    madloop[3]["finite"] = 1e-14  # 1.8e-13 of F
+    madloop[3]["reference"] = {"comparison": "absolute", "reason": "vanishing"}
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    finite = next(c for c in checks if (c.sector, c.coefficient) == ("h+++", "finite"))
+    assert finite.passed and finite.bound == pytest.approx(
+        1e-12 * 3.0 * 0.118 / (2 * math.pi)
+    )
+    assert "vanishing helicity" in finite.note
+    madloop[3]["finite"] = 1e-12
+    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
+    assert not next(
+        c for c in checks if c.coefficient == "finite" and c.sector == "h+++"
+    ).passed
+    madloop[3]["finite"] = 0.0
+    # A suppressed helicity stays strictly relative, also when MQ-REF's
+    # record compares it absolutely (that would loosen rule 1): 1e-6
+    # relative fails although it is 3.5e-15 of F.
+    rows[(1, 1, 1)] = ours(0.25e-10, (0.5e-10, -0.25e-10, 0.125e-10))
+    madloop[3].update(born=1e-10, finite=2e-10 * (1 + 1e-6), single_pole=-1e-10,
+                      double_pole=0.5e-10)  # fmt: skip
+    madloop[3]["reference"] = {
         "comparison": "absolute",
         "absolute_scale": 3.0,
         "reason": "suppressed helicity",
     }
-    madloop[2]["finite"] = 4.0 + 1e-14  # 2.5e-15 relative, 1.8e-13 of F
-    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
-    finite = next(c for c in checks if (c.sector, c.coefficient) == ("h-++", "finite"))
-    assert finite.passed and finite.bound == pytest.approx(
-        1e-12 * 3.0 * 0.118 / (2 * math.pi)
-    )
-    assert "suppressed helicity" in finite.note
-    madloop[2]["finite"] = 4.0 + 1e-12
-    checks = mqcd.rule_hel(_row(), 0, rows, madloop, 0.118)
-    assert not next(
-        c for c in checks if c.coefficient == "finite" and c.sector == "h-++"
-    ).passed
-    del madloop[2]["reference"]
+    failed = [c for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118) if not c.passed]
+    assert [(c.sector, c.coefficient) for c in failed] == [("h+++", "finite")]
+    assert failed[0].bound == 1e-12 and "not honoured" in failed[0].note
+    assert "suppressed helicity" in failed[0].note
+    madloop[3]["finite"] = 2e-10
+    assert all(c.passed for c in mqcd.rule_hel(_row(), 0, rows, madloop, 0.118))
+    del madloop[3]["reference"]
     # A configuration MadLoop has and we do not (or the reverse) fails.
     failed = mqcd.rule_hel(_row(), 0, rows, madloop[:3], 0.118)
     assert not failed[0].passed and failed[0].coefficient == "helicity rows"
