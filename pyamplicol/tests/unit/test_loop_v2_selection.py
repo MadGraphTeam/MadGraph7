@@ -19,7 +19,10 @@
   engine's built-in SM values, zeros at the same entries);
 * the public route: a selected artifact equals the inclusive artifact's
   runtime selection; NLC and full colour keep refusing selectors; requests
-  without a selection keep their request records (no ``selection`` entry).
+  without a selection keep their request records (no ``selection`` entry);
+* MadLoop: the helicity IDs are MadLoop's helicity configurations, the
+  full-colour rows equal ``SLOOPMATRIXHEL`` (MQ-REF's per-helicity
+  references) at 1e-12 in double-double.
 
 Exhaustive configurations (2->4 complete sets, a 2->5 row) run nightly.
 """
@@ -433,6 +436,126 @@ def test_helicity_and_flow_ids_are_the_tree_engines(
                 continue
             ratios.append(born / expected)
     assert ratios and max(ratios) - min(ratios) <= 1e-10 * abs(ratios[0])
+
+
+# ------------------------------------------------------- MadLoop per helicity
+
+MQCD = ROOT / "tests" / "fixtures" / "loop" / "required" / "mqcd"
+# MadLoop's per-helicity values (``SLOOPMATRIXHEL``, MQ-REF's per-helicity
+# mode; ``per_helicity`` of the fixture) at the points whose every row meets
+# the 1e-12 standard, except the listed reference outliers: g g > g g g's
+# helicities (-1,-1,-1,+1,-1) and (+1,+1,+1,-1,+1) are suppressed to 1e-10 of
+# the largest row at its points, where MadLoop's double-precision Born (the
+# loop runs in quadruple precision, status 3xx) is good to about 1e-20 of the
+# largest row only: Born 3.3e-11, single pole 2.6e-12 relative to the row at
+# point 1, the double pole (Born times Catani's constant) with it; every
+# other row there agrees to 4.4e-13. g g > t t~ (MadLoop in double
+# precision, status 2xx): points 0 and 2 (every row within 7.6e-14); at point
+# 1 MadLoop's two parity-equal rows of one single pole differ by 2.6e-13 and
+# ours (equal) by 1.06e-12 from one of them.
+PER_HELICITY = {
+    "gg_ttx_sectors": (0, 2),
+    "gg_ggg": (1,),
+}
+PER_HELICITY_OUTLIERS = {
+    ("gg_ggg", 1): frozenset({(-1, -1, -1, 1, -1), (1, 1, 1, -1, 1)}),
+}
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    "name",
+    [
+        "gg_ttx_sectors",
+        pytest.param("gg_ggg", marks=pytest.mark.loop_nightly),
+    ],
+)
+def test_single_helicities_equal_madloop_per_helicity(
+    loop_sm_compiled_model, loop_native, name
+):
+    """The helicity rows a selection names (tree-engine IDs) are MadLoop's
+    helicity configurations: per row, the full-colour ``evaluate_resolved``
+    entry (double-double) times the helicity average equals MadLoop's
+    ``SLOOPMATRIXHEL`` (colour-averaged, not helicity-averaged) to 1e-12 per
+    coefficient (m-qcd PLAN §1.4 rule 1); rows that vanish identically
+    absolutely to 1e-12 F_s (F_s = |B| alpha_s/2pi of the summed Born). A listed
+    reference outlier (``PER_HELICITY_OUTLIERS``) is held to 1e-12 of that
+    coefficient's largest row. The leading-colour selection of the same IDs
+    is the leading-colour resolved row (the identities above), so this ties
+    single-helicity selections to MadLoop's labels and normalisation."""
+
+    import argparse
+    import math
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.runtime.virtual import V2ObservablesRuntime
+    from tools import loop_v2_generate
+
+    reference = json.loads((MQCD / f"{name}.json").read_text())
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request, ignored = loop_v2_generate._fixture_request(
+        reference,
+        compiled,
+        argparse.Namespace(compatibility=None, scale_parameter=None),
+    )
+    assert not ignored and request.accuracy == "full"
+    observables = ObservableSlice.of(LoopSlice.generate(compiled, request, loop_native))
+    runtime = V2ObservablesRuntime(
+        observables, executor="native", model_parameters=reference["parameters"]
+    )
+    points = PER_HELICITY[name]
+    result = runtime.evaluate_resolved(
+        [reference["points"][p] for p in points],
+        mu_r2=[str(Fraction(reference["mu_r"][p]) ** 2) for p in points],
+        arithmetic="double-double",
+    )
+    # The helicity average: the incoming legs' helicity counts.
+    average = math.prod(
+        len({h for row in observables.rows for leg, h in row if leg == k})
+        for k in (0, 1)
+    )
+    keys = ("born", "finite", "single_pole", "double_pole")
+    alpha = float(reference["parameters"]["aS"])
+    for i, p in enumerate(points):
+        madloop = {
+            lc.helicity_id(tuple(enumerate(row["helicity"]))): row
+            for row in reference["per_helicity"]["rows"][p]
+        }
+        ids = [lc.helicity_id(row) for row in observables.rows]
+        assert sorted(ids) == sorted(madloop)
+        ours = {
+            ident: [
+                float(result.born_values[i][0][k][0]) * average,
+                *(float(x) * average for x in result.values[i][0][k][0]),
+            ]
+            for k, ident in enumerate(ids)
+        }
+        summed = sum(row["born"] for row in madloop.values())
+        assert abs(summed / average - reference["rows"][p]["born"]) <= 1e-12 * abs(
+            summed
+        )
+        scale = abs(summed) * alpha / (2 * math.pi)
+        largest = [max(abs(row[key]) for row in madloop.values()) for key in keys]
+        outliers = {
+            lc.helicity_id(tuple(enumerate(h)))
+            for h in PER_HELICITY_OUTLIERS.get((name, p), ())
+        }
+        for ident, row in madloop.items():
+            expected = [row[key] for key in keys]
+            # A row that vanishes identically (helicity-violating; MadLoop's
+            # numerical zeros are ~1e-33 of the summed Born).
+            vanishing = abs(row["born"]) <= 1e-20 * abs(summed)
+            for c, (a, b) in enumerate(zip(ours[ident], expected, strict=True)):
+                if vanishing or b == 0:
+                    assert abs(a) <= 1e-12 * scale, (p, ident, keys[c], a)
+                elif ident in outliers:
+                    assert abs(a - b) <= 1e-12 * largest[c], (p, ident, keys[c], a, b)
+                else:
+                    error = abs(a - b) / max(abs(a), abs(b))
+                    assert error <= 1e-12, (p, ident, keys[c], a, b, error)
 
 
 # ------------------------------------------------------------------ public route
