@@ -297,23 +297,18 @@ samples = 1
 """
 
 
-@pytest.mark.loop_physics
-def test_the_artifact_records_the_light_masses(
-    loop_sm_compiled_model, loop_native, tmp_path
-):
-    """The generation record names the masses whose binary64 lanes take the
-    exact engine at the generation parameters: MT = 1e-6 fixed gives
-    e+ e- > t t~ the entry ``binary64_exact_engine`` with MT's square and the
-    fast engine's threshold; e+ e- > u u~ (no top line, massless legs) has
-    none, so its record is unchanged."""
+@pytest.fixture(scope="module")
+def light_artifact(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """A public v2 artifact of e+ e- > t t~ and e+ e- > u u~ with MT = 1e-6
+    fixed."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.artifacts import load_manifest
     from pyamplicol.config import resolve_config
 
     entries = (("epem_ttx", "e+ e- > t t~"), ("epem_uux", "e+ e- > u u~"))
-    output = tmp_path / "artifact"
-    card = tmp_path / "card.toml"
+    root = tmp_path_factory.mktemp("light-top")
+    output = root / "artifact"
+    card = root / "card.toml"
     card.write_text(_light_top_card(loop_sm_compiled_model, output, entries))
     processes = ProcessSet(
         tuple(
@@ -321,7 +316,20 @@ def test_the_artifact_records_the_light_masses(
         )
     )
     Generator(resolve_config(card)).generate(processes, output)
-    manifest = load_manifest(output, verify_payloads=True)
+    return output
+
+
+@pytest.mark.loop_physics
+def test_the_artifact_records_the_light_masses(light_artifact, loop_native):
+    """The generation record names the masses whose binary64 lanes take the
+    exact engine at the generation parameters: MT = 1e-6 fixed gives
+    e+ e- > t t~ the entry ``binary64_exact_engine`` with MT's square and the
+    fast engine's threshold; e+ e- > u u~ (no top line, massless legs) has
+    none, so its record is unchanged."""
+
+    from pyamplicol.artifacts import load_manifest
+
+    manifest = load_manifest(light_artifact, verify_payloads=True)
     filters = {
         record["id"]: record["filters"]
         for record in manifest.extensions["generation"]["concrete_processes"]
@@ -333,3 +341,84 @@ def test_the_artifact_records_the_light_masses(
         "squared_masses": {"MT": "1e-12"},
     }
     assert "binary64_exact_engine" not in filters["epem_uux"]
+
+
+# The portability tool: unlicensed evaluation processes and the user's
+# restricted Symbolica permit (``tests/unit/test_loop_artifact_portability.py``).
+_TOOL = Path(__file__).resolve().parents[2] / "tools" / "loop_artifact_portability.py"
+RESTRICTED = "restricted Symbolica"
+
+
+def _portability():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("loop_artifact_portability", _TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.loop_physics
+def test_routed_binary64_lanes_run_under_the_package_key(light_artifact, tmp_path):
+    """The one binary64 path that touches Symbolica (DESIGN §12.1 (e)): a
+    routed lane is reduced by the generic engine, which builds and evaluates
+    Symbolica expressions under pyAmpliCol's native library key. While
+    another process holds the user's restricted permit (a private lock
+    directory), an unlicensed binary64 evaluation of e+ e- > t t~ with
+    MT = 1e-6 completes with the key and aborts with it disabled (the
+    control); e+ e- > u u~ of the same artifact (nothing routed) completes
+    with the key disabled, as every unrouted binary64 evaluation does."""
+
+    import os
+    import subprocess
+    import sys
+
+    portability = _portability()
+    points = tmp_path / "points.json"
+    points.write_text(json.dumps(portability.points(4, 1)))
+    lock = tmp_path / "locks"
+    lock.mkdir(mode=0o700)
+    environment = {k: v for k, v in os.environ.items() if k != "SYMBOLICA_LICENSE"}
+    no_key = {**environment, "PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
+    runs = (
+        ("epem_ttx", environment),
+        ("epem_ttx", no_key),
+        ("epem_uux", no_key),
+    )
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        running = [
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    str(_TOOL),
+                    "evaluate",
+                    str(light_artifact),
+                    "--process",
+                    process,
+                    "--points",
+                    str(points),
+                    "--arithmetic",
+                    "double",
+                    "--out",
+                    str(tmp_path / f"{k}-{process}.json"),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=permit.environment(env),
+                cwd=tmp_path,
+                preexec_fn=portability._no_core,
+            )
+            for k, (process, env) in enumerate(runs)
+        ]
+        done = []
+        for run in running:
+            out, err = run.communicate(timeout=1800)
+            done.append((run.returncode, out, err))
+    assert permit.record["verified"], permit.record
+    (keyed, out, err), (refused, r_out, r_err), (unrouted, u_out, u_err) = done
+    assert keyed == 0, out[-2000:] + err[-2000:]
+    assert RESTRICTED not in out + err
+    assert refused != 0
+    assert RESTRICTED in r_out + r_err
+    assert unrouted == 0, u_out[-2000:] + u_err[-2000:]
