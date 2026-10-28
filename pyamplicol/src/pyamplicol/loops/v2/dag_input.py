@@ -944,9 +944,12 @@ def dag_input(
     ignored_particle_ids: Iterable[int] = (),
     ignored_vertex_kinds: Iterable[int] = (),
     reachability: LoopBlockReachability | None = None,
+    u1_grades: bool = False,
 ) -> str:
     """The JSON input tables of ``V2Dag.build`` for the loop-request DAG of
-    ``GenericDAGCompiler(model=model, loop_blocks=True, ...).compile(process)``."""
+    ``GenericDAGCompiler(model=model, loop_blocks=True, ...).compile(process)``
+    (``u1_grades``: the N_c grade split of LC and NLC requests, written only
+    when set)."""
 
     from pyamplicol.generation.dag_ordering import _known_color_representation
     from pyamplicol.generation.dag_reachability import (
@@ -1065,6 +1068,8 @@ def dag_input(
         "sectors": _sector_rows(process, engine),
         "u1_subtraction_kind": U1_SUBTRACTION_AUXILIARY_KIND,
     }
+    if u1_grades:
+        payload["u1_grades"] = True
     return json.dumps(payload, separators=(",", ":"))
 
 
@@ -1308,6 +1313,7 @@ def encode_dag(dag: GenericDAG) -> bytes:
                     "basis_key": list(state.basis_key),
                     "traces": [list(trace) for trace in state.traces],
                     "lines": [list(line) for line in state.lines],
+                    **({} if state.nc_grade is None else {"nc_grade": state.nc_grade}),
                 }
                 for state in colours
             ],
@@ -1360,6 +1366,7 @@ def _colour_state(row: Mapping[str, Any]) -> ColorState:
         basis_key=tuple(row["basis_key"]),
         traces=tuple(tuple(trace) for trace in row["traces"]),
         lines=tuple(tuple(line) for line in row["lines"]),
+        nc_grade=row.get("nc_grade"),
     )
 
 
@@ -1736,6 +1743,7 @@ class NativeDag:
                         basis_key=tuple(colour[3]),
                         traces=tuple(tuple(trace) for trace in colour[4]),
                         lines=tuple(tuple(line) for line in colour[5]),
+                        nc_grade=colour[6],
                     )
                 ),
                 chirality=block["chirality"],
@@ -1844,10 +1852,12 @@ def native_blocks(
     ignored_particle_ids: Iterable[int] = (),
     ignored_vertex_kinds: Iterable[int] = (),
     reachability: LoopBlockReachability | None = None,
+    u1_grades: bool = False,
 ) -> NativeDag:
     """The native twin of ``GenericDAGCompiler(model=model,
     max_coupling_orders=..., ignored_particle_ids=..., ignored_vertex_kinds=...,
-    loop_blocks=True, loop_block_reachability=reachability).compile(process)``."""
+    loop_blocks=True, loop_block_reachability=reachability,
+    u1_grades=u1_grades).compile(process)``."""
 
     tables = dag_input(
         process,
@@ -1856,6 +1866,7 @@ def native_blocks(
         ignored_particle_ids=ignored_particle_ids,
         ignored_vertex_kinds=ignored_vertex_kinds,
         reachability=reachability,
+        u1_grades=u1_grades,
     )
     return NativeDag(
         _call(_native().V2Dag.build, tables), process, model, build_input=tables
@@ -1915,9 +1926,11 @@ def loop_request_blocks(
     ignored_vertex_kinds: Iterable[int] = (),
     progress_callback: DAGProgressCallback | None = None,
     kernel_variant: TreeKernelVariant,
+    u1_grades: bool = False,
 ) -> tuple[GenericDAG | NativeDag, tuple[Block, ...], str | None]:
     """The loop-request DAG of the blocks of ``blocks.build_tree_blocks``,
-    its blocks and the fallback reason (the switch of A4).
+    its blocks and the fallback reason (the switch of A4); ``u1_grades``
+    grades the blocks that mix N_c grades (``generation.dag_grades``).
 
     Under ``NATIVE_DAG`` the native builder makes the DAG (a ``NativeDag``)
     and its blocks (``native_blocks``; ``progress_callback`` gets the
@@ -1941,6 +1954,7 @@ def loop_request_blocks(
                 ignored_particle_ids=ignored_particles,
                 ignored_vertex_kinds=ignored_kinds,
                 reachability=reachability,
+                u1_grades=u1_grades,
             )
             blocks = native.blocks(kernel_variant)
             # The Ward-kernel and coloured-width scans are answered now, so
@@ -1969,6 +1983,7 @@ def loop_request_blocks(
         progress_callback=progress_callback,
         loop_blocks=True,
         loop_block_reachability=reachability,
+        u1_grades=u1_grades,
     ).compile(full)
     return dag, _blocks(dag, model, kernel_variant), fallback
 
@@ -1991,13 +2006,15 @@ def native_counterterm_blocks(
     process: CanonicalProcessIR,
     *,
     ignored_particle_ids: Iterable[int] = (),
+    u1_grades: bool = False,
 ) -> NativeCountertermBlocks:
     """The native twin of ``ct_closure.CountertermBlocks.build(recursion,
-    process, ignored_particle_ids=...)``: the loop-request recursion of the
-    CT-lowered model (``recursion.model.lowered``) over the leg sets without
-    leg 1 except all other legs (``RootReachability``), within the program's
-    order limits and without the vetoed particles (DESIGN §6.1 items 1-6 and
-    8), grouped into blocks with the clone lines of ``_clone_lines``."""
+    process, ignored_particle_ids=..., u1_grades=...)``: the loop-request
+    recursion of the CT-lowered model (``recursion.model.lowered``) over the
+    leg sets without leg 1 except all other legs (``RootReachability``),
+    within the program's order limits and without the vetoed particles
+    (DESIGN §6.1 items 1-6 and 8), grouped into blocks with the clone lines
+    of ``_clone_lines``."""
 
     from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 
@@ -2016,6 +2033,7 @@ def native_counterterm_blocks(
         max_coupling_orders=recursion.coupling_order_limits(),
         ignored_particle_ids=tuple(ignored_particle_ids),
         reachability=RootReachability(full),
+        u1_grades=u1_grades,
     )
     dag = NativeDag(
         _call(_native().V2Dag.build, tables),
@@ -2214,6 +2232,7 @@ def native_tree_rows(
                             "basis_key",
                             "traces",
                             "lines",
+                            "nc_grade",
                         ),
                         colour,
                         strict=True,
@@ -2606,6 +2625,11 @@ def blocks_digest(
         out += struct.pack("<I", len(state.basis_key))
         for basis in state.basis_key:
             _put_str(out, basis)
+        if state.nc_grade is not None:
+            # As in ``V2Dag.digest``: a trace count is never 2^32 - 1, so the
+            # marker is unambiguous and states without a grade keep their
+            # records.
+            out += struct.pack("<Iq", 0xFFFFFFFF, state.nc_grade)
         for parts in (state.traces, state.lines):
             out += struct.pack("<I", len(parts))
             for labels in parts:

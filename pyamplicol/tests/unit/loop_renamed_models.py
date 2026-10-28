@@ -21,7 +21,10 @@ request on both and compare decisions under the map and values to rounding:
   SMINPUTS 3 (to block ``GSINPUT`` 1);
 * ``mass``: ``MW`` turned internal (an alias of a new external ``MWIN`` at
   ``WMASSIN`` 1, same value) where it is a card input, or external (MASS 24,
-  the value it derives from the default card) where it is derived.
+  the value it derives from the default card) where it is derived;
+* ``quarks``: a quark flavour renamed and renumbered (``u`` -> ``uq``, PDG 2
+  -> 9000002, in the particles and their ``loop_particles``), so identical-
+  flavour lines are those of a quark no PDG range or name names.
 
 The rewrite is textual and checked: every substitution must apply, so a
 changed source fails loudly instead of yielding an unrenamed "variant". Run
@@ -38,7 +41,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VARIANTS = ("orders", "lower", "particles", "scale", "mass")
+VARIANTS = ("orders", "lower", "particles", "scale", "mass", "quarks")
 
 
 @dataclass(frozen=True)
@@ -354,6 +357,25 @@ def write_variant(source: Path, target: Path, variant: str) -> RenameMap:
         rename = RenameMap(
             variant, particles=particles, pdgs=pdgs, parameters=parameters
         )
+    elif variant == "quarks":
+        particles = {"u": "uq", "u~": "uq~"}
+        text = files["particles.py"]
+        for old, new in particles.items():
+            text = _sub(
+                rf"\b(name|antiname)(\s*=\s*)'{re.escape(old)}'",
+                rf"\g<1>\g<2>'{new}'",
+                text,
+                what=f"particle {old!r}",
+            )
+        pdgs = {2: 9000002}
+        for old, new in pdgs.items():
+            text = _sub(
+                rf"pdg_code\s*=\s*{old}\b", f"pdg_code = {new}", text, what=str(old)
+            )
+        files["particles.py"] = text
+        for path in files:
+            files[path] = _renumber_loop_particles(files[path], pdgs)
+        rename = RenameMap(variant, particles=particles, pdgs=pdgs)
     elif variant == "scale":
         parameters = {"MU_R": "muR"}
         for path in files:

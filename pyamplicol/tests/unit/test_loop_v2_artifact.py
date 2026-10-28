@@ -1673,12 +1673,15 @@ def test_cli_generates_and_evaluates_through_v2(
         ("gg_gg", "g g > g g", "lc"),
         ("tt", "u u~ > t t~", "lc"),
         ("uux_ddxg", "u u~ > d d~ g", "nlc"),
+        ("uux_uuxg", "u u~ > u u~ g", "nlc"),
     ],
 )
 def test_projected_colour_through_v2_equals_legacy_o1(
     loop_sm_colour_model, loop_native, tmp_path, name, expression, accuracy
 ):
-    """LC and NLC projections in binary64 (1e-12) and double-double (1e-24)."""
+    """LC and NLC projections in binary64 (1e-12) and double-double (1e-24),
+    identical-flavour lines included (u u~ > u u~ g: blocks of one colour
+    word and two N_c grades, ``generation.dag_grades``)."""
 
     from pyamplicol import Runtime
 

@@ -489,7 +489,6 @@ impl ColumnarDag {
     /// `u1_grades`; `order`: the merges by result size
     /// (`signs::size_order`).
     fn u1_grades(&self, tables: &BlockInput, order: Option<&[usize]>) -> Vec<Option<i64>> {
-        let n = self.current_count();
         let u1 = tables.u1_subtraction_kind.as_str();
         let u1_auxiliary: Vec<bool> = self
             .tables
@@ -497,32 +496,22 @@ impl ColumnarDag {
             .iter()
             .map(|species| species.auxiliary.as_deref() == Some(u1))
             .collect();
-        let mut grade: Vec<Option<i64>> = (0..n)
+        let sources = (0..self.current_count())
             .map(|id| (self.c_source[id] == 1).then_some(0))
             .collect();
-        let mut mixed = vec![false; n];
-        let mut visit = |id: usize| {
+        let merge = |id: usize| {
             let result = self.i_result[id] as usize;
-            let (Some(left), Some(right)) = (
-                grade[self.i_left[id] as usize],
-                grade[self.i_right[id] as usize],
-            ) else {
-                mixed[result] = true;
-                return;
-            };
-            let value = left + right - u1_auxiliary[self.c_species[result] as usize] as i64;
-            if grade[result].is_none() && !mixed[result] {
-                grade[result] = Some(value);
-            } else if grade[result] != Some(value) {
-                grade[result] = None;
-                mixed[result] = true;
-            }
+            (
+                self.i_left[id] as usize,
+                self.i_right[id] as usize,
+                result,
+                u1_auxiliary[self.c_species[result] as usize] as i64,
+            )
         };
         match order {
-            None => (0..self.interaction_count()).for_each(&mut visit),
-            Some(order) => order.iter().for_each(|id| visit(*id)),
+            None => fold_u1_grades(sources, (0..self.interaction_count()).map(merge)),
+            Some(order) => fold_u1_grades(sources, order.iter().map(|id| merge(*id))),
         }
-        grade
     }
 
     /// `_blocks`: every block, in the first-seen order of its key.
@@ -660,9 +649,60 @@ impl ColumnarDag {
     }
 }
 
+/// The N_c grade of every current (`blocks.u1_grades`, the single-grade
+/// view of `generation.dag_grades.u1_grade_sets`): `grade` holds the
+/// sources' (0), `merges` are the derivations (left, right, result, 1 if the
+/// result is the U(1)-subtraction auxiliary) with every input's derivations
+/// before it is read. A current has a grade only if every derivation gives
+/// it the same one from inputs of one grade each, whatever the order of its
+/// derivations; otherwise, or with none, it has none.
+fn fold_u1_grades(
+    mut grade: Vec<Option<i64>>,
+    merges: impl Iterator<Item = (usize, usize, usize, i64)>,
+) -> Vec<Option<i64>> {
+    let mut mixed = vec![false; grade.len()];
+    for (left, right, result, shift) in merges {
+        let value = match (grade[left], grade[right]) {
+            (Some(left), Some(right)) => Some(left + right - shift),
+            _ => None,
+        };
+        if value.is_some() && grade[result].is_none() && !mixed[result] {
+            grade[result] = value;
+        } else if value.is_none() || grade[result] != value {
+            grade[result] = None;
+            mixed[result] = true;
+        }
+    }
+    grade
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DagError, FERMION_LINE_REPRESENTATION, identity_pairing_sign};
+    use super::{DagError, FERMION_LINE_REPRESENTATION, fold_u1_grades, identity_pairing_sign};
+
+    #[test]
+    fn a_derivation_from_a_mixed_input_leaves_no_grade_in_either_order() {
+        // 0, 1: sources; 2: the U(1)-subtraction auxiliary of (0, 1); 3:
+        // derived with grades 0 and -1 (mixed); 4 and 5: grade -1 from
+        // (2, 1) and a derivation reading 3, in both orders; 6: grade -1
+        // twice; 7: underived.
+        let sources = vec![Some(0), Some(0), None, None, None, None, None, None];
+        let merges = [
+            (0, 1, 2, 1),
+            (0, 1, 3, 0),
+            (2, 0, 3, 0),
+            (2, 1, 4, 0),
+            (3, 0, 4, 0),
+            (3, 0, 5, 0),
+            (2, 1, 5, 0),
+            (2, 1, 6, 0),
+            (1, 2, 6, 0),
+        ];
+        assert_eq!(
+            fold_u1_grades(sources, merges.into_iter()),
+            vec![Some(0), Some(0), Some(-1), None, None, None, Some(-1), None]
+        );
+    }
 
     #[test]
     fn unpaired_fermion_ends_are_the_listed_refusal() {

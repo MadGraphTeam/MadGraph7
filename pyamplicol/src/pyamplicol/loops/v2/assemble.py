@@ -1886,6 +1886,8 @@ class LoopSlice:
                         reachable.block_requests() | born_requests, data
                     )
                 ),
+                # LC and NLC project formal N_c: every block of one grade.
+                u1_grades=request.accuracy != "full",
             )
             if electroweak:
                 # Widths in the Born or the loop-side trees, before their
@@ -1992,6 +1994,7 @@ class LoopSlice:
                     tuple(sorted(request.loop_order_bounds.items())),
                     request.compatibility,
                 ),
+                u1_grades=request.accuracy != "full",
             )
             # Its root terms close on its blocks with their N_c grades too.
             require_nc_exact(program.blocks.blocks, request.accuracy, request.process)
@@ -4228,21 +4231,31 @@ def _interfere(
 
 
 class _BlockRows:
-    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents."""
+    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
+    keyed by the contents' block names (``PositionColour.block_names``)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
+        from .colour import block_name
 
         fields = _NativeFields.of(slice_.data)
         index = slice_._cache.get("block-rows")
         if index is None:
             index = defaultdict(lambda: defaultdict(dict))
-            for block in slice_.blocks.blocks:
+            trees = slice_.blocks
+            for block in trees.blocks:
                 key = block.key
                 if key.auxiliary_kind is not None:
                     continue
                 name = fields.incoming(key.particle_id)["name"]
-                bucket = index[(key.external_mask, name, key.coupling_orders, key.word)]
+                bucket = index[
+                    (
+                        key.external_mask,
+                        name,
+                        key.coupling_orders,
+                        block_name(trees, block),
+                    )
+                ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
                     bucket[key.chirality][helicities] = (block, row)

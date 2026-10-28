@@ -665,7 +665,9 @@ take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
-model's source colour declaration); double, double-double and arbitrary
+model's source colour declaration; formal-N_c projections for any number of
+quark lines, identical flavours such as `u u~ > u u~ g` included); double,
+double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin
 correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
@@ -700,14 +702,15 @@ strong coupling parameter described above (`ir_poles` is absent otherwise;
 What the engine does not admit fails at generation with a typed error that
 names the rule, for example:
 
-- leading and next-to-leading colour of processes whose tree currents are
-  not exact in N_c: identical-flavour quark lines, from `u u~ > u u~ g` up
-  (`u u~ > u u~ d d~`, `g g > u u~ u u~`, ...), whose currents mix
-  U(1)-subtraction grades: "colour-accuracy-nc-exact: ... LC needs N_c-exact
-  tree currents ...". Full colour (`color.accuracy = "full"`) is exact for
-  them; `u u~ > u u~` and distinct flavours (`u u~ > d d~ g`) are not
-  affected. The check runs right after the trees are built, and every export
-  repeats it, so no artifact carries such a projection;
+- leading and next-to-leading colour over tree currents that are not exact
+  in N_c (currents mixing U(1)-subtraction grades): "colour-accuracy-nc-exact:
+  ... LC needs N_c-exact tree currents ...". Leading and next-to-leading
+  colour split such currents by grade, so identical-flavour quark lines (from
+  `u u~ > u u~ g` up: `u u~ > u u~ d d~`, `g g > u u~ u u~`, ...) are exact
+  and generate, as distinct flavours do; the rule guards any request whose
+  currents would still mix grades. The check runs right after the trees are
+  built, and every export repeats it, so no artifact carries a projection that
+  is not exact;
 - a `particle_veto` that removes a species running in the loops of a
   requested correction, on a model some of whose counterterm terms of that
   correction declare no loop content (`loop_particles = []`):

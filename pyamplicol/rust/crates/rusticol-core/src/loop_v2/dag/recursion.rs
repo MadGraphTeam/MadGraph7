@@ -358,6 +358,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                 basis_key: Vec::new(),
                 traces: Vec::new(),
                 lines: Vec::new(),
+                nc_grade: None,
             });
             for state in &sources.states {
                 if next_bit >= 64 {

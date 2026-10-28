@@ -246,6 +246,7 @@ impl<'a> ColourEngine<'a> {
             basis_key: Vec::new(),
             traces: traces.into_iter().collect(),
             lines: lines.into_iter().collect(),
+            nc_grade: None,
         })
     }
 
