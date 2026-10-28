@@ -474,6 +474,10 @@ C     Keep track of whether cuts already calculated for this event
       INTEGER SELECTED_HEL(VECSIZE_MEMMAX)
       INTEGER SELECTED_COL(VECSIZE_MEMMAX)
       DOUBLE PRECISION ALL_RWGT(VECSIZE_MEMMAX)
+C     flavour class (IFLAV_VEC is per warp) and leshouche row of each
+C      event
+      INTEGER ALL_IFLAV(VECSIZE_MEMMAX)
+      INTEGER ALL_IPSEL(VECSIZE_MEMMAX)
 
 C     Common blocks
       INCLUDE '../../Source/PDF/pdf.inc'
@@ -511,6 +515,9 @@ C     Continue only if IMODE is 0, 4 or 5
       IF(IMODE.NE.0.AND.IMODE.NE.4.AND.IMODE.NE.5) RETURN
 
 
+      DO IVEC=1, VECSIZE_USED
+        ALL_IFLAV(IVEC) = IFLAV_VEC((IVEC-1)/WARP_SIZE+1)
+      ENDDO
       NB_WARP_USED = VECSIZE_USED / WARP_SIZE
       IF( NB_WARP_USED * WARP_SIZE .NE. VECSIZE_USED ) THEN
         WRITE(*,*) 'ERROR: NB_WARP_USED * WARP_SIZE .NE. VECSIZE_USED',
@@ -544,7 +551,11 @@ C           LP=SIGN(1,LPP(2))
       IPROC = 0
       IPROC=IPROC+1  ! u u~ > g g
       DO IVEC=1, VECSIZE_USED
-        ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
+        IF (ALL_IFLAV(IVEC).NE.1) THEN
+          ALL_PD(IPROC,IVEC)=0D0
+        ELSE
+          ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
+        ENDIF
         ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))
 
       ENDDO
@@ -585,10 +596,11 @@ C         Select a flavor combination (need to do here for right sign)
 C         .GE. above already covers R = 0; this catches a NaN R (every
 C         comparison false) and IPROC = 0. See the scalar branch.
           IF (IPSEL.LT.1) IPSEL = 1
+          ALL_IPSEL(IVEC) = IPSEL
           CHANNEL  = MAPCONFIG(ICONFIG)
 
 
-          CALL GET_FLAVOR(IFLAV_VEC(IVEC), FLAVOR)
+          CALL GET_FLAVOR(ALL_IFLAV(IVEC), FLAVOR)
           IF (IMODE.EQ.0) THEN
             ALL_RWGT(IVEC) = REWGT(ALL_PP(0,1,IVEC),FLAVOR,IVEC)
           ELSE
@@ -605,7 +617,7 @@ C         comparison false) and IPROC = 0. See the scalar branch.
           CALL RANMAR(COL_RAND(IVEC))
         ENDDO  ! end loop on IWARP/IVEC	 
       ENDDO  ! end loop on the CURR_WARP
-      CALL SMATRIX_MULTI(P_MULTI, IFLAV_VEC, HEL_RAND, COL_RAND,
+      CALL SMATRIX_MULTI(P_MULTI, ALL_IFLAV, HEL_RAND, COL_RAND,
      $  CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL, SELECTED_COL,
      $  VECSIZE_USED)
 
@@ -624,6 +636,8 @@ C        REWGT and by UNWGT)
         IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+C         flavour combination of this event (sign below and UNWGT)
+          IPSEL = ALL_IPSEL(IVEC)
           DSIGUU = ALL_OUT(IVEC)
           IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN
@@ -631,7 +645,7 @@ C        REWGT and by UNWGT)
             ELSE
               ALL_OUT(IVEC) = 0.0D0
             ENDIF
-            RETURN
+            CYCLE
           ENDIF
 
           XBK(:) = ALL_XBK(:,IVEC)
