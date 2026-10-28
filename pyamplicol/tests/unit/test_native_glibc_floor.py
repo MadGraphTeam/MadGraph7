@@ -32,10 +32,10 @@ pytestmark = pytest.mark.loop_fast
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTED_FLOOR = (2, 42)
 NATIVES = ("_rusticol.so", "librusticol_loop_sdk.so")
-# ld.so's text for the slice's SDK library under glibc 2.40 (2026-10-28).
+# ld.so's text for the slice's SDK library under glibc 2.40 (2026-10-28; the
+# libc path, a Nix store path there, shortened).
 LOADER_MESSAGE = (
-    "/nix/store/j193mfi0f921y0kfs8vjc1znnr45ispv-glibc-2.40-66/lib/libc.so.6: "
-    "version `GLIBC_ABI_GNU2_TLS' not found (required by "
+    "/lib64/libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found (required by "
     "/opt/pyamplicol/librusticol_loop_sdk.so)"
 )
 
