@@ -770,6 +770,18 @@ names the rule, for example:
   joins a coloured and a colour-singlet fermion ...", before any tree is
   built. Veto a particle of the vertex (`particle_veto`) or bound its
   coupling order so that the request cannot use it;
+- a Goldstone-vector mixing counterterm (G0-Z, G0-A, G+-W-) whose line ends
+  on its Goldstone side at the vertex of leg 1 (a massive top at leg 1 with
+  electroweak corrections: `t t~ > z h`, `t t~ > t t~`):
+  "counterterm-root-goldstone-mixing: ... consumes a Goldstone-vector mixing
+  line on its Goldstone side ...", while the counterterm program is built.
+  Request QCD corrections, or order the legs so that leg 1 has no Goldstone
+  vertex where the process allows it;
+- a fermion line that passes a massive fermion through a chiral vertex and
+  closes on a massless external fermion (`u d~ > t b~` with a massless b):
+  "dirac-weyl-closure: ... a Dirac (chirality-0) current cannot close on a
+  Weyl ... current ...", when the trees are built. Use a restriction with a
+  massive b (MG5_aMC's `restrict_with_b_mass`);
 - fermions outside the loop sign rule: vertices joining two or more fermion
   lines (four-fermion contact vertices: "a loop vertex joins more than one
   fermion line"), fermions in colour representations other than singlets and
