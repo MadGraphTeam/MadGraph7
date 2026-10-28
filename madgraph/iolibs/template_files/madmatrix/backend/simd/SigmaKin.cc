@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -357,9 +358,8 @@ namespace madmatrix
   inline void
   hr_unbaked_row( int ihel )
   {
-    static bool warned = false;
-    if( warned ) return;
-    warned = true;
+    static std::atomic<bool> warned{ false }; // the helicity loop runs in OpenMP/madspace threads
+    if( warned.exchange( true ) ) return;
     printf( "*** WARNING: helicity row %d contributes at these parameters but was\n"
             "*** never built: the --hel_recycling table was measured at others.\n"
             "*** This matrix element is INCOMPLETE -- regenerate the process.\n",
@@ -382,14 +382,17 @@ namespace madmatrix
   // the plain helicity loop, which is compiled in the same library anyway. The
   // size is per SIMD page of neppV events: in mixed precision a call makes two
   // pages (nParity), which does not change the traffic per event, and the
-  // measurements above are all of that kind.
+  // measurements above are all of that kind. It counts the wavefunction slots
+  // too (hrNwf: ~1 MB per page for g g > t t~ g g g at simd_128), which every
+  // page writes and reads as well.
 #ifndef MGONGPU_HR_MAX_TABLE_MB
 #define MGONGPU_HR_MAX_TABLE_MB 10
 #endif
+  constexpr size_t hrWfBytes = (size_t)hrNwf * ( np4 * sizeof( fptype_momenta_sv ) + nw6 * sizeof( cxtype_amp_sv ) );
 #ifdef MGONGPU_HR_ROWS
-  constexpr size_t hrPageTableBytes = (size_t)nHrRows * hrNamp * sizeof( cxtype_amp_sv );
+  constexpr size_t hrPageTableBytes = hrWfBytes + (size_t)nHrRows * hrNamp * sizeof( cxtype_amp_sv );
 #else
-  constexpr size_t hrPageTableBytes = (size_t)nHrRows * ( ( hrNtmp + njampso ) * sizeof( cxtype_amp_sv ) + ndiagrams * sizeof( fptype_amp_sv ) );
+  constexpr size_t hrPageTableBytes = hrWfBytes + (size_t)nHrRows * ( ( hrNtmp + njampso ) * sizeof( cxtype_amp_sv ) + ndiagrams * sizeof( fptype_amp_sv ) );
 #endif
   constexpr bool hrUseRecycling = MGONGPU_HR_MAX_TABLE_MB <= 0 || hrPageTableBytes <= (size_t)MGONGPU_HR_MAX_TABLE_MB * 1024 * 1024;
 
@@ -397,9 +400,8 @@ namespace madmatrix
   inline void
   hr_declined()
   {
-    static bool said = false;
-    if( said ) return;
-    said = true;
+    static std::atomic<bool> said{ false }; // called from every thread of the helicity loop
+    if( said.exchange( true ) ) return;
     printf( "INFO: --hel_recycling is not used by this build: its tables would be %.1f MB per SIMD page at\n"
             "INFO: this SIMD width, more than MGONGPU_HR_MAX_TABLE_MB=%d (make HRMAXMB=<n>, 0 for no limit);\n"
             "INFO: the plain matrix element is faster there.\n",
@@ -451,10 +453,13 @@ namespace madmatrix
     ALOHAOBJ _p1n = ALOHAOBJ{ p1n_pvec_sv, p1n_w_sv };
     (void)_p1n;
     (void)amp_fp;
-    // A vanishing amplitude is never written, hence the zeroing.
-#ifdef MGONGPU_HR_ROWS
-    for( int i = 0; i < nHrRows * nParity * hrNamp; i++ ) ampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
-#else
+    // The fold and expanded modes add into their tables, which start every page
+    // at zero. The rows mode stores into its amplitude table, and every page
+    // stores the same (row, amplitude) entries: those it never stores (an
+    // amplitude that vanishes at a row) keep the zero the table was allocated
+    // with (hr_page), so it is not cleared -- for g g > t t~ g g g at simd_128
+    // that would be 15 MB of writes per call on a path bound by memory traffic.
+#ifndef MGONGPU_HR_ROWS
     for( int i = 0; i < nHrRows * nParity * njampso; i++ ) jampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     for( int i = 0; i < nHrRows * nParity * hrNtmp; i++ ) jampTmpAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     if( storeChannelWeights )
@@ -550,6 +555,7 @@ namespace madmatrix
     using E_ACCESS = HostAccessMatrixElements;
     (void)MEs_ighel2;
 #ifdef MGONGPU_HR_ROWS
+    // value-initialised, i.e. zero, once per thread: calculate_all_jamps relies on it
     static thread_local std::vector<cxtype_amp_sv> ampAll( (size_t)nHrRows * nParity * hrNamp );
     cxtype_amp_sv* ampAll_sv = ampAll.data();
     cxtype_amp_sv* jampTmpAll_sv = nullptr;

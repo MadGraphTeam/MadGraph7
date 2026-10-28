@@ -729,6 +729,144 @@ class TestRecycledColourSubExpressions(unittest.TestCase):
         self.assertEqual(self.writer.hr_post_lines(None), (0, []))
 
 
+class TestRecycledOptions(unittest.TestCase):
+    """--hel_recycling_jamp / --hel_recycling_tables, and the per-row include
+    HelRecyclingJamps.inc each mode writes."""
+
+    def test_jamp_mode(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter as W
+        writer = W.__new__(W)
+        for options, mode in (({}, 'rows'), ({'hel_recycling_jamp': 'fold'}, 'fold'),
+                              ({'hel_recycling_jamp': 'EXPANDED'}, 'expanded'),
+                              ({'hel_recycling_jamp': 'bogus'}, 'rows')):
+            writer.cmd_options = options
+            self.assertEqual(writer.hr_jamp_mode(), mode)
+
+    def test_tables(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        class Writer(object):
+            cmd_options = {}
+        exporter = E.__new__(E)
+        exporter.helas_call_writer = Writer()
+        self.assertTrue(exporter.hel_recycling_tables())
+        for off in ('False', 'false', '0', 'no'):
+            Writer.cmd_options = {'hel_recycling_tables': off}
+            self.assertFalse(exporter.hel_recycling_tables())
+        Writer.cmd_options = {'hel_recycling_tables': 'True'}
+        self.assertTrue(exporter.hel_recycling_tables())
+
+    def test_jamps_include(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        rows = E.hr_jamps_inc({'mode': 'rows', 'ntmp': 7, 'namp': 159,
+                               'lines': ['jamp_sv[0] += ampRow[3];']})
+        self.assertIn('const cxtype_amp_sv* ampRow = ampAll_sv + slot * 159;', rows)
+        self.assertIn('cxtype_amp_sv jampTmp_sv[7];', rows)
+        self.assertIn('jamp_sv[0] += ampRow[3];', rows)
+        # no table of every row's numerators in the rows mode: hr_row hands the
+        # event's own numerators_sv
+        self.assertNotIn('numAll_sv', rows)
+        fold = E.hr_jamps_inc({'mode': 'fold', 'ntmp': 7, 'namp': 0,
+                               'lines': ['jampTmp_sv[1] += jampTmp_sv[0];']})
+        self.assertIn('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * 7;', fold)
+        self.assertNotIn('ampRow', fold)
+        expanded = E.hr_jamps_inc({'mode': 'expanded', 'ntmp': 0, 'namp': 0, 'lines': ()})
+        self.assertTrue(all(l.strip().startswith('//') for l in expanded.splitlines() if l.strip()))
+
+
+class TestHiddenRunCardEntries(unittest.TestCase):
+    """The mg7 run card's hidden entries -- hel_recycling_max_mb among them --
+    are read, and written back once the user set them (not before), so that
+    rewriting the card does not drop them."""
+
+    def test_round_trip(self):
+        import madgraph.various.banner as banner_mod
+        tmpdir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmpdir, 'run_card.toml')
+            card = banner_mod.RunCardMG7()
+            self.assertEqual(card['run'].get('hel_recycling_max_mb'), -1)
+            card.write(path)
+            self.assertNotIn('hel_recycling_max_mb', open(path).read())
+            card.set('run.hel_recycling_max_mb', 0, user=True)
+            card.write(path)
+            text = open(path).read()
+            self.assertIn('hel_recycling_max_mb = 0', text)
+            # in its own section, so that the card stays valid TOML
+            try:
+                import tomllib
+            except ImportError:
+                tomllib = None
+            if tomllib:
+                self.assertEqual(tomllib.loads(text)['run']['hel_recycling_max_mb'], 0)
+            again = banner_mod.RunCardMG7(path)
+            self.assertEqual(again['run.hel_recycling_max_mb'], 0)
+            again.write(path)
+            self.assertIn('hel_recycling_max_mb = 0', open(path).read())
+            # a legacy alias is read but never written
+            card.set('generation.systematics', True, user=True)
+            card.write(path)
+            generation = text_section(open(path).read(), 'generation')
+            self.assertFalse(any(l.strip().startswith('systematics =') for l in generation))
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+def text_section(text, name):
+    """The lines of [name] in a TOML text."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith('['):
+            inside = line.strip() == '[%s]' % name
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+class TestRecyclingMakeArguments(unittest.TestCase):
+    """What the mg7 launcher hands make for a --hel_recycling output, and when a
+    library has to be rebuilt for other settings."""
+
+    def setUp(self):
+        try:
+            import madgraph.iolibs.template_files.mg7.launch as launch
+        except Exception as error:      # needs the mg7 runtime (madspace)
+            self.skipTest('mg7 launch not importable: %s' % error)
+        import madgraph.various.banner as banner_mod
+        self.launch = launch
+        self.process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        self.process.run_card = banner_mod.RunCardMG7()
+
+    def test_make_arguments(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('HRMAXMB', None)
+            os.environ.pop('HRNOBLAS', None)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=', 'HRNOBLAS='])
+            os.environ['HRMAXMB'] = '20'
+            self.assertEqual(self.process.hel_recycling_make_args()[0], 'HRMAXMB=20')
+            # the run card wins over the environment
+            self.process.run_card.set('run.hel_recycling_max_mb', 0, user=True)
+            self.process.run_card.set('run.hel_recycling_row_color_sum', True, user=True)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=0', 'HRNOBLAS=1'])
+
+    def test_rebuild_when_the_settings_change(self):
+        changed = self.launch.MadgraphProcess.hel_recycling_flags_changed
+        tmpdir = tempfile.mkdtemp()
+        try:
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # not recycled
+            open(os.path.join(tmpdir, 'HelRecycling.inc'), 'w').close()
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # never built
+            os.mkdir(os.path.join(tmpdir, 'build.simd_128'))
+            with open(os.path.join(tmpdir, 'build.simd_128', '.hrflags'), 'w') as fsock:
+                fsock.write(':\n')
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))
+            self.assertTrue(changed(tmpdir, 'simd_128', '0:'))
+            self.assertFalse(changed(tmpdir, 'cuda', '0:'))           # gpu: plain anyway
+        finally:
+            shutil.rmtree(tmpdir)
+
+
 class TestHelRecyclingWarmup(unittest.TestCase):
     """What the probe prints, read back: madevent's helicity-filter protocol."""
 

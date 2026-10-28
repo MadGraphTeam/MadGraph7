@@ -809,14 +809,28 @@ ifeq ($(GPUCC),)
 ifneq ($(HRPROBE),1)
 objects_lib += $(patsubst %%.cc,$(BUILDDIR)/%%.o,$(wildcard HelRecyclingChunks_*.cc))
 endif
-# the size above which the build takes the plain matrix element instead (see
-# hrUseRecycling in backend/{cpu,simd}/SigmaKin.cc; 0: no limit)
+# HRMAXMB=<n>: the table size per SIMD page above which the build takes the
+# plain matrix element instead (see hrUseRecycling in
+# backend/{cpu,simd}/SigmaKin.cc; 0: no limit). HRNOBLAS=1: the recycled build
+# makes its color sum row by row even where BLAS is used. Both are read from the
+# environment too, so they reach an mg7 build. SigmaKin.o is rebuilt when they
+# change: the compiler flags are not otherwise a dependency of the objects.
 ifneq ($(HRMAXMB),)
 CXXFLAGS += -DMGONGPU_HR_MAX_TABLE_MB=$(HRMAXMB)
 endif
+ifneq ($(HRNOBLAS),)
+CXXFLAGS += -DMGONGPU_HR_NO_BLAS
+endif
+$(BUILDDIR)/.hrflags: FORCE_HRFLAGS
+	@mkdir -p $(BUILDDIR); if [ "$$(cat $@ 2>/dev/null)" != "$(HRMAXMB):$(HRNOBLAS)" ]; then echo "$(HRMAXMB):$(HRNOBLAS)" > $@; fi
+.PHONY: FORCE_HRFLAGS
+FORCE_HRFLAGS:
+$(BUILDDIR)/SigmaKin.o: $(BUILDDIR)/.hrflags
 else
 ifneq ($(wildcard HelRecycling.inc),)
+ifeq ($(filter clean cleanall cleancommon cleanallcommon,$(MAKECMDGOALS)),)
 $(info INFO: --hel_recycling is CPU only: this $(BACKEND) build of $(notdir $(CURDIR)) is the plain matrix element (see backend/gpu/SigmaKin.cc))
+endif
 endif
 endif
 

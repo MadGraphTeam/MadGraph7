@@ -6701,6 +6701,14 @@ class RunCardMG7(RunCard):
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
+        # --hel_recycling outputs (madmatrix, cpu only): the size of the recycled
+        # tables per SIMD page above which the build takes the plain matrix
+        # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
+        # limit), and a row-by-row color sum instead of BLAS (HRNOBLAS)
+        self.add_toml_param('run', 'hel_recycling_max_mb', -1, hidden=True,
+            comment="--hel_recycling: table size (MB per SIMD page) above which the cpu build uses the plain matrix element; -1 build default, 0 no limit")
+        self.add_toml_param('run', 'hel_recycling_row_color_sum', False, hidden=True,
+            comment="--hel_recycling: make the color sum row by row even where BLAS would be used")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
@@ -7468,6 +7476,9 @@ class RunCardMG7(RunCard):
                 lines.append('%s = %s' % (key, self.format_toml_value(value)))
         return '\n'.join(lines)
 
+    # hidden parameters that are read from old cards but never written back
+    LEGACY_ALIASES = {'generation.systematics'}
+
     def write(self, output_file, template=None, python_template=True, **opt):
         """Write a valid ``run_card.toml``.
 
@@ -7495,7 +7506,25 @@ class RunCardMG7(RunCard):
             for key in keys:
                 internal = '%s.%s' % (section, key)
                 data[internal] = self.format_toml_value(self[internal])
+        in_template = set(re.findall(r'%\(([^)]+)\)s', text))
         text = text % data
+
+        # hidden parameters are not in the template: write back the ones the
+        # user set (as RunCard.write does), at the top of their section, so
+        # that rewriting the card -- 'set', the card editor -- does not drop them
+        never = set(getattr(self, 'params_to_never_write', ())) | self.LEGACY_ALIASES
+        for internal in self.hidden_param:
+            if internal not in self.user_set or internal in never \
+                    or internal not in self.section_of or internal in in_template:
+                continue
+            section = self.section_of[internal]
+            key = internal.split('.', 1)[1]
+            line = '%s = %s\n' % (key, self.format_toml_value(self[internal]))
+            header = re.search(r'^\[%s\][^\n]*\n' % re.escape(section), text, re.M)
+            if header:
+                text = text[:header.end()] + line + text[header.end():]
+            else:
+                text += '\n[%s]\n%s' % (section, line)
 
         # free-form sections inserted at their markers
         for section in self.dynamic_section_names:
