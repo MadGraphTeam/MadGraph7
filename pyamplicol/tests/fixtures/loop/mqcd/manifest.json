@@ -2,6 +2,10 @@
  "schema_version": 1,
  "plan": "workspace/reports/engine-v2/m-qcd/PLAN.md \u00a71.4, \u00a73.2 MQ-VALIDATE, \u00a74",
  "description": "M-QCD validation campaign rows (one per PLAN \u00a74.2 row). tools/loop_benchmark/mqcd.py reads it; tests/unit/test_loop_v2_mqcd_*.py run it.",
+ "process_aliases": {
+  "mu-": "m-",
+  "mu+": "m+"
+ },
  "restriction_codes": {
   "5F": {
    "restriction": "no_b_mass",
@@ -542,7 +546,12 @@
    "reference_legend": "E required/uux_uux",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_uux.json"
+    "path": "tests/fixtures/loop/required/uux_uux.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -805,7 +814,12 @@
    "reference_legend": "E required/uux_ddxg",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_ddxg.json"
+    "path": "tests/fixtures/loop/required/uux_ddxg.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "default": [
@@ -872,7 +886,12 @@
    "reference_legend": "E required/uux_uuxg",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_uuxg.json"
+    "path": "tests/fixtures/loop/required/uux_uuxg.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -1139,7 +1158,12 @@
    "reference_legend": "E required/uux_ddxssx",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_ddxssx.json"
+    "path": "tests/fixtures/loop/required/uux_ddxssx.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -1200,7 +1224,12 @@
    "reference_legend": "E required/uux_uuxddx",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_uuxddx.json"
+    "path": "tests/fixtures/loop/required/uux_uuxddx.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -1261,7 +1290,12 @@
    "reference_legend": "E required/uux_uuxuux",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_uuxuux.json"
+    "path": "tests/fixtures/loop/required/uux_uuxuux.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -1648,7 +1682,12 @@
    "reference_legend": "E required/gg_ttx (+ R for S1, S4, hel)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/gg_ttx.json"
+    "path": "tests/fixtures/loop/required/gg_ttx.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "default": [
@@ -1853,7 +1892,12 @@
    "reference_legend": "E required/gg_ttxgg",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/gg_ttxgg.json"
+    "path": "tests/fixtures/loop/required/gg_ttxgg.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -2830,6 +2874,7 @@
    "reference": {
     "format": "dilepton",
     "path": "tests/fixtures/loop/dilepton-two-gluon.json",
+    "points": "precision",
     "providers": [
      "madloop",
      "recola"
@@ -2857,7 +2902,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "notes": "the fixture's exact rational points (precision_points, exactly massless with exact momentum conservation); its rounded RAMBO points are off shell at binary64 rounding, which double-double resolves (Catani vs the virtual at 4e-14)"
   },
   {
    "id": "D07",
@@ -2893,7 +2939,12 @@
    "reference_legend": "E required/uux_emepggg",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_emepggg.json"
+    "path": "tests/fixtures/loop/required/uux_emepggg.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -2953,7 +3004,12 @@
    "reference_legend": "E required/uux_emepddxg",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_emepddxg.json"
+    "path": "tests/fixtures/loop/required/uux_emepddxg.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -2983,7 +3039,7 @@
   {
    "id": "D09",
    "class": "Q-EWBorn",
-   "process": "u u~ > e- e+ mu- mu+",
+   "process": "u u~ > e- e+ m- m+",
    "born_orders": {
     "QCD": 0,
     "QED": 4
@@ -3014,7 +3070,10 @@
    "reference_legend": "E required/uux_emepmummp",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_emepmummp.json"
+    "path": "tests/fixtures/loop/required/uux_emepmummp.json",
+    "providers": [
+     "madloop"
+    ]
    },
    "points": {
     "nightly": [
@@ -3074,7 +3133,11 @@
    "reference_legend": "E required/uux_uuxepem (the 22x case)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/uux_uuxepem.json"
+    "path": "tests/fixtures/loop/required/uux_uuxepem.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
    },
    "points": {
     "nightly": [
@@ -4212,7 +4275,16 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [
+    {
+     "sector": "total",
+     "coefficient": "double_pole"
+    },
+    {
+     "sector": "QCD^2 QED^6",
+     "coefficient": "double_pole"
+    }
+   ]
   },
   {
    "id": "E06",
@@ -4248,7 +4320,12 @@
    "reference_legend": "E required/gg_ttxemepg_qcd + point 2 (rule 1 outlier: OpenLoops)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/gg_ttxemepg_qcd.json"
+    "path": "tests/fixtures/loop/required/gg_ttxemepg_qcd.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
    },
    "points": {
     "nightly": [
@@ -4270,8 +4347,24 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
-   "reference_outliers": [],
+   "binary64_out_of_scope": [
+    {
+     "point": 2,
+     "sector": "QCD^8 QED^4",
+     "coefficient": "finite",
+     "E": 3.42e-08,
+     "true_error": 5.66e-09
+    }
+   ],
+   "reference_outliers": [
+    {
+     "point": 0,
+     "sector": "total",
+     "coefficient": "finite",
+     "provider": "madloop",
+     "note": "MadLoop binary64 (status 216, own accuracy 5.44e-12) 1.38e-12 from DD; OpenLoops 2.0e-14, Recola 9.2e-13"
+    }
+   ],
    "vanishing": []
   },
   {
@@ -4601,11 +4694,27 @@
     "mixed-born-orders",
     "ew:W-exchange"
    ],
-   "predicted_sectors": [],
-   "unpredicted_sectors": [],
+   "predicted_sectors": [
+    {
+     "QCD": 6
+    }
+   ],
+   "unpredicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "ignored_fixed_parameters": [
+    "WTau"
+   ]
   },
   {
    "id": "G02",
@@ -4910,7 +5019,7 @@
   {
    "id": "R01",
    "class": "Q-EWBorn",
-   "process": "u u~ > mu- mu+",
+   "process": "u u~ > m- m+",
    "born_orders": {
     "QCD": 0,
     "QED": 2
