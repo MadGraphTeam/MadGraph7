@@ -235,7 +235,7 @@ fn v2_tensor_monomials(rank: usize) -> Vec<[u32; 4]> {
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The binary64 fast engine's absolute routing threshold in model units
     // (`runtime::fast_engine_threshold`): the generation record of light
-    // masses compares with it (`GeneratedProcess.binary64_exact_masses`).
+    // masses compares with it (`GeneratedProcess.binary64_exact_engine`).
     module.add(
         "V2_FAST_ENGINE_THRESHOLD",
         rusticol_loop_reduction::runtime::fast_engine_threshold(),

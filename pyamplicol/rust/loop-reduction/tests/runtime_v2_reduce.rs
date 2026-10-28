@@ -945,6 +945,66 @@ fn integrals_and_statuses_scale_with_the_units() {
     }
 }
 
+/// Unit scaling with exactly scaled inputs: in units of a power of two
+/// (`x = 2^-10`, `2^10`) every dimensionful input scales without rounding,
+/// so the routing and every status are compared on exactly the GeV inputs
+/// times `x` (the decisions scale exactly), and the integrals times
+/// `x^(2N - 4)` measure what the reduction itself does with the units. They
+/// are not bitwise: the binary64 reduction commutes with the scaling only up
+/// to rounding (measured on the pinned NinjaRS and oneloopmaster: 43 of the 96
+/// comparisons bitwise, at most 2.3e-13 relative, on the massless rank-4
+/// box), and no absolute constant is crossed (that would be an O(1) change,
+/// as the massless integrals of the light lanes are). `2^-10` keeps the light lanes
+/// routed (`m² ≈ 1e-18`); `2^10` takes them off the threshold (`m² ≈ 1e-6`)
+/// onto the fast engine, which then agrees with the generic one.
+#[test]
+fn power_of_two_units_scale_the_decisions_exactly() {
+    let mut gev = all_lanes("double");
+    gev.extend(family_lanes(&massless_families(), 100, "double"));
+    gev.extend(family_lanes(&light_families(), 300, "double"));
+    let first_light = gev.len() - light_families().len();
+    for frame in [ReductionFrame::REVERSED, ReductionFrame::RESCALED] {
+        let mut reducer = V2Reducer::new("double", None, "fast", true).unwrap();
+        let reference = reduce(&mut reducer, &gev, frame);
+        let routed_in_gev = reducer.take_exact_lanes();
+        assert_eq!(
+            routed_in_gev,
+            2 * ((gev.len() - first_light) * POINTS.len()) as u64
+        );
+        for (exponent, routed) in [(-10, routed_in_gev), (10, 0)] {
+            let x = 2f64.powi(exponent);
+            let units: Vec<Lanes> = gev.iter().map(|l| in_units(l, x)).collect();
+            let output = reduce(&mut reducer, &units, frame);
+            assert_eq!(reducer.take_exact_lanes(), routed, "x = 2^{exponent}");
+            assert_eq!(statuses(&output.direct), statuses(&reference.direct));
+            assert_eq!(
+                statuses(output.check.as_ref().unwrap()),
+                statuses(reference.check.as_ref().unwrap())
+            );
+            for (index, lanes) in gev.iter().enumerate() {
+                let back = x.powi(2 * lanes.n as i32 - 4);
+                for (got, want) in [
+                    (&output.direct[index], &reference.direct[index]),
+                    (
+                        &output.check.as_ref().unwrap()[index],
+                        &reference.check.as_ref().unwrap()[index],
+                    ),
+                ] {
+                    let got: Vec<[f64; 2]> = values(&got.values().unwrap())
+                        .iter()
+                        .map(|[re, im]| [re * back, im * back])
+                        .collect();
+                    let error = relative(&got, &values(&want.values().unwrap()), 3);
+                    assert!(
+                        error < 1e-12,
+                        "x = 2^{exponent}, {frame:?}, group {index}: {error:e}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn a_routed_lane_fails_as_the_generic_engine_does() {
     let family = binary64_failing_family();

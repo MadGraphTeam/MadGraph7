@@ -134,7 +134,7 @@ pub const NATIVE_ONSHELL_THRESHOLD: f64 = 1e-9;
 /// [`NATIVE_ONSHELL_THRESHOLD`] and `FastOptions::infrared_eps` (module
 /// docs). The one value [`V2Reducer`]'s binary64 engine routes by, and the
 /// one the generation record of light masses compares with
-/// (`GeneratedProcess.binary64_exact_masses`).
+/// (`GeneratedProcess.binary64_exact_engine`).
 pub fn fast_engine_threshold() -> f64 {
     NATIVE_ONSHELL_THRESHOLD.max(FastOptions::default().infrared_eps)
 }
