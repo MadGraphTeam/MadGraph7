@@ -6,8 +6,9 @@
 //! refusals and values through the C ABI, the wrapper of this `Runtime`), so
 //! it is ignored by default and run explicitly:
 //! `PYAMPLICOL_V4_GGTT_ARTIFACT=<artifact> cargo test --release --test
-//! v4_parameters -- --ignored` (it fails without the variable). This
-//! executable does not start or link Python.
+//! v4_parameters -- --ignored` (it fails without the variable); the parity
+//! file's `loop_nightly` id `test_the_rust_sdk_follows_the_python_api` runs
+//! it on its artifact. This executable does not start or link Python.
 use rusticol_core::RusticolErrorKind;
 use rusticol_loop_sdk::{Runtime, SourceOverrides};
 
@@ -56,10 +57,15 @@ fn v4_parameter_updates_follow_the_python_api() {
             vec![("WT", "1.4915"), ("MU_R", "100")],
             "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
         ),
-        // Values are Python decimals (no fractions).
+        // Values are Python decimals of ASCII text (no fractions, no other
+        // digits).
         (
             vec![("aS", "59/500")],
             "parameter 'aS' real part is not a decimal number",
+        ),
+        (
+            vec![("MT", "\u{661}\u{667}\u{663}")],
+            "parameter 'MT' real part is not a decimal number",
         ),
     ];
     // Open with the default R2 strategy ("auto": the artifact's model R2).
@@ -92,6 +98,13 @@ fn v4_parameter_updates_follow_the_python_api() {
         // A refused update changes nothing.
         assert_eq!(values(&mut runtime), before);
     }
+    // An empty name: the Python API's TypeError, an invalid argument here.
+    let error = runtime
+        .update_parameters(&overrides(&[("", "1"), ("MT", "one")]))
+        .unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+    assert_eq!(error.message(), "model parameter names must be nonempty strings");
+    assert_eq!(values(&mut runtime), before);
     // The fixed WT at its fixed value and a parameter the process does not
     // read change nothing; aS does.
     runtime

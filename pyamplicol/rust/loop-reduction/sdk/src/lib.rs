@@ -10,7 +10,9 @@ use rusticol_core::loop_runtime::LoopRuntimePlan;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime, decimal_parameter, is_v2_artifact};
+use rusticol_loop_reduction::v2_runtime::{
+    V2Poles, V2Runtime, decimal_parameter, is_v2_artifact, named_parameters,
+};
 use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
@@ -463,12 +465,15 @@ impl Runtime {
 
 /// Real model parameter overrides, read as the Python API reads them
 /// (`runtime.virtual._parameters`, then `artifact._real_parameters`): by
-/// name, each real and imaginary part a finite decimal
+/// name, every name nonempty ([`named_parameters`]: a typed
+/// `InvalidArgument` error otherwise, the Python `TypeError`), each real and
+/// imaginary part a finite decimal
 /// ([`decimal_parameter`]: a typed `ModelParameter` error otherwise, the
 /// Python `ValueError`), then a plan v4 process takes real external
 /// parameters only: a nonzero imaginary part is refused with a typed
 /// `Compatibility` error (the Python `CompatibilityError`, in its words).
 fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>> {
+    named_parameters(values.keys().map(String::as_str))?;
     let mut imaginary = Vec::with_capacity(values.len());
     for (name, [re, im]) in values {
         decimal_parameter(re, &format!("parameter '{name}' real part"))?;

@@ -789,11 +789,14 @@ fixed_parameters = {MB = "0", WT = "0"}
 
 The legacy engine takes every propagator without width; a resonant coloured
 particle needs the complex-mass scheme (not available yet). An evaluation
-(the Python API and the native SDKs alike) refuses a value that is not a finite
-decimal number, unknown parameter names, the renormalisation-scale parameter
-(`mu_r2` sets it per point) and a value other than the one a parameter was fixed
-to at generation (the card's `fixed_parameters` and those the model preparation
-fixes, e.g. a colour declaration's external scheme constants); a parameter
+(the Python API and the native SDKs alike) refuses an empty parameter name, a
+value that is not a finite decimal number (a number, or ASCII decimal text:
+surrounding whitespace and underscores are ignored, fractions and non-ASCII
+digits are refused), unknown parameter names, the renormalisation-scale
+parameter (`mu_r2` sets it per point) and a value other than the one a parameter
+was fixed to at generation (the card's `fixed_parameters` and those the model
+preparation fixes, e.g. a colour declaration's external scheme constants, which
+the refusal names as such: they are not run-time parameters); a parameter
 update with one refused entry changes nothing, and every client checks the
 entries by name, so a mapping with several refused entries gets the same
 message everywhere. Other known parameters are accepted even where

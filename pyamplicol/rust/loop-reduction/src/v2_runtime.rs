@@ -59,7 +59,10 @@
 //! are refused with a typed
 //! [`RusticolErrorKind::ModelParameter`](rusticol_core::RusticolErrorKind)
 //! error, in the Python API's words and order (values read as Python's
-//! `Decimal`, then names, both by name).
+//! `Decimal` of ASCII text, then names, both by name; an empty name is a
+//! typed `InvalidArgument` error, the Python API's `TypeError`); a refused
+//! fixed value names who fixed it (the request, or the model preparation:
+//! the record's `preparation_fixed_parameters`).
 //!
 //! **Scale-dependent batches.** A batch shares its Born couplings, kernel
 //! constants and masses across its points. Generation records which outputs
@@ -131,6 +134,10 @@ struct NativeRecord {
     sectors: Vec<(Orders, Vec<(Orders, Orders)>)>,
     average: i64,
     fixed_parameters: BTreeMap<String, String>,
+    /// Those of `fixed_parameters` the model preparation fixed (scheme
+    /// constants; the others are the request's): what a refusal names.
+    #[serde(default)]
+    preparation_fixed_parameters: BTreeSet<String>,
     /// The renormalisation scale's external parameter, resolved at
     /// generation (`LoopSlice.scale_parameter`): each point's `mu_R²` sets it.
     #[serde(default)]
@@ -153,15 +160,24 @@ fn refused(message: impl Into<String>) -> RusticolError {
 }
 
 /// A model parameter value as the Python API reads it
-/// (`runtime.virtual._number`, `Decimal(str(value))`): surrounding
-/// whitespace and underscores are ignored, then a decimal literal (a sign,
-/// digits with an optional fraction part, an optional exponent) is its exact
-/// value; any other text, a fraction such as `59/500` included, is refused
-/// with "`description` is not a decimal number" and an infinity or NaN with
-/// "`description` must be finite" (typed `ModelParameter` errors, the Python
-/// API's `ValueError`). Decimal digits are ASCII.
+/// (`runtime.virtual._number`, `Decimal(str(value))` of ASCII text): text
+/// with a non-ASCII character is refused; surrounding whitespace (Python's
+/// ASCII `str.isspace` set: space, `\t`, `\n`, `\v`, `\f`, `\r` and
+/// `\x1c`-`\x1f`) and then underscores are ignored; a decimal literal (a
+/// sign, digits with an optional fraction part, an optional exponent) is its
+/// exact value; any other text, a fraction such as `59/500` included, is
+/// refused with "`description` is not a decimal number" and an infinity or
+/// NaN with "`description` must be finite" (typed `ModelParameter` errors,
+/// the Python API's `ValueError`).
 pub fn decimal_parameter(value: &str, description: &str) -> RusticolResult<Rational> {
-    let text: String = value.trim().chars().filter(|c| *c != '_').collect();
+    if !value.is_ascii() {
+        return Err(refused(format!("{description} is not a decimal number")));
+    }
+    let text: String = value
+        .trim_matches(|c: char| matches!(c, ' ' | '\t'..='\r' | '\x1c'..='\x1f'))
+        .chars()
+        .filter(|c| *c != '_')
+        .collect();
     let unsigned = text
         .strip_prefix(['+', '-'])
         .unwrap_or(&text)
@@ -178,22 +194,41 @@ pub fn decimal_parameter(value: &str, description: &str) -> RusticolResult<Ratio
         .map_err(|_| refused(format!("{description} is not a decimal number")))
 }
 
+/// Refuse an empty model parameter name, as the Python API does
+/// (`runtime.virtual._parameters`' `TypeError`, in its words; a typed
+/// `InvalidArgument` error). The empty name sorts first, so this precedes
+/// every value check, as in Python's by-name reading.
+pub fn named_parameters<'a>(names: impl IntoIterator<Item = &'a str>) -> RusticolResult<()> {
+    if names.into_iter().any(str::is_empty) {
+        return Err(RusticolError::invalid_argument(
+            "model parameter names must be nonempty strings",
+        ));
+    }
+    Ok(())
+}
+
 /// The caller's model parameter values, validated as a whole before any is
 /// applied (`artifact.V2VirtualRuntime._checked_parameters` and
 /// `assemble.check_model_parameters`), in the Python API's order: by name,
-/// every value first ([`decimal_parameter`]), then every name an external
+/// every name nonempty ([`named_parameters`]), every value
+/// ([`decimal_parameter`]), then every name an external
 /// parameter of the model (`externals`), none the renormalisation scale's
 /// parameter (`scale`, set per point by `mu_R²`), and a parameter fixed at
-/// generation (`fixed`) only at its fixed value. Returns the exact values by
-/// name, or the first refusal (nothing applied).
+/// generation (`fixed`) only at its fixed value, refused in words that say
+/// who fixed it: the request (`[loop.preparation] fixed_parameters`) or the
+/// model preparation (`prepared`, a scheme constant such as a colour
+/// declaration's; the native record's `preparation_fixed_parameters`).
+/// Returns the exact values by name, or the first refusal (nothing applied).
 pub fn checked_parameters<'a>(
     values: impl IntoIterator<Item = (&'a str, &'a str)>,
     externals: &BTreeSet<String>,
     scale: Option<&str>,
     fixed: &BTreeMap<String, String>,
+    prepared: &BTreeSet<String>,
 ) -> RusticolResult<Vec<(String, Rational)>> {
     let mut values: Vec<(&str, &str)> = values.into_iter().collect();
     values.sort_by_key(|(name, _)| *name);
+    named_parameters(values.iter().map(|(name, _)| *name))?;
     let exact = values
         .iter()
         .map(|(name, value)| decimal_parameter(value, &format!("parameter '{name}' real part")))
@@ -211,11 +246,7 @@ pub fn checked_parameters<'a>(
         if let Some(fixed) = fixed.get(name) {
             let pinned = parse_rational(fixed).map_err(|e| invalid(e.message()))?;
             if *exact != pinned {
-                return Err(refused(format!(
-                    "parameter '{name}' was fixed to {fixed} at generation \
-                     ([loop.preparation] fixed_parameters); regenerate the \
-                     artifact to change it"
-                )));
+                return Err(refused(fixed_refusal(name, fixed, prepared.contains(name))));
             }
         }
     }
@@ -224,6 +255,26 @@ pub fn checked_parameters<'a>(
         .zip(exact)
         .map(|((name, _), exact)| (name.to_owned(), exact))
         .collect())
+}
+
+/// The refusal of a value other than the one `name` was fixed to at
+/// generation (`assemble.check_model_parameters`' words): by the request's
+/// `[loop.preparation] fixed_parameters`, or by the model preparation
+/// (`prepared`: a scheme constant, which no card entry sets).
+pub fn fixed_refusal(name: &str, fixed: &str, prepared: bool) -> String {
+    if prepared {
+        format!(
+            "parameter '{name}' was fixed to {fixed} at generation by the model \
+             preparation (a scheme constant, e.g. of the colour declaration); \
+             it is not a run-time parameter"
+        )
+    } else {
+        format!(
+            "parameter '{name}' was fixed to {fixed} at generation \
+             ([loop.preparation] fixed_parameters); regenerate the artifact to \
+             change it"
+        )
+    }
 }
 
 /// The external parameters of the artifact's model (`model/parameters.json`,
@@ -570,6 +621,7 @@ impl V2Runtime {
             &self.externals,
             self.scale_parameter(),
             &self.record.fixed_parameters,
+            &self.record.preparation_fixed_parameters,
         )?;
         self.parameters.extend(checked);
         Ok(())
@@ -1016,7 +1068,13 @@ mod tests {
             .collect();
         let fixed: BTreeMap<String, String> = [("WT".to_owned(), "0".to_owned())].into();
         let check = |values: &[(&str, &str)]| {
-            checked_parameters(values.iter().copied(), &externals, Some("MU_R"), &fixed)
+            checked_parameters(
+                values.iter().copied(),
+                &externals,
+                Some("MU_R"),
+                &fixed,
+                &BTreeSet::new(),
+            )
         };
         // Accepted: known names, a fixed parameter at its fixed value (any
         // exact decimal spelling, as Python's `Decimal`), by name.
@@ -1081,7 +1139,33 @@ mod tests {
         }
         // Without a scale parameter (a program that reads none) the name is
         // just a model parameter.
-        assert!(checked_parameters([("MU_R", "100")], &externals, None, &fixed).is_ok());
+        let none = BTreeSet::new();
+        assert!(checked_parameters([("MU_R", "100")], &externals, None, &fixed, &none).is_ok());
+        // A scheme constant the model preparation fixed is named as such.
+        let prepared: BTreeSet<String> = ["WT".to_owned()].into();
+        let error = checked_parameters([("WT", "1")], &externals, None, &fixed, &prepared)
+            .unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
+        assert_eq!(
+            error.message(),
+            "parameter 'WT' was fixed to 0 at generation by the model preparation \
+             (a scheme constant, e.g. of the colour declaration); it is not a \
+             run-time parameter"
+        );
+        // Python's reader: ASCII text only (no other digits or whitespace),
+        // its ASCII whitespace (`\x1c`-`\x1f` included) and underscores
+        // ignored; an empty name is an invalid argument (Python's TypeError).
+        for text in ["\u{661}", "\u{2003}1", "1\u{a0}"] {
+            assert_eq!(
+                check(&[("MT", text)]).unwrap_err().message(),
+                "parameter 'MT' real part is not a decimal number"
+            );
+        }
+        let spaced = check(&[("MT", "\x1c_17_3 \x0b\x1f")]).unwrap();
+        assert_eq!(spaced[0].1, Rational::from(173));
+        let error = check(&[("", "1"), ("MT", "one")]).unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+        assert_eq!(error.message(), "model parameter names must be nonempty strings");
     }
 
     #[test]

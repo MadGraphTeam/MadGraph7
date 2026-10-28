@@ -188,9 +188,9 @@ impl Trees {
     /// The batch's bound parameters (`TreeProgram::bind`) and the carrier's
     /// tree runtime, built on first use.
     fn bind<'a, T: Exchanged + Real + TreeCarrier>(
-        &self,
+        program: &TreeProgram,
         guard: &'a mut Option<Box<dyn Any + Send>>,
-        inputs: &Bound<'_, PyDict>,
+        values: &[Rational],
         scales: &[Rational],
         zero: &T,
     ) -> PyResult<(&'a mut TreeRuntime<T>, BoundParameters<T>)>
@@ -198,29 +198,33 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
         let fresh = !guard
             .as_ref()
             .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
         if fresh {
-            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
+            *guard = Some(Box::new(program.runtime(zero).map_err(error)?));
         }
         let runtime = guard
             .as_mut()
             .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
             .expect("a runtime of this carrier");
-        let bound = self
-            .program
-            .bind(runtime, &values, scales, zero)
-            .map_err(error)?;
+        let bound = program.bind(runtime, values, scales, zero).map_err(error)?;
         Ok((runtime, bound))
     }
 
+    /// The batch's exact external parameter values (`parameters`).
+    fn values(inputs: &Bound<'_, PyDict>) -> PyResult<Vec<Rational>> {
+        rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)
+    }
+
     /// Native block rows and Born components of a batch (filled into
-    /// `batch`); returns every input for inspection.
-    fn fill<T: Exchanged + Real + TreeCarrier>(
+    /// `batch`); returns every input for inspection. The binding and the
+    /// tree and closure stages run on `executor`'s pool (its `threads`
+    /// bound), not on the global one, as the SDK runtime's
+    /// (`v2_runtime::V2Runtime`).
+    fn fill<T: Exchanged + Real + TreeCarrier + Send + Sync>(
         &mut self,
-        plan: &LoopProgramV4,
+        executor: &Executor,
         inputs: &Bound<'_, PyDict>,
         batch: &mut V2Batch<T>,
         poles: bool,
@@ -230,31 +234,36 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let mut guard = self
-            .runtime
-            .lock()
-            .map_err(|_| error("a poisoned tree runtime"))?;
-        let (runtime, bound) = self.bind(&mut guard, inputs, &batch.scales, zero)?;
-        batch.constants = bound.constants;
-        batch.masses = bound.masses;
-        batch.leg_masses = bound.leg_masses;
+        let values = Self::values(inputs)?;
         let sources = match inputs.get_item("sources")? {
             Some(value) if !value.is_none() => Some(point_sources(&value, zero)?),
             _ => None,
         };
-        let out = self
-            .program
-            .inputs_with(
-                runtime,
-                plan,
-                &bound.trees,
-                &batch.momenta,
-                &batch.constants,
-                poles,
-                sources.as_deref(),
-                zero,
-            )
-            .map_err(error)?;
+        let mut guard = self
+            .runtime
+            .lock()
+            .map_err(|_| error("a poisoned tree runtime"))?;
+        let slot: &mut Option<Box<dyn Any + Send>> = &mut guard;
+        let (program, scales, momenta) = (&self.program, &batch.scales, &batch.momenta);
+        let (bound, out) = executor.install(|| -> PyResult<_> {
+            let (runtime, bound) = Self::bind(program, slot, &values, scales, zero)?;
+            let out = program
+                .inputs_with(
+                    runtime,
+                    executor.plan(),
+                    &bound.trees,
+                    momenta,
+                    &bound.constants,
+                    poles,
+                    sources.as_deref(),
+                    zero,
+                )
+                .map_err(error)?;
+            Ok((bound, out))
+        })?;
+        batch.constants = bound.constants;
+        batch.masses = bound.masses;
+        batch.leg_masses = bound.leg_masses;
         batch.block_rows = out.block_rows.clone();
         batch.born = out.born.clone();
         Ok(out)
@@ -501,7 +510,7 @@ impl V2Executor {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier>(
+fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     py: Python<'_>,
     executor: &Executor,
     trees: Option<&mut Trees>,
@@ -529,7 +538,7 @@ where
             rusticol_core::loop_execution::v2::Poles::None
         );
         let started = std::time::Instant::now();
-        let native = trees.fill(executor.plan(), inputs, &mut batch, poles, &zero)?;
+        let native = trees.fill(executor, inputs, &mut batch, poles, &zero)?;
         // The report's "trees" stage: the whole native input fill, then its
         // parts (`TreeInputs::seconds`).
         tree_seconds = Some((started.elapsed().as_secs_f64(), native.seconds.clone()));
@@ -580,7 +589,7 @@ type ExportedTreeInputs = (
     Option<Vec<Values>>,
 );
 
-fn tree_inputs_with<T: Exchanged + Real + TreeCarrier>(
+fn tree_inputs_with<T: Exchanged + Real + TreeCarrier + Send + Sync>(
     executor: &Executor,
     trees: &mut Trees,
     inputs: &Bound<'_, PyDict>,
@@ -592,7 +601,7 @@ where
     TreeRuntime<T>: Send,
 {
     let mut batch = batch(inputs, &zero)?;
-    let out = trees.fill(executor.plan(), inputs, &mut batch, true, &zero)?;
+    let out = trees.fill(executor, inputs, &mut batch, true, &zero)?;
     let export = |points: &[Vec<Complex<T>>]| -> Vec<Values> {
         points
             .iter()
@@ -631,7 +640,8 @@ where
         .runtime
         .lock()
         .map_err(|_| error("a poisoned tree runtime"))?;
-    let (_runtime, bound) = trees.bind(&mut guard, inputs, scales, zero)?;
+    let values = Trees::values(inputs)?;
+    let (_runtime, bound) = Trees::bind(&trees.program, &mut guard, &values, scales, zero)?;
     Ok((
         bound.masses.iter().map(ToString::to_string).collect(),
         bound
