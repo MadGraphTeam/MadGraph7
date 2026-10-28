@@ -636,11 +636,12 @@ def build_covariant_structure(
             key = (source["id"], spins)
             if key not in lorentz_names:
                 if tuple(map(abs, source["fields"]["spins"])) != tuple(map(abs, spins)):
-                    from .v2.refusals import LoopRequestUnsupported
+                    from .v2.refusals import LoopRequestUnsupportedValue
 
                     # Constant scalar tensors were repaired by the source
-                    # rule (``repair_source_declarations``); this one is not.
-                    raise LoopRequestUnsupported(
+                    # rule (``repair_source_declarations``); this one is not
+                    # (a ``ValueError`` as the untyped refusal it replaces).
+                    raise LoopRequestUnsupportedValue(
                         "lorentz-slot-arity",
                         f"source vertex {record['name']!r} (ID {record['id']}) "
                         f"uses Lorentz tensor {source['name']!r} with spin slots "
