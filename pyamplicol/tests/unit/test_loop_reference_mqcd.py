@@ -255,6 +255,7 @@ def test_per_helicity_entries_carry_reference_records(run_id: str) -> None:
     per = fixture["per_helicity"]
     factor = fixture["universal_double_pole_factor"]
     assert per["settings"]["MadLoopParams_overrides"] == {"HelicityFilterLevel": "0"}
+    assert per["settings"]["quadruple_precision_stage"]
     for entries in per["rows"]:
         summed = sum(abs(e["born"]) for e in entries)
         for entry in entries:
@@ -316,6 +317,25 @@ def test_madloop_born_split_orders_read_from_the_born_matrix(tmp_path: Path) -> 
 UNIVERSAL_POLE_TOLERANCE = 1e-10
 RG_TOLERANCE = 1e-11
 RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
+# At a regular point MadLoop's printed Born (double precision at the binary64
+# input) and the Born its quadruple-precision double pole implies are the same
+# Born up to the binary64 rounding of the point: <= 1.1e-13 over the campaign
+# (u u~ > w+ w-: gauge cancellations of the slightly off-shell binary64 W
+# momenta), while a loop defect shows above it (C01 point 1 before
+# HelicityFilterLevel 0: 4.8e-13). An ok point above the floor (or above ten
+# times MadLoop's own accuracy, where that is larger) must be a named outlier.
+REGULAR_IR_FLOOR = 2e-13
+OUTLIER = "OUTLIER"
+# Limit points (madloop_qp_point): the printed Born's binary64 condition, bounded
+# by 1e3 binary64 epsilons times the family's observed sensitivity (soft E/sqrt(s)
+# = v: 1/v; threshold beta: 1/beta^2; collinear theta: 1/theta^3; the
+# radiation-zero family compares absolutely against its regular neighbour).
+EPSILON = 2.0**-53
+FAMILY_SENSITIVITY = {
+    "soft": lambda v: 1 / v,
+    "threshold": lambda v: 1 / v**2,
+    "collinear": lambda v: 1 / v**3,
+}
 
 
 def _reference_born(sectors: dict) -> dict:
@@ -326,9 +346,19 @@ def _reference_born(sectors: dict) -> dict:
 def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
     """D_s = factor * Born(born sector of s) per loop squared split order at
     every reference point (a garbage Born sector, e.g. MG5's uninitialised
-    JAMP, violates it at O(1)); the recorded MadLoop mismatch is reproduced."""
+    JAMP, violates it at O(1)); the recorded MadLoop mismatch is reproduced
+    and bounded: at regular ok points by REGULAR_IR_FLOOR (named outliers
+    excepted), at limit points by their family's binary64 condition. At
+    madloop_qp_point points the reference Born of every sector with a loop
+    partner IS that sector's double pole over the factor, so the per-sector
+    relation holds there by construction; the falsifiable quantity is the
+    printed binary64 Born's mismatch."""
     fixture = _fixture(run_id)
+    run = fixture["mqcd_run"]
     factor = fixture["universal_double_pole_factor"]
+    construction = fixture["point_construction"]
+    family = construction.get("family")
+    values = construction.get("family_values") or []
     for index, row in enumerate(fixture["rows"]):
         reference = row["reference"]
         sectors = row["sectors"]
@@ -368,6 +398,22 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
             assert mismatch == pytest.approx(
                 reference["born_double_pole_relative_mismatch"], rel=1e-6, abs=1e-300
             )
+        error = reference["max_sector_double_pole_relative_error"]
+        if construction.get("madloop_qp_point"):
+            if family in FAMILY_SENSITIVITY:
+                value = float(Fraction(values[index]))
+                bound = 1e3 * EPSILON * FAMILY_SENSITIVITY[family](value)
+            else:
+                bound = 1e3 * EPSILON
+            assert reference["born_double_pole_relative_mismatch"] <= bound, (
+                index,
+                bound,
+            )
+        else:
+            accuracy = max(s["accuracy"] for s in sectors["loop"])
+            note = run.get("reference_notes", {}).get(str(index), "")
+            if OUTLIER not in note:
+                assert error <= max(10 * accuracy, REGULAR_IR_FLOOR), (index, error)
 
 
 @pytest.mark.parametrize("run_id", RUN_IDS)
@@ -716,3 +762,54 @@ def test_parse_rows_without_sectors_reads_the_new_driver_output() -> None:
     assert rows[0]["finite"] == 2.0 and rows[0]["status"] == 216
     assert "sectors" not in rows[0] and "squared_split_orders" not in extra
     assert extra["initialization_calls"] == 1
+
+
+LOOP_MATRIX = """        ELSEIF(.NOT.DOING_QP_EVALS)THEN
+          CALL ML5_3_COMPUTE_ACCURACY(DP_RES,N_DP_EVAL,ACC,ANS)
+          IF(FPE_IN_DP_REDUCTION) THEN
+            ACC(0)=1.0D0
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            I_LIB=I_LIB+1
+            IF((I_LIB.GT.NLOOPLIB.OR.MLREDUCTIONLIB(I_LIB).EQ.0)
+"""
+
+
+def test_quadruple_stage_bypasses_only_the_double_precision_acceptance() -> None:
+    from tools.loop_reference import references
+
+    qp_test = "          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN\n            I_QP_LIB=I_QP_LIB+1\n"
+    text = qp_test + LOOP_MATRIX
+    forced = references.force_quadruple_stage(text, "ML5_3_")
+    assert forced.startswith(qp_test)  # the quadruple-precision test is MadLoop's own
+    assert "          IF(.TRUE.) THEN\n            I_LIB=NLOOPLIB+1\n" in forced
+    assert forced.count("MAXVAL(ACC).GE.MLSTABTHRES") == 1
+    with pytest.raises(RuntimeError, match="branch"):
+        references.force_quadruple_stage(text, "ML5_0_")
+    with pytest.raises(RuntimeError, match="acceptance"):
+        references.force_quadruple_stage(text.replace("I_LIB=I_LIB+1", "I_LIB=1"), "ML5_3_")
+
+
+def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None:
+    from tools.loop_reference import references
+
+    factor = -0.25
+    regular = {"status": 328, "born": 1.0, "double_pole": factor * (1.0 + 1e-16)}
+    suppressed = {"status": 328, "born": 4e-11, "double_pole": factor * 4.0001e-11}
+    vanishing = {"status": 328, "born": 1e-30, "double_pole": 0.0}
+    double = {"status": 216, "born": 0.5, "double_pole": factor * 0.5}
+    entries = [dict(e) for e in (regular, suppressed, vanishing, double)]
+    references.per_helicity_reference(entries, factor)
+    records = [e["reference"] for e in entries]
+    assert [r["comparison"] for r in records] == [
+        "relative",
+        "absolute",
+        "absolute",
+        "relative",
+    ]
+    assert entries[0]["born"] == regular["double_pole"] / factor
+    assert entries[0]["born_binary64_input"] == 1.0
+    assert records[3]["born_source"] == "madloop" and "born_binary64_input" not in entries[3]
+    summed = sum(abs(e["born"]) for e in entries)
+    assert records[1]["absolute_scale"] == records[2]["absolute_scale"] == summed
+    assert "suppressed" in records[1]["reason"] and "vanishing" in records[2]["reason"]

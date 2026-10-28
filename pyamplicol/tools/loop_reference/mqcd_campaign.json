@@ -1409,7 +1409,12 @@
    "second_providers": [
     "openloops"
    ],
-   "second_provider_trigger": "\u00a74.1: rule 1 (DD against MadLoop) exceeded 1e-12 at points 0, 2, 3 (mq-validate finding F3: MadLoop's CutTools quadruple-precision values, return code 329, 3.5e-12 .. 1.2e-11 off); the installed ppjjjj library, no installation; outcome recorded in the fixture's provider pairs"
+   "second_provider_trigger": "\u00a74.1: rule 1 (DD against MadLoop) exceeded 1e-12 at points 0, 2, 3 (mq-validate finding F3: MadLoop's CutTools quadruple-precision values, return code 329, 3.5e-12 .. 1.2e-11 off); the installed ppjjjj library, no installation; outcome recorded in the fixture's provider pairs",
+   "reference_notes": {
+    "0": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 3.5e-13 (OpenLoops 3.5e-14); MadLoop - OpenLoops (ppjjjj, binary64): finite 4.0e-12, double pole 3.1e-13; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)",
+    "2": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 1.1e-12 (OpenLoops 1.2e-13); MadLoop - OpenLoops (ppjjjj, binary64): finite 5.2e-12, double pole 1.2e-12; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)",
+    "3": "OUTLIER (rule 1): MadLoop's quadruple-precision stage takes CutTools (return code 329, accuracy 0.0) and misses its own universal double pole by 3.5e-13 (OpenLoops 4.7e-14); MadLoop - OpenLoops (ppjjjj, binary64): finite 1.4e-11, double pole 4.0e-13; mq-validate F3: OpenLoops = DD to 5.5e-13 / 1.2e-12 / 2.6e-12 at points 0 / 2 / 3, so no provider is a 1e-12 reference at points 2, 3 (ruling routed to the user via the coordinator)"
+   }
   },
   {
    "id": "uux_ddxssx_sectors",
