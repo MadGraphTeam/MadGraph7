@@ -690,7 +690,8 @@ class ObservableSlice:
     ``correlators`` declares directed colour histories and spin classes as the
     public ``CorrelatorConfig`` does; ``ward`` prepares the asymmetric Ward
     mode. Spin classes and the Ward mode generate the slice on the full tree
-    kernels.
+    kernels. ``generate(native_inputs=True)`` is ``LoopSlice.generate``'s:
+    the caller stores the native point inputs.
     """
 
     slice: LoopSlice
@@ -718,6 +719,7 @@ class ObservableSlice:
         *,
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
+        native_inputs: bool = False,
     ) -> ObservableSlice:
         correlators = correlators or CorrelatorConfig()
         full = bool(correlators.spin_correlations) or ward
@@ -727,7 +729,9 @@ class ObservableSlice:
             compiled = compile_tree_kernel_variant(compiled, "full")
         # LC/NLC colour histories prune with their own seed tables (``of``).
         prune = not correlators.color_correlations
-        slice_ = LoopSlice.generate(compiled, request, native, prune=prune)
+        slice_ = LoopSlice.generate(
+            compiled, request, native, prune=prune, native_inputs=native_inputs
+        )
         return cls.of(slice_, correlators=correlators, ward=ward)
 
     @classmethod
