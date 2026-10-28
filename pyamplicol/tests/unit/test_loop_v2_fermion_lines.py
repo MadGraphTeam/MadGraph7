@@ -22,8 +22,8 @@ Born and every Laurent coefficient within 1e-12, strictly relative per
 coefficient, and its poles equal Catani's within 1e-12. LC, NLC and full
 colour of three distinct lines are consistent: the projected slices are the
 sums of their kept N_c powers of the exact colour cells, and all powers sum
-to full colour; identical-flavour lines are refused at LC and NLC (their
-blocks mix U(1)-subtraction grades; strict xfail). The
+to full colour; identical-flavour lines are refused at LC and NLC at
+generation (their blocks mix U(1)-subtraction grades; strict xfail). The
 2->4 requests run in the nightly tier; the physics tier keeps a 2->3 control
 (u u~ > u u~ g, two identical-flavour lines).
 """
@@ -32,11 +32,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
+
+from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
 REQUIRED = Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "required"
 LAURENT = ("finite", "single_pole", "double_pole")
@@ -156,15 +157,15 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
 # Identical-flavour lines mix U(1)-subtraction grades inside one block (a
 # current derived as quark a + gluon (b~, b) and as the U(1)-subtraction
 # auxiliary (a, b~) + quark b, the Fermi-exchanged pairing; from u u~ > u u~ g
-# up), so their tree currents are not N_c-exact and LC/NLC are refused
-# (``SeedTable.seeds``, design §3.3 "Coloured fermion lines"): open. The test
-# re-raises only that refusal (message pinned), so any other error fails it.
+# up), so their tree currents are not N_c-exact and LC/NLC are refused at
+# generation (``refusals``, key ``colour-accuracy-nc-exact``; design §3.3
+# "Coloured fermion lines"): open. The test re-raises only that refusal (key
+# pinned), so any other error fails it.
 _MIXED_GRADES = pytest.mark.xfail(
     strict=True,
-    raises=ValueError,
+    raises=LoopRequestUnsupported,
     reason="identical-flavour blocks mix U(1)-subtraction grades (not N_c-exact)",
 )
-_MIXED_GRADE_REFUSAL = "{} seeds need N_c-exact tree currents; "
 
 
 @pytest.mark.loop_nightly
@@ -211,11 +212,10 @@ def test_colour_projections_are_formal_nc_projections(
     parameters = reference["parameters"]
     point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
     if mixed_grades:
-        # The projected slice is generated; its first evaluation refuses.
-        refusal = "^" + re.escape(_MIXED_GRADE_REFUSAL.format(accuracy.upper()))
-        projected = build(accuracy)
-        with pytest.raises(ValueError, match=refusal) as refused:
-            projected.evaluate(point, scale, parameters=parameters)
+        # Refused at generation, before any family or export.
+        with pytest.raises(LoopRequestUnsupported) as refused:
+            build(accuracy)
+        assert refused.value.key == "colour-accuracy-nc-exact"
         raise refused.value
     projected, unpruned, full = build(accuracy), build("lc", prune=False), build("full")
     degrees = unpruned.degrees()

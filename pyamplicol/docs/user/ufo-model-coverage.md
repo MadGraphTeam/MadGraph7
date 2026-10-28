@@ -227,6 +227,21 @@ carry a `ValueError` message instead of a code; they are marked below.
 | Correlated Born evaluations | conditional | compiled full-colour generation with complete coverage; spin replacements on vector legs only. |
 | Numerical current reuse | conditional | off by default; `--numerical-current-reuse` enables the certified search for compiled, eager and recurrence generation. |
 
+## One-loop (v2) generation refusals
+
+A one-loop v2 request is refused at generation, with a typed error whose
+message starts with the rule's key and names the rule and the remedy, rather
+than stored with a value it does not compute exactly. `generate --dry-run
+--json` lists the keys (`estimated_coverage.loop_admission_refusals` and
+`native_export_refusals`).
+
+| Feature | Status | Condition and consequence |
+| --- | --- | --- |
+| LC/NLC of tree currents not exact in N_c | rejected | `colour-accuracy-nc-exact`: leading and next-to-leading colour of blocks whose trees mix U(1)-subtraction grades (identical-flavour quark lines from `u u~ > u u~ g` up), right after the trees are built; full colour is exact, and `u u~ > u u~` and distinct flavours are unaffected. |
+| Fermion line changing colour representation | rejected | `fermion-line-representation`: a vertex joining a coloured and a colour-singlet fermion (a leptoquark) that a tree or loop of the request can use, named, before any tree is built; veto one of its particles or bound its coupling order. |
+| On-shell external photons with electroweak corrections | rejected | `external-photon-alpha0`: their alpha(0) convention is not part of the stored native programs yet; refused as soon as it is known. QCD corrections are available. |
+| SymJIT plane check | conditional | `plane-mismatch`: a stored program whose binary64 SymJIT application disagrees with its exact evaluator at the generation's check (seen for square-root arguments on their branch cut, which depends on the model's parameter declaration order) is refused, naming the output (a model coupling by its UFO coupling and vertex, a counterterm coupling with its epsilon power, or a kernel); e.g. `g g > t t~` with QCD and QED corrections on `loop_qcd_qed_sm_Gmu` (its `UV_GTTLEW` counterterm). |
+
 ## Related pages
 
 - [Models and Processes](models-and-processes.md) for the model workflow and

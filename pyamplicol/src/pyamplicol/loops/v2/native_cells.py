@@ -438,12 +438,16 @@ def project_records(
     Python cells); ``threads`` selects a private pool (None: the global
     one; the bytes do not depend on it)."""
 
+    from .refusals import require_formal_nc_tables
+
     seeds = list(seeds)
     accuracy = slice_.request.accuracy
     born_grades = slice_._born_grades()
     distinct: dict[int, Any] = {}
     for column in columns:
         distinct.setdefault(id(column.table), column.table)
+    # Projected at formal N_c only over N_c-exact blocks (``refusals``).
+    require_formal_nc_tables(accuracy, distinct.values(), "native seed records")
     orders: set[Orders] = {order for _c, order in seeds}
     orders |= {a for _b, a in born_grades} | {a for _b, a, _g in born_components}
     for table in distinct.values():

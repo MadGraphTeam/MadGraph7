@@ -177,6 +177,7 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
+from .refusals import require_colour_preserving_fermion_lines, require_nc_exact
 from .schedules import (
     STRUCTURED,
     LoopSchedules,
@@ -1723,14 +1724,31 @@ class LoopSlice:
 
     @classmethod
     def generate(
-        cls, compiled: Any, request: SliceRequest, native: Any, *, prune: bool = True
+        cls,
+        compiled: Any,
+        request: SliceRequest,
+        native: Any,
+        *,
+        prune: bool = True,
+        native_inputs: bool = False,
     ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
         ``compiled`` is the compiled loop model and ``native`` the staged loop
         core (``loops.native.load_loop_native``). ``prune=False`` defers the
         LC/NLC colour pruning to the caller (``_prune_colour`` with the seed
-        tables of further observables).
+        tables of further observables). ``native_inputs`` tells that the
+        caller exports the slice's native point inputs (a stored plan v4
+        process, ``artifact.generate_process``): a listed feature their export
+        does not cover (``native_trees.NATIVE_EXPORT_REFUSALS``) is then refused
+        (``NativeExportUnsupported``) as soon as it is known, before the
+        trees are built.
+
+        Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
+        typed ``LoopRequestUnsupported``) are raised before the structures they
+        concern are used: a vertex joining fermions of different sign
+        ownership before any tree, LC/NLC over tree blocks that are not exact
+        in N_c right after the trees.
         """
 
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
@@ -1770,11 +1788,35 @@ class LoopSlice:
             photons = ew_policy.external_photon_scheme(
                 compiled, request, process, fixed, structure.perturbative_species_orders
             )
+            if photons is not None and native_inputs:
+                from .native_trees import NativeExportUnsupported
+
+                # The native inputs form the Born and the counterterm and
+                # field components with the loops' coupling throughout
+                # (``plan_export.export_plan``): refused before any tree.
+                raise NativeExportUnsupported(
+                    "external-photon-alpha0",
+                    f"{request.process!r}: the on-shell external photons (legs "
+                    f"{list(photons.legs)}) take the alpha(0) convention, whose "
+                    "scale and conversion term the native point inputs do not "
+                    "form",
+                )
             # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
             # loop lines and counterterms of a request with electroweak loop
             # species take 't Hooft-Feynman gauge with explicit Goldstones
             # and ghosts; QCD-only requests keep the model's gauge.
             compiled = ew_policy.feynman_gauge_model(compiled, request)
+        # A fermion line that changes colour representation (a vertex joining
+        # a coloured and a colour-singlet fermion that a tree or a loop of the
+        # request can use) has no sign in the blocks' conventions: refused
+        # before any tree (``refusals``, listed).
+        require_colour_preserving_fermion_lines(
+            compiled,
+            process,
+            order_limits=(dict(request.born_orders), _block_order_bounds(request)),
+            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+            loop_species=_correction_species(structure, request),
+        )
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
@@ -1810,6 +1852,10 @@ class LoopSlice:
             # model-supplied propagator) take the full tree kernels: the
             # transverse Yang-Mills ones are then not the Feynman rules
             # (design §3.2 item 2, §6.1). Everything below uses that model.
+            # LC and NLC need N_c-exact tree blocks: refused before any family
+            # or export (``refusals``, listed; every block set the slice uses
+            # passes here).
+            require_nc_exact(blocks, request.accuracy, request.process)
             blocks, kernels = with_ward_kernels(blocks, model, fixed)
             table = blocks.block_table(data)
             if native_families:
@@ -1900,6 +1946,8 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
+            # Its root terms close on its blocks with their N_c grades too.
+            require_nc_exact(program.blocks.blocks, request.accuracy, request.process)
         sites = (
             # The O6 oracle: every rule closed at sites, witness admission.
             generate_counterterm_sites(
@@ -4189,6 +4237,22 @@ def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
     )
     pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
     return tuple(sorted(pdg[name] for name in names))
+
+
+def _correction_species(structure: Any, request: SliceRequest) -> tuple[int, ...]:
+    """PDG codes (both charge states) of the species perturbative in a
+    requested correction (``perturbative_species_orders``, keyed by |PDG|):
+    the loop lines' species before the catalogue is built."""
+
+    corrections = set(request.corrections)
+    return tuple(
+        sorted(
+            sign * abs(int(pdg))
+            for pdg, orders in structure.perturbative_species_orders.items()
+            if corrections & set(orders)
+            for sign in (1, -1)
+        )
+    )
 
 
 def _eligible_loop_species(
