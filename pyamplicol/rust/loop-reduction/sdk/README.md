@@ -38,43 +38,7 @@ cc -std=c11 examples/client.c -Iinclude /path/to/librusticol_capi.a \
 ```
 
 Those system libraries describe this tested host; use the installed SDK link
-metadata on another platform.
-
-## glibc floor (Linux)
-
-The shared library `librusticol_loop_sdk.so` of a release native build
-(`tools/developer/build_loop_native.py`) needs **glibc 2.42 or newer**: it may
-require `GLIBC_ABI_GNU2_TLS` (TLS descriptors), which glibc 2.42 introduced
-(the same holds for the Python extension `_rusticol.so`). `readelf -V
-librusticol_loop_sdk.so` lists the requirements of a given build. A client linked
-against it on an older glibc links without complaint and is stopped by the
-dynamic loader before `main`:
-
-```text
-./client: .../libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so)
-```
-
-That message means this floor: build and run the client on a system with
-glibc >= 2.42 (`ldd --version`), or link the static archive instead. A program
-linking `librusticol_loop_sdk.a` (or the wheel's `librusticol_capi.a`) does not
-carry the floor; it is checked against the glibc of the host that links it,
-at link time (a C client linked on glibc 2.40 runs there). C and C++ clients of
-the shared library can stop at compile time instead: define
-`RUSTICOL_VIRTUAL_SHARED`, and `rusticol_virtual.h` refuses a toolchain whose
-glibc is older than `RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.MINOR` with an
-`#error` that names the floor:
-
-```sh
-cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
-  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -o client
-```
-
-Fortran has no such hook (the module is not preprocessed): rely on the loader
-message above. From Python, `import pyamplicol._rusticol` checks the running
-glibc against the library's own requirements first and raises
-`pyamplicol.NativePlatformError` (required and found versions, remedy); code that
-opens the shared library with `ctypes` can call
-`pyamplicol._native_loader.check_native_library(path)` before it. The Rust clients use the single-file wrapper, so
+metadata on another platform. The Rust clients use the single-file wrapper, so
 their Cargo example targets link the same combined archive:
 
 ```sh
@@ -342,3 +306,61 @@ source labels (`spin_legs_json` in wrappers, `spin_legs` in the Cargo API).
 the same saved artifact without regenerating diagrams. The C client additionally
 checks UMAMI source offset/stride layouts, literal complex scaling, short buffers
 and output/result lifetimes.
+
+## glibc floor (Linux)
+
+The shared library `librusticol_loop_sdk.so` of a release native build
+(`tools/developer/build_loop_native.py`) may require the glibc version
+`GLIBC_ABI_GNU2_TLS` (TLS descriptors); `readelf -V librusticol_loop_sdk.so`
+lists the requirements of a given build. glibc 2.43 and newer define that
+version, and so do glibc 2.42 builds that include the stable-branch update
+adding it; the glibc 2.42 release itself does not. The floor is therefore
+glibc 2.42 with that update (the same holds for the Python extension
+`_rusticol.so`). `readelf -V` of a system's `libc.so.6` shows whether it
+defines `GLIBC_ABI_GNU2_TLS`. A client linked against the shared library on an
+older glibc links without complaint and is stopped by the dynamic loader
+before `main`:
+
+```text
+./client: .../libc.so.6: version `GLIBC_ABI_GNU2_TLS' not found (required by .../librusticol_loop_sdk.so)
+```
+
+That message means this floor: build and run the client on a system whose
+glibc defines `GLIBC_ABI_GNU2_TLS` (`ldd --version` shows the release).
+
+The static archives behave differently for executables and shared objects:
+
+- An *executable* that links `librusticol_loop_sdk.a` (or the wheel's
+  `librusticol_capi.a`) does not carry the floor: the linker turns the TLS
+  descriptors into direct accesses, so the program needs only the glibc of the
+  host that links it (a C or Fortran client linked on glibc 2.40 runs there).
+- A *shared object* that links the archive (an event generator's plug-in, or
+  the UMAMI adapter built with `-shared`) keeps the TLS descriptors. Linked on
+  a glibc that defines `GLIBC_ABI_GNU2_TLS`, it requires that version and has
+  the same floor. Linked on an older toolchain, it keeps the descriptors
+  without the requirement, so a glibc lacking the TLS-descriptor fix the
+  version stands for (glibc bug 31372) is no longer refused at load and may
+  fail at run time instead. Link such shared objects on a glibc that defines
+  `GLIBC_ABI_GNU2_TLS` (2.43 or newer, or 2.42 with that update).
+
+C and C++ clients of the shared library can stop at compile time instead:
+define `RUSTICOL_VIRTUAL_SHARED`, and `rusticol_virtual.h` refuses a toolchain
+whose glibc release is older than
+`RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.MINOR` (2.42) with an `#error` that names
+the floor. It compares release numbers only (`__GLIBC__`, `__GLIBC_MINOR__`),
+so it cannot tell whether a 2.42 build includes the update:
+
+```sh
+cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
+  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -o client
+```
+
+Fortran has no such hook (the module is not preprocessed): rely on the loader
+message above. From Python, `import pyamplicol._rusticol` checks the running
+glibc against the library's own requirements first (its release, and whether
+its `libc.so.6` defines `GLIBC_ABI_GNU2_TLS`) and raises
+`pyamplicol.NativePlatformError` with the required and the running version and
+the remedy. pyAmpliCol does not open `librusticol_loop_sdk.so` from Python;
+code that opens it with `ctypes` gets the dynamic loader's `OSError` (the check
+pyAmpliCol runs, in `pyamplicol._native_loader`, is internal, not a public
+API).

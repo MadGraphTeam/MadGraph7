@@ -245,6 +245,7 @@ def test_loader_version_errors_become_the_typed_error(monkeypatch, tmp_path) -> 
     assert "requires glibc >= 2.42 (it needs the ELF version GLIBC_ABI_GNU2_TLS, " in (
         str(error)
     )
+    assert "added it; the glibc 2.42 release does not), but this process" in str(error)
     assert "glibc 2.43 or newer, or an updated glibc 2.42 build" in str(error)
     assert "but this process runs glibc 2.40. Run it on" in str(error)
 
@@ -258,10 +259,9 @@ def test_loader_version_errors_become_the_typed_error(monkeypatch, tmp_path) -> 
     assert text.startswith(
         "Native library /opt/pyamplicol/librusticol_loop_sdk.so needs the ELF "
         "version GLIBC_ABI_GNU2_TLS, which glibc 2.43 and newer define, as do "
-        "glibc 2.42 builds with the stable-branch update that added it, but not "
-        "the glibc 2.42 release, but this process runs glibc 2.42, which does "
-        "not define it. Update this system's glibc (glibc 2.43 or newer, or an "
-        "updated glibc 2.42 build)"
+        "glibc 2.42 builds with the stable-branch update that added it, but "
+        "this process runs glibc 2.42, which does not define it. Update this "
+        "system's glibc (glibc 2.43 or newer, or an updated glibc 2.42 build)"
     ), text
     assert "requires glibc >= 2.42" not in text
 

@@ -318,7 +318,7 @@ def _error(
     marker = GLIBC_ABI_MARKERS.get(version_name)
     floor = None if required is None else _version(required)
     lacking = found is not None and required is not None and _release(found) >= required
-    defined_by = ""
+    defined_by = release_note = ""
     if floor is None:
         needs = f"a glibc that provides the ELF version {version_name}"
         newer = "a newer glibc"
@@ -326,9 +326,9 @@ def _error(
         release, earliest = _version(marker.release), _version(marker.earliest)
         defined_by = (
             f", which glibc {release} and newer define, as do glibc {earliest} "
-            "builds with the stable-branch update that added it, but not the "
-            f"glibc {earliest} release"
+            "builds with the stable-branch update that added it"
         )
+        release_note = f"; the glibc {earliest} release does not"
         needs = f"glibc >= {floor}"
         newer = f"glibc {release} or newer, or an updated glibc {earliest} build"
     else:
@@ -369,7 +369,10 @@ def _error(
     elif floor is None:
         what = f"requires {needs}"
     else:
-        what = f"requires {needs} (it needs the ELF version {version_name}{defined_by})"
+        what = (
+            f"requires {needs} (it needs the ELF version {version_name}"
+            f"{defined_by}{release_note})"
+        )
     message = f"{subject} {what}, but {running}. {remedy}"
     if loader_message:
         message += f" The dynamic loader reported: {loader_message}"
