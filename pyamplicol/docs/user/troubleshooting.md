@@ -262,8 +262,9 @@ needs the ELF version GLIBC_ABI_GNU2_TLS, ...), but this process runs glibc
 ```
 
 The installed native libraries need a glibc version this system does not
-provide, and pyAmpliCol refuses them before loading (also on a C library that
-is not glibc). The release native libraries built from a checkout with
+provide: pyAmpliCol refuses an older glibc release (or a C library that is not
+glibc) before loading them, and turns the dynamic loader's refusal of a glibc
+build that lacks a required version into the same error. The release native libraries built from a checkout with
 `tools/developer/build_loop_native.py` can need `GLIBC_ABI_GNU2_TLS`, which
 glibc 2.43 and newer define, as do glibc 2.42 builds with the stable-branch
 update that added it (the glibc 2.42 release does not: the message then says

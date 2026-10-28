@@ -79,11 +79,9 @@ program shows the `libc.so.6` it uses).
 
 pyAmpliCol checks this when it loads the extension. Before
 `pyamplicol._rusticol` is opened, it compares the newest glibc release the file
-requires with the running one and checks that the running `libc.so.6` defines
-each `GLIBC_ABI_*` version the file requires. An older glibc, or a 2.42 build
-without the update, fails cleanly at load time with
-`pyamplicol.NativePlatformError` (a `DependencyError`) instead of the dynamic
-loader's raw message:
+requires (2.42 for `GLIBC_ABI_GNU2_TLS`) with the running one. An older glibc
+fails cleanly at load time with `pyamplicol.NativePlatformError` (a
+`DependencyError`) instead of the dynamic loader's raw message:
 
 ```text
 pyamplicol.api.errors.NativePlatformError: Native library
@@ -97,8 +95,12 @@ that they link against its glibc (see 'Native libraries and glibc' in
 docs/user/installation.md).
 ```
 
-On a glibc 2.42 without the update, the message says instead that this
-process runs glibc 2.42, "which does not define it", and asks to update glibc.
+A release number cannot tell whether a glibc 2.42 build includes the update:
+on one without it, the dynamic loader refuses the library in its version check,
+before any of its code runs, and that refusal becomes the same
+`NativePlatformError`; its message says that this process runs glibc 2.42,
+"which does not define it", asks to update glibc, and ends with the loader's
+text.
 
 The error's attributes carry the same facts: `library`, `required` (the oldest
 glibc release that can provide the version, `"2.42"`), `found` (the running

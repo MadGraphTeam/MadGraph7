@@ -36,7 +36,8 @@ review.
   `GenerationError`, `ArtifactError`, `CompatibilityError`,
   `EvaluationError`, `DependencyError`, and `NativePlatformError` (a
   `DependencyError`: the running glibc lacks a version a native library
-  needs; raised before the library is loaded).
+  needs; raised before the library is loaded, or in place of the dynamic
+  loader's missing-version error).
 
 No DAG, evaluator, stage, color-sector, Symbolica, or legacy-reference class is
 exported from the package root.

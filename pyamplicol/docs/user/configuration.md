@@ -556,17 +556,8 @@ counterterm vertex of the model, two-point ones included, is an ordinary tree
 vertex inserted exactly once per contribution, within the requested coupling
 orders, and is not matched to the loops. The
 default `engine = "legacy"` keeps the per-diagram engine, which remains
-available as an oracle. On Linux, the native libraries built from a checkout
-with `tools/developer/build_loop_native.py` (`_rusticol.so`,
-`librusticol_loop_sdk.so`) can need glibc 2.42 with the stable-branch update
-that defines `GLIBC_ABI_GNU2_TLS`, or glibc 2.43 or newer; the manylinux 2.28
-wheels need glibc 2.28. On a glibc that lacks what the installed library
-needs, importing it from Python fails at once with `NativePlatformError`
-naming the required and the running version, and C, C++ or Fortran programs
-linked against `librusticol_loop_sdk.so` are stopped by the dynamic loader
-with ``version `GLIBC_ABI_GNU2_TLS' not found`` (see
-[Native libraries and glibc](installation.md#native-libraries-and-glibc)).
-A v2 evaluation can skip the poles and return stability estimates:
+available as an oracle. A v2 evaluation can skip the poles and return
+stability estimates:
 
 ```toml
 [evaluation]
@@ -651,6 +642,16 @@ for collider energies), or `double-double`. In any units, a final-state leg
 within about 1e-3 rad of the z axis can lose up to about 1e-5 of relative
 accuracy silently; use a rotation or the reduction-direction check for such
 kinematics.
+
+**Native libraries and glibc.** On Linux, the native libraries built from a
+checkout with `tools/developer/build_loop_native.py` (`_rusticol.so`,
+`librusticol_loop_sdk.so`) can need glibc 2.42 with the stable-branch update
+that defines `GLIBC_ABI_GNU2_TLS`, or glibc 2.43 or newer; the manylinux 2.28
+wheels need glibc 2.28. Below that, importing the extension fails at once with
+`NativePlatformError` naming the required and the running version, and C, C++
+or Fortran programs linked against `librusticol_loop_sdk.so` are stopped by the
+dynamic loader with ``version `GLIBC_ABI_GNU2_TLS' not found``; see
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
 
 #### Ultraviolet and infrared poles
 
