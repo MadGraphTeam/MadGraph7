@@ -81,11 +81,16 @@ struct Lanes {
 }
 
 fn lanes(family: &Family, points: &[[f64; 3]], ids: &[u64], arithmetic: &str) -> Lanes {
+    let points: Vec<_> = points.iter().map(|&direction| momenta(direction)).collect();
+    lanes_at(family, &points, ids, arithmetic)
+}
+
+/// [`lanes`] at the given external momenta (legs 0 and 1 incoming).
+fn lanes_at(family: &Family, points: &[[[f64; 4]; 4]], ids: &[u64], arithmetic: &str) -> Lanes {
     let n = family.legs.len();
     let width = tensor_monomials(family.rank).len();
     let (mut shifts, mut matrix, mut coefficients) = (vec![], vec![], vec![]);
-    for (point, &direction) in points.iter().enumerate() {
-        let p = momenta(direction);
+    for (point, &p) in points.iter().enumerate() {
         let mut v = [0.0_f64; 4];
         let mut vectors = vec![];
         for legs in &family.legs {
@@ -1026,5 +1031,280 @@ fn a_routed_lane_fails_as_the_generic_engine_does() {
             .iter()
             .chain(&extended.1[0])
             .all(|s| s == "success")
+    );
+}
+
+/// The tensor numerator `Σ_k c_k q^α_k` of rank `rank` and its parameters.
+fn tensor_numerator(rank: usize) -> ([String; 3], Vec<String>) {
+    let monomials = tensor_monomials(rank);
+    let names: Vec<_> = (0..monomials.len()).map(|k| format!("c{k}")).collect();
+    let numerator = monomials
+        .iter()
+        .zip(&names)
+        .map(|(alpha, name)| {
+            let mut term = name.clone();
+            for (variable, power) in ["q0", "q1", "q2", "q3"].iter().zip(alpha) {
+                term += &format!("*{variable}^{power}");
+            }
+            term
+        })
+        .collect::<Vec<_>>()
+        .join("+");
+    ([numerator, "0".into(), "0".into()], names)
+}
+
+fn legacy_plan(lanes: &Lanes, engine: &str) -> PolynomialPlan {
+    let (numerator, names) = tensor_numerator(lanes.rank);
+    PolynomialPlan::new(lanes.n, numerator, names, "double", None, engine).unwrap()
+}
+
+fn legacy_reduce(
+    plan: &mut PolynomialPlan,
+    lanes: &Lanes,
+    matrix: bool,
+) -> rusticol_loop_reduction::runtime::ReductionBatch {
+    plan.evaluate_batch(
+        &lanes.shifts,
+        &lanes.masses,
+        &lanes.scales,
+        &lanes.coefficients,
+        matrix.then_some(&lanes.matrix),
+    )
+    .unwrap()
+}
+
+/// Two lane sets of one `(n, rank)` as one call, `a`'s lanes first.
+fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
+    assert_eq!((a.n, a.rank), (b.n, b.rank));
+    let join = |x: &Batch, y: &Batch| {
+        let mut ids = x.ids().to_vec();
+        ids.extend_from_slice(y.ids());
+        let mut entries = complex_decimal(&values(x));
+        entries.extend(complex_decimal(&values(y)));
+        Batch::from_decimal(
+            entries,
+            x.rows() + y.rows(),
+            x.columns(),
+            "double",
+            None,
+            Some(ids),
+        )
+        .unwrap()
+    };
+    Lanes {
+        n: a.n,
+        rank: a.rank,
+        shifts: join(&a.shifts, &b.shifts),
+        masses: join(&a.masses, &b.masses),
+        scales: join(&a.scales, &b.scales),
+        matrix: join(&a.matrix, &b.matrix),
+        coefficients: join(&a.coefficients, &b.coefficients),
+    }
+}
+
+/// The legacy engine's binary64 fast plans (`PolynomialPlan` `fast` and
+/// `fast-tensor`; the default `loop.engine`) route by the same rule: light
+/// lanes give the legacy generic binary64 plan's bits, with the invariant
+/// matrix and without it (then formed from the shifts), not the massless
+/// lines' integrals the snap computed; the lanes of an ordinary family keep
+/// the fast plan's bits beside them in one call, and a call without a light
+/// lane routes nothing.
+#[test]
+fn the_legacy_fast_plans_route_light_lanes_to_their_generic_plan() {
+    let light = family_lanes(&light_families(), 300, "double");
+    let massless: Vec<Family> = light_families()
+        .into_iter()
+        .map(|f| Family {
+            masses: f
+                .masses
+                .iter()
+                .map(|&m| if m == LIGHT { 0. } else { m })
+                .collect(),
+            ..f
+        })
+        .collect();
+    let massless = family_lanes(&massless, 300, "double");
+    let singular = [true, true, false, true];
+    let dd = family_lanes(&light_families(), 300, "double-double");
+    let mut reference = V2Reducer::new("double-double", None, "generic", true).unwrap();
+    let dd = reduce(&mut reference, &dd, ReductionFrame::REVERSED);
+    for (index, lanes) in light.iter().enumerate() {
+        let want = values(&dd.direct[index].values().unwrap());
+        for matrix in [true, false] {
+            let generic = values(
+                &legacy_reduce(&mut legacy_plan(lanes, "generic"), lanes, matrix)
+                    .values()
+                    .unwrap(),
+            );
+            for engine in ["fast", "fast-tensor"] {
+                let mut plan = legacy_plan(lanes, engine);
+                let got = values(&legacy_reduce(&mut plan, lanes, matrix).values().unwrap());
+                assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64, "{engine}");
+                assert_eq!(got, generic, "family {index}, {engine}, matrix {matrix}");
+                let error = relative(&got, &want, 3);
+                assert!(error < 1e-12, "family {index}, {engine}: {error:e}");
+                if singular[index] {
+                    let snapped = values(
+                        &legacy_reduce(&mut plan, &massless[index], matrix)
+                            .values()
+                            .unwrap(),
+                    );
+                    assert_eq!(plan.take_exact_lanes(), 0);
+                    assert!(relative(&snapped, &want, 3) > 1e-3, "family {index}");
+                }
+            }
+        }
+    }
+    // An ordinary box beside the light box in one call.
+    let heavy = &all_lanes("double")[0];
+    let mixed = concatenated(heavy, &light[2]);
+    for engine in ["fast", "fast-tensor"] {
+        let mut alone = legacy_plan(heavy, engine);
+        let reference = values(&legacy_reduce(&mut alone, heavy, true).values().unwrap());
+        assert_eq!(alone.take_exact_lanes(), 0);
+        let mut plan = legacy_plan(&mixed, engine);
+        let got = legacy_reduce(&mut plan, &mixed, true);
+        assert_eq!(plan.take_exact_lanes(), POINTS.len() as u64);
+        let ids: Vec<u64> = got.statuses().iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, mixed.coefficients.ids());
+        let got = values(&got.values().unwrap());
+        assert_eq!(got[..reference.len()], reference[..], "{engine}");
+        let light_generic = values(
+            &legacy_reduce(&mut legacy_plan(&light[2], "generic"), &light[2], true)
+                .values()
+                .unwrap(),
+        );
+        assert_eq!(got[reference.len()..], light_generic[..], "{engine}");
+    }
+}
+
+/// Coefficients of `Π_j (q·a_j + b_j)` (Minkowski product, rank = the number
+/// of factors) in the tensor layout of `tensor_monomials(rank)`.
+fn product_numerator(factors: &[([f64; 4], f64)]) -> Vec<[f64; 2]> {
+    use std::collections::HashMap;
+    let mut polynomial: HashMap<[u32; 4], f64> = HashMap::from([([0; 4], 1.)]);
+    for (a, b) in factors {
+        let mut next: HashMap<[u32; 4], f64> = HashMap::new();
+        for (alpha, c) in &polynomial {
+            *next.entry(*alpha).or_default() += c * b;
+            for mu in 0..4 {
+                let mut beta = *alpha;
+                beta[mu] += 1;
+                let metric = if mu == 0 { 1. } else { -1. };
+                *next.entry(beta).or_default() += c * metric * a[mu];
+            }
+        }
+        polynomial = next;
+    }
+    tensor_monomials(factors.len())
+        .iter()
+        .map(|alpha| [polynomial.get(alpha).copied().unwrap_or(0.), 0.])
+        .collect()
+}
+
+/// A rotation of the three-vector part (about x by 0.3, then about y by 0.7).
+fn rotated(p: &[f64; 4]) -> [f64; 4] {
+    let (c, s) = (0.3_f64.cos(), 0.3_f64.sin());
+    let (y, z) = (c * p[2] - s * p[3], s * p[2] + c * p[3]);
+    let (c, s) = (0.7_f64.cos(), 0.7_f64.sin());
+    let (x, z) = (c * p[1] + s * z, -s * p[1] + c * z);
+    [p[0], x, y, z]
+}
+
+/// Ninja's light-like spinor branch (`ninjars fast/geometry.rs:65-73` at
+/// 41a4c00; DESIGN §11.2 'Other thresholds on the binary64 path'): a cut
+/// basis vector with `|p⁰ ∓ p³| < infrared_eps` (absolute, `1e-9` in the
+/// model's units) takes the spinor of the beam axis, dropping its transverse
+/// momentum (up to `√(2E·1e-9)`). Not routed: no mass or invariant is near a
+/// threshold. A massless box whose outgoing legs are `1e-6` from the beam
+/// axis at `E = 500` (`p⁰ - p³ = 2.5e-10`), with a rank-3 numerator built
+/// from four-vectors, against the same lanes rotated (momenta and numerator
+/// vectors): the generic engine agrees with DoubleFloat in both frames, the
+/// fast engine only in the rotated one, and the difference of the two fast
+/// frames is the fast engine's error, so a rotation check sees it.
+#[test]
+fn a_rotation_check_sees_the_lightlike_spinor_branch() {
+    let (energy, angle) = (500_f64, 1e-6_f64);
+    let point = [
+        [energy, 0., 0., energy],
+        [energy, 0., 0., -energy],
+        [energy, energy * angle.sin(), 0., energy * angle.cos()],
+        [energy, -energy * angle.sin(), 0., -energy * angle.cos()],
+    ];
+    assert!(point[2][0] - point[2][3] < ninjars::fast::FastOptions::default().infrared_eps);
+    let factors = [
+        ([1.3, 0.2, -0.7, 0.4], 2.0e2),
+        ([0.5, -1.1, 0.3, 0.9], -1.5e2),
+        ([0.8, 0.6, 1.2, -0.3], 0.7e2),
+    ];
+    let family = Family {
+        legs: vec![vec![0], vec![1], vec![2], vec![3]],
+        masses: vec![0.; 4],
+        rank: 3,
+    };
+    let frame = |rotate: bool, arithmetic: &str| {
+        let r = |p: &[f64; 4]| if rotate { rotated(p) } else { *p };
+        let momenta = point.map(|p| r(&p));
+        let mut lanes = lanes_at(&family, &[momenta], &[7], arithmetic);
+        // The massless legs on their shells exactly, as the executor binds
+        // them (DESIGN §11.1): no invariant near a threshold.
+        let n = family.legs.len();
+        let mut matrix = values(&lanes.matrix);
+        for i in 0..n {
+            for j in [(i + 1) % n, (i + n - 1) % n] {
+                matrix[i * n + j] = [0., 0.];
+            }
+        }
+        lanes.matrix = Batch::from_decimal(
+            complex_decimal(&matrix),
+            1,
+            n * n,
+            arithmetic,
+            None,
+            Some(vec![7]),
+        )
+        .unwrap();
+        let coefficients = product_numerator(&factors.map(|(a, b)| (r(&a), b)));
+        lanes.coefficients = Batch::from_decimal(
+            complex_decimal(&coefficients),
+            1,
+            coefficients.len(),
+            arithmetic,
+            None,
+            Some(vec![7]),
+        )
+        .unwrap();
+        lanes
+    };
+    let run = |engine: &str, arithmetic: &str, rotate: bool| {
+        let lanes = frame(rotate, arithmetic);
+        let mut reducer = V2Reducer::new(arithmetic, None, engine, true).unwrap();
+        let out = reducer
+            .reduce(&[group(&lanes)], ReduceOptions::default())
+            .unwrap();
+        assert_eq!(reducer.take_exact_lanes(), 0);
+        assert!(
+            out.direct[0].statuses().iter().all(|(_, s)| s == "success"),
+            "{engine} {arithmetic} rotated {rotate}: {:?}",
+            out.direct[0].statuses()
+        );
+        values(&out.direct[0].values().unwrap())
+    };
+    let reference = run("generic", "double-double", false);
+    let rotated_reference = run("generic", "double-double", true);
+    let generic = [
+        run("generic", "double", false),
+        run("generic", "double", true),
+    ];
+    let fast = [run("fast", "double", false), run("fast", "double", true)];
+    let e = |x: &[[f64; 2]]| relative(x, &reference, 3);
+    eprintln!(
+        "dd rotated {:e}; generic {:e} {:e}; fast {:e} {:e}; fast frames {:e}",
+        relative(&rotated_reference, &reference, 3),
+        e(&generic[0]),
+        e(&generic[1]),
+        e(&fast[0]),
+        e(&fast[1]),
+        relative(&fast[0], &fast[1], 3)
     );
 }
