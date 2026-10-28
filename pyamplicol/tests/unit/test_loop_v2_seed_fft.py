@@ -46,10 +46,13 @@ CARRIERS = {"double": Precision.double(), "double-double": Precision.double_doub
 
 
 def _points(masses, count):
-    from tools.loop_reference.exact_points import generate
+    """Exact on-shell points as terminating decimal strings."""
+
+    from tools.loop_reference.exact_points import decimal_string, generate
 
     return [
-        [[str(x) for x in p] for p in point] for point in generate(masses, count=count)
+        [[decimal_string(x) for x in p] for p in point]
+        for point in generate(masses, count=count)
     ]
 
 
@@ -288,6 +291,16 @@ def test_a_record_must_certify_on_the_plan(compiled, loop_native):
 SCHEME = """
 [loop.model]
 loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
 """
 
 
@@ -308,6 +321,7 @@ r2_strategy = "model"
 engine = "v2"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
+{SCHEME}
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
@@ -368,3 +382,47 @@ def test_public_route_serves_the_seed_fft(
             scale = max(abs(float(x)) for x in b)
             for x, y in zip(a, b, strict=True):
                 assert abs(float(x) - float(y)) <= TOLERANCE["double"] * scale
+
+
+# ---------------------------------------------------------------- nightly tier
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    ("process", "masses", "group"),
+    [
+        ("g g > g g g", [0] * 5, 24),
+        ("g g > g g g g", [0] * 6, 120),
+        ("u u~ > g g g g", [0] * 6, 24),
+        ("g g > t t~ g g", [0, 0, 173, 173, 0, 0], 24),
+        ("g g > u u~ d d~", [0] * 6, 2),
+    ],
+)
+def test_native_seed_fft_equals_direct_at_higher_multiplicity(
+    compiled, loop_native, process, masses, group
+):
+    """FFT = direct to rounding (binary64, double-double) on S_4 and S_5
+    pure-gluon processes and on quark-gluon processes with orbits (one and
+    two quark lines, massive quarks): the same certification and contraction
+    as at 2 -> 2, no process key."""
+
+    n = len(masses) - 2
+    slice_ = _slice(compiled, loop_native, process, {"QCD": n}, {"QCD": n + 2})
+    points = _points(masses, 2)
+    stats = _assert_fft_equals_direct(slice_, points, _scales(points))
+    assert stats["group_order"] == group
+
+
+@pytest.mark.loop_nightly
+def test_three_quark_lines_fall_back_to_direct(compiled, loop_native):
+    """Three quark lines and no gluon: no adjoint label, so no orbit; the
+    contraction is direct and reported (a three-line process with orbits
+    needs two external gluons, a 2 -> 6 process)."""
+
+    slice_ = _slice(compiled, loop_native, "u u~ > d d~ s s~", {"QCD": 4}, {"QCD": 6})
+    assert slice_.fourier is None
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    assert executor.exported.fourier is None
+    points = _points([0] * 6, 1)
+    (result,) = executor.evaluate(points, _scales(points), parameters=PARAMETERS)
+    assert result.colour_contraction == "direct"

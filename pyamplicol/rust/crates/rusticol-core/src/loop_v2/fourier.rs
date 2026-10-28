@@ -846,6 +846,115 @@ mod tests {
         x - 0.5
     }
 
+    /// A synthetic plan on S_3: one regular Born orbit (components 0..6 at
+    /// the ranks of h), one loop orbit of three classes with stabiliser
+    /// {e, τ} (τ = (0 2 1), the classes are the cosets {g, g∘τ}, sign -1 on
+    /// g∘τ: an adjoint ring's reflection), a fourth class outside the orbit
+    /// and a seed key combining two classes. Weights K[c(g), b(h)] s(g) =
+    /// k(h⁻¹ ∘ g) with k(x ∘ τ) = -k(x).
+    fn synthetic(perturb: bool) -> (Vec<u8>, Vec<u8>) {
+        let degree = 3;
+        let group = 6;
+        let tau = [0, 2, 1];
+        let elements: Vec<Vec<usize>> = (0..group).map(|r| unrank(degree, r)).collect();
+        let mut k = vec![(0i64, 0i64); group];
+        for x in [0, 2, 4] {
+            let xt: Vec<usize> = tau.iter().map(|&i| elements[x][i]).collect();
+            let value = (3 * x as i64 + 1, 2 - x as i64);
+            k[x] = value;
+            k[rank(&xt)] = (-value.0, -value.1);
+        }
+        let mut scratch = vec![0; degree];
+        let mut classes = Vec::new();
+        for g in [0, 2, 4] {
+            let mut terms = Vec::new();
+            for h in 0..group {
+                let mut inverse = vec![0; degree];
+                for (i, &x) in elements[h].iter().enumerate() {
+                    inverse[x] = i;
+                }
+                let (re, im) = k[relative(&inverse, &elements[g], &mut scratch)];
+                let re = if perturb && g == 2 && h == 3 { re + 1 } else { re };
+                terms.push(format!("[{h},\"{re}/7\",\"{im}/5\"]"));
+            }
+            classes.push(format!("{{\"columns\":[[{}]]}}", terms.join(",")));
+        }
+        classes.push(r#"{"columns":[[[1,"2","-1"],[4,"1/3","0"]]]}"#.to_string());
+        let plan = format!(
+            r#"{{"schema":4,"legs":2,"rows":2,"helicities":[[0],[-1,1]],"columns":1,
+            "average":1,"born_components":6,"constants":0,"masses":0,"block_rows":[],
+            "kernels":[],"contents":[],"factors":[],"seed_classes":[{}],
+            "seeds":[{{"classes":[[0,"1","0"]]}},{{"classes":[[1,"1","0"]]}},
+                {{"classes":[[2,"-1/2","3"],[3,"1","0"]]}}],
+            "families":[],"forward":null}}"#,
+            classes.join(",")
+        );
+        let record = r#"{"schema":1,"degree":3,"jobs":[{"column":0,
+            "born":[[0,1,2,3,4,5]],
+            "loop":[[[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]],
+            "pairs":[[0,0]]}]}"#;
+        (plan.into_bytes(), record.as_bytes().to_vec())
+    }
+
+    fn batch<T: Carrier>(zero: &T) -> super::super::dress::V2Batch<T> {
+        use symbolica::domains::float::Complex;
+        let value = |i: usize| {
+            Complex::new(
+                zero.from_rational(&Rational::new(Integer::from((7 * i % 11) as i64 - 5), Integer::from(3))),
+                zero.from_rational(&Rational::new(Integer::from((5 * i % 13) as i64 - 6), Integer::from(7))),
+            )
+        };
+        super::super::dress::V2Batch {
+            momenta: vec![vec![Rational::zero(); 8]; 2],
+            scales: vec![Rational::from(1); 2],
+            masses: Vec::new(),
+            leg_masses: Vec::new(),
+            constants: Vec::new(),
+            block_rows: vec![Vec::new(); 2],
+            born: (0..2)
+                .map(|p| (0..12).map(|i| value(12 * p + i + 1)).collect())
+                .collect(),
+        }
+    }
+
+    fn assert_seeds_agree<T: Carrier + Real + RealLike>(zero: &T, tolerance: f64) {
+        let (plan, record) = synthetic(false);
+        let plan = LoopProgramV4::load(&plan).unwrap();
+        let fourier = SeedFourier::load(&record, &plan).unwrap();
+        assert_eq!((fourier.jobs(), fourier.pairs(), fourier.covered()), (1, 1, 18));
+        let batch = batch(zero);
+        let data = LaneData::<T, 2>::new(&plan, &batch, &[0, 1], zero).unwrap();
+        let direct = super::super::seeds::seeds(&plan, &data);
+        let fast = seeds_fourier(&plan, &fourier, &data);
+        for (a, b) in fast.values.iter().zip(&direct.values) {
+            let scale = b.iter().map(|x| x.to_f64().abs()).fold(0.0, f64::max);
+            assert!(scale > 0.0);
+            for (x, y) in a.iter().zip(b) {
+                let error = (x.clone() - y).to_f64().abs();
+                assert!(error <= tolerance * scale, "{error} vs {scale}");
+            }
+        }
+    }
+
+    /// FFT seeds equal the direct seeds of the same plan (binary64 and
+    /// double-double, stabilisers and signs included), and a plan whose
+    /// weights break the group function refuses the record.
+    #[test]
+    fn certified_seeds_equal_the_direct_contraction() {
+        assert_seeds_agree(&0.0, 1e-14);
+        assert_seeds_agree(&DoubleFloat::from(0.0), 1e-30);
+        let (plan, record) = synthetic(true);
+        let plan = LoopProgramV4::load(&plan).unwrap();
+        let error = SeedFourier::load(&record, &plan).unwrap_err().to_string();
+        assert!(error.contains("not the group function"), "{error}");
+        // An orbit of the wrong size is refused.
+        let (plan, _) = synthetic(false);
+        let plan = LoopProgramV4::load(&plan).unwrap();
+        let short = br#"{"schema":1,"degree":3,"jobs":[{"column":0,"born":[[0,1,2]],
+            "loop":[[[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]],"pairs":[[0,0]]}]}"#;
+        assert!(SeedFourier::load(short, &plan).is_err());
+    }
+
     #[test]
     fn ranks_invert_unranks() {
         for degree in 1..=5 {
