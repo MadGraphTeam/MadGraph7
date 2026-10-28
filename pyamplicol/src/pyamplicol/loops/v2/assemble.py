@@ -2325,14 +2325,22 @@ class LoopSlice:
             raise ValueError(f"unknown colour contraction {policy!r}")
         if policy == "direct":
             return
+        from .refusals import LoopRequestUnsupported
+
         if self.request.accuracy == "lc":
             if policy == "fft":
-                raise ValueError("leading-colour seeds are contracted directly")
+                raise LoopRequestUnsupported(
+                    "forced-seed-fft-unserved",
+                    f"{self.request.process!r}: leading-colour seeds are "
+                    "contracted directly",
+                )
             return
         self.fourier = seed_fourier(self.table)
         if self.fourier is None and policy == "fft":
-            raise ValueError(
-                "the seed table has no certified symmetric-group orbit pair"
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved",
+                f"{self.request.process!r}: the seed table has no certified "
+                "symmetric-group orbit pair",
             )
 
     def _prune_colour(
@@ -3424,7 +3432,8 @@ class _PointEvaluation:
         degrees = (
             slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
         )
-        if seeds is None:
+        own = seeds is None
+        if own:
             seeds = SectorSeeds(
                 slice_.table,
                 slice_.class_of,
@@ -3438,12 +3447,17 @@ class _PointEvaluation:
             )
         self.colour_contraction = getattr(seeds, "algorithm", "direct")
         if (
-            slice_.request.colour_contraction == "fft"
+            own
+            and slice_.request.colour_contraction == "fft"
             and self.colour_contraction != SYMMETRIC_GROUP_FFT
         ):
             # An explicit "fft" requires the FFT: the exact dressing,
-            # DoubleFloat and arbitrary precision (and observable columns)
-            # contract directly, so they refuse instead of falling back.
+            # DoubleFloat and arbitrary precision contract the sector seeds
+            # directly, so they refuse instead of falling back. Observable
+            # columns (``seeds`` given) are contracted directly by design;
+            # a forced FFT refuses them where they are declared or served
+            # (``observables.FORCED_FFT_OBSERVABLES``), and the generation's
+            # validation still runs them as its reference.
             raise ValueError(
                 "colour contraction 'fft' contracts binary64 sector seeds only; "
                 "exact, arbitrary-precision and observable seeds are contracted "

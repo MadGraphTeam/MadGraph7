@@ -2323,9 +2323,9 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
 ):
     """A correction the source model does not expand perturbatively (QED in
     loop_sm, which the legacy graph generator refuses too; several declared
-    corrections take one loop order each) and the forced seed FFT are
-    refused with their reasons before any generation; the legacy engine
-    stays selectable."""
+    corrections take one loop order each) is refused with its reason before
+    any generation; the legacy engine stays selectable. (The forced seed FFT
+    is served: ``test_loop_v2_seed_fft``.)"""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
@@ -2337,10 +2337,6 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
         (
             ('loop_coupling_orders = ["QCD"]', 'loop_coupling_orders = ["QCD", "QED"]'),
             r"require declared NLO model support.*\['QED'\]",
-        ),
-        (
-            ('contraction = "direct"', 'contraction = "symmetric-group-fft"'),
-            r"contracts seed columns directly.*loop\.engine='legacy'",
         ),
     ):
         card.write_text(

@@ -123,13 +123,16 @@ def _plan_view(
     record: Mapping[str, Any], columns: Any, trees: NativeTrees, first: int = 0
 ) -> Any:
     """The ``ExportedPlan`` view a native executor reads: lane labels (plan
-    family indices from ``first``, loop orders, sector columns) and the tree
-    program. The companion's families are numbered after the process's, so
-    the lanes of both stay distinct in one evaluation (``assemble.
-    _PointEvaluation.set_lanes``)."""
+    family indices from ``first``, loop orders, sector columns), the tree
+    program and the plan's seed Fourier record (``plan_export.
+    fourier_record``; the record's ``fourier``, absent when every seed is
+    contracted directly). The companion's families are numbered after the
+    process's, so the lanes of both stay distinct in one evaluation
+    (``assemble._PointEvaluation.set_lanes``)."""
 
     from .plan_export import ExportedPlan
 
+    fourier = record.get("fourier")
     return ExportedPlan(
         program={},
         rows=(),
@@ -141,6 +144,7 @@ def _plan_view(
         families=tuple(range(first, first + record["families"])),
         columns=columns,
         trees=trees,
+        fourier=None if fourier is None else json.dumps(fourier, separators=(",", ":")),
     )
 
 
@@ -244,6 +248,10 @@ class NativeProcess:
             "trees": _trees_record(trees),
             "scaleless": None,
         }
+        if exported.fourier is not None:
+            # The certified seed FFT of the plan's seeds (design §7.3): its
+            # structural record, certified again by the native loader.
+            record["fourier"] = json.loads(exported.fourier)
         companion = None
         if (slice_.scaleless is None) != (scaleless is None):
             raise ValueError(
@@ -263,6 +271,8 @@ class NativeProcess:
                 "orders": [_orders(orders) for orders in twin.orders],
                 "trees": _trees_record(twin.trees),
             }
+            if twin.fourier is not None:
+                twin_record["fourier"] = json.loads(twin.fourier)
             record["scaleless"] = twin_record
             companion = NativeCompanion(twin_json, twin.trees, twin_record)
         return cls(plan_json, trees, record, companion)
