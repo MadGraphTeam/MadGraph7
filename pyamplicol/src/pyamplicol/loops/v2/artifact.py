@@ -1152,7 +1152,11 @@ class V2VirtualRuntime:
         from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
         from .native_observables import StoredObservableSlice
+        from .observables import FORCED_FFT_OBSERVABLES
 
+        if self._execution["request"]["colour_contraction"] == "fft":
+            # The stored observable columns are contracted directly.
+            raise CompatibilityError(FORCED_FFT_OBSERVABLES)
         with self._lock:
             if self._observables is None:
                 correlators = correlators_from_record(self._execution["request"])
@@ -1256,6 +1260,14 @@ class V2VirtualRuntime:
                     "scaleless_plan_sha256": self._admission["scaleless_plan_sha256"],
                     "plan_bytes": self._admission["plan_bytes"],
                     "point_inputs": self._execution["point_inputs"],
+                    # The certified symmetric-group FFT of the stored seeds
+                    # (design §7.3): its orbit pairs, 0 without a record.
+                    "seed_fourier_pairs": sum(
+                        len(job["pairs"])
+                        for job in (
+                            self._native_process.record.get("fourier") or {}
+                        ).get("jobs", ())
+                    ),
                     "native_admission": {
                         key: self._admission[key]
                         for key in ("runtime_capability", "legs", "rows", "columns")
@@ -1447,14 +1459,7 @@ class V2VirtualRuntime:
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
-        contraction = VirtualColorContraction(
-            cast(
-                Literal["auto", "direct"],
-                self._execution["request"]["colour_contraction"],
-            ),
-            "direct",
-            "native seeds contract the exact colour weights K[c, b] directly",
-        )
+        contraction = self._contraction(results)
         born_values: list[tuple[Any, ...] | None] = []
         values: list[tuple[LaurentCoefficients, ...] | None] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
@@ -1529,6 +1534,36 @@ class V2VirtualRuntime:
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if splits_poles(poles) else None,
         )
+
+    def _contraction(self, results: Sequence[Any]) -> VirtualColorContraction:
+        """The seed contraction a batch ran (design §7.3): the certified
+        symmetric-group orbit pairs of the stored seed Fourier record by the
+        FFT (``PointResult.colour_contraction``), or every weight directly."""
+
+        from .colour import SYMMETRIC_GROUP_FFT
+
+        requested = self._execution["request"]["colour_contraction"]
+        requested = {"fft": SYMMETRIC_GROUP_FFT}.get(requested, requested)
+        algorithm = next(
+            (result.colour_contraction for result in results if result is not None),
+            "direct",
+        )
+        fourier = self._native_process.record.get("fourier")
+        if algorithm == SYMMETRIC_GROUP_FFT and fourier is not None:
+            return VirtualColorContraction(
+                requested,
+                SYMMETRIC_GROUP_FFT,
+                "the certified symmetric-group orbit pairs of the native seeds "
+                "are contracted by the FFT in the carrier, the other colour "
+                "weights K[c, b] directly",
+                regular_kernels=sum(len(job["pairs"]) for job in fourier["jobs"]),
+            )
+        reason = (
+            "native seeds contract the exact colour weights K[c, b] directly"
+            if fourier is None
+            else "the requested contraction is direct"
+        )
+        return VirtualColorContraction(requested, "direct", reason)
 
     def _pole_parts(self, result: Any) -> VirtualPoleParts:
         """Both origins' parts of a split result by component

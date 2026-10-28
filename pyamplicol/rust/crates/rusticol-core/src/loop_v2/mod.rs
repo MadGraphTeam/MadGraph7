@@ -21,6 +21,7 @@ pub mod dag;
 pub mod dipole_orbits;
 pub mod dress;
 pub mod forward;
+pub mod fourier;
 pub mod generate;
 pub mod interference;
 pub mod kernels;
