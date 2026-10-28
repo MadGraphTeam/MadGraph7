@@ -393,7 +393,7 @@ namespace madmatrix
     mgDebug( 0, __FUNCTION__ );
     // one wavefunction slot per COPY, which is more than the nwf of one row and
     // far fewer than one row's worth per row. A big process has thousands of
-    // them (g g > t t~ g g g: 4826, 1.3 MB), more than the stack of a worker
+    // them (g g > t t~ g g g: 4826, 1.0 MB at simd_128), more than the stack of a worker
     // thread (512 kB on macOS), so they live on the heap, once per thread.
     static thread_local std::vector<fptype_momenta_sv> pvec_sv( (size_t)hrNwf * np4 );
     static thread_local std::vector<cxtype_amp_sv> w_sv( (size_t)hrNwf * nw6 );
