@@ -673,6 +673,97 @@ def test_reference_records_without_a_reference_skip_rule1_only():
     assert mqcd.reference_record_checks(_row(), reference, 0) == []
 
 
+def _required_fixture(path, providers, record=None, point=("500", "0", "0", "500")):
+    """A one-point required-format fixture: provider -> (born, finite,
+    single, double, accuracy)."""
+
+    row = {
+        "providers": {
+            name: dict(zip(("born", *mqcd.LAURENT, "accuracy"), values, strict=True))
+            for name, values in providers.items()
+        }
+    }
+    if record is not None:
+        row["reference"] = record
+    data = {
+        "points": [[list(point), [point[0], "0", "0", f"-{point[3]}"]]],
+        "mu_r": ["1000"],
+        "parameters": {"aS": "0.118"},
+        "fixed_parameters": {"MB": "0"},
+        "primary_provider": next(iter(providers)),
+        "rows": [row],
+    }
+    path.write_text(json.dumps(data))
+    return str(path)
+
+
+def test_superseded_points_take_the_binding_rerun(tmp_path):
+    """A point of an existing reference superseded by MQ-REF's quadruple-
+    precision rerun (point_binding): rule 1 holds the rerun's primary
+    values, the existing fixture's second providers stay; a rerun at
+    another point, with other parameters or without an ok record is
+    refused; a declared outlier record is reported, rule 1 judges it."""
+
+    ok = {"status": "ok", "comparison": "relative"}
+    existing = _required_fixture(
+        tmp_path / "old.json",
+        {"madloop": (2.0, 1.0, -3.0, 0.5, 0.0), "recola": (2.0, 1.0, -3.0, 0.5, None)},
+    )
+    rerun = _required_fixture(
+        tmp_path / "new.json", {"madloop": (2.0, 1.5, -3.0, 0.5, 0.0)}, ok
+    )
+    spec = {
+        "format": "required",
+        "path": existing,
+        "providers": ["madloop", "recola"],
+        "superseded": {"0": {"path": rerun, "row": 0}},
+    }
+    reference = mqcd.load_reference(_row(reference=spec))
+    assert reference.binding == {0: (rerun, 0)}
+    assert reference.virtual[0]["madloop"][mqcd.TOTAL] == (1.5, -3.0, 0.5)
+    assert reference.virtual[0]["recola"][mqcd.TOTAL] == (1.0, -3.0, 0.5)
+    (binding,) = mqcd.reference_record_checks(_row(), reference, 0)
+    assert binding.coefficient == "binding reference" and not binding.asserted
+    dd = _point("double-double", 2.0, (1.5, -3.0, 0.5))
+    assert all(c.passed for c in mqcd.rule1(_row(), reference, 0, dd))
+    for name, kwargs in (
+        ("moved.json", {"point": ("600", "0", "0", "600")}),
+        ("noref.json", {}),
+    ):
+        bad = _required_fixture(
+            tmp_path / name,
+            {"madloop": (2.0, 1.5, -3.0, 0.5, 0.0)},
+            ok if kwargs else {"status": "none", "reason": "unstable"},
+            **kwargs,
+        )
+        with pytest.raises(ValueError):
+            mqcd.load_reference(
+                _row(reference={**spec, "superseded": {"0": {"path": bad, "row": 0}}})
+            )
+    other = json.loads(Path(rerun).read_text())
+    other["fixed_parameters"] = {"MB": "4.7"}
+    (tmp_path / "params.json").write_text(json.dumps(other))
+    with pytest.raises(ValueError):
+        mqcd.load_reference(
+            _row(
+                reference={
+                    **spec,
+                    "superseded": {
+                        "0": {"path": str(tmp_path / "params.json"), "row": 0}
+                    },
+                }
+            )
+        )
+    reference.records[0] = {
+        **ok,
+        "outlier": {"rule": 1, "ruling": "pending", "conditions": {"i": "fails"}},
+        "reason": "rule 1 outlier",
+    }
+    checks = mqcd.reference_record_checks(_row(), reference, 0)
+    outlier = next(c for c in checks if c.coefficient == "declared outlier")
+    assert not outlier.asserted and "pending" in outlier.value
+
+
 def test_manifest_zero_points_are_the_references_absolute_points(rows):
     """Every absolute reference point (MQ-REF's S3 records) is a zero point
     of its row with the same regular neighbour, and vice versa."""
