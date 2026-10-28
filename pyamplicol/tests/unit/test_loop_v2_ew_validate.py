@@ -678,3 +678,204 @@ def test_stored_electroweak_artifact_lists_its_conventions(
     assert conventions["ew_input_scheme"] == "alpha"
     info = Runtime.load(output, process="eemm").inspect()
     assert info["conventions"] == conventions
+
+
+# ------------------------------------------- ghost vertices, listed refusals
+
+
+def test_ghost_vertices_are_read_on_their_own_legs_with_field_signs(loop_gmu_ufo):
+    """The W ghost vertices (WP3.2 EWI-7, routed items (ii), (iii)): every
+    ghost rule is read on its own legs (``conventions.
+    conjugate_vertex_rules``: the ghost Lagrangian has no Hermitian partner,
+    the antiparticles' rule [ghWm ghA~ W+] differentiates the other ghost
+    leg), with the product of the field signs of its boson legs. The
+    conjugate readings of the boson vertices not closed under conjugation
+    tie the charged fields together consistently with the closed vertices
+    (W G H, W G G0, W G A and W G Z all give s(W-) s(G+) = -1; no
+    contradiction, so the ghost-G0 vertices keep -1); the free sign per
+    charge-conjugate family is fixed to +1, and every charge-balanced ghost
+    loop is independent of it. Measured consequence (nightly): W G ghost
+    loops with the other sign miss Catani by 6e-2 on g b > t t~ b."""
+
+    from pyamplicol.loops.v2 import catalogue
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.conventions import conjugate_vertex_rules
+    from pyamplicol.loops.v2.ew_policy import feynman_gauge_model
+    from pyamplicol.models.external import CompiledUFOModel
+
+    compiled = feynman_gauge_model(
+        _gmu(loop_gmu_ufo),
+        SliceRequest(
+            "e- e+ > m- m+",
+            {"QED": 2, "QCD": 0},
+            {"QED": 4, "QCD": 0},
+            corrections=("QED",),
+            fixed_parameters=G_MU_FIXED,
+        ),
+    )
+    builder = catalogue._CatalogueBuilder(compiled, CompiledUFOModel(compiled))
+    signs = builder._signs()
+    assert signs.product(["W+", "W-"]) == 1
+    assert signs.product(["G+", "G-"]) == 1
+    assert signs.product(["W-", "G+"]) == signs.product(["W+", "G-"]) == -1
+    assert signs.product(["G0"]) == -1
+    assert signs.product(["W-"]) is None  # one free sign per family
+    rules = conjugate_vertex_rules(
+        {
+            "particles": [
+                {"name": r.name, "antiname": r.antiname, "spin": r.spin}
+                for r in compiled.ir.particles
+            ],
+            "couplings": [],
+            "vertex_rules": [
+                {
+                    "name": term.vertex,
+                    "particles": list(term.particles),
+                    "couplings": [],
+                    "color_structures": ["1"],
+                }
+                for term in compiled.ir.vertex_terms
+            ],
+        }
+    )
+    ghosts = {r.name for r in compiled.ir.particles if r.ghost_number}
+    w_ghosts = 0
+    for term in compiled.ir.vertex_terms:
+        if not ghosts.intersection(term.particles):
+            continue
+        assert rules[term.vertex] == term.vertex
+        bosons = [name for name in term.particles if name not in ghosts]
+        assert builder.reading_sign(term) == signs.product(bosons, gauge=True)
+        if {"W+", "W-"} & set(bosons):
+            w_ghosts += 1
+    assert w_ghosts == 8  # the A, Z and W ghosts' vertices with a W leg
+
+
+@pytest.mark.loop_nightly
+def test_w_ghost_loops_keep_the_poles_of_charged_drell_yan_equal_to_catani(
+    loop_gmu_ufo, loop_native
+):
+    """u d~ > e+ ve with full electroweak corrections (refused before WP3.2
+    EWI-7 at the W ghost vertex [ghA ghWm~ W-] of the W self-energy's ghost
+    loops): its single and double poles equal the QED Catani operator's to
+    1e-12 at two points and two scales, so the ghost loops, UV divergent,
+    are renormalised with the model's W counterterms. About 5 min."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    compiled = _gmu(loop_gmu_ufo)
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "u d~ > e+ ve",
+            {"QCD": 0, "QED": 2},
+            {"QCD": 0, "QED": 4},
+            corrections=("QED",),
+            fixed_parameters=G_MU_FIXED,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+    )
+    ghosts = {r.name for r in slice_.compiled.ir.particles if r.ghost_number}
+    assert any(ghosts & species for species in _family_species(slice_))
+    points = (
+        [
+            ["500", "0", "0", "500"],
+            ["500", "0", "0", "-500"],
+            ["500", "240", "320", "300"],
+            ["500", "-240", "-320", "-300"],
+        ],
+        [
+            ["300", "0", "0", "300"],
+            ["300", "0", "0", "-300"],
+            ["300", "0", "180", "240"],
+            ["300", "0", "-180", "-240"],
+        ],
+    )
+    worst = 0.0
+    for point in points:
+        for scale in ("1000000", "10000"):
+            result = slice_.evaluate(
+                point, scale, parameters={"aS": "0.118", "MT": "173"}
+            )
+            worst = max(worst, _assert_catani(result))
+    print(f"catani {worst:.1e}")
+
+
+def _family_species(slice_):
+    """The loop species (names) of every family routing of ``slice_``."""
+
+    out = []
+    for family in slice_.families.families.values():
+        for closure in family.closures:
+            _cut, positions = slice_.families.routing(closure)
+            out.append({position.vertex.loop_out for position in positions})
+    return out
+
+
+def _refused_before_programs(compiled, request, loop_native, key):
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        LoopSlice.generate(compiled, request, loop_native)
+    assert refused.value.key == key
+    return str(refused.value)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("process", ["t t~ > z h", "t t~ > t t~"])
+def test_goldstone_side_root_mixing_is_a_listed_refusal(
+    process, loop_gmu_ufo, loop_native
+):
+    """WP3.2 EWI-7 routed item (v): a Goldstone-vector mixing line ending on
+    its Goldstone side at the root (the top Yukawa of leg 1, QED
+    corrections) is refused with the listed key
+    ``counterterm-root-goldstone-mixing``, naming the root vertex, before
+    any value (about 4 min, at the counterterm program)."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    message = _refused_before_programs(
+        _gmu(loop_gmu_ufo),
+        SliceRequest(
+            process,
+            {"QCD": 0, "QED": 2},
+            {"QCD": 0, "QED": 4},
+            corrections=("QED",),
+            fixed_parameters=G_MU_FIXED,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+        "counterterm-root-goldstone-mixing",
+    )
+    assert "Goldstone side" in message and "Instead: QCD corrections" in message
+
+
+@pytest.mark.loop_nightly
+def test_dirac_weyl_closure_is_a_listed_refusal(loop_gmu_ufo, loop_native):
+    """WP3.2 EWI-7 routed item (iv): u d~ > t b~ with electroweak corrections
+    and a massless b closes the b line, a Dirac current after the massive
+    top, on the massless b~ (a Weyl state), which the tree engine has no
+    contraction for (WP2.9): refused with the listed key
+    ``dirac-weyl-closure`` at the Born closure (about 30 s)."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    message = _refused_before_programs(
+        _gmu(loop_gmu_ufo),
+        SliceRequest(
+            "u d~ > t b~",
+            {"QCD": 0, "QED": 2},
+            {"QCD": 0, "QED": 4},
+            corrections=("QED",),
+            fixed_parameters=G_MU_FIXED,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+        "dirac-weyl-closure",
+    )
+    assert "Weyl" in message and "restrict_with_b_mass" in message

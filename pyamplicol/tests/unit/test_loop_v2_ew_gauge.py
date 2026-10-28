@@ -1404,6 +1404,20 @@ def test_goldstone_vector_mixings_equal_madloop(
 
 
 @pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "WP3.2 EWI-7 open: g b > t t~ b with QED corrections and a massive b "
+        "generates since the W ghost vertices are read on their own legs, and "
+        "its UV counterterm component (the charged mixings 150 % of it) equals "
+        "MadLoop's to 7.7e-15 in the single pole but to 2.6e-10 (point 0), "
+        "9e-11 (point 1) and 1.1e-11 (point 2) in the finite part (the 1e-12 "
+        "bound); the whole virtual misses MadLoop and the Catani prediction "
+        "(which agree to 1e-13) by 2.0e-5, 2.9e-6, 1.6e-6 of the single pole, "
+        "in the bare loops (R2 and counterterms agree), 2026-10-28"
+    ),
+)
 def test_charged_goldstone_vector_mixings_equal_madloop(
     gmu_massive_b, loop_reference, loop_native
 ):
@@ -1412,20 +1426,14 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     t-channel W between the b-t lines), which makes 150 % of its UV
     counterterm component at point 0 (``goldstone-mixing.json``). The clone
     lines read the charged mixings as the neutral ones
-    (``ct_line_insertions._momentum_ratio``). The request is refused today
-    at the W ghost vertex [ghA ghWm~ W-] of its loops, not closed under
-    conjugation, whose loop-segment reading through a conjugate rule is not
-    established (``conventions.FermionSignError``; WP3.2 Feynman-gauge loop
-    lines): exactly that refusal is an expected failure (about 10 minutes),
-    and the comparison runs once the request generates."""
+    (``ct_line_insertions._momentum_ratio``). Its loops hold the W ghost
+    vertices [ghA ghWm~ W-], read on their own legs (WP3.2 EWI-7,
+    ``conventions.conjugate_vertex_rules``); the opposite sign of the mixings
+    would miss MadLoop's UV component by three times its size, which the
+    measured 2.6e-10 excludes, but not within the 1e-12 bound, and the whole
+    virtual's single pole misses Catani's (a strict xfail with the numbers;
+    about 10 minutes)."""
 
-    from pyamplicol.loops.v2.conventions import FermionSignError
-
-    try:
-        _uv_component_equals_madloop(
-            gmu_massive_b, "gb_ttxb_ew_mb", loop_reference, loop_native
-        )
-    except FermionSignError as error:
-        if "('ghA', 'ghWm~', 'W-') is not closed under conjugation" in str(error):
-            pytest.xfail(f"the request is refused: {error}")
-        raise
+    _uv_component_equals_madloop(
+        gmu_massive_b, "gb_ttxb_ew_mb", loop_reference, loop_native
+    )

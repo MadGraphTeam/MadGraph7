@@ -1766,8 +1766,11 @@ LADDER = [
     ),
     # The lepton line of the Z/photon decay runs through the loops (B4,
     # lifted by EWI-5); g g > t t~ e- e+ lowers its G0-Z and G0-A mixings
-    # (EWI-4b). Each generates in about 10 min (8 GB); their values against
-    # the three-provider fixtures are EWI-7's.
+    # (EWI-4b). Each generates in about 5-10 min (8 GB); their values
+    # against the three-provider fixtures (WP3.2 EWI-7):
+    # ``test_loop_v2_ew_validate.test_electroweak_ladder_equals_three_providers``
+    # (u u~ > e- e+ g, and g g > t t~) and ``test_loop_v2_ew_leptons.
+    # test_top_pair_and_leptons_equal_three_providers`` (g g > t t~ e- e+).
     _rung(
         "gmu_uux_emepg",
         "loop_gmu",
