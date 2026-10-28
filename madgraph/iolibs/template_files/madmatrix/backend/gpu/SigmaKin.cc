@@ -168,6 +168,32 @@ namespace madmatrix
       return flavor_id < (unsigned int)nmaxflavor;
   }
 
+  // Whether the total of a running |M|^2, jamp2 or diagram-weight sum can drive
+  // an event-by-event choice: the device copy of backend/cpu selectable_total. A
+  // zero, infinite or NaN total chooses nothing (helicity/colour 0, the fallback
+  // channel). The exponent bits of a volatile copy are read (CUDA/HIP bit-cast
+  // intrinsics), not isnan/isinf or a comparison, which fast math may fold away
+  // (then a NaN ratio passes rnd < ratio). For a float or a double fptype.
+  template<typename T>
+  __device__ inline bool
+  selectable_total( const T total )
+  {
+    static_assert( sizeof( T ) == sizeof( double ) || sizeof( T ) == sizeof( float ) );
+    volatile T vtotal = total;
+    const T t = vtotal;
+    if constexpr( sizeof( T ) == sizeof( double ) )
+    {
+      const unsigned long long bits = (unsigned long long)__double_as_longlong( t );
+      if( ( bits & 0x7ff0000000000000ULL ) == 0x7ff0000000000000ULL ) return false;
+    }
+    else
+    {
+      const unsigned int bits = __float_as_uint( t );
+      if( ( bits & 0x7f800000U ) == 0x7f800000U ) return false;
+    }
+    return t != 0;
+  }
+
   // Identical-final-state factor of the crossed process: the device copy of
   // backend/cpu ident_cross (see there).
   __device__ int
@@ -775,7 +801,7 @@ namespace madmatrix
         // no helicity, as in the positive case, for a vanishing, NaN or infinite
         // total (the last two kept for the abnormal-ME check)
         allMEs[ievt] = absTotal;
-        if( !( absTotal > 0 ) || isinf( absTotal ) ) return;
+        if( !selectable_total( absTotal ) ) return;
         fptype absSum = 0;
         int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
         for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
@@ -807,7 +833,9 @@ namespace madmatrix
     // |M|^2 (including a crossing row out of the table) keeps the 0 set above.
     // The CDF runs in base-row order for every crossing: the same helicity
     // distribution as --use_crossing=False, not the same helicity per rndhel.
-    for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+    // A zero, NaN or infinite total chooses none (selectable_total, as on cpu).
+    const bool okcdf = selectable_total( allMEs[ievt] );
+    for( int ighel = 0; okcdf && ighel < dcNGoodHel; ighel++ )
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
@@ -855,8 +883,11 @@ namespace madmatrix
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
         normalization += allNumerators[ievt * ndiagrams + ichan];
       }
+      // No diagram weight (a zero, NaN or infinite sum): keep the last channel,
+      // as on cpu/simd
       channelId = mgOnGpu::nchannels;
-      for( unsigned int ichan = 0; validFlavor && ichan < mgOnGpu::nchannels; ichan++ )
+      const bool okcdf = validFlavor && selectable_total( normalization );
+      for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
         numerator_sum += allNumerators[ievt * ndiagrams + ichan];
@@ -907,7 +938,8 @@ namespace madmatrix
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
-      for( int icolC = 0; validFlavor && icolC < ncolor_flow; icolC++ )
+      const bool okcdf = validFlavor && selectable_total( targetamp[ncolor_flow - 1] );
+      for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
