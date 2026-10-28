@@ -569,7 +569,7 @@ def test_conventions_are_stored_and_inspected_only_where_recorded():
         ("alpha_inputs", "Gf=SMINPUTS 2, MZ=MASS 23"),
     )
 
-    from dataclasses import dataclass
+    from dataclasses import dataclass, replace
 
     @dataclass
     class Plain:
@@ -581,6 +581,29 @@ def test_conventions_are_stored_and_inspected_only_where_recorded():
         "families": 3,
         "conventions": record,
     }
+    from dataclasses import asdict
+
+    from pyamplicol.artifacts.inspection import ArtifactLoopInspection
+    from pyamplicol.reporting.summary import _loop_inspection_rows
+
+    loop = ArtifactLoopInspection(
+        engine="v2",
+        runtime_capability="loop-v2",
+        scheme_status="declared-not-certified",
+        r2_strategy="model",
+        arithmetic=("double",),
+        born_orders=("QED^4",),
+        sectors=(("QED^6", (("QED^4", "QED^4"),)),),
+        correlations=False,
+        resolved=True,
+        runtime_bytes=1,
+    )
+    assert "conventions" not in dict(_loop_inspection_rows(asdict(loop)))
+    loop = replace(loop, conventions=_conventions(record, "m"))
+    rows = dict(_loop_inspection_rows(asdict(loop)))
+    assert rows["conventions"] == (
+        "regularisation HV; lambda_HV 1.0; alpha_inputs Gf=SMINPUTS 2, MZ=MASS 23"
+    )
 
 
 @pytest.mark.loop_nightly
