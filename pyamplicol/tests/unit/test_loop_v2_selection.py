@@ -865,6 +865,20 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
     )
     kept = flow_set.families[0]
     assert kept is not None and len(kept) < int(flow_set.meta["families"])
+    # Its (row, flow) set's plan keeps the rows that row reaches (the native
+    # live-row pruning, ``plan/live.rs``): a fraction of the flow's dressing
+    # work, on the same families.
+    catalogue = inclusive._backend._observable_runtime().selection_catalogue()
+    key = lc.column(*catalogue.resolve([rows[1]], [flow.id])).key
+    (row_set,) = (
+        found for k, found in stored._sets.items() if k[:2] == ("selection", key)
+    )
+    assert row_set.families == flow_set.families
+    work = "dressing work (modelled complex MAC per lane)"
+    one_row, every_row = (
+        found.last_report["counts"][work] for found in (row_set, flow_set)
+    )
+    assert 0 < one_row <= every_row / 4, (one_row, every_row)
     _close(
         _summed(
             inclusive.evaluate(pts, mu_r2=scales, color_flows=[a.id]) for a in anchors

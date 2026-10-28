@@ -1223,6 +1223,7 @@ class StoredColumns:
         self.families = (None, None) if parts is None else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
+        self.last_report: dict[str, Any] | None = None
 
     def check_resolution(self, resolution: Any) -> None:
         stored = self.observables.stored.record["resolution"]
@@ -1444,6 +1445,9 @@ class StoredColumns:
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
         output = native.evaluate(inputs, schedule="B", **options)
+        # The native report of the latest batch (stages and counts, as
+        # ``plan_export.NativeExecutor.last_report``).
+        self.last_report = output["report"]
         extra = None
         if splits(mode) and self.set.companion_overlay_json is not None:
             twin = self._executor(arithmetic, digits, len(evaluations), True)
