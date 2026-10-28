@@ -1001,6 +1001,34 @@ def test_native_counterterm_program_folds_mixed_connection_parities(
 
 
 @pytest.mark.loop_physics
+@pytest.mark.loop_physics
+def test_native_counterterm_program_grades_are_order_free(loop_sm_compiled_model):
+    """Full colour of g g > u u~ u u~ (no grade split): its CT program has
+    currents derived first with grade -1 and then from a current of mixed
+    grade. Both lanes give such a current no grade, whatever the order of
+    its derivations (``blocks.u1_grades``, the single-grade view of
+    ``dag_grades.u1_grade_sets``; ``fold_u1_grades`` natively), so every
+    block's ``nc_grade`` is that of the order-free grade sets of its rows:
+    one grade, or ``None``. Before, both lanes kept the first derivation's
+    grade (32 currents of this program)."""
+
+    from pyamplicol.generation.dag_grades import u1_grade_sets
+
+    program, native = _assert_ct_equal(
+        loop_sm_compiled_model, "g g > u u~ u u~", {"QCD": 4}, {"QCD": 6}
+    )
+    sets = u1_grade_sets(program.blocks.blocks_dag)
+    mixed = 0
+    for block in native.blocks:
+        rows = [sets[row.current_id] for row in block.rows]
+        grades = frozenset().union(*rows)
+        single = len(grades) == 1 and all(len(found) == 1 for found in rows)
+        expected = next(iter(grades)) if single else None
+        assert block.colour_flow.nc_grade == expected, block.key.word
+        mixed += expected is None
+    assert mixed
+
+
 def test_native_u1_leakage_scan_equals_the_closure(loop_sm_compiled_model, monkeypatch):
     """The DAG scan of ``u1_leaking_structures`` on a program whose d-symbol
     vertices absorb and feed quark lines' gluons, with the projection gate
