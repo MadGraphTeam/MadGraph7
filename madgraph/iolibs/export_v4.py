@@ -9951,6 +9951,9 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     ddm_needs_flow_basis = True
 
     matrix_file = "matrix_madevent_group_v4.inc"
+    # extra dimensions of GOODHEL(NCOMB, ...) and NTRY(...) in the
+    # BLOCK_GOODHEL common of matrix_file (beam orientation, flavour, subprocess)
+    goodhel_dims = '2, MAXFLAVPERPROC, MAXSPROC'
     grouped_mode = 'madevent'
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
@@ -10570,7 +10573,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     def read_write_good_hel(self, ncomb):
         """return the code to read/write the good_hel common_block"""    
 
-        convert = {'ncomb' : ncomb}
+        convert = {'ncomb' : ncomb, 'dims': self.goodhel_dims}
 
         output = """
         subroutine write_good_hel(stream_id)
@@ -10579,8 +10582,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         integer stream_id
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, 2, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(dims)s)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
         write(stream_id,*) GOODHEL
         return
@@ -10594,11 +10597,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         integer stream_id
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, 2, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(dims)s)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
         read(stream_id,*) GOODHEL
-        NTRY(:,:,:) = MAXTRIES + 1
+        NTRY = MAXTRIES + 1
         return
         end
         
@@ -10607,12 +10610,12 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         include 'maxamps.inc'
         INTEGER                 NCOMB
         PARAMETER (             NCOMB=%(ncomb)d)
-        LOGICAL GOODHEL(NCOMB, 2, MAXFLAVPERPROC, MAXSPROC)
-        INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
+        LOGICAL GOODHEL(NCOMB, %(dims)s)
+        INTEGER NTRY(%(dims)s)
         INTEGER I,J
 
-        GOODHEL(:,:,:,:) = .false.
-        NTRY(:,:,:) = 0
+        GOODHEL = .false.
+        NTRY = 0
         end
         
         integer function get_maxsproc()
