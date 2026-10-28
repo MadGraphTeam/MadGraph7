@@ -553,3 +553,51 @@ def test_ckm_relation_rule():
     )  # fmt: skip
     failed = [c for c in mqcd.rule_ckm(row, 0, off, twin, factor) if not c.passed]
     assert [(c.coefficient, c.rule) for c in failed] == [("finite", "ckm")]
+
+
+def _report_builder():
+    import importlib.util
+
+    path = mqcd.ROOT / "docs/performance_reports/loop/scripts/build_mqcd.py"
+    spec = importlib.util.spec_from_file_location("loop_report_build_mqcd", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_report_data_counts_variants_smokes_and_findings(tmp_path):
+    """build_mqcd.py: a failing gating variant fails its row, a non-gating
+    one does not, smoke and expansion records are kept apart, a row without
+    a record is not-run and a pending row stays pending; the findings name
+    their rows in the per-row table."""
+
+    builder = _report_builder()
+
+    def record(name, tier, passed):
+        check = {"rule": "1", "point": 0, "carrier": "double-double",
+                 "sector": "total", "coefficient": "finite", "error": 2e-12,
+                 "bound": 1e-12, "note": "", "passed": passed}  # fmt: skip
+        data = {"row": name, "tier": tier, "passed": passed, "checks": 1,
+                "failures": int(not passed), "check_records": [check]}  # fmt: skip
+        (tmp_path / f"{name}.{tier}.json").write_text(json.dumps(data))
+
+    record("A01", "default", True)
+    record("A09", "default", True)
+    record("A09@soft", "nightly", False)
+    record("C04", "nightly", True)
+    record("C04@z", "nightly", False)
+    record("smoke:no_masses", "nightly", True)
+    findings = {"findings": [{"id": "F9", "rows": ["A09@soft"]}]}
+    data = builder.build([tmp_path], {}, findings)
+    rows = {row["id"]: row for row in data["rows"]}
+    assert rows["A01"]["status"] == "pass"
+    assert rows["A09"]["status"] == "fail"
+    assert rows["C04"]["status"] == "pass"
+    assert rows["A02"]["status"] == "not-run"
+    assert rows["C09"]["status"] == "pending"
+    assert data["smokes_and_expansions"]["smoke:no_masses"]["passed"]
+    assert len(data["rows"]) == 76
+    assert sum(data["counts"].values()) == len(data["rows"])
+    table = builder.markdown(data)
+    line = next(x for x in table.splitlines() if x.startswith("| A09"))
+    assert "fail" in line and "F9" in line and "soft: r1 p0" in line
