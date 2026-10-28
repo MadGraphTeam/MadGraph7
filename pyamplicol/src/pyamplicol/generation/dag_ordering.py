@@ -75,6 +75,55 @@ def _direct_contraction_ir(
     return contraction
 
 
+#: The contraction a loop Born DAG records for a Dirac current closing on a
+#: Weyl sink (``_loop_born_direct_contraction_ir``). Its bases name no
+#: propagator basis and its one component matches no fermion current, so
+#: every tree evaluator refuses the root (the tree lowering validates both);
+#: the loop engine reads only the root's coupling orders, colour sector and
+#: helicities and closes the Born on its own vertex closure.
+DIRAC_WEYL_CLOSURE = ContractionIR(
+    name="dirac-weyl-closure",
+    left_basis="dirac-weyl-closure",
+    right_basis="dirac-weyl-closure",
+    coefficients=((1.0, 0.0),),
+)
+
+
+def _loop_born_direct_contraction_ir(
+    model: Model,
+    left: CurrentIndex,
+    right: CurrentIndex,
+) -> ContractionIR | None:
+    """``_direct_contraction_ir`` of a loop Born DAG (``GenericDAGCompiler``
+    with ``loop_born=True``): a Dirac current that would close on a Weyl
+    sink (the class ``_direct_contraction_ir`` refuses) is a root with the
+    marker contraction ``DIRAC_WEYL_CLOSURE``.
+
+    The loop engine (``loops.v2``) takes from its Born DAG the colour plan
+    and, per amplitude root, the coupling orders, colour sector and
+    helicities; it never evaluates a root's contraction. Its Born amplitude
+    is its own closure of the tree blocks at a model vertex holding leg 1
+    (``assemble._born_block_requests``, ``ct_sites.SiteClosure``), whose
+    vertex kernels embed Weyl currents in the Dirac basis, so a line that
+    joins massive and massless fermions through a chiral vertex needs no
+    Dirac-Weyl contraction there. Recording the root keeps its orders and
+    sector (g b > t w- with a massless b has no other root)."""
+
+    contraction = model.direct_contraction_ir(
+        left.particle_id,
+        right.particle_id,
+        left_chirality=left.chirality,
+        right_chirality=right.chirality,
+    )
+    if (
+        contraction is None
+        and (left.chirality == 0) != (right.chirality == 0)
+        and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
+    ):
+        return DIRAC_WEYL_CLOSURE
+    return contraction
+
+
 def _sector_group_indices_for_label(
     sector: LCColorSector,
     label: int,

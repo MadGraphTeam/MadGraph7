@@ -243,7 +243,8 @@ def born_amplitude_orders(
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
     compiles the Born of a slice (without the vetoed |PDG| codes
-    ``particle_veto``)."""
+    ``particle_veto``; a loop Born DAG, ``loop_born``: a Dirac current
+    closing on a Weyl sink is a root, ``dag_ordering.DIRAC_WEYL_CLOSURE``)."""
 
     from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
@@ -257,6 +258,7 @@ def born_amplitude_orders(
         model=model,
         max_coupling_orders=dict(bounds),
         ignored_particle_ids=vetoed_particle_ids(particle_veto),
+        loop_born=True,
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag
