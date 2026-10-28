@@ -82,7 +82,7 @@ def _feature_blockers(backend, processes):
             "actions; the requested trace-basis conversion is unavailable"
         )
     selection = backend._process_selection
-    if any(
+    if not _v2_leading_colour(run) and any(
         getattr(selection, name) is not None
         for name in (
             "max_color_sectors",
@@ -91,9 +91,11 @@ def _feature_blockers(backend, processes):
             "selected_source_helicities",
         )
     ):
+        # Leading-colour v2 requests take them (``_v2_selection``).
         reasons.append(
-            "public loop generation currently requires inclusive helicity "
-            "and colour selectors"
+            "public loop generation requires inclusive helicity and colour "
+            "selectors at next-to-leading and full colour; leading colour "
+            "(color.accuracy='lc') with loop.engine='v2' selects them"
         )
     if processes.aliases or run.process.analyze_process_groups != "none":
         reasons.append(
@@ -1168,6 +1170,62 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     return tuple(reasons)
 
 
+def _v2_leading_colour(run) -> bool:
+    return run.loop.engine is LoopEngine.V2 and run.color.accuracy == "lc"
+
+
+def _v2_selection(backend, compiled, process: str, label: str):
+    """The leading-colour selection of a v2 request (``loops.v2.selection.
+    Selection``) from the tree engine's generation selectors, or None when
+    they keep every helicity and colour flow.
+
+    ``selected_source_helicities`` fixes leg helicities (labels as the tree
+    engine's). The colour selectors pick sectors of the tree engine's
+    leading-colour plan (``reference_color_order`` first, at most
+    ``max_color_sectors``, then ``selected_color_sector_ids`` by id), each a
+    flow and, for a folded trace, its reflection (the tree engine's physical
+    flows); a missing sector id is refused as the tree engine refuses it."""
+
+    from pyamplicol.loops.v2 import selection as lc
+
+    chosen = backend._process_selection
+    helicities = tuple(sorted((chosen.selected_source_helicities or {}).items()))
+    flows = None
+    if (
+        chosen.max_color_sectors is not None
+        or chosen.selected_color_sector_ids is not None
+    ):
+        plan = lc.leading_colour_plan(
+            compiled,
+            process,
+            max_sectors=chosen.max_color_sectors,
+            reference_color_order=chosen.reference_color_order,
+        )
+        wanted = chosen.selected_color_sector_ids
+        known = {int(sector.id) for sector in plan.sectors}
+        if wanted is not None and (missing := sorted(set(wanted) - known)):
+            raise GenerationError(
+                f"process {label} did not materialize requested LC colour sector "
+                "ids: " + ", ".join(str(sector_id) for sector_id in missing)
+            )
+        complete = {
+            flow.id
+            for flow in lc.plan_flows(lc.leading_colour_plan(compiled, process), ())
+        }
+        kept = tuple(
+            flow
+            for flow in lc.plan_flows(plan, ())
+            if wanted is None or flow.sector in wanted
+        )
+        if not kept:
+            raise GenerationError(f"process {label} keeps no leading-colour flow")
+        if {flow.id for flow in kept} != complete:
+            flows = tuple(flow.word for flow in kept)
+    if not helicities and flows is None:
+        return None
+    return lc.Selection(helicities, flows)
+
+
 def _blocked(backend, processes) -> tuple[str, ...]:
     reasons = _feature_blockers(backend, processes) + _v2_blockers(backend)
     if reasons:
@@ -1325,6 +1383,11 @@ def _v2_request(backend, context, index):
         )
     require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy
+    selection = (
+        _v2_selection(backend, compiled, process, label)
+        if _v2_leading_colour(run)
+        else None
+    )
     return SliceRequest(
         process,
         dict(limits),
@@ -1339,6 +1402,7 @@ def _v2_request(backend, context, index):
         alpha_s_parameter=run.loop.alpha_s_parameter,
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
+        selection=selection,
     )
 
 

@@ -269,7 +269,7 @@ def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
     from .colour import _canonical_rotation, sector_flow
 
     elements: dict[Any, int] = {}
-    for b, tensor in enumerate(basis.tensors):
+    for b, tensor in enumerate(getattr(basis, "tensors", ())):
         elements.setdefault(_tensor_flow(tensor), b)
     found: dict[str, Flow] = {}
     for sector in plan.sectors:
@@ -356,8 +356,12 @@ class Catalogue:
                 flow = by_id.get(str(name).strip())
                 if flow is None:
                     flow = self._ordinal(str(name))
-                if flow.basis is not None:
-                    chosen_basis.add(flow.basis)
+                if flow.basis is None:
+                    raise EvaluationError(
+                        f"colour flow {flow.id!r} has no Born amplitude in this "
+                        "process (a generation-time selection keeps other flows)"
+                    )
+                chosen_basis.add(flow.basis)
             basis = frozenset(chosen_basis)
         return rows, basis
 
