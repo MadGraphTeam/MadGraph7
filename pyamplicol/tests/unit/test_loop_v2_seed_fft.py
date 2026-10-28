@@ -33,15 +33,21 @@ import pytest
 from pyamplicol.loops.v2.assemble import COMPONENTS, LoopSlice, Precision, SliceRequest
 from pyamplicol.loops.v2.colour import SYMMETRIC_GROUP_FFT
 from pyamplicol.loops.v2.plan_export import NativeExecutor
+from pyamplicol.loops.v2.stability import StabilityChecks
 from tools.loop_reference import legacy_capture
 
 PARAMETERS = {"aS": "0.118", "MT": "173"}
 FIXED = {"MB": "0"}
-# FFT against direct: the seeds differ by the FFT's rounding only (a few
-# units of the carrier's roundoff times the group's depth), so every
-# coefficient agrees to a small multiple of the roundoff of the component's
-# largest coefficient.
-TOLERANCE = {"double": 1e-13, "double-double": 1e-28}
+# FFT against direct: the seeds differ by the transforms' rounding only, so
+# the Born and the local components (no seed enters them) are bitwise equal,
+# and the bare loop and the virtual agree within the rounding envelope of the
+# two evaluations: per sector and Laurent coefficient |FFT - direct| <=
+# MARGIN * (E_fft + E_direct) + FLOOR * u * S, with E the absolute stability
+# estimates (the reduction-direction check, the user's tenfold margin of the
+# O1 rule on each side) and S the absolute sums (DESIGN §10.4).
+MARGIN = 10.0
+FLOOR = 16.0
+LOCAL = ("uv", "r2", "uv_local", "uv_external_fields")
 CARRIERS = {"double": Precision.double(), "double-double": Precision.double_double()}
 
 
@@ -102,36 +108,54 @@ def _coefficients(result):
     return out
 
 
-def _assert_equal_to_rounding(mine, theirs, tolerance, label):
+def _assert_equal_to_rounding(mine, theirs, label):
+    """FFT = direct to rounding (``MARGIN``): local parts bitwise, the loop
+    within both evaluations' rounding envelope."""
+
     a, b = _coefficients(mine), _coefficients(theirs)
     assert a.keys() == b.keys(), label
     for key, values in b.items():
-        scale = max(abs(complex(x)) for x in values)
-        for x, y in zip(a[key], values, strict=True):
-            error = abs(complex(x) - complex(y))
-            assert error <= tolerance * scale, (label, key, error / (scale or 1))
+        if key[0] == "born" or key[0] in LOCAL:
+            assert a[key] == values, (label, key)
+    unit = theirs.stability.roundoff
+    for sector, scale in theirs.stability.scale.items():
+        bounds = [
+            MARGIN * (float(x) + float(y)) + FLOOR * unit * float(z)
+            for x, y, z in zip(
+                mine.stability.absolute[sector].coefficients,
+                theirs.stability.absolute[sector].coefficients,
+                scale.coefficients,
+                strict=True,
+            )
+        ]
+        for component in ("bare", "virtual"):
+            for x, y, bound in zip(
+                a[component, sector], b[component, sector], bounds, strict=True
+            ):
+                error = float(abs(x - y))
+                assert error <= bound, (label, component, sector, error, bound)
 
 
 def _assert_fft_equals_direct(slice_, points, scales, *, dd_points=1):
     fft, direct = _pair(slice_)
     stats = fft.native("double").fourier
     assert stats is not None and stats["pairs"] >= 1 and stats["covered"] >= 1
+    checks = StabilityChecks(reduction_direction=True)
     for carrier, precision in CARRIERS.items():
         count = len(points) if carrier == "double" else dd_points
-        mine = fft.evaluate(
-            points[:count], scales[:count], parameters=PARAMETERS, precision=precision
-        )
-        theirs = direct.evaluate(
-            points[:count], scales[:count], parameters=PARAMETERS, precision=precision
-        )
+        options = {
+            "parameters": PARAMETERS,
+            "precision": precision,
+            "stability": checks,
+        }
+        mine = fft.evaluate(points[:count], scales[:count], **options)
+        theirs = direct.evaluate(points[:count], scales[:count], **options)
         assert fft.last_report["counts"].get("symmetric-group-fft seed jobs")
         assert "symmetric-group-fft seed jobs" not in direct.last_report["counts"]
         for k, (a, b) in enumerate(zip(mine, theirs, strict=True)):
             assert a.colour_contraction == SYMMETRIC_GROUP_FFT
             assert b.colour_contraction == "direct"
-            _assert_equal_to_rounding(
-                a, b, TOLERANCE[carrier], (slice_.request.process, carrier, k)
-            )
+            _assert_equal_to_rounding(a, b, (slice_.request.process, carrier, k))
     return stats
 
 
@@ -190,12 +214,25 @@ def test_native_seed_fft_equals_the_python_stage(compiled, loop_native):
     native = NativeExecutor(slice_)
     points = _points([0] * 4, 2)
     scales = _scales(points)
-    mine = native.evaluate(points, scales, parameters=PARAMETERS)
+    checks = StabilityChecks(reduction_direction=True)
+    mine = native.evaluate(points, scales, parameters=PARAMETERS, stability=checks)
     for point, scale, result in zip(points, scales, mine, strict=True):
         python = slice_.evaluate(point, scale, parameters=PARAMETERS)
         assert python.colour_contraction == result.colour_contraction
         assert result.colour_contraction == SYMMETRIC_GROUP_FFT
-        _assert_equal_to_rounding(result, python, 1e-12, "python stage")
+        # Two dressing routes (native and Python), each rounded its own way:
+        # within the native evaluation's rounding envelope (twice its E).
+        unit = result.stability.roundoff
+        for sector, scale_ in result.stability.scale.items():
+            for x, y, e, z in zip(
+                result.components["virtual"][sector].coefficients,
+                python.components["virtual"][sector].coefficients,
+                result.stability.absolute[sector].coefficients,
+                scale_.coefficients,
+                strict=True,
+            ):
+                bound = MARGIN * 2 * float(e) + FLOOR * unit * float(z)
+                assert abs(complex(x) - complex(y)) <= bound, (sector, x, y)
 
 
 @pytest.mark.loop_physics
@@ -244,10 +281,10 @@ def test_forced_fft_runs_in_every_floating_carrier(compiled, loop_native):
         plan_json=executor._plan_json,
         contraction="auto",
     )
-    for precision, tolerance in (
-        (Precision.double(), 0.0),
-        (Precision.double_double(), 0.0),
-        (Precision.arbitrary(40), 0.0),
+    for precision in (
+        Precision.double(),
+        Precision.double_double(),
+        Precision.arbitrary(40),
     ):
         (mine,) = executor.evaluate(
             points, scales, parameters=PARAMETERS, precision=precision
@@ -257,7 +294,7 @@ def test_forced_fft_runs_in_every_floating_carrier(compiled, loop_native):
         )
         assert mine.colour_contraction == SYMMETRIC_GROUP_FFT
         # The same plan, record and carrier: bitwise.
-        _assert_equal_to_rounding(mine, theirs, tolerance, precision)
+        assert _coefficients(mine) == _coefficients(theirs), precision
     direct = _slice(
         compiled,
         loop_native,
@@ -381,7 +418,10 @@ def test_public_route_serves_the_seed_fft(
         for a, b in zip(a_point, b_point, strict=True):
             scale = max(abs(float(x)) for x in b)
             for x, y in zip(a, b, strict=True):
-                assert abs(float(x) - float(y)) <= TOLERANCE["double"] * scale
+                # Rounding of a 2 -> 2 control, well conditioned at these
+                # points (its estimates are below 1e-13: ``_assert_equal_to_
+                # rounding`` holds the general bound).
+                assert abs(float(x) - float(y)) <= 1e-12 * scale
 
 
 # ---------------------------------------------------------------- nightly tier
