@@ -1668,8 +1668,12 @@ LADDER = [
         fixed_parameters=_ZERO_WIDTHS,
     ),
     # Lifted by EWI-4b: the full QED corrections (Z, W, H, Goldstones and
-    # ghosts in the loops, 't Hooft-Feynman gauge) generate and their bare
-    # and counterterm UV poles cancel (the finite part is EWI-7's).
+    # ghosts in the loops, 't Hooft-Feynman gauge) generate and evaluate
+    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
+    # identity of ``loops.v2.poles``, no evidence). Their poles against
+    # Catani: ``test_loop_v2_catani_scope.
+    # test_joint_request_predicts_its_cross_order_sector`` (QCD and QED
+    # corrections); the finite part is EWI-7's.
     _rung(
         "uudd_qed",
         "loop_qcd_qed_sm",
@@ -1742,11 +1746,10 @@ LADDER = [
     # The Goldstone-vector mixings (G0-Z, G0-A, G+-W-) as vertex insertions
     # (EWI-4b): its trees join the top line and the top pair through a Z or
     # photon on one side and a G0 on the other, with the gluon at leg 1; the
-    # request generates with the mixings admitted and lowered, and the UV
-    # poles of its QED corrections cancel (``poles="uv"`` takes the bare
-    # loop's UV poles from the counterterms, so this is blind to the mixings'
-    # sign, which moves the counterterms' finite part and single pole; their
-    # values against MadLoop: ``test_loop_v2_ew_gauge.
+    # request generates with the mixings admitted and lowered and evaluates
+    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
+    # identity of ``loops.v2.poles``, blind to every counterterm, the
+    # mixings' sign included; their values against MadLoop: ``test_loop_v2_ew_gauge.
     # test_goldstone_vector_mixings_equal_madloop``, and the O6 test
     # ``test_loop_v2_ew_gauge.test_goldstone_vector_mixings_equal_the_site_oracle``).
     _rung(
@@ -1847,8 +1850,13 @@ def test_electroweak_ladder_reaches_its_blocker(
     ladder_models, loop_native, model, process, born, loop, blocker, options
 ):
     """Each rung stops at its named blocker, never in the CT lowering
-    (WP3.2 EWI-3); a rung whose blockers are lifted generates, runs its
-    check (the UV poles cancel) and is a plain test."""
+    (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates and
+    is a plain test. Its ``poles="uv"`` check is the pole split's identity
+    (``poles.split_sector`` takes the field factors' UV part as the
+    remainder, so bare + uv = 0 always): the uv mode exercised, never
+    evidence of UV renormalisation (coordinator DECISIONS 2026-10-28 ~05:20
+    (1)); a rung's values are tested against providers and Catani in the
+    tests its comment names."""
 
     import re
 
@@ -1875,8 +1883,9 @@ def test_electroweak_ladder_reaches_its_blocker(
         raise AssertionError(f"stopped before its blocker: {error!r}") from error
     if poles == "uv":
         # Bare UV poles + counterterm UV poles = 0 per sector and coefficient
-        # (REQUIREMENTS_ADDENDUM I): UV renormalisation is complete (the
-        # finite part is not checked here).
+        # (REQUIREMENTS_ADDENDUM I): an identity of the pole split (the field
+        # factors' UV part is the remainder), the API's uv mode exercised;
+        # it tests neither the counterterms nor the finite part.
         for sector, bare in result.components["bare"].items():
             counterterms = result.components["uv"][sector]
             for index in (1, 2):
