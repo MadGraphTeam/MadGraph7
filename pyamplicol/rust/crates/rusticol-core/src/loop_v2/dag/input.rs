@@ -105,6 +105,10 @@ struct RawInput {
     /// `models.contracts.U1_SUBTRACTION_AUXILIARY_KIND` (the colour-connection
     /// signs, `signs::apply_connection_signs`).
     u1_subtraction_kind: String,
+    /// The N_c grade split of leading- and next-to-leading-colour requests
+    /// ([`super::grades`]); absent (false) at full colour.
+    #[serde(default)]
+    u1_grades: bool,
 }
 
 #[derive(Deserialize)]
@@ -267,6 +271,8 @@ pub struct DagInput {
     pub antifundamental_labels: u64,
     /// The auxiliary kind of the U(1)-subtraction currents.
     pub u1_subtraction_kind: String,
+    /// Whether blocks of several N_c grades are graded ([`super::grades`]).
+    pub u1_grades: bool,
 }
 
 fn bits(pair: [u64; 2]) -> [f64; 2] {
@@ -553,6 +559,7 @@ impl DagInput {
             fundamental_labels,
             antifundamental_labels,
             u1_subtraction_kind: raw.u1_subtraction_kind,
+            u1_grades: raw.u1_grades,
         })
     }
 

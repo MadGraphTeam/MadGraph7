@@ -685,7 +685,9 @@ take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
-model's source colour declaration); double, double-double and arbitrary
+model's source colour declaration; formal-N_c projections for any number of
+quark lines, identical flavours such as `u u~ > u u~ g` included); double,
+double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin
 correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
@@ -720,23 +722,40 @@ strong coupling parameter described above (`ir_poles` is absent otherwise;
 What the engine does not admit fails at generation with a typed error that
 names the rule, for example:
 
-- leading and next-to-leading colour of processes whose tree currents are
-  not exact in N_c: identical-flavour quark lines, from `u u~ > u u~ g` up
-  (`u u~ > u u~ d d~`, `g g > u u~ u u~`, ...), whose currents mix
-  U(1)-subtraction grades: "colour-accuracy-nc-exact: ... LC needs N_c-exact
-  tree currents ...". Full colour (`color.accuracy = "full"`) is exact for
-  them; `u u~ > u u~` and distinct flavours (`u u~ > d d~ g`) are not
-  affected. The check runs right after the trees are built, and every export
-  repeats it, so no artifact carries such a projection;
+- leading and next-to-leading colour over tree currents that are not exact
+  in N_c (currents mixing U(1)-subtraction grades): "colour-accuracy-nc-exact:
+  ... LC needs N_c-exact tree currents ...". Leading and next-to-leading
+  colour split such currents by grade, so identical-flavour quark lines (from
+  `u u~ > u u~ g` up: `u u~ > u u~ d d~`, `g g > u u~ u u~`, ...) are exact
+  and generate, as distinct flavours do; the rule guards any request whose
+  currents would still mix grades. The check runs right after the trees are
+  built, and every export repeats it, so no artifact carries a projection that
+  is not exact;
+- a `particle_veto` that removes a species running in the loops of a
+  requested correction, on a model some of whose counterterm terms of that
+  correction declare no loop content (`loop_particles = []`):
+  "veto-unlabelled-counterterms: ... particle_veto removes the species
+  [23, 24, 25, 250, 251], perturbative in the corrections ['QED'], and the
+  model's counterterm vertices V_UV... write terms of those corrections
+  without loop content ...", in the model preparation, before any tree is
+  built, so a dry run reports it too (photon-only QED corrections on
+  MG5_aMC's `loop_qcd_qed_sm` and its G_mu variant; see the particle veto
+  below). Request the complete corrections;
 - a vertex joining a coloured and a colour-singlet fermion that the request
   can use (a leptoquark `u e lq` vertex: one fermion line changing colour
   representation): "fermion-line-representation: ... the vertex V (u~ e- lq)
   joins a coloured and a colour-singlet fermion ...", before any tree is
   built. Veto a particle of the vertex (`particle_veto`) or bound its
   coupling order so that the request cannot use it;
-- more than one colour-singlet fermion line (`e- e+ > m- m+`,
-  `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
-  ... are not implemented yet".
+- fermions outside the loop sign rule: vertices joining two or more fermion
+  lines (four-fermion contact vertices: "a loop vertex joins more than one
+  fermion line"), fermions in colour representations other than singlets and
+  (anti)triplets ("a fermion of colour representation 8 has no sign rule"), and
+  Majorana fermions (refused when the model is loaded). Any number of
+  colour-singlet (lepton) fermion lines, mixed with any number of quark lines
+  and running through the loop or not, is admitted: `e- e+ > m- m+` and
+  `e- e+ > e- e+` with QED corrections, `u u~ > e- e+ m- m+` with QCD
+  corrections.
 
 A process whose programs cannot be stored natively is refused with the
 feature's key (see the stored programs below), for example on-shell external
@@ -753,11 +772,16 @@ counterterm, and loop_sm with `MW` made a card input).
 A `particle_veto` drops every counterterm whose declared loop particles include
 a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for
 the photon and Z loops together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop
-particles `u` and `Z`), so photon-only QED corrections (the Z, W, Higgs and
-Goldstones vetoed) drop the photon's part of such a coupling too: R2
-counterterms carry no poles and the UV poles of such a request cancel
-(checked on `u u~ > d d~`), but its finite part is incomplete until the engine
-handles such shared couplings.
+particles `u` and `Z`), and its electroweak UV counterterms carry nominal loop
+particles (none on the vertices, one representative on the two-point ones),
+so photon-only QED corrections (the Z, W, Higgs and Goldstones vetoed) would
+drop the photon's part of the former and keep the W and Z loops of the latter:
+with lepton lines (`e- e+ > m- m+`) the single pole misses the QED Catani
+operator's, and the finite part is wrong. Such a veto is therefore refused at
+generation ("veto-unlabelled-counterterms", above) on every model with a
+counterterm term of a requested correction that declares no loop content.
+Photon-only corrections are not expressible on this model; full electroweak
+corrections are.
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
@@ -767,7 +791,8 @@ MG5_aMC's `loop_qcd_qed_sm` needs
 `G-` loses the Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
 goldstoneboson"); `loop.preparation.covariant_multiplets` and
 `color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
-(`generate --dry-run`) reports what the model preparation refuses; loop
+(`generate --dry-run`) reports what the model preparation refuses (the
+veto refusal "veto-unlabelled-counterterms" included); the rest of loop
 admission is checked by the generation only, and the dry run lists what it
 refuses (`estimated_coverage.loop_admission_refusals`, with the remedies) and
 what the native export refuses (`native_export_refusals`).

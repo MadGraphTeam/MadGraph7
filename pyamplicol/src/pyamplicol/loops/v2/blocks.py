@@ -33,10 +33,18 @@ Conventions a consumer relies on:
 * **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
   produces from a fundamental line pair with the numeric 1/N_c of the Fierz
   identity at N_c = 3. A block whose trees produce k auxiliaries has grade
-  g = -k (``BlockColourFlow.nc_grade``; ``None`` if its trees disagree, e.g.
-  a U(1) piece and a photon giving the same flow) and rows carrying 3^g; the
+  g = -k (``BlockColourFlow.nc_grade``) and rows carrying 3^g; the
   formal-N_c current is the row times N_c^g 3^(-g), which the colour seeds
-  apply (design §3.2 item 4).
+  apply (design §3.2 item 4). Trees of one word with different grades
+  (identical-flavour lines: a gluon and the U(1) piece of the
+  Fermi-exchanged pairing; a U(1) piece and a photon) are separate blocks:
+  the loop-request compilation of a leading- or next-to-leading-colour
+  request puts the grade into the identity of those currents
+  (``generation.dag_grades.split_u1_grades``, ``ColorState.nc_grade``), so a
+  word and its grade name a block's colour (``colour.PositionColour``). A
+  full-colour request needs no grades (every power is kept at N_c = 3) and
+  keeps its blocks as they are: there ``nc_grade`` is ``None`` for a block
+  whose trees disagree (``SeedTable.formal_nc`` false, full colour only).
 * **Signs.** ``BlockColourFlow.sign`` extends the tree engine's Born colour
   metric (``color/correlator_matrices.py``) to blocks: the parity of the
   antifundamental string ends listed in the order of their fundamental
@@ -108,6 +116,7 @@ from pyamplicol.generation.dag_compiler import (
     LoopBlockReachability,
     compile_generic_dag,
 )
+from pyamplicol.generation.dag_grades import u1_grade_sets
 from pyamplicol.generation.dag_types import (
     AmplitudeRoot,
     ColorState,
@@ -125,7 +134,7 @@ from pyamplicol.loops.v2.families import (
     model_data,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
-from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
+from pyamplicol.models.contracts import TreeKernelVariant
 from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
@@ -445,7 +454,10 @@ class TreeBlocks:
     or the native builder's ``dag_input.NativeDag`` handle (module
     docstring, "Native DAG"); ``dag_fallback`` names the listed feature
     (``"<NativeFallback.key>: <detail>"``) for which the tree engine built it
-    under ``dag_input.NATIVE_DAG``.
+    under ``dag_input.NATIVE_DAG``. ``graded`` tells that the DAG was
+    compiled with the N_c grade split (leading and next-to-leading colour,
+    ``generation.dag_grades``): every block has one grade, and a colour state
+    names a block by its word and grade (``colour.block_name``).
     """
 
     process: CanonicalProcessIR
@@ -455,6 +467,7 @@ class TreeBlocks:
     born_roots: tuple[BornRoot, ...]
     kernel_variant: TreeKernelVariant
     dag_fallback: str | None = None
+    graded: bool = False
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
@@ -589,6 +602,7 @@ def build_tree_blocks(
     ignored_particle_ids: Iterable[int] = (),
     ignored_vertex_kinds: Iterable[int] = (),
     progress_callback: DAGProgressCallback | None = None,
+    u1_grades: bool = False,
 ) -> TreeBlocks:
     """Compile the blocks and the Born of one loop request.
 
@@ -597,6 +611,8 @@ def build_tree_blocks(
     exact colour-flow currents, so they are compiled at full colour whatever
     the requested accuracy; ``block_coupling_orders`` bounds the orders a
     block may carry (the loop-amplitude orders bound it without loss).
+    ``u1_grades`` (leading and next-to-leading colour) makes every block
+    exact in N_c (``generation.dag_grades``).
     """
 
     ignored_particles = tuple(ignored_particle_ids)
@@ -621,6 +637,7 @@ def build_tree_blocks(
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
         kernel_variant=kernel_variant,
+        u1_grades=u1_grades,
     )
     return TreeBlocks(
         process=process,
@@ -630,6 +647,7 @@ def build_tree_blocks(
         born_roots=_born_roots(born_dag, model),
         kernel_variant=kernel_variant,
         dag_fallback=fallback,
+        graded=u1_grades,
     )
 
 
@@ -886,31 +904,14 @@ def _connection_parities(dag: GenericDAG, model: Model) -> list[int | None]:
 def u1_grades(dag: GenericDAG) -> list[int | None]:
     """N_c grade of every current: minus the number of U(1)-subtraction
     auxiliaries its trees produce (module docstring), ``None`` if its
-    derivations disagree."""
+    derivations disagree or none derives it (the single-grade view of
+    ``generation.dag_grades.u1_grade_sets``, whose ``split_u1_grades`` splits
+    the disagreeing currents of a loop-request DAG)."""
 
-    currents = dag.currents
-    grade: list[int | None] = [0 if current.is_source else None for current in currents]
-    mixed: set[int] = set()
-    for interaction in sorted(
-        dag.interactions,
-        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
-    ):
-        left, right = grade[interaction.left_id], grade[interaction.right_id]
-        result = interaction.result_id
-        if left is None or right is None:
-            mixed.add(result)
-            continue
-        value = (
-            left
-            + right
-            - (currents[result].index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND)
-        )
-        if grade[result] is None and result not in mixed:
-            grade[result] = value
-        elif grade[result] != value:
-            grade[result] = None
-            mixed.add(result)
-    return grade
+    return [
+        next(iter(grades)) if len(grades) == 1 else None
+        for grades in u1_grade_sets(dag)
+    ]
 
 
 def _born_root_orders(

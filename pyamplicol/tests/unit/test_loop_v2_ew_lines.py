@@ -6,13 +6,15 @@ Lepton legs (EWI-1). The kernel catalogue takes the loop species the
 families route (``assemble._family_loop_species``; B2: a lepton at leg 1 has
 no counterterm rule at the root to declare them), and the root closure signs
 a colour-singlet fermion line that closes at the root with the tree engine's
-merge sign (``ct_sites.SiteClosure._singlet_root_sign``; B4 at the root):
+merge sign (``conventions.colour_singlet_sign`` in ``ct_sites.SiteClosure``;
+B4 at the root):
 
 * e+ e- > u u~ with the photon and the Z is the massless quark form factor;
 * e- u > e- u (lepton root) equals u e- > u e- (quark root) and legacy;
-* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly);
-* a process with two colour-singlet fermion lines (u u~ > e- m- e+ m+) is
-  refused until the Koszul signs between their blocks exist (EWI-5).
+* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly).
+
+Processes with several colour-singlet fermion lines (EWI-5):
+``test_loop_v2_ew_leptons``.
 
 W vertices (EWI-2). A vertex whose particles are not closed under
 conjugation has no leg for the tree particles of its currents; the tree
@@ -336,32 +338,6 @@ def test_lepton_and_quark_roots_agree(loop_sm_compiled_model, loop_native):
     second = quark.evaluate(swapped, LEGACY["mu_r2"], parameters=PARAMETERS)
     _assert_equal_results(first, second)
     _assert_legacy(first, entry)
-
-
-@pytest.mark.loop_fast
-@pytest.mark.parametrize(
-    "process", ["u u~ > e- m- e+ m+", "u u~ > e- e+ m- m+", "u u~ > e- e- e+ e+"]
-)
-def test_two_colour_singlet_fermion_lines_are_refused(
-    loop_sm_compiled_model, loop_native, process
-):
-    """Two lepton lines at a quark root: their blocks' supports interleave
-    in the leg order (u u~ > e- m- e+ m+, and a pairing of e- e- e+ e+),
-    whose Koszul sign neither the root closure nor the loops apply yet
-    (EWI-5); the Born closure was the tree runtime's amplitude times 0.53
-    and 0.34 there. Every such process is refused before any tree is built,
-    wherever its lines sit."""
-
-    from pyamplicol.loops.v2.conventions import FermionSignError
-
-    with pytest.raises(FermionSignError, match="2 colour-singlet fermion lines"):
-        _slice(
-            loop_sm_compiled_model,
-            loop_native,
-            process,
-            {"QCD": 0, "QED": 4},
-            {"QCD": 2, "QED": 4},
-        )
 
 
 # ------------------------------------------------------------------ W lines

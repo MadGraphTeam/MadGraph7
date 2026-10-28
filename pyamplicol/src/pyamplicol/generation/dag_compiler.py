@@ -35,6 +35,7 @@ from .dag_equivalence import (
     _canonical_kernel_evaluation,
     assign_recursive_current_evaluation_reuse,
 )
+from .dag_grades import split_u1_grades
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -223,6 +224,7 @@ class GenericDAGCompiler:
         progress_callback: DAGProgressCallback | None = None,
         loop_blocks: bool = False,
         loop_block_reachability: LoopBlockReachability | None = None,
+        u1_grades: bool = False,
     ) -> None:
         """``loop_blocks`` compiles loop-request blocks instead of a tree.
 
@@ -231,7 +233,9 @@ class GenericDAGCompiler:
         closure pruning layers replaced by ``loop_block_reachability``
         (default ``AttachableLoopBlocks``). It builds no amplitude roots; the
         Born stays the ordinary tree compilation. Reflection folding and
-        tree-only selections do not apply.
+        tree-only selections do not apply. ``u1_grades`` makes every block
+        exact in N_c (``generation.dag_grades.split_u1_grades``), as leading
+        and next-to-leading colour need; full colour at N_c = 3 does not.
         """
 
         if loop_blocks:
@@ -257,7 +261,10 @@ class GenericDAGCompiler:
             lc_all_ordering_symmetry = False
         elif loop_block_reachability is not None:
             raise ValueError("loop_block_reachability requires loop_blocks=True")
+        elif u1_grades:
+            raise ValueError("u1_grades requires loop_blocks=True")
         self.loop_blocks = bool(loop_blocks)
+        self.u1_grades = bool(u1_grades)
         self.loop_block_reachability = loop_block_reachability
         self.model = model
         self.color_plan = color_plan
@@ -1556,12 +1563,18 @@ class GenericDAGCompiler:
             current_count=len(dag.currents),
             interaction_count=len(dag.interactions),
         )
-        # A current derived with both colour-connection parities (several
-        # pairings of identical-flavour lines) takes the other parity's -1
-        # in those derivations' colour weights (``loops/v2/blocks.py``).
-        # The parity depends on the colour state, which the evaluation
-        # contracts of the reuse leave out, so the fold precedes the reuse's
-        # value equivalences.
+        # With ``u1_grades`` (leading and next-to-leading colour), a block
+        # whose trees have several N_c grades (U(1)-subtraction pieces of
+        # identical-flavour lines) is graded: its currents carry their grade,
+        # split per grade where one current mixes them
+        # (``generation.dag_grades``). A current derived with both
+        # colour-connection parities (several pairings of identical-flavour
+        # lines) takes the other parity's -1 in those derivations' colour
+        # weights (``loops/v2/blocks.py``). The parity depends on the colour
+        # state, which the evaluation contracts of the reuse leave out, so
+        # the fold precedes the reuse's value equivalences.
+        if self.u1_grades:
+            dag = split_u1_grades(dag)
         return self._apply_fermion_ordering(
             assign_recursive_current_evaluation_reuse(
                 apply_colour_connection_signs(dag, self.model), self.model

@@ -24,6 +24,8 @@ fn dag_error(error: DagError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
+/// `ColorState` fields: accuracy, sector id, line groups, basis key,
+/// traces, lines, N_c grade.
 type ColourTuple = (
     String,
     i64,
@@ -31,6 +33,7 @@ type ColourTuple = (
     Vec<String>,
     Vec<Vec<u8>>,
     Vec<Vec<u8>>,
+    Option<i64>,
 );
 
 /// `(representative, factor re bits, im bits)` per current.
@@ -322,6 +325,7 @@ impl V2Dag {
                         colour.basis_key.clone(),
                         colour.traces.clone(),
                         colour.lines.clone(),
+                        colour.nc_grade,
                     ),
                     chirality: self.dag.c_chirality[id],
                     spin_state: self.dag.c_spin[id],
@@ -443,6 +447,7 @@ impl V2Dag {
                         colour.basis_key.clone(),
                         colour.traces.clone(),
                         colour.lines.clone(),
+                        colour.nc_grade,
                     ),
                     self.dag.c_dimension[id],
                     self.dag.c_leg[id],

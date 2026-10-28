@@ -128,7 +128,6 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
-    require_one_singlet_line,
     vanishes_identically,
 )
 from .ct_sites import (
@@ -177,7 +176,11 @@ from .poles import (
     strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
-from .refusals import require_colour_preserving_fermion_lines, require_nc_exact
+from .refusals import (
+    require_colour_preserving_fermion_lines,
+    require_labelled_counterterms_for_veto,
+    require_nc_exact,
+)
 from .schedules import (
     STRUCTURED,
     LoopSchedules,
@@ -1515,8 +1518,10 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
     ``prepare_loop_request_model``, with a colour declaration
-    ``prepare_declared_source_color``, and the gauge refusal of an
-    electroweak request (``ew_policy.require_feynman_gauge``). The public dry run
+    ``prepare_declared_source_color``, the gauge refusal of an electroweak
+    request (``ew_policy.require_feynman_gauge``) and the listed refusal of a
+    veto of loop species on unlabelled counterterms
+    (``refusals.require_labelled_counterterms_for_veto``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -1583,6 +1588,17 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         # preparation already, a bundle prepared in unitary gauge here);
         # ``LoopSlice.generate`` switches the gauge.
         ew_policy.require_feynman_gauge(compiled, request)
+    # A veto reaches the counterterms through their loop-content labels
+    # only: refused where the model's counterterm terms of a requested
+    # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5
+    # interim, EWI-7's [U2] guard), here so that the dry run reports it.
+    require_labelled_counterterms_for_veto(
+        prepared.model.kernels,
+        request.process,
+        request.particle_veto,
+        request.corrections,
+        prepared.structure.perturbative_species_orders,
+    )
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
     )
@@ -1777,7 +1793,10 @@ class LoopSlice:
 
         Listed loop-admission refusals (``refusals.LOOP_ADMISSION_REFUSALS``,
         typed ``LoopRequestUnsupported``) are raised before the structures they
-        concern are used: a vertex joining fermions of different sign
+        concern are used: a veto of a loop species on a model whose
+        counterterms of the correction are not all labelled with their loop
+        content in the model preparation (``prepare_request_model``, which
+        the dry run runs too), a vertex joining fermions of different sign
         ownership before any tree, LC/NLC over tree blocks that are not exact
         in N_c right after the trees.
         """
@@ -1804,9 +1823,6 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
-        # The root closure and the loops sign one colour-singlet fermion line
-        # only (``ct_sites.require_one_singlet_line``; WP3.2 EWI-5 lifts it).
-        require_one_singlet_line(process)
         # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
         # any tree, family or counterterm generation (``ew_policy``).
         electroweak = ew_policy.electroweak(
@@ -1870,6 +1886,8 @@ class LoopSlice:
                         reachable.block_requests() | born_requests, data
                     )
                 ),
+                # LC and NLC project formal N_c: every block of one grade.
+                u1_grades=request.accuracy != "full",
             )
             if electroweak:
                 # Widths in the Born or the loop-side trees, before their
@@ -1976,6 +1994,7 @@ class LoopSlice:
                     tuple(sorted(request.loop_order_bounds.items())),
                     request.compatibility,
                 ),
+                u1_grades=request.accuracy != "full",
             )
             # Its root terms close on its blocks with their N_c grades too.
             require_nc_exact(program.blocks.blocks, request.accuracy, request.process)
@@ -4212,21 +4231,31 @@ def _interfere(
 
 
 class _BlockRows:
-    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents."""
+    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
+    keyed by the contents' block names (``PositionColour.block_names``)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
+        from .colour import block_name
 
         fields = _NativeFields.of(slice_.data)
         index = slice_._cache.get("block-rows")
         if index is None:
             index = defaultdict(lambda: defaultdict(dict))
-            for block in slice_.blocks.blocks:
+            trees = slice_.blocks
+            for block in trees.blocks:
                 key = block.key
                 if key.auxiliary_kind is not None:
                     continue
                 name = fields.incoming(key.particle_id)["name"]
-                bucket = index[(key.external_mask, name, key.coupling_orders, key.word)]
+                bucket = index[
+                    (
+                        key.external_mask,
+                        name,
+                        key.coupling_orders,
+                        block_name(trees, block),
+                    )
+                ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
                     bucket[key.chirality][helicities] = (block, row)
