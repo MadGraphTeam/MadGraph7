@@ -67,7 +67,9 @@ FOUR_GLUON = (
 
 
 def _quark_line(vertices, couplings, factor="CF", reference=R2_EW):
-    return {vertex: (reference, dict.fromkeys(couplings, factor)) for vertex in vertices}
+    return {
+        vertex: (reference, dict.fromkeys(couplings, factor)) for vertex in vertices
+    }
 
 
 # vertex name -> (reference, {coupling name: colour factor}) or a whole rule.
@@ -152,11 +154,23 @@ TABLE: dict[str, object] = {
     "V_GGGA": (R2_EW, dict.fromkeys(("R2_GGGAvecUp", "R2_GGGAvecDown"), "TF")),
     "V_UV1eps3G": (
         UV,
-        {"UV_3Gq": "TF", "UV_3Gc": "TF", "UV_3Gb": "TF", "UV_3Gt": "TF", "UV_3Gg": "CA"},
+        {
+            "UV_3Gq": "TF",
+            "UV_3Gc": "TF",
+            "UV_3Gb": "TF",
+            "UV_3Gt": "TF",
+            "UV_3Gg": "CA",
+        },
     ),
     "V_UV1eps4G": (
         UV,
-        {"UV_4Gq": "TF", "UV_4Gc": "TF", "UV_4Gb": "TF", "UV_4Ggt": "TF", "UV_4Gg": "CA"},
+        {
+            "UV_4Gq": "TF",
+            "UV_4Gc": "TF",
+            "UV_4Gb": "TF",
+            "UV_4Ggt": "TF",
+            "UV_4Gg": "CA",
+        },
     ),
     **{
         vertex: (
@@ -187,7 +201,10 @@ TABLE: dict[str, object] = {
     "V_R2_GGGpGm": (
         R2_EW,
         dict.fromkeys(
-            (f"R2_GGGpGm_{pair}" for pair in ("ub", "cd", "cs", "cb", "td", "ts", "tb")),
+            (
+                f"R2_GGGpGm_{pair}"
+                for pair in ("ub", "cd", "cs", "cb", "td", "ts", "tb")
+            ),
             "TF",
         ),
     ),
@@ -275,7 +292,8 @@ def build(source: Path) -> dict:
         else:
             if set(data) != couplings:
                 raise SystemExit(
-                    f"{name}: table couplings {sorted(data)} != source {sorted(couplings)}"
+                    f"{name}: table couplings {sorted(data)} "
+                    f"!= source {sorted(couplings)}"
                 )
             # Per coupling entry (colour, Lorentz, loop-group indices): the
             # shipped data never names a coupling.
@@ -294,13 +312,17 @@ def build(source: Path) -> dict:
             if {k: v for k, v in first.items() if k != "label"} != {
                 k: v for k, v in entry.items() if k != "label"
             }:
-                raise SystemExit(f"{name}: same structure as {first['label']}, other data")
+                raise SystemExit(
+                    f"{name}: same structure as {first['label']}, other data"
+                )
             first["label"] += f"; {entry['label']}"
             continue
         by_digest[digest] = entry
         vertices.append(entry)
     if set(TABLE) - seen:
-        raise SystemExit(f"table vertices absent from the source: {sorted(set(TABLE) - seen)}")
+        raise SystemExit(
+            f"table vertices absent from the source: {sorted(set(TABLE) - seen)}"
+        )
     fields, seen_fields = [], set()
     for factor in field_factors(raw):
         particle = str(raw.collections["particles"][factor.key[0]]["name"])

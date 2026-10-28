@@ -59,7 +59,7 @@ import json
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
@@ -300,9 +300,7 @@ def field_factors(raw: Any) -> tuple[FieldFactor, ...]:
     definitions they read."""
 
     definitions = _Definitions(raw)
-    orders = tuple(
-        str(record["name"]) for record in raw.collections["coupling_orders"]
-    )
+    orders = tuple(str(record["name"]) for record in raw.collections["coupling_orders"])
     by_pdg = _by_pdg(raw)
     factors = []
     for index, particle in enumerate(raw.collections["particles"]):
@@ -442,7 +440,7 @@ class ShippedColourData:
         )
 
 
-@lru_cache(maxsize=None)
+@cache
 def shipped_colour_data() -> tuple[ShippedColourData, ...]:
     """Every shipped data file, parsed once."""
 
