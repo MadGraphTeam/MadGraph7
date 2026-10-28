@@ -1245,8 +1245,8 @@ C         DOUBLE CHECK THE HELICITY FILTER
               WRITE(*,*) '##W15 Helicity filter could not be'
      $         //' successfully double checked.'
               WRITE(*,*) '##One reason for this is that you might have'
-     $         //' changed sensitive parameters which affected what are'
-     $         //' the zero helicity configurations.'
+     $         //' changed sensitive parameters which affected what'
+     $         //' are the zero helicity configurations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $         //' filter with the next PS points it receives.'
               NTRY=0

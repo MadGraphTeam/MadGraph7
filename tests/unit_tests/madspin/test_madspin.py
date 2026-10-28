@@ -1283,7 +1283,7 @@ class TestEvent(unittest.TestCase):
 #aMCatNLO 2  5  4  4  4 0.40498390E+02 0.40498390E+02 9  0  0 0.99999997E+00 0.68201705E+00 0.15135239E+01 0.00000000E+00 0.00000000E+00
   <mgrwgt>
   some information
-  <scale> even more info
+  <scale> even more infor
   </mgrwgt>
   <clustering>
   blabla

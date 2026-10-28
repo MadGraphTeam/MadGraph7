@@ -1383,9 +1383,9 @@ C         DOUBLE CHECK THE HELICITY FILTER
      $       ,REF/DBLE(NCOMB),-1,-1)) THEN
               WRITE(*,*) '##W15 Helicity filter could not be successfu'
      $         //'lly double checked.'
-              WRITE(*,*) '##One reason for this is that you might hav'
-     $         //'e changed sensitive parameters which affected wha'
-     $         //'t are the zero helicity configurations.'
+              WRITE(*,*) '##One reason for this is that you might have'
+     $         //' changed sensitive parameters which affected what'
+     $         //' are the zero helicity configurations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicit'
      $         //'y filter with the next PS points it receives.'
               NTRY=0
@@ -1399,9 +1399,9 @@ C         DOUBLE CHECK THE HELICITY FILTER
      $       L(HELPICKED)+HELOFFSET)),REF,.TRUE.).EQ.0) THEN
               WRITE(*,*) '##W15 Helicity filter could not be successfu'
      $         //'lly double checked.'
-              WRITE(*,*) '##One reason for this is that you might hav'
-     $         //'e changed sensitive parameters which affected th'
-     $         //'e helicity dependence relations.'
+              WRITE(*,*) '##One reason for this is that you might have'
+     $         //' changed sensitive parameters which affected the'
+     $         //' helicity dependence relations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicit'
      $         //'y filter with the next PS points it receives.'
               NTRY=0
