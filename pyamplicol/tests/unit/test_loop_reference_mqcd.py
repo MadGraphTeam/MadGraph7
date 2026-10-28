@@ -282,9 +282,14 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
         absolute = abs(factor) * (reference["absolute_scale"] or 0.0)
         for sector in sectors["loop"]:
             partner = sector["born_sector"]
-            expected = factor * (born[(partner["QCD"], partner["QED"])] if partner else 0.0)
+            expected = factor * (
+                born[(partner["QCD"], partner["QED"])] if partner else 0.0
+            )
             scale = max(abs(sector["double_pole"]), abs(expected), largest, absolute)
-            assert abs(sector["double_pole"] - expected) <= UNIVERSAL_POLE_TOLERANCE * scale, (
+            assert (
+                abs(sector["double_pole"] - expected)
+                <= UNIVERSAL_POLE_TOLERANCE * scale
+            ), (
                 index,
                 sector["QCD"],
                 sector["QED"],
@@ -314,7 +319,9 @@ def test_scale_variation_obeys_the_renormalisation_group(run_id: str) -> None:
     assert (base, varied) == (variation["copy_of_point"] - 1, variation["point"] - 1)
     assert fixture["points"][base] == fixture["points"][varied]
     rows = fixture["rows"]
-    assert rows[base]["reference"]["status"] == rows[varied]["reference"]["status"] == "ok"
+    assert (
+        rows[base]["reference"]["status"] == rows[varied]["reference"]["status"] == "ok"
+    )
     ratio = Fraction(fixture["mu_r"][varied]) / Fraction(fixture["mu_r"][base])
     assert ratio == Fraction(1, 2)
     log = math.log(float(ratio) ** 2)
@@ -360,7 +367,9 @@ def test_supplied_points_are_published_at_thirty_digits(run_id: str) -> None:
     precision = construction["precision"]
     assert precision["printed_digits"] == 30
     masses = required_spec.masses(
-        required_spec.load_process(required_spec.DEFAULT_SPEC, fixture["mqcd_run"]["process"])
+        required_spec.load_process(
+            required_spec.DEFAULT_SPEC, fixture["mqcd_run"]["process"]
+        )
     )
     projected = bool(construction.get("madloop_qp_point"))
     for index, point in enumerate(fixture["points"]):
@@ -381,7 +390,13 @@ def test_supplied_points_are_published_at_thirty_digits(run_id: str) -> None:
             else:
                 assert defect == 0, index
             shell = max(
-                abs(e * e - x * x - y * y - z * z - Decimal(m.numerator) ** 2 / Decimal(m.denominator) ** 2)
+                abs(
+                    e * e
+                    - x * x
+                    - y * y
+                    - z * z
+                    - Decimal(m.numerator) ** 2 / Decimal(m.denominator) ** 2
+                )
                 / (e * e)
                 for (e, x, y, z), m in zip(p, masses, strict=True)
             )
@@ -389,7 +404,9 @@ def test_supplied_points_are_published_at_thirty_digits(run_id: str) -> None:
         recorded_conservation = float(
             precision["max_relative_momentum_conservation_defect"][index]
         )
-        assert float(shell) == pytest.approx(recorded_shell, rel=1e-2, abs=1e-300), index
+        assert float(shell) == pytest.approx(recorded_shell, rel=1e-2, abs=1e-300), (
+            index
+        )
         assert float(defect / scale) == pytest.approx(
             recorded_conservation, rel=1e-2, abs=1e-300
         ), index
@@ -398,9 +415,7 @@ def test_supplied_points_are_published_at_thirty_digits(run_id: str) -> None:
 def test_point_references_are_recorded_and_listed_in_the_manifest(
     campaign: dict, manifest: dict
 ) -> None:
-    by_run = {
-        ref["run"]: ref for row in manifest["rows"] for ref in row["references"]
-    }
+    by_run = {ref["run"]: ref for row in manifest["rows"] for ref in row["references"]}
     assert set(by_run) == set(RUN_IDS)
     for run in _runs(campaign):
         fixture = _fixture(run["id"])
@@ -416,7 +431,10 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                 scale_row = fixture["rows"][record["absolute_scale_row"]]
                 assert scale_row["reference"]["comparison"] == "relative"
                 assert record["absolute_scale"] == abs(scale_row["born"])
-                assert abs(fixture["rows"][index]["born"]) <= 1e-12 * record["absolute_scale"]
+                assert (
+                    abs(fixture["rows"][index]["born"])
+                    <= 1e-12 * record["absolute_scale"]
+                )
         projected = bool(run["points"].get("madloop_qp_point"))
         assert bool(fixture["point_construction"].get("madloop_qp_point")) == projected
         for row in fixture["rows"]:
@@ -427,21 +445,30 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                     row["providers"]["madloop"]["double_pole"]
                     / fixture["universal_double_pole_factor"]
                 )
-                assert row["born_madloop_binary64_input"] == row["providers"]["madloop"]["born"]
+                assert (
+                    row["born_madloop_binary64_input"]
+                    == row["providers"]["madloop"]["born"]
+                )
             else:
                 assert source == "madloop"
                 assert row["born"] == row["providers"]["madloop"]["born"]
         if run.get("second_providers"):
             assert run["second_provider_trigger"], run["id"]
-            assert by_run[run["id"]]["second_provider_trigger"] == run["second_provider_trigger"]
-        assert fixture["tolerance_scope"] == manifest["conventions"]["fixture_tolerance"]
+            assert (
+                by_run[run["id"]]["second_provider_trigger"]
+                == run["second_provider_trigger"]
+            )
+        assert (
+            fixture["tolerance_scope"] == manifest["conventions"]["fixture_tolerance"]
+        )
 
 
 def test_no_required_fixture_names_an_old_working_root() -> None:
     offenders = [
         str(path.relative_to(FIXTURES))
         for path in sorted((FIXTURES / "required").rglob("*.json"))
-        if "pyLoopAmpliCol" in path.read_text() or "/shared/external" in path.read_text()
+        if "pyLoopAmpliCol" in path.read_text()
+        or "/shared/external" in path.read_text()
     ]
     assert not offenders, offenders
 
@@ -472,7 +499,9 @@ def _madloop_row(born_sectors: dict, double_poles: dict, factor: float) -> dict:
         "double_pole": total_pole,
         "status": 216,
         "sectors": {
-            "born": [{"QCD": q, "QED": e, "born": b} for (q, e), b in born_sectors.items()],
+            "born": [
+                {"QCD": q, "QED": e, "born": b} for (q, e), b in born_sectors.items()
+            ],
             "loop": loop,
             "total": {"born": total_born, "double_pole": total_pole},
         },
@@ -484,7 +513,9 @@ def test_merge_refuses_a_garbage_born_sector_unless_the_point_is_declared() -> N
 
     factor, coupling = -0.05, 0.118
     good = _madloop_row({(4, 0): 0.69, (0, 4): 0.0096}, {}, factor)
-    garbage = _madloop_row({(4, 0): 0.67, (0, 4): 3.58e9}, {(0, 4): factor * 0.0096}, factor)
+    garbage = _madloop_row(
+        {(4, 0): 0.67, (0, 4): 3.58e9}, {(0, 4): factor * 0.0096}, factor
+    )
     rows = [{"born": r["born"]} for r in (good, garbage)]
     with pytest.raises(SystemExit, match="point 2"):
         references.madloop_references(
@@ -517,11 +548,11 @@ def test_parse_rows_refuses_non_finite_sector_values() -> None:
         "SECTORS 1 x 1.0 2.0 3.0 -0.05 inf 2.0 3.0 -0.05 1e-15 1e-15\n"
     )
     with pytest.raises(RuntimeError, match="non-finite"):
-        references.parse_rows(
-            stdout, "madloop", 1, {"QCD": 2, "QED": 0}, {1: (4, 0)}
-        )
+        references.parse_rows(stdout, "madloop", 1, {"QCD": 2, "QED": 0}, {1: (4, 0)})
     finite = stdout.replace("inf", "1.0")
-    rows, _ = references.parse_rows(finite, "madloop", 1, {"QCD": 2, "QED": 0}, {1: (4, 0)})
+    rows, _ = references.parse_rows(
+        finite, "madloop", 1, {"QCD": 2, "QED": 0}, {1: (4, 0)}
+    )
     assert rows[0]["sectors"]["born"][0]["born"] == 1.0
 
 
@@ -551,7 +582,8 @@ def test_born_matrix_repair_zeroes_only_incompletely_assigned_jamps() -> None:
     assert references.fix_unassigned_jamps(complete) == (complete, [])
     text, repairs = references.fix_unassigned_jamps(BORN_MATRIX.format(last=""))
     assert repairs == [
-        "born_matrix.f: zero-initialised JAMP in ML5_0_MATRIX (1 entries never assigned: [(2, 2)])"
+        "born_matrix.f: zero-initialised JAMP in ML5_0_MATRIX "
+        "(1 entries never assigned: [(2, 2)])"
     ]
     assert "C     ----------\n      JAMP(:,:) = (0D0,0D0)\n      CALL IXXXXX" in text
 
