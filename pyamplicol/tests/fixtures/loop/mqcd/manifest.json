@@ -852,8 +852,7 @@
    "reference_outliers": [],
    "vanishing": [],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -1233,11 +1232,11 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "ward_legs": [
+    1
+   ],
    "inputs": "native",
-   "catani": "none",
-   "extras_pending": {
-    "ward": "MQ-WARD (generic native Ward input)"
-   }
+   "catani": "none"
   },
   {
    "id": "A15",
@@ -2352,8 +2351,7 @@
    "reference_outliers": [],
    "vanishing": [],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -2706,8 +2704,7 @@
     }
    ],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -3440,8 +3437,7 @@
    "reference_outliers": [],
    "vanishing": [],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -4863,8 +4859,7 @@
    "reference_outliers": [],
    "vanishing": [],
    "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)",
-    "ward": "MQ-WARD (generic native Ward input)"
+    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
   },
   {
@@ -5355,10 +5350,7 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": [],
-   "extras_pending": {
-    "ward": "MQ-WARD (generic native Ward input)"
-   }
+   "vanishing": []
   },
   {
    "id": "G01",
