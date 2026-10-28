@@ -252,6 +252,24 @@ fn plane_mismatch_names_the_output_row_and_part() {
         "{text}"
     );
     assert!(!text.contains("exact evaluator;"), "{text}");
+    // The rounding floor is the output's own scale: a small output's error
+    // is not hidden by a large output (row 0's output 2 at 1e12), while a
+    // part that cancels to rounding against its own size agrees.
+    let mut expected = vec![
+        Complex::new(1e-3, 0.0),
+        Complex::new(2.0, 0.0),
+        Complex::new(1e12, 0.0),
+    ];
+    let mut got = expected.clone();
+    got[0].re = 1.5e-3;
+    let mismatch = first_mismatch(&expected, &got, 3).expect("a mismatch");
+    assert_eq!(mismatch.output, 0);
+    got[0].re = 1e-3;
+    got[1].im = 1e-13;
+    assert_eq!(first_mismatch(&expected, &got, 3), None);
+    expected[1].im = 0.0;
+    got[1].im = 3e-12;
+    assert_eq!(first_mismatch(&expected, &got, 3).map(|m| m.output), Some(1));
     let text = PlaneMismatch {
         output: 3,
         probe: PlaneProbe::NoRealPoint,

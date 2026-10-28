@@ -254,7 +254,11 @@ fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
 
 /// The first value where `got` (the plane application's rows) and `expected`
 /// (the evaluator's) disagree beyond rounding, row-major over `outputs`
-/// complex outputs per row.
+/// complex outputs per row: a part agrees bitwise, both NaN, within 1e-6 of
+/// itself, or within 1e-12 of its output's scale (the largest finite part of
+/// that output over the rows: a part that cancels to rounding, e.g. the zero
+/// imaginary part of a real coupling, against its output's size, and a small
+/// output not against a large one's).
 #[cfg(any(test, feature = "python-generation-bridge"))]
 fn first_mismatch(
     expected: &[Complex<f64>],
@@ -264,12 +268,18 @@ fn first_mismatch(
     let parts = |values: &[Complex<f64>]| -> Vec<f64> {
         values.iter().flat_map(|z| [z.re, z.im]).collect()
     };
+    let width = outputs.max(1);
+    let mut scales = vec![0.0_f64; width];
+    for (index, z) in expected.iter().enumerate() {
+        for x in [z.re, z.im] {
+            if x.is_finite() {
+                scales[index % width] = scales[index % width].max(x.abs());
+            }
+        }
+    }
     let (expected, got) = (parts(expected), parts(got));
-    let scale = expected
-        .iter()
-        .filter(|x| x.is_finite())
-        .fold(0.0_f64, |m, x| m.max(x.abs()));
     for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
+        let scale = scales[(index / 2) % width];
         let agree = e.to_bits() == g.to_bits()
             || (e.is_nan() && g.is_nan())
             || (e - g).abs() <= 1e-6 * e.abs()
