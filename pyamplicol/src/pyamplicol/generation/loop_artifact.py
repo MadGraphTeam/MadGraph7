@@ -235,6 +235,11 @@ class LoopV2ExecutionMetadata:
     dimension: str = "D=4-2*epsilon"
     interference: str = ORDINARY_INTERFERENCE
     scheme_status: str = "declared-not-certified"
+    # The conventions of an electroweak request's virtual (WP3.2 EWI-7,
+    # ``loops.v2.ew_policy.scheme_conventions``); None otherwise, and then
+    # not serialised (``_v2_process_payloads``), so other processes keep
+    # their bytes.
+    conventions: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.scheme, LoopSchemeDeclaration):
@@ -347,6 +352,16 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
         return LOOP_V2_RUNTIME_CAPABILITY
 
 
+def _v2_metadata_record(metadata: LoopV2ExecutionMetadata) -> dict[str, object]:
+    """The serialised metadata of a v2 process: ``conventions`` only where
+    recorded (electroweak requests)."""
+
+    record = asdict(metadata)
+    if record.get("conventions") is None:
+        record.pop("conventions", None)
+    return record
+
+
 def _v2_process_payloads(
     process: LoopV2ProcessArtifact,
 ) -> tuple[dict[str, object], dict[str, object]]:
@@ -359,7 +374,7 @@ def _v2_process_payloads(
         "schema_version": LOOP_V2_PHYSICS_SCHEMA,
         "kind": LOOP_PHYSICS_KIND,
         "process_id": process.process_id,
-        "metadata": asdict(process.metadata),
+        "metadata": _v2_metadata_record(process.metadata),
         "external_pdgs": list(process.external_pdgs),
         "state_legs": [dict(leg) for leg in process.state_legs],
         "helicities": [list(row) for row in process.helicities],

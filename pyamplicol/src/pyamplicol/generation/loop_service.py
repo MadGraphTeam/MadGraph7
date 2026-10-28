@@ -1524,6 +1524,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         scaleless_json=process.scaleless_plan_json,
                     )
                     legs = process.state_legs()
+                    # WP3.2 EWI-7: the conventions of an electroweak virtual
+                    # (None otherwise).
+                    conventions = process.conventions()
                     artifacts.append(
                         LoopV2ProcessArtifact(
                             process_id=name,
@@ -1541,6 +1544,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 color_contraction=request.colour_contraction,
                                 color_correlations=process.color_correlations(),
                                 spin_correlations=process.spin_correlations(),
+                                conventions=conventions,
                             ),
                             validation_point=build_process_validation_point(
                                 entry.process_ir,
@@ -1577,6 +1581,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                     {"gauge": gauge}
                                     if (gauge := process.slice.compiled.ir.gauge)
                                     != "unitary"
+                                    else {}
+                                ),
+                                # WP3.2 EWI-7: the conventions of an
+                                # electroweak virtual (absent otherwise).
+                                **(
+                                    {"conventions": conventions}
+                                    if conventions is not None
                                     else {}
                                 ),
                                 # RUST-MIGRATION rule 2: stage -> listed feature

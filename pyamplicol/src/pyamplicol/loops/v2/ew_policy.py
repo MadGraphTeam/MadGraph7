@@ -528,10 +528,109 @@ def require_zero_widths(
     )
 
 
+# The regularisation parameter of MG5_aMC's NLOCT loop models (``lhv``):
+# lambda_HV, recognised by its declared TeX name; the model's R2 rules depend
+# on it (lambda_HV = 1: 't Hooft-Veltman, 0: four-dimensional helicity).
+HV_TEXNAME = r"\lambda_{HV}"
+# SLHA codes of the electroweak inputs the loops' coupling may depend on.
+SMINPUTS_ALPHA_INVERSE = ("SMINPUTS", (1,))
+SMINPUTS_FERMI = ("SMINPUTS", (2,))
+
+
+def scheme_conventions(slice_: Any) -> dict[str, object] | None:
+    """The conventions an electroweak request's virtual is defined in (WP3.2
+    EWI-7; requirements EW-14 and EW-18), None for a request that is not
+    electroweak (``electroweak``). v2 makes no private gamma-five or scheme
+    choice: four-dimensional numerators with d-dimensional denominators plus
+    the model's R2 and UV rules define the result, so the record states the
+    model's conventions as the generation found them:
+
+    * ``regularisation`` "HV" ('t Hooft-Veltman: external states and the
+      reduced numerators four-dimensional, the rational terms the model's
+      R2), with ``lambda_HV`` the value of the model's HV parameter (the one
+      declared with TeX name ``HV_TEXNAME``, MG5_aMC's ``lhv``; None if the
+      model declares none);
+    * ``gamma5``: the model's R2 rules at their own reading point (NLOCT,
+      GMP-type), with four-dimensional Dirac traces in the loops;
+      "generation-complete": a ``particle_veto`` that breaks the
+      cancellation of the Levi-Civita counterterm cells is refused unless
+      overridden ([U2], ``ct_recursion``), every other cell is complete;
+    * ``gauge``: the gauge of Born, loops and counterterms (``LoopSlice.
+      compiled``; 't Hooft-Feynman for every electroweak request, DESIGN
+      §6.8);
+    * ``uv_scheme``: the model's UV counterterm vertices and external-field
+      factors, inserted once (REQUIREMENTS_ADDENDUM J);
+    * ``mass_scheme`` "real-on-shell" (no width in any propagator,
+      ``require_zero_widths``; the complex-mass scheme is WP3.2 EWI-10);
+    * ``ew_input_scheme``: "G_mu" when the loops' electromagnetic coupling
+      (``poles.qed_coupling``) depends on the Fermi constant (SLHA SMINPUTS
+      2), "alpha" when it depends on an input 1/alpha (SMINPUTS 1: alpha(M_Z)
+      in MG5_aMC's ``loop_qcd_qed_sm``), else "model"; ``alpha_inputs`` the
+      external parameters it depends on, with their SLHA codes;
+    * ``external_photons``: "alpha(0)" when the request has on-shell
+      external photons (``external_photon_scheme``, [U9]), else "none".
+    """
+
+    from .poles import qed_coupling
+
+    compiled, request = slice_.compiled, slice_.request
+    species = slice_.prepared.structure.perturbative_species_orders
+    if not electroweak(compiled, request, species):
+        return None
+    fixed = request.fixed_parameters
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    lambda_hv = None
+    raw = compiled.raw_loop_model
+    if raw is not None:
+        for record in raw.collections["parameters"]:
+            fields = record["fields"]
+            if str(fields.get("texname", "")).strip() == HV_TEXNAME:
+                value = fields.get("value")
+                if isinstance(value, Mapping):
+                    value = value.get("expression")
+                lambda_hv = None if value is None else str(value)
+                break
+    coupling = qed_coupling(compiled, lambda r: is_photon(r, parameters, fixed))
+    inputs = sorted({name for _symbol, name in coupling[1]}) if coupling else []
+
+    def code(name: str) -> tuple[str, tuple[int, ...]]:
+        record = parameters[name]
+        return (record.lhablock or "").upper(), tuple(record.lhacode)
+
+    codes = {name: code(name) for name in inputs}
+    scheme = (
+        "G_mu"
+        if SMINPUTS_FERMI in codes.values()
+        else "alpha"
+        if SMINPUTS_ALPHA_INVERSE in codes.values()
+        else "model"
+    )
+    return {
+        "regularisation": "HV",
+        "lambda_HV": lambda_hv,
+        "gamma5": (
+            "the model's R2 rules at their reading point (NLOCT, GMP-type), "
+            "four-dimensional Dirac traces in the loops; generation-complete"
+        ),
+        "gauge": str(compiled.ir.gauge),
+        "uv_scheme": ("the model's UV counterterm vertices and external-field factors"),
+        "mass_scheme": "real-on-shell",
+        "ew_input_scheme": scheme,
+        "alpha_inputs": {
+            name: f"{block} {' '.join(map(str, lha))}".strip()
+            for name, (block, lha) in codes.items()
+        },
+        "external_photons": (
+            "alpha(0)" if slice_.external_photons is not None else "none"
+        ),
+    }
+
+
 __all__ = [
     "ADJOINT",
     "ALPHA0_CONVERSION",
     "ALPHA0_INVERSE_CODE",
+    "HV_TEXNAME",
     "CorrectionOrders",
     "ElectroweakGaugeError",
     "ElectroweakWidthError",
@@ -548,4 +647,5 @@ __all__ = [
     "propagating_widths",
     "require_feynman_gauge",
     "require_zero_widths",
+    "scheme_conventions",
 ]

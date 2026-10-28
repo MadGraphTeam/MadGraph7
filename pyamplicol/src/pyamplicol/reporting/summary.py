@@ -2563,6 +2563,14 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
                 ),
             )
         )
+        conventions = cast(Sequence[Sequence[object]], loop.get("conventions") or ())
+        if conventions:
+            rows.append(
+                (
+                    "conventions",
+                    "; ".join(f"{key} {value}" for key, value in conventions),
+                )
+            )
     else:
         rows.append(
             (

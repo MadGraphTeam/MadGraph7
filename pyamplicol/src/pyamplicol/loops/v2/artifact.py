@@ -672,6 +672,19 @@ class GeneratedProcess:
             if rule_key(rule) in anomalous
         }
 
+    def conventions(self) -> dict[str, object] | None:
+        """The conventions of an electroweak request's virtual (WP3.2 EWI-7,
+        ``ew_policy.scheme_conventions``: regularisation and lambda_HV, the
+        gamma-five reading, gauge, UV, mass and electroweak input schemes,
+        the external-photon convention): the generation record's and the
+        process metadata's ``conventions``; None for a request that is not
+        electroweak (its records then have no entry, so such artifacts keep
+        their bytes)."""
+
+        from .ew_policy import scheme_conventions
+
+        return scheme_conventions(self.slice)
+
     def native_fallbacks(self) -> dict[str, str]:
         """The generation stages that took the tree engine instead of the
         native loop-request DAG builder, each with the listed feature it
