@@ -882,24 +882,41 @@ def test_electroweak_controls_equal_madloop(gmu_slices, name):
     print(name, {key: f"{error:.1e}" for key, error in worst.items()})
 
 
+class _PlaneMismatchRefusal(Exception):
+    """The listed native-export refusal ``plane-mismatch``
+    (``native_trees.NativeExportUnsupported``), raised so that a strict xfail
+    pins exactly that refusal: any other refusal or failure fails."""
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.xfail(
     strict=True,
+    raises=_PlaneMismatchRefusal,
     reason=(
-        "WP3.2 EWI-N: the native point inputs of electroweak requests are not "
-        "exported yet"
+        "WP3.2 EWI-N (ew-native): the native point inputs of e- e+ > mu- mu+ EW "
+        "are refused as the listed plane-mismatch (the SymJIT plane application "
+        "of a parameter-program output, the counterterm c_UVepemA1EW at "
+        "epsilon^0, disagrees with its exact evaluator at the plane check's "
+        "probes); slice-status DECISIONS 2026-10-26 ~21:10 item 6"
     ),
 )
 def test_mumu_control_validates_with_native_inputs(gmu_slices):
     """e- e+ > mu- mu+ (full EW) through the native executor with native
-    point inputs: a strict xfail until EWI-N exports them, so that a native
-    gap shows here (WP3.2 M8), never as a silent fallback."""
+    point inputs: a strict xfail on the listed ``plane-mismatch`` refusal
+    until EWI-N exports them, so that a native gap shows here as a listed
+    refusal (WP3.2 M8), never as a silent fallback."""
 
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
     control = json.loads((FIXTURES / "electroweak-mumu-control.json").read_text())
     slice_ = gmu_slices("e- e+ > m- m+", "massless")
-    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    try:
+        executor = NativeExecutor(slice_, forward=False, inputs="native")
+    except NativeExportUnsupported as error:
+        if error.feature == "plane-mismatch":
+            raise _PlaneMismatchRefusal(str(error)) from error
+        raise
     point, scale, row = next(_control_rows(control))
     (result,) = executor.evaluate([point], [scale], parameters=CONTROL_PARAMETERS)
     mine = [float(x) for x in result.totals[:4]]
