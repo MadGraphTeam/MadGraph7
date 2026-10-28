@@ -144,8 +144,11 @@ public:
         // ladder under scale_scheme = clustering_mean: the densities (their
         // lowered leading scale, the ladder ratios and the per-beam scale the
         // ladder ends at) are then madevent's, while mu_R, the alpha_s vertex
-        // scales and the jet bookkeeping stay clustering_mean's.
-        bool clustering_mean_pdf_ladder = false
+        // scales and the jet bookkeeping stay clustering_mean's. On by default:
+        // without it clustering_mean takes both densities at the softest
+        // clustering scale, which is what moves its merged rates near qcut
+        // away from madevent's.
+        bool clustering_mean_pdf_ladder = true
     );
 
     // The same outputs as the function itself, for a history restricted to

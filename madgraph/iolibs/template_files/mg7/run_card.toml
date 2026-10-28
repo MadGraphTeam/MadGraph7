@@ -96,7 +96,8 @@ parton_line_scheme = %(beam.parton_line_scheme)s
 alphas_reweighting = %(beam.alphas_reweighting)s
 # re-evaluate the beam densities along the clustering ladder rather than once
 # at the factorisation scale, as madevent's pdfwgt does. Only used under
-# dynamical_scale_choice = "mlm" and scale_scheme = "madevent"
+# dynamical_scale_choice = "mlm" (with scale_scheme = "clustering_mean" only
+# together with clustering_mean_pdf_ladder)
 pdf_reweighting = %(beam.pdf_reweighting)s
 # with pdf_reweighting, walk the same pdf ladder under scale_scheme =
 # "clustering_mean" (densities as madevent's, mu_R and alpha_s as

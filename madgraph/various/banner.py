@@ -6884,8 +6884,9 @@ class RunCardMG7(RunCard):
         # the emission that pulled the parton out of the beam and walked back
         # up, with the momentum fraction rescaled at each step. This is the
         # pdf half of the same rewgt loop, madevent's hidden pdfwgt flag, which
-        # is on by default there. Only read when dynamical_scale_choice = "mlm"
-        # and scale_scheme = "madevent".
+        # is on by default there. Only read when dynamical_scale_choice = "mlm",
+        # and under scale_scheme = "clustering_mean" only together with
+        # clustering_mean_pdf_ladder.
         self.add_toml_param('beam', 'pdf_reweighting', True,
             comment="re-evaluate the beam densities along the MLM clustering ladder")
         # The same ladder under scale_scheme = "clustering_mean": the beam
@@ -6894,8 +6895,10 @@ class RunCardMG7(RunCard):
         # of the beam and walked back up), while mu_R, the alpha_s vertex
         # scales and the jet scales stay clustering_mean's. Without it
         # clustering_mean takes both densities once at the softest clustering
-        # scale. Needs pdf_reweighting.
-        self.add_toml_param('beam', 'clustering_mean_pdf_ladder', False,
+        # scale, which leaves a 10-15% hole in the 0->1 jet rate just above
+        # qcut against madevent for W+jets and W Z+jets (and +14% for tt~+jets,
+        # halved by the ladder). Needs pdf_reweighting.
+        self.add_toml_param('beam', 'clustering_mean_pdf_ladder', True,
             comment="also walk the pdf ladder under scale_scheme = clustering_mean")
         # Which measure scores a candidate final-state clustering. The two only
         # differ for a non-resonant pair with a massless mother and one massive

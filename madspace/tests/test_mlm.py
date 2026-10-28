@@ -299,7 +299,10 @@ def test_factorization_scale_does_not_exceed_renormalization_scale(process):
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     ren, fac1, fac2, _, _ = run(
-        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids,
+            clustering_mean_pdf_ladder=False,
+        ), momenta
     )
     assert np.array_equal(fac1, fac2)
     assert np.all(fac1 <= ren * (1.0 + 1e-12))
@@ -351,7 +354,10 @@ def test_longitudinal_boosts_barely_change_the_scales(process):
     So: pin that the effect stays small rather than asserting exact invariance.
     """
     _, diagrams, pdg_ids = process
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams)
 
     rapidity = 0.3
@@ -378,7 +384,10 @@ def test_longitudinal_boosts_barely_change_the_scales(process):
 def test_scales_are_azimuthally_invariant(process):
     """Rotating the event around the beam axis must not change any scale."""
     _, diagrams, pdg_ids = process
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams)
 
     angle = 0.7
@@ -473,7 +482,10 @@ def test_renormalization_scale_is_a_geometric_mean(process):
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     ren, fac, _, out, _ = run(
-        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids,
+            clustering_mean_pdf_ladder=False,
+        ), momenta
     )
     assert np.all(ren >= fac * (1.0 - 1e-12))
     # mu_F is the smallest QCD clustering scale, so every jet scale - each of
@@ -555,10 +567,12 @@ def test_resonant_clustering_uses_the_invariant_mass():
     resonance branch off entirely."""
     momenta = sample_momenta(z_to_bb_diagram(W_Z))
     resonant = make_clustering(
-        z_to_bb_diagram(W_Z), external_pdg_ids=Z_TO_BB_PDGS, bw_cutoff=15.0
+        z_to_bb_diagram(W_Z), external_pdg_ids=Z_TO_BB_PDGS, bw_cutoff=15.0,
+        clustering_mean_pdf_ladder=False,
     )
     non_resonant = make_clustering(
-        z_to_bb_diagram(0.0), external_pdg_ids=Z_TO_BB_PDGS
+        z_to_bb_diagram(0.0), external_pdg_ids=Z_TO_BB_PDGS,
+        clustering_mean_pdf_ladder=False,
     )
 
     ren_res, fac_res, _, _, _ = run(resonant, momenta)
@@ -672,7 +686,10 @@ def test_single_clustering_scale_matches_the_measures():
         }
     ]
     pdg_ids = [21, 21, 21, 21]
-    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        clustering_mean_pdf_ladder=False,
+    )
     momenta = sample_momenta(diagrams, batch_size=128, seed=99)
     ren, fac, _, _, _ = run(clustering, momenta)
 
@@ -729,7 +746,8 @@ def test_kt_measure_matches_the_fortran():
     ]
     pdg_ids = [21, 21, 21, 21, 21]
     clustering = make_clustering(
-        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius
+        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius,
+        clustering_mean_pdf_ladder=False,
     )
     momenta = sample_momenta(diagrams, batch_size=128, seed=99)
     _, fac, _, _, _ = run(clustering, momenta)
@@ -1499,13 +1517,14 @@ def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
     every ladder slot are madevent's, while mu_R, the jet scales, the alpha_s
     vertex scales and the xqcut veto stay clustering_mean's."""
     scheme = ms.MLMClustering.ScaleScheme
-    mean = t_channel_clustering(scale_scheme=scheme.clustering_mean, xqcut=20.0)
-    madevent = t_channel_clustering(scale_scheme=scheme.madevent, xqcut=20.0)
-    ladder = t_channel_clustering(
+    mean = t_channel_clustering(
         scale_scheme=scheme.clustering_mean, xqcut=20.0,
-        clustering_mean_pdf_ladder=True,
+        clustering_mean_pdf_ladder=False,
     )
-    # off unless asked for: clustering_mean keeps the density at its scale
+    madevent = t_channel_clustering(scale_scheme=scheme.madevent, xqcut=20.0)
+    # on by default
+    ladder = t_channel_clustering(scale_scheme=scheme.clustering_mean, xqcut=20.0)
+    # switched off, clustering_mean keeps the density at its scale
     assert np.all(pdf_outputs(mean, t_channel_momenta)["pdf_rw_active"] == 0.0)
 
     ren, _, _, jets, diagram, veto = run_all(ladder, t_channel_momenta)
@@ -1532,8 +1551,7 @@ def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
 
     # and the switch is inert without pdf_reweighting
     off = t_channel_clustering(
-        scale_scheme=scheme.clustering_mean, xqcut=20.0,
-        clustering_mean_pdf_ladder=True, pdf_reweighting=False,
+        scale_scheme=scheme.clustering_mean, xqcut=20.0, pdf_reweighting=False,
     )
     _, fact1_o, fact2_o, _, _ = run(off, t_channel_momenta)
     _, fact1_m, fact2_m, _, _ = run(mean, t_channel_momenta)
@@ -1626,11 +1644,12 @@ def test_pdf_steps_name_a_real_beam(t_channel_momenta):
 
 
 def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
-    """There is no beam parton line to walk without madevent's scale scheme, so
-    asking for the reweighting there must do nothing rather than something
-    arbitrary."""
+    """Under clustering_mean with the ladder switched off there is no beam
+    parton line to walk, so asking for the reweighting there must do nothing
+    rather than something arbitrary."""
     clustering = t_channel_clustering(
-        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean
+        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean,
+        clustering_mean_pdf_ladder=False,
     )
     _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
     out = pdf_outputs(clustering, t_channel_momenta)

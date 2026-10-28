@@ -1944,7 +1944,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdf_reweighting") = true,
             py::arg("clustering_measure") = ClusteringMeasure::fxfx,
             py::arg("clustering_history") = ClusteringHistory::all_diagrams,
-            py::arg("clustering_mean_pdf_ladder") = false
+            py::arg("clustering_mean_pdf_ladder") = true
         )
         .def_property_readonly(
             "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
