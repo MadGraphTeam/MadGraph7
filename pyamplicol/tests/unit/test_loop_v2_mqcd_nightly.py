@@ -57,6 +57,7 @@ def test_restriction_smoke_equals_its_base_row(campaign, restriction):
     (on that row's restriction) within 1e-14 (PLAN §3.2 item 5)."""
 
     checks = mqcd.smoke(campaign, restriction, SMOKES[restriction])
+    mqcd.write_result(mqcd.RowReport(f"smoke:{restriction}", TIER, (), checks, {}))
     failures = [c for c in checks if not c.passed]
     assert not failures, failures
 
@@ -76,4 +77,5 @@ def test_multiparticle_expansion_is_madloops(campaign, name):
     a row variant, ``M01@P<n>``)."""
 
     checks = mqcd.multiparticle_subprocesses(campaign, name)
+    mqcd.write_result(mqcd.RowReport(f"expansion:{name}", TIER, (), checks, {}))
     assert all(c.passed for c in checks), checks
