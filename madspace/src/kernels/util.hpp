@@ -85,6 +85,37 @@ KERNELSPEC void backward_kernel_select(
     }
 }
 
+// select with a single-precision copy of the gathered entries
+template <typename T>
+KERNELSPEC void kernel_select_with_float32(
+    FIn<T, 1> input,
+    ISIn<T, 1> indices,
+    FOut<T, 1> output,
+    FOut<typename T::F32, 1> output32
+) {
+    for (std::size_t i = 0; i < indices.size(); ++i) {
+        auto value = input.gather(indices[i]);
+        output[i] = value;
+        output32[i] = FVal<typename T::F32>(value);
+    }
+}
+
+template <typename T>
+KERNELSPEC void backward_kernel_select_with_float32(
+    ISIn<T, 1> indices,
+    FIn<T, 1> output_grad,
+    FIn<typename T::F32, 1> output32_grad,
+    FOut<T, 1> input_grad,
+    IOut<T, 1> indices_grad
+) {
+    for (std::size_t i = 0; i < indices.size(); ++i) {
+        input_grad.scatter_add(
+            indices[i],
+            FVal<T>(output_grad[i]) + FVal<T>(FVal<typename T::F32>(output32_grad[i]))
+        );
+    }
+}
+
 template <typename T>
 KERNELSPEC void
 kernel_select_vector(FIn<T, 2> input, IIn<T, 1> indices, FOut<T, 2> output) {

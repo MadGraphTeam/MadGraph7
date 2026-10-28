@@ -81,6 +81,7 @@ private:
     std::vector<InstructionCall> _instructions;
 
     friend Function sort_breadth_first(const Function& function);
+    friend Function fuse_conversions(const Function& function);
 };
 
 std::ostream& operator<<(std::ostream& out, const Value& value);

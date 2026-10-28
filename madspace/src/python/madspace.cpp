@@ -7,6 +7,7 @@
 #include "function_runtime.hpp"
 #include "instruction_set.hpp"
 #include "madspace/compgraphs.hpp"
+#include "madspace/compgraphs/optimizer.hpp"
 #include "madspace/driver.hpp"
 #include "madspace/phasespace.hpp"
 #include "madspace/util.hpp"
@@ -284,6 +285,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             &Function::instructions,
             pydoc::doc("Function::instructions")
         );
+
+    m.def(
+        "fuse_conversions",
+        &fuse_conversions,
+        py::arg("function"),
+        "Fuses single-precision conversions into the instructions producing the "
+        "converted values (the lowering the GPU backend applies when it builds a "
+        "runtime)."
+    );
 
     py::classh<Device> device(m, "Device", pydoc::doc("Device"));
     m.def(

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <format>
 #include <functional>
 #include <tuple>
@@ -184,6 +185,89 @@ void op_matmul(
     bias.reset(device);
 }
 
+// out[j * batch_size + i] = double(tmp[...] + bias[j]): bias, convert to float64 in
+// one pass over the output of a float32 gemm
+template <typename F>
+__global__ void kernel_bias_to_double(
+    std::size_t total,
+    std::size_t batch_size,
+    const F* __restrict__ tmp,
+    const F* __restrict__ bias,
+    double* __restrict__ out
+) {
+    std::size_t i = blockDim.x * static_cast<std::size_t>(blockIdx.x) + threadIdx.x;
+    if (i < total) {
+        out[i] = static_cast<double>(tmp[i] + bias[i / batch_size]);
+    }
+}
+
+// matmul of float32 inputs with the float32 -> float64 conversion of the result
+// fused into the bias epilogue (three launches become two)
+void op_matmul_to_float64(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    using F = float;
+    auto input =
+        locals[instruction.input_indices[0]].contiguous(device, AllocHint::temporary);
+    auto weight =
+        locals[instruction.input_indices[1]].contiguous(device, AllocHint::temporary);
+    auto bias =
+        locals[instruction.input_indices[2]].contiguous(device, AllocHint::temporary);
+    auto& output = locals[instruction.output_indices[0]];
+    std::size_t batch_size = input.size(0);
+    std::size_t dims_in = input.size(1);
+    std::size_t dims_out = weight.size(1);
+    output = Tensor(
+        DataType::dt_float64,
+        {batch_size, dims_out},
+        device,
+        instruction.output_alloc_hints[0]
+    );
+    if (batch_size == 0) {
+        return;
+    }
+
+    Tensor tmp(dtype_of<F>(), {batch_size, dims_out}, device, AllocHint::temporary);
+    gpublasHandle_t handle = instruction.runtime.gpublas_handle();
+    check_error(gpublasSetStream(handle, device.stream()));
+    F alpha = 1., beta = 0.;
+    check_error(
+        gpublas_gemm<F>(
+            handle,
+            GPUBLAS_OP_N,
+            GPUBLAS_OP_T,
+            batch_size,
+            dims_out,
+            dims_in,
+            &alpha,
+            static_cast<F*>(input.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            &beta,
+            static_cast<F*>(tmp.data()),
+            batch_size
+        )
+    );
+    std::size_t total = batch_size * dims_out;
+    launch_kernel(
+        kernel_bias_to_double<F>,
+        total,
+        device.stream(),
+        total,
+        batch_size,
+        static_cast<const F*>(tmp.data()),
+        static_cast<const F*>(bias.data()),
+        static_cast<double*>(output.data())
+    );
+    tmp.reset(device);
+    input.reset(device);
+    weight.reset(device);
+    bias.reset(device);
+}
+
 // bias_grad[j] += sum_i output_grad[i, j]; the matrix is column-major with
 // leading dimension batch_size, so each column is a contiguous segment. One block
 // per column: single launch, no atomics (deterministic) and no temporary storage.
@@ -208,8 +292,34 @@ __global__ void kernel_bias_grad(
     }
 }
 
+// the same reduction for a float64 output gradient, which is also converted to F
+// for the gemms: one read of the gradient instead of a separate convert kernel
 template <typename F>
-void backward_op_matmul(
+__global__ void kernel_bias_grad_convert(
+    std::size_t batch_size,
+    const double* __restrict__ output_grad,
+    F* __restrict__ output_grad_f,
+    F* bias_grad
+) {
+    using BlockReduce = cub::BlockReduce<double, BIAS_GRAD_THREADS>;
+    __shared__ typename BlockReduce::TempStorage temp_storage;
+    std::size_t offset = blockIdx.x * batch_size;
+    double sum = 0.;
+    for (std::size_t i = threadIdx.x; i < batch_size; i += BIAS_GRAD_THREADS) {
+        F value = static_cast<F>(output_grad[offset + i]);
+        output_grad_f[offset + i] = value;
+        sum += value;
+    }
+    sum = BlockReduce(temp_storage).Sum(sum);
+    if (threadIdx.x == 0) {
+        bias_grad[blockIdx.x] += static_cast<F>(sum);
+    }
+}
+
+// OutGradF64: the gradient of the output is float64 (matmul_to_float64) and is
+// converted to F together with the bias gradient reduction
+template <typename F, bool OutGradF64>
+void backward_matmul_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     TensorVec& local_grads,
@@ -256,6 +366,22 @@ void backward_op_matmul(
     gpuStream_t stream = device.stream();
     check_error(gpublasSetStream(handle, stream));
 
+    if constexpr (OutGradF64) {
+        // compute bias_grad += sum_i output_grad_ij and convert the gradient
+        Tensor output_grad_f(
+            dtype_of<F>(), output_grad.shape(), device, AllocHint::temporary
+        );
+        kernel_bias_grad_convert<F><<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
+            batch_size,
+            static_cast<const double*>(output_grad.data()),
+            static_cast<F*>(output_grad_f.data()),
+            static_cast<F*>(bias_grad.data())
+        );
+        check_error();
+        output_grad.reset(device);
+        output_grad = output_grad_f;
+    }
+
     // compute input_grad += output_grad * weight
     check_error(
         gpublas_gemm<F>(
@@ -296,16 +422,37 @@ void backward_op_matmul(
         )
     );
 
-    // compute bias_grad += sum_i output_grad_ij
-    kernel_bias_grad<F><<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
-        batch_size,
-        static_cast<const F*>(output_grad.data()),
-        static_cast<F*>(bias_grad.data())
-    );
-    check_error();
+    if constexpr (!OutGradF64) {
+        // compute bias_grad += sum_i output_grad_ij
+        kernel_bias_grad<F><<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
+            batch_size,
+            static_cast<const F*>(output_grad.data()),
+            static_cast<F*>(bias_grad.data())
+        );
+        check_error();
+    }
     input.reset(device);
     weight.reset(device);
     output_grad.reset(device);
+}
+
+template <typename F>
+void backward_op_matmul(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const AsyncGpuDevice& device
+) {
+    backward_matmul_impl<F, false>(instruction, locals, local_grads, device);
+}
+
+void backward_op_matmul_to_float64(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const AsyncGpuDevice& device
+) {
+    backward_matmul_impl<float, true>(instruction, locals, local_grads, device);
 }
 
 struct NotMinusOne {
@@ -1601,7 +1748,12 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     // check_error(cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold,
     // &thresh));
 
-    Function function = sort_breadth_first(function_arg);
+    // MADSPACE_NO_FUSION disables the lowering of precision conversions, to compare
+    // the fused and the unfused instructions
+    Function function = sort_breadth_first(
+        std::getenv("MADSPACE_NO_FUSION") ? function_arg
+                                          : fuse_conversions(function_arg)
+    );
 
     _locals_init.resize(function.locals().size());
     _requires_grad_init.resize(function.locals().size());

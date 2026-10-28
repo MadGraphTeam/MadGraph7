@@ -254,9 +254,13 @@ KERNELSPEC void backward_kernel_rqs_find_bin(
 }
 
 template <typename T>
-KERNELSPEC void kernel_rqs_forward(
-    FIn<T, 0> input, FIn<T, 1> condition, FOut<T, 0> output, FOut<T, 0> det
-) {
+struct RqsValues {
+    FVal<T> output;
+    FVal<T> det;
+};
+
+template <typename T>
+KERNELSPEC RqsValues<T> rqs_forward_values(FIn<T, 0> input, FIn<T, 1> condition) {
     FVal<T> width(condition[0]), height(condition[1]);
     FVal<T> cumwidth(condition[2]), cumheight(condition[3]);
     FVal<T> derivative_unorm(condition[4]), derivative_plus_one_unorm(condition[5]);
@@ -291,20 +295,45 @@ KERNELSPEC void kernel_rqs_forward(
     auto denominator =
         delta + (derivative + derivative_plus_one - two_delta) * theta_one_minus_theta;
     auto out = cumheight + numerator / denominator;
-    output = where(clamp, input, out);
+    FVal<T> output_value = where(clamp, input, out);
 
     auto derivative_numerator = delta * delta *
         (derivative_plus_one * theta_theta + two_delta * theta_one_minus_theta +
          derivative * one_minus_theta * one_minus_theta);
-    det = where(clamp, 1., derivative_numerator / (denominator * denominator));
+    FVal<T> det_value = where(clamp, 1., derivative_numerator / (denominator * denominator));
+    return {output_value, det_value};
 }
 
 template <typename T>
-KERNELSPEC void backward_kernel_rqs_forward(
+KERNELSPEC void kernel_rqs_forward(
+    FIn<T, 0> input, FIn<T, 1> condition, FOut<T, 0> output, FOut<T, 0> det
+) {
+    auto result = rqs_forward_values<T>(input, condition);
+    output = result.output;
+    det = result.det;
+}
+
+// the same, with the output also written in single precision
+template <typename T>
+KERNELSPEC void kernel_rqs_forward_with_float32(
     FIn<T, 0> input,
     FIn<T, 1> condition,
-    FIn<T, 0> output_grad,
-    FIn<T, 0> det_grad,
+    FOut<T, 0> output,
+    FOut<T, 0> det,
+    FOut<typename T::F32, 0> output32
+) {
+    auto result = rqs_forward_values<T>(input, condition);
+    output = result.output;
+    det = result.det;
+    output32 = FVal<typename T::F32>(result.output);
+}
+
+template <typename T>
+KERNELSPEC void backward_rqs_forward_impl(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FVal<T> output_grad,
+    FVal<T> det_grad,
     FOut<T, 0> input_grad,
     FOut<T, 1> condition_grad
 ) {
@@ -437,9 +466,42 @@ KERNELSPEC void backward_kernel_rqs_forward(
 }
 
 template <typename T>
-KERNELSPEC void kernel_rqs_inverse(
-    FIn<T, 0> input, FIn<T, 1> condition, FOut<T, 0> output, FOut<T, 0> det
+KERNELSPEC void backward_kernel_rqs_forward(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FIn<T, 0> output_grad,
+    FIn<T, 0> det_grad,
+    FOut<T, 0> input_grad,
+    FOut<T, 1> condition_grad
 ) {
+    backward_rqs_forward_impl<T>(
+        input, condition, FVal<T>(output_grad), FVal<T>(det_grad), input_grad, condition_grad
+    );
+}
+
+// the gradient of the single-precision copy of the output adds to the output gradient
+template <typename T>
+KERNELSPEC void backward_kernel_rqs_forward_with_float32(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FIn<T, 0> output_grad,
+    FIn<T, 0> det_grad,
+    FIn<typename T::F32, 0> output32_grad,
+    FOut<T, 0> input_grad,
+    FOut<T, 1> condition_grad
+) {
+    backward_rqs_forward_impl<T>(
+        input,
+        condition,
+        FVal<T>(output_grad) + FVal<T>(FVal<typename T::F32>(output32_grad)),
+        FVal<T>(det_grad),
+        input_grad,
+        condition_grad
+    );
+}
+
+template <typename T>
+KERNELSPEC RqsValues<T> rqs_inverse_values(FIn<T, 0> input, FIn<T, 1> condition) {
     FVal<T> height(condition[0]), width(condition[1]);
     FVal<T> cumheight(condition[2]), cumwidth(condition[3]);
     FVal<T> derivative_unorm(condition[4]), derivative_plus_one_unorm(condition[5]);
@@ -473,7 +535,7 @@ KERNELSPEC void kernel_rqs_inverse(
     auto discriminant = b * b + 4. * a * c;
     auto theta = 2. * c / (b + sqrt(discriminant));
     auto out = cumwidth + theta * width;
-    output = where(clamp, input, out);
+    FVal<T> output_value = where(clamp, input, out);
 
     auto one_minus_theta = 1. - theta;
     auto theta_one_minus_theta = theta * one_minus_theta;
@@ -481,15 +543,40 @@ KERNELSPEC void kernel_rqs_inverse(
     auto derivative_numerator = delta * delta *
         (derivative_plus_one * theta * theta + two_delta * theta_one_minus_theta +
          derivative * one_minus_theta * one_minus_theta);
-    det = where(clamp, 1., denominator * denominator / derivative_numerator);
+    FVal<T> det_value = where(clamp, 1., denominator * denominator / derivative_numerator);
+    return {output_value, det_value};
 }
 
 template <typename T>
-KERNELSPEC void backward_kernel_rqs_inverse(
+KERNELSPEC void kernel_rqs_inverse(
+    FIn<T, 0> input, FIn<T, 1> condition, FOut<T, 0> output, FOut<T, 0> det
+) {
+    auto result = rqs_inverse_values<T>(input, condition);
+    output = result.output;
+    det = result.det;
+}
+
+// the same, with the output also written in single precision
+template <typename T>
+KERNELSPEC void kernel_rqs_inverse_with_float32(
     FIn<T, 0> input,
     FIn<T, 1> condition,
-    FIn<T, 0> output_grad,
-    FIn<T, 0> det_grad,
+    FOut<T, 0> output,
+    FOut<T, 0> det,
+    FOut<typename T::F32, 0> output32
+) {
+    auto result = rqs_inverse_values<T>(input, condition);
+    output = result.output;
+    det = result.det;
+    output32 = FVal<typename T::F32>(result.output);
+}
+
+template <typename T>
+KERNELSPEC void backward_rqs_inverse_impl(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FVal<T> output_grad,
+    FVal<T> det_grad,
     FOut<T, 0> input_grad,
     FOut<T, 1> condition_grad
 ) {
@@ -649,6 +736,41 @@ KERNELSPEC void backward_kernel_rqs_inverse(
     condition_grad[3] = where(clamp, 0., grad_cumwidth);
     condition_grad[4] = where(clamp, 0., grad_derivative_unorm);
     condition_grad[5] = where(clamp, 0., grad_derivative_plus_one_unorm);
+}
+
+template <typename T>
+KERNELSPEC void backward_kernel_rqs_inverse(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FIn<T, 0> output_grad,
+    FIn<T, 0> det_grad,
+    FOut<T, 0> input_grad,
+    FOut<T, 1> condition_grad
+) {
+    backward_rqs_inverse_impl<T>(
+        input, condition, FVal<T>(output_grad), FVal<T>(det_grad), input_grad, condition_grad
+    );
+}
+
+// the gradient of the single-precision copy of the output adds to the output gradient
+template <typename T>
+KERNELSPEC void backward_kernel_rqs_inverse_with_float32(
+    FIn<T, 0> input,
+    FIn<T, 1> condition,
+    FIn<T, 0> output_grad,
+    FIn<T, 0> det_grad,
+    FIn<typename T::F32, 0> output32_grad,
+    FOut<T, 0> input_grad,
+    FOut<T, 1> condition_grad
+) {
+    backward_rqs_inverse_impl<T>(
+        input,
+        condition,
+        FVal<T>(output_grad) + FVal<T>(FVal<typename T::F32>(output32_grad)),
+        FVal<T>(det_grad),
+        input_grad,
+        condition_grad
+    );
 }
 
 template <typename T>

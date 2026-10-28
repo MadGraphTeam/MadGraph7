@@ -2945,6 +2945,23 @@ convert_float64:
   differentiable: True
   desc: "Converts a tensor to double precision. Used at the boundaries of single-precision @ref MLP networks."
 
+matmul_to_float64:
+  inputs:
+    - name: x
+      type: [float32, n]
+      backward_arg: True
+    - name: weight
+      type: [float32, single, m, n]
+      backward_arg: True
+    - name: bias
+      type: [float32, single, m]
+  outputs:
+    - name: y
+      type: [float64, m]
+  custom_op: True
+  differentiable: True
+  desc: "Single-precision affine map whose result is converted to double precision. Equivalent to @ref convert_float64 applied to the output of @ref matmul, but the GPU backend fuses the bias addition and the conversion, and the backward pass fuses the gradient conversion with the bias gradient. Used for the last layer of single-precision @ref MLP networks."
+
 matmul:
   precision: [float32, float64]
   inputs:
@@ -3144,6 +3161,52 @@ rqs_inverse:
   differentiable: True
   dims: 2
   desc: "Applies a rational-quadratic spline in the inverse direction. Building block of @ref Flow."
+
+rqs_forward_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "values to transform"
+    - name: condition
+      type: [float, n, 6]
+      desc: "packed spline parameters"
+  outputs:
+    - name: output
+      type: [float, n]
+      desc: "transformed values"
+    - name: det
+      type: [float, n]
+      desc: "per-element Jacobian"
+    - name: output32
+      type: [float32, n]
+      desc: "the transformed values in single precision"
+  differentiable: True
+  dims: 2
+  vectorized: False
+  desc: "@ref rqs_forward that also returns its output in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref rqs_forward."
+
+rqs_inverse_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "values to transform"
+    - name: condition
+      type: [float, n, 6]
+      desc: "packed spline parameters"
+  outputs:
+    - name: output
+      type: [float, n]
+      desc: "transformed values"
+    - name: det
+      type: [float, n]
+      desc: "per-element Jacobian"
+    - name: output32
+      type: [float32, n]
+      desc: "the transformed values in single precision"
+  differentiable: True
+  dims: 2
+  vectorized: False
+  desc: "@ref rqs_inverse that also returns its output in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref rqs_inverse."
 
 softmax:
   inputs:
@@ -3360,6 +3423,26 @@ select:
       desc: "gathered entries"
   differentiable: True
   desc: "Gathers several entries from a float vector by index."
+
+select_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "source vector"
+    - name: indices
+      type: [int, single, m]
+      desc: "indices to gather"
+      backward_arg: True
+  outputs:
+    - name: output
+      type: [float, m]
+      desc: "gathered entries"
+    - name: output32
+      type: [float32, m]
+      desc: "the gathered entries in single precision"
+  differentiable: True
+  vectorized: False
+  desc: "@ref select that also returns the gathered entries in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref select."
 
 select_vector:
   inputs:
