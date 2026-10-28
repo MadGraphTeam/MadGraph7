@@ -368,13 +368,15 @@ def test_declared_continuation_keeps_full_colour(declared):
 def test_seed_fft_equals_direct_on_the_slice(
     slices, declared, loop_sm_compiled_model, loop_native
 ):
-    """Seed contraction policy (design §7.3): "auto" contracts the certified
-    orbits of gg -> gg with the native symmetric-group FFT in binary64 and
-    reports it; "direct" and the 200-bit carrier contract directly, and
-    every component agrees with the direct contraction to binary64
-    rounding. LC seeds are always direct. An explicit "fft" is honoured in
-    binary64 and refused wherever seeds are contracted directly: LC, exact
-    dressing, arbitrary precision and the native executor."""
+    """Seed contraction policy (design §7.3) of the Python stage: "auto"
+    contracts the certified orbits of gg -> gg with the native
+    symmetric-group FFT in binary64 and reports it; "direct" and the 200-bit
+    carrier contract directly, and every component agrees with the direct
+    contraction to binary64 rounding. LC seeds are always direct. An
+    explicit "fft" is honoured in binary64 and refused wherever the Python
+    stage contracts seeds directly: LC, exact dressing and arbitrary
+    precision; the native executor runs it in every floating carrier
+    (``test_loop_v2_seed_fft``)."""
 
     import dataclasses
 
@@ -420,8 +422,7 @@ def test_seed_fft_equals_direct_on_the_slice(
         )
     with pytest.raises(ValueError, match="binary64 sector seeds only"):
         required.family_numerators(point, scale, parameters=PARAMETERS, exact=True)
-    with pytest.raises(ValueError, match="contracts seeds directly"):
-        NativeExecutor(required)
+    assert NativeExecutor(required).exported.fourier is not None
     leading = declared("gg_gg", "lc")
     assert leading.fourier is None
     forced = dataclasses.replace(
