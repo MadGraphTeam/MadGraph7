@@ -579,6 +579,34 @@ where
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
+fn seed_values_with<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+    py: Python<'_>,
+    executor: &Executor,
+    trees: Option<&mut Trees>,
+    inputs: &Bound<'_, PyDict>,
+    zero: T,
+    bits: u32,
+    contraction: Contraction,
+) -> PyResult<Vec<Vec<Values>>>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut batch = batch(inputs, &zero)?;
+    if inputs.contains("parameters")? {
+        let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
+        trees.fill(executor, inputs, &mut batch, false, &zero)?;
+    }
+    let values = py
+        .detach(|| executor.seed_values(&batch, &zero, contraction))
+        .map_err(error)?;
+    Ok(values
+        .iter()
+        .map(|keys| keys.iter().map(|key| T::export(key, bits)).collect())
+        .collect())
+}
+
 /// Native tree inputs of a batch: (block rows, plan Born components, every
 /// Born component, |A0|² or None, counterterm outputs or None) per point.
 type ExportedTreeInputs = (
@@ -849,6 +877,53 @@ impl V2Executor {
             .merged
             .as_ref()
             .map(|merged| merged.families.clone())
+    }
+
+    /// The seeds `U0` per point and seed key (`rows × columns` complex
+    /// values in object order), contracted as `evaluate` with `contraction`
+    /// contracts them: the oracle of the certified seed FFT (DESIGN.md §7.3:
+    /// FFT = direct to the contraction's own rounding). `inputs` as for
+    /// `evaluate` (with `parameters`, the native trees fill the Born rows).
+    #[pyo3(signature = (inputs, *, contraction="auto"))]
+    fn seed_values(
+        &mut self,
+        py: Python<'_>,
+        inputs: &Bound<'_, PyDict>,
+        contraction: &str,
+    ) -> PyResult<Vec<Vec<Values>>> {
+        let contraction = match contraction {
+            "auto" => Contraction::Auto,
+            "direct" => Contraction::Direct,
+            "fft" => Contraction::Fft,
+            _ => return Err(error("contraction must be auto, direct or fft")),
+        };
+        let bits = self.bits()?;
+        let executor = &self.executor;
+        let trees = self.trees.as_mut();
+        match self.carrier {
+            Carriers::Double => {
+                seed_values_with(py, executor, trees, inputs, 0.0, bits, contraction)
+            }
+            Carriers::DoubleDouble => seed_values_with(
+                py,
+                executor,
+                trees,
+                inputs,
+                DoubleFloat::from(0.0),
+                bits,
+                contraction,
+            ),
+            Carriers::Arbitrary(_) => seed_values_with(
+                py,
+                executor,
+                trees,
+                inputs,
+                Float::with_val(bits, 0),
+                bits,
+                contraction,
+            ),
+            Carriers::Exact => Err(error("the exact carrier contracts seeds directly")),
+        }
     }
 
     /// Family numerators per point: `(family, order, rank, columns)` with

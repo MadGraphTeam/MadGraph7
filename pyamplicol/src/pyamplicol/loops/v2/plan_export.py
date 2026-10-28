@@ -1749,6 +1749,36 @@ class NativeExecutor:
         native = self.native(arithmetic, digits, len(evaluations))
         return native.tree_inputs(self._inputs(evaluations, arithmetic))
 
+    def seed_values(
+        self,
+        points,
+        scales,
+        parameters=None,
+        precision=None,
+        contraction: Literal["auto", "direct", "fft"] = "auto",
+    ) -> list[list[tuple[Any, ...]]]:
+        """The seeds U0 of a batch (``inputs="native"``): per point, per seed
+        key, its ``rows * columns`` values in the carrier (``complex`` in
+        binary64, ``reference_executor.Complex`` of ``Decimal`` otherwise),
+        contracted as ``evaluate`` with ``contraction`` contracts them: the
+        oracle of the certified seed FFT (design §7.3), whose values equal
+        the direct contraction's to the contraction's own rounding, without
+        the reduction's amplification."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        raw = native.seed_values(
+            self._inputs(evaluations, arithmetic), contraction=contraction
+        )
+        return [
+            [tuple(_carrier_value(z, arithmetic) for z in key) for key in point]
+            for point in raw
+        ]
+
     def bound_masses(self, points, scales, parameters=None, precision=None):
         """The squared masses the native lane binds for a batch
         (``inputs="native"``, ``TreeProgram::bind``): per plan mass and per

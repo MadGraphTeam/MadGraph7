@@ -2413,6 +2413,40 @@ pub mod v2 {
             })
         }
 
+        /// The certified seed FFT an evaluation with `contraction` runs.
+        fn contraction(&self, contraction: Contraction) -> RusticolResult<Option<&SeedFourier>> {
+            Ok(match contraction {
+                Contraction::Direct => None,
+                Contraction::Auto => self.fourier.as_deref(),
+                Contraction::Fft => Some(self.fourier.as_deref().ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "the seed contraction 'fft' needs the plan's certified seed \
+                         Fourier record (the plan has no certified orbit pair)",
+                    )
+                })?),
+            })
+        }
+
+        /// The seeds `U0` of every point (the oracle of the seed
+        /// contraction, DESIGN.md §7.3): per point, per seed key, its
+        /// `rows × columns` values in object order, contracted as an
+        /// evaluation with `contraction` contracts them.
+        pub fn seed_values<T: Carrier + Real>(
+            &self,
+            batch: &V2Batch<T>,
+            zero: &T,
+            contraction: Contraction,
+        ) -> RusticolResult<Vec<Vec<Vec<Complex<T>>>>> {
+            batch.validate(&self.plan)?;
+            let fourier = self.contraction(contraction)?;
+            self.pool.install(|| {
+                with_lanes!(
+                    self.lanes,
+                    seed_values_lanes::<T>(&self.plan, fourier, batch, zero)
+                )
+            })
+        }
+
         /// Dress, reduce and assemble the bare virtual of every point.
         pub fn evaluate<T: Carrier + Real, B: V2Backend<T> + Send>(
             &self,
@@ -2423,16 +2457,7 @@ pub mod v2 {
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
             batch.validate(&self.plan)?;
             let threads = self.pool.current_num_threads();
-            let fourier = match options.contraction {
-                Contraction::Direct => None,
-                Contraction::Auto => self.fourier.as_deref(),
-                Contraction::Fft => Some(self.fourier.as_deref().ok_or_else(|| {
-                    RusticolError::invalid_argument(
-                        "the seed contraction 'fft' needs the plan's certified seed \
-                         Fourier record (the plan has no certified orbit pair)",
-                    )
-                })?),
-            };
+            let fourier = self.contraction(options.contraction)?;
             self.pool.install(|| {
                 let (results, mut report) = with_lanes!(
                     self.lanes,
@@ -2442,6 +2467,37 @@ pub mod v2 {
                 Ok((results, report))
             })
         }
+    }
+
+    fn seed_values_lanes<T: Carrier + Real, const L: usize>(
+        plan: &LoopProgramV4,
+        fourier: Option<&SeedFourier>,
+        batch: &V2Batch<T>,
+        zero: &T,
+    ) -> RusticolResult<Vec<Vec<Vec<Complex<T>>>>> {
+        let v = crate::loop_v2::kernels::lane_vector_len(L);
+        let mut out = vec![Vec::new(); batch.points()];
+        for chunk in chunks(batch.points(), L) {
+            let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
+            let seeds = match fourier {
+                Some(fourier) => seeds_fourier(plan, fourier, &data),
+                None => seeds(plan, &data),
+            };
+            for (lane, &point) in chunk.iter().enumerate() {
+                out[point] = seeds
+                    .values
+                    .iter()
+                    .map(|key| {
+                        key.chunks(v)
+                            .map(|vector| {
+                                Complex::new(vector[lane].clone(), vector[L + lane].clone())
+                            })
+                            .collect()
+                    })
+                    .collect();
+            }
+        }
+        Ok(out)
     }
 
     fn chunks(points: usize, lanes: usize) -> Vec<Vec<usize>> {
