@@ -171,3 +171,33 @@ fn slot_sets_without_a_finite_slot_are_pole_work() {
         assert!(pole_slot_sets(&bad, &powers).is_err(), "{bad:?}");
     }
 }
+
+#[test]
+fn plane_mismatch_names_the_output_row_and_part() {
+    // Two rows of three outputs; rounding-level differences agree.
+    let expected: Vec<Complex<f64>> = (0..6)
+        .map(|k| Complex::new(1.0 + k as f64, -0.5 * k as f64))
+        .collect();
+    let mut got = expected.clone();
+    got[4].re += 1e-14;
+    assert_eq!(first_mismatch(&expected, &got, 3), None);
+    // A sign on a branch cut: output 1 of row 1 (value 4), imaginary part.
+    got[4].im = -got[4].im;
+    let mismatch = first_mismatch(&expected, &got, 3).expect("a mismatch");
+    assert_eq!(
+        mismatch,
+        PlaneMismatch {
+            output: 1,
+            row: 1,
+            imaginary: true,
+            plane: 2.0,
+            exact: -2.0
+        }
+    );
+    let text = mismatch.to_string();
+    assert!(
+        text.contains("output 1 (imaginary part, probe row 1"),
+        "{text}"
+    );
+    assert!(!text.contains("exact evaluator;"), "{text}");
+}

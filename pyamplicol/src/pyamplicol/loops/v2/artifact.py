@@ -773,12 +773,22 @@ def generate_process(
         or correlators.spin_correlations
         or correlators.all_color_through_order is not None
     )
-    if declared:
-        observables = ObservableSlice.generate(
-            compiled, request, native, correlators=correlators
-        )
-    else:
-        observables = ObservableSlice.of(LoopSlice.generate(compiled, request, native))
+    from .native_trees import NativeExportUnsupported
+
+    try:
+        # A listed feature the native point inputs do not cover is refused as
+        # soon as the generation knows it (``native_inputs``), before the
+        # trees are built.
+        if declared:
+            observables = ObservableSlice.generate(
+                compiled, request, native, correlators=correlators, native_inputs=True
+            )
+        else:
+            observables = ObservableSlice.of(
+                LoopSlice.generate(compiled, request, native, native_inputs=True)
+            )
+    except NativeExportUnsupported as error:
+        raise _not_storable(request, "native point inputs", error) from error
     # Schedule F (the forward oracle) is not stored: the runtime dresses by
     # schedule B, and F's section is over half of the plan (gg -> gggg: 52 of
     # 98 MB of JSON).
@@ -800,7 +810,6 @@ def generate_process(
     # the native process, so no correlated, resolved or catalogue call of a
     # loaded process regenerates.
     from .native_observables import column_plans
-    from .native_trees import NativeExportUnsupported
 
     plans = column_plans(observables)
     try:
@@ -833,14 +842,17 @@ def generate_process(
                 twin = plan.scaleless()
                 if twin is not None and twin.slice is companion:
                     twins[kind] = twin.seed_columns
-        scaleless = export_plan(
-            companion,
-            forward=False,
-            trees=exported.trees is not None,
-            born_squared=False,
-            counterterms=False,
-            column_sets=twins or None,
-        )
+        try:
+            scaleless = export_plan(
+                companion,
+                forward=False,
+                trees=exported.trees is not None,
+                born_squared=False,
+                counterterms=False,
+                column_sets=twins or None,
+            )
+        except NativeExportUnsupported as error:
+            raise _not_storable(request, "companion point inputs", error) from error
     scaleless_json = None if scaleless is None else scaleless.json()
     if exported.trees is not None:
         from .native_process import NativeProcess
