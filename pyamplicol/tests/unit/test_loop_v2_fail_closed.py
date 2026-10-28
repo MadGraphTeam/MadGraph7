@@ -338,6 +338,12 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 # the companion plan JSON, and of every native member but the parameter
 # programs' plane applications (``_identity``). A package that changes these
 # plans on purpose re-measures them on its base and states why.
+# Re-pinned by sdk-parity (merged with fb54246c): the native digests only,
+# for three record fields it adds (genericity audit 2 M2/m3): the tree
+# programs' ``parameters.scale_outputs`` and the native record's
+# ``externals`` and ``preparation_fixed_parameters``; with those removed every
+# native digest equals the former pin, and the plan and companion digests
+# are unchanged.
 CONTROLS = {
     "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
     "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
@@ -350,32 +356,32 @@ CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "1df405acd1134b1d511d4478b90b3f3a3216205cb7c334aaed92df7cb1965424",
+        "d16cba9475fc8230df4e79375a4f1cbbd0acad3b6e68e0dbc62b1919f55fba19",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "4932af5724f4d1c5189028590793e7a0d5e487541f80bd8b59f7a1b850731f39",
+        "99a27d7b629adf25e46deb4a3a9936bfcd6f0794f88ea3f797c05717841728fb",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "c20534efd86e2ecb5ab16bd4f06da3ba04a11b670c85a676861f426d72b1b2b6",
+        "1d86b2b60a5073da2709e614c0a9b43d9a7166661f2aec2009e4f0aa33b3a6ce",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "7510bcbbdb0d2f0b9338d89fbbca8f010ad6ecc14a00fb8cc1c908915de95dd6",
+        "a6b26a742d6c3aa1b125e94b3ad5c92e31219f28ffaa1c38881a581621fc9ece",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "31d89b7739a2cafdb919efbb5a0f614e5aaca35c501bbf48d50b00ca6619f693",
+        "3decb1412ce99184479564e7ecbe1fc7583dbd757ba66287a54c5df551e75ffe",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "e15f21c0bfd2887db9e24803f317d6bc181242f4be580a2906e1dda6f2bafa14",
+        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a",
     ),
 }
 

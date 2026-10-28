@@ -930,12 +930,14 @@ def test_nlo_couplings_read_the_scale_in_the_counterterms_only(ggtt):
     trees = _trees(ggtt, "ggtt")
     record = trees.program["parameters"]
     names = [name for _o, name in record["scale_outputs"]]
-    # Named as the plane check names outputs (``_output_label``): the
-    # counterterm coefficients (and their diagnostics) only.
-    assert names and all(
-        name.startswith(("counterterm ", "scaled counterterm ", "diagnostic "))
+    # Named as the plane check names outputs (``_output_label``): counterterm
+    # couplings and coefficients (and their diagnostics) only, none of the
+    # trees' model couplings, Born couplings, kernel constants or masses.
+    assert names and not any(
+        name.startswith(("model ", "Born coupling", "kernel constant", "mass "))
         for name in names
     ), names
+    assert any(name.startswith("ct-model coupling") for name in names), names
     assert record["names"][record["scale"]] == "MU_R"
     shared = {*record["couplings"], *record["constants"]}
     assert not shared & {o for o, _name in record["scale_outputs"]}
