@@ -190,6 +190,15 @@ SymJIT 2.27 whenever it loads a complex kernel; if that file is malformed or
 unreadable, loading fails. Keep such files out of the directories that
 evaluate pyAmpliCol artifacts.
 
+### C library of the receiving host
+
+Artifacts hold no native code, but the receiving host must load pyAmpliCol's
+native libraries. On Linux, the one-loop engine's release natives need
+glibc 2.42 or newer (`GLIBC_ABI_GNU2_TLS`); an older glibc is refused when the
+extension loads, with a `NativePlatformError` naming the required and the
+running version. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+
 ### Bitwise reproducibility
 
 With the same pyAmpliCol build, a relocated artifact gives bitwise-identical
