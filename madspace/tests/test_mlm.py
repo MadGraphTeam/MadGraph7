@@ -404,6 +404,104 @@ def test_scales_are_azimuthally_invariant(process):
     assert_jet_scales_agree(out, out_r)
 
 
+# The schemes whose factorisation scale comes out of madevent's beam-line walk
+# (setclscales in Template/LO/SubProcesses/reweight.f) rather than from the
+# softest clustering.
+BEAM_LINE_SCHEMES = {
+    "madevent": {"scale_scheme": "madevent"},
+    "clustering_mean_pdf_ladder": {"clustering_mean_pdf_ladder": True},
+}
+
+# What the beam-line walk hands the pdf reweighting, all of it built from
+# transverse masses and invariants.
+LADDER_OUTPUTS = ["pdf_scale1", "pdf_scale2", "pdf_rw_x", "pdf_rw_q_num", "pdf_rw_q_den"]
+
+
+def rotate_about_beam(momenta, angle):
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    rotated = momenta.copy()
+    px, py = momenta[..., 1], momenta[..., 2]
+    rotated[..., 1] = cos_a * px - sin_a * py
+    rotated[..., 2] = sin_a * px + cos_a * py
+    return rotated
+
+
+@pytest.mark.parametrize("scheme", sorted(BEAM_LINE_SCHEMES))
+def test_beam_line_scales_are_azimuthally_invariant(process, scheme):
+    """The same for the schemes that walk the beam lines, which are more
+    sensitive to the choice of history: which beam takes a parton decides where
+    that beam's line stops being a QCD line, and with it mu_F.
+
+    Equal measures are common there. With two massless partons left in the
+    final state they balance in transverse momentum, so clustering either one
+    into the beam it travels along scores the same. Settled by rounding, a
+    rotation moved mu_F from 832 to 1195 GeV for one ttgg event in 200; the
+    tie now goes the way cluster.f's loop order takes it, so nothing may
+    change, not even which leg a jet scale is booked against.
+    """
+    _, diagrams, pdg_ids = process
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, **BEAM_LINE_SCHEMES[scheme]
+    )
+    momenta = sample_momenta(diagrams)
+    for angle in (0.7, -2.5):
+        rotated = rotate_about_beam(momenta, angle)
+        ren, fac1, fac2, out, diagram = run(clustering, momenta)
+        ren_r, fac1_r, fac2_r, out_r, diagram_r = run(clustering, rotated)
+        assert ren_r == pytest.approx(ren, rel=1e-9)
+        assert fac1_r == pytest.approx(fac1, rel=1e-9)
+        assert fac2_r == pytest.approx(fac2, rel=1e-9)
+        assert np.array_equal(diagram_r, diagram)
+        assert_jet_scales_agree(out, out_r, max_flip_fraction=0.0)
+        ladder = pdf_outputs(clustering, momenta)
+        ladder_r = pdf_outputs(clustering, rotated)
+        for name in LADDER_OUTPUTS:
+            assert ladder_r[name] == pytest.approx(ladder[name], rel=1e-9), name
+
+
+@pytest.mark.parametrize("scheme", sorted(BEAM_LINE_SCHEMES))
+def test_beam_line_scales_barely_change_under_longitudinal_boosts(process, scheme):
+    """As test_longitudinal_boosts_barely_change_the_scales, for the schemes
+    that walk the beam lines: the measures and the transverse masses the walk
+    reads are boost invariant, but the 1 + 1e-6 against-the-beam penalty is
+    not, so a boost may change the history of an event with two close
+    candidates. Where it leaves the history alone, everything has to agree.
+    """
+    _, diagrams, pdg_ids = process
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, **BEAM_LINE_SCHEMES[scheme]
+    )
+    momenta = sample_momenta(diagrams)
+
+    rapidity = 0.3
+    cosh_y, sinh_y = np.cosh(rapidity), np.sinh(rapidity)
+    boosted = momenta.copy()
+    energy, pz = momenta[..., 0], momenta[..., 3]
+    boosted[..., 0] = cosh_y * energy + sinh_y * pz
+    boosted[..., 3] = sinh_y * energy + cosh_y * pz
+
+    ren, fac1, fac2, out, diagram = run(clustering, momenta)
+    ren_b, fac1_b, fac2_b, out_b, diagram_b = run(clustering, boosted)
+    alphas, _ = alphas_outputs(clustering, momenta)
+    alphas_b, _ = alphas_outputs(clustering, boosted)
+
+    # The history, step by step. The vertex scales alone do not tell: when the
+    # penalty moves from one beam to the other, the parton goes to the other
+    # beam at the same unpenalised scale, and the later steps that move are
+    # often non-QCD ones, which carry no alpha_s scale.
+    unchanged = (diagram_b == diagram) & np.isclose(alphas_b, alphas, rtol=1e-9).all(
+        axis=1
+    )
+    assert unchanged.mean() > 0.8, (
+        f"only {unchanged.mean():.0%} of events keep their clustering history "
+        "under a longitudinal boost"
+    )
+    assert ren_b[unchanged] == pytest.approx(ren[unchanged], rel=1e-9)
+    assert fac1_b[unchanged] == pytest.approx(fac1[unchanged], rel=1e-9)
+    assert fac2_b[unchanged] == pytest.approx(fac2[unchanged], rel=1e-9)
+    assert_jet_scales_agree(out[unchanged], out_b[unchanged])
+
+
 def test_scales_are_homogeneous_for_a_single_clustering():
     """Every clustering measure has mass dimension one, so scaling all momenta
     by a factor scales every returned scale by the same factor.
