@@ -69,15 +69,15 @@
    ],
    [
     "2000.808101681796316907596795",
-    "1057.872599259627292873154489",
-    "793.4044494447204696548658667",
-    "-1499.393473087749190367243516"
+    "1057.87259925962729287315448893",
+    "793.40444944472046965486586669",
+    "-1499.39347308774919036724351622"
    ],
    [
     "1999.191898318203683092403205",
-    "-1057.872599259627292873154489",
-    "-793.4044494447204696548658667",
-    "1499.393473087749190367243516"
+    "-1057.87259925962729287315448893",
+    "-793.40444944472046965486586669",
+    "1499.39347308774919036724351622"
    ]
   ],
   [
@@ -94,16 +94,16 @@
     "-400"
    ],
    [
-    "404.040508408981584537983975",
-    "245.138942265488018857515464",
+    "404.040508408981584537983975002",
+    "245.138942265488018857515463999",
     "92.1890039289014771771853027",
-    "296.9673433570979418420025751"
+    "296.967343357097941842002575148"
    ],
    [
-    "395.959491591018415462016025",
-    "-245.138942265488018857515464",
+    "395.959491591018415462016024998",
+    "-245.138942265488018857515463999",
     "-92.1890039289014771771853027",
-    "-296.9673433570979418420025751"
+    "-296.967343357097941842002575148"
    ]
   ],
   [
@@ -120,16 +120,16 @@
     "-875"
    ],
    [
-    "876.8470895583915815030783886",
-    "367.9688897260839057957841719",
-    "-275.9766672945629293468381289",
-    "-742.1788044773245030160410953"
+    "876.84708955839158150307838857",
+    "367.96888972608390579578417188",
+    "-275.97666729456292934683812891",
+    "-742.17880447732450301604109527"
    ],
    [
-    "873.1529104416084184969216114",
-    "-367.9688897260839057957841719",
-    "275.9766672945629293468381289",
-    "742.1788044773245030160410953"
+    "873.15291044160841849692161143",
+    "-367.96888972608390579578417188",
+    "275.97666729456292934683812891",
+    "742.17880447732450301604109527"
    ]
   ],
   [
@@ -147,15 +147,15 @@
    ],
    [
     "2000.808101681796316907596795",
-    "1057.872599259627292873154489",
-    "793.4044494447204696548658667",
-    "-1499.393473087749190367243516"
+    "1057.87259925962729287315448893",
+    "793.40444944472046965486586669",
+    "-1499.39347308774919036724351622"
    ],
    [
     "1999.191898318203683092403205",
-    "-1057.872599259627292873154489",
-    "-793.4044494447204696548658667",
-    "1499.393473087749190367243516"
+    "-1057.87259925962729287315448893",
+    "-793.40444944472046965486586669",
+    "1499.39347308774919036724351622"
    ]
   ]
  ],
@@ -186,6 +186,7 @@
   "family": "regular",
   "family_values": [],
   "rotation": null,
+  "madloop_qp_point": null,
   "point_labels": [
    "regular",
    "regular",
@@ -211,7 +212,9 @@
   "scale_variation": {
    "point": 4,
    "copy_of_point": 1,
-   "mu_r_factor": "1/2"
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
   }
  },
  "parameters": {
@@ -321,6 +324,17 @@
      "single_pole": 1.4030481111203107e-14,
      "double_pole": 3.1848403704065515e-15
     }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 3.887793284260692e-16,
+    "max_sector_double_pole_relative_error": 3.9810504630081894e-16,
+    "reason": null
    }
   },
   {
@@ -402,6 +416,17 @@
      "single_pole": 7.625647421844706e-15,
      "double_pole": 4.207272872923701e-15
     }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 0.0,
+    "max_sector_double_pole_relative_error": 0.0,
+    "reason": null
    }
   },
   {
@@ -483,6 +508,17 @@
      "single_pole": 1.8495007008111297e-15,
      "double_pole": 9.66381127111964e-16
     }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 1.2583245187613818e-15,
+    "max_sector_double_pole_relative_error": 1.328774049778949e-15,
+    "reason": null
    }
   },
   {
@@ -564,6 +600,17 @@
      "single_pole": 1.148126655937862e-14,
      "double_pole": 3.3838928935569613e-15
     }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "born_double_pole_relative_mismatch": 3.887793284260692e-16,
+    "max_sector_double_pole_relative_error": 3.9810504630081894e-16,
+    "reason": null
    }
   }
  ],
@@ -796,6 +843,7 @@
   }
  },
  "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "mqcd_run": {
   "id": "gs_wmc_cmass",
   "process": "gs_wmc_cmass",
@@ -803,6 +851,7 @@
   "second_providers": [
    "recola"
   ],
+  "second_provider_trigger": "\u00a74.1: the massive-charm rows C08 and C09, after the charm fix",
   "points": {
    "generator": "supplied",
    "family": "regular"
