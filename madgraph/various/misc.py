@@ -122,7 +122,7 @@ def mg_root():
 # parse_info_str
 #===============================================================================
 def parse_info_str(fsock):
-    """Parse a newline separated list of "param=value" as a dictionnary
+    """Parse a newline separated list of "param=value" as a dictionary
     """
 
     info_dict = {}
@@ -1116,7 +1116,7 @@ def check_system_error(value=1):
                     return f(arg, *args, **opt)
                 # NO such file or directory
                 elif error.errno == 2:
-                    # raise a more meaningfull error message
+                    # raise a more meaningful error message
                     raise Exception('%s fails with no such file or directory' \
                                                                            % arg)            
                 # Checkpoint, requeued automatically
@@ -1175,13 +1175,13 @@ def copytree(src, dst, symlinks = False, ignore = None):
       shutil.copystat(src, dst)
     except PermissionError:
         if os.path.realpath(src).startswith('/cvmfs') and os.path.realpath(dst).startswith('/afs'):
-           # allowing missmatch from cvmfs to afs since sounds to not create issue --at least in general-- 
+           # allowing mismatch from cvmfs to afs since sounds to not create issue --at least in general--
            logger.critical(f'Ignoring that we could not copy permissions from {src} to {dst}')
         else:
            logger.critical(f'Permission error detected from {src} to {dst}.\n'+\
                           'If you are using WSL with windows partition, please try using python3.12\n'+\
                           'or avoid moving your data from the WSL partition to the UNIX one')
-           # we do not have enough experience in WSL to allow it to get trough.
+           # we do not have enough experience in WSL to allow it to get through.
            raise
       
   lst = os.listdir(src)
@@ -1239,7 +1239,7 @@ def tail(f, n, offset=None):
 
 def mkfifo(fifo_path):
     """ makes a piping fifo (First-in First-out) file and nicely intercepts 
-    error in case the file format of the target drive doesn't suppor tit."""
+    error in case the file format of the target drive doesn't support it."""
 
     try:
         os.mkfifo(fifo_path)
@@ -1420,7 +1420,7 @@ def gunzip(path, keep=False, stdout=None):
         if os.path.exists("%s.gz" % path):
             path = "%s.gz" % path
         else:
-            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exists" %\
+            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exist" %\
                               {"path": path})         
 
     
@@ -1568,7 +1568,7 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
 # Global function to open supported file types
 #
 class open_file(object):
-    """ a convinient class to open a file """
+    """ a convenient class to open a file """
     
     web_browser = None
     eps_viewer = None
@@ -1748,7 +1748,7 @@ class open_file(object):
 def get_HEPTools_location_setter(HEPToolsDir,type):
     """ Checks whether mg5dir/HEPTools/<type> (which is 'lib', 'bin' or 'include')
     is in the environment paths of the user. If not, it returns a preamble that
-    sets it before calling the exectuable, for example:
+    sets it before calling the executable, for example:
        <preamble> ./my_exe
     with <preamble> -> DYLD_LIBRARY_PATH=blabla:$DYLD_LIBRARY_PATH"""
     
@@ -2187,10 +2187,10 @@ class misc(object):
         return sprint(*args, **opt)
 spirnt = sprint
 ################################################################################
-# function to check if two float are approximatively equal
+# function to check if two float are approximately equal
 ################################################################################
 def equal(a,b,sig_fig=6, zero_limit=True):
-    """function to check if two float are approximatively equal"""
+    """function to check if two float are approximately equal"""
     import math
 
     if isinstance(sig_fig, int):
@@ -2211,7 +2211,7 @@ def equal(a,b,sig_fig=6, zero_limit=True):
 
 ################################################################################
 # class to change directory with the "with statement"
-# Exemple:
+# Example:
 # with chdir(path) as path:
 #     pass
 ################################################################################
@@ -2231,7 +2231,7 @@ class chdir:
 ################################################################################
 
 def timeout(func, args=(), kwargs={}, timeout_duration=1, default=None):
-    '''This function will spwan a thread and run the given function using the args, kwargs and 
+    '''This function will spawn a thread and run the given function using the args, kwargs and
     return the given default value if the timeout_duration is exceeded 
     ''' 
     import threading
@@ -2690,7 +2690,7 @@ class EasterEgg(object):
             return ""
         
         text= """
-*                CONTIBUTOR OF THE DAY:                    *
+*                CONTRIBUTOR OF THE DAY:                    *
 """
         for author, year in to_add:
             one = "*  - %s (first contribution in %s)" % (author, year) 
@@ -3152,6 +3152,104 @@ def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
             download_path = None
 
     return LhapdfPaths(config, data_paths, download_path)
+
+
+# Where 'lhapdf get' itself fetches the sets and the id index from.
+LHAPDF_SETS_URL = 'https://lhapdfsets.web.cern.ch/current'
+
+class LhapdfServerError(MadGraph5Error):
+    """The LHAPDF server refused a request (e.g. an unknown set name): asking
+    again, or with another client, gets the same answer."""
+
+def _fetch_url(url, path, timeout=60):
+    """Download *url* to *path*: urllib first, then curl/wget (e.g. for a
+    python without usable SSL certificates). Raises MadGraph5Error on failure."""
+
+    import urllib.request, urllib.error
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response, \
+                open(path, 'wb') as out:
+            shutil.copyfileobj(response, out)
+            # a dropped connection just ends the stream early
+            expected = response.headers.get('Content-Length')
+            if expected and out.tell() != int(expected):
+                raise IOError('truncated: got %d of %s bytes'
+                              % (out.tell(), expected))
+        return
+    except urllib.error.HTTPError as error:
+        raise LhapdfServerError('could not download %s: %s' % (url, error))
+    except Exception as error:
+        reason = error
+    for tool, cmd in (('curl', ['curl', '-fsL', url, '-o', path]),
+                      ('wget', ['wget', '-q', url, '-O', path])):
+        if which(tool) and subprocess.call(cmd) == 0:
+            return
+    raise MadGraph5Error('could not download %s: %s' % (url, reason))
+
+
+def download_lhapdf_set(pdf_set, target, base_url=LHAPDF_SETS_URL):
+    """Install the LHAPDF set *pdf_set* into the directory *target* straight
+    from the LHAPDF server, without needing LHAPDF itself (its .info and .dat
+    grids are all madspace reads). pdfsets.index comes along when *target* has
+    none, so an lhaid can be turned into a set name later. The set appears in
+    one rename, so an interrupted download never leaves a partial one behind.
+    Raises MadGraph5Error on failure."""
+
+    import tarfile
+    os.makedirs(target, exist_ok=True)
+    if os.path.isdir(pjoin(target, pdf_set)):
+        return pjoin(target, pdf_set)
+    tmpdir = tempfile.mkdtemp(prefix='.%s.' % pdf_set, dir=target)
+    try:
+        tarball = pjoin(tmpdir, '%s.tar.gz' % pdf_set)
+        for attempt in range(3):
+            try:
+                _fetch_url('%s/%s.tar.gz' % (base_url, pdf_set), tarball)
+                with tarfile.open(tarball) as tar:
+                    tar.extractall(tmpdir, filter='data')
+                break
+            except LhapdfServerError:
+                raise
+            except (MadGraph5Error, tarfile.TarError, EOFError, OSError) as error:
+                # a dropped or corrupted transfer: fetch it again
+                reason = error
+                logger.debug('download of %s failed: %s', pdf_set, reason)
+                shutil.rmtree(pjoin(tmpdir, pdf_set), ignore_errors=True)
+        else:
+            raise MadGraph5Error('could not install %s: %s' % (pdf_set, reason))
+        if not os.path.exists(pjoin(tmpdir, pdf_set, '%s.info' % pdf_set)):
+            raise MadGraph5Error('%s.tar.gz does not contain the set %s'
+                                 % (pdf_set, pdf_set))
+        try:
+            os.rename(pjoin(tmpdir, pdf_set), pjoin(target, pdf_set))
+        except OSError:
+            # another process installed it meanwhile
+            if not os.path.isdir(pjoin(target, pdf_set)):
+                raise
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    download_lhapdf_index(target, base_url)
+    return pjoin(target, pdf_set)
+
+
+def download_lhapdf_index(target, base_url=LHAPDF_SETS_URL):
+    """Fetch LHAPDF's pdfsets.index (lhaid -> set name) into *target* unless
+    it is already there. Returns its path, or None if it could not be had."""
+
+    index = pjoin(target, 'pdfsets.index')
+    if os.path.exists(index):
+        return index
+    try:
+        os.makedirs(target, exist_ok=True)
+        _fetch_url('%s/pdfsets.index' % base_url, index + '.part')
+        os.replace(index + '.part', index)
+        return index
+    except Exception as error:
+        logger.debug('could not download pdfsets.index: %s', error)
+        if os.path.exists(index + '.part'):
+            os.remove(index + '.part')
+        return None
 
 
 python_lhapdf=None

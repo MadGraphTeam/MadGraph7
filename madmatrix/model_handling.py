@@ -924,9 +924,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 self.declaration.add((ptype,'P%s' % self.outgoing))
             else:
                 coeff = 'COUP'
-            shift = 1 - 1 #to correspond to the shift in fortran indicies with -1 for C++
+            shift = 1 - 1 #to correspond to the shift in fortran indices with -1 for C++
             if fd_gauge and "S" in self.outname:
-                shift = 5 - 1 #to correspond to the shift in fortran indicies with -1 for C++
+                shift = 5 - 1 #to correspond to the shift in fortran indices with -1 for C++
             for ind in numerator.listindices():
                 # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
                 # the slot is fixed by the spin of this structure, the name by
@@ -1085,7 +1085,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # used mainly for FD gauge
     def write_combined_cc(self, lor_names, offshell=None, sym=True, mode=''):
         """Return the content of the .cc file linked to multiple lorentz call."""
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             offshell = self.offshell
 
@@ -1106,7 +1106,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {}  # for the formating of the line
+        data = {}  # for the formatting of the line
 
 
         # write header
@@ -2209,7 +2209,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write('\n'.join(lines))
         ff.close()
 
-    # seperate process constants to one truth file
+    # separate process constants to one truth file
     def edit_processdata(self):
         """Generate ProcessData.h"""
         template = open(pjoin(self.template_path, 'madmatrix', 'ProcessData.h'), 'r').read()
@@ -2521,7 +2521,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # but maybe not for something else.
         nb_diag = max(config[0] for config in config_subproc_map)
         ndigits = str(int(math.log10(nb_diag))+1+1) # the additional +1 is for the -sign
-        # Output which diagrams correspond ot a channel to get information for valid color
+        # Output which diagrams correspond to a channel to get information for valid color
         lines = []
         for diag in range(1, nb_diag+1):
             if diag in diag_to_iconfig:
@@ -3825,7 +3825,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills

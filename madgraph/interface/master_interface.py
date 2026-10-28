@@ -33,7 +33,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 root_path = os.path.split(root_path)[0]
 sys.path.insert(0, root_path)
 
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
 import madgraph
@@ -856,7 +856,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
         else:
             # put default options since 
             # in the web the local file is not used
-            # in download the default file is more usefull
+            # in download the default file is more useful
             files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):

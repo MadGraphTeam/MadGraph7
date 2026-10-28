@@ -9,7 +9,7 @@
       INTEGER TPRID(-MAX_BRANCHB_USED:-1, LMAXCONFIGSB_USED)
       LOGICAL GFORCEBW(-MAX_BRANCHB_USED : -1, LMAXCONFIGSB_USED)
 
-C     Here are the congifurations
+C     Here are the configurations
 C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
 C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
 C     Diagram 1, Amplitude 1

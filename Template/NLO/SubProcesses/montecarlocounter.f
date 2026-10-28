@@ -1008,7 +1008,7 @@ c Stuff to be written (depending on AddInfoLHE) onto the LHE file
      #                fksfather_lhe,ipartner_lhe
       common/cto_LHE2/scale1_lhe,scale2_lhe
 
-c Radiation hardness needed (pt_hardness) for the theta function
+c Radiation hardness needed (pt_hardness) for theta function
 c Should be zero if there are no jets at the Born
       double precision shower_S_scale(fks_configs*2)
      &     ,shower_H_scale(fks_configs*2),ref_H_scale(fks_configs*2)
@@ -1960,7 +1960,7 @@ c SCALUP_tmp_H2, meant to be used in the computation of Delta.
          do j=1,nexternal
             if(j.eq.i_fks)cycle
             xscales2(iRtoB(i),iRtoB(j))=xscales(i,j)
-c In pythia the dipole masses can be arbitary large since the clustering
+c In pythia the dipole masses can be arbitrary large since the clustering
 c does not know exactly all the phase-space boundaries. Use min() to put
 c a cap on this (i.e., equal to the largest allowed value in pysudakov()
 c tables).
@@ -2021,7 +2021,7 @@ c     scale t_ij we give it and p_i.p_j/2.
 c     Should we implement this minimisation here as well?
 c     For S events no implementation is needed since we take
 c     scales directly from Pythia. For H event this implementation
-c     shuld be needed only for i_fks and j_fks, as only in that case
+c     should be needed only for i_fks and j_fks, as only in that case
 c     we (over)write their scales ourselves, but could be applied to
 c     all FI and FF connections.
 c
@@ -3402,7 +3402,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny) then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 2 in kinematics_driver: negtive sqrt'
+                 write(*,*)'Error 2 in kinematics_driver: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif
@@ -3436,7 +3436,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny)then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 3 in kinematics_driver: negtive sqrt'
+                 write(*,*)'Error 3 in kinematics_driver: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif
@@ -5416,7 +5416,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny) then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 2 in assign_qMC_array: negtive sqrt'
+                  write(*,*)'Error 2 in assign_qMC_array: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif
@@ -5450,7 +5450,7 @@ c azimuth = irrelevant (hence set = 0)
                if(qMCarg.lt.0d0.and.qMCarg.ge.-tiny)qMCarg=0d0
                if(qMCarg.lt.-tiny)then
                   isqrtneg=isqrtneg+1
-                  write(*,*)'Error 3 in assign_qMC_array: negtive sqrt'
+                  write(*,*)'Error 3 in assign_qMC_array: negative sqrt'
                   write(*,*)qMCarg,isqrtneg
                   if(isqrtneg.ge.100)stop
                endif

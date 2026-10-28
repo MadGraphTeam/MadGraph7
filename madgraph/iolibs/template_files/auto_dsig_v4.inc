@@ -318,6 +318,7 @@ C
       DOUBLE PRECISION ALL_CM_RAP(VECSIZE_MEMMAX)
       INTEGER IMODE
       DOUBLE PRECISION ALL_OUT(VECSIZE_MEMMAX)
+C     IMIRROR_VEC, ICONF_VEC and IFLAV_VEC have one entry per warp
       INTEGER IMIRROR_VEC(*)
       INTEGER ICONF_VEC(*)
       INTEGER IFLAV_VEC(*)
@@ -369,6 +370,8 @@ C     MINCFIG has this config number
       common/to_configs/mincfig, maxcfig
       INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG
       COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG
+      INTEGER IMIRROR_GLOBAL, IPROC_GLOBAL
+      COMMON/TO_MIRROR/ IMIRROR_GLOBAL, IPROC_GLOBAL
 C     Keep track of whether cuts already calculated for this event
       LOGICAL cutsdone,cutspassed
       COMMON/TO_CUTSDONE/cutsdone,cutspassed
@@ -394,6 +397,14 @@ c
 	   double precision P1(0:3, nexternal)
 	   integer ivec, curr_warp, iwarp, NB_WARP_USED
 	   integer channels(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row passed to SMATRIX_MULTI;
+C     NB_PSEL_WARP(w) is the number of ALL_PD rows of the flavor of warp w
+	   integer all_iflav(VECSIZE_MEMMAX), all_ipsel(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR of the warp), set in TO_MIRROR
+C     for each SMATRIX call (its good-helicity filter is per orientation)
+	   integer all_imirror(VECSIZE_MEMMAX)
+	   integer NB_PSEL_WARP(NB_WARP)
+	   integer IFLAV, IPSEL_SHIFT
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 	   integer igraph(VECSIZE_MEMMAX)
 	   common/vec_igraph/igraph
@@ -432,6 +443,13 @@ C     Continue only if IMODE is 0, 4 or 5
          IB(1) = 2
          IB(2) = 1     
        endif
+c      config and mirror of this warp (used by the clustering in REWGT and by UNWGT)
+       ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+       IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+c      flavor of this warp (ALL_PD only holds the rows of that flavor)
+       IFLAV = IFLAV_VEC(CURR_WARP)
+%(dsig_getflavor_vec)s
+       %(start_ipsel_for_IFLAV)s
        DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
 c        Do not need those three here. do I?     
@@ -443,17 +461,20 @@ c         CM_RAP = ALL_CM_RAP(IVEC)
 C     Select a flavor combination (need to do here for right sign)
        CALL RANMAR(R)
        IPSEL=0
-       DO WHILE (R.GE.0D0 .AND. IPSEL.LT.IPROC)
+       DO WHILE (R.GE.0D0 .AND. IPSEL.LT.NB_PSEL_WARP(CURR_WARP))
           IPSEL=IPSEL+1
           R=R-DABS(ALl_PD(IPSEL,IVEC))/ALL_PD(0,IVEC)
        ENDDO
 C     .GE. above already covers R = 0; this catches a NaN R (every
-C     comparison false) and IPROC = 0. See the scalar branch.
+C     comparison false) and a flavor without rows. See the scalar branch.
        IF (IPSEL.LT.1) IPSEL = 1
+C     leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
+       IPSEL = IPSEL + IPSEL_SHIFT
+       ALL_IPSEL(IVEC) = IPSEL
+       ALL_IFLAV(IVEC) = IFLAV
+       ALL_IMIRROR(IVEC) = IMIRROR_VEC(CURR_WARP)
        %(get_channel_vec)s
 
-
-%(dsig_getflavor_vec)s
        if (IMODE.eq.0) then
          ALL_RWGT(IVEC) = REWGT(all_PP(0,1,IVEC),FLAVOR,ivec)
        else
@@ -469,7 +490,7 @@ C     comparison false) and IPROC = 0. See the scalar branch.
 	 CALL RANMAR(col_rand(IVEC))
 	 ENDDO ! end loop on IWARP/IVEC	 
 	 ENDDO ! end loop on the CURR_WARP
-         call SMATRIX%(proc_id)s_MULTI(p_multi, iflav_vec, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
+         call SMATRIX%(proc_id)s_MULTI(p_multi, all_iflav, all_ipsel, all_imirror, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
 
 
 	 DO CURR_WARP=1, NB_WARP_USED
@@ -480,8 +501,14 @@ C     comparison false) and IPROC = 0. See the scalar branch.
 	     IB(1) = 2
 	     IB(2) = 1	   
 	   endif
+c          config and mirror of this warp (used by the clustering in REWGT and by UNWGT)
+	   ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+	   IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+	   IFLAV = IFLAV_VEC(CURR_WARP)
+	   %(start_ipsel_for_IFLAV)s
 	   DO IWARP=1, WARP_SIZE
        IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+	 IPSEL = ALL_IPSEL(IVEC)
 	 DSIGUU = ALL_OUT(IVEC)
 	 IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN		 
@@ -489,7 +516,7 @@ C     comparison false) and IPROC = 0. See the scalar branch.
 			else
 		      ALL_OUT(IVEC) = 0.0d0
 			endif
-			RETURN
+			CYCLE
 		 ENDIF
 
      XBK(:) = ALL_XBK(:,IVEC)
@@ -512,7 +539,7 @@ C        Apply the bias weight specified in the run card (default is 1.0)
 
          IF (DSIGUU.LT.1D199) THEN
 c           Set sign of dsig based on sign of PDF and matrix element
-            ALL_OUT(IVEC)=DSIGN(%(conv)sall_pd(0,IVEC)*dsiguu,DSIGUU*ALL_PD(IPSEL,IVEC))
+            ALL_OUT(IVEC)=DSIGN(%(conv)sall_pd(0,IVEC)*dsiguu,DSIGUU*ALL_PD(IPSEL-IPSEL_SHIFT,IVEC))
          ELSE
              write(*,*) "Error in matrix element"
              DSIGUU=0D0
@@ -538,7 +565,7 @@ C       Call UNWGT to unweight and store events
      end
 
 
-     SUBROUTINE SMATRIX%(proc_id)s_MULTI(p_multi, IFLAV_VEC, hel_rand, col_rand, channels, igraph, out, selected_hel, selected_col, VECSIZE_USED)
+     SUBROUTINE SMATRIX%(proc_id)s_MULTI(p_multi, IFLAV_VEC, IPSEL_VEC, IMIRROR_VEC, hel_rand, col_rand, channels, igraph, out, selected_hel, selected_col, VECSIZE_USED)
 %(OMP_LIB)s
      implicit none
 
@@ -550,7 +577,11 @@ C       Call UNWGT to unweight and store events
      double precision p_multi(0:3, nexternal, VECSIZE_MEMMAX)
      double precision hel_rand(VECSIZE_MEMMAX)
      double precision col_rand(VECSIZE_MEMMAX)
+C    Per-event flavor index and leshouche row (IPSEL, used for BROKEN_SYM)
      integer IFLAV_VEC(VECSIZE_MEMMAX)
+     integer IPSEL_VEC(VECSIZE_MEMMAX)
+C    Per-event beam orientation (IMIRROR, used by the good-helicity filter)
+     integer IMIRROR_VEC(VECSIZE_MEMMAX)
      integer channels(VECSIZE_MEMMAX)
 C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      integer igraph(VECSIZE_MEMMAX)
@@ -561,11 +592,17 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 
      integer ivec
 %(dsig_xg_decl_multi)s
+     INTEGER          IPSEL
+     COMMON /SubProc/ IPSEL
+     INTEGER IMIRROR, IPROC
+     COMMON/TO_MIRROR/ IMIRROR, IPROC
 %(additional_header)s
 
 
 %(OMP_PREFIX)s
       DO IVEC=1, VECSIZE_USED
+         IPSEL = IPSEL_VEC(IVEC)
+         IMIRROR = IMIRROR_VEC(IVEC)
          call %(dsig_smatrix_vec_name)s(p_multi(0,1,IVEC),
      &                           %(dsig_smatrix_vec_flav)s, 
      &                           hel_rand(IVEC),

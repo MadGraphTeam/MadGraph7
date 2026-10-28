@@ -458,7 +458,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         if not self.color_basis:
             return None, legs
         n_initial = self.matrix_element.get_nexternal_ninitial()[1]
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for leg in legs:
             repr_dict[leg.get("number")] = self.model.get_particle(

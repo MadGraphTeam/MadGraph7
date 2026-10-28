@@ -43,13 +43,17 @@ c   output argument
 c
     integer ihel, icol
 c
-c global (due to reading writting) 
+c global (due to reading writing)
 c
 C       Good-helicity filter is per (helicity, flavor, subprocess): a helicity
 C       that is zero for one merged flavor but non-zero for another must not be
 C       dropped, so GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
+C       NTRY is also kept per beam orientation (IM = IMIRROR), so that each
+C       orientation gets its own MAXTRIES scan: a helicity can vanish in one
+C       orientation only (e.g. q q~ > z with the Z at rest), and in vector mode
+C       the first MAXTRIES events can all share one orientation.
         LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-	    INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+	    INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
 
 C  
@@ -126,6 +130,7 @@ C
     
     INTEGER IMIRROR, IPROC
     COMMON/TO_MIRROR/ IMIRROR,IPROC
+    INTEGER IM
 
 c       included vi run.inc    
 c       double precision tmin_for_channel	
@@ -157,9 +162,13 @@ C
 C ----------
 C BEGIN CODE
 C ----------
+C   beam orientation of this event (1 if the caller did not set TO_MIRROR);
+C   a crossed call scans in the orientation of the event it serves
+    IM = IMIRROR
+    IF (IM.NE.2) IM = 1
 %(smatrix_me_cross_decode)s
     CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
-    NTRY(%(me_flav_key)s,%(proc_id)s)=NTRY(%(me_flav_key)s,%(proc_id)s)+1
+    NTRY(IM,%(me_flav_key)s,%(proc_id)s)=NTRY(IM,%(me_flav_key)s,%(proc_id)s)+1
     IF (.NOT.CSYM_DONE) THEN
 C     A self-paired row (FLIP(I)=I, every helicity 0) has no
 C     distinct partner, so the loop could not be halved
@@ -177,7 +186,6 @@ C     own FLIP table (CSYM_DONE is local to each SMATRIX<i>).
       CSYM_DONE = .TRUE.
     ENDIF
     DEDUP = %(me_csym_nscan)s.GE.20 .AND. CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0 .AND. (%(me_csym_cross_ok)s)
-
     IF (multi_channel) THEN
         DO I=1,NDIAGS
             AMP2(I)=0D0
@@ -264,7 +272,7 @@ C     so the two coincide.
           ENDIF
         ENDDO
       ENDIF
-      IF(NTRY(%(me_flav_key)s,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
+      IF(NTRY(IM,%(me_flav_key)s,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
          call reset_cumulative_variable() ! avoid biais of the initialization
       ENDIF
       IF (ISUM_HEL.NE.0) then
@@ -290,11 +298,11 @@ C     so the two coincide.
 	      ELSE IF (.NOT.%(me_goodhel_test)s .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
 %(me_goodhel_set)s
                  NGOOD = NGOOD +1
-                 PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,TS(I)*NCOMB/ANS,' in event ',NTRY(%(me_flav_key)s,%(proc_id)s)
+                 PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,' mirror ',IM,TS(I)*NCOMB/ANS,' in event ',NTRY(IM,%(me_flav_key)s,%(proc_id)s)
               ENDIF
            ENDDO
 		endif
-        IF(NTRY(%(me_flav_key)s,%(proc_id)s).EQ.MAXTRIES)THEN
+        IF(NTRY(IM,%(me_flav_key)s,%(proc_id)s).EQ.MAXTRIES)THEN
            ISHEL=MIN(ISUM_HEL,NGOOD)
         ENDIF
       ENDIF

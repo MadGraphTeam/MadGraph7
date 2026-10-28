@@ -754,7 +754,7 @@ class LoopMG4Runner(me_comparator.MERunner):
             logging.info("The process %s only contains gluons." % proc)
             return False
                 
-        # Check that QCD fermion number is respected (ML4 not protected agains this)
+        # Check that QCD fermion number is respected (ML4 not protected against this)
         fermions=['d','u','c','s','b','t']
         antifermions=[fermion+'~' for fermion in fermions]
         if(len([1 for f in incoming_parts if f in fermions])-\
@@ -1362,7 +1362,7 @@ class LoopMEComparator(me_comparator.MEComparator):
     
     def run_comparison(self, proc_list, model='loop_SM_QCD', energy=1000):
         """Run the codes and store results.
-        Notice that the proc list is a list of tuples formated like this:
+        Notice that the proc list is a list of tuples formatted like this:
         (process,born_orders,perturbation_orders,squared_orders)"""
 
         if isinstance(model, str):
@@ -1402,7 +1402,7 @@ class LoopMEComparator(me_comparator.MEComparator):
                      len(proc_list)))
 
     def output_result(self, filename=None, tolerance=1e-04, skip_zero=True):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         if any('^2' in sqso for proc in self.proc_list for sqso in proc[3].keys()):
@@ -1557,7 +1557,7 @@ class LoopMEComparatorGauge(LoopMEComparator):
     orders     = []
     
     def output_result(self, filename=None, tolerance=3e-06, skip_zero=True):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         proc_col_size = 20

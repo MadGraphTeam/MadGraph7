@@ -483,7 +483,7 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_process_format('u u~ > t{L} t~ [QCD]')
         cmd.check_process_format('p p > t{+} t~{-} [QCD]')
 
-        # unvalid syntax
+        # invalid syntax
         self.wrong(cmd.check_process_format, ' e+ e-')
         self.wrong(cmd.check_process_format, ' e+ e- > e+ e-,')
         self.wrong(cmd.check_process_format, ' e+ e- > > e+ e-')
@@ -523,7 +523,7 @@ class TestValidCmd(unittest.TestCase):
         
     @test_aloha.set_global()
     def test_simple_generate(self):
-        """check that simple syntax goes trough and return expected process"""
+        """check that simple syntax goes through and return expected process"""
            
         cmd = self.cmd
         self.do('import model sm')
@@ -534,7 +534,7 @@ class TestValidCmd(unittest.TestCase):
         
     @test_aloha.set_global()
     def test_generate_polarised(self):
-        """check that simple syntax goes trough and return expected process"""
+        """check that simple syntax goes through and return expected process"""
            
         cmd = self.cmd
         self.do('import model sm')

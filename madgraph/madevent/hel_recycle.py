@@ -383,7 +383,7 @@ class MathsObject:
         this_args = copy(old_args)
         wav_names = [w.name for w in wavs]
         this_args[0:len(wavs)] = wav_names
-        # This isnt maximally efficient
+        # This isn't maximally efficient
         # Could take the num from wavs that've been deleted in graph
         return this_args
 
@@ -748,7 +748,7 @@ class HelicityRecycler():
             return 'external'
 
         # Now check for internal
-        # Wont find a internal when no externals have been found...
+        # Won't find an internal when no externals have been found...
         # ... I assume
         if not self.dag.external_wavs:
             return None
@@ -1573,7 +1573,7 @@ def split_amps(line, new_amps, gauge):
                 a = amp.args[i]
                 occur[i][a] +=1
     # Each element in occur is the wavs that appear in a column, with
-    # the number of occurences
+    # the number of occurrences
     nb_wav =  [len(o) for o in occur]
     to_remove = nb_wav.index(max(nb_wav)) 
     # Remove the one that occurs the most
