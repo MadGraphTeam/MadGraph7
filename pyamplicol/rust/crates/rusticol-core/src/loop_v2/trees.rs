@@ -31,6 +31,17 @@
 //! Born's into ket vectors, interfered with the Born per sector
 //! (`super::interference`).
 //!
+//! **Loop-side sources** (the asymmetric Ward mode, `loops/v2/ward.py`): per
+//! point a literal complex four-vector may replace a vector leg's
+//! wavefunction on the loop side only (`TreeProgram::inputs_loop_side`). The
+//! trees then run twice: the physical run gives the Born bra (the plan's Born
+//! components, the seeds' input, and `|A0|²`), the loop-side run the block
+//! rows, the counterterm kets (with the counterterm program's own state
+//! overridden) and the Born ket of the external-field insertions; the Born
+//! interference of the physical bra with the loop-side ket is formed per
+//! squared Born order (`TreeInputs::loop_born`). With `v = c p_j` on a gluon
+//! leg every output vanishes by gauge invariance.
+//!
 //! **Parameters.** Every parameter-dependent value derives from the external
 //! model parameters through one saved exact evaluator of the program (its
 //! last saved evaluator): the tree program's derived model parameters, the
@@ -759,6 +770,12 @@ pub struct PointSources<T> {
     pub rows: Option<Vec<bool>>,
 }
 
+/// The loop-side sources of one point (`TreeProgram::inputs_loop_side`):
+/// per (1-based) vector leg label a literal complex four-vector replacing the
+/// leg's wavefunction in the loop side's trees and counterterm program only
+/// (empty: the point's loop side is its physical one).
+pub type LoopSources<T> = Vec<(usize, [Complex<T>; 4])>;
+
 /// A loaded tree program (one process, any carrier).
 pub struct TreeProgram {
     legs: usize,
@@ -834,6 +851,10 @@ pub struct TreeInputs<T> {
     pub amplitudes: Vec<Vec<Complex<T>>>,
     /// `|A0|²` per squared Born order (with a colour metric).
     pub born_squared: Option<Vec<Vec<T>>>,
+    /// With loop-side sources and a colour metric: `Re <A0|M|A0'>` per
+    /// squared Born order, the physical Born bra `A0` against the loop-side
+    /// Born ket `A0'` (`TreeProgram::inputs_loop_side`).
+    pub loop_born: Option<Vec<Vec<T>>>,
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
@@ -2448,6 +2469,52 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        self.inputs_loop_side(
+            runtime, plan, batch, momenta, constants, poles, sources, None, zero,
+        )
+    }
+
+    /// `inputs_with` with per point loop-side sources (`loop_sources`, one
+    /// `LoopSources` per point; the asymmetric Ward mode): each listed vector
+    /// leg's wavefunction is the given vector times its source's crossing
+    /// phase (every helicity source of the leg, as a spin source) in a second
+    /// run of the trees and in the counterterm program, on top of the spin
+    /// sources. The physical run gives the plan's Born components (the seeds'
+    /// bra), every Born component (`amplitudes`) and `|A0|²`; the loop-side
+    /// run gives the block rows, the counterterm kets and the external-field
+    /// insertions' Born ket, and `loop_born` the Born interference of the
+    /// physical bra with the loop-side ket. The vectors need the full tree
+    /// kernels (the caller's slice generation; the transverse Yang-Mills
+    /// kernel assumes conserved currents). Observable columns are refused
+    /// with loop-side sources (they run the inclusive outputs).
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs_loop_side<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        loop_sources: Option<&[LoopSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(loop_sources) = loop_sources {
+            require(
+                loop_sources.len() == momenta.len(),
+                "loop-side sources per point",
+            )?;
+            require(
+                self.columns
+                    .as_ref()
+                    .is_none_or(|columns| columns.columns.is_empty()),
+                "loop-side sources run the inclusive outputs, not observable columns",
+            )?;
+        }
         if let Some(sources) = sources {
             require(
                 sources.len() == momenta.len() && self.columns.is_some(),
@@ -2545,16 +2612,34 @@ impl TreeProgram {
         if let (Some(sources), Some(columns)) = (sources, &self.columns) {
             Self::override_sources(&mut states, layout.size, &columns.trees, sources, zero)?;
         }
-        run_interactions(
-            &self.interactions,
-            layout,
-            &mut runtime.kernels,
-            &runtime.edge_weights,
-            &mut states,
-            points,
-            true,
-            &czero,
-        )?;
+        // The loop side's states: the physical ones with each point's
+        // loop-side vectors in their legs' vector source slots.
+        let mut loop_states = match loop_sources {
+            Some(loop_sources) => {
+                let mut loop_states = states.clone();
+                Self::override_loop_sources(
+                    &mut loop_states,
+                    layout.size,
+                    &self.sources,
+                    loop_sources,
+                    zero,
+                )?;
+                Some(loop_states)
+            }
+            None => None,
+        };
+        for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
+            run_interactions(
+                &self.interactions,
+                layout,
+                &mut runtime.kernels,
+                &runtime.edge_weights,
+                states,
+                points,
+                true,
+                &czero,
+            )?;
+        }
         // The counterterm program's state of every point (empty without it).
         let counterterm_states = match &self.counterterm_trees {
             Some(ct) => {
@@ -2574,6 +2659,16 @@ impl TreeProgram {
                         ct.layout.size,
                         &columns.counterterms,
                         sources,
+                        zero,
+                    )?;
+                }
+                // Counterterm currents are loop side only.
+                if let Some(loop_sources) = loop_sources {
+                    Self::override_loop_sources(
+                        &mut ct_states,
+                        ct.layout.size,
+                        &ct.sources,
+                        loop_sources,
                         zero,
                     )?;
                 }
@@ -2600,6 +2695,8 @@ impl TreeProgram {
             born: Vec::with_capacity(points),
             amplitudes: Vec::with_capacity(points),
             born_squared: runtime.metric.is_some().then(|| Vec::with_capacity(points)),
+            loop_born: (runtime.metric.is_some() && loop_states.is_some())
+                .then(|| Vec::with_capacity(points)),
             counterterms: self
                 .counterterms
                 .as_ref()
@@ -2616,20 +2713,30 @@ impl TreeProgram {
             .map(|point| self.mask_momenta(point, zero))
             .collect();
         let states = (states.as_slice(), self.state_size);
+        // The loop side's trees: the loop-side run, else the physical one.
+        let loop_side = loop_states.as_ref().map_or(states, |loop_states| {
+            (loop_states.as_slice(), self.state_size)
+        });
         let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
-        let mut amplitudes = self.close(
-            &self.terms,
-            &runtime.weights,
-            &vec![batch.couplings.as_slice(); points],
-            None,
-            self.components,
-            plan,
-            &momenta,
-            states,
-            counterterm_states,
-            constants,
-            zero,
-        );
+        let born_closure = |states| {
+            self.close(
+                &self.terms,
+                &runtime.weights,
+                &vec![batch.couplings.as_slice(); points],
+                None,
+                self.components,
+                plan,
+                &momenta,
+                states,
+                counterterm_states,
+                constants,
+                zero,
+            )
+        };
+        let mut amplitudes = born_closure(states);
+        // The loop side's Born amplitudes (the external-field insertions'
+        // ket), with loop-side sources.
+        let mut loop_amplitudes = loop_states.as_ref().map(|_| born_closure(loop_side));
         let kets = match (&self.counterterms, &runtime.interference) {
             (Some(ct), Some(_)) => self.close(
                 &ct.terms,
@@ -2643,7 +2750,7 @@ impl TreeProgram {
                 ct.components,
                 plan,
                 &momenta,
-                states,
+                loop_side,
                 counterterm_states,
                 constants,
                 zero,
@@ -2653,16 +2760,22 @@ impl TreeProgram {
         out.seconds
             .push(("trees: closures", started.elapsed().as_secs_f64()));
         let started = std::time::Instant::now();
-        for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
+        for (index, state) in loop_side.0.chunks_exact(self.state_size).enumerate() {
             let mut amplitudes = std::mem::take(&mut amplitudes[index]);
+            let mut loop_amplitudes = loop_amplitudes
+                .as_mut()
+                .map(|loop_amplitudes| std::mem::take(&mut loop_amplitudes[index]));
             let kept_rows = sources.and_then(|sources| sources[index].rows.as_deref());
             if let Some(kept) = kept_rows {
                 // A source leg keeps its fixed row only: the other rows'
                 // Born components vanish (no seeds, no interference).
-                for (row, keep) in kept.iter().enumerate() {
-                    if !keep {
-                        for value in &mut amplitudes[row * self.components..][..self.components] {
-                            *value = czero.clone();
+                for amplitudes in std::iter::once(&mut amplitudes).chain(loop_amplitudes.as_mut()) {
+                    for (row, keep) in kept.iter().enumerate() {
+                        if !keep {
+                            for value in &mut amplitudes[row * self.components..][..self.components]
+                            {
+                                *value = czero.clone();
+                            }
                         }
                     }
                 }
@@ -2694,6 +2807,7 @@ impl TreeProgram {
                         columns.programs[program].evaluate_complex(
                             &runtime.columns[program],
                             &amplitudes,
+                            None,
                             self.components,
                             &kets[index],
                             ct.components,
@@ -2748,6 +2862,7 @@ impl TreeProgram {
                 let values = ct.interference.evaluate(
                     interference,
                     &amplitudes,
+                    loop_amplitudes.as_deref(),
                     self.components,
                     &kets[index],
                     ct.components,
@@ -2772,7 +2887,11 @@ impl TreeProgram {
             out.born.push(born);
             if let Some(squared) = &mut out.born_squared {
                 let metric = runtime.metric.as_ref().expect("a runtime Born metric");
-                squared.push(self.squared(runtime, metric, &amplitudes, zero));
+                squared.push(self.squared(runtime, metric, &amplitudes, &amplitudes, zero));
+            }
+            if let (Some(loop_born), Some(ket)) = (&mut out.loop_born, &loop_amplitudes) {
+                let metric = runtime.metric.as_ref().expect("a runtime Born metric");
+                loop_born.push(self.squared(runtime, metric, &amplitudes, ket, zero));
             }
             out.amplitudes.push(amplitudes);
         }
@@ -2842,8 +2961,53 @@ impl TreeProgram {
         sources: &[PointSources<T>],
         zero: &T,
     ) -> RusticolResult<()> {
-        for (state, point) in states.chunks_exact_mut(size.max(1)).zip(sources) {
-            for (leg, vector) in &point.vectors {
+        Self::write_vectors(
+            states,
+            size,
+            slots,
+            sources.iter().map(|point| point.vectors.as_slice()),
+            zero,
+        )
+    }
+
+    /// Write each point's loop-side vectors (times each slot's crossing
+    /// phase) into the vector source slots of its legs in one interaction
+    /// program's state; `sources` is that program's source fill, whose
+    /// vector sources (`SchemaSources::vector_slots`) are the targets.
+    fn override_loop_sources<T: TreeCarrier>(
+        states: &mut [Complex<T>],
+        size: usize,
+        sources: &SchemaSources,
+        loop_sources: &[LoopSources<T>],
+        zero: &T,
+    ) -> RusticolResult<()> {
+        let mut slots: SourceSlots = BTreeMap::new();
+        for (leg, start, [re, im]) in sources.vector_slots() {
+            require(start + 4 <= size, "a vector source slot outside the state")?;
+            // The phase as the Python lane reads it (`Decimal(str(x))`).
+            let phase = [exact(&format!("{re:?}"))?, exact(&format!("{im:?}"))?];
+            slots.entry(leg).or_default().push((start, phase));
+        }
+        Self::write_vectors(
+            states,
+            size,
+            &slots,
+            loop_sources.iter().map(Vec::as_slice),
+            zero,
+        )
+    }
+
+    /// Write per point its (leg, vector) pairs, times each slot's crossing
+    /// phase, into the source slots of the legs (`slots`).
+    fn write_vectors<'a, T: TreeCarrier + 'a>(
+        states: &mut [Complex<T>],
+        size: usize,
+        slots: &SourceSlots,
+        points: impl Iterator<Item = &'a [(usize, [Complex<T>; 4])]>,
+        zero: &T,
+    ) -> RusticolResult<()> {
+        for (state, vectors) in states.chunks_exact_mut(size.max(1)).zip(points) {
+            for (leg, vector) in vectors {
                 let found = slots
                     .get(leg)
                     .ok_or_else(|| invalid(format!("leg {leg} has no vector source slot")))?;
@@ -2929,20 +3093,25 @@ impl TreeProgram {
         out
     }
 
-    /// `|A0|²` per squared Born order of one point (divided by the average):
-    /// the metric over pairs of Born components.
+    /// `Re <bra|M|ket>` per squared Born order of one point (divided by the
+    /// average): the metric over pairs of Born components, `|A0|²` for
+    /// `bra = ket` (the loop-side Born interference otherwise).
     fn squared<T: Carrier>(
         &self,
         runtime: &TreeRuntime<T>,
         metric: &[Complex<T>],
-        amplitudes: &[Complex<T>],
+        bra: &[Complex<T>],
+        ket: &[Complex<T>],
         zero: &T,
     ) -> Vec<T> {
         let entries = self.metric.as_ref().expect("a runtime metric has entries");
         let mut out = vec![zero.clone(); self.squared.len()];
-        for row in amplitudes.chunks_exact(self.components) {
+        for (row, ket) in bra
+            .chunks_exact(self.components)
+            .zip(ket.chunks_exact(self.components))
+        {
             for ((squared, left, right, _), value) in entries.iter().zip(metric) {
-                out[*squared] += (row[*left].conj() * value.clone() * row[*right].clone()).re;
+                out[*squared] += (row[*left].conj() * value.clone() * ket[*right].clone()).re;
             }
         }
         out.into_iter()
