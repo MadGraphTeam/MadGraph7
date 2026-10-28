@@ -128,7 +128,7 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
 
     The L-cut wavefunctions of a loop matrix element are motherless like the
     external ones and carry number_external = nexternal+1 / nexternal+2, so they
-    used to be counted as two extran external legs.
+    used to be counted as two extra external legs.
     """
 
     def test_loop_induced_external_flavors(self):

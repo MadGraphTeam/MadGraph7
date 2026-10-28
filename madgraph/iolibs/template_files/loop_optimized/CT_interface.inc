@@ -1100,15 +1100,15 @@ C     1 -> LOOPTOOLS
 C     2 -> AVH
 C     3 -> QCDLOOP
       IF (CTLOOPLIBRARY.eq.1) THEN
-          write(*,*) "Warning in Ninjan initialization. LoopTools is not supported by the Ninja interface. It will use OneLOop instead."
+          write(*,*) "Warning in Ninja initialization. LoopTools is not supported by the Ninja interface. It will use OneLOop instead."
           LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.eq.3) THEN
-          write(*,*) "Warning in Ninjan initialization. LoopTools is not supported by the Ninja interface. It will use OneLOop instead."
+          write(*,*) "Warning in Ninja initialization. LoopTools is not supported by the Ninja interface. It will use OneLOop instead."
           LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.eq.2) THEN
           LOOPLIB = 1
       ELSE
-          write(*,*) "Error in Ninjan initialization. Loop library ID=",CTLOOPLIBRARY," is not supported. Change variable CTLoopLibrary in MadLoopParams.dat."
+          write(*,*) "Error in Ninja initialization. Loop library ID=",CTLOOPLIBRARY," is not supported. Change variable CTLoopLibrary in MadLoopParams.dat."
           stop 1
       ENDIF
       call ninja_set_integral_library(LOOPLIB)

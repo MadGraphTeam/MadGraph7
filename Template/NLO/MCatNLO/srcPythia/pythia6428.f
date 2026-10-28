@@ -5091,7 +5091,7 @@ C...Formats for printout.
 
 C*********************************************************************
 
-C...Combine the two old-style Pythian initialization and event files
+C...Combine the two old-style Pythia initialization and event files
 C...into a single Les Houches Event File.
 
       SUBROUTINE PYLHEF
@@ -80580,7 +80580,7 @@ C...Number of histogram lines and x bins.
       LIN=IHIST(3)-18
       NX=NINT(BIN(IS+1))
  
-C...Extract title by conversion from double precision vian integer.
+C...Extract title by conversion from double precision via integer.
       DO 100 IT=1,20
         IEQ=NINT(BIN(IS+8+NX+IT))
         TITLE(3*IT-2:3*IT)=CHAR(IEQ/256**2)//CHAR(MOD(IEQ,256**2)/256)

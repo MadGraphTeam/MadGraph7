@@ -222,7 +222,7 @@ c initialization
 
           CALL UPDATE_AS_PARAM()
           call sborn_frame(p_born, born)
-          ! extran initialisation calls: skip the first point
+          ! extra initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
 c The virtual must be evaluated in the same frame as the Born above: the

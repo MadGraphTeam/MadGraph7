@@ -844,19 +844,19 @@ C     1 -> LOOPTOOLS
 C     2 -> AVH
 C     3 -> QCDLOOP
       IF (CTLOOPLIBRARY.EQ.1) THEN
-        WRITE(*,*) 'Warning in Ninjan initialization. LoopTools is not'
+        WRITE(*,*) 'Warning in Ninja initialization. LoopTools is not'
      $   //' supported by the Ninja interface. It will use OneLOop'
      $   //' instead.'
         LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.EQ.3) THEN
-        WRITE(*,*) 'Warning in Ninjan initialization. LoopTools is not'
+        WRITE(*,*) 'Warning in Ninja initialization. LoopTools is not'
      $   //' supported by the Ninja interface. It will use OneLOop'
      $   //' instead.'
         LOOPLIB = 1
       ELSEIF (CTLOOPLIBRARY.EQ.2) THEN
         LOOPLIB = 1
       ELSE
-        WRITE(*,*) 'Error in Ninjan initialization. Loop library ID='
+        WRITE(*,*) 'Error in Ninja initialization. Loop library ID='
      $   ,CTLOOPLIBRARY,' is not supported. Change variable'
      $   //' CTLoopLibrary in MadLoopParams.dat.'
         STOP 1

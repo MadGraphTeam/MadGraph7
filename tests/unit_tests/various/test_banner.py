@@ -939,7 +939,7 @@ class TestRunCard(unittest.TestCase):
         self.assertEqual(fct(*input), expected)
 
     def test_add_unknown_entry(self):
-        """check that one can added complex structure vian unknown entry functionality with the smart detection.
+        """check that one can added complex structure via unknown entry functionality with the smart detection.
         
            note that the smart detection is done via guess_entry_fromname which is tested by
            test_guess_entry_fromname. So this test is mainly to test that the output function of that function is correctly

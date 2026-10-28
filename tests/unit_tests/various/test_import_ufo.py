@@ -2083,7 +2083,7 @@ class TestLorentzStructureCanonicalisation(unittest.TestCase):
     """
 
     def test_symmetry_is_carried_by_the_structure(self):
-        """is_symmetric lives on the alohan object, and defaults to False."""
+        """is_symmetric lives on the aloha object, and defaults to False."""
         import aloha.aloha_object as aloha_object
         import aloha.aloha_lib as aloha_lib
         self.assertFalse(aloha_lib.FactoryLorentz.is_symmetric)

@@ -119,7 +119,7 @@ c
       write(6,*)'enter id, itype'
       read(5,*)id,itype
 
-c Use Pythian internal seed. Call rnd generator before each
+c Use Pythia internal seed. Call rnd generator before each
 c call to py_compute_sudakov otherwise
       iseedpy=-1
 c set cutoff to zero for Pythia to always compute Sudakovs

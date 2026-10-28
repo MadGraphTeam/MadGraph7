@@ -144,7 +144,7 @@ namespace madmatrix
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
-          ALOHAOBJ & fi,          // output: alohan objects
+          ALOHAOBJ & fi,          // output: aloha objects
           const int ipar          // input: particle# out of npar
           ) ALWAYS_INLINE;
 

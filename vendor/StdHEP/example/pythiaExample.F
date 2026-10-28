@@ -62,7 +62,7 @@ c...close output file
 
       subroutine upyinit(nevt,istr)
 C
-C   Pythian initialization
+C   Pythia initialization
 C
 #include "pydat1.inc"
 #include "stdlun.inc"

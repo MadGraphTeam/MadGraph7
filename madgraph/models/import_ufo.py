@@ -74,7 +74,7 @@ pole_dict = {-2:'2EPS',-1:'1EPS',0:'FIN'}
 def is_symmetric_lorentz_structure(name):
     """True when the lorentz structure *name* has commuting arguments.
 
-    The answer belongs to the structure itself: the alohan objects carry an
+    The answer belongs to the structure itself: the aloha objects carry an
     is_symmetric attribute, False on FactoryLorentz and set to True by the
     structures whose arguments may be written in any order (Metric)."""
 

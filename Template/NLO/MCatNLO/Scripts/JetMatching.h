@@ -573,7 +573,7 @@ inline bool JetMatchingAlpgen::initAfterBeams() {
   // Initialise chosen jet algorithm. CellJet.
   if (jetAlgorithm == 1) {
 
-    // Extran options for CellJet. nSel = 1 means that all final-state
+    // Extra options for CellJet. nSel = 1 means that all final-state
     // particles are taken and we retain control of what to select.
     // smear/resolution/upperCut are not used and are set to default values.
     int    nSel = 2, smear = 0;

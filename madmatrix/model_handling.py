@@ -3394,7 +3394,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'
             call = call
-        # Add flavor and the related ALOHAn object
+        # Add flavor and the related ALOHA object
         call = call + '%+d, cFlavors[iflavor][%d], aloha_obj[%d], %d );'
         if argument.get('spin') == 1:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)

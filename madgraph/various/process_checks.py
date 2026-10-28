@@ -3668,7 +3668,7 @@ def check_flavor(process_definition, param_card=None, options=None,
                     particle.get('width')] = 0.
 
     # ── 2. Import the same model *without* flavor grouping ───────────────────
-    # Using unmerge_flavors() on a deep-copy can leave color-algebran objects in
+    # Using unmerge_flavors() on a deep-copy can leave color-algebra objects in
     # an array form that the color module cannot handle.  Importing the model
     # fresh with apply_flavor_grouping=False gives clean color objects.
     model_path = merged_model.get('modelpath')
@@ -4489,7 +4489,7 @@ def check_language(process_definition, param_card=None, options=None,
         # the individual PDG codes before each call so that smatrix selects
         # the matching FLV-coupling component.  We rebuild the Process from
         # scratch (rather than deep-copying) because the SA exporters mutate
-        # internal color-algebran objects on the legs in a way that breaks
+        # internal color-algebra objects on the legs in a way that breaks
         # color_amp.create_color_dict_list when re-evaluated.
         py_values = {}
         if has_python and sa_momenta and all_keys:

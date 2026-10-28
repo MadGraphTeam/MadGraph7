@@ -701,7 +701,7 @@ c     &        '             : q**2 = ',q(0)**2-qq
 c      endif
 c      if (qq.eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
+c     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
 c      endif
 c#endif
 

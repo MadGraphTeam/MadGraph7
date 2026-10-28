@@ -597,7 +597,7 @@ in presence of majorana particle/flow violation"""
         return text
 
     def get_custom_propa(self, propas, spin, id):
-        """Return the ALOHAn object associated to the user define propagator"""
+        """Return the ALOHA object associated to the user define propagator"""
 
         basicPole = "(P(-1,id)**2 - Mass(id) * Mass(id) + complex(0,1) * Mass(id) * Width(id))"
         if isinstance(propas, str):
@@ -1037,7 +1037,7 @@ class AbstractALOHAModel(dict):
             if info_key in returned_dict:
                 continue
             elif not init:
-                # need to create the alohan object
+                # need to create the aloha object
                 lorentz = eval('self.model.lorentz.%s' % lorentzname)
                 abstract = AbstractRoutineBuilder(lorentz)
                 routine = abstract.compute_routine(outgoing, tag, factorize=False)                

@@ -1998,7 +1998,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                                         fortran_model, 'real', "%d" % (n+1))
             if n == 0:
                 writer.writelines("""
-      block datan initialize_real_diagram_weights
+      block data initialize_real_diagram_weights
       implicit none
       include 'real_matrix_weights.inc'
       data get_real_diagram_weights /.false./
@@ -5773,7 +5773,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     def trim_born_dir(self, born_path):
         """Delete every file in born_path that 'check_fks' does not need.
 
-        The Born-only check links only the FKSSAn objects (born, sborn_sf, the
+        The Born-only check links only the FKSSA objects (born, sborn_sf, the
         b_sf_* color/charge links, ...) and nothing else, so the rest of the
         full FKS directory -- the one-loop virtuals (V*/MadLoop), the
         real-emission matrix elements (matrix_*.f), and the whole

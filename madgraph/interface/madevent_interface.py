@@ -5393,7 +5393,7 @@ tar -czf split_$1.tar.gz split_$1
                 Nacc = PY8_extracted_information['Nacc']
                 Ntry = PY8_extracted_information['Ntry']
                 sigma_m = PY8_extracted_information['sigma_m']
-                # Compute pythian error
+                # Compute pythia error
                 error = self.results[self.run_name].return_tag(self.run_tag)['error'] 
                 try:                   
                     error_m = math.sqrt((error * Nacc/Ntry)**2 + sigma_m**2 *(1-Nacc/Ntry)/Nacc)
@@ -5917,7 +5917,7 @@ tar -czf split_$1.tar.gz split_$1
                 else:
                     self.results.add_detail('cross_pythia', sigma_m)
                     self.results.add_detail('nb_event_pythia', Nacc)
-                    #compute pythian error
+                    #compute pythia error
                     error = self.results[self.run_name].return_tag(self.run_tag)['error']
                     if Nacc:                    
                         error_m = math.sqrt((error * Nacc/Ntry)**2 + sigma_m**2 *(1-Nacc/Ntry)/Nacc)

@@ -844,7 +844,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
         if argss[0] in ['stability', 'profile']:
             stab_statistics = int(argss[1])
             argss = argss[:1]+argss[2:]
-        # Remove the extran options
+        # Remove the extra options
         i=-1
         while argss[i].startswith('--'):
             i=i-1

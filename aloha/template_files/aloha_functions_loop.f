@@ -1710,7 +1710,7 @@ c     &        '             : q**2 = ',q(0)**2-qq
 c      endif
 c      if (qq.eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
+c     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
 c      endif
 c#endif
 
@@ -1797,7 +1797,7 @@ c     &        '             : q**2 = ',q(0)**2-qq
 c      endif
 c      if (qq.eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in boostx has zero spatial components'
+c     &   ' helas-warn  : q(0:3) in boostx has zero spacial components'
 c      endif
 c#endif
 
@@ -1894,8 +1894,8 @@ c
       end
       subroutine rotxxx(p,q , prot)
 c
-c This subroutine performs the spatial rotation of a four-momentum.
-c the momentum p is assumed to be given in the frame where the spatial
+c This subroutine performs the spacial rotation of a four-momentum.
+c the momentum p is assumed to be given in the frame where the spacial
 c component of q points the positive z-axis.  prot is the momentum p
 c rotated to the frame where q is given.
 c
@@ -1932,7 +1932,7 @@ c     &        ' helas-error : q(0:3) in rotxxx is zero momentum'
 c      endif
 c      if (qt2+abs(q(3)).eq.rZero) then
 c         write(stdo,*)
-c     &   ' helas-warn  : q(0:3) in rotxxx has zero spatial momentum'
+c     &   ' helas-warn  : q(0:3) in rotxxx has zero spacial momentum'
 c      endif
 c#endif
 

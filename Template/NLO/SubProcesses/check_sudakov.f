@@ -1042,7 +1042,7 @@ ccc             111    ---> all non_diagonal
 
 
 
-          ! extran initialisation calls: skip the first point
+          ! extra initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
 
