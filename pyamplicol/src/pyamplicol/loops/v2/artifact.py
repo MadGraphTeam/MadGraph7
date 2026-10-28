@@ -1260,6 +1260,14 @@ class V2VirtualRuntime:
                     "scaleless_plan_sha256": self._admission["scaleless_plan_sha256"],
                     "plan_bytes": self._admission["plan_bytes"],
                     "point_inputs": self._execution["point_inputs"],
+                    # The certified symmetric-group FFT of the stored seeds
+                    # (design §7.3): its orbit pairs, 0 without a record.
+                    "seed_fourier_pairs": sum(
+                        len(job["pairs"])
+                        for job in (
+                            self._native_process.record.get("fourier") or {}
+                        ).get("jobs", ())
+                    ),
                     "native_admission": {
                         key: self._admission[key]
                         for key in ("runtime_capability", "legs", "rows", "columns")

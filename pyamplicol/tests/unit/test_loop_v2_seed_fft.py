@@ -393,9 +393,11 @@ def test_public_route_serves_the_seed_fft(
         assert not generator.plan(processes).unsupported_features
         generator.generate(processes, output)
         runtime = Runtime.load(output, process="gg", model_parameters=PARAMETERS)
-        assert runtime.inspect()["color_contraction"] == (
+        inspected = runtime.inspect()
+        assert inspected["color_contraction"] == (
             "fft" if contraction != "direct" else "direct"
         )
+        assert (inspected["seed_fourier_pairs"] > 0) == (contraction != "direct")
         evaluation = runtime.evaluate(points, mu_r2=scales)
         operations = {
             lane.primary_color_contraction.algorithm for lane in evaluation.diagnostics
