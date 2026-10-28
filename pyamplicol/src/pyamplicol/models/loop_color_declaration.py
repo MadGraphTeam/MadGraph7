@@ -225,15 +225,18 @@ class LoopColorDeclaration:
 
 
 def resolve_loop_color_declaration(raw: RawLoopModel) -> LoopColorDeclaration | None:
-    """Read one source-owned declaration; absence leaves full colour unchanged."""
+    """The source's own declaration, otherwise the shipped one of its
+    counterterm vertices (``models.loop_color_declarations``, keyed by
+    structural vertex digests: e.g. MG5_aMC's loop_sm under every
+    restriction), otherwise None; absence leaves full colour unchanged."""
     from .loop_import import _declaration_data
 
     payload = raw.metadata.get(LOOP_COLOR_DECLARATION_KEY)
-    return (
-        None
-        if payload is None
-        else LoopColorDeclaration.from_dict(_declaration_data(payload))
-    )
+    if payload is not None:
+        return LoopColorDeclaration.from_dict(_declaration_data(payload))
+    from .loop_color_declarations import resolve_shipped_declaration
+
+    return resolve_shipped_declaration(raw)
 
 
 @overload
