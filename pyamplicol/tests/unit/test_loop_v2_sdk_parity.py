@@ -10,10 +10,17 @@ parameters and scales (second genericity audit, G2-M2 and G2-m3).
   which is the Rust SDK's ``Runtime``) and the slice's own evaluation (the
   reference executor's twin, ``LoopSlice.evaluate``) refuse the same inputs
   with the same message: the fixed WT at another value, the renormalisation
-  scale MU_R, an unknown name; a mapping with one refused entry changes
-  nothing. Accepted values (WT at its fixed zero, MT, aS, a parameter the
-  process does not read) give bitwise the Python API's binary64 values in
-  every client, at points exact in binary64 and on shell at their top mass.
+  scale MU_R, an unknown name, a value that is not a finite decimal (a
+  fraction, an infinity); a mapping with one refused entry changes nothing,
+  and one with several is refused with the same message everywhere (values
+  first, then names, by name). A complex value is the Python API's
+  ``CompatibilityError`` (C status 3). The stored process's own executor
+  applies the rule too. An external colour-scheme constant that the colour
+  declaration fixes (toy: loop_sm with ``lhv`` external) is in the fixed set
+  of every client and of the slice. Accepted values (WT at its fixed zero,
+  MT, aS, a parameter the process does not read) give bitwise the Python
+  API's binary64 values in every client, at points exact in binary64 and on
+  shell at their top mass.
   The C++ and Fortran wrappers compile against the typed errors
   (``VirtualError::status``, ``update_parameters(..., error_message=...)``)
   and report them; the native runtime keeps its tree and closure stages on
@@ -27,7 +34,8 @@ parameters and scales (second genericity audit, G2-M2 and G2-m3).
   (and the loop kernel constants they enter), the Python API and the native
   runtime partition a batch of two scales by
   mu_R^2 (every point bitwise its single-point value), and the slice's
-  native executor, which takes one batch as given, refuses it naming them.
+  native executor (both input lanes) and the Python API's resolved calls,
+  which take one batch as given, refuse it naming them.
 """
 
 from __future__ import annotations
@@ -74,6 +82,15 @@ POINT_150 = [
     ["250", "0", "120", "160"],
     ["250", "0", "-120", "-160"],
 ]
+# g g > g g, massless.
+GG_POINT = [
+    ["500", "0", "0", "500"],
+    ["500", "0", "0", "-500"],
+    ["500", "0", "300", "400"],
+    ["500", "0", "-300", "-400"],
+]
+
+
 # Two points of one momentum configuration at two scales (one batch).
 SCALES = ["1000000", "490000"]
 
@@ -92,10 +109,29 @@ REFUSED = [
     ({"WX": "1"}, "unknown external parameter 'WX'"),
     # One refused entry refuses the mapping: MT is not applied.
     ({"MT": "150", "WX": "1"}, "unknown external parameter 'WX'"),
+    # Several refused entries: every client checks them by name.
+    (
+        {"WT": "1.4915", "MU_R": "100"},
+        "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
+    ),
+    (
+        {"WX": "1", "MU_R": "100"},
+        "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
+    ),
+    # Values are decimal numbers, read before the names.
+    ({"aS": "59/500"}, "parameter 'aS' real part is not a decimal number"),
+    ({"WX": "1", "aS": "Infinity"}, "parameter 'aS' real part must be finite"),
 ]
 
 
-def _card(model: Path, output: Path, expression: str, name: str) -> str:
+def _card(
+    model: Path,
+    output: Path,
+    expression: str,
+    name: str,
+    accuracy: str = "full",
+    scheme: str = SCHEME,
+) -> str:
     return f"""
 action = "generate"
 [model]
@@ -105,14 +141,14 @@ entries = [{{expression={json.dumps(expression)}, name={json.dumps(name)}}}]
 loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
 [color]
-accuracy = "full"
+accuracy = "{accuracy}"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
 engine = "v2"
 [loop.preparation]
 fixed_parameters = {{MB = "0", WT = "0"}}
-{SCHEME}
+{scheme}
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
@@ -122,12 +158,14 @@ samples = 1
 """
 
 
-def _generate(model: Path, root: Path, expression: str, name: str) -> Path:
+def _generate(
+    model: Path, root: Path, expression: str, name: str, **options: str
+) -> Path:
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
 
     card = root / "card.toml"
-    card.write_text(_card(model, root / "artifact", expression, name))
+    card.write_text(_card(model, root / "artifact", expression, name, **options))
     Generator(resolve_config(card)).generate(
         ProcessSet((ProcessRequest.parse(expression, name=name),)),
         root / "artifact",
@@ -377,22 +415,34 @@ def test_refused_parameters_are_the_python_apis_in_every_client(
     for step, (_parameters, message) in zip(steps[1:], REFUSED, strict=True):
         assert step[:3] == ["update", 1, message], step
         assert step[3] == before
-    # A complex value: the Python API's CompatibilityError text, the C ABI's
-    # invalid-argument status.
+    # A complex value: the Python API's CompatibilityError, the C ABI's
+    # runtime-error status (a Compatibility error, as "direct" R2), the same
+    # text; it is checked after every value is read, before the names.
     from pyamplicol.api.errors import CompatibilityError
 
-    with pytest.raises(CompatibilityError) as refused:
-        Runtime.load(ggtt, process="ggtt", model_parameters={"aS": ("0.118", "0.1")})
-    (opened,) = _run_client(
-        c_client,
-        ggtt,
-        "ggtt",
-        POINT_173,
-        SCALES,
-        [json.dumps({"aS": ["0.118", "0.1"]})],
-        tmp_path,
-    )
-    assert opened[:3] == ["open", 1, str(refused.value)], opened
+    for parameters in ({"aS": ("0.118", "0.1")}, {"WX": "1", "aS": ("0.118", "0.1")}):
+        with pytest.raises(CompatibilityError) as refused:
+            Runtime.load(ggtt, process="ggtt", model_parameters=parameters)
+        assert str(refused.value) == (
+            "parameter 'aS': v2 loop runtimes take real external parameters"
+        )
+        (opened,) = _run_client(
+            c_client,
+            ggtt,
+            "ggtt",
+            POINT_173,
+            SCALES,
+            [
+                json.dumps(
+                    {
+                        name: list(value) if isinstance(value, tuple) else [value, "0"]
+                        for name, value in parameters.items()
+                    }
+                )
+            ],
+            tmp_path,
+        )
+        assert opened[:3] == ["open", 3, str(refused.value)], opened
 
 
 def test_accepted_parameters_are_bitwise_the_python_apis_in_every_client(
@@ -473,10 +523,171 @@ def test_slice_evaluation_refuses_the_same_parameters(
     assert accepted.components == reference.components
 
 
-def test_cxx_and_fortran_clients_compile_with_the_typed_errors(tmp_path):
+def _stored_process(artifact: Path, process: str):
+    """The stored native process of ``process`` (``native_process.NativeProcess``)."""
+
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+    (pacbin,) = artifact.rglob(f"{process}/loop-runtime.pacbin")
+    return read_native_process(pacbin, read_plan(pacbin))
+
+
+def test_stored_process_executor_refuses_the_same_parameters(
+    ggtt, loop_sm_compiled_model, loop_native
+):
+    """The stored process's own executor (``NativeProcess.executor``, the
+    benchmark's ``--load`` path; the public runtime validates first) applies
+    the same rule: given the model's external parameters it refuses every
+    mapping above with the Python API's text; without them (a stored process
+    alone) it still refuses the scale and the fixed WT at another value."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    externals = {r.name for r in compiled.ir.parameters if r.nature == "external"}
+    process = _stored_process(ggtt, "ggtt")
+    executor = process.executor(loop_native, externals=externals)
+    for parameters, message in REFUSED:
+        with pytest.raises(ValueError) as refused:
+            executor.evaluate([POINT_173], SCALES[:1], parameters=parameters)
+        assert str(refused.value) == message
+    bare = process.executor(loop_native)
+    for parameters, message in REFUSED[:2]:
+        with pytest.raises(ValueError) as refused:
+            bare.evaluate([POINT_173], SCALES[:1], parameters=parameters)
+        assert str(refused.value) == message
+    (accepted,) = executor.evaluate(
+        [POINT_173], SCALES[:1], parameters={"WT": "0", "MH": "130"}
+    )
+    (reference,) = executor.evaluate([POINT_173], SCALES[:1])
+    assert accepted.components == reference.components
+
+
+@pytest.fixture(scope="module")
+def scheme_constant(loop_sm_ufo, loop_native, tmp_path_factory):
+    """g g > g g at LC of loop_sm with its colour-scheme constant ``lhv``
+    external (``loop_v2_ufo_variants.external_scheme_constant_ufo``) and the
+    committed QCD colour declaration (``examples/loop/source_colour``),
+    generated through the public API; and the compiled model."""
+
+    import importlib.util
+
+    from .loop_v2_ufo_variants import external_scheme_constant_ufo
+
+    root = tmp_path_factory.mktemp("scheme")
+    ufo = external_scheme_constant_ufo(loop_sm_ufo, root / "loop_sm_lhv")
+    script = ROOT / "examples/loop/source_colour/prepare_model.py"
+    spec = importlib.util.spec_from_file_location("_loop_colour_example", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    model = module.prepare(ufo, root / "loop-sm-lhv.json")
+    return _generate(model, root, "g g > g g", "gg", accuracy="lc", scheme=""), model
+
+
+LHV_FIXED = (
+    "parameter 'lhv' was fixed to 1 at generation ([loop.preparation] "
+    "fixed_parameters); regenerate the artifact to change it"
+)
+
+
+def test_a_scheme_constant_the_colour_declaration_fixes_is_refused(
+    scheme_constant, loop_native, c_client, tmp_path
+):
+    """An external colour-scheme constant is fixed at generation by the
+    colour declaration (``source_color_fixed_parameters``), not by the card:
+    the native record holds it with the card's fixed parameters
+    (``LoopSlice.fixed_parameters``), and the Python API, the native runtime
+    and the C ABI refuse it at another value (before, they accepted lhv = 2
+    and evaluated trees whose counterterm colour continuation was built at
+    lhv = 1) and accept it at its value, bitwise unchanged."""
+
+    from pyamplicol import Runtime
+
+    artifact, _model = scheme_constant
+    record = _stored_process(artifact, "gg").record
+    assert record["fixed_parameters"] == {"MB": "0", "WT": "0", "lhv": "1"}
+    runtime = Runtime.load(artifact, process="gg")
+    before = _python_values(runtime, GG_POINT, SCALES)
+    refused = {"lhv": "2"}
+    with pytest.raises(ValueError) as error:
+        Runtime.load(artifact, process="gg", model_parameters=refused)
+    assert str(error.value) == LHV_FIXED
+    with pytest.raises(ValueError) as error:
+        runtime.set_model_parameters(refused)
+    assert str(error.value) == LHV_FIXED
+    with pytest.raises(ValueError) as error:
+        _native_values(loop_native, artifact, "gg", GG_POINT, SCALES, refused)
+    assert str(error.value) == LHV_FIXED
+    runtime.set_model_parameters({"lhv": "1.0"})
+    assert _python_values(runtime, GG_POINT, SCALES) == before
+    native = _native_values(loop_native, artifact, "gg", GG_POINT, SCALES, None)
+    assert native == before
+    assert (
+        _native_values(loop_native, artifact, "gg", GG_POINT, SCALES, {"lhv": "1.0"})
+        == before
+    )
+    (opened,) = _run_client(
+        c_client, artifact, "gg", GG_POINT, SCALES, [_overrides(refused)], tmp_path
+    )
+    assert opened[:3] == ["open", 1, LHV_FIXED], opened
+    steps = _run_client(
+        c_client,
+        artifact,
+        "gg",
+        GG_POINT,
+        SCALES,
+        ["-", _overrides(refused), _overrides({"lhv": "1.0"})],
+        tmp_path,
+    )
+    assert [step[:3] for step in steps] == [
+        ["open", 0, ""],
+        ["update", 1, LHV_FIXED],
+        ["update", 0, ""],
+    ]
+    assert [step[3] for step in steps] == [before] * 3
+
+
+def test_the_slice_fixes_the_scheme_constant_its_preparation_fixes(
+    scheme_constant, loop_native
+):
+    """The slice (the reference executor's twin) applies the same fixed set:
+    its ``fixed_parameters`` hold the declaration's lhv besides the request's,
+    lhv = 2 is refused with the same text and lhv = 1.0 changes nothing."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
+
+    _artifact, model = scheme_constant
+    compiled = load_compiled_model(model)
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "g g > g g",
+            {"QCD": 2, "QED": 0},
+            {"QCD": 4, "QED": 0},
+            fixed_parameters={"MB": "0", "WT": "0"},
+            accuracy="lc",
+            colour_declaration=resolve_loop_color_declaration(compiled.raw_loop_model),
+        ),
+        loop_native,
+    )
+    assert slice_.fixed_parameters == {"MB": "0", "WT": "0", "lhv": "1"}
+    with pytest.raises(ValueError) as error:
+        slice_.evaluate(GG_POINT, SCALES[0], parameters={"lhv": "2"})
+    assert str(error.value) == LHV_FIXED
+    accepted = slice_.evaluate(GG_POINT, SCALES[0], parameters={"lhv": "1.0"})
+    assert accepted.components == slice_.evaluate(GG_POINT, SCALES[0]).components
+
+
+def test_cxx_and_fortran_clients_report_the_typed_refusal(ggtt, tmp_path):
     """The C++ wrapper's ``VirtualError`` carries the C status and the
-    Fortran ``update_parameters`` returns the refusal's text; both wrappers
-    and their clients compile against the staged loop SDK."""
+    Fortran ``update_parameters`` returns the refusal's text: both wrappers
+    and their clients compile against the staged loop SDK and, on g g > t t~,
+    report setting MU_R as RUSTICOL_VIRTUAL_INVALID_ARGUMENT with the Python
+    API's text."""
 
     build = _staged_sdk()
     cxx = tmp_path / "client.cpp"
@@ -563,13 +774,6 @@ end program
         ],
         check=True,
     )
-
-
-def test_cxx_and_fortran_clients_report_the_refusal(ggtt, tmp_path):
-    """The compiled C++ and Fortran clients on g g > t t~: setting MU_R is
-    refused with RUSTICOL_VIRTUAL_INVALID_ARGUMENT and the Python API's text."""
-
-    test_cxx_and_fortran_clients_compile_with_the_typed_errors(tmp_path)
     message = "'MU_R' is the renormalisation scale: pass it per point as mu_r2"
     for client in ("client-cpp", "client-fortran"):
         run = subprocess.run(
@@ -654,21 +858,10 @@ def test_a_renamed_scale_parameter_is_refused_by_its_role(
         assert str(refused.value) == message
 
 
-GG_POINT = [
-    ["500", "0", "0", "500"],
-    ["500", "0", "0", "-500"],
-    ["500", "0", "300", "400"],
-    ["500", "0", "-300", "-400"],
-]
-
-
 def _trees(artifact: Path, process: str):
     """The stored tree program of ``process`` (``native_trees.NativeTrees``)."""
 
-    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
-
-    (pacbin,) = artifact.rglob(f"{process}/loop-runtime.pacbin")
-    return read_native_process(pacbin, read_plan(pacbin)).trees
+    return _stored_process(artifact, process).trees
 
 
 def test_nlo_couplings_read_the_scale_in_the_counterterms_only(ggtt):
@@ -722,7 +915,7 @@ def test_a_mixed_scale_batch_of_a_running_coupling_is_refused_by_name(
     from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.models.loading import load_compiled_model
 
-    _artifact, model = running
+    artifact, model = running
     slice_ = LoopSlice.generate(
         load_compiled_model(model),
         SliceRequest(
@@ -743,6 +936,21 @@ def test_a_mixed_scale_batch_of_a_running_coupling_is_refused_by_name(
         executor.evaluate([GG_POINT, GG_POINT], SCALES)
     one = executor.evaluate([GG_POINT], SCALES[:1])
     assert len(one) == 1
+    # The Python-input lane (the oracle) names the values that differ.
+    oracle = NativeExecutor(slice_, inputs="python")
+    with pytest.raises(
+        ValueError,
+        match=r"kernel constant .* depend on the renormalisation scale: the "
+        r"points of one batch need equal kernel constants and masses",
+    ):
+        oracle.evaluate([GG_POINT, GG_POINT], SCALES)
+    # So do the Python API's colour-correlated and helicity-resolved calls,
+    # which take one scale per call (``docs/user/configuration.md``).
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(artifact, process="gg")
+    with pytest.raises(ValueError, match=r"Born coupling GC_\d+.*depend on the"):
+        runtime.evaluate_resolved([GG_POINT, GG_POINT], mu_r2=SCALES)
 
 
 # ------------------------------------------------- request and policy defaults
@@ -820,6 +1028,7 @@ def test_the_cheapest_frame_policy_requires_the_legs_helicity_rows():
 
 THREADS_SCRIPT = r"""
 import sys
+import time
 from pyamplicol.loops.native import load_loop_native
 
 def threads():
@@ -830,6 +1039,11 @@ artifact, point = sys.argv[1], sys.argv[2:]
 native = load_loop_native()
 before = threads()
 native.evaluate_v2_artifact(artifact, [point] * 32, ["1000000"] * 32, threads=1)
+# The call's own pool is dropped on return, but rayon does not join its
+# worker: wait (bounded) for it to exit. A global pool's workers never do.
+deadline = time.monotonic() + 30
+while threads() > before and time.monotonic() < deadline:
+    time.sleep(0.05)
 print(before, threads())
 """
 
@@ -839,7 +1053,10 @@ def test_the_native_runtime_honours_its_thread_bound(ggtt, tmp_path):
     """``V2Runtime``'s tree and closure stages run on the executor's pool
     (its ``threads`` bound), not on rayon's global pool: an evaluation with
     ``threads=1`` in a fresh interpreter starts no global pool (whose workers
-    would outlive the call; before, eight with ``RAYON_NUM_THREADS=8``)."""
+    would outlive the call; before, eight with ``RAYON_NUM_THREADS=8``). The
+    call's own one-thread pool is dropped on return; its worker exits shortly
+    after (rayon signals, it does not join), so the count is read once it
+    settles (bounded wait)."""
 
     import sys
 

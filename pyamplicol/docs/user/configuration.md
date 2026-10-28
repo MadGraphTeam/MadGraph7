@@ -763,18 +763,26 @@ fixed_parameters = {MB = "0", WT = "0"}
 
 The legacy engine takes every propagator without width; a resonant coloured
 particle needs the complex-mass scheme (not available yet). An evaluation
-(the Python API and the native SDKs alike) refuses unknown parameter names, the
-renormalisation-scale parameter (`mu_r2` sets it per point) and a value other
-than the one a parameter was fixed to at generation; a parameter update with one
-refused entry changes nothing. Other known parameters are accepted even where
+(the Python API and the native SDKs alike) refuses a value that is not a finite
+decimal number, unknown parameter names, the renormalisation-scale parameter
+(`mu_r2` sets it per point) and a value other than the one a parameter was fixed
+to at generation (the card's `fixed_parameters` and those the model preparation
+fixes, e.g. a colour declaration's external scheme constants); a parameter
+update with one refused entry changes nothing, and every client checks the
+entries by name, so a mapping with several refused entries gets the same
+message everywhere. Other known parameters are accepted even where
 the process does not use them (for example a width only loop propagators would
 carry), as with the legacy engine. The renormalisation-scale parameter is the
 external parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 Generation records which model-derived values depend on it: for the usual NLO
 models only the counterterms do, and a batch of points at several scales is
 evaluated at once; for a model whose Born couplings or masses run with the scale
-(a running-coupling or MSbar-mass UFO) a batch is evaluated per scale, so every
-point equals its evaluation at that scale alone.
+(a running-coupling or MSbar-mass UFO) an ordinary evaluation (`evaluate`, every
+SDK) is evaluated per scale, so every point equals its evaluation at that scale
+alone. Colour- and spin-correlated and helicity-resolved evaluations of such a
+model take one scale per call: a batch of several scales is refused with a
+`ValueError` naming the scale-dependent couplings, constants or masses (call
+them once per scale).
 
 A v2 artifact stores its whole program: the loop plan and its per-point tree,
 Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the

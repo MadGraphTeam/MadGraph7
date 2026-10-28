@@ -1434,22 +1434,33 @@ def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
 
 def check_model_parameters(
     parameters: Mapping[str, str],
-    externals: Container[str],
+    externals: Container[str] | None,
     scale_parameter: str | None,
     fixed: Mapping[str, Any],
 ) -> dict[str, str]:
     """The caller's real model parameter values, validated as a whole before
     any is applied (the Python API's and the SDK's one rule, genericity audit
     2 M2; ``rusticol_loop_reduction::v2_runtime::checked_parameters`` is its
-    native twin): an unknown name (not an external parameter of the model),
-    the renormalisation scale's parameter (each point's ``mu_r2`` sets it) and
-    a value other than the one a parameter was fixed to at generation
-    (``fixed``, ``[loop.preparation] fixed_parameters``) are refused with a
-    ``ValueError``. A known parameter the process does not read is accepted
-    (it has no effect)."""
+    native twin), by name (so a mapping with several refused entries is
+    refused with the same message in every client): an unknown name (not an
+    external parameter of the model, ``externals``; not checked when None, a
+    stored process without its model), the renormalisation scale's parameter
+    (each point's ``mu_r2`` sets it) and a value other than the one a
+    parameter was fixed to at generation (``fixed``, ``LoopSlice.
+    fixed_parameters``: ``[loop.preparation] fixed_parameters`` and those the
+    model preparation fixes) are refused with a ``ValueError``. A known
+    parameter the process does not read is accepted (it has no effect).
+    Every value is read first, as the Python API reads it (``runtime.virtual.
+    _number``: a finite decimal number)."""
 
-    for name, value in parameters.items():
-        if name not in externals:
+    from pyamplicol.runtime.virtual import _number
+
+    names = sorted(parameters)
+    for name in names:
+        _number(parameters[name], f"parameter {name!r} real part")
+    for name in names:
+        value = parameters[name]
+        if externals is not None and name not in externals:
             raise ValueError(f"unknown external parameter {name!r}")
         if name == scale_parameter:
             raise ValueError(
@@ -1606,6 +1617,38 @@ class LoopSlice:
     # (``_PointEvaluation.average``), the conversion is a field insertion.
     external_photons: ew_policy.ExternalPhotons | None = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def fixed_parameters(self) -> dict[str, str]:
+        """The external parameters fixed at generation, with their exact
+        values: the request's (``SliceRequest.fixed_parameters``) and those
+        the model preparation fixes besides (a colour declaration's external
+        scheme constants, ``source_color_fixed_parameters``; an applied
+        source restriction's), the set the scalar plans and the counterterm
+        program were built with (``prepared.structure.fixed_parameters``).
+        Every runtime refuses a caller's other value of any of them and
+        evaluates at these (``check_model_parameters``; the native record's
+        ``fixed_parameters``; genericity audit 2, M2)."""
+
+        found = self._cache.get("fixed-parameters")
+        if found is None:
+            found = {}
+            prepared = self.prepared.structure.fixed_parameters or {}
+            for name, value in prepared.items():
+                real, imaginary = (value, "0") if isinstance(value, str) else value
+                if Decimal(imaginary) != 0:
+                    raise ValueError(
+                        f"parameter {name!r} is fixed to a complex value; v2 "
+                        "loop runtimes take real external parameters"
+                    )
+                found[name] = real
+            missing = sorted(set(self.request.fixed_parameters) - set(found))
+            if missing:
+                raise ValueError(
+                    f"the prepared model lost the fixed parameters {missing}"
+                )
+            self._cache["fixed-parameters"] = found
+        return dict(found)
 
     @property
     def site_terms(self) -> Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]:
@@ -2280,7 +2323,8 @@ class LoopSlice:
         """A point's parameter values: the caller's (``check_model_parameters``:
         unknown names, the scale parameter and a fixed parameter at another
         value are refused, as by the Python API's and the SDK's runtimes), the
-        request's fixed parameters and the renormalisation scale (the root of
+        fixed parameters (``fixed_parameters``: the request's and those the
+        model preparation fixes) and the renormalisation scale (the root of
         ``scale``)."""
 
         externals = self._cache.get("external-parameters")
@@ -2290,10 +2334,11 @@ class LoopSlice:
                 for record in self.compiled.ir.parameters
                 if record.nature == "external"
             )
+        fixed = self.fixed_parameters
         values = check_model_parameters(
-            parameters, externals, self.scale_parameter, self.request.fixed_parameters
+            parameters, externals, self.scale_parameter, fixed
         )
-        values.update(self.request.fixed_parameters)
+        values.update(fixed)
         digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, digits), digits

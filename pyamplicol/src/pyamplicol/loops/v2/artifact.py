@@ -1046,7 +1046,9 @@ class V2VirtualRuntime:
         record = self._native_process.record
         self._fixed = dict(record["fixed_parameters"])
         self._scale_parameter = record["scale_parameter"]
-        self._executor = self._native_process.executor(native)
+        self._executor = self._native_process.executor(
+            native, externals=self._externals
+        )
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
@@ -1557,15 +1559,21 @@ class V2VirtualRuntime:
         self._observable_runtime().set_spin_correlation_vectors(vectors)
 
     def _checked_parameters(self, mapping: ModelParameters | None) -> dict[str, str]:
-        """Real values of external model parameters. Unknown names, the
-        renormalisation scale (``mu_r2`` sets it per point) and a value other
-        than the one a parameter was fixed to at generation are refused.
-        Other known parameters are accepted even where this process does not
-        use them, as by the legacy engine: e.g. a width that only loop
-        propagators carry does not enter (v2 virtuals are real on-shell)."""
+        """Real values of external model parameters, read and checked by
+        name (the SDK's order, ``v2_runtime::checked_parameters``: values
+        first, then names). Unknown names, the renormalisation scale
+        (``mu_r2`` sets it per point) and a value other than the one a
+        parameter was fixed to at generation (the record's
+        ``fixed_parameters``: the request's and those the model preparation
+        fixes) are refused. Other known parameters are accepted even where
+        this process does not use them, as by the legacy engine: e.g. a width
+        that only loop propagators carry does not enter (v2 virtuals are real
+        on-shell)."""
 
         from .assemble import check_model_parameters
 
+        if isinstance(mapping, Mapping) and all(isinstance(n, str) for n in mapping):
+            mapping = {name: mapping[name] for name in sorted(mapping)}
         return check_model_parameters(
             _real_parameters(mapping),
             self._externals,
@@ -1583,7 +1591,9 @@ class V2VirtualRuntime:
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
-            self._executor = self._native_process.executor(self._native)
+            self._executor = self._native_process.executor(
+                self._native, externals=self._externals
+            )
             if self._observables is not None:
                 self._observables.clear()
 
