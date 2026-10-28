@@ -273,6 +273,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 3.378845649171593e-16,
     "max_sector_double_pole_relative_error": 1.8741095814003024e-16,
+    "outlier": null,
     "reason": null
    }
   },
@@ -340,6 +341,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 6.922974456842183e-16,
     "max_sector_double_pole_relative_error": 5.759842609800104e-16,
+    "outlier": null,
     "reason": null
    }
   },
@@ -407,6 +409,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 1.0386993733961756e-15,
     "max_sector_double_pole_relative_error": 9.602078392036685e-16,
+    "outlier": null,
     "reason": null
    }
   }

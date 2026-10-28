@@ -353,6 +353,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 1.6210833352130567e-09,
     "max_sector_double_pole_relative_error": 1.6210833272430712e-09,
+    "outlier": null,
     "reason": null
    }
   },
@@ -481,6 +482,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 4.777500741692694e-06,
     "max_sector_double_pole_relative_error": 4.777500741695492e-06,
+    "outlier": null,
     "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 1.3e-6) and OpenLoops differs by 4.3e-5: good to ~1e-6 at best, no reference at M-QCD accuracies"
    }
   },
@@ -609,6 +611,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 0.004778729528576971,
     "max_sector_double_pole_relative_error": 0.004778729528576955,
+    "outlier": null,
     "reason": "MadLoop's quadruple-precision evaluation is unstable (return code 420, own accuracy 28) and MadLoop, Recola and OpenLoops disagree at O(1)"
    }
   }

@@ -269,6 +269,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 2.2473073951755247e-29,
     "max_sector_double_pole_relative_error": 2.2473073951755247e-29,
+    "outlier": null,
     "reason": "\u00a74.1 S3 Born-zero point: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
    }
   },
@@ -336,6 +337,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 8.302825971076069e-29,
     "max_sector_double_pole_relative_error": 8.302825971076069e-29,
+    "outlier": null,
     "reason": "\u00a74.1 S3 Born-zero point: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
    }
   },
@@ -403,6 +405,7 @@
     "madloop_point": "published point (quadruple precision)",
     "born_double_pole_relative_mismatch": 0.0,
     "max_sector_double_pole_relative_error": 0.0,
+    "outlier": null,
     "reason": null
    }
   }
