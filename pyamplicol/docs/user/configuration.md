@@ -673,9 +673,12 @@ prune the recursion to the selection: fewer Born rows, skeletons and tree
 currents. The artifact's `evaluate()` then returns the selection. A sector
 of a folded trace holds two flows, the sector's and its reflection, as in
 the tree engine. An evaluation-time selection costs at most one inclusive
-evaluation and runs only the loop families its flows read; a
-generation-time selection is cheaper still (u u~ > g g g, one helicity and
-one flow: about a quarter of the inclusive leading-colour time).
+evaluation: it runs only the loop families its flows read, and only the
+helicity rows its helicities reach in the loop dressing and the tree
+currents. A generation-time selection is somewhat cheaper still (one
+helicity and one flow, binary64: u u~ > g g g about 0.7 ms per point at
+evaluation and 0.5-0.6 ms at generation, against 2.0 ms inclusive at
+leading colour; u u~ > g g g g 3.8 ms and 2.6 ms, against 30 ms).
 
 ```toml
 [process]
