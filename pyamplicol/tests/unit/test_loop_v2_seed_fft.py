@@ -49,6 +49,13 @@ MARGIN = 10.0
 FLOOR = 16.0
 LOCAL = ("uv", "r2", "uv_local", "uv_external_fields")
 CARRIERS = {"double": Precision.double(), "double-double": Precision.double_double()}
+# The seed contraction itself (``NativeExecutor.seed_values``, U0 per seed key
+# over every Born row and column): FFT and direct sum the same exact weights
+# times the same Born components, so at each point they agree to the
+# contraction's own rounding, max |U0_fft - U0_direct| <= SEED_ROUNDING * u *
+# max |U0_direct| over the point's seeds, with no reduction behind it to
+# amplify the difference.
+SEED_ROUNDING = 2.0**7
 
 
 def _points(masses, count):
@@ -136,6 +143,35 @@ def _assert_equal_to_rounding(mine, theirs, label):
                 assert error <= bound, (label, component, sector, error, bound)
 
 
+def _assert_seeds_equal_to_rounding(executor, points, scales, precision, label):
+    """The seed contraction, FFT against direct on one executor (``seed_
+    values``): at every point, every seed key's values equal to
+    ``SEED_ROUNDING`` units of the carrier's unit roundoff of the point's
+    largest seed value (normwise: a key may be a small difference of large
+    terms, rounded relative to them)."""
+
+    import decimal
+
+    unit = precision.unit_roundoff
+    fft = executor.seed_values(points, scales, PARAMETERS, precision, contraction="fft")
+    direct = executor.seed_values(
+        points, scales, PARAMETERS, precision, contraction="direct"
+    )
+    # Decimal parts (double-double) are subtracted exactly: in the default
+    # context's 28 digits a Decimal negation would round them.
+    with decimal.localcontext(prec=80):
+        for k, (mine, theirs) in enumerate(zip(fft, direct, strict=True)):
+            assert len(mine) == len(theirs), label
+            scale = max(abs(z) for key in theirs for z in key)
+            assert scale > 0, label
+            error = max(
+                abs(x - y)
+                for a, b in zip(mine, theirs, strict=True)
+                for x, y in zip(a, b, strict=True)
+            )
+            assert error <= SEED_ROUNDING * unit * scale, (label, k, error / scale)
+
+
 def _assert_fft_equals_direct(slice_, points, scales, *, dd_points=1):
     fft, direct = _pair(slice_)
     stats = fft.native("double").fourier
@@ -143,6 +179,13 @@ def _assert_fft_equals_direct(slice_, points, scales, *, dd_points=1):
     checks = StabilityChecks(reduction_direction=True)
     for carrier, precision in CARRIERS.items():
         count = len(points) if carrier == "double" else dd_points
+        _assert_seeds_equal_to_rounding(
+            fft,
+            points[:count],
+            scales[:count],
+            precision,
+            (slice_.request.process, carrier),
+        )
         options = {
             "parameters": PARAMETERS,
             "precision": precision,
@@ -460,6 +503,43 @@ def test_native_seed_fft_equals_direct_at_higher_multiplicity(
     points = _points(masses, 2)
     stats = _assert_fft_equals_direct(slice_, points, _scales(points))
     assert stats["group_order"] == group
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    ("process", "group"),
+    [("g g > g g g g g", 720), ("u u~ > g g g g g", 120)],
+)
+def test_native_seed_fft_equals_direct_at_seven_legs(
+    compiled, loop_native, process, group
+):
+    """2 -> 5 (S_6 on g g > g g g g g: 1 080 classes in two orbits; S_5 on
+    u u~ > g g g g g): the seed contraction FFT = direct to its own rounding
+    in binary64 (two points) and double-double (one point), and the virtual
+    in binary64 within both evaluations' rounding envelope (one point). The
+    double-double virtual of these rows (one point each, about 25 min for
+    g g > g g g g g on 24 threads) is the evidence of DESIGN §7.3."""
+
+    slice_ = _slice(compiled, loop_native, process, {"QCD": 5}, {"QCD": 7})
+    fft, direct = _pair(slice_)
+    stats = fft.native("double").fourier
+    assert stats is not None and stats["group_order"] == group
+    points = _points([0] * 7, 2)
+    scales = _scales(points)
+    for carrier, count in (("double", 2), ("double-double", 1)):
+        _assert_seeds_equal_to_rounding(
+            fft, points[:count], scales[:count], CARRIERS[carrier], (process, carrier)
+        )
+    options = {
+        "parameters": PARAMETERS,
+        "precision": CARRIERS["double"],
+        "stability": StabilityChecks(reduction_direction=True),
+    }
+    (mine,) = fft.evaluate(points[:1], scales[:1], **options)
+    (theirs,) = direct.evaluate(points[:1], scales[:1], **options)
+    assert mine.colour_contraction == SYMMETRIC_GROUP_FFT
+    assert theirs.colour_contraction == "direct"
+    _assert_equal_to_rounding(mine, theirs, (process, "double"))
 
 
 @pytest.mark.loop_nightly
