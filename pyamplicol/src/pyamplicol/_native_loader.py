@@ -18,9 +18,11 @@ library not loaded yet is left to the dynamic loader, whose error
 :func:`translate_loader_error` turns into the same error (a dependency's own
 requirement, Symbolica's extension for instance, included).
 
-The normal path reads ``/proc/self/maps`` and a few kilobytes of ELF headers
-once per process; nothing here imports :mod:`pyamplicol.api` unless an error is
-raised.
+The normal path runs once per process, when the extension is first imported:
+it reads ``/proc/self/maps`` and the ELF section headers and version sections
+of the library and of the glibc libraries it needs (about 1 ms in all; libc's
+version definitions and their string table are about 37 kB). Nothing here
+imports :mod:`pyamplicol.api` or :mod:`re` unless an error is raised.
 """
 
 from __future__ import annotations
