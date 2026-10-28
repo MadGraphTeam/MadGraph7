@@ -610,6 +610,15 @@ def block_colour_network(
     closes its open ends with (tau^X)^in_out. ``open_label`` names the field's
     colour index (X, or the open fundamental end). A block of N_c grade g
     (U(1)-subtraction pieces, whose rows carry 3^g) contributes N_c^g 3^(-g).
+
+    A block whose trees mix grades (``nc_grade`` ``None``: only from a DAG
+    compiled without the grade split, i.e. full colour) takes g = 0. That is
+    exact where such a block can be evaluated: at N_c = 3, N_c^g 3^(-g) = 1
+    for every g, and full colour keeps every power at N_c = 3. This network
+    is built once for every accuracy of a seed table, so the accuracy is not
+    known here; a projection of such a block is refused where it is
+    (``SeedTable.seeds``; at generation ``refusals.require_nc_exact``, at
+    export ``refusals.require_formal_nc_tables``).
     """
 
     incoming = open_label if field_representation == -3 else (open_label, "in")

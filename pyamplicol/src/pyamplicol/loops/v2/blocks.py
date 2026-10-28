@@ -116,6 +116,7 @@ from pyamplicol.generation.dag_compiler import (
     LoopBlockReachability,
     compile_generic_dag,
 )
+from pyamplicol.generation.dag_grades import u1_grade_sets
 from pyamplicol.generation.dag_types import (
     AmplitudeRoot,
     ColorState,
@@ -133,7 +134,7 @@ from pyamplicol.loops.v2.families import (
     model_data,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
-from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
+from pyamplicol.models.contracts import TreeKernelVariant
 from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
@@ -903,32 +904,14 @@ def _connection_parities(dag: GenericDAG, model: Model) -> list[int | None]:
 def u1_grades(dag: GenericDAG) -> list[int | None]:
     """N_c grade of every current: minus the number of U(1)-subtraction
     auxiliaries its trees produce (module docstring), ``None`` if its
-    derivations disagree (``generation.dag_grades.split_u1_grades`` splits
-    such currents of a loop-request DAG)."""
+    derivations disagree or none derives it (the single-grade view of
+    ``generation.dag_grades.u1_grade_sets``, whose ``split_u1_grades`` splits
+    the disagreeing currents of a loop-request DAG)."""
 
-    currents = dag.currents
-    grade: list[int | None] = [0 if current.is_source else None for current in currents]
-    mixed: set[int] = set()
-    for interaction in sorted(
-        dag.interactions,
-        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
-    ):
-        left, right = grade[interaction.left_id], grade[interaction.right_id]
-        result = interaction.result_id
-        if left is None or right is None:
-            mixed.add(result)
-            continue
-        value = (
-            left
-            + right
-            - (currents[result].index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND)
-        )
-        if grade[result] is None and result not in mixed:
-            grade[result] = value
-        elif grade[result] != value:
-            grade[result] = None
-            mixed.add(result)
-    return grade
+    return [
+        next(iter(grades)) if len(grades) == 1 else None
+        for grades in u1_grade_sets(dag)
+    ]
 
 
 def _born_root_orders(

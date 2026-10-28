@@ -43,10 +43,14 @@ from .dag_types import CurrentIndex, CurrentNode, GenericDAG, InteractionNode
 
 
 def u1_grade_sets(dag: GenericDAG) -> list[frozenset[int]]:
-    """The N_c grades of every current's derivations (sources: {0}).
+    """The N_c grades of every current's derivations (sources: {0}; empty
+    for a current no interaction derives).
 
-    Interactions are in increasing result-subset order (the compiler emits
-    them so), so every input's grades are complete before it is read.
+    Interactions are read by increasing size of their result's leg mask (a
+    stable order: interactions of one mask, e.g. a two-point counterterm
+    insertion, keep the compiler's order), so every input's grades are
+    complete before it is read. This is the one grade rule of the Python
+    lanes: ``loops.v2.blocks.u1_grades`` is its single-grade view.
     """
 
     currents = dag.currents
@@ -57,7 +61,10 @@ def u1_grade_sets(dag: GenericDAG) -> list[frozenset[int]]:
     found: list[set[int]] = [
         {0} if current.is_source else set() for current in currents
     ]
-    for interaction in dag.interactions:
+    for interaction in sorted(
+        dag.interactions,
+        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
+    ):
         left, right = found[interaction.left_id], found[interaction.right_id]
         if not left or not right:
             raise ValueError(
