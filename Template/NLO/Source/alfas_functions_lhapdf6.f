@@ -81,17 +81,8 @@ c
       external alphasPDFm
       integer iset
 
-c timing statistics
-      include "timing_variables.inc"
-
-c     This function takes 20 micro seconds to run, so it is ok to profile
-c     it with the 0.3 ms function cpu_time.
-      call cpu_time(tbefore)
       call getnset(iset)
       ALPHAS=alphasPDFm(iset,Q)
-      call cpu_time(tAfter)
-      
-c      tPDF = tPDF + (tAfter-tBefore)
 
       RETURN
       END
