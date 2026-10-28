@@ -5,10 +5,13 @@
 the environment or from the checkout's own location, never from a host
 path, and a loop test whose external input or staged native runtime cannot
 be found fails, naming what is missing and where it was looked for, instead
-of skipping: a relocated checkout must never pass with its loop tests
-skipped. The conftest is copied into a scratch checkout (with and without a
-git repository) and run by pytest in a subprocess with the loop variables
-removed from the environment.
+of skipping (also when the test asks for the input at run time, and when an
+earlier test's skip on the same session fixture is re-raised from pytest's
+cache): a relocated checkout must never pass with its loop tests skipped. The
+conftest is copied into a scratch checkout (with and without a git
+repository of its own, and inside another repository's working tree) and run
+by pytest in a subprocess with the loop variables removed from the
+environment.
 """
 
 from __future__ import annotations
@@ -45,9 +48,27 @@ def test_opt_in_input(installed_virtual_bundle):
 
 def test_other_input(loop_gmu_ufo):
     pass
+
+
+@pytest.mark.loop_fast
+def test_loop_input_at_run_time(request):
+    assert request.getfixturevalue("sgluon_nlo_ufo").is_dir()
+
+
+# After test_other_input: a skip of the session fixture is cached.
+@pytest.mark.loop_fast
+def test_loop_input_after_a_skip(request):
+    assert request.getfixturevalue("loop_gmu_ufo").is_dir()
 """
 
-_PROBE_NAMES = ("loop_input", "loop_native", "opt_in_input", "other_input")
+_PROBE_NAMES = (
+    "loop_input",
+    "loop_native",
+    "opt_in_input",
+    "other_input",
+    "loop_input_at_run_time",
+    "loop_input_after_a_skip",
+)
 
 # A stand-in for the staged native: its loader reports it missing.
 _NATIVE_STUB = {
@@ -144,12 +165,14 @@ def _run(checkout: Path, **environment: str) -> dict[str, tuple[str, str]]:
 @pytest.mark.parametrize("git", [True, False], ids=["git", "copy"])
 def test_relocated_checkout_fails_loop_tests_loudly(tmp_path, git):
     """No workspace beside the relocated checkout and no loop variable: the
-    loop tests that need an input or the native fail (setup error) with the
-    locations looked at; the opt-in input and the non-loop test skip with
-    their reasons."""
+    loop tests that need an input or the native fail with the locations
+    looked at, as a setup error from their fixtures and as a failure when
+    they ask for the input at run time (fresh or after a cached skip); the
+    opt-in input and the non-loop test skip with their reasons."""
 
     checkout = _checkout(tmp_path / "relocated", git=git)
     outcomes = _run(checkout)
+    assert not [name for name, (outcome, _) in outcomes.items() if outcome == "passed"]
     outcome, text = outcomes["loop_input"]
     assert outcome == "error", outcomes
     assert "loop_sm_ufo unavailable: set PYAMPLICOL_NLO_UFO_REFERENCE" in text
@@ -163,6 +186,31 @@ def test_relocated_checkout_fails_loop_tests_loudly(tmp_path, git):
     assert "set PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL" in outcomes["opt_in_input"][1]
     assert outcomes["other_input"][0] == "skipped"
     assert "loop_gmu_ufo unavailable" in outcomes["other_input"][1]
+    for name, missing in (
+        ("loop_input_at_run_time", "sgluon_nlo_ufo"),
+        ("loop_input_after_a_skip", "loop_gmu_ufo"),
+    ):
+        outcome, text = outcomes[name]
+        assert outcome == "failure", outcomes
+        assert f"{missing} unavailable: set PYAMPLICOL_" in text
+        assert str(tmp_path / "relocated" / "workspace") in text
+
+
+def test_checkout_inside_another_repository_is_its_own_main_checkout(tmp_path):
+    """A plain copy inside another repository's working tree: git's common
+    directory is that repository's, so the workspace is looked for beside
+    the copy, not beside the enclosing repository."""
+
+    nest = tmp_path / "nest"
+    checkout = _checkout(nest / "sub", git=False)
+    subprocess.run(["git", "init", "-q", str(nest)], check=True)
+    outcome, text = _run(checkout)["loop_input"]
+    assert outcome == "error"
+    assert f"beside the main checkout {checkout})" in text
+    (nest / "sub/workspace/reference/sources/MG5_aMC_v3_7_0/models/loop_sm").mkdir(
+        parents=True
+    )
+    assert _run(checkout)["loop_input"][0] == "passed"
 
 
 def test_relocated_checkout_derives_its_workspace(tmp_path):
@@ -184,6 +232,7 @@ def test_relocated_checkout_derives_its_workspace(tmp_path):
     (elsewhere / "reference/models/loop_qcd_qed_sm_Gmu_py3").mkdir(parents=True)
     outcomes = _run(checkout, PYAMPLICOL_LOOP_WORKSPACE=str(elsewhere))
     assert outcomes["other_input"][0] == "passed", outcomes
+    assert outcomes["loop_input_after_a_skip"][0] == "passed", outcomes
     outcome, text = outcomes["loop_input"]
     assert outcome == "error", outcomes
     assert f"PYAMPLICOL_LOOP_WORKSPACE={elsewhere}" in text

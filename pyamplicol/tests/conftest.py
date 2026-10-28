@@ -6,10 +6,12 @@ Loop modules carry one of the ``loop_fast``, ``loop_physics`` or
 saved PACBIN/artifact controls) resolve here once: an environment variable
 overrides the default location, which is derived from the checkout's own
 location (no host path is assumed). A loop test whose input or staged native
-runtime is missing fails, naming what is missing and where it was looked for:
-a relocated checkout must never pass with its loop tests skipped. Other tests
-skip with the input's name, as do opt-in inputs without a default location.
-Committed provider references under ``tests/fixtures/loop`` are mandatory.
+runtime is missing fails, naming what is missing and where it was looked for,
+whether it requests the input as a fixture or at run time
+(``request.getfixturevalue``): a relocated checkout must never pass with its
+loop tests skipped. Other tests skip with the input's name, as do opt-in
+inputs without a default location. Committed provider references under
+``tests/fixtures/loop`` are mandatory.
 """
 
 from __future__ import annotations
@@ -32,22 +34,29 @@ _MG5 = Path("FOR_REFERENCE_ONLY/MG5_aMC_v3_7_0")
 def _main_checkout() -> Path:
     """The repository's main checkout (it holds the untracked reference
     sources), derived from this checkout's own location: the parent of git's
-    common directory, which a linked worktree shares with it, or this
-    checkout itself when git cannot tell (a copy without its repository)."""
+    common directory, which a linked worktree shares with it, when this
+    checkout is the working tree of that repository; else this checkout
+    itself (a copy without its repository, or one inside another
+    repository's working tree)."""
 
     import subprocess
 
-    try:
-        common = subprocess.run(
-            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", *arguments],
             cwd=TESTS.parent,
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
+
+    try:
+        top, common = git("--show-toplevel"), git("--git-common-dir")
     except (OSError, subprocess.CalledProcessError):
         return TESTS.parent
-    return Path(common).parent if common else TESTS.parent
+    if not top or not common or Path(top).resolve() != TESTS.parent:
+        return TESTS.parent
+    return Path(common).resolve().parent
 
 
 def _workspace(main: Path) -> tuple[Path | None, str]:
@@ -141,10 +150,19 @@ def _missing_input(name: str) -> str:
     )
 
 
+class MissingLoopInput(pytest.skip.Exception):
+    """A missing external input (other than an opt-in one) or staged native
+    runtime: other tests skip with it, a loop test fails with it
+    (``pytest_runtest_makereport``), whether its fixture raised it or a
+    session fixture's cached result re-raised it."""
+
+
 def _external_input(name: str) -> Path:
     path = _resolved_input(name)
     if path is None:
-        pytest.skip(_missing_input(name))
+        if name in _OPT_IN_INPUTS:
+            pytest.skip(_missing_input(name))
+        raise MissingLoopInput(_missing_input(name))
     return path
 
 
@@ -218,7 +236,7 @@ def loop_native():
 
     native, missing = _staged_loop_native()
     if native is None:
-        pytest.skip(missing)
+        raise MissingLoopInput(missing)
     return native
 
 
@@ -289,26 +307,29 @@ def pytest_configure(config):
     os.environ["PYAMPLICOL_CACHE_DIR"] = str(root)
 
 
-def pytest_runtest_setup(item):
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
     """A loop test (``LOOP_MARKERS``) whose external input (other than an
-    opt-in one) or staged native runtime is missing fails here, before its
-    fixtures would skip it, naming what is missing and where it was looked
-    for (``_missing_input``): a checkout at another location whose inputs
-    cannot be derived must not pass with its loop tests skipped. Loop tests
-    skipped at collection (no ``SYMBOLICA_LICENSE``) stay skipped."""
+    opt-in one) or staged native runtime is missing fails, naming what is
+    missing and where it was looked for (``MissingLoopInput``,
+    ``_missing_input``): as a setup error when one of its fixtures needs the
+    input, as a failure when the test asks for it at run time
+    (``request.getfixturevalue``), also when an earlier test's skip on the
+    same session fixture is re-raised from pytest's fixture cache. A checkout
+    at another location whose inputs cannot be derived must not pass with
+    its loop tests skipped. Loop tests skipped at collection (no
+    ``SYMBOLICA_LICENSE``, ``pytest_collection_modifyitems``) raise pytest's
+    own skip and stay skipped."""
 
-    if not any(marker in item.keywords for marker in LOOP_MARKERS):
-        return
-    if any(marker.name == "skip" for marker in item.iter_markers()):
-        return
-    names = set(getattr(item, "fixturenames", ()))
-    for name in sorted(names & (_EXTERNAL_INPUTS.keys() - _OPT_IN_INPUTS)):
-        if _resolved_input(name) is None:
-            pytest.fail(_missing_input(name), pytrace=False)
-    if "loop_native" in names:
-        native, missing = _staged_loop_native()
-        if native is None:
-            pytest.fail(missing, pytrace=False)
+    report = yield
+    if (
+        call.excinfo is not None
+        and call.excinfo.errisinstance(MissingLoopInput)
+        and any(marker in item.keywords for marker in LOOP_MARKERS)
+    ):
+        report.outcome = "failed"
+        report.longrepr = call.excinfo.value.msg
+    return report
 
 
 def pytest_collection_modifyitems(config, items):
