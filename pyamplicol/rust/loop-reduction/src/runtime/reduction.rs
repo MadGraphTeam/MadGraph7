@@ -329,6 +329,8 @@ impl PolynomialPlan {
         precision: Option<u32>,
         engine: &str,
     ) -> ExecutionResult<Self> {
+        // Standalone generation callers also parse Symbolica expressions here.
+        let _unlock = pyamplicol::unlock();
         let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
         if !matches!(engine, "generic" | "fast" | "fast-tensor") {
             return Err(error("engine must be generic, fast or fast-tensor"));

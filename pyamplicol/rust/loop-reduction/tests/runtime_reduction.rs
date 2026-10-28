@@ -4,6 +4,50 @@
 use rusticol_loop_reduction::runtime::{Batch, PolynomialPlan};
 
 #[test]
+fn standalone_reducer_construction_keeps_package_scope() {
+    assert!(
+        pyamplicol::is_active(),
+        "pyAmpliCol's package key must be active"
+    );
+    let ready = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut plans = Vec::new();
+                    for (arithmetic, precision, engine) in [
+                        ("double", None, "generic"),
+                        ("double", None, "fast"),
+                        ("double", None, "fast-tensor"),
+                        ("double-double", None, "generic"),
+                        ("arbitrary", Some(60), "generic"),
+                    ] {
+                        plans.push(
+                            PolynomialPlan::new(
+                                1,
+                                ["1".into(), "0".into(), "0".into()],
+                                vec![],
+                                arithmetic,
+                                precision,
+                                engine,
+                            )
+                            .unwrap(),
+                        );
+                    }
+                    // Keep both calling threads alive: an unguarded constructor
+                    // consumes a restricted permit and makes the other abort.
+                    ready.wait();
+                    assert_eq!(plans.len(), 5);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    });
+}
+
+#[test]
 fn standalone_reduction_preserves_epsilon_order_and_sparse_results() {
     for (arithmetic, precision, engine) in [
         ("double", None, "generic"),
