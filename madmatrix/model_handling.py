@@ -860,8 +860,12 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 else:
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
-                # Generic denominator (custom, complex mass, no coupling): divided at denom precision.
+                # Custom denominators: divided at denom precision.
                 prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
+                # Standard propagator: madmatrix::denom keeps only P^2 - Re(m^2) at denom precision.
+                # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
+                coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
+                propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
@@ -872,17 +876,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                                                    str(self.routine.denominator))
                             out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                     else:
-                        mydict['cId'] = 'cId'  # once per combined
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        if has_coup:
-                            # Qualified: the local variable is also called denom.
-                            out.write('    %s = madmatrix::denom( %s, %s, dP%s, M%s, W%s );\n' % (mydict['declnamedenom'], ccoeff, coup_vertex, self.outgoing, self.outgoing, self.outgoing))
-                        else:
-                            # same formula for all the FPTYPE confs
-                            out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
-                            den = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) )' % mydict
-                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop(den)))
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
@@ -902,8 +898,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    den = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - ( static_cast<fptype_denom>(M%(i)s) * static_cast<fptype_denom>(M%(i)s) ) )' % mydict
-                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop(den)))
+                    # Complex mass: M carries the width.
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
                     if arith_doubleexpansion:
                         out.write('#endif\n')
                         out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
