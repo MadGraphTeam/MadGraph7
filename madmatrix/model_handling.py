@@ -2311,8 +2311,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     @staticmethod
     def hr_jamps_inc(post):
-        """HelRecyclingJamps.inc: the body of the loop over the rows (slot) at
-        the end of calculate_all_jamps, with jamp_sv the row's color flows."""
+        """HelRecyclingJamps.inc: the color flows of one row (slot), with
+        jamp_sv the row's color flows -- in the rows mode inside hr_row, once
+        per good helicity, in the others at the end of calculate_all_jamps."""
         head = ['// --hel_recycling (%s): the color flows of one row (slot), once every'
                 % post['mode'],
                 '// amplitude is made (see calculate_all_jamps)']
@@ -2320,10 +2321,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             head.append('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * %d;'
                         % max(post['ntmp'], 1))
         elif post['mode'] == 'rows':
-            head += ['const cxtype_amp_sv* ampRow = ampAll_sv + (size_t)slot * %d;'
-                     % max(post['namp'], 1),
-                     'fptype_amp_sv* numerators_sv = numAll_sv + (size_t)slot * ndiagrams;',
-                     '(void)numerators_sv;']
+            # inside hr_row: numerators_sv is the event's own (nullptr unless
+            # storeChannelWeights), jamp_sv the helicity's color flows
+            head += ['const cxtype_amp_sv* ampRow = ampAll_sv + slot * %d;'
+                     % max(post['namp'], 1)]
             if post['ntmp'] > 0:
                 head.append('cxtype_amp_sv jampTmp_sv[%d];' % post['ntmp'])
         return ''.join('      %s\n' % line for line in head + list(post['lines']))
@@ -2386,8 +2387,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '  constexpr int hrNtmp = %d; // shared color-flow sub-expressions of one row (fold)\n'
                 '  constexpr int hrNamp = %d; // amplitude slots of one row (rows)\n'
                 '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '%s'
                 '${helicity_lines}\n%s\n${helas_calls}\n'
-                % (ntmp, namp, ', '.join(str(row) for row in row_of_hel), self.HR_CALLS_MARK))
+                % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
+                   '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
+                   if post['mode'] == 'rows' else '',
+                   self.HR_CALLS_MARK))
         dialect = hel_recycle.CppDialect()
         dialect.TABLES = self.hel_recycling_tables()
         recycler = hel_recycle.HelicityRecycler(
