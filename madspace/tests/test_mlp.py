@@ -27,7 +27,8 @@ def precision(request):
 
 @pytest.fixture
 def mlp(precision):
-    return ms.MLP(10, 1, 32, 3, ms.MLP.leaky_relu, "", precision[0])
+    # smooth activation: at a kink, float32 rounding can flip the gradient of an event
+    return ms.MLP(10, 1, 32, 3, ms.MLP.gelu, "", precision[0])
 
 
 @pytest.fixture
@@ -96,9 +97,9 @@ def test_training(mlp, mlp_module, module_context, precision, grad_clip):
     _, dtype, tol = precision
     mlp_torch = nn.Sequential(
         nn.Linear(10, 32),
-        nn.LeakyReLU(),
+        nn.GELU(),
         nn.Linear(32, 32),
-        nn.LeakyReLU(),
+        nn.GELU(),
         nn.Linear(32, 1),
     ).to(dtype)
 
