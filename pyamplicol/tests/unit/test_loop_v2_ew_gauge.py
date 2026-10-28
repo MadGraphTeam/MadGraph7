@@ -1205,7 +1205,8 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
     """The UV counterterm component of the request of ``name`` in
     ``goldstone-mixing.json`` against MadLoop's Born x CT interference
     without its R2 amplitudes, per point, finite part and single pole within
-    1e-12 of MadLoop's (binary64). Returns the (fixture row, result) pairs."""
+    1e-12 of MadLoop's (binary64). Returns the slice and the (point, mu_R^2,
+    fixture row) triples."""
 
     from fractions import Fraction
 
@@ -1234,7 +1235,7 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
         result = slice_.evaluate(
             point, str(Fraction(mu) ** 2), parameters=reference["parameters"]
         )
-        evaluated.append((row, result))
+        evaluated.append((point, str(Fraction(mu) ** 2), row))
         assert sum(float(x) for x in result.born.values()) == pytest.approx(
             row["born"], rel=1e-13
         )
@@ -1256,7 +1257,7 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
             assert abs(mixing[key]) > 1e-9 * abs(expected)
             assert abs(uv[index] - expected) <= 1e-12 * abs(expected), (key, uv)
         assert uv[2] == row["ct"]["double_pole"] == 0
-    return evaluated
+    return slice_, evaluated
 
 
 def _ufo_coupling_ratio(path, numerator: str, denominator: str, card) -> float:
@@ -1323,16 +1324,20 @@ def test_goldstone_vector_mixings_equal_madloop(
     in 't Hooft-Feynman gauge, where every b loop of t~ t G0 holds a G+-;
     as in ``required/emep_ttxh_ew``). The omitted term is (R2_G0tt_b /
     R2_G0tt) times MadLoop's R2_G0tt component, the ratio from the UFO's
-    couplings at the card (0.869 at lhv = 1). Within 1e-11 of MadLoop's
-    virtual (its binary64; measured <= 1.7e-12), the poles against Catani
+    couplings at the card (0.869 at lhv = 1). Evaluated with 32 digits
+    (binary64 loses 3e-11 of the finite part at point 2, MadLoop's own
+    estimate there 1.5e-12), within 1e-11 of MadLoop's virtual (its binary64;
+    measured <= 1.7e-12 at point 0 in binary64), the poles against Catani
     within 1e-12. Before the loop segments read the Goldstone vertices as the
     tree engine does (``catalogue._CatalogueBuilder.reading_sign``, EWI-5),
     the bare part missed MadLoop's by O(1) (single pole -1.07e-7 against
     -3.78e-8 at point 0, the virtual's -5.6e-8 against Catani's 1.35e-8).
-    About 15 minutes."""
+    About 20 minutes."""
+
+    from pyamplicol.loops.v2.assemble import Precision
 
     reference = loop_reference("goldstone-mixing")["processes"]["gt_tttx_ew"]
-    evaluated = _uv_component_equals_madloop(
+    slice_, evaluated = _uv_component_equals_madloop(
         gmu, "gt_tttx_ew", loop_reference, loop_native
     )
     omitted = reference["omitted_r2"]
@@ -1344,7 +1349,14 @@ def test_goldstone_vector_mixings_equal_madloop(
     )
     assert 0.5 < ratio < 1.0, ratio
     keys = ("finite", "single_pole", "double_pole")
-    for row, result in evaluated:
+    worst = {"madloop": 0.0, "catani": 0.0}
+    for point, scale_squared, row in evaluated:
+        result = slice_.evaluate(
+            point,
+            scale_squared,
+            parameters=reference["parameters"],
+            precision=Precision.arbitrary(32),
+        )
         (sector,) = result.components["virtual"]
 
         def laurent(component, sector=sector, result=result):
@@ -1362,11 +1374,16 @@ def test_goldstone_vector_mixings_equal_madloop(
         }
         for component, values in expected.items():
             for found, want in zip(laurent(component), values, strict=True):
-                assert abs(found - want) <= 1e-11 * scale, (component, found, want)
+                error = abs(found - want) / scale
+                worst["madloop"] = max(worst["madloop"], error)
+                assert error <= 1e-11, (component, found, want)
         single, double = (float(x) for x in result.ir_poles[sector])
         virtual = laurent("virtual")
-        assert abs(virtual[1] - single) <= 1e-12 * scale, (virtual, single)
-        assert abs(virtual[2] - double) <= 1e-12 * scale, (virtual, double)
+        for found, want in zip(virtual[1:], (single, double), strict=True):
+            error = abs(found - want) / scale
+            worst["catani"] = max(worst["catani"], error)
+            assert error <= 1e-12, (virtual, single, double)
+    print({key: f"{error:.1e}" for key, error in worst.items()})
 
 
 @pytest.mark.loop_nightly
