@@ -5,6 +5,8 @@ import itertools
 import re
 from collections.abc import Mapping, Sequence
 
+from .refusals import refuse_decay
+
 ParticleName = str
 ProcessTuple = tuple[ParticleName, ...]
 OrderTuple = tuple[int, ...]
@@ -59,6 +61,7 @@ def expand_process_variants(
         initial_options = _expand_side_tokens(
             _tokenize_side(parts[0].strip()), aliases=aliases
         )
+        refuse_decay(process, len(initial_options))
         final_options = _expand_side_tokens(
             _tokenize_side(parts[1].strip()), aliases=aliases
         )

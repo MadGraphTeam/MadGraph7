@@ -15,7 +15,7 @@ from typing import Any
 from pyamplicol.models.loop_import import RawLoopModel
 
 from .counterterms import prepare_counterterm_model
-from .covariant_model import build_covariant_structure
+from .covariant_model import build_covariant_structure, repair_source_declarations
 from .model import build_loop_model
 from .model_catalogue import certified_source_counterterm_bases
 from .model_restrictions import prepare_loop_restrictions
@@ -130,6 +130,10 @@ def prepare_loop_request_model(
         raise TypeError(
             "loop model preparation requires a CompiledModel or RawLoopModel"
         )
+    # Structural source repairs (constant-tensor slot arity), recorded in the
+    # derived source; a no-op on a source without the defect or already
+    # repaired (the public route repairs the compiled model it publishes).
+    raw = repair_source_declarations(raw)
     declarations = prepare_loop_restrictions(raw, simplify=simplify)
     scope = prepare_loop_request_scope(
         declarations.derived,

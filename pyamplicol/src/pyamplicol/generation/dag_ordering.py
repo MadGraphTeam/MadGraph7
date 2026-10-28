@@ -63,14 +63,17 @@ def _direct_contraction_ir(
         and (left.chirality == 0) != (right.chirality == 0)
         and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
     ):
-        raise ValueError(
+        from ..loops.v2.refusals import LoopRequestUnsupportedValue
+
+        raise LoopRequestUnsupportedValue(
+            "dirac-weyl-closure",
             "a Dirac (chirality-0) current cannot close on a Weyl "
             f"(chirality {left.chirality or right.chirality}) current: particles "
             f"{left.particle_id} and {right.particle_id}, external labels "
             f"{left.external_labels} and {right.external_labels}; a fermion line "
             "that joins massive and massless fermions through a chiral vertex "
             "(a massive internal or external fermion on a line with a massless "
-            "sink) has no Dirac-Weyl closure contraction"
+            "sink) has no Dirac-Weyl closure contraction",
         )
     return contraction
 

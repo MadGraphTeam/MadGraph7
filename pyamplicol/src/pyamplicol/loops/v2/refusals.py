@@ -158,6 +158,79 @@ LOOP_ADMISSION_REFUSALS = (
         "fail-closed-2 (a guard)",
         "none (kept as the guard of the restriction rule)",
     ),
+    LoopAdmissionRefusal(
+        "loop-induced",
+        "a request without a Born amplitude within its coupling-order limits "
+        "(a loop-induced process, MG5_aMC [noborn=QCD]: g g > h h, g g > z z, "
+        "g g > a a, ...)",
+        "v2 virtuals interfere one-loop and Born amplitudes; a loop-squared "
+        "matrix element is not served",
+        "a process with a Born amplitude, or coupling-order limits "
+        "(process.max_coupling_orders) that admit one",
+        "after M-SM (user ruling 2026-10-28 ~15:25 (2))",
+        "loop-squared matrix elements",
+    ),
+    LoopAdmissionRefusal(
+        "coloured-width",
+        "a request whose tree currents propagate a coloured particle with a "
+        "nonzero width (e.g. the top at a restriction with DECAY 6 1.4915)",
+        "v2 virtuals are real on-shell: loop propagators carry no width and the "
+        "model counterterms renormalise the real mass, so a width in the tree "
+        "currents makes the Born, its colour correlations and the virtual "
+        "inconsistent (a resonant coloured particle needs the complex-mass "
+        "scheme)",
+        "a restriction with every width at zero (model.restriction = "
+        '"no_widths", MG5_aMC loop_sm-no_widths), or the width fixed to zero '
+        'in [loop.preparation] fixed_parameters (e.g. WT = "0")',
+        "M-SM (complex-mass scheme; user ruling 2026-10-28 ~15:25 (3))",
+        "widths of coloured particles in the complex-mass scheme",
+    ),
+    LoopAdmissionRefusal(
+        "dirac-weyl-closure",
+        "a fermion line that joins massive and massless fermions through a "
+        "chiral vertex and closes a massive (Dirac) current on a massless "
+        "(Weyl) one (e.g. b b~ > w+ w- with a massless b and the t channel)",
+        "models install no Dirac-Weyl closure contraction, so such a closure "
+        "would silently drop its diagrams",
+        "keep the light fermion massive in the tree model (the default "
+        "restriction with the mass fixed to zero in [loop.preparation] "
+        'fixed_parameters, e.g. MB = "0" and ymb = "0", instead of a '
+        "restriction that removes the mass)",
+        "MQ-5F",
+        "Dirac-Weyl closures in loop Born admission",
+    ),
+    LoopAdmissionRefusal(
+        "lorentz-slot-arity",
+        "a vertex that references a Lorentz tensor whose spin slots differ from "
+        "its particles, other than a constant scalar tensor with a unique "
+        "same-valued tensor of the right slots (repaired by the source rule "
+        "covariant_model.repair_source_declarations, e.g. loop_sm's V_1001)",
+        "a tensor whose slots do not match the vertex's particles has no "
+        "meaning on them",
+        "a model whose vertices reference tensors of their own spin slots, or "
+        "coupling-order limits or a particle_veto that keep the vertex out of "
+        "the request",
+        "none (a guard of the source declarations)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "majorana-fermion",
+        "a model with a Majorana (self-conjugate) fermion",
+        "Majorana / fermion-number-violating fermion flow is not implemented",
+        "a model without Majorana fermions",
+        "after M-FINAL",
+        "fermion-number-violating fermion flow",
+    ),
+    LoopAdmissionRefusal(
+        "multi-fermion-contact",
+        "a vertex with more than two fermions (a four-fermion contact "
+        "interaction) that the request can reach",
+        "loop and tree lines carry one fermion line per vertex",
+        "coupling-order limits or a particle_veto that keep the contact vertex "
+        "out of the request",
+        "after M-FINAL",
+        "multi-fermion contact vertices",
+    ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
 
@@ -175,6 +248,12 @@ class LoopRequestUnsupported(GenerationError):
             f"{key}: {message}. Rule: {refusal.rule}. Instead: {refusal.remedy}"
         )
         self.key = key
+
+
+class LoopRequestUnsupportedValue(LoopRequestUnsupported, ValueError):
+    """A listed refusal (``LoopRequestUnsupported``) raised from code that
+    tree requests share, whose callers handle the untyped ``ValueError`` it
+    replaces (the Dirac-Weyl closure of the tree DAG)."""
 
 
 def listed_refusal_keys() -> tuple[str, ...]:

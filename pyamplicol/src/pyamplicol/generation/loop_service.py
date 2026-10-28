@@ -29,6 +29,7 @@ from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.config import ColorContraction, LoopEngine
 from pyamplicol.loops.compiler import prepare_loop_request_model
+from pyamplicol.loops.covariant_model import with_source_repairs
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
@@ -199,6 +200,9 @@ def _prepare(
             "loop generation requires a compiled NLO UFO with its exact raw "
             "sidecar; this model contains only tree data"
         )
+    # Structural source repairs (``covariant_model.repair_source_declarations``)
+    # on the compiled model the artifact publishes, which records them.
+    compiled = with_source_repairs(compiled)
     run = backend._run_config
     # Coupling-order names resolve once, here, against the model's declared
     # names (any case); the loop side carries the declared spelling and the
@@ -1318,10 +1322,12 @@ def _v2_request(backend, context, index):
         )
     born, dag = born_amplitude_orders(compiled, process, limits, veto)
     if not born:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "loop-induced",
             f"{label} has no Born amplitude within the coupling-order limits "
-            f"{dict(sorted(limits.items()))}: v2 virtuals interfere one-loop and "
-            "Born amplitudes (loop-induced processes are not covered)"
+            f"{dict(sorted(limits.items()))}",
         )
     require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy

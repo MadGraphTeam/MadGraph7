@@ -186,6 +186,118 @@ def _repair(raw, particles, compatibility):
     return tuple(diagnostics)
 
 
+# Source declarations repaired by structure (never by a particle, vertex or
+# tensor name), recorded in the derived source's metadata and reported with
+# the structure's diagnostics.
+SOURCE_REPAIRS_KEY = "pyamplicol_source_repairs"
+CONSTANT_TENSOR_ARITY = "constant-tensor-slot-arity"
+
+
+def _slot_spins(record) -> tuple[int, ...]:
+    return tuple(abs(int(spin)) for spin in record["fields"]["spins"])
+
+
+def _constant_structure(record) -> Any:
+    """The exact value of a slot-independent (constant) Lorentz tensor, or
+    None when the structure depends on a slot."""
+
+    from symbolica import AtomType
+
+    value = parse_exact_ufo(record["fields"]["structure"])
+    return value if value.get_type() == AtomType.Num else None
+
+
+def repair_source_declarations(raw: Any) -> Any:
+    """``raw`` with its constant-tensor slot-arity defects repaired, or ``raw``
+    itself when it has none (the rule is idempotent).
+
+    A vertex (tree or counterterm) whose particles are all scalars and that
+    references a constant Lorentz tensor with a different number of (scalar)
+    slots means that constant on its own particles: the reference is moved to
+    the model's unique tensor with the vertex's spin signature and the same
+    exact constant. MadLoop 3.7.0's loop_sm declares a four-scalar vertex
+    with the three-slot constant SSS1 next to the four-slot SSSS1 of the same
+    value. Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
+    source's metadata (the compiled model and the artifact carry it) and in
+    the covariant structure's diagnostics. Any other slot mismatch is left as
+    declared: a request that reaches it is refused at model preparation with
+    the listed key ``lorentz-slot-arity`` (``build_covariant_structure``), an
+    unreachable one stays inert."""
+
+    tensors = raw.collections["lorentz_structures"]
+    repairs = []
+    for collection in ("vertices", "counterterm_vertices"):
+        for vertex in raw.collections.get(collection, ()):
+            fields = vertex["fields"]
+            spins = tuple(
+                abs(int(_reference(raw, ref, "particles")["fields"]["spin"]))
+                for ref in fields["particles"]
+            )
+            if set(spins) != {1}:
+                continue
+            for position, ref in enumerate(fields["lorentz"]):
+                old = _reference(raw, ref, "lorentz_structures")
+                if _slot_spins(old) == spins or set(_slot_spins(old)) != {1}:
+                    continue
+                constant = _constant_structure(old)
+                if constant is None:
+                    continue
+                candidates = [
+                    record
+                    for record in tensors
+                    if _slot_spins(record) == spins
+                    and _constant_structure(record) == constant
+                ]
+                if len(candidates) == 1:
+                    repairs.append((collection, vertex, position, old, candidates[0]))
+    if not repairs:
+        return raw
+    payload = raw.to_dict()
+    diagnostics = list(raw.metadata.get(SOURCE_REPAIRS_KEY, ()))
+    for collection, vertex, position, old, new in repairs:
+        target = payload["collections"][collection][vertex["id"]]["fields"]
+        target["lorentz"][position] = {
+            "kind": "reference",
+            "collection": "lorentz_structures",
+            "id": new["id"],
+            "name": new["name"],
+        }
+        diagnostics.append(
+            {
+                "rule": CONSTANT_TENSOR_ARITY,
+                "collection": collection,
+                "vertex": [vertex["id"], vertex["name"]],
+                "lorentz_position": position,
+                "original_lorentz": [old["id"], old["name"]],
+                "derived_lorentz": [new["id"], new["name"]],
+                "reason": (
+                    f"{len(_slot_spins(new))} scalar particles take the model's "
+                    f"{len(_slot_spins(new))}-slot tensor of the same exact "
+                    f"constant, not the {len(_slot_spins(old))}-slot one"
+                ),
+            }
+        )
+    payload["metadata"][SOURCE_REPAIRS_KEY] = diagnostics
+    return type(raw).from_dict(payload)
+
+
+def with_source_repairs(model: Any) -> Any:
+    """A compiled model whose raw NLO sidecar carries its source repairs
+    (``repair_source_declarations``); the model itself when it has none."""
+
+    from dataclasses import replace
+
+    raw = model.raw_loop_model
+    if raw is None:
+        return model
+    repaired = repair_source_declarations(raw)
+    if repaired is raw:
+        return model
+    return replace(
+        model, raw_loop_model=repaired, _serialized_path=None, _prepared_bundle=None
+    )
+
+
 def _validate_pairs(particles):
     by_name = {p["name"]: p for p in particles}
     if len(by_name) != len(particles):
@@ -352,8 +464,11 @@ def build_covariant_structure(
         if fields["spin"] not in (-1, 1, 2, 3):
             raise NotImplementedError("unsupported covariant particle spin")
         if fields["spin"] == 2 and fields["name"] == fields["antiname"]:
-            raise NotImplementedError(
-                "Majorana species are outside the current loop domain"
+            from .v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "majorana-fermion",
+                f"the model declares the self-conjugate fermion {fields['name']!r}",
             )
         if fields.get("propagator") is not None:
             raise NotImplementedError("custom source propagator metadata")
@@ -386,6 +501,10 @@ def build_covariant_structure(
             )
         payload["particles"].append(vars(SerializableParticle(**particle)))
     diagnostics = _repair(raw, payload["particles"], compatibility)
+    diagnostics += tuple(
+        MappingProxyType(dict(item))
+        for item in raw.metadata.get(SOURCE_REPAIRS_KEY, ())
+    )
     zero_couplings = tuple(
         name
         for name in coupling_names
@@ -501,8 +620,12 @@ def build_covariant_structure(
         ]
         spins = tuple(p["fields"]["spin"] for p in source_particles)
         if spins.count(2) > 2:
-            raise NotImplementedError(
-                "four-fermion vertices are outside the current loop domain"
+            from .v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "multi-fermion-contact",
+                f"source vertex {record['name']!r} (ID {record['id']}) joins "
+                f"{spins.count(2)} fermions",
             )
         lorentz = []
         for tensor_index in tensor_indices:
@@ -511,12 +634,16 @@ def build_covariant_structure(
             key = (source["id"], spins)
             if key not in lorentz_names:
                 if tuple(map(abs, source["fields"]["spins"])) != tuple(map(abs, spins)):
-                    raise ValueError(
+                    from .v2.refusals import LoopRequestUnsupported
+
+                    # Constant scalar tensors were repaired by the source
+                    # rule (``repair_source_declarations``); this one is not.
+                    raise LoopRequestUnsupported(
+                        "lorentz-slot-arity",
                         f"source vertex {record['name']!r} (ID {record['id']}) "
                         f"uses Lorentz tensor {source['name']!r} with spin slots "
                         f"{tuple(source['fields']['spins'])}, but its particles "
-                        f"require {spins}; prepare a corrected model declaration "
-                        "before loop generation"
+                        f"require {spins}",
                     )
                 name = f"source_lorentz_{source['id']}_{len(lorentz_names)}"
                 lorentz_names[key] = name

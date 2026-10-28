@@ -319,22 +319,19 @@ def require_zero_coloured_widths(
     propagators carry no width); a resonant coloured particle needs the
     complex-mass scheme (WP3.2)."""
 
-    from pyamplicol.api.errors import GenerationError
+    from .refusals import LoopRequestUnsupported
 
     widths = coloured_widths(dags, compiled, fixed_parameters)
     if not widths:
         return
     named = ", ".join(f"{name} ({width})" for name, width in sorted(widths.items()))
     fixed = ", ".join(f'{width} = "0"' for width in sorted(set(widths.values())))
-    raise GenerationError(
+    raise LoopRequestUnsupported(
+        "coloured-width",
         f"{process}: tree currents propagate coloured particles whose width "
-        f"is not fixed to zero: {named}. v2 virtuals are real on-shell (loop "
-        "propagators carry no width and the model counterterms renormalise "
-        "the real mass), so such a width makes the Born, its colour "
-        "correlations and the virtual inconsistent; fix it to zero in "
-        f"[loop.preparation] fixed_parameters ({fixed}), the legacy engine's "
-        "convention, or use loop.engine='legacy'. A resonant coloured "
-        "particle needs the complex-mass scheme, which is not available yet"
+        f"is not fixed to zero: {named}; fix it in [loop.preparation] "
+        f"fixed_parameters ({fixed}) or take a restriction whose widths are "
+        'zero (model.restriction = "no_widths")',
     )
 
 
