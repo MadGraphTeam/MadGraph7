@@ -30,15 +30,34 @@ _DEFAULT_REQUIREMENTS = [
     f"{entry['distribution']}=={entry['version']}"
     for entry in _LOCK["python_dependencies"]
 ]
-_CANDIDATE_REQUIREMENTS = [
-    (
-        f"{entry['distribution']}=="
-        f"{_CONTRIBUTOR_LOCK['symbolica']['candidate_version']}"
-        if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
-        else f"{entry['distribution']}=={entry['version']}"
-    )
-    for entry in _LOCK["python_dependencies"]
-]
+
+
+def _candidate_requirements(symbolica: str) -> list[str]:
+    """The release lock's runtime pins with Symbolica at ``symbolica``."""
+
+    return [
+        (
+            f"{entry['distribution']}=={symbolica}"
+            if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
+            else f"{entry['distribution']}=={entry['version']}"
+        )
+        for entry in _LOCK["python_dependencies"]
+    ]
+
+
+_CANDIDATE_REQUIREMENTS = _candidate_requirements(
+    _CONTRIBUTOR_LOCK["symbolica"]["candidate_version"]
+)
+# The contributor lock's historical Symbolica candidate (3.0.0 at its pinned
+# source revision) need not be the release lock's published Symbolica (3.0.2
+# since the release pins were aligned with the Community producer); the
+# audits hold each mode to its own pin, so a test whose expectation depends
+# on the two being equal or not reads this.
+_SYMBOLICA_PINS_DIFFER = _CANDIDATE_REQUIREMENTS != _DEFAULT_REQUIREMENTS
+_CANDIDATE_PIN_IN_RELEASE = (
+    "wheel Requires-Dist for symbolica excludes locked version "
+    + re.escape(str(_LOCK["symbolica"]["python_version"]))
+)
 _LEGAL_FILES = (
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
@@ -1132,8 +1151,27 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     )
     candidate_report = audit_wheel(candidate, mode="candidate", native_scan=False)
     assert candidate_report.version == candidate_version
-    with pytest.raises(ArtifactError, match="release wheel has invalid version"):
+    # Release mode refuses a candidate wheel: by its Symbolica pin while the
+    # contributor lock's candidate differs from the release lock's Symbolica
+    # (``_SYMBOLICA_PINS_DIFFER``), and by its version in any case.
+    with pytest.raises(
+        ArtifactError,
+        match=(
+            _CANDIDATE_PIN_IN_RELEASE
+            if _SYMBOLICA_PINS_DIFFER
+            else "release wheel has invalid version"
+        ),
+    ):
         audit_wheel(candidate, mode="release", native_scan=False)
+    candidate.unlink()
+    release_pins = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match="release wheel has invalid version"):
+        audit_wheel(release_pins, mode="release", native_scan=False)
 
 
 def test_release_metadata_may_document_candidate_workflows(tmp_path: Path) -> None:
@@ -1176,10 +1214,40 @@ def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None
         audit_wheel(invalid, mode="release", native_scan=False)
 
 
+def _candidate_symbolica_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    """Point the candidate provenance at a copy of the contributor lock whose
+    Symbolica ``candidate_version`` is ``version`` (its other pins, and the
+    pinned source revision the provenance binds, unchanged)."""
+
+    text = (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'(?ms)^(\[symbolica\]\n(?:(?!^\[).)*?^candidate_version = )"[^"]*"'
+    )
+    edited, count = pattern.subn(lambda match: f'{match[1]}"{version}"', text)
+    assert count == 1
+    assert tomllib.loads(edited)["symbolica"]["candidate_version"] == version
+    path = tmp_path / "contributor-lock-candidate-symbolica.toml"
+    path.write_text(edited, encoding="utf-8")
+    monkeypatch.setattr(artifacts, "_CONTRIBUTOR_DEPENDENCY_LOCK", path)
+
+
 def test_candidate_and_release_symbolica_wheel_pins_can_match(
     tmp_path: Path,
     candidate_dependency_provenance: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A candidate whose Symbolica version equals the release lock's accepts
+    the release pins, and a release wheel carries that same pin: the audit
+    has no rule that the two pins differ. The contributor lock's candidate
+    (Symbolica 3.0.0 at its pinned source revision, ``dependencies/
+    README.md``: historical candidate mode) is set to the release lock's
+    version for this, since the locks themselves differ since the release
+    lock's 3.0.2 (``test_candidate_and_release_symbolica_pins_are_their_own``)."""
+
+    release_symbolica = _LOCK["symbolica"]["python_version"]
+    _candidate_symbolica_lock(tmp_path, monkeypatch, release_symbolica)
     candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     release_pin = _wheel(
         tmp_path,
@@ -1197,7 +1265,7 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
     release_pin.unlink()
     candidate_pin = _wheel(
         tmp_path,
-        requirements=_CANDIDATE_REQUIREMENTS,
+        requirements=_candidate_requirements(release_symbolica),
     )
     release_report = audit_wheel(
         candidate_pin,
@@ -1205,6 +1273,48 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
         native_scan=False,
     )
     assert release_report.version == _LOCK["project"]["version"]
+
+
+def test_candidate_and_release_symbolica_pins_are_their_own(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A candidate whose Symbolica version differs from the release lock's
+    (the committed locks: candidate 3.0.0, release 3.0.2) is held to its own
+    pin in candidate mode and a release wheel to the release pin: each mode
+    refuses the other's Symbolica."""
+
+    release_symbolica = _LOCK["symbolica"]["python_version"]
+    other = "0.0.1" if release_symbolica != "0.0.1" else "0.0.2"
+    _candidate_symbolica_lock(tmp_path, monkeypatch, other)
+    candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
+    release_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(
+        ArtifactError,
+        match=f"wheel Requires-Dist for symbolica excludes locked version {other}",
+    ):
+        audit_wheel(release_pin, mode="candidate", native_scan=False)
+    release_pin.unlink()
+    candidate_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_candidate_requirements(other),
+    )
+    assert (
+        audit_wheel(candidate_pin, mode="candidate", native_scan=False).version
+        == candidate_version
+    )
+    candidate_pin.unlink()
+    release = _wheel(tmp_path, requirements=_candidate_requirements(other))
+    with pytest.raises(ArtifactError, match=_CANDIDATE_PIN_IN_RELEASE):
+        audit_wheel(release, mode="release", native_scan=False)
 
 
 def test_candidate_dependency_provenance_uses_compact_source_map(
