@@ -39,7 +39,10 @@ from pyamplicol.loops.source_color_declaration import (
     prepare_declared_source_color,
     source_color_fixed_parameters,
 )
-from pyamplicol.models.loop_color_declaration import resolve_loop_color_declaration
+from pyamplicol.models.loop_color_declaration import (
+    resolve_loop_color_declaration,
+    source_loop_color_declaration,
+)
 from pyamplicol.models.loop_declaration import (
     resolve_loop_model_declaration,
     with_loop_model_declaration,
@@ -230,7 +233,14 @@ def _prepare(
     fixed_parameters = None
     projected = run.color.accuracy in ("lc", "nlc")
     if projected or (consider_fft and run.resolved_color.contraction != "direct"):
-        color_data = resolve_loop_color_declaration(compiled.raw_loop_model)
+        # LC and NLC take the shipped declaration of a model that carries
+        # none (MQ-NC, ``models.loop_color_declarations``); a full-colour
+        # request's contraction choice reads the model's own only, as before.
+        color_data = (
+            resolve_loop_color_declaration
+            if projected
+            else source_loop_color_declaration
+        )(compiled.raw_loop_model)
         if color_data is None and (
             projected or run.color.contraction == "symmetric-group-fft"
         ):
