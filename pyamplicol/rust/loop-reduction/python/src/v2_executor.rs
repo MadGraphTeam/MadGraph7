@@ -239,6 +239,10 @@ impl Trees {
             Some(value) if !value.is_none() => Some(point_sources(&value, zero)?),
             _ => None,
         };
+        let loop_sources = match inputs.get_item("loop_sources")? {
+            Some(value) if !value.is_none() => Some(loop_sources(&value, zero)?),
+            _ => None,
+        };
         let mut guard = self
             .runtime
             .lock()
@@ -248,7 +252,7 @@ impl Trees {
         let (bound, out) = executor.install(|| -> PyResult<_> {
             let (runtime, bound) = Self::bind(program, slot, &values, scales, zero)?;
             let out = program
-                .inputs_with(
+                .inputs_loop_side(
                     runtime,
                     executor.plan(),
                     &bound.trees,
@@ -256,6 +260,7 @@ impl Trees {
                     &bound.constants,
                     poles,
                     sources.as_deref(),
+                    loop_sources.as_deref(),
                     zero,
                 )
                 .map_err(error)?;
@@ -282,28 +287,51 @@ fn point_sources<T: V2Carrier>(
     parsed
         .into_iter()
         .map(|(vectors, rows)| {
-            let vectors = vectors
-                .into_iter()
-                .map(|(leg, components)| {
-                    if components.len() != 4 {
-                        return Err(error("a spin source is a complex four-vector"));
-                    }
-                    let parsed = components
-                        .iter()
-                        .map(|[re, im]| {
-                            Ok(Complex::new(
-                                zero.from_rational(&parse_rational(re).map_err(error)?),
-                                zero.from_rational(&parse_rational(im).map_err(error)?),
-                            ))
-                        })
-                        .collect::<PyResult<Vec<_>>>()?;
-                    let array: [Complex<T>; 4] = parsed
-                        .try_into()
-                        .map_err(|_| error("a spin source is a complex four-vector"))?;
-                    Ok((leg, array))
+            let vectors = source_vectors(vectors, zero)?;
+            Ok(rusticol_core::loop_v2::trees::PointSources { vectors, rows })
+        })
+        .collect()
+}
+
+/// Per point loop-side sources (`inputs["loop_sources"]`, the asymmetric
+/// Ward mode, `loops/v2/ward.py`): per point its (1-based leg label, four
+/// `[re, im]` exact texts) pairs (empty: the point's physical trees).
+fn loop_sources<T: V2Carrier>(
+    value: &Bound<'_, PyAny>,
+    zero: &T,
+) -> PyResult<Vec<rusticol_core::loop_v2::trees::LoopSources<T>>> {
+    let parsed: Vec<Vec<(usize, Vec<[String; 2]>)>> = value.extract()?;
+    parsed
+        .into_iter()
+        .map(|vectors| source_vectors(vectors, zero))
+        .collect()
+}
+
+/// Literal complex four-vectors per leg from exact `[re, im]` texts.
+#[allow(clippy::type_complexity)]
+fn source_vectors<T: V2Carrier>(
+    vectors: Vec<(usize, Vec<[String; 2]>)>,
+    zero: &T,
+) -> PyResult<Vec<(usize, [Complex<T>; 4])>> {
+    vectors
+        .into_iter()
+        .map(|(leg, components)| {
+            if components.len() != 4 {
+                return Err(error("a spin source is a complex four-vector"));
+            }
+            let parsed = components
+                .iter()
+                .map(|[re, im]| {
+                    Ok(Complex::new(
+                        zero.from_rational(&parse_rational(re).map_err(error)?),
+                        zero.from_rational(&parse_rational(im).map_err(error)?),
+                    ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Ok(rusticol_core::loop_v2::trees::PointSources { vectors, rows })
+            let array: [Complex<T>; 4] = parsed
+                .try_into()
+                .map_err(|_| error("a spin source is a complex four-vector"))?;
+            Ok((leg, array))
         })
         .collect()
 }
@@ -340,6 +368,10 @@ struct Evaluation {
     /// |A0|² per point and squared Born order (native trees with a colour
     /// metric), else None.
     born: Option<Vec<Values>>,
+    /// With loop-side sources (`inputs["loop_sources"]`): per point and
+    /// squared Born order the Born interference of the physical bra with the
+    /// loop-side ket (`TreeInputs::loop_born`), else None.
+    loop_born: Option<Vec<Values>>,
     /// The counterterm and external-field outputs per point (native trees
     /// with counterterms), else None.
     counterterms: Option<Vec<Values>>,
@@ -379,6 +411,7 @@ fn export_evaluation<T: Exchanged + Real>(
     report: Report,
     bits: u32,
     born: Option<Vec<Values>>,
+    loop_born: Option<Vec<Values>>,
     counterterms: Option<Vec<Values>>,
     columns: Option<Vec<Vec<Values>>>,
 ) -> Evaluation {
@@ -391,6 +424,7 @@ fn export_evaluation<T: Exchanged + Real>(
     let checked = results.iter().any(|r| r.check.is_some());
     Evaluation {
         born,
+        loop_born,
         counterterms,
         columns,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
@@ -526,6 +560,7 @@ where
 {
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
+    let mut loop_born = None;
     let mut counterterms = None;
     let mut columns = None;
     let mut tree_seconds = None;
@@ -549,6 +584,7 @@ where
                 .collect()
         };
         born = native.born_squared.map(export);
+        loop_born = native.loop_born.map(export);
         counterterms = native.counterterms.map(export);
         columns = native.columns.map(|points| {
             points
@@ -574,6 +610,7 @@ where
         report,
         bits,
         born,
+        loop_born,
         counterterms,
         columns,
     ))

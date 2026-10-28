@@ -1325,6 +1325,12 @@ class PointResult:
     every renormalised component (``Laurent`` with the combined finite part;
     ``pole_origins["uv"]["virtual"]`` is the renormalised virtual's UV
     part), ``None`` otherwise.
+
+    ``loop_born`` exists with loop-side sources (the asymmetric Ward mode,
+    ``ward``): per squared Born order Re(A0^dagger G A0'), the physical Born
+    bra against the Born amplitude read on the loop side (where a gluon's
+    polarisation is c p_j it vanishes with the tree Ward identity); ``born``
+    and ``totals[0]`` stay the physical Born. ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -1336,6 +1342,7 @@ class PointResult:
     colour_contraction: str = "direct"
     poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
+    loop_born: Mapping[Orders, Any] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -3130,6 +3137,8 @@ class _PointEvaluation:
                         numbers,
                     )
         born = defaultdict(lambda: numbers.zero)
+        # The physical bra against the loop side's Born (loop-side sources).
+        loop_born = defaultdict(lambda: numbers.zero)
         counterterms = defaultdict(lambda: numbers.zero)
         self.amplitudes: dict[rx.Row, dict[tuple[int, Orders], Any]] = {}
         self.born_vectors: dict[rx.Row, dict[Orders, dict]] = {}
@@ -3173,6 +3182,11 @@ class _PointEvaluation:
                 born[squared] += interfere(
                     vectors[left], vectors[right], degree_of("born", squared)
                 )
+                if loop_rows is not rows:
+                    ket = self.loop_vectors[row][right]
+                    loop_born[squared] += interfere(
+                        vectors[left], ket, degree_of("born", squared)
+                    )
             loops: dict[tuple[str, int, Orders], dict] = defaultdict(dict)
             for site, terms in slice_.site_terms.items():
                 for term in terms:
@@ -3223,6 +3237,11 @@ class _PointEvaluation:
                             )
         average = self.average
         self.born = {order: value.real / average for order, value in born.items()}
+        self.loop_born = (
+            None
+            if loop_rows is rows
+            else {order: value.real / average for order, value in loop_born.items()}
+        )
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
         }
@@ -3687,6 +3706,7 @@ class _PointEvaluation:
             colour_contraction=self.colour_contraction,
             poles=self.mode,
             pole_origins=origins,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -4121,6 +4141,8 @@ class _NativePoint(_PointEvaluation):
         self.scale = scale
         self.parameters = parameters
         self.born: dict[Orders, Any] = {}
+        # With loop-side sources: the executor's loop-side Born interference.
+        self.loop_born: dict[Orders, Any] | None = None
         self.counterterms: dict = {}
         self.native_counterterms = False
         self.colour_contraction = "direct"
@@ -4169,6 +4191,7 @@ class _NativePoint(_PointEvaluation):
             dict(self.families),
             None,
             colour_contraction=self.colour_contraction,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()}
