@@ -1620,10 +1620,14 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
     """Photon-only QED corrections (Z, W, H and the Goldstones vetoed) on
     loop_qcd_qed_sm, whose electroweak UV counterterms declare no loop
     content: refused with the listed key before any tree, naming the
-    vetoed species and the unlabelled vertices."""
+    vetoed species and the unlabelled vertices. A QCD veto on the same model
+    (the top with QCD corrections; no counterterm term of an order QCD holds
+    is unlabelled) passes the model preparation."""
 
     from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loading import compile_model_source
 
     def stop(*args, **kwargs):
         raise AssertionError("the trees were built")
@@ -1635,6 +1639,18 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
     message = str(refused.value)
     assert "removes the species [23, 24, 25, 250, 251]" in message
     assert "V_UV" in message and "loop_particles = []" in message
+    request = SliceRequest(
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        corrections=("QCD",),
+        particle_veto=(6,),
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    prepare_request_model(compiled, request)
 
 
 _PUBLIC_CARD = """
