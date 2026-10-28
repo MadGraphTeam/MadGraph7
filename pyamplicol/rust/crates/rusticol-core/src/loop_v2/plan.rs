@@ -46,6 +46,7 @@ use crate::{RusticolError, RusticolResult};
 
 pub mod binary;
 mod links;
+mod live;
 pub use binary::{read_binary, read_binary_with};
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
@@ -1532,7 +1533,7 @@ impl LoopProgramV4 {
             .as_ref()
             .map(|merged| Self::merged(merged, &shared, &families, &mut tables, &mut split_inputs))
             .transpose()?;
-        Ok(Self {
+        let mut program = Self {
             legs: file.legs,
             rows: file.rows,
             columns,
@@ -1556,7 +1557,11 @@ impl LoopProgramV4 {
             merged,
             products: tables.tables,
             order_count,
-        })
+        };
+        // Helicity-resolved and selected columns: the steps keep the rows
+        // their kept Born rows reach (`live`).
+        program.prune_dead_rows();
+        Ok(program)
     }
 
     fn family(

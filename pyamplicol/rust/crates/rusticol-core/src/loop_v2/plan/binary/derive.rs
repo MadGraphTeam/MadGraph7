@@ -849,6 +849,10 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         tally.iterate(rows);
         let (mut most_map, mut most_step) = (0, 0);
         let (mut edges_here, mut parts_here) = (0u64, 0u64);
+        // The live-row pruning's sizes (`live.rs`): object rows in all and
+        // at most per step, parts and edges at most per step.
+        let (mut object_rows, mut most_objects, mut most_parts, mut most_edges) =
+            (0u64, 0u64, 0u64, 0u64);
         let mut outputs = buffer::<(u64, usize)>(f.steps.len())?;
         for (index, s) in f.steps.iter().enumerate() {
             // The loader's own message for a trace step (`from_file`).
@@ -900,6 +904,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             parts_here = parts_here.saturating_add(parts);
             let out = targets.min(rows_of(&counts, s.out)).min(rows);
             tally.hold_grown(&mut family, out, ROW);
+            let objects = out.saturating_mul(columns);
+            object_rows = object_rows.saturating_add(objects);
+            most_objects = most_objects.max(objects);
+            most_parts = most_parts.max(parts);
+            most_edges = most_edges.max(edges);
             let mut map = 0;
             tally.hold_map_grown(&mut map, out, size_of::<(Row, u32)>());
             (most_map, most_step) = (most_map.max(map), most_step.max(step));
@@ -911,6 +920,32 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.alive(family.saturating_add(most_map.max(most_step)));
+        if file.column_rows.is_some() {
+            // The live-row pruning of the family (`live.rs`, after every
+            // family is derived, with the plan's flag per seeded object
+            // row): two flags per object row of its steps (live and read)
+            // and their lists, per step its edges' sources and flags, a
+            // split step's written flags (one per object row), its groups'
+            // members (one pair per part) and renumbering, and the
+            // renumbered steps with their index.
+            let mut pruning = 0;
+            tally.hold(&mut pruning, rows.saturating_mul(columns), 1);
+            tally.hold(&mut pruning, object_rows.saturating_mul(2), 1);
+            tally.hold(
+                &mut pruning,
+                steps.saturating_mul(2),
+                size_of::<Vec<bool>>(),
+            );
+            tally.hold(&mut pruning, most_edges, size_of::<&[bool]>() + 1);
+            tally.hold(&mut pruning, most_objects, 1);
+            tally.hold(&mut pruning, most_parts, size_of::<Vec<(usize, usize)>>());
+            tally.hold(&mut pruning, most_parts, size_of::<(usize, usize)>());
+            tally.hold(&mut pruning, most_parts, size_of::<Option<usize>>());
+            tally.hold(&mut pruning, steps, size_of::<Step>());
+            tally.hold(&mut pruning, steps, size_of::<Option<usize>>());
+            tally.iterate(object_rows.saturating_mul(3));
+            tally.alive(pruning);
+        }
     }
 
     // Schedule F: stored links (one column), tables by the states' ranks,
