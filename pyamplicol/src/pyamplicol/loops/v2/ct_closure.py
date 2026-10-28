@@ -581,12 +581,16 @@ class CountertermClosure:
                         absent = entries[0].vertex_name not in tree_vertices
                         if absent and _restricted_to_zero(lowered, entries):
                             continue
-                        raise UnloweredCountertermError(
-                            f"the counterterm root vertex {entries[0].vertex_name} "
-                            "consumes a Goldstone-vector mixing line on its "
-                            "Goldstone side, which only vertex copies carrying "
-                            "the line momentum consume (leg 1 couples to the "
-                            "Goldstone); not lowered yet"
+                        from .refusals import LoopRequestUnsupported
+
+                        raise LoopRequestUnsupported(
+                            "counterterm-root-goldstone-mixing",
+                            f"{program.blocks.process.process!r}: the counterterm "
+                            f"root vertex {entries[0].vertex_name} "
+                            f"[{' '.join(fields)}] consumes a Goldstone-vector "
+                            "mixing line on its Goldstone side, which only "
+                            "vertex copies carrying the line momentum consume "
+                            "(leg 1 couples to the Goldstone)",
                         )
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)

@@ -177,6 +177,7 @@ from .poles import (
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .refusals import (
+    LoopRequestUnsupported,
     require_colour_preserving_fermion_lines,
     require_labelled_counterterms_for_veto,
     require_nc_exact,
@@ -1942,7 +1943,16 @@ class LoopSlice:
                 data,
                 request.born_orders,
             )
-        blocks, compiled, table, generation, families = tree_program(reachable)
+        from pyamplicol.generation.dag_ordering import DiracWeylClosureError
+
+        try:
+            blocks, compiled, table, generation, families = tree_program(reachable)
+        except DiracWeylClosureError as error:
+            # The tree engine's fail-closed Dirac-Weyl closure (WP2.9), as the
+            # listed refusal (``refusals``).
+            raise LoopRequestUnsupported(
+                "dirac-weyl-closure", f"{request.process!r}: {error}"
+            ) from error
         if reachable is not None and (
             families.families != reachable.families
             or families.scaleless != reachable.scaleless

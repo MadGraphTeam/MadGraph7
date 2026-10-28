@@ -61,7 +61,30 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   request reaches) whose coupling orders hold a requested correction has
   an empty label (``unlabelled_counterterm_vertices``).
   ``require_labelled_counterterms_for_veto`` refuses such a request before
-  any tree, naming the vetoed species and those vertices.
+  any tree, naming the vetoed species and those vertices. It is also the
+  [U2] anomaly guard of electroweak corrections on such models: a veto that
+  breaks an anomaly-free multiplet (a quark of a doublet, a whole lepton
+  generation) removes a species perturbative in the electromagnetic
+  correction and is refused here; QCD corrections take the Levi-Civita
+  cells' guard (``ct_recursion``, "Anomalous vetoes"; WP3.2 EWI-7).
+* ``counterterm-root-goldstone-mixing`` (WP3.2 EWI-7, routed item (v)): a
+  Goldstone-vector mixing counterterm (G0-Z, G0-A, G+-W-, a vertex
+  insertion of ``models.ct_line_insertions``) whose line ends at the root
+  vertex of the closure (the model vertex with leg 1) on its Goldstone
+  side. Only the promoted vertex copies, whose Goldstone leg is a vector leg
+  carrying the line momentum, consume that line; the root closes the
+  model's ordinary vertex, which would read the promoted vector current as
+  the Goldstone. ``ct_closure.CountertermClosure.build`` refuses it when a
+  consuming term reaches a loop order (t t~ > z h and t t~ > t t~ with QED
+  corrections: the top Yukawa of leg 1); a root vertex the restriction
+  removes contributes nothing and passes.
+* ``dirac-weyl-closure`` (WP2.9, routed item (iv)): the tree engine
+  propagates a massless external fermion as a Weyl state and a fermion line
+  that passed a massive fermion through a chiral vertex as a Dirac current;
+  no model contraction closes the two (``generation.dag_ordering.
+  DiracWeylClosureError``), so such a tree program is refused instead of
+  dropping its trees (u d~ > t b~ with a massless b, at the Born closure
+  already).
 """
 
 from __future__ import annotations
@@ -127,9 +150,40 @@ LOOP_ADMISSION_REFUSALS = (
         "loop content; unlabelled terms show that this model's labels do not",
         "the complete corrections (no particle_veto of their loop species), or "
         "a model whose counterterm terms each declare their loop content",
-        "WP3.2 EWI-7 ([U2] veto guard; C1 UV certifier)",
-        "vetoed loops removed from unlabelled counterterm couplings, or the "
-        "veto certified against the loops",
+        "a UFO whose counterterm couplings are split by loop content (MG5_aMC's "
+        "NLOCT electroweak counterterms are not), or WP3.5 C1 (UV certifier)",
+        "per-loop-content counterterm couplings from the model; the C1 "
+        "certifier can certify a veto's UV poles, not the on-shell finite "
+        "parts of the counterterms, so photon-only corrections on these UFOs "
+        "stay refused (WP3.2 EWI-7)",
+    ),
+    LoopAdmissionRefusal(
+        "counterterm-root-goldstone-mixing",
+        "a Goldstone-vector mixing counterterm line (G0-Z, G0-A, G+-W-) ending "
+        "on its Goldstone side at the root vertex of the closure (leg 1 couples "
+        "to the Goldstone, e.g. a massive top at leg 1 with electroweak "
+        "corrections: t t~ > z h, t t~ > t t~)",
+        "the mixing is a vertex insertion whose Goldstone-side vertex copies "
+        "carry the line momentum (models.ct_line_insertions); the root closes "
+        "the ordinary vertex of leg 1, which cannot consume that vector line",
+        "QCD corrections, or a process whose leg 1 has no Goldstone vertex",
+        "WP3.2 EWI-7 follow-up (root closure of promoted vertex copies)",
+        "the root closure of the promoted copy: its Goldstone slot fed by the "
+        "clone current contracted with its leg momentum, in the Python and "
+        "native closure terms",
+    ),
+    LoopAdmissionRefusal(
+        "dirac-weyl-closure",
+        "a fermion line joining massive and massless fermions through a chiral "
+        "vertex that closes a Dirac current on a massless external fermion "
+        "(e.g. u d~ > t b~ with a massless b)",
+        "the tree engine propagates massless external fermions as Weyl states "
+        "and installs no Dirac-Weyl closure contraction, so the closure would "
+        "drop such trees (generation.dag_ordering)",
+        "a model restriction with a massive b (MG5_aMC's restrict_with_b_mass)",
+        "WP2.9 (Dirac-Weyl closure)",
+        "a Dirac-Weyl closure contraction (the Weyl projection of the Dirac "
+        "current at the massless sink) in the tree engine",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}

@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from .dag_color import ColorEngine
 
 
+class DiracWeylClosureError(ValueError):
+    """A closure of a Dirac (chirality-0) fermion current on a Weyl sink,
+    which no model contraction covers (``_direct_contraction_ir``): the tree
+    engine fails closed (the loop engine lists it as the refusal
+    ``dirac-weyl-closure``, ``loops.v2.refusals``)."""
+
+
 def _known_color_representation(model: Model, particle_id: int) -> int | None:
     """Return explicit model colour metadata without guessing from identity."""
 
@@ -63,7 +70,7 @@ def _direct_contraction_ir(
         and (left.chirality == 0) != (right.chirality == 0)
         and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
     ):
-        raise ValueError(
+        raise DiracWeylClosureError(
             "a Dirac (chirality-0) current cannot close on a Weyl "
             f"(chirality {left.chirality or right.chirality}) current: particles "
             f"{left.particle_id} and {right.particle_id}, external labels "
