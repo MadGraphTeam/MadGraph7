@@ -697,16 +697,20 @@ def test_on_the_fly_lane_refuses_dirac_weyl_closures(
 ) -> None:
     """The on-the-fly lane closed its selected LC flows on the same
     template closures and dropped the same channels (b b~ > w+ w-: 24.0
-    against MadGraph's 0.060 at the first point); it refuses them too."""
+    against MadGraph's 0.060 at the first point); it refuses them too, where
+    it builds a query's closures (at evaluation, per query)."""
 
     model = sm_model if restriction == "default" else sm_no_b_mass_model
+    path = REFERENCE if restriction == "default" else NO_B_MASS_REFERENCE
+    points = _reference(process, path)["points"]
     with pytest.raises(
-        GenerationError, match=r"dirac-weyl-closure: .* would close a Dirac"
+        (GenerationError, ValueError),
+        match=r"dirac-weyl-closure: .* would close a Dirac",
     ):
         _runtime(
             model, process, tmp_path / "artifact", accuracy="lc",
             execution_mode="on-the-fly",
-        )  # fmt: skip
+        ).evaluate(points)  # fmt: skip
 
 
 def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
