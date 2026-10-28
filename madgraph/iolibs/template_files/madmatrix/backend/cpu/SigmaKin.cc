@@ -347,6 +347,7 @@ namespace madmatrix
 #if __has_include( "HelRecycling.inc" ) and !defined MG_HR_PROBE
 #define MGONGPU_HEL_RECYCLING 1
 #include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the declarations of the chunks, if any: see HelRecyclingChunks.h)
+#include "HelRecyclingTables.h" // the tabulated P1N groups (a fragment of this namespace)
 
   // The rows that were built are the rows that contributed AT THE PARAMETERS THE
   // WARM-UP RAN AT. getGoodHel still runs at run time, so when it finds a row that
@@ -402,15 +403,20 @@ namespace madmatrix
     ALOHAOBJ _p1n = ALOHAOBJ{ p1n_pvec_sv, p1n_w_sv };
     (void)_p1n;
     (void)amp_fp;
-    // the shared sub-expressions of the color flows (jampTmp_sv of calculate_jamps),
-    // one set per row: the amplitudes are folded into them as the plain build
-    // folds them into its own, and HelRecyclingJamps.inc then makes the row's
-    // color flows out of them
+    // What the recycled block leaves for the color flows, one table per row (see
+    // OneProcessExporterMadMatrix.hr_jamps_inc): in the rows mode every amplitude
+    // (ampAll_sv, as the fortran recycler's AMP(NCOMB,NGRAPHS)), in the fold mode
+    // the shared sub-expressions of the color flows (jampTmpAll_sv). A vanishing
+    // amplitude is never written, hence the zeroing.
     static thread_local std::vector<cxtype_amp_sv> jampTmpAll( (size_t)nHrRows * nParity * ( hrNtmp > 0 ? hrNtmp : 1 ) );
+    static thread_local std::vector<cxtype_amp_sv> ampAll( (size_t)nHrRows * nParity * ( hrNamp > 0 ? hrNamp : 1 ) );
     cxtype_amp_sv* jampTmpAll_sv = jampTmpAll.data();
+    cxtype_amp_sv* ampAll_sv = ampAll.data();
     (void)jampTmpAll_sv;
+    (void)ampAll_sv;
     for( int i = 0; i < nHrRows * nParity * njampso; i++ ) jampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     for( int i = 0; i < nHrRows * nParity * hrNtmp; i++ ) jampTmpAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
+    for( int i = 0; i < nHrRows * nParity * hrNamp; i++ ) ampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     if( storeChannelWeights )
       for( int i = 0; i < nHrRows * nParity * ndiagrams; i++ ) numAll_sv[i] = fptype_amp_sv{ 0 };
     for( int iParity = 0; iParity < nParity; ++iParity )
@@ -419,16 +425,12 @@ namespace madmatrix
 #include "JampsPreamble.h" // a fragment of the iParity loop body, not a header
 #include "HelRecyclingCalls.inc"
     }
-    if constexpr( hrNtmp > 0 )
+    // the color flows of each row out of those tables
+    for( int slot = 0; slot < nHrRows * nParity; slot++ )
     {
-      for( int slot = 0; slot < nHrRows * nParity; slot++ )
-      {
-        cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * hrNtmp;
-        cxtype_amp_sv* jamp_sv = jampAll_sv + (size_t)slot * njampso;
-        (void)jampTmp_sv;
-        (void)jamp_sv;
+      cxtype_amp_sv* jamp_sv = jampAll_sv + (size_t)slot * njampso;
+      (void)jamp_sv;
 #include "HelRecyclingJamps.inc"
-      }
     }
     mgDebug( 1, __FUNCTION__ );
   }
