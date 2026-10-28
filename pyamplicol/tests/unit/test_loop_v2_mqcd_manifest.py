@@ -601,3 +601,100 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
     table = builder.markdown(data)
     line = next(x for x in table.splitlines() if x.startswith("| A09"))
     assert "fail" in line and "F9" in line and "soft: r1 p0" in line
+
+
+def test_reference_records_without_a_reference_skip_rule1_only():
+    """MQ-REF's per-point record: status "none" is one not-asserted rule 1
+    check with the reason; an absolute point must be a manifest zero point
+    with the record's neighbour."""
+
+    reference = _reference({"madloop": (2.0, 1.0, -3.0, 0.5)})
+    reference.records = [
+        {"status": "none", "reason": "unstable", "comparison": "relative"}
+    ]
+    (check,) = mqcd.reference_record_checks(_row(), reference, 0)
+    assert check.passed and not check.asserted and "unstable" in check.note
+    assert check.coefficient == "no reference"
+    absolute = {"status": "ok", "comparison": "absolute", "absolute_scale_row": 2}
+    reference.records = [absolute]
+    (named,) = mqcd.reference_record_checks(_row(zero_points={"0": 2}), reference, 0)
+    assert named.passed
+    (stale,) = mqcd.reference_record_checks(_row(), reference, 0)
+    assert not stale.passed
+    reference.records = [{"status": "ok", "comparison": "relative"}]
+    assert mqcd.reference_record_checks(_row(), reference, 0) == []
+    reference.records = []
+    assert mqcd.reference_record_checks(_row(), reference, 0) == []
+
+
+def test_manifest_zero_points_are_the_references_absolute_points(rows):
+    """Every absolute reference point (MQ-REF's S3 records) is a zero point
+    of its row with the same regular neighbour, and vice versa."""
+
+    for name, row in rows.items():
+        if not row.active or row.reference is None:
+            continue
+        if row.reference["format"] != "required":
+            continue
+        data = json.loads((mqcd.ROOT / row.reference["path"]).read_text())
+        absolute = {
+            i: entry["reference"]["absolute_scale_row"]
+            for i, entry in enumerate(data["rows"])
+            if (entry.get("reference") or {}).get("comparison") == "absolute"
+        }
+        assert absolute == dict(row.zero_points), name
+
+
+def test_ward_rule_reads_the_ward_criterion():
+    from pyamplicol.loops.v2 import ward
+
+    def entry(virtual, born=1e-17, passed=True, **extra):
+        return {
+            "leg": 1,
+            "factor": (1, 0),
+            "born": born,
+            "born_passed": born <= 1e-12,
+            "parts": {"virtual": virtual},
+            "virtual_passed": passed,
+            **extra,
+        }
+
+    dd = mqcd.rule_ward(0, "double-double", {"rows": [entry([1e-33, 2e-32, 0.0])]})
+    assert [c.coefficient for c in dd] == ["born", "virtual"] and all(
+        c.passed for c in dd
+    )
+    assert dd[1].error == 2e-32 and dd[1].bound == ward.VIRTUAL_BOUNDS["double-double"]
+    b64 = entry(
+        [1e-16, 1e-15, 0.0],
+        o1_over=[1e-4, 2e-3, 0.0],
+        estimate_over=[0.1, 0.3, 0.0],
+        estimate=[3e-15, 3e-15, 0.0],
+        in_scope=True,
+    )
+    _born, virtual = mqcd.rule_ward(0, "double", {"rows": [b64]})
+    assert virtual.error == 2e-3 and virtual.bound == 1.0 and virtual.passed
+    failing = entry(
+        [1e-10, 0.0, 0.0],
+        passed=False,
+        o1_over=[100.0, 0, 0],
+        estimate_over=[1e3, 0, 0],
+        estimate=[1e-13, 0, 0],
+        in_scope=True,
+    )
+    assert not mqcd.rule_ward(0, "double", {"rows": [failing]})[1].passed
+    # No reduction-direction estimate: no binary64 criterion, a failure.
+    assert not mqcd.rule_ward(0, "double", {"rows": [entry([0, 0, 0], passed=None)]})[
+        1
+    ].passed
+
+
+def test_ward_extras_are_checked_on_their_rows(rows):
+    """PLAN §4.2's ward column (A08, A14, B03, C01, D05, E01, F04): checked
+    by the harness, A14 on one leg."""
+
+    ward_rows = {name for name, row in rows.items() if "ward" in row.extras}
+    assert ward_rows == {"A08", "A14", "B03", "C01", "D05", "E01", "F04"}
+    for name in ward_rows:
+        assert "ward" not in rows[name].extras_pending, name
+    assert rows["A14"].ward_legs == (1,)
+    assert all(rows[n].ward_legs is None for n in ward_rows - {"A14"})
