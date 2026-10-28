@@ -160,10 +160,8 @@ impl SeedFourier {
         let file: FourierFile =
             serde_json::from_slice(json).map_err(|e| invalid(format!("{e}")))?;
         require(file.schema == FOURIER_SCHEMA, "unsupported schema")?;
-        require(
-            file.degree >= 2 && file.degree <= 12,
-            "the group degree must be between 2 and 12",
-        )?;
+        require(file.degree >= 2, "the group degree must be at least 2")?;
+        // The tower's own admission bounds the degree (its reorder storage).
         let fft = SymmetricGroupFftPlan::new(file.degree)?;
         let group = fft.order();
         let degree = file.degree;
@@ -281,11 +279,14 @@ impl SeedFourier {
                         }
                     }
                 }
-                // Certify every record of the orbit on every Born element.
+                // Certify every record of the orbit on every Born element
+                // (a record recurs at every element of its stabiliser coset).
+                let mut records = BTreeSet::new();
                 for (g, entry) in loops[l].iter().enumerate() {
                     let Some((r, negative)) = *entry else {
                         continue;
                     };
+                    records.insert(r);
                     let row = weight_of(r, job.column);
                     for h in 0..group {
                         let x = relative(&inverses[h], &elements[g], &mut scratch);
@@ -304,6 +305,8 @@ impl SeedFourier {
                             )));
                         }
                     }
+                }
+                for r in records {
                     let entry = covered.entry((r, job.column)).or_default();
                     for j in born[a].iter().flatten() {
                         require(entry.insert(*j), "two pairs cover one seed weight")?;
