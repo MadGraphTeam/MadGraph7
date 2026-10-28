@@ -441,6 +441,16 @@
       "madloop": {"process": "u u > u u QED=0 [virt=QCD]"}
     },
     {
+      "name": "gg_gg",
+      "role": "mqcd",
+      "mqcd_row": "A01",
+      "pdgs": [21, 21, 21, 21],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > g g QED=0 [virt=QCD]"}
+    },
+    {
       "name": "gg_ggg",
       "role": "mqcd",
       "mqcd_row": "A08",

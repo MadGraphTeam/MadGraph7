@@ -288,7 +288,7 @@
      "double_pole": -0.03485961290058108,
      "accuracy": 5.408066733135906e-15,
      "status": 216,
-     "seconds": 0.000494492,
+     "seconds": 0.000494741,
      "universal_double_pole_relative_error": 3.9810504630081894e-16
     },
     "recola": {
@@ -296,7 +296,7 @@
      "finite": 1.0218961216177964,
      "single_pole": 0.15232402263789044,
      "double_pole": -0.03485961290058097,
-     "seconds": 0.002805781,
+     "seconds": 0.003765623,
      "raw": {
       "born": 0.42834955852196543,
       "finite": 1.079237886435104,
@@ -369,7 +369,7 @@
      "double_pole": -0.008658623791662393,
      "accuracy": 1.9050581725329197e-15,
      "status": 216,
-     "seconds": 0.000505113,
+     "seconds": 0.000513841,
      "universal_double_pole_relative_error": 0.0
     },
     "recola": {
@@ -377,7 +377,7 @@
      "finite": 0.23677551380451056,
      "single_pole": 0.02047368625917188,
      "double_pole": -0.008658623791662356,
-     "seconds": 0.002839431,
+     "seconds": 0.004029093,
      "raw": {
       "born": 0.10639583661310673,
       "finite": 0.25101837905143853,
@@ -450,7 +450,7 @@
      "double_pole": -0.0574422964955382,
      "accuracy": 1.7589652712457772e-15,
      "status": 216,
-     "seconds": 0.000551172,
+     "seconds": 0.000503262,
      "universal_double_pole_relative_error": 1.328774049778949e-15
     },
     "recola": {
@@ -458,7 +458,7 @@
      "finite": 1.7887724137986711,
      "single_pole": 0.06753178856085475,
      "double_pole": -0.05744229649553814,
-     "seconds": 0.002719931,
+     "seconds": 0.003790273,
      "raw": {
       "born": 0.7058420991227217,
       "finite": 1.8832612041821783,
@@ -531,7 +531,7 @@
      "double_pole": -0.03485961290058108,
      "accuracy": 6.155200795865374e-15,
      "status": 216,
-     "seconds": 0.000497082,
+     "seconds": 0.000506732,
      "universal_double_pole_relative_error": 3.9810504630081894e-16
     },
     "recola": {
@@ -539,7 +539,7 @@
      "finite": 0.7270490108282615,
      "single_pole": 0.20064970743278807,
      "double_pole": -0.03485961290058096,
-     "seconds": 0.002783101,
+     "seconds": 0.003840222,
      "raw": {
       "born": 0.42834955852196543,
       "finite": 0.784390775645569,
@@ -585,7 +585,7 @@
    "provider": "madloop",
    "process_name": "gs_wmc_cmass",
    "host": "itphlies",
-   "cpu": 238,
+   "cpu": 375,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gs_wmc_cmass/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -616,7 +616,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -696,8 +696,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.02777562,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.017487018,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -714,19 +714,19 @@
      }
     ]
    },
-   "process_wall_seconds": 0.04172553587704897,
+   "process_wall_seconds": 0.029783606994897127,
    "evaluation_seconds": [
-    0.000494492,
-    0.000505113,
-    0.000551172,
-    0.000497082
+    0.000494741,
+    0.000513841,
+    0.000503262,
+    0.000506732
    ]
   },
   "recola": {
    "provider": "recola",
    "process_name": "gs_wmc_cmass",
    "host": "itphlies",
-   "cpu": 238,
+   "cpu": 375,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gs_wmc_cmass/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -784,14 +784,14 @@
     }
    },
    "version": "Recola2 2.2.5 (tree ${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
-   "generation_seconds": 0.278980357,
-   "initial_call_seconds": 0.003676665,
-   "process_wall_seconds": 0.3069401178508997,
+   "generation_seconds": 0.29219865,
+   "initial_call_seconds": 0.005387178,
+   "process_wall_seconds": 0.32762296590954065,
    "evaluation_seconds": [
-    0.002805781,
-    0.002839431,
-    0.002719931,
-    0.002783101
+    0.003765623,
+    0.004029093,
+    0.003790273,
+    0.003840222
    ]
   }
  },

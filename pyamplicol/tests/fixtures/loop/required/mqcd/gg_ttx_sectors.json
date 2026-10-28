@@ -131,15 +131,47 @@
     "531.7674",
     "-398.82555"
    ]
+  ],
+  [
+   [
+    "567.115625",
+    "0",
+    "0",
+    "567.115625"
+   ],
+   [
+    "567.115625",
+    "0",
+    "0",
+    "-567.115625"
+   ],
+   [
+    "567.115625",
+    "0",
+    "-432.0675",
+    "324.050625"
+   ],
+   [
+    "567.115625",
+    "0",
+    "432.0675",
+    "-324.050625"
+   ]
   ]
  ],
  "mu_r": [
   "1000",
   "700",
-  "1400"
+  "1400",
+  "500"
  ],
  "point_construction": {
-  "construction": "copied from the committed fixture required/gg_ttx.json (tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact)"
+  "construction": "copied from the committed fixture required/gg_ttx.json (tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact)",
+  "scale_variation": {
+   "point": 4,
+   "copy_of_point": 1,
+   "mu_r_factor": "1/2"
+  }
  },
  "parameters": {
   "aS": "0.118",
@@ -213,7 +245,7 @@
      "double_pole": -0.11325564357904935,
      "accuracy": 3.117699494328056e-16,
      "status": 216,
-     "seconds": 0.001109114,
+     "seconds": 0.004973305,
      "universal_double_pole_relative_error": 4.901402656593667e-16
     }
    },
@@ -266,7 +298,7 @@
      "double_pole": -0.11283301482182942,
      "accuracy": 2.201642251934085e-15,
      "status": 216,
-     "seconds": 0.001102874,
+     "seconds": 0.004920135,
      "universal_double_pole_relative_error": 4.919761411933688e-16
     }
    },
@@ -319,8 +351,61 @@
      "double_pole": -0.11345355140621377,
      "accuracy": 2.4873780118430916e-15,
      "status": 216,
-     "seconds": 0.001086865,
+     "seconds": 0.004899855,
      "universal_double_pole_relative_error": 1.2232131683675422e-16
+    }
+   },
+   "provider_pair_relative_errors": {},
+   "provider_pair_strict_relative_errors": {}
+  },
+  {
+   "born": 1.005093496738773,
+   "finite": 0.39103524418848534,
+   "single_pole": 0.022844293482534604,
+   "double_pole": -0.11325564357904935,
+   "madloop_accuracy": 3.912338772221663e-15,
+   "madloop_status": 216,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 4,
+      "QED": 0,
+      "born": 1.005093496738773
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "finite": 0.39103524418848534,
+      "single_pole": 0.022844293482534604,
+      "double_pole": -0.11325564357904935,
+      "accuracy": 3.912338772221663e-15,
+      "born_sector": {
+       "QCD": 4,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 1.005093496738773,
+     "finite": 0.39103524418848534,
+     "single_pole": 0.022844293482534604,
+     "double_pole": -0.11325564357904935,
+     "accuracy": 3.912338772221663e-15
+    }
+   },
+   "born_from_madloop_double_pole": 1.0050934967387726,
+   "providers": {
+    "madloop": {
+     "born": 1.005093496738773,
+     "finite": 0.39103524418848534,
+     "single_pole": 0.022844293482534604,
+     "double_pole": -0.11325564357904935,
+     "accuracy": 3.912338772221663e-15,
+     "status": 216,
+     "seconds": 0.001865446,
+     "universal_double_pole_relative_error": 4.901402656593667e-16
     }
    },
    "provider_pair_relative_errors": {},
@@ -478,7 +563,7 @@
    }
   ],
   "settings": {
-   "requested_relative_accuracy": 1e-11,
+   "requested_relative_accuracy": 1e-13,
    "stability_check": "forced on every call",
    "helicities": "all MadLoop helicity configurations"
   },
@@ -497,7 +582,7 @@
      "finite": 0.0,
      "single_pole": 0.0,
      "double_pole": 0.0,
-     "accuracy": 5.04288059841691e-15
+     "accuracy": 2.9954404636556177e-15
     },
     {
      "helicity": [
@@ -1208,6 +1293,248 @@
      "double_pole": 0.0,
      "accuracy": 5.04288059841691e-15
     }
+   ],
+   [
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 1,
+     "status": 216,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 5.04288059841691e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 2,
+     "status": 216,
+     "born": 0.3559960582460344,
+     "finite": 0.09804280736294202,
+     "single_pole": 0.008091265598260426,
+     "double_pole": -0.04011424093288932,
+     "accuracy": 2.9954404636556137e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 3,
+     "status": 216,
+     "born": 0.00021219018593194076,
+     "finite": 0.00010226791508254162,
+     "single_pole": 4.822770117678392e-06,
+     "double_pole": -2.3909950812393087e-05,
+     "accuracy": 3.604797018621944e-15
+    },
+    {
+     "helicity": [
+      -1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 4,
+     "status": 216,
+     "born": 4.108650548026103e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 3.604797018621944e-15
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 5,
+     "status": 216,
+     "born": 1.49137624126981,
+     "finite": 0.6156390181659979,
+     "single_pole": 0.03389678339278064,
+     "double_pole": -0.16805080977199405,
+     "accuracy": 9.943896228059753e-16
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 6,
+     "status": 216,
+     "born": 0.03469574434820318,
+     "finite": 0.010535334143830802,
+     "single_pole": 0.0007885831209306342,
+     "double_pole": -0.0039095754458266085,
+     "accuracy": 1.5398061156441964e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 7,
+     "status": 216,
+     "born": 0.03469574434820318,
+     "finite": 0.010535334143830809,
+     "single_pole": 0.0007885831209306283,
+     "double_pole": -0.00390957544582661,
+     "accuracy": 2.6321472062293956e-14
+    },
+    {
+     "helicity": [
+      -1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 8,
+     "status": 216,
+     "born": 0.09321101507936312,
+     "finite": 0.0472157266452866,
+     "single_pole": 0.0021185489620489436,
+     "double_pole": -0.010503175610749673,
+     "accuracy": 2.124227778506134e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      1
+     ],
+     "madloop_index": 9,
+     "status": 216,
+     "born": 0.09321101507936312,
+     "finite": 0.047215726645286664,
+     "single_pole": 0.0021185489620489367,
+     "double_pole": -0.010503175610749666,
+     "accuracy": 3.595104741856591e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      -1,
+      -1
+     ],
+     "madloop_index": 10,
+     "status": 216,
+     "born": 0.03469574434820318,
+     "finite": 0.01053533414383079,
+     "single_pole": 0.0007885831209306205,
+     "double_pole": -0.00390957544582661,
+     "accuracy": 1.1493709467201736e-14
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      1
+     ],
+     "madloop_index": 11,
+     "status": 216,
+     "born": 0.03469574434820318,
+     "finite": 0.010535334143830797,
+     "single_pole": 0.0007885831209306138,
+     "double_pole": -0.0039095754458266085,
+     "accuracy": 2.719885446437051e-15
+    },
+    {
+     "helicity": [
+      1,
+      -1,
+      1,
+      -1
+     ],
+     "madloop_index": 12,
+     "status": 216,
+     "born": 1.49137624126981,
+     "finite": 0.6156390181659994,
+     "single_pole": 0.03389678339278086,
+     "double_pole": -0.16805080977199405,
+     "accuracy": 6.0095720682621765e-15
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      1
+     ],
+     "madloop_index": 13,
+     "status": 216,
+     "born": 4.108650548026103e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 6.0095720682621765e-15
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      -1,
+      -1
+     ],
+     "madloop_index": 14,
+     "status": 216,
+     "born": 0.00021219018593194076,
+     "finite": 0.00010226791508254144,
+     "single_pole": 4.8227701176789e-06,
+     "double_pole": -2.390995081239313e-05,
+     "accuracy": 1.625213571107515e-14
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "madloop_index": 15,
+     "status": 216,
+     "born": 0.3559960582460344,
+     "finite": 0.09804280736294194,
+     "single_pole": 0.008091265598260396,
+     "double_pole": -0.0401142409328893,
+     "accuracy": 2.9954404636556177e-15
+    },
+    {
+     "helicity": [
+      1,
+      1,
+      1,
+      -1
+     ],
+     "madloop_index": 16,
+     "status": 216,
+     "born": 9.244463733058732e-33,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": 2.9954404636556177e-15
+    }
    ]
   ]
  },
@@ -1227,7 +1554,7 @@
    "provider": "madloop",
    "process_name": "gg_ttx",
    "host": "itphlies",
-   "cpu": 188,
+   "cpu": 67,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ttx_sectors/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -1261,7 +1588,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -1332,7 +1659,7 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.022999902,
+   "initial_call_seconds": 0.066672371,
    "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
@@ -1350,11 +1677,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.03805766208097339,
+   "process_wall_seconds": 0.10632911114953458,
    "evaluation_seconds": [
-    0.001109114,
-    0.001102874,
-    0.001086865
+    0.004973305,
+    0.004920135,
+    0.004899855,
+    0.001865446
    ]
   }
  },
@@ -1367,7 +1695,8 @@
   "note": "per-sector and per-helicity MadLoop run at the committed fixture's points",
   "points": {
    "generator": "fixture",
-   "fixture": "required/gg_ttx.json"
+   "fixture": "required/gg_ttx.json",
+   "half_scale_point": true
   }
  }
 }

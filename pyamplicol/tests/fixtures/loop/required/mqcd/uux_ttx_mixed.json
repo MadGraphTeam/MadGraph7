@@ -318,7 +318,7 @@
      "double_pole": -0.034737197174709036,
      "accuracy": 2.6147838436983822e-15,
      "status": 216,
-     "seconds": 0.000689823,
+     "seconds": 0.000430041,
      "universal_double_pole_relative_error": 1.1985239688179318e-15
     }
    },
@@ -405,7 +405,7 @@
      "double_pole": -0.03353432524959485,
      "accuracy": 1.3614062988178706e-16,
      "status": 216,
-     "seconds": 0.000697853,
+     "seconds": 0.000435101,
      "universal_double_pole_relative_error": 2.0691914485415395e-15
     }
    },
@@ -492,7 +492,7 @@
      "double_pole": -0.03427336535810602,
      "accuracy": 5.3748089582613715e-15,
      "status": 216,
-     "seconds": 0.000701833,
+     "seconds": 0.000433682,
      "universal_double_pole_relative_error": 1.6196586081129862e-15
     }
    },
@@ -579,7 +579,7 @@
      "double_pole": -0.034737197174709036,
      "accuracy": 1.2726030194802736e-15,
      "status": 216,
-     "seconds": 0.000702353,
+     "seconds": 0.000456681,
      "universal_double_pole_relative_error": 1.1985239688179318e-15
     }
    },
@@ -604,7 +604,7 @@
    "provider": "madloop",
    "process_name": "uux_ttx_mixed",
    "host": "itphlies",
-   "cpu": 275,
+   "cpu": 45,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/uux_ttx_mixed/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -638,7 +638,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -728,8 +728,8 @@
     3,
     3
    ],
-   "initial_call_seconds": 0.033583283,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.034523345,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -766,12 +766,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.04733624798245728,
+   "process_wall_seconds": 0.05625907680951059,
    "evaluation_seconds": [
-    0.000689823,
-    0.000697853,
-    0.000701833,
-    0.000702353
+    0.000430041,
+    0.000435101,
+    0.000433682,
+    0.000456681
    ]
   }
  },

@@ -260,7 +260,7 @@
      "double_pole": -0.000238160105561137,
      "accuracy": 0.0,
      "status": 216,
-     "seconds": 2.982e-05,
+     "seconds": 3.349e-05,
      "universal_double_pole_relative_error": 2.276204425445184e-16
     }
    },
@@ -313,7 +313,7 @@
      "double_pole": -0.00028858298842722045,
      "accuracy": 0.0,
      "status": 216,
-     "seconds": 3.237e-05,
+     "seconds": 4.059e-05,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -366,7 +366,7 @@
      "double_pole": -0.00027456858190281905,
      "accuracy": 0.0,
      "status": 216,
-     "seconds": 3.134e-05,
+     "seconds": 3.63e-05,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -419,7 +419,7 @@
      "double_pole": -0.000238160105561137,
      "accuracy": 0.0,
      "status": 216,
-     "seconds": 3.003e-05,
+     "seconds": 3.714e-05,
      "universal_double_pole_relative_error": 2.276204425445184e-16
     }
    },
@@ -444,7 +444,7 @@
    "provider": "madloop",
    "process_name": "uux_emep",
    "host": "itphlies",
-   "cpu": 346,
+   "cpu": 355,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/uux_emep/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -478,7 +478,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -558,7 +558,7 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.013101031,
+   "initial_call_seconds": 0.013873686,
    "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
@@ -576,12 +576,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.022768928902223706,
+   "process_wall_seconds": 0.023305597016587853,
    "evaluation_seconds": [
-    2.982e-05,
-    3.237e-05,
-    3.134e-05,
-    3.003e-05
+    3.349e-05,
+    4.059e-05,
+    3.63e-05,
+    3.714e-05
    ]
   }
  },

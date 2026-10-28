@@ -260,7 +260,7 @@
      "double_pole": -0.7853136779050591,
      "accuracy": 1.617704964729673e-14,
      "status": 216,
-     "seconds": 0.000333231,
+     "seconds": 0.00336196,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -313,7 +313,7 @@
      "double_pole": -2.1028126274614447,
      "accuracy": 2.7055832236931464e-17,
      "status": 216,
-     "seconds": 0.000330502,
+     "seconds": 0.00034611,
      "universal_double_pole_relative_error": 8.447527926179054e-16
     }
    },
@@ -366,7 +366,7 @@
      "double_pole": -1.5409772532134862,
      "accuracy": 1.0608300442037576e-15,
      "status": 216,
-     "seconds": 0.000315301,
+     "seconds": 0.000325291,
      "universal_double_pole_relative_error": 2.881867392422428e-16
     }
    },
@@ -419,7 +419,7 @@
      "double_pole": -0.7853136779050591,
      "accuracy": 2.141953674726339e-14,
      "status": 216,
-     "seconds": 0.000311331,
+     "seconds": 0.000319331,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -444,7 +444,7 @@
    "provider": "madloop",
    "process_name": "uux_gg",
    "host": "itphlies",
-   "cpu": 336,
+   "cpu": 45,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/uux_gg/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -478,7 +478,7 @@
      "added KIND=16 to 19 CMPLX calls in MP_ functions",
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
-    "requested_relative_accuracy": 1e-11,
+    "requested_relative_accuracy": 1e-13,
     "stability_check": "forced on every call"
    },
    "generation": {
@@ -558,8 +558,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.029634727,
-   "initialization_calls": 5,
+   "initial_call_seconds": 0.036331723,
+   "initialization_calls": 2,
    "squared_split_orders": {
     "born": [
      {
@@ -576,12 +576,12 @@
      }
     ]
    },
-   "process_wall_seconds": 0.04086578218266368,
+   "process_wall_seconds": 0.057148037012666464,
    "evaluation_seconds": [
-    0.000333231,
-    0.000330502,
-    0.000315301,
-    0.000311331
+    0.00336196,
+    0.00034611,
+    0.000325291,
+    0.000319331
    ]
   }
  },
