@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -76,3 +77,69 @@ def test_packed_payloads_may_not_also_be_files(tmp_path: Path) -> None:
 
     with pytest.raises(ArtifactError, match="also stored as a file"):
         load_manifest(root, verify_payloads=True)
+
+
+def _pack_artifact(source: Path, root: Path) -> None:
+    """Copy ``source`` and move its packable payloads into payloads.pacbin."""
+
+    from pyamplicol.artifacts.manifest import compute_artifact_id
+    from pyamplicol.artifacts.security import sha256_file
+    from pyamplicol.generation.artifact_writer import _packs_payload
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberKind,
+        PacbinMemberSource,
+        write_pacbin,
+    )
+
+    shutil.copytree(source, root)
+    raw = json.loads((root / "artifact.json").read_text(encoding="utf-8"))
+    packed = [
+        record["path"] for record in raw["payloads"] if _packs_payload(record["path"])
+    ]
+    assert packed
+    container = root / "payloads.pacbin"
+    write_pacbin(
+        container,
+        [
+            PacbinMemberSource(path, PacbinMemberKind.DECLARED_PAYLOAD, root / path)
+            for path in packed
+        ],
+    )
+    for path in packed:
+        (root / path).unlink()
+    raw["payloads"] = sorted(
+        [
+            *raw["payloads"],
+            {
+                "executable": False,
+                "media_type": "application/octet-stream",
+                "path": "payloads.pacbin",
+                "role": "payload-container",
+                "sha256": sha256_file(container),
+                "size_bytes": container.stat().st_size,
+            },
+        ],
+        key=lambda record: record["path"],
+    )
+    raw["artifact_id"] = compute_artifact_id(raw)
+    (root / "artifact.json").write_text(json.dumps(raw), encoding="utf-8")
+
+
+def test_inspection_reads_packed_payloads(tmp_path: Path) -> None:
+    from pyamplicol.artifacts import inspect_artifact
+
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src/pyamplicol/assets/selftest/portable-64le/artifact"
+    )
+    root = tmp_path / "packed"
+    _pack_artifact(source, root)
+    assert ArtifactPayloads(load_manifest(root)).is_packed(
+        "processes/d_dbar_to_z/physics.json"
+    )
+    assert not (root / "processes/d_dbar_to_z/physics.json").exists()
+
+    loose = inspect_artifact(source)
+    packed = inspect_artifact(root)
+    assert packed.integrity == "verified"
+    assert packed.processes == loose.processes
