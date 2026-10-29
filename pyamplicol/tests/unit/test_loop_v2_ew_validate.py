@@ -1017,30 +1017,29 @@ def test_goldstone_side_root_mixing_is_a_listed_refusal(
 
 
 @pytest.mark.loop_nightly
-def test_dirac_weyl_closure_is_a_listed_refusal(loop_gmu_ufo, loop_native):
+def test_single_top_s_channel_equals_madloop_and_recola(loop_gmu_ufo, loop_native):
     """WP3.2 EWI-7 routed item (iv): u d~ > t b~ with electroweak corrections
-    and a massless b closes the b line, a Dirac current after the massive
-    top, on the massless b~ (a Weyl state), which the tree engine has no
-    contraction for (WP2.9): refused with the listed key
-    ``dirac-weyl-closure`` at the Born closure (about 30 s)."""
+    and a massless b (a W line joining the massive top and the massless b,
+    whose Born closes at a vertex since m-qcd MQ-5F; refused before) against
+    MadLoop and Recola (``required/udx_tbx_ew``, which agree to 4e-13) at
+    its three points: Born and every Laurent coefficient through the native
+    executor in binary64 within the ladder's tolerance, the poles Catani's.
+    About 5 min."""
 
-    from pyamplicol.loops.v2.assemble import SliceRequest
-
-    message = _refused_before_programs(
-        _gmu(loop_gmu_ufo),
-        SliceRequest(
-            "u d~ > t b~",
-            {"QCD": 0, "QED": 2},
-            {"QCD": 0, "QED": 4},
-            corrections=("QED",),
-            fixed_parameters=G_MU_FIXED,
-            compatibility="gmu_particle_anti",
-            scale_parameter="MU_R",
-        ),
-        loop_native,
-        "dirac-weyl-closure",
-    )
-    assert "Weyl" in message and "restrict_with_b_mass" in message
+    compiled = _gmu(loop_gmu_ufo)
+    reference, slice_ = _fixture_slice("udx_tbx_ew", compiled, loop_native)
+    executor = _executor(slice_)
+    worst: dict[str, float] = {}
+    catani = 0.0
+    for index in range(len(reference["points"])):
+        result = _evaluate(executor, reference, index)
+        for provider, error in _assert_providers(
+            result, reference, index, LADDER_TOLERANCE
+        ).items():
+            worst[provider] = max(worst.get(provider, 0.0), error)
+        catani = max(catani, _assert_catani(result))
+    assert set(worst) == {"madloop", "recola"}
+    print({k: f"{v:.1e}" for k, v in worst.items()}, f"catani {catani:.1e}")
 
 
 # ------------------------------------------------------- reflection audit
