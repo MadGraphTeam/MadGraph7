@@ -252,7 +252,9 @@ def test_the_loop_born_dag_records_a_dirac_weyl_root(restricted):
     model = CompiledUFOModel(compiled)
     process = build_model_process_ir("b b~ > w+ w-", compiled.ir, color_accuracy="full")
     bounds = {"QCD": 0, "QED": 2}
-    with pytest.raises(ValueError, match="Dirac \\(chirality-0\\) current cannot"):
+    with pytest.raises(
+        ValueError, match="dirac-weyl-closure: a Dirac \\(chirality-0\\) current cannot"
+    ):
         compile_generic_dag(process, model=model, max_coupling_orders=bounds)
     dag = compile_generic_dag(
         process, model=model, max_coupling_orders=bounds, loop_born=True

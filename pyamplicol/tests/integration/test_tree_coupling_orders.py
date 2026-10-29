@@ -588,7 +588,9 @@ _MASSLESS_B_RECURRENCE_REFUSALS = (
     "t t~ > b b~",
     "e+ e- > b b~ w+ w-",
 )
-_DIRAC_WEYL_CLOSURE = r"Dirac \(chirality-0\) current cannot close on a Weyl"
+_DIRAC_WEYL_CLOSURE = (
+    r"dirac-weyl-closure: a Dirac \(chirality-0\) current cannot close on a Weyl"
+)
 _RECURRENCE_DIRAC_WEYL_CLOSURE = (
     r"dirac-weyl-closure: LC sector \d+ would close a Dirac"
 )

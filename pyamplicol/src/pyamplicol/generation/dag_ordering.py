@@ -64,13 +64,16 @@ def _direct_contraction_ir(
         and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
     ):
         raise ValueError(
-            "a Dirac (chirality-0) current cannot close on a Weyl "
-            f"(chirality {left.chirality or right.chirality}) current: particles "
-            f"{left.particle_id} and {right.particle_id}, external labels "
-            f"{left.external_labels} and {right.external_labels}; a fermion line "
-            "that joins massive and massless fermions through a chiral vertex "
-            "(a massive internal or external fermion on a line with a massless "
-            "sink) has no Dirac-Weyl closure contraction"
+            "dirac-weyl-closure: a Dirac (chirality-0) current cannot close on "
+            f"a Weyl (chirality {left.chirality or right.chirality}) current: "
+            f"particles {left.particle_id} and {right.particle_id}, external "
+            f"labels {left.external_labels} and {right.external_labels}; a "
+            "fermion line that joins massive and massless fermions through a "
+            "chiral vertex (a massive internal or external fermion on a line "
+            "with a massless sink) has no Dirac-Weyl closure contraction. Keep "
+            "the light fermion massive in the tree model (the default "
+            "restriction with its mass fixed to zero) or use the loop engine, "
+            "whose Born closes at a vertex"
         )
     return contraction
 
