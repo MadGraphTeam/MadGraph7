@@ -831,8 +831,9 @@ def promoted_root_entries(
     """The promoted root entries (``ct_sites.promoted_root_entry``) the
     closure of ``program`` may read: every scalar leg, of the field a
     scalar-vector mixing line's scalar side is read as, of the entries the
-    root reads for each ordinary vertex (``read``: the vertex's own entries
-    or its conjugate rule's, ``SiteClosure.read_entries``). The kernel
+    root reads (``read``: the vertex's own entries or its conjugate rule's,
+    ``SiteClosure.read_entries``) for each ordinary vertex that holds leg
+    1's current (``CountertermClosure.build``'s root vertices). The kernel
     catalogue binds them with the closure's other entries."""
 
     from .ct_sites import promoted_root_entry
@@ -842,13 +843,18 @@ def promoted_root_entries(
     fields = {abs(line.field_id) for line in program.clones.values() if line.promoted}
     if not fields:
         return []
+    root = {
+        current.field
+        for current in program.blocks.block_table(native_model).currents(_ROOT_LEG)
+    }
     by_name = {
         str(record["name"]): record for record in model_data(native_model)["particles"]
     }
     out = []
     for rows in ordinary:
-        if not any(
-            abs(int(by_name[n]["pdg_code"])) in fields for n in rows[0].particle_names
+        names = rows[0].particle_names
+        if root.isdisjoint(names) or not any(
+            abs(int(by_name[n]["pdg_code"])) in fields for n in names
         ):
             continue
         try:
