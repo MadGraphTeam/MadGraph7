@@ -1,6 +1,7 @@
 #include "madspace/compgraphs/optimizer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <numeric>
 #include <ranges>
@@ -82,7 +83,7 @@ Function madspace::sort_breadth_first(const Function& function) {
     return func_out;
 }
 
-Function madspace::fuse_conversions(const Function& function) {
+Function madspace::fuse_instructions(const Function& function) {
     Function func_out = function;
     auto& instructions = func_out._instructions;
     std::vector<int> producer(function.locals().size(), -1);
@@ -109,12 +110,29 @@ Function madspace::fuse_conversions(const Function& function) {
         return find->second.get();
     };
 
+    // the precision of an activation instruction that fuses into a matmul, or empty
+    auto activation_precision = [](const std::string& name) -> std::string {
+        static const std::array<std::string, 6> activations{
+            "relu", "leaky_relu", "elu", "gelu", "sigmoid", "softplus"
+        };
+        for (const auto& activation : activations) {
+            for (std::string precision : {"float32", "float64"}) {
+                if (name == activation + "_" + precision) {
+                    return precision;
+                }
+            }
+        }
+        return "";
+    };
+
     std::vector<bool> removed(instructions.size());
     bool any_fused = false;
     for (std::size_t i = 0; i < instructions.size(); ++i) {
         auto& call = instructions[i];
         const std::string& name = call.instruction->name();
-        if (name != "convert_float32" && name != "convert_float64") {
+        std::string precision = activation_precision(name);
+        if (name != "convert_float32" && name != "convert_float64" &&
+            precision.empty()) {
             continue;
         }
         auto& input = call.inputs.at(0);
@@ -131,7 +149,14 @@ Function madspace::fuse_conversions(const Function& function) {
             continue;
         }
         const std::string& source_name = source.instruction->name();
-        if (name == "convert_float32") {
+        if (!precision.empty()) {
+            if (source_name != "matmul_" + precision) {
+                continue;
+            }
+            // the matmul output stays an output, the activation needs it backward
+            source.instruction = find_instruction("matmul_" + name);
+            source.outputs.push_back(call.outputs.at(0));
+        } else if (name == "convert_float32") {
             bool fusable = source_name == "select" || source_name == "rqs_forward" ||
                 source_name == "rqs_inverse";
             if (!fusable || source.outputs.at(0).local_index != input.local_index ||

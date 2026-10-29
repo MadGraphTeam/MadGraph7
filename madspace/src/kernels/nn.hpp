@@ -10,101 +10,167 @@ namespace kernels {
 
 // The activations are instantiated in float32 and float64. Literals are cast to
 // FVal<T> so that float32 code does not get promoted to double.
+//
+// Each activation is a struct with the value functions forward(x) and
+// backward(x, y, g), the latter the input gradient for the input x, the output y
+// and the output gradient g. The element-wise kernels and the matmuls with a fused
+// activation share them, so that both round alike.
+
+struct ReluActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return where(x < F(0.), F(0.), x);
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        return where(x < F(0.), F(0.), g);
+    }
+};
+
+struct LeakyReluActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return where(x < F(0.), x * F(0.01), x);
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        return where(x < F(0.), g * F(0.01), g);
+    }
+};
+
+struct EluActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return where(x < F(0.), expm1(x), x);
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        return where(x < F(0.), g * exp(x), g);
+    }
+};
+
+struct GeluActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return F(0.5) * x * (F(1.) + erf(F(SQRT_HALF) * x));
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        F cdf = F(0.5) * (F(1.) + erf(F(SQRT_HALF) * x));
+        F pdf = F(0.5 * SQRT_HALF * TWO_DIV_SQRT_PI) * exp(F(-0.5) * x * x);
+        return g * (cdf + x * pdf);
+    }
+};
+
+// the backward pass uses the output
+struct SigmoidActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return F(1.) / (F(1.) + exp(-x));
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        return g * y * (F(1.) - y);
+    }
+};
+
+struct SoftplusActivation {
+    template <typename T>
+    static KERNELSPEC FVal<T> forward(FVal<T> x) {
+        using F = FVal<T>;
+        return where(x < F(20.), log1p(exp(x)), x);
+    }
+    template <typename T>
+    static KERNELSPEC FVal<T> backward(FVal<T> x, FVal<T> y, FVal<T> g) {
+        using F = FVal<T>;
+        F z = exp(x);
+        return where(x < F(20.), g * z / (F(1.) + z), g);
+    }
+};
 
 template <typename T>
 KERNELSPEC void kernel_relu(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = where(x < F(0.), F(0.), x);
+    output = ReluActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void
 backward_kernel_relu(FIn<T, 0> input, FIn<T, 0> output_grad, FOut<T, 0> input_grad) {
-    using F = FVal<T>;
-    F x(input), g(output_grad);
-    input_grad += where(x < F(0.), F(0.), g);
+    FVal<T> x(input);
+    input_grad += ReluActivation::backward<T>(x, x, FVal<T>(output_grad));
 }
 
 template <typename T>
 KERNELSPEC void kernel_leaky_relu(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = where(x < F(0.), x * F(0.01), x);
+    output = LeakyReluActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void backward_kernel_leaky_relu(
     FIn<T, 0> input, FIn<T, 0> output_grad, FOut<T, 0> input_grad
 ) {
-    using F = FVal<T>;
-    F x(input), g(output_grad);
-    input_grad += where(x < F(0.), g * F(0.01), g);
+    FVal<T> x(input);
+    input_grad += LeakyReluActivation::backward<T>(x, x, FVal<T>(output_grad));
 }
 
 template <typename T>
 KERNELSPEC void kernel_elu(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = where(x < F(0.), expm1(x), x);
+    output = EluActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void
 backward_kernel_elu(FIn<T, 0> input, FIn<T, 0> output_grad, FOut<T, 0> input_grad) {
-    using F = FVal<T>;
-    F x(input), g(output_grad);
-    input_grad += where(x < F(0.), g * exp(x), g);
+    FVal<T> x(input);
+    input_grad += EluActivation::backward<T>(x, x, FVal<T>(output_grad));
 }
 
 template <typename T>
 KERNELSPEC void kernel_gelu(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = F(0.5) * x * (F(1.) + erf(F(SQRT_HALF) * x));
+    output = GeluActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void
 backward_kernel_gelu(FIn<T, 0> input, FIn<T, 0> output_grad, FOut<T, 0> input_grad) {
-    using F = FVal<T>;
-    F x(input), g(output_grad);
-    F cdf = F(0.5) * (F(1.) + erf(F(SQRT_HALF) * x));
-    F pdf = F(0.5 * SQRT_HALF * TWO_DIV_SQRT_PI) * exp(F(-0.5) * x * x);
-    input_grad += g * (cdf + x * pdf);
+    FVal<T> x(input);
+    input_grad += GeluActivation::backward<T>(x, x, FVal<T>(output_grad));
 }
 
 template <typename T>
 KERNELSPEC void kernel_sigmoid(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = F(1.) / (F(1.) + exp(-x));
+    output = SigmoidActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void backward_kernel_sigmoid(
     FIn<T, 0> output, FIn<T, 0> output_grad, FOut<T, 0> input_grad
 ) {
-    using F = FVal<T>;
-    F y(output), g(output_grad);
-    input_grad += g * y * (F(1.) - y);
+    FVal<T> y(output);
+    input_grad += SigmoidActivation::backward<T>(y, y, FVal<T>(output_grad));
 }
 
 template <typename T>
 KERNELSPEC void kernel_softplus(FIn<T, 0> input, FOut<T, 0> output) {
-    using F = FVal<T>;
-    F x(input);
-    output = where(x < F(20.), log1p(exp(x)), x);
+    output = SoftplusActivation::forward<T>(FVal<T>(input));
 }
 
 template <typename T>
 KERNELSPEC void backward_kernel_softplus(
     FIn<T, 0> input, FIn<T, 0> output_grad, FOut<T, 0> input_grad
 ) {
-    using F = FVal<T>;
-    F x(input), g(output_grad);
-    F z = exp(x);
-    input_grad += where(x < F(20.), g * z / (F(1.) + z), g);
+    FVal<T> x(input);
+    input_grad += SoftplusActivation::backward<T>(x, x, FVal<T>(output_grad));
 }
 
 template <typename T>
@@ -300,7 +366,8 @@ KERNELSPEC RqsValues<T> rqs_forward_values(FIn<T, 0> input, FIn<T, 1> condition)
     auto derivative_numerator = delta * delta *
         (derivative_plus_one * theta_theta + two_delta * theta_one_minus_theta +
          derivative * one_minus_theta * one_minus_theta);
-    FVal<T> det_value = where(clamp, 1., derivative_numerator / (denominator * denominator));
+    FVal<T> det_value =
+        where(clamp, 1., derivative_numerator / (denominator * denominator));
     return {output_value, det_value};
 }
 
@@ -475,7 +542,12 @@ KERNELSPEC void backward_kernel_rqs_forward(
     FOut<T, 1> condition_grad
 ) {
     backward_rqs_forward_impl<T>(
-        input, condition, FVal<T>(output_grad), FVal<T>(det_grad), input_grad, condition_grad
+        input,
+        condition,
+        FVal<T>(output_grad),
+        FVal<T>(det_grad),
+        input_grad,
+        condition_grad
     );
 }
 
@@ -543,7 +615,8 @@ KERNELSPEC RqsValues<T> rqs_inverse_values(FIn<T, 0> input, FIn<T, 1> condition)
     auto derivative_numerator = delta * delta *
         (derivative_plus_one * theta * theta + two_delta * theta_one_minus_theta +
          derivative * one_minus_theta * one_minus_theta);
-    FVal<T> det_value = where(clamp, 1., denominator * denominator / derivative_numerator);
+    FVal<T> det_value =
+        where(clamp, 1., denominator * denominator / derivative_numerator);
     return {output_value, det_value};
 }
 
@@ -748,7 +821,12 @@ KERNELSPEC void backward_kernel_rqs_inverse(
     FOut<T, 1> condition_grad
 ) {
     backward_rqs_inverse_impl<T>(
-        input, condition, FVal<T>(output_grad), FVal<T>(det_grad), input_grad, condition_grad
+        input,
+        condition,
+        FVal<T>(output_grad),
+        FVal<T>(det_grad),
+        input_grad,
+        condition_grad
     );
 }
 

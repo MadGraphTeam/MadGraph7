@@ -392,6 +392,70 @@ void backward_op_matmul(
     });
 }
 
+// input, weight and bias gradients of a matmul from the gradient of its output, for
+// the backward passes that run in a single job
+template <typename F>
+void matmul_grads(
+    const F* output_grad,
+    const F* input,
+    const F* weight,
+    F* input_grad,
+    F* weight_grad,
+    F* bias_grad,
+    std::size_t batch_size,
+    std::size_t dims_in,
+    std::size_t dims_out
+) {
+    auto* grad = const_cast<F*>(output_grad);
+    // input_grad += output_grad * weight
+    gemm<F>(
+        'N',
+        'N',
+        batch_size,
+        dims_in,
+        dims_out,
+        1.,
+        grad,
+        batch_size,
+        const_cast<F*>(weight),
+        dims_out,
+        1.,
+        input_grad,
+        batch_size
+    );
+    // weight_grad += output_grad.T * input
+    gemm<F>(
+        'T',
+        'N',
+        dims_out,
+        dims_in,
+        batch_size,
+        1.,
+        grad,
+        batch_size,
+        const_cast<F*>(input),
+        batch_size,
+        1.,
+        weight_grad,
+        dims_out
+    );
+    // bias_grad += sum_i output_grad_ij
+    std::vector<F> ones(batch_size, 1.);
+    gemv<F>(
+        'T',
+        batch_size,
+        dims_out,
+        1.,
+        grad,
+        batch_size,
+        ones.data(),
+        1,
+        1.,
+        bias_grad,
+        1
+    );
+}
+
 // matmul with a float32 input and a float64 output. Everything runs in a single job,
 // because the CPU runtime offers only one barrier per instruction.
 template <typename D>
@@ -477,52 +541,126 @@ void backward_op_matmul_to_float64(
         for (std::size_t i = 0; i < batch_size * dims_out; ++i) {
             grad_f_ptr[i] = static_cast<F>(grad_ptr[i]);
         }
-        // input_grad += output_grad * weight
-        gemm<F>(
-            'N',
-            'N',
+        matmul_grads(
+            grad_f_ptr,
+            static_cast<F*>(input.data()),
+            static_cast<F*>(weight.data()),
+            static_cast<F*>(input_grad.data()),
+            static_cast<F*>(weight_grad.data()),
+            static_cast<F*>(bias_grad.data()),
             batch_size,
             dims_in,
+            dims_out
+        );
+    });
+}
+
+// matmul followed by the activation Act, with the outputs linear (before the
+// activation) and y. Everything runs in a single job, as in op_matmul_to_float64.
+template <typename Act, typename F, typename D>
+void op_matmul_activation(
+    const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
+) {
+    using T = CpuTypesT<F>;
+    auto input = locals[instruction.input_indices[0]].contiguous(device);
+    auto weight = locals[instruction.input_indices[1]].contiguous(device);
+    auto bias = locals[instruction.input_indices[2]].contiguous(device);
+    auto& linear = locals[instruction.output_indices[0]];
+    auto& output = locals[instruction.output_indices[1]];
+    std::size_t batch_size = input.size(0);
+    std::size_t dims_in = input.size(1);
+    std::size_t dims_out = weight.size(1);
+    linear = Tensor(dtype_of<F>(), {batch_size, dims_out}, device);
+    output = Tensor(dtype_of<F>(), {batch_size, dims_out}, device);
+    if (batch_size == 0) {
+        return;
+    }
+
+    device.sync_barrier();
+    device.submit([=, lin = linear, out = output]() mutable {
+        auto* lin_ptr = static_cast<F*>(lin.data());
+        auto* out_ptr = static_cast<F*>(out.data());
+        gemm<F>(
+            'N',
+            'T',
+            batch_size,
             dims_out,
+            dims_in,
             1.,
-            grad_f_ptr,
+            static_cast<F*>(input.data()),
             batch_size,
             static_cast<F*>(weight.data()),
             dims_out,
-            1.,
-            static_cast<F*>(input_grad.data()),
+            0.,
+            lin_ptr,
             batch_size
         );
-        // weight_grad += output_grad.T * input
-        gemm<F>(
-            'T',
-            'N',
-            dims_out,
-            dims_in,
-            batch_size,
-            1.,
-            grad_f_ptr,
-            batch_size,
+        add_bias(lin_ptr, static_cast<F*>(bias.data()), lin_ptr, batch_size, dims_out);
+        for (std::size_t k = 0; k < batch_size * dims_out; ++k) {
+            out_ptr[k] = Act::template forward<T>(lin_ptr[k]);
+        }
+    });
+}
+
+template <typename Act, typename F, typename D>
+void backward_op_matmul_activation(
+    const CpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const D& device
+) {
+    using T = CpuTypesT<F>;
+    auto input = locals[instruction.input_indices[0]].contiguous(device);
+    auto weight = locals[instruction.input_indices[1]].contiguous(device);
+    auto linear = locals[instruction.output_indices[0]].contiguous(device);
+    auto output = locals[instruction.output_indices[1]].contiguous(device);
+    auto linear_grad = local_grads[instruction.output_indices[0]].contiguous(device);
+    auto output_grad = local_grads[instruction.output_indices[1]].contiguous(device);
+    auto& input_grad = local_grads[instruction.input_indices[0]];
+    auto& weight_grad = local_grads[instruction.input_indices[1]];
+    auto& bias_grad = local_grads[instruction.input_indices[2]];
+    std::size_t batch_size = input.size(0);
+    std::size_t dims_in = input.size(1);
+    std::size_t dims_out = weight.size(1);
+
+    if (!input_grad) {
+        input_grad =
+            Tensor(dtype_of<F>(), input.shape(), device, AllocHint::local_grad);
+    }
+    if (!weight_grad) {
+        weight_grad =
+            Tensor(dtype_of<F>(), weight.shape(), device, AllocHint::local_grad);
+    }
+    if (!bias_grad) {
+        bias_grad = Tensor(dtype_of<F>(), {1, dims_out}, device, AllocHint::local_grad);
+    }
+    if (batch_size == 0) {
+        return;
+    }
+    Tensor grad(dtype_of<F>(), {batch_size, dims_out}, device);
+
+    device.sync_barrier();
+    device.submit([=]() mutable {
+        auto* grad_ptr = static_cast<F*>(grad.data());
+        auto* lin_ptr = static_cast<F*>(linear.data());
+        auto* out_ptr = static_cast<F*>(output.data());
+        auto* lin_grad_ptr = static_cast<F*>(linear_grad.data());
+        auto* out_grad_ptr = static_cast<F*>(output_grad.data());
+        // the gradient of linear also gets the contributions of its other uses
+        for (std::size_t k = 0; k < batch_size * dims_out; ++k) {
+            grad_ptr[k] = lin_grad_ptr[k] +
+                Act::template backward<T>(lin_ptr[k], out_ptr[k], out_grad_ptr[k]);
+        }
+        matmul_grads(
+            static_cast<const F*>(grad_ptr),
             static_cast<F*>(input.data()),
-            batch_size,
-            1.,
+            static_cast<F*>(weight.data()),
+            static_cast<F*>(input_grad.data()),
             static_cast<F*>(weight_grad.data()),
-            dims_out
-        );
-        // bias_grad += sum_i output_grad_ij
-        std::vector<F> ones(batch_size, 1.);
-        gemv<F>(
-            'T',
-            batch_size,
-            dims_out,
-            1.,
-            grad_f_ptr,
-            batch_size,
-            ones.data(),
-            1,
-            1.,
             static_cast<F*>(bias_grad.data()),
-            1
+            batch_size,
+            dims_in,
+            dims_out
         );
     });
 }

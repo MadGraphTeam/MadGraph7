@@ -4,7 +4,7 @@ import re
 
 import pytest
 import torch
-from madspace_testing import generator, new_context, rand, randn
+from madspace_testing import ON_GPU, generator, new_context, rand, randn
 
 import madspace as ms
 from madspace.torch import FunctionModule
@@ -79,6 +79,8 @@ FUSED_NAMES = (
     "convert_float64",
     "matmul_float32",
     "matmul_to_float64",
+    "leaky_relu_float32",
+    "matmul_leaky_relu_float32",
     "select_with_float32",
     "rqs_forward_with_float32",
     "rqs_inverse_with_float32",
@@ -109,19 +111,21 @@ def test_conversion_lowering_graph(direction):
     flow = make_flow("lowering")
     function = getattr(flow, f"{direction}_function")()
     before = instruction_counts(function)
-    after = instruction_counts(ms.fuse_conversions(function))
+    after = instruction_counts(ms.fuse_instructions(function))
     spline = "rqs_forward" if direction == "forward" else "rqs_inverse"
     # every MLP of the flow converts its input and its output
     assert before["convert_float32"] == before["convert_float64"] == 4
     assert "convert_float32" not in after and "convert_float64" not in after
     assert after["matmul_to_float64"] == 4
     assert after["select_with_float32"] + after[f"{spline}_with_float32"] == 4
-    # the unfused matmuls are the hidden layers
-    assert after["matmul_float32"] == before["matmul_float32"] - 4
+    # the hidden layers fuse their activation
+    assert before["leaky_relu_float32"] == after["matmul_leaky_relu_float32"] == 8
+    assert "matmul_float32" not in after and "leaky_relu_float32" not in after
     # the original function is not modified, and the pass is idempotent
     assert instruction_counts(function) == before
     assert (
-        instruction_counts(ms.fuse_conversions(ms.fuse_conversions(function))) == after
+        instruction_counts(ms.fuse_instructions(ms.fuse_instructions(function)))
+        == after
     )
 
 
@@ -148,7 +152,7 @@ def test_conversion_lowering_numerics(direction, monkeypatch):
             if not lowered:
                 mp.setenv("MADSPACE_NO_FUSION", "1")
             module = FunctionModule(
-                ms.fuse_conversions(function) if lowered else function, ctx
+                ms.fuse_instructions(function) if lowered else function, ctx
             )
             r_grad = r.clone().requires_grad_()
             out, det = module(r_grad)
@@ -163,3 +167,56 @@ def test_conversion_lowering_numerics(direction, monkeypatch):
         torch.testing.assert_close(lowered_t, ref_t, rtol=1e-12, atol=1e-12)
     for name, grad in results[True][3].items():
         torch.testing.assert_close(grad, results[False][3][name], rtol=1e-4, atol=1e-6)
+
+
+ACTIVATIONS = ("relu", "leaky_relu", "elu", "gelu", "sigmoid", "softplus")
+
+
+@pytest.mark.parametrize("precision", ["float32", "float64"])
+@pytest.mark.parametrize("activation", ACTIVATIONS)
+def test_matmul_activation(activation, precision, monkeypatch):
+    """An MLP with fused activations agrees with the unfused one. The two round
+    alike, except that the CPU runs the fused activation with the scalar instead of
+    the SIMD functions, which differ for the transcendental ones."""
+    g = generator(31)
+    dtype = getattr(ms.DataType, precision)
+    torch_dtype = getattr(torch, precision)
+    mlp = ms.MLP(
+        5, 3, 8, 3, getattr(ms.MLP, activation), f"act_{activation}_{precision}", dtype
+    )
+    ctx = new_context()
+    mlp.initialize_globals(ctx, 7)
+    for name in ctx.global_names():
+        weights = ctx.get_global(name).torch()
+        weights[:] = randn(weights.shape, generator=g, dtype=torch.float64).to(
+            weights.dtype
+        )
+    function = mlp.function()
+    lowered = ms.fuse_instructions(function)
+    assert instruction_counts_any(lowered, f"matmul_{activation}_{precision}") == 2
+    assert instruction_counts_any(lowered, f"{activation}_{precision}") == 0
+
+    x = randn((97, 5), generator=g, dtype=torch.float64)
+    y_grad = randn((97, 3), generator=g, dtype=torch.float64)
+    results = {}
+    for fused in (True, False):
+        with monkeypatch.context() as mp:
+            if not fused:
+                mp.setenv("MADSPACE_NO_FUSION", "1")
+            module = FunctionModule(lowered if fused else function, ctx)
+            xs = x.clone().requires_grad_()
+            y = module(xs)
+            (y * y_grad).sum().backward()
+            results[fused] = [
+                y.detach(),
+                xs.grad,
+                *(p.grad.clone() for p in module.global_params.values()),
+            ]
+    exact = ON_GPU or activation in ("relu", "leaky_relu")
+    tol = 0 if exact else (1e-5 if torch_dtype == torch.float32 else 1e-12)
+    for fused_t, ref_t in zip(results[True], results[False]):
+        torch.testing.assert_close(fused_t, ref_t, rtol=tol, atol=tol)
+
+
+def instruction_counts_any(function, name):
+    return len(re.findall(rf"\b{name}\(", str(function)))
