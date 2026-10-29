@@ -723,3 +723,61 @@ def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
             theirs = madloop[key]
             error = abs(ours - theirs) / max(abs(ours), abs(theirs), scale)
             assert error <= 1e-8, (fixture, k, key, ours, theirs)
+
+
+# ---------------------------------------------------------------- self-test
+
+
+@pytest.mark.loop_physics
+def test_self_test_evaluates_the_prepared_ew_virtual(loop_native):
+    """``pyamplicol self-test`` loads the shipped prepared EW virtual (no
+    generation) and its Born and Laurent coefficients equal MadLoop's."""
+
+    from pyamplicol._internal.selftest_virtual_ew import RELATIVE_TOLERANCE
+    from pyamplicol.diagnostics import _prepared_virtual_check, run_self_test
+
+    check = _prepared_virtual_check()
+    assert check.status == "pass", check.detail
+    assert "loop_qcd_qed_sm" in check.detail and "3 points" in check.detail
+    assert RELATIVE_TOLERANCE <= 1e-9
+    assert "physics-virtual-prepared" in {item.name for item in run_self_test().checks}
+
+
+@pytest.mark.loop_fast
+def test_prepared_self_test_is_a_named_warning_without_symbolica(monkeypatch):
+    import builtins
+
+    from pyamplicol import diagnostics
+
+    original = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "symbolica" or name.startswith("symbolica."):
+            raise ModuleNotFoundError("blocked", name="symbolica")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    check = diagnostics._prepared_virtual_check()
+    assert check.status == "warning"
+    assert "Symbolica" in check.detail
+
+
+@pytest.mark.loop_nightly
+def test_prepared_ew_self_test_artifact_is_the_public_route_output(
+    loop_native, tmp_path
+):
+    """Regenerating the shipped artifact through the public route
+    (``generate_ew_self_test_artifact``) gives bitwise its values: the shipped
+    copy is current."""
+
+    import json
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    output = tmp_path / "artifact"
+    selftest.generate_ew_self_test_artifact(output, tmp_path / "cache")
+    assert selftest.evaluate(output, expected) == selftest.evaluate(
+        root / "artifact", expected
+    )
