@@ -162,16 +162,16 @@
       "conventions": {"CMSParam": "1 (set by MG5's change_mass_to_complex_scheme)", "LogSwitch": "1 (fixed by the restriction card)", "GfRedefinitionChoice": "1 (fixed by the restriction card: alpha_Gmu = sqrt(2) Gf |mu_W^2 (1 - mu_W^2/mu_Z^2)| / pi)", "ghost_widths": "zero (the UFO's ghosts carry no width; MadLoop's loop denominators use the complex mass)"}
     },
     "qcd-cms": {
-      "description": "QCD corrections in MG5's loop_sm under the complex-mass scheme with a top width only: the loop_sm_cms_top copy of MG5 3.7.0's loop_sm whose restrict_default.dat is restrict_no_b_mass.dat with WZ = WW = WH = 0 (so MG5's transform creates CMASS_MT only and never switches loop_sm's electroweak inputs, which an internal-mass W with a width would trigger); alpha = 1/aEWM1 fixed with Gf and MZ (MW derived at tree level), WT at the card value 1.4915; no CMSParam in loop_sm.",
-      "restriction": "default",
-      "madloop_model": "{reference}/models/loop_sm_cms_top",
-      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173"},
+      "description": "QCD corrections in MG5's loop_sm-no_b_mass under the complex-mass scheme with a top width only. MG5 3.7.0 refuses loop_sm under CMS unless its electroweak inputs switch ('sminputs (2,) not define' whenever no W width is set at import), and with the card's W width it switches loop_sm to (aEWM1, MZ, MW) inputs (change_electroweak_mode); MW is therefore set to the tree-level value the qcd scheme derives from (aEWM1, Gf, MZ), so every coupling equals the alpha_fixed scheme's. WT at the card value 1.4915, WZ = WW = WH = 0 at run time (only the top mass is complex); no CMSParam in loop_sm.",
+      "restriction": "no_b_mass",
+      "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "MZ": "91.188", "MW": "80.4190024457561601055171371731", "MH": "125", "MT": "173"},
       "fixed_parameters": {"MB": "0", "MTA": "0", "WT": "1.4915", "WZ": "0", "WW": "0", "WH": "0"},
-      "electroweak_inputs": "alpha_fixed",
+      "electroweak_inputs": "alpha_mw",
       "complex_mass_scheme": true,
       "active_flavours": 5,
       "loop_quark_flavours": 6,
-      "conventions": {"CMSParam": "absent (loop_sm)", "ghost_widths": "zero"}
+      "conventions": {"CMSParam": "absent (loop_sm)", "electroweak_inputs": "MG5's CMS switch of loop_sm to (aEWM1, MZ, MW); MW = the qcd scheme's tree-level value", "ghost_widths": "zero"}
     },
     "ew-gmu-ckm": {
       "description": "The ew-gmu values on the loop_qcd_qed_sm_Gmu restriction ckm (restrict_ckm.dat): complex CKM from the card's Wolfenstein values (lamWS = 0.2253, AWS = 0.808, rhoWS = 0.132, etaWS = 0.341), massive b (MB = ymb = 4.7) and tau (MTA = ymtau = 1.777), all widths zero.",
@@ -1085,6 +1085,44 @@
       "madloop": {"process": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "gg_ttx_ew_tech",
       "parameter_overrides": {"epsIR": "0"}
+    },
+    {
+      "name": "pp_emep_ew_aa",
+      "role": "msm",
+      "msm_row": "MP01",
+      "pdgs": [22, 22, 11, -11],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "p p > e- e+ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "madloop_export_of": "pp_emep_ew",
+      "multiparticle": true
+    },
+    {
+      "name": "pp_ttx_ew_ga",
+      "role": "msm",
+      "msm_row": "MP02",
+      "pdgs": [21, 22, 6, -6],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "corrections": ["QCD", "EW"],
+      "scheme": "ew-gmu",
+      "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "madloop_export_of": "pp_ttx_ew",
+      "multiparticle": true
+    },
+    {
+      "name": "pp_ttx_ew_aa",
+      "role": "msm",
+      "msm_row": "MP02",
+      "pdgs": [22, 22, 6, -6],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "QCD",
+      "corrections": ["QCD", "EW"],
+      "scheme": "ew-gmu",
+      "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "madloop_export_of": "pp_ttx_ew",
+      "multiparticle": true
     },
     {
       "name": "uux_ddxssx",
