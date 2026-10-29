@@ -39,7 +39,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
+
+from pyamplicol.loops.shipped_profiles import LOOP_SM_SCHEME
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "src/pyamplicol/models/loop_color_declarations/loop_sm.json"
@@ -242,15 +245,11 @@ FIELDS = {
     "t": {0: "CF"},
     "G": {0: "TF", 1: "TF", 2: "TF"},
 }
-SCHEME = {
-    "dimensional_regularization": "HV",
-    "external_states": "physical-four-dimensional",
-    "gamma5": "source-UFO-four-dimensional-prescription",
-    "renormalization": "source-UFO mass-dependent decoupling",
-    "mass_scheme": "real-on-shell",
-    "finite_restoration": "source-UFO-local-rules",
-    "model_convention": "loop_sm lhv=1 supplied QCD rules",
-}
+# The scheme of the shipped [loop.model] profile of loop_sm (MQ-MODEL's
+# ``loops.shipped_profiles``): the continuation is declared in the scheme
+# the stock model runs in, and a request refuses a continuation whose
+# scheme differs from the effective one.
+SCHEME = asdict(LOOP_SM_SCHEME)
 IDENTITIES = {
     "CA": "Nc",
     "CF": "(Nc**2-1)/(2*Nc)",

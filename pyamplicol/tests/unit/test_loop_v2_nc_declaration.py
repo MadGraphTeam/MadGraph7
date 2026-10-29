@@ -498,32 +498,39 @@ def test_lc_and_nlc_smoke_on_every_shipped_restriction(
             assert values and all(math.isfinite(float(c)) for c in values)
 
 
-SCHEME = """
-[loop.model]
-loop_coupling_orders = ["QCD"]
-uv_complete = true
-model_r2_complete = true
-[loop.model.scheme]
-dimensional_regularization = "HV"
-external_states = "physical-four-dimensional"
-gamma5 = "source-UFO-four-dimensional-prescription"
-renormalization = "source-UFO mass-dependent decoupling"
-mass_scheme = "real-on-shell"
-finite_restoration = "source-UFO-local-rules"
-model_convention = "loop_sm lhv=1 supplied QCD rules"
-"""
+@pytest.mark.loop_fast
+def test_shipped_data_scheme_is_the_shipped_loop_model_profile():
+    """The shipped continuation's scheme is the shipped [loop.model]
+    profile's (``loops.shipped_profiles.LOOP_SM_SCHEME``): a projected request
+    refuses a continuation whose scheme differs from the effective one, so a
+    drift would refuse LC and NLC on stock loop_sm."""
+
+    from dataclasses import asdict
+
+    from pyamplicol.loops.shipped_profiles import LOOP_SM_SCHEME
+
+    data = json.loads(
+        (
+            ROOT / "src/pyamplicol/models/loop_color_declarations/loop_sm.json"
+        ).read_text()
+    )
+    assert data["scheme"] == asdict(LOOP_SM_SCHEME)
 
 
 @pytest.mark.loop_physics
-def test_public_route_lc_on_loop_sm_needs_no_declaration(
-    loop_sm_compiled_model, loop_native, tmp_path
-):
-    """The public route: an LC card on loop_sm with no colour declaration
-    plans and generates g g > g g (the shipped declaration, recorded in the
-    artifact's request), and the stored process evaluates at LC."""
+def test_public_route_lc_on_loop_sm_needs_no_declaration(loop_native, tmp_path):
+    """The public route on the shipped loop_sm (``model.source = "loop_sm"``,
+    the wheel's copy): an LC card with no [loop.model] and no colour
+    declaration plans and generates g g > g g (the shipped [loop.model]
+    profile and the shipped colour declaration), and the stored process
+    evaluates at LC."""
+
+    from dataclasses import asdict
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet, Runtime
     from pyamplicol.config import resolve_config
+    from pyamplicol.loops.shipped_profiles import LOOP_SM_SCHEME
+    from pyamplicol.models.loading import compile_model_source
 
     output = tmp_path / "gg-lc"
     card = tmp_path / "card.toml"
@@ -531,7 +538,7 @@ def test_public_route_lc_on_loop_sm_needs_no_declaration(
         f"""
 action = "generate"
 [model]
-source = {json.dumps(str(loop_sm_compiled_model))}
+source = "loop_sm"
 [process]
 entries = [{{expression="g g > g g", name="gg"}}]
 loop_coupling_orders = ["QCD"]
@@ -544,7 +551,6 @@ r2_strategy = "model"
 engine = "v2"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
-{SCHEME}
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
@@ -552,11 +558,15 @@ emit_api_bundle = false
 post_build_validation = false
 """
     )
+    # The dry run compiles no model source: populate the model cache first.
+    compile_model_source("loop_sm", restriction="default")
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
     generator = Generator(resolve_config(card))
     plan = generator.plan(processes)
     assert not plan.unsupported_features, plan.unsupported_features
-    assert REFUSAL in " ".join(plan.estimated_coverage["loop_admission_refusals"])
+    coverage = plan.estimated_coverage
+    assert REFUSAL in " ".join(coverage["loop_admission_refusals"])
+    assert coverage["model_declaration"]["scheme"] == asdict(LOOP_SM_SCHEME)
     generator.generate(processes, output)
     runtime = Runtime.load(output)
     result = runtime.evaluate([POINT_GG], mu_r2="1000000")
