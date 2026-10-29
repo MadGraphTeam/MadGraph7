@@ -61,7 +61,12 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   request reaches) whose coupling orders hold a requested correction has
   an empty label (``unlabelled_counterterm_vertices``).
   ``require_labelled_counterterms_for_veto`` refuses such a request before
-  any tree, naming the vetoed species and those vertices.
+  any tree, naming the vetoed species and those vertices. It is also the
+  [U2] anomaly guard of electroweak corrections on such models: a veto that
+  breaks an anomaly-free multiplet (a quark of a doublet, a whole lepton
+  generation) removes a species perturbative in the electromagnetic
+  correction and is refused here; QCD corrections take the Levi-Civita
+  cells' guard (``ct_recursion``, "Anomalous vetoes"; WP3.2 EWI-7).
 * ``loop-vertex-outside-tree-model`` (fail-closed-2, a guard): loop lines
   read the colour and Lorentz structures of their vertices from the
   request's tree model (one set of conventions for loops, blocks and the
@@ -206,9 +211,12 @@ LOOP_ADMISSION_REFUSALS = (
         "loop content; unlabelled terms show that this model's labels do not",
         "the complete corrections (no particle_veto of their loop species), or "
         "a model whose counterterm terms each declare their loop content",
-        "WP3.2 EWI-7 ([U2] veto guard; C1 UV certifier)",
-        "vetoed loops removed from unlabelled counterterm couplings, or the "
-        "veto certified against the loops",
+        "a UFO whose counterterm couplings are split by loop content (MG5_aMC's "
+        "NLOCT electroweak counterterms are not), or WP3.5 C1 (UV certifier)",
+        "per-loop-content counterterm couplings from the model; the C1 "
+        "certifier can certify a veto's UV poles, not the on-shell finite "
+        "parts of the counterterms, so photon-only corrections on these UFOs "
+        "stay refused (WP3.2 EWI-7)",
     ),
     LoopAdmissionRefusal(
         "loop-vertex-outside-tree-model",
