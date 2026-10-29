@@ -422,6 +422,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "parameters": {
     "aS": "0.118",
     "MT": "173"
@@ -516,6 +517,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "parameters": {
     "aS": "0.118",
     "MT": "173"
@@ -608,7 +610,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A04",
@@ -674,7 +677,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A05",
@@ -740,7 +744,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A06",
@@ -820,6 +825,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -907,7 +913,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A08",
@@ -976,6 +983,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ggg_hel.json",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
@@ -1050,6 +1058,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "notes": "quark-three-gluon-component-control.json has no points of its own; the accurate run on runs/g1/uux_ggg comes from MQ-REF",
    "variants": [
     {
@@ -1216,6 +1225,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -1325,6 +1335,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -1434,6 +1445,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "ward_legs": [
     1
    ],
@@ -1505,6 +1517,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "inputs": "native",
    "catani": "none",
    "extras_pending": {
@@ -1649,6 +1662,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -1732,6 +1746,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -1836,6 +1851,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -1942,6 +1958,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -2032,7 +2049,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-10
   },
   {
    "id": "A23",
@@ -2097,6 +2115,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "inputs": "native",
    "catani": "none"
   },
@@ -2195,6 +2214,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "particle_veto": [
     6
    ],
@@ -2263,7 +2283,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A26",
@@ -2327,7 +2348,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "B01",
@@ -2416,6 +2438,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "threshold",
@@ -2587,6 +2610,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "madloop",
@@ -2729,6 +2753,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "ward_out_of_scope": [
     {
      "point": 0,
@@ -2833,6 +2858,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -2921,7 +2947,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-10
   },
   {
    "id": "B07",
@@ -2986,7 +3013,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-10
   },
   {
    "id": "B08",
@@ -3047,7 +3075,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C01",
@@ -3118,6 +3147,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "params",
@@ -3209,7 +3239,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C03",
@@ -3275,7 +3306,8 @@
      "sector": "QCD^2 QED^2",
      "coefficient": "double_pole"
     }
-   ]
+   ],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C04",
@@ -3337,6 +3369,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "z",
@@ -3422,7 +3455,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C06",
@@ -3483,7 +3517,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-10
   },
   {
    "id": "C07",
@@ -3544,7 +3579,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C08",
@@ -3605,7 +3641,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C09",
@@ -3668,6 +3705,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "pending": {
     "waits_for": "MQ-5F",
     "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
@@ -3740,6 +3778,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "notes": "stock loop_sm on the public route needs the SSS1 repair (MQ-MODEL); its reference is new (MQ-REF)"
   },
   {
@@ -3805,7 +3844,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D05",
@@ -3877,6 +3917,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -3945,6 +3986,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "notes": "the fixture's exact rational points (precision_points, exactly massless with exact momentum conservation); its rounded RAMBO points are off shell at binary64 rounding, which double-double resolves (Catani vs the virtual at 4e-14)",
    "variants": [
     {
@@ -4050,6 +4092,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -4154,6 +4197,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -4255,6 +4299,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -4358,6 +4403,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -4445,7 +4491,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D12",
@@ -4509,7 +4556,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D13",
@@ -4573,7 +4621,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D15",
@@ -4637,7 +4686,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D16",
@@ -4730,7 +4780,8 @@
     }
    ],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D17",
@@ -4794,7 +4845,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D18",
@@ -4858,7 +4910,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D19",
@@ -4922,7 +4975,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D20",
@@ -4986,7 +5040,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D21",
@@ -5059,7 +5114,8 @@
      "sector": "QCD^2 QED^4",
      "coefficient": "double_pole"
     }
-   ]
+   ],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D23",
@@ -5122,7 +5178,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D24",
@@ -5185,7 +5242,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D25",
@@ -5254,6 +5312,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "zero",
@@ -5342,7 +5401,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D27",
@@ -5406,7 +5466,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "E01",
@@ -5476,6 +5537,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -5542,7 +5604,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "E05",
@@ -5616,7 +5679,8 @@
      "sector": "QCD^2 QED^6",
      "coefficient": "double_pole"
     }
-   ]
+   ],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "E06",
@@ -5704,6 +5768,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-10,
    "variants": [
     {
      "name": "sectors",
@@ -5796,6 +5861,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -5862,7 +5928,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "F03",
@@ -5929,6 +5996,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "pending": {
     "waits_for": "MQ-5F",
     "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
@@ -5998,7 +6066,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "G01",
@@ -6087,6 +6156,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "ignored_fixed_parameters": [
     "WTau"
    ]
@@ -6177,7 +6247,8 @@
      "sector": "QCD^4 QED^2",
      "coefficient": "double_pole"
     }
-   ]
+   ],
+   "reference_tolerance": 1e-12
   },
   {
    "id": "H01",
@@ -6244,6 +6315,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "ckm_relation": {
     "twin_process": "u d~ > w+ g",
     "numerator": [
@@ -6318,6 +6390,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "pending": {
     "waits_for": "MQ-5F",
     "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
@@ -6392,6 +6465,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "pending": {
     "waits_for": "MQ-5F",
     "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
@@ -6455,6 +6529,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
+   "reference_tolerance": 1e-12,
    "pending": {
     "waits_for": "MQ-MODEL",
     "reason": "the public route's multiparticle artifact (each subprocess = its single-process generation, bitwise) waits for the public route on loop_sm; the expansion against MadLoop's P directories and every P reference (variants M01@P0, M01@P2) run now"
@@ -6578,7 +6653,8 @@
    "unpredicted_sectors": [],
    "binary64_out_of_scope": [],
    "reference_outliers": [],
-   "vanishing": []
+   "vanishing": [],
+   "reference_tolerance": 1e-12
   }
  ]
 }

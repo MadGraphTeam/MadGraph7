@@ -370,6 +370,59 @@ def test_rule1_outliers_need_their_accuracy_and_a_second_provider():
     assert not stale.passed and stale.note == "stale outlier listing"
 
 
+def test_rule1_holds_each_row_to_its_stated_tolerance():
+    """Rule 1 at the row's ``reference_tolerance`` (user ruling 2026-10-29
+    ~01:12: 1e-10 from 2->4 up); the absolute checks stay at 1e-12 F_s."""
+
+    dd = _point("double-double", 2.0, (1.0, -3.0, 0.5))
+    high = _row(process="u u~ > d d~ s s~", reference_tolerance=1e-10)
+    off = {"madloop": (2.0, 1.0 + 5e-11, -3.0, 0.5, 0.0)}
+    checks = mqcd.rule1(high, _reference(off), 0, dd)
+    assert all(c.passed for c in checks)
+    (finite,) = [c for c in checks if c.coefficient == "finite"]
+    assert finite.bound == 1e-10 and finite.error == pytest.approx(5e-11, rel=1e-6)
+    (failed,) = [
+        c
+        for c in mqcd.rule1(
+            high, _reference({"madloop": (2.0, 1.0 + 2e-10, -3.0, 0.5)}), 0, dd
+        )
+        if not c.passed
+    ]
+    assert failed.coefficient == "finite" and failed.bound == 1e-10
+    assert not all(c.passed for c in mqcd.rule1(_row(), _reference(off), 0, dd))
+    # The absolute check of a vanishing coefficient is not widened.
+    flux = 2.0 * 0.118 / (2 * math.pi)
+    vanishing = _row(
+        process="u u~ > d d~ s s~",
+        reference_tolerance=1e-10,
+        vanishing=[{"sector": "total", "coefficient": "double_pole"}],
+    )
+    near = _point("double-double", 2.0, (1.0, -3.0, 5e-12 * flux))
+    (double,) = [
+        c
+        for c in mqcd.rule1(
+            vanishing, _reference({"madloop": (2.0, 1.0, -3.0, 0.0)}), 0, near
+        )
+        if c.coefficient == "double_pole"
+    ]
+    assert not double.passed and double.bound == pytest.approx(1e-12 * flux)
+
+
+def test_rule1_tolerance_follows_the_multiplicity(rows):
+    """1e-12 at 2->2 and 2->3, 1e-10 from 2->4 up, never above the ceiling;
+    a variant keeps its base row's."""
+
+    for name, row in rows.items():
+        final = len(row.process.split(">")[1].split())
+        expected = (
+            mqcd.REFERENCE_TOLERANCE_HIGH if final >= 4 else mqcd.REFERENCE_TOLERANCE
+        )
+        assert row.reference_tolerance == expected, name
+        assert row.reference_tolerance <= mqcd.REFERENCE_TOLERANCE_CEILING
+        if row.base and not row.subprocess:
+            assert row.reference_tolerance == rows[row.base].reference_tolerance
+
+
 def test_rule1_checks_a_vanishing_coefficient_absolutely():
     vanishing = _row(
         vanishing=[{"sector": "total", "coefficient": "double_pole"}],
