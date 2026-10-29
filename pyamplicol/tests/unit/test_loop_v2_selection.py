@@ -477,16 +477,9 @@ def _chosen(compiled, process: str, **selectors):
 
     from types import SimpleNamespace
 
-    from pyamplicol.generation.loop_service import _v2_selection
+    from pyamplicol.generation.loop_service import _SELECTORS, _v2_selection
 
-    fields = dict.fromkeys(
-        (
-            "max_color_sectors",
-            "reference_color_order",
-            "selected_color_sector_ids",
-            "selected_source_helicities",
-        )
-    )
+    fields = dict.fromkeys(_SELECTORS)
     fields.update(selectors)
     backend = SimpleNamespace(_process_selection=SimpleNamespace(**fields))
     return _v2_selection(backend, compiled, process, "p")
