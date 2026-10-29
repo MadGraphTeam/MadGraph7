@@ -128,7 +128,6 @@ class PreparedScalarBindings:
         precision=None,
         backend=None,
         parameters=None,
-        stability=None,
     ):
         return NativeScalarBindings(
             self,
@@ -136,7 +135,6 @@ class PreparedScalarBindings:
             precision=precision,
             backend=backend,
             parameters=parameters,
-            stability=stability,
         )
 
 
@@ -349,15 +347,6 @@ class SourceBindingFailure(ArithmeticError):
         super().__init__(f"{stage}: {detail}")
 
 
-@dataclass(frozen=True, slots=True)
-class _SourceFailure:
-    stage: str
-    detail: str
-
-    def exception(self):
-        return SourceBindingFailure(self.stage, self.detail)
-
-
 def _require_source_finite(values, stage):
     rows = values.nonfinite_rows()
     if rows:
@@ -366,30 +355,13 @@ def _require_source_finite(values, stage):
 
 @dataclass(frozen=True, slots=True)
 class NativeScalarSnapshot:
-    """Exact admitted global state, with either checked buffers or a failure."""
+    """Exact admitted global state with its checked buffers."""
 
-    _arguments: Any = field(repr=False)
-    _values: Any = field(repr=False)
+    arguments: Any = field(repr=False)
+    values: Any = field(repr=False)
     overrides: Mapping[str, tuple[str, str]]
     revision: int
     _owner: object = field(repr=False, compare=False)
-    _failure: _SourceFailure | None = field(default=None, repr=False)
-
-    @property
-    def binding_failure_stage(self):
-        return None if self._failure is None else self._failure.stage
-
-    @property
-    def arguments(self):
-        if self._failure is not None:
-            raise self._failure.exception()
-        return self._arguments
-
-    @property
-    def values(self):
-        if self._failure is not None:
-            raise self._failure.exception()
-        return self._values
 
 
 class NativeScalarBindings:
@@ -410,7 +382,6 @@ class NativeScalarBindings:
         precision=None,
         backend=None,
         parameters=None,
-        stability=None,
     ):
         if backend is None:
             from .native import load_loop_native
@@ -425,10 +396,6 @@ class NativeScalarBindings:
         self.options = MappingProxyType(
             {"arithmetic": arithmetic, "precision": precision}
         )
-        from .stability import validate_source_stability
-
-        validate_source_stability(backend, arithmetic, precision, stability)
-        self.stability = stability
         self._update_lock = Lock()
         self._identity = object()
         self._evaluator = backend.CoefficientEvaluator(
@@ -448,35 +415,13 @@ class NativeScalarBindings:
         self._state = self._realize_snapshot(overrides, 0)
 
     def _realize_snapshot(self, overrides, revision):
-        failure = None
-        try:
-            arguments, values = self._evaluate(overrides)
-        except SourceBindingFailure as error:
-            if self.stability is None:
-                raise
-            for higher in self.stability.higher:
-                try:
-                    NativeScalarBindings(
-                        self.prepared,
-                        backend=self.backend,
-                        parameters=overrides,
-                        arithmetic=higher.arithmetic,
-                        precision=higher.precision,
-                    )
-                except SourceBindingFailure:
-                    continue
-                break
-            else:
-                raise error
-            arguments, values = None, None
-            failure = _SourceFailure(error.stage, error.detail)
+        arguments, values = self._evaluate(overrides)
         return NativeScalarSnapshot(
             arguments,
             values,
             MappingProxyType(dict(overrides)),
             revision,
             self._identity,
-            failure,
         )
 
     def snapshot(self) -> NativeScalarSnapshot:

@@ -6,6 +6,7 @@ mod ffi;
 pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape, SpinSources};
 pub use ffi::*;
 use rusticol_core::loop_execution::LoopInputs;
+use rusticol_core::loop_artifact::{LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY};
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 #[cfg(test)]
@@ -180,7 +181,15 @@ impl Runtime {
         if is_v2_artifact(path.as_ref())? {
             return Self::open_v4(path, process, parameters, r2_strategy, policy);
         }
-        Err(RusticolError::compatibility(LEGACY_ENGINE_REMOVED))
+        let verified = rusticol_core::VerifiedArtifact::open(path.as_ref())?;
+        let capabilities = &verified.manifest().runtime.required_runtime_capabilities;
+        if capabilities.iter().any(|c| c == LOOP_RUNTIME_CAPABILITY) {
+            return Err(RusticolError::compatibility(LEGACY_ENGINE_REMOVED));
+        }
+        Err(RusticolError::compatibility(format!(
+            "the loop SDK opens plan v4 virtual artifacts ({LOOP_V2_RUNTIME_CAPABILITY}) \
+             only; this artifact requires {capabilities:?}"
+        )))
     }
     /// A plan v4 process: its stored native program evaluates every point
     /// (no Python, no generation; `rusticol_loop_reduction::v2_runtime`).

@@ -10,10 +10,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
 
-from pyamplicol._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
-
 from .errors import ConfigurationError
-from .models import Action, ProcessEntry, RunConfig
+from .models import LOOP_ENGINE_REMOVED, Action, ProcessEntry, RunConfig
 from .registry import (
     CONFIG_SECTIONS,
     FIELD_REGISTRY,
@@ -28,10 +26,7 @@ _DataclassT = TypeVar("_DataclassT")
 # mapping, dedicated CLI option or dotted override).
 REMOVED_FIELDS = MappingProxyType(
     {
-        "loop.engine": (
-            f"configuration field 'loop.engine' was removed: "
-            f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
-        ),
+        "loop.engine": LOOP_ENGINE_REMOVED,
     }
 )
 

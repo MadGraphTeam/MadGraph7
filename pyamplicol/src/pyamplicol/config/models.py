@@ -23,14 +23,21 @@ if TYPE_CHECKING:
 from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
 
+# The removed engine switch, refused by name wherever it is set (TOML,
+# mapping, overrides, the CLI: ``config.resolver.REMOVED_FIELDS``, and
+# ``LoopConfig(engine=...)``).
+LOOP_ENGINE_REMOVED = (
+    "configuration field 'loop.engine' was removed: "
+    f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+)
 # The precision-rescue policy left with the legacy engine (refused by name in
 # EvaluationStabilityConfig, which keeps only its defaults).
 EVALUATION_STABILITY_REMOVED = (
     "evaluation.stability (the precision-rescue policy: higher carriers, "
     "tolerances, verify_successful) was removed with the legacy one-loop "
-    f"engine: {LEGACY_LOOP_ENGINE_REMOVED}; v2 loop runtimes return stability "
-    "estimates (evaluation.stability_checks) and leave precision escalation to "
-    "the caller; delete the setting"
+    "engine; v2 loop runtimes return stability estimates "
+    "(evaluation.stability_checks) and leave precision escalation to the "
+    "caller; delete the setting"
 )
 
 
@@ -1505,10 +1512,7 @@ class LoopConfig:
         # The removed engine switch is refused with its reason, as in TOML,
         # overrides and the CLI (``config.resolver``).
         if "engine" in kwargs:
-            raise ConfigurationError(
-                "configuration field 'loop.engine' was removed: "
-                f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
-            )
+            raise ConfigurationError(LOOP_ENGINE_REMOVED)
         return object.__new__(cls)
 
     def __post_init__(self) -> None:

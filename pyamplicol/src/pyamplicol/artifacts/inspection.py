@@ -3130,8 +3130,7 @@ def _loop_process_inspection(
             for value in _sequence(metadata.get("poles"), context)
         ),
         stability_checks=tuple(
-            str(value)
-            for value in _sequence(metadata.get("stability_checks"), context)
+            str(value) for value in _sequence(metadata.get("stability_checks"), context)
         ),
         rescue_policy=_string(metadata.get("rescue_policy"), context),
         plan_sha256=_string(execution.get("plan_sha256"), str(execution_path)),
