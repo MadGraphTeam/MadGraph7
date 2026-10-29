@@ -150,6 +150,27 @@ def _precision(text: str):
     return Precision.arbitrary(int(digits))
 
 
+def slice_request(spec: dict, declaration, accuracy: str = "full"):
+    """The ``SliceRequest`` of a request JSON (``request`` entry) at
+    ``accuracy`` with the colour declaration ``declaration``, contracted
+    directly. Optional ``corrections`` (correction orders)."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    corrections = spec.get("corrections")
+    return SliceRequest(
+        spec["process"],
+        spec["born"],
+        spec["loop"],
+        corrections=None if corrections is None else tuple(corrections),
+        fixed_parameters=spec.get("fixed_parameters", {}),
+        particle_veto=tuple(spec.get("particle_veto", ())),
+        accuracy=accuracy,
+        colour_declaration=declaration,
+        colour_contraction="direct",
+    )
+
+
 def request_main(argv: list[str]) -> None:
     """The ``request`` entry (module docstring)."""
 
@@ -159,7 +180,7 @@ def request_main(argv: list[str]) -> None:
 
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2 import dag_input
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import (
         resolve_loop_color_declaration,
@@ -181,15 +202,7 @@ def request_main(argv: list[str]) -> None:
                 **spec["identities"],
             },
         )
-    request = SliceRequest(
-        spec["process"],
-        spec["born"],
-        spec["loop"],
-        fixed_parameters=spec.get("fixed_parameters", {}),
-        particle_veto=tuple(spec.get("particle_veto", ())),
-        colour_declaration=declaration,
-        colour_contraction="direct",
-    )
+    request = slice_request(spec, declaration)
     if spec.get("ward"):
         ward_main(compiled, request, spec, precision_text, counter)
         return
