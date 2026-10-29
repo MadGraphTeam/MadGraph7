@@ -839,6 +839,26 @@
       "madloop": {"process": "g u > e+ ve d QED=2 [virt=QCD]"}
     },
     {
+      "name": "uux_wpwmg_4fs",
+      "role": "mqcd",
+      "mqcd_row": "D28",
+      "pdgs": [2, -2, 24, -24, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "u u~ > w+ w- g QED=2 [virt=QCD]"}
+    },
+    {
+      "name": "bbx_wpwmg",
+      "role": "mqcd",
+      "mqcd_row": "D29",
+      "pdgs": [5, -5, 24, -24, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "b b~ > w+ w- g QED=2 [virt=QCD]"}
+    },
+    {
       "name": "gg_ttxh",
       "role": "mqcd",
       "mqcd_row": "E01",
