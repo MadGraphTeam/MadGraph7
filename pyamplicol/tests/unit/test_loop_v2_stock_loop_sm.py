@@ -747,6 +747,14 @@ def test_public_route_on_the_shipped_loop_sm_equals_madloop(
     _generator(text, card).generate(_processes(expression), tmp_path / "artifact")
     runtime = Runtime.load(tmp_path / "artifact", process="p")
     assert runtime.inspect()["color_accuracy"] == "full"
+    # The artifact records the model's spelling; any letter case selects it.
+    recorded = runtime.inspect()["process"]
+    assert (
+        Runtime.load(tmp_path / "artifact", process=recorded.swapcase()).inspect()[
+            "process_id"
+        ]
+        == "p"
+    )
     points = reference["points"]
     scales = [1.0e6] * len(points)
     carriers = {
@@ -794,3 +802,42 @@ def test_self_test_virtual_is_a_named_warning_without_symbolica(monkeypatch):
     check = diagnostics._virtual_check()
     assert check.status == "warning"
     assert "needs Symbolica" in check.detail
+
+
+@pytest.mark.loop_fast
+def test_process_selection_takes_any_letter_case_of_the_model_spelling(monkeypatch):
+    """A loop artifact records the model's spelling (loop_sm's gluon is
+    ``G``; a multiparticle request's subprocesses have no other name), and
+    ``Runtime.load(..., process=...)`` follows the public spelling rule of
+    requests: the exact spelling first, then a unique letter-case-insensitive
+    match, as the tree artifacts' selector; a match that is not unique names
+    the stable ids."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import EvaluationError
+    from pyamplicol.artifacts import process_groups
+    from pyamplicol.loops.v2 import artifact
+
+    monkeypatch.setattr(process_groups, "read_process_groups", lambda root: None)
+
+    def manifest(*expressions):
+        return SimpleNamespace(
+            processes=tuple(
+                {"id": f"p_{k}", "expression": expression}
+                for k, expression in enumerate(expressions, 1)
+            ),
+            default_process_id=None,
+            root=None,
+        )
+
+    found = manifest("u u~ > t t~", "G G > t t~")
+    assert artifact._select(found, "g  g > t t~")[0]["id"] == "p_2"
+    assert artifact._select(found, "G G > T T~")[0]["id"] == "p_2"
+    assert artifact._select(found, "p_1")[0]["id"] == "p_1"
+    with pytest.raises(EvaluationError, match="has no process 'g g > b b~'"):
+        artifact._select(found, "g g > b b~")
+    twins = manifest("a a > t t~", "A A > t t~")
+    assert artifact._select(twins, "A A > t t~")[0]["id"] == "p_2"
+    with pytest.raises(EvaluationError, match=r"ambiguous.* p_1, p_2"):
+        artifact._select(twins, "a A > t t~")

@@ -947,28 +947,53 @@ def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]
             raise EvaluationError(
                 "this artifact holds several processes; select one with process="
             )
-    normalized = " ".join(process.split())
     for record in records:
         if record["id"] == process:
-            return record, None
-    for record in records:
-        if " ".join(str(record["expression"]).split()) == normalized:
             return record, None
     from pyamplicol.artifacts.process_groups import read_process_groups
 
     groups = read_process_groups(manifest.root)
-    for representative, group in (groups.groups if groups else {}).items():
-        for member in group.members:
-            if member.process_id != representative and (
-                member.process_id == process
-                or " ".join(member.expression.split()) == normalized
-            ):
-                if str(member.basis) != "exact-loop-flavor":
-                    break
-                for record in records:
-                    if record["id"] == representative:
-                        return record, member
+    # The public spelling rule of requests (processes.model.
+    # resolve_model_particle_name): the exact spelling first, then a unique
+    # letter-case-insensitive match, as the tree artifacts' selector compares
+    # lower-cased tokens (rusticol-core normalize_process_expression). The
+    # artifact records the model's spelling (loop_sm's gluon is ``G``), so
+    # ``g g > t t~`` selects ``G G > t t~``.
+    for fold in (False, True):
+        wanted = _selector_text(process, fold=fold)
+        matches = [
+            record
+            for record in records
+            if _selector_text(str(record["expression"]), fold=fold) == wanted
+        ]
+        if fold and len(matches) > 1:
+            choices = ", ".join(sorted(str(record["id"]) for record in matches))
+            raise EvaluationError(
+                f"process expression {process!r} is ambiguous; select one of "
+                f"these stable ids: {choices}"
+            )
+        if matches:
+            return matches[0], None
+        for representative, group in (groups.groups if groups else {}).items():
+            for member in group.members:
+                if member.process_id != representative and (
+                    member.process_id == process
+                    or _selector_text(member.expression, fold=fold) == wanted
+                ):
+                    if str(member.basis) != "exact-loop-flavor":
+                        break
+                    for record in records:
+                        if record["id"] == representative:
+                            return record, member
     raise EvaluationError(f"artifact has no process {process!r}")
+
+
+def _selector_text(expression: str, *, fold: bool) -> str:
+    """A process expression as ``_select`` compares it: whitespace-normalised
+    and, with ``fold``, lower-cased per token."""
+
+    tokens = expression.split()
+    return " ".join(token.lower() for token in tokens) if fold else " ".join(tokens)
 
 
 def _json_payload(manifest: Any, path: str) -> dict[str, Any]:
