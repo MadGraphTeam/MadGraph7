@@ -135,6 +135,34 @@ auto gpublas_gemm(Args... args) {
     }
 }
 
+// out[j * batch_size + i] += bias[j], over the output of a gemm
+template <typename F>
+__global__ void
+kernel_add_bias(std::size_t total, std::size_t batch_size, const F* bias, F* out) {
+    std::size_t i = blockDim.x * static_cast<std::size_t>(blockIdx.x) + threadIdx.x;
+    if (i < total) {
+        out[i] += bias[i / batch_size];
+    }
+}
+
+// out[j * batch_size + i] = double(tmp[...] + bias[j]): bias, convert to float64 in
+// one pass, rounding exactly like kernel_add_bias followed by a conversion
+template <typename F>
+__global__ void kernel_bias_to_double(
+    std::size_t total,
+    std::size_t batch_size,
+    const F* __restrict__ tmp,
+    const F* __restrict__ bias,
+    double* __restrict__ out
+) {
+    std::size_t i = blockDim.x * static_cast<std::size_t>(blockIdx.x) + threadIdx.x;
+    if (i < total) {
+        out[i] = static_cast<double>(tmp[i] + bias[i / batch_size]);
+    }
+}
+
+// the bias is added after the gemm (beta = 0), so that matmul_to_float64 rounds
+// exactly like matmul followed by convert_float64
 template <typename F>
 void op_matmul(
     const GpuRuntime::Instruction& instruction,
@@ -154,14 +182,13 @@ void op_matmul(
     output = Tensor(
         dtype_of<F>(), {batch_size, dims_out}, device, instruction.output_alloc_hints[0]
     );
-    output.copy_from(bias, device);
     if (batch_size == 0) {
         return;
     }
 
     gpublasHandle_t handle = instruction.runtime.gpublas_handle();
     check_error(gpublasSetStream(handle, device.stream()));
-    F alpha = 1., beta = 1.;
+    F alpha = 1., beta = 0.;
     check_error(
         gpublas_gemm<F>(
             handle,
@@ -180,25 +207,19 @@ void op_matmul(
             batch_size
         )
     );
+    std::size_t total = batch_size * dims_out;
+    launch_kernel(
+        kernel_add_bias<F>,
+        total,
+        device.stream(),
+        total,
+        batch_size,
+        static_cast<const F*>(bias.data()),
+        static_cast<F*>(output.data())
+    );
     input.reset(device);
     weight.reset(device);
     bias.reset(device);
-}
-
-// out[j * batch_size + i] = double(tmp[...] + bias[j]): bias, convert to float64 in
-// one pass over the output of a float32 gemm
-template <typename F>
-__global__ void kernel_bias_to_double(
-    std::size_t total,
-    std::size_t batch_size,
-    const F* __restrict__ tmp,
-    const F* __restrict__ bias,
-    double* __restrict__ out
-) {
-    std::size_t i = blockDim.x * static_cast<std::size_t>(blockIdx.x) + threadIdx.x;
-    if (i < total) {
-        out[i] = static_cast<double>(tmp[i] + bias[i / batch_size]);
-    }
 }
 
 // matmul of float32 inputs with the float32 -> float64 conversion of the result
@@ -1268,9 +1289,8 @@ void op_unweight(
     gpuStream_t stream = device.stream();
 
     if (batch_size == 0) {
-        indices = Tensor(
-            DataType::dt_int32, {0}, device, instruction.output_alloc_hints[0]
-        );
+        indices =
+            Tensor(DataType::dt_int32, {0}, device, instruction.output_alloc_hints[0]);
         uw_weights = Tensor(
             DataType::dt_float64, {0}, device, instruction.output_alloc_hints[1]
         );
@@ -1751,8 +1771,9 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     // MADSPACE_NO_FUSION disables the lowering of precision conversions, to compare
     // the fused and the unfused instructions
     Function function = sort_breadth_first(
-        std::getenv("MADSPACE_NO_FUSION") ? function_arg
-                                          : fuse_conversions(function_arg)
+        std::getenv("MADSPACE_NO_FUSION")
+            ? function_arg
+            : fuse_conversions(function_arg)
     );
 
     _locals_init.resize(function.locals().size());

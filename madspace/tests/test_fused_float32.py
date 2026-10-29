@@ -39,7 +39,7 @@ def matmul_module(fused):
     return FunctionModule(fb.function(), new_context())
 
 
-def test_matmul_to_float64():
+def test_matmul_to_float64(monkeypatch):
     g = generator(77)
     x = randn((N, DIMS_IN), generator=g, dtype=torch.float32, requires_grad=True)
     w = randn((DIMS_OUT, DIMS_IN), generator=g, dtype=torch.float32, requires_grad=True)
@@ -48,14 +48,20 @@ def test_matmul_to_float64():
 
     results = []
     for fused in (True, False):
-        xs, ws, bs = (t.detach().clone().requires_grad_() for t in (x, w, b))
-        y = matmul_module(fused)(xs, ws, bs)
-        assert y.dtype == torch.float64
-        (y * y_grad).sum().backward()
-        results.append((y.detach(), xs.grad, ws.grad, bs.grad))
+        with monkeypatch.context() as mp:
+            # the GPU runtime would lower the unfused graph as well
+            if not fused:
+                mp.setenv("MADSPACE_NO_FUSION", "1")
+            xs, ws, bs = (t.detach().clone().requires_grad_() for t in (x, w, b))
+            y = matmul_module(fused)(xs, ws, bs)
+            assert y.dtype == torch.float64
+            (y * y_grad).sum().backward()
+            results.append((y.detach(), xs.grad, ws.grad, bs.grad))
 
     y_ref = (x @ w.T + b).double()
     torch.testing.assert_close(results[0][0], y_ref, rtol=1e-5, atol=1e-5)
+    # the fused output rounds exactly like matmul + convert_float64
+    torch.testing.assert_close(results[0][0], results[1][0], rtol=0, atol=0)
     # the gradients through the fused and the unfused graph agree
     for fused_t, unfused_t in zip(results[0], results[1]):
         torch.testing.assert_close(fused_t, unfused_t, rtol=1e-4, atol=1e-4)
@@ -114,7 +120,9 @@ def test_conversion_lowering_graph(direction):
     assert after["matmul_float32"] == before["matmul_float32"] - 4
     # the original function is not modified, and the pass is idempotent
     assert instruction_counts(function) == before
-    assert instruction_counts(ms.fuse_conversions(ms.fuse_conversions(function))) == after
+    assert (
+        instruction_counts(ms.fuse_conversions(ms.fuse_conversions(function))) == after
+    )
 
 
 @pytest.mark.parametrize("direction", ["forward", "inverse"])
@@ -154,7 +162,4 @@ def test_conversion_lowering_numerics(direction, monkeypatch):
     for lowered_t, ref_t in zip(results[True][:3], results[False][:3]):
         torch.testing.assert_close(lowered_t, ref_t, rtol=1e-12, atol=1e-12)
     for name, grad in results[True][3].items():
-        torch.testing.assert_close(
-            grad, results[False][3][name], rtol=1e-4, atol=1e-6
-        )
-
+        torch.testing.assert_close(grad, results[False][3][name], rtol=1e-4, atol=1e-6)

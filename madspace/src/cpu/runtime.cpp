@@ -248,26 +248,40 @@ void op_matrix_element(
     );
 }
 
+// out[j * batch_size + i] = in[...] + bias[j] after a gemm with beta = 0, in the
+// precision F of the matmul. matmul and matmul_to_float64 share it to round alike.
+template <typename F, typename O>
+void add_bias(
+    const F* in, const F* bias, O* out, std::size_t batch_size, std::size_t dims_out
+) {
+    for (std::size_t j = 0; j < dims_out; ++j) {
+        for (std::size_t i = 0; i < batch_size; ++i) {
+            std::size_t k = j * batch_size + i;
+            out[k] = static_cast<O>(in[k] + bias[j]);
+        }
+    }
+}
+
 template <typename F, typename D>
 void op_matmul(
     const CpuRuntime::Instruction& instruction, TensorVec& locals, const D& device
 ) {
     auto input = locals[instruction.input_indices[0]].contiguous(device);
     auto weight = locals[instruction.input_indices[1]].contiguous(device);
-    auto bias_orig = locals[instruction.input_indices[2]];
-    auto bias = bias_orig.contiguous(device);
+    auto bias = locals[instruction.input_indices[2]].contiguous(device);
     auto& output = locals[instruction.output_indices[0]];
     std::size_t batch_size = input.size(0);
     std::size_t dims_in = input.size(1);
     std::size_t dims_out = weight.size(1);
     output = Tensor(dtype_of<F>(), {batch_size, dims_out}, device);
-    output.copy_from(bias_orig, device);
     if (batch_size == 0) {
         return;
     }
 
     device.sync_barrier();
-    device.submit([=]() mutable {
+    device.submit([=, out = output]() mutable {
+        auto* out_ptr = static_cast<F*>(out.data());
+        auto* bias_ptr = static_cast<F*>(bias.data());
         gemm<F>(
             'N',
             'T',
@@ -279,10 +293,11 @@ void op_matmul(
             batch_size,
             static_cast<F*>(weight.data()),
             dims_out,
-            1.,
-            static_cast<F*>(output.data()),
+            0.,
+            out_ptr,
             batch_size
         );
+        add_bias(out_ptr, bias_ptr, out_ptr, batch_size, dims_out);
     });
 }
 
@@ -400,11 +415,6 @@ void op_matmul_to_float64(
     device.submit([=, out = output]() mutable {
         auto* tmp_ptr = static_cast<float*>(tmp.data());
         auto* bias_ptr = static_cast<float*>(bias.data());
-        for (std::size_t j = 0; j < dims_out; ++j) {
-            for (std::size_t i = 0; i < batch_size; ++i) {
-                tmp_ptr[j * batch_size + i] = bias_ptr[j];
-            }
-        }
         gemm<float>(
             'N',
             'T',
@@ -416,14 +426,13 @@ void op_matmul_to_float64(
             batch_size,
             static_cast<float*>(weight.data()),
             dims_out,
-            1.,
+            0.,
             tmp_ptr,
             batch_size
         );
-        auto* out_ptr = static_cast<double*>(out.data());
-        for (std::size_t i = 0; i < batch_size * dims_out; ++i) {
-            out_ptr[i] = tmp_ptr[i];
-        }
+        add_bias(
+            tmp_ptr, bias_ptr, static_cast<double*>(out.data()), batch_size, dims_out
+        );
     });
 }
 
