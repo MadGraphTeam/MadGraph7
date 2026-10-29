@@ -91,13 +91,22 @@ def test_real_declared_colour_generation_and_saved_components(
     assert resolved.born_shape == (1, 1, 16, components)
     assert resolved.born_color_ids == resolved.virtual_color_ids
     assert runtime.physics.color_flows == ()
-    # Engine v2: LC resolves per seed-basis column, NLC is one contraction.
+    # LC resolves per seed-basis column, each leading-colour flow anchored to
+    # its Born basis element (the flows ``evaluate(color_flows=...)``
+    # selects); NLC is one contraction.
     if accuracy == "lc":
         assert all(value.startswith("basis-") for value in resolved.born_color_ids)
+        assert runtime.physics.reduction.kind == "born-anchored-interference"
+        anchored = {
+            index
+            for anchor in runtime.physics.born_anchored_color_components
+            for index in anchor.born_term_indices
+        }
+        assert anchored == set(range(components))
     else:
         assert resolved.born_color_ids == ("nlc",)
-    assert runtime.physics.reduction.kind == "contracted-color"
-    assert runtime.physics.born_anchored_color_components == ()
+        assert runtime.physics.reduction.kind == "contracted-color"
+        assert runtime.physics.born_anchored_color_components == ()
     total = resolved.total()
     assert total.values[0][0] == pytest.approx(inclusive.values[0][0], rel=3e-10)
     assert total.born_values[0] == pytest.approx(inclusive.born_values[0], rel=3e-10)
