@@ -356,8 +356,10 @@ class V2ObservablesRuntime:
             self._parameters.update(parameters)
 
     def clear(self) -> None:
+        """Release the native executors; the spin vectors set by
+        ``set_spin_correlation_vectors`` stay (the public contract,
+        docs/user/python-api.md)."""
         with self._lock:
-            self._spin_vectors = {}
             self._native = {}
 
     # -- executors --------------------------------------------------------------
@@ -407,6 +409,9 @@ class V2ObservablesRuntime:
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
 
+        if not points:
+            # An empty batch is valid (as for ``evaluate``): no native call.
+            return [], {}
         if self._executor == "native":
             try:
                 return (
