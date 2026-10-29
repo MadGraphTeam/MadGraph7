@@ -119,6 +119,69 @@ def _local_numerator(native, vertex, particles):
     return native.expand_couplings(graph.vertices[0].numerator_expression())
 
 
+def test_structural_zero_mass_alias_is_named_zero_under_either_hepkit(
+    source, monkeypatch
+):
+    """The published Community 3.0.2 HepKit classifies a mass alias that
+    resolves to an exact zero (``t``: ``Zalias = ZERO + 0``) as massless but
+    keeps its source symbol, where the integration kernel's (9cdc2949) gives
+    mass 0 and exports ZERO. Emulated here on the classification model: the
+    structure names ZERO for it, so the native model is byte for byte the one
+    of the installed HepKit (the v2 families would otherwise read a derived
+    mass of value zero, and the propagator would keep a massive form)."""
+
+    from symbolica import S
+    from symbolica.community import hepkit as hep
+
+    raw = load_raw_loop_model(source, restriction="full")
+    reference = build_covariant_structure(raw).native.to_json()
+
+    real = hep.Model
+    texts: list[str] = []
+
+    class PublishedParticle:
+        def __init__(self, particle, mass):
+            self._particle, self._mass = particle, mass
+
+        @property
+        def mass(self):
+            if self._particle.is_massless and self._mass != "ZERO":
+                return S(f"UFO::{self._mass}")
+            return self._particle.mass
+
+        def __getattr__(self, name):
+            return getattr(self._particle, name)
+
+    class PublishedClassification:
+        def __init__(self, text):
+            self._model = real.from_json(text)
+            self._masses = {p["name"]: p["mass"] for p in json.loads(text)["particles"]}
+
+        def particle(self, name):
+            return PublishedParticle(self._model.particle(name), self._masses[name])
+
+        def __getattr__(self, name):
+            return getattr(self._model, name)
+
+    class PublishedModel:
+        @staticmethod
+        def from_json(text):
+            texts.append(text)
+            if len(texts) == 1:
+                return PublishedClassification(text)
+            return real.from_json(text)
+
+    monkeypatch.setattr(hep, "Model", PublishedModel)
+    emulated = build_covariant_structure(raw)
+    assert len(texts) == 2
+    assert PublishedClassification(texts[0]).particle("t").mass == S("UFO::Zalias")
+    assert {p["name"]: p["mass"] for p in json.loads(texts[1])["particles"]}["t"] == (
+        "ZERO"
+    )
+    assert emulated.native.to_json() == reference
+    assert emulated.raw.record("particles", "t")["fields"]["mass"]["name"] == "Zalias"
+
+
 def test_structural_adapter_requires_declared_gauge_and_same_scalar_source(source):
     raw = load_raw_loop_model(source, restriction="full")
     result = build_covariant_structure(raw)
@@ -423,7 +486,7 @@ def test_fixed_lepton_masses_and_yukawas_remove_exactly_zero_source_vertices(gmu
 def test_fixed_gmu_masses_preserve_native_graph_family_denominators(gmu):
     from symbolica import S
 
-    from pyamplicol.loops.graphs import build_loop_process
+    from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
     zeros = (
         "aEW0M1",

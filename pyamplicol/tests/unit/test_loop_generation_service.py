@@ -10,8 +10,6 @@ from pyamplicol.config import resolve_config
 from pyamplicol.correlators import CorrelatorConfig
 from pyamplicol.generation.correlated import correlated_configuration
 from pyamplicol.generation.loop_service import (
-    _graph_plan,
-    _order_bounds,
     _revalidate_v2_point,
     _validate_v2_points,
 )
@@ -29,15 +27,6 @@ def loop_config(**sections):
     }
     data.update(sections)
     return resolve_config(data)
-
-
-def test_public_order_ceilings_keep_lower_sectors_and_joint_corrections():
-    # Integers in the internal graph API mean exact orders. Public maxima must
-    # keep zero/lower Born orders, and both coordinates grow for joint selection.
-    born, loop = _order_bounds({"QCD": 2, "QED": 2, "BSM": 1}, ("QCD", "QED"))
-    assert born == {"QCD": (0, 2), "QED": (0, 2), "BSM": (0, 1)}
-    assert loop == {"QCD": (0, 4), "QED": (0, 4), "BSM": (0, 1)}
-    assert _order_bounds({}, ("QCD",)) == ({}, {})
 
 
 def test_absent_loop_metadata_is_a_dry_run_blocker_not_tree_generation(tmp_path):
@@ -104,149 +93,6 @@ def test_pending_loop_features_are_reported_before_model_work(
     )
     plan = backend.plan(ProcessSet((ProcessRequest.parse("g g > g g"),)))
     assert any(reason in item for item in plan.unsupported_features)
-
-
-def test_absent_correction_bound_does_not_rewrite_other_order_ceilings():
-    # An omitted coordinate is unbounded in both the tree and graph APIs.
-    # Selecting QCD must not enlarge the explicit QED ceiling or invent a QCD
-    # Born constraint; graph eligibility remains authoritative.
-    born, loop = _order_bounds({"QED": 2, "BSM": 1}, ("QCD",))
-    assert born == loop == {"QED": (0, 2), "BSM": (0, 1)}
-    assert "QCD" not in born and "QCD" not in loop
-
-
-@pytest.mark.parametrize("accuracy", ["full", "lc", "nlc"])
-def test_exact_flavor_request_attempts_proof_for_each_accuracy(accuracy):
-    from pyamplicol.generation.loop_service import (
-        _feature_blockers,
-        _flavor_grouping_enabled,
-        _flavor_grouping_outcome,
-    )
-
-    backend = GenerationBackend(
-        loop_config(
-            process={"loop_coupling_orders": ["QCD"], "flavor_blind": True},
-            color={"accuracy": accuracy, "contraction": "direct"},
-        ),
-        None,
-    )
-    processes = ProcessSet((ProcessRequest.parse("g g > g g"),))
-    assert not _feature_blockers(backend, processes)
-    assert _flavor_grouping_enabled(backend, None)
-    assert _flavor_grouping_enabled(
-        backend, CorrelatorConfig(spin_correlations=((1,),))
-    )
-    outcome = _flavor_grouping_outcome(backend, None)
-    assert outcome["requested"] and not outcome["reuse_applied"]
-    assert outcome["transport_checked"]
-    assert outcome["independent_reason"]
-
-
-@pytest.mark.parametrize("correlated", [False, True])
-@pytest.mark.parametrize("error", [NotImplementedError, ValueError])
-def test_flavor_partition_only_falls_back_for_optional_capability(
-    monkeypatch, correlated, error
-):
-    from types import SimpleNamespace
-
-    from pyamplicol.generation.loop_service import _prepare_flavor_color_components
-    from pyamplicol.loops import color_components
-
-    bare = SimpleNamespace(
-        born_color_components=None, born_color_tensors=(), _prepared_process=None
-    )
-    model = SimpleNamespace(color_accuracy="lc", bare=bare, _prepared_model=None)
-
-    def unavailable(_):
-        raise error("unavailable canonical tensor")
-
-    monkeypatch.setattr(color_components, "prepare_born_color_components", unavailable)
-    if correlated and error is NotImplementedError:
-        _prepare_flavor_color_components(model, correlated=True)
-        assert bare.born_color_components is None
-    else:
-        with pytest.raises(error, match="unavailable canonical tensor"):
-            _prepare_flavor_color_components(model, correlated=correlated)
-
-
-def test_dry_run_transports_joint_selection_to_one_graph_plan(monkeypatch):
-    from pyamplicol.loops.graphs import GraphSelectionConvention
-    from pyamplicol.loops.orders import (
-        BornLoopPair,
-        LoopContribution,
-        LoopEligibility,
-        compile_order_plan,
-    )
-
-    born = (("QCD", 2),)
-    loop = (("QCD", 2), ("QED", 2))
-    mixed = LoopEligibility(
-        (frozenset({"QCD", "QED"}), frozenset({"QCD"}), frozenset({"QED"})),
-        frozenset({"QCD", "QED"}),
-    )
-    calls = []
-
-    def graph_plan(process, **kwargs):
-        calls.append(kwargs)
-        orders = compile_order_plan(
-            selected_corrections=kwargs["selected_corrections"],
-            perturbative_orders=kwargs["perturbative_orders"],
-            born_orders=(born,),
-            contributions=(LoopContribution("mixed-box", loop, mixed),),
-            allowed_pairs=(BornLoopPair(born, loop),),
-        )
-        assert [item.id for item in orders.contributions] == ["mixed-box"]
-        return SimpleNamespace(
-            orders=orders,
-            born=(object(),),
-            loops=(object(),),
-            families=(object(),),
-            convention=GraphSelectionConvention(),
-        )
-
-    external = SimpleNamespace(
-        incoming=(1, -1),
-        outgoing=(2, -2),
-        external_pdgs=(1, -1, 2, -2),
-        to_dict=lambda: {"normalization": {"divisor": 36}},
-    )
-    prepared = SimpleNamespace(
-        structure=SimpleNamespace(
-            native=object(),
-            perturbative_species_orders={},
-            raw=SimpleNamespace(
-                collections={
-                    "coupling_orders": [
-                        {"name": name, "fields": {"perturbative_expansion": 1}}
-                        for name in ("QCD", "QED")
-                    ]
-                }
-            ),
-        ),
-        counterterms=SimpleNamespace(process=lambda *_: object()),
-        scope=SimpleNamespace(
-            born_order_bounds={"QCD": (0, 2), "QED": (0, 2)},
-            loop_order_bounds={"QCD": (0, 4), "QED": (0, 4)},
-        ),
-    )
-    entry = SimpleNamespace(
-        request=SimpleNamespace(name="mixed", expression="u u~ > d d~"),
-        process_ir=SimpleNamespace(initial_pdgs=(2, -2), final_pdgs=(1, -1)),
-    )
-    monkeypatch.setattr(
-        "pyamplicol.generation.loop_service.prepare_loop_external_request",
-        lambda *_: external,
-    )
-    monkeypatch.setattr(
-        "pyamplicol.generation.loop_service.build_loop_process", graph_plan
-    )
-    result = _graph_plan(prepared, entry, ("QCD", "QED"))
-    assert len(calls) == 1
-    assert calls[0]["selected_corrections"] == ("QCD", "QED")
-    assert result["orders"]["correction_names"] == ("QCD", "QED")
-    assert result["orders"]["virtual"][0]["order"] == (("QCD", 4), ("QED", 2))
-    assert result["loop_graph_count"] == 1
-    assert result["numerator_and_reducer_capabilities_checked"] is False
 
 
 @pytest.mark.parametrize(
@@ -362,156 +208,12 @@ def test_public_colour_scheme_mismatch_fails_before_preparation(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "pyamplicol.generation.loop_service.prepare_loop_request_model",
+        "pyamplicol.loops.v2.assemble.prepare_request_model",
         lambda *a, **kw: pytest.fail("mismatched scheme reached source preparation"),
     )
     plan = backend.plan(ProcessSet((ProcessRequest.parse("g g > g g"),)))
     assert plan.unsupported_features == (
         "source colour continuation and effective loop scheme differ",
-    )
-
-
-def test_colour_owner_is_bound_once_per_actual_inferred_order_scope(monkeypatch):
-    from pyamplicol.generation import loop_service as service
-
-    backend, _ = _colour_backend(
-        monkeypatch, "nlc", lambda scheme: SimpleNamespace(scheme=scheme)
-    )
-    requests = ProcessSet(
-        tuple(
-            ProcessRequest.parse(text, name=name)
-            for name, text in (
-                ("dy", "u u~ > e- e+"),
-                ("dy2", "d d~ > e- e+"),
-                ("gg", "g g > g g"),
-            )
-        )
-    )
-    entries = tuple(
-        SimpleNamespace(request=request, process_ir=index)
-        for index, request in enumerate(requests.requests)
-    )
-    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: entries)
-    monkeypatch.setattr(
-        service,
-        "infer_minimal_coupling_order_limits",
-        lambda index, **kw: {"QED": 2, "QCD": 0} if index < 2 else {"QCD": 2, "QED": 0},
-    )
-    fixed = {"lhv": ("1", "0")}
-    monkeypatch.setattr(service, "source_color_fixed_parameters", lambda *a: fixed)
-    prepared_calls, colour_calls = [], []
-
-    def prepare(*args, **kwargs):
-        owner = SimpleNamespace(scope=kwargs, structure=SimpleNamespace(diagnostics=()))
-        prepared_calls.append(owner)
-        return owner
-
-    def colour(owner, data, *, scheme):
-        continuation = SimpleNamespace(owner=owner, data=data, scheme=scheme)
-        colour_calls.append(continuation)
-        return owner, continuation
-
-    monkeypatch.setattr(service, "prepare_loop_request_model", prepare)
-    monkeypatch.setattr(service, "prepare_declared_source_color", colour)
-    context = service._prepare(backend, requests, None, planning=True, phase=None)
-    assert len(prepared_calls) == len(colour_calls) == 2
-    assert context.prepared[0] is context.prepared[1]
-    assert context.source_colors[0] is context.source_colors[1]
-    assert context.prepared[2] is not context.prepared[0]
-    assert all(
-        c.owner is p
-        for c, p in zip(context.source_colors, context.prepared, strict=True)
-    )
-    assert all(p.scope["fixed_parameters"] == fixed for p in context.prepared)
-    assert context.prepared[0].scope["loop_order_bounds"] == {
-        "QED": (0, 2),
-        "QCD": (0, 2),
-    }
-    assert context.prepared[2].scope["loop_order_bounds"] == {
-        "QCD": (0, 4),
-        "QED": (0, 0),
-    }
-    plan = service._plan_result(backend, requests, (), context=context)
-    assert plan.estimated_coverage["source_colour_declared"] is True
-    assert plan.estimated_coverage["formal_colour_process_coverage_checked"] is False
-
-
-def test_full_colour_keeps_original_source_path_without_reading_colour_data(
-    monkeypatch,
-):
-    from pyamplicol.generation import loop_service as service
-
-    backend, _ = _colour_backend(
-        monkeypatch,
-        "full",
-        lambda _: pytest.fail("full colour consumed formal declaration"),
-    )
-    requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
-    entry = SimpleNamespace(request=requests.requests[0], process_ir=object())
-    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: (entry,))
-    monkeypatch.setattr(
-        service, "infer_minimal_coupling_order_limits", lambda *a, **kw: {"QCD": 2}
-    )
-    calls = []
-    monkeypatch.setattr(
-        service,
-        "prepare_loop_request_model",
-        lambda *a, **kw: calls.append(kw) or object(),
-    )
-    monkeypatch.setattr(
-        service,
-        "prepare_declared_source_color",
-        lambda *a, **kw: pytest.fail("full colour bound continuation"),
-    )
-    context = service._prepare(backend, requests, None, planning=False, phase=None)
-    assert calls[0]["fixed_parameters"] is None
-    assert context.source_colors == (None,)
-    assert context.color_declaration is None
-
-
-def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
-    monkeypatch, tmp_path
-):
-    from pyamplicol.generation import loop_service as service
-    from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-    from pyamplicol.models.loop_import import load_raw_loop_model
-
-    from .test_loop_model_restrictions import source as restriction_source
-
-    # Use the existing exact UFO/card fixture: MASS 991 is fixed to zero.
-    path = restriction_source.__wrapped__(tmp_path)
-    raw = load_raw_loop_model(path)
-    backend, _ = _colour_backend(
-        monkeypatch,
-        "nlc",
-        lambda scheme: LoopColorDeclaration(
-            scheme=scheme,
-            formal_symbol="Nc",
-            parameter_identities={},
-            kernel_keys=(),
-            field_keys=(),
-            scheme_parameter_values={"M": "1"},
-        ),
-    )
-    compiled = SimpleNamespace(raw_loop_model=raw)
-    monkeypatch.setattr(backend, "_artifact_model", lambda *_: compiled)
-    requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
-    entry = SimpleNamespace(request=requests.requests[0], process_ir=object())
-    monkeypatch.setattr(backend, "_expand_process_set", lambda *a: (entry,))
-    monkeypatch.setattr(
-        service, "infer_minimal_coupling_order_limits", lambda *a, **kw: {}
-    )
-    monkeypatch.setattr(
-        service,
-        "prepare_loop_request_model",
-        lambda model, **kwargs: prepare_loop_request_model(
-            model.raw_loop_model, **kwargs
-        ),
-    )
-    plan = backend.plan(requests)
-    assert plan.unsupported_features == (
-        "fixed parameter 'M' contradicts the source restriction",
     )
 
 
@@ -564,101 +266,10 @@ def test_virtual_full_physics_summary_retains_saved_history_labels():
     assert "directed interference" in text
 
 
-@pytest.mark.parametrize("corrections", [("QED",), ("QCD", "QED")])
-def test_cold_directed_completion_uses_the_authoritative_producer_scope(corrections):
-    from pyamplicol.loops.physical_model_correlations import (
-        require_directed_model_scope,
-    )
-    from pyamplicol.loops.prepared_correlations import prepare_directed_model
-
-    model = SimpleNamespace(
-        r2_strategy="direct",
-        color_accuracy="full",
-        color_projection=None,
-        bare=SimpleNamespace(
-            order_layout=SimpleNamespace(correction_names=corrections)
-        ),
-    )
-    # The actual completion strategy is checked before prepared state or tensor
-    # algebra; a correction name alone does not establish that capability.
-    for operation in (
-        lambda: require_directed_model_scope(model),
-        lambda: prepare_directed_model(model, None),
-    ):
-        with pytest.raises(NotImplementedError, match="requires model R2"):
-            operation()
-
-
-@pytest.mark.parametrize("failure", ["coverage", "owner"])
-def test_full_auto_missing_colour_capability_uses_fresh_direct_owner(
-    monkeypatch, failure
-):
-    from pyamplicol.generation import loop_service as service
-    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
-    from pyamplicol.models.loop_preparation import LoopPreparation
-
-    backend = GenerationBackend(
-        loop_config(color={"accuracy": "full", "contraction": "auto"}), None
-    )
-    original, continuation, direct_result = object(), object(), object()
-    context = SimpleNamespace(
-        resolved=SimpleNamespace(compiled=original),
-        corrections=("QCD",),
-        preparation=LoopPreparation(),
-    )
-    bounds = dict(born_order_bounds={"QCD": (0, 2)}, loop_order_bounds={"QCD": (0, 4)})
-    calls = []
-
-    def compile_formal(*args, **options):
-        assert options["source_color"] is continuation
-        if failure == "owner":
-            raise ValueError("source colour and scalar program owners differ")
-        raise SourceColorCapabilityUnavailable(
-            "selected kernel has no declared continuation"
-        )
-
-    prepared = SimpleNamespace(scope=SimpleNamespace(**bounds), compile=compile_formal)
-
-    def prepare_direct(compiled, **options):
-        assert compiled is original and options == {
-            **bounds,
-            "fixed_parameters": None,
-            "compatibility": None,
-            "covariant_multiplets": None,
-        }
-        calls.append("fresh")
-
-        def compile_direct(*args, **kwargs):
-            assert args == ((21, 21), (21, 21))
-            assert kwargs["source_color"] is None and kwargs["color_accuracy"] == "full"
-            assert kwargs["selected_corrections"] == ("QCD",)
-            return direct_result
-
-        return SimpleNamespace(compile=compile_direct)
-
-    monkeypatch.setattr(service, "prepare_loop_request_model", prepare_direct)
-    entry = SimpleNamespace(
-        process_ir=SimpleNamespace(initial_pdgs=(21, 21), final_pdgs=(21, 21))
-    )
-    if failure == "coverage":
-        result, reason = service._compile_color_operation(
-            backend, context, prepared, entry, continuation
-        )
-        assert (
-            result is direct_result
-            and "no declared continuation" in reason
-            and calls == ["fresh"]
-        )
-    else:
-        with pytest.raises(ValueError, match="owners differ"):
-            service._compile_color_operation(
-                backend, context, prepared, entry, continuation
-            )
-        assert calls == []
-
-
 def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
     from pyamplicol.generation.loop_service import _check_correlators, _feature_blockers
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
     requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
     for contraction in ("auto", "symmetric-group-fft"):
@@ -666,9 +277,21 @@ def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
             loop_config(color={"accuracy": "full", "contraction": contraction}), None
         )
         assert not _feature_blockers(backend, requests)
-        if contraction == "symmetric-group-fft":
-            with pytest.raises(GenerationError, match="certified ordinary/resolved"):
-                _check_correlators(backend, CorrelatorConfig())
+        # No declared observable: the forced seed FFT serves the inclusive
+        # virtual; a declared one is v2's listed refusal, before preparation.
+        _check_correlators(backend, CorrelatorConfig())
+        for declared in (
+            CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
+            CorrelatorConfig(spin_correlations=((1,),)),
+            CorrelatorConfig.all_color(through_order=1),
+        ):
+            if contraction == "symmetric-group-fft":
+                with pytest.raises(GenerationError) as refused:
+                    _check_correlators(backend, declared)
+                assert isinstance(refused.value, LoopRequestUnsupported)
+                assert refused.value.key == "forced-seed-fft-unserved"
+            else:
+                _check_correlators(backend, declared)
     backend = GenerationBackend(
         loop_config(
             color={"accuracy": "full", "contraction": "auto", "fft_basis": "trace"}
@@ -676,43 +299,40 @@ def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
         None,
     )
     assert any(
-        "trace-basis conversion" in x for x in _feature_blockers(backend, requests)
+        "color.fft_basis = 'trace' is unavailable" in x
+        for x in _feature_blockers(backend, requests)
     )
 
 
-@pytest.mark.parametrize(
-    "accuracy,contraction",
-    [("full", "symmetric-group-fft"), ("nlc", "auto"), ("lc", "auto")],
-)
-def test_missing_formal_coverage_does_not_fallback_for_forced_or_projected(
-    monkeypatch, accuracy, contraction
-):
-    from pyamplicol.generation import loop_service as service
-    from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_public_preflight_defers_projected_history_proof_to_actual_owner(accuracy):
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.generation.loop_service import _check_correlators
 
-    backend = GenerationBackend(
-        loop_config(color={"accuracy": accuracy, "contraction": contraction}), None
+    backend = SimpleNamespace(
+        _run_config=SimpleNamespace(
+            color=SimpleNamespace(accuracy=accuracy, contraction="direct")
+        ),
+        # Inclusive helicity and colour selectors (``_check_correlators``
+        # refuses correlators with a leading-colour selection).
+        _process_selection=SimpleNamespace(
+            max_color_sectors=None,
+            reference_color_order=None,
+            selected_color_sector_ids=None,
+            selected_source_helicities=None,
+        ),
     )
-
-    def reject(*args, **kwargs):
-        raise SourceColorCapabilityUnavailable("selected formal field is unavailable")
-
-    monkeypatch.setattr(
-        service,
-        "prepare_loop_request_model",
-        lambda *a, **kw: pytest.fail("unexpected fallback"),
+    _check_correlators(backend, CorrelatorConfig(spin_correlations=((3,), (3, 4))))
+    _check_correlators(
+        backend, CorrelatorConfig(color_correlations=(ColorCorrelator("identity"),))
     )
-    entry = SimpleNamespace(
-        process_ir=SimpleNamespace(initial_pdgs=(21, 21), final_pdgs=(21, 21))
+    _check_correlators(
+        backend,
+        CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
     )
-    with pytest.raises(SourceColorCapabilityUnavailable, match="formal field"):
-        service._compile_color_operation(
-            backend,
-            SimpleNamespace(corrections=("QCD",)),
-            SimpleNamespace(compile=reject),
-            entry,
-            object(),
-        )
+    _check_correlators(backend, CorrelatorConfig(all_color_through_order=1))
+    with pytest.raises(TypeError, match="CorrelatorConfig"):
+        _check_correlators(backend, object())
 
 
 # ------------------------------------------------- staged v2 re-validation

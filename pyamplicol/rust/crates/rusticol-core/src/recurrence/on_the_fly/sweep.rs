@@ -3,10 +3,10 @@
 use super::source_seed::validate_permutation;
 use super::*;
 use crate::recurrence::construct::{
-    CurrentReflection, PendingReflectionCertificate, TransitionReflectionIndex,
-    current_key_with_dynamic_color, current_reflection_candidate, current_reversal_masks,
-    dynamic_color_identity_digest, pure_adjoint_word_is_canonical, reciprocal_reflection_proof,
-    source_reflection, u1_subtraction_states,
+    CurrentReflection, DiracWeylClosureGuard, PendingReflectionCertificate,
+    TransitionReflectionIndex, current_key_with_dynamic_color, current_reflection_candidate,
+    current_reversal_masks, dynamic_color_identity_digest, pure_adjoint_word_is_canonical,
+    reciprocal_reflection_proof, source_reflection, u1_subtraction_states,
 };
 use crate::recurrence::fermion_ordering::{
     FermionOrderingContext, fermion_ordering_factor, open_line_closure_factor,
@@ -1917,11 +1917,22 @@ pub(super) fn build_selected_closures(
     let mut retained = BTreeMap::<PendingClosureKey, PendingClosure>::new();
     let anchor_id = anchor_ids[0];
     let anchor_state = currents[anchor_id as usize].key.current_state_template_id();
+    let states = &templates.input().current_states;
+    let dirac_weyl = DiracWeylClosureGuard::from_state_pairs(states, closures.keys().copied());
     for complement_id in complement_ids {
         let complement_state = currents[complement_id as usize]
             .key
             .current_state_template_id();
         let Some(rows) = closures.get(&canonical_state_pair(anchor_state, complement_state)) else {
+            dirac_weyl.check(
+                states,
+                anchor_state,
+                complement_state,
+                format_args!(
+                    "the LC query anchored at slot {}",
+                    query.closure_anchor_slot
+                ),
+            )?;
             continue;
         };
         for closure in rows {

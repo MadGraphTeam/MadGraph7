@@ -129,6 +129,7 @@ from .ct_sites import (
     SiteTerm,
     generate_counterterm_sites,
     vanishes_identically,
+    vanishing_loop_vertices,
 )
 from .ct_sites import (
     Carrier as SiteCarrier,
@@ -162,14 +163,15 @@ from .poles import (
     exact_charge,
     has_poles,
     pole_mode,
-    predicted_sectors,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
     reducer_poles,
+    sector_predictions,
     sector_sum,
     select_lane,
     select_sector,
+    separated_exchange,
     split_sector,
     splits,
     strong_beta0,
@@ -178,6 +180,8 @@ from .poles import (
 from .poly_affine import MonomialLayout, leg_momentum
 from .refusals import (
     require_colour_preserving_fermion_lines,
+    require_declared_colour_fields,
+    require_declared_colour_rules,
     require_labelled_counterterms_for_veto,
     require_nc_exact,
 )
@@ -1324,6 +1328,12 @@ class PointResult:
     every renormalised component (``Laurent`` with the combined finite part;
     ``pole_origins["uv"]["virtual"]`` is the renormalised virtual's UV
     part), ``None`` otherwise.
+
+    ``loop_born`` exists with loop-side sources (the asymmetric Ward mode,
+    ``ward``): per squared Born order Re(A0^dagger G A0'), the physical Born
+    bra against the Born amplitude read on the loop side (where a gluon's
+    polarisation is c p_j it vanishes with the tree Ward identity); ``born``
+    and ``totals[0]`` stay the physical Born. ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -1335,6 +1345,7 @@ class PointResult:
     colour_contraction: str = "direct"
     poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
+    loop_born: Mapping[Orders, Any] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1397,8 +1408,18 @@ class SliceRequest:
     # recursion over the CT-lowered model (``ct_closure``), "sites" from the
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
+    # A leading-colour selection (MQ-SELECT, ``selection.Selection``): the
+    # Born helicities of some legs and the colour flows kept, to which the
+    # generation prunes its recursion; None (the default) keeps every
+    # helicity and flow (the request record then has no entry).
+    selection: Any = None
 
     def __post_init__(self) -> None:
+        if self.selection is not None and self.accuracy != "lc":
+            raise ValueError(
+                "helicity and colour-flow selection is a leading-colour option "
+                "(accuracy='lc')"
+            )
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
@@ -1427,13 +1448,30 @@ class SliceRequest:
 
 def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
     """``request`` with its correction orders resolved
-    (``ew_policy.request_corrections``): unchanged when it names them."""
+    (``ew_policy.request_corrections``) and, for LC and NLC, its colour
+    declaration: the model's own (``resolve_loop_color_declaration``: the
+    source's declaration, else the shipped one of its counterterm vertices,
+    ``models.loop_color_declarations``) when the request names none.
+    Unchanged when it names both."""
 
-    if request.corrections is not None:
-        return request
-    return replace(
-        request, corrections=ew_policy.request_corrections(compiled, request)
-    )
+    if request.corrections is None:
+        request = replace(
+            request, corrections=ew_policy.request_corrections(compiled, request)
+        )
+    raw = getattr(compiled, "raw_loop_model", None)
+    if (
+        request.accuracy != "full"
+        and request.colour_declaration is None
+        and raw is not None
+    ):
+        from pyamplicol.models.loop_color_declaration import (
+            resolve_loop_color_declaration,
+        )
+
+        declaration = resolve_loop_color_declaration(raw)
+        if declaration is not None:
+            request = replace(request, colour_declaration=declaration)
+    return request
 
 
 def check_model_parameters(
@@ -1569,7 +1607,6 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         loop_order_bounds=request.loop_order_bounds,
         fixed_parameters=fixed,
         compatibility=request.compatibility,
-        certify_primitives=False,
     )
     continuation = None
     if declaration is not None:
@@ -1864,10 +1901,22 @@ class LoopSlice:
             ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
             loop_species=_correction_species(structure, request),
         )
+        # A vertex whose couplings vanish identically at the model's
+        # restriction (a W vertex of a CKM element a diagonal-CKM restriction
+        # sets to zero) contributes nothing and the restricted tree model
+        # holds no colour or Lorentz term of it: it is no loop vertex
+        # (fail-closed-2; decided from the coupling values,
+        # ``ct_sites.restricted_to_zero``, the counterterm root closure's
+        # rule too).
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
             veto=request.particle_veto,
+            vanishing=vanishing_loop_vertices(
+                compiled,
+                prepared.model.kernels,
+                (rule["name"] for rule in data["vertex_rules"]),
+            ),
         )
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
@@ -1906,6 +1955,13 @@ class LoopSlice:
             # passes here).
             require_nc_exact(blocks, request.accuracy, request.process)
             blocks, kernels = with_ward_kernels(blocks, model, fixed)
+            if request.selection is not None and request.selection.helicities:
+                # A helicity selection keeps the selected rows of every block
+                # (``selection.restrict_rows``): Born rows, frames, dressing
+                # and the tree program follow.
+                from .selection import restrict_rows
+
+                blocks = restrict_rows(blocks, request.selection.helicities)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
@@ -2013,6 +2069,7 @@ class LoopSlice:
             else CountertermSites((), {}, (), 0)
         )
         field_rules = prepare_external_field_rules(prepared.counterterms.source)
+        source_field_rules = field_rules
         if photons is not None:
             # alpha(0)'s field-like term on each external photon (EWI-6b).
             field_rules = (
@@ -2027,6 +2084,30 @@ class LoopSlice:
             blocks.born_orders,
             forbidden=request.particle_veto,
         )
+        # LC and NLC: every source field factor an external leg takes and
+        # every counterterm rule a site closes needs declared N_c data (the
+        # recursion's rules are checked in ``counterterm_program_blocks``;
+        # ``refusals``, listed; MQ-NC). The alpha(0) photon terms are the
+        # engine's own, not source factors. Full colour (with or without a
+        # declaration) reads the source couplings at N_c = 3: no check.
+        projected = continuation if request.accuracy != "full" else None
+        require_declared_colour_fields(
+            projected,
+            (i for i in insertions if i.rule in source_field_rules),
+            request.process,
+        )
+        if program is None:
+            closed = {id(site.rule) for site in sites.sites}
+            require_declared_colour_rules(
+                projected,
+                {
+                    name: rule
+                    for name, rule in prepared.counterterms.rules.items()
+                    if id(rule) in closed
+                },
+                None,
+                request.process,
+            )
         ordinary = _ordinary_entries(prepared, data)
         root_sites = (*sites.sites, *(() if program is None else program.root_sites))
         # The root closure reads a vertex not closed under conjugation (a W
@@ -2090,6 +2171,16 @@ class LoopSlice:
                 f"the Born root closure at leg 1 has no terms at the Born "
                 f"orders {sorted(missing)} of the tree program"
             )
+        inclusive_born = born_terms
+        if request.selection is not None and request.selection.flows is not None:
+            # A leading-colour selection keeps its flows' Born tensors only
+            # (``selection.restrict_born_terms``): the basis, the seed table,
+            # the colour pruning and the Born and counterterm bras follow.
+            from .selection import restrict_born_terms
+
+            born_terms = restrict_born_terms(
+                born_terms, closure.legs, request.selection.flows
+            )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
             colour, readings, basis, compress=request.compress_colour
@@ -2151,6 +2242,8 @@ class LoopSlice:
             cancelled_cells=cancelled,
             external_photons=photons,
         )
+        if born_terms is not inclusive_born:
+            slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
@@ -2275,14 +2368,22 @@ class LoopSlice:
             raise ValueError(f"unknown colour contraction {policy!r}")
         if policy == "direct":
             return
+        from .refusals import LoopRequestUnsupported
+
         if self.request.accuracy == "lc":
             if policy == "fft":
-                raise ValueError("leading-colour seeds are contracted directly")
+                raise LoopRequestUnsupported(
+                    "forced-seed-fft-unserved",
+                    f"{self.request.process!r}: leading-colour seeds are "
+                    "contracted directly",
+                )
             return
         self.fourier = seed_fourier(self.table)
         if self.fourier is None and policy == "fft":
-            raise ValueError(
-                "the seed table has no certified symmetric-group orbit pair"
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved",
+                f"{self.request.process!r}: the seed table has no certified "
+                "symmetric-group orbit pair",
             )
 
     def _prune_colour(
@@ -2297,6 +2398,10 @@ class LoopSlice:
         """
 
         accuracy = self.request.accuracy
+        selection = self.request.selection
+        # A colour-flow selection's Born basis is its flows' tensors
+        # (``selection.restrict_born_terms``): pruned ring-aware below.
+        ring_aware = selection is not None and selection.flows is not None
         grades = self._born_grades()
         criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
@@ -2317,10 +2422,25 @@ class LoopSlice:
                 )
             return found
 
-        def keep(skeleton) -> bool:
+        def own(skeleton) -> bool:
             return any(
                 class_live(c, skeleton.orders) for c, _x in self.class_of[skeleton]
             )
+
+        keep = own
+        if ring_aware:
+            # The selected flows' basis elements only: a skeleton is kept
+            # when its ring (``SkeletonView`` readings, rotations and the
+            # reflection) is live in the plan's reading of that ring, whose
+            # seed it dresses, or in its own.
+            view = SkeletonView(self.loop_catalogue, self.colour)
+            rings: dict[Any, bool] = {}
+            for reading in rx.reading_skeletons(self.plan):
+                ring = view.view(reading).canonical
+                rings[ring] = rings.get(ring, False) or own(reading)
+
+            def keep(skeleton) -> bool:
+                return rings.get(view.view(skeleton).canonical, False) or own(skeleton)
 
         # Each surviving family keeps its frame, so the pruned schedules dress
         # the remaining skeletons exactly as before (dropped ones contributed
@@ -2670,6 +2790,136 @@ class LoopSlice:
         self._cache["born-grades"] = out
         return out
 
+    def _flow_degrees(
+        self, born_terms: Mapping[Orders, tuple[Any, ...]]
+    ) -> dict[tuple[Any, Any, Orders], int]:
+        """The leading N_c degree of the squared Born's term between two
+        colour flows ``x`` and ``y`` (``selection._item_flow`` keys) per
+        squared Born order ``s``, keyed ``(x, y, s)``, for the Born terms
+        ``born_terms`` (e.g. the unrestricted ones of a colour-flow
+        selection): the slice's grading of the Born (``_born_grades``: an
+        item's N_c power plus its coupling's grades, so the N_c grade split
+        of identical-flavour lines is included) and the exact overlaps of the
+        flows' tensors. Structural, as ``degrees``. Within one Born order the
+        cross term of two distinct flows closes fewer index loops than a
+        flow's own term, so it is below the mean of their own degrees, hence
+        below the leading degree, and only a flow's own term (``x == y``) is
+        graded there; between two Born orders (QCD and electroweak Born
+        amplitudes) a cross term can be leading (u u~ > d d~: the QCD flow
+        (2,4,3,1) with the photon's (2,1,3,4) at QCD^2 QED^2), so every pair
+        of flows is graded there."""
+
+        from .fields import field_definitions
+        from .selection import _item_flow
+
+        _plan, layout = self._scalar_plan(LAURENT_POWERS)
+        missing = {
+            (term.entry.coupling.name, 0)
+            for terms in born_terms.values()
+            for term in terms
+        } - set(layout)
+        if missing:
+            # Couplings only the unselected flows' Born terms bind.
+            _part, extra = self._scalar_part(
+                sorted(missing), field_definitions(self.fields)
+            )
+            layout = {**layout, **extra}
+        keys: dict[Orders, dict[Any, set[tuple[Any, int]]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        for order, terms in born_terms.items():
+            for term in terms:
+                grades = {g for g, _c in layout.get((term.entry.coupling.name, 0), ())}
+                for item in term.colour.terms:
+                    keys[order][_item_flow(item)].update(
+                        (item.tensor, item.nc_power + g) for g in grades
+                    )
+        out: dict[tuple[Any, Any, Orders], int] = {}
+        for a, b in product(keys, repeat=2):
+            squared = add_orders(a, b)
+            pairs = ((x, x) for x in keys[a]) if a == b else product(keys[a], keys[b])
+            for x, y in pairs:
+                for left, p in keys[a][x]:
+                    for right, q in keys[b][y]:
+                        for power, value in self.overlaps(left, right).items():
+                            if value:
+                                key = (x, y, squared)
+                                degree = power + p + q
+                                out[key] = max(out.get(key, degree), degree)
+        return out
+
+    def _refuse_inexact_flows(
+        self, inclusive: Mapping[Orders, tuple[Any, ...]]
+    ) -> None:
+        """A colour-flow selection (``selection.restrict_born_terms``) is the
+        evaluation-time selection of its flows only if, at every squared Born
+        order of the unrestricted Born ``inclusive`` (``_flow_degrees``):
+
+        * no selected flow's term with an unselected flow reaches the leading
+          degree there (the restricted Born drops it; possible between two
+          Born orders only): refused, ``interfering-colour-flows``;
+        * the selected flows' terms reach the leading degree there, or none
+          is nonzero (an exact zero there): else they would set a lower
+          degree and return a subleading value, so a selection below the
+          process's leading colour wherever it reaches it is refused,
+          ``subleading-colour-flows``. Next to a leading flow a subleading
+          one contributes exact zeros (the projection keeps the process's
+          degree P, as an evaluation-time selection of it is exactly
+          zero)."""
+
+        from .colour import outer_flow
+        from .refusals import LoopRequestUnsupported
+        from .selection import _item_flow, leading_colour_plan, plan_flows
+
+        degrees = self._flow_degrees(inclusive)
+        kept = {
+            _item_flow(item)
+            for terms in self.born_terms.values()
+            for term in terms
+            for item in term.colour.terms
+        }
+        top: dict[Orders, int] = {}
+        reached: dict[Orders, int] = {}
+        for (x, y, squared), degree in degrees.items():
+            top[squared] = max(top.get(squared, degree), degree)
+            if x in kept and y in kept:
+                reached[squared] = max(reached.get(squared, degree), degree)
+        selected = [list(w) for w in self.request.selection.flows]
+        below = [s for s, degree in sorted(reached.items()) if degree < top[s]]
+        if below or not reached:
+            orders = below or sorted(top)
+            raise LoopRequestUnsupported(
+                "subleading-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} are below the process's leading colour at "
+                f"the squared Born orders {[dict(s) for s in orders]}, and no "
+                "selected flow reaches it there",
+            )
+        crossing = {
+            (squared, y if x in kept else x)
+            for (x, y, squared), degree in degrees.items()
+            if (x in kept) != (y in kept) and degree >= top[squared]
+        }
+        if crossing:
+            # The unselected flows by their tree words (a piece of no planar
+            # flow by its strings and traces).
+            representations = {
+                leg.label: leg.representation for leg in self.closure.legs
+            }
+            plan = leading_colour_plan(self.compiled, self.request.process)
+            words = {
+                outer_flow(flow.word, representations): list(flow.word)
+                for flow in plan_flows(plan, ())
+            }
+            named = sorted((s, str(words.get(f, f))) for s, f in crossing)
+            raise LoopRequestUnsupported(
+                "interfering-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} interfere at the leading N_c power with the "
+                "unselected flows "
+                + ", ".join(f"{flow} at {dict(s)}" for s, flow in named),
+            )
+
     def degrees(
         self,
         overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
@@ -2811,6 +3061,18 @@ class LoopSlice:
         return out
 
     # -- colour correlations (IR-pole check) ------------------------------------
+
+    def unpredicted_sectors(self) -> dict[Orders, str]:
+        """The squared-order sectors without a Catani prediction and why
+        (``poles.UNPREDICTED_REASONS``, ``poles.sector_predictions``):
+        ``PointResult.ir_poles`` leaves them out, and they are checked
+        against a provider per split order only."""
+
+        return {
+            sector: reason
+            for sector, reason in _sector_predictions(self).items()
+            if reason is not None
+        }
 
     def dipoles(self) -> dict[tuple[int, int], tuple[tuple[Fraction, ...], ...]]:
         """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j.
@@ -3109,6 +3371,8 @@ class _PointEvaluation:
                         numbers,
                     )
         born = defaultdict(lambda: numbers.zero)
+        # The physical bra against the loop side's Born (loop-side sources).
+        loop_born = defaultdict(lambda: numbers.zero)
         counterterms = defaultdict(lambda: numbers.zero)
         self.amplitudes: dict[rx.Row, dict[tuple[int, Orders], Any]] = {}
         self.born_vectors: dict[rx.Row, dict[Orders, dict]] = {}
@@ -3152,6 +3416,11 @@ class _PointEvaluation:
                 born[squared] += interfere(
                     vectors[left], vectors[right], degree_of("born", squared)
                 )
+                if loop_rows is not rows:
+                    ket = self.loop_vectors[row][right]
+                    loop_born[squared] += interfere(
+                        vectors[left], ket, degree_of("born", squared)
+                    )
             loops: dict[tuple[str, int, Orders], dict] = defaultdict(dict)
             for site, terms in slice_.site_terms.items():
                 for term in terms:
@@ -3202,6 +3471,11 @@ class _PointEvaluation:
                             )
         average = self.average
         self.born = {order: value.real / average for order, value in born.items()}
+        self.loop_born = (
+            None
+            if loop_rows is rows
+            else {order: value.real / average for order, value in loop_born.items()}
+        )
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
         }
@@ -3340,7 +3614,8 @@ class _PointEvaluation:
         degrees = (
             slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
         )
-        if seeds is None:
+        own = seeds is None
+        if own:
             seeds = SectorSeeds(
                 slice_.table,
                 slice_.class_of,
@@ -3354,12 +3629,17 @@ class _PointEvaluation:
             )
         self.colour_contraction = getattr(seeds, "algorithm", "direct")
         if (
-            slice_.request.colour_contraction == "fft"
+            own
+            and slice_.request.colour_contraction == "fft"
             and self.colour_contraction != SYMMETRIC_GROUP_FFT
         ):
             # An explicit "fft" requires the FFT: the exact dressing,
-            # DoubleFloat and arbitrary precision (and observable columns)
-            # contract directly, so they refuse instead of falling back.
+            # DoubleFloat and arbitrary precision contract the sector seeds
+            # directly, so they refuse instead of falling back. Observable
+            # columns (``seeds`` given) are contracted directly by design;
+            # a forced FFT refuses them where they are declared or served
+            # (``observables.FORCED_FFT_OBSERVABLES``), and the generation's
+            # validation still runs them as its reference.
             raise ValueError(
                 "colour contraction 'fft' contracts binary64 sector seeds only; "
                 "exact, arbitrary-precision and observable seeds are contracted "
@@ -3660,6 +3940,7 @@ class _PointEvaluation:
             colour_contraction=self.colour_contraction,
             poles=self.mode,
             pole_origins=origins,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -4094,6 +4375,8 @@ class _NativePoint(_PointEvaluation):
         self.scale = scale
         self.parameters = parameters
         self.born: dict[Orders, Any] = {}
+        # With loop-side sources: the executor's loop-side Born interference.
+        self.loop_born: dict[Orders, Any] | None = None
         self.counterterms: dict = {}
         self.native_counterterms = False
         self.colour_contraction = "direct"
@@ -4142,6 +4425,7 @@ class _NativePoint(_PointEvaluation):
             dict(self.families),
             None,
             colour_contraction=self.colour_contraction,
+            loop_born=self.loop_born,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()}
@@ -4232,7 +4516,15 @@ def _interfere(
 
 class _BlockRows:
     """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
-    keyed by the contents' block names (``PositionColour.block_names``)."""
+    keyed by the contents' block names (``PositionColour.block_names``).
+
+    A row is the sum of the tree blocks of one name, chirality and helicity
+    row: the tree engine splits a field current into several DAG currents
+    whose keys differ only by the flavour flow of their trees (u u~ > w+ w- g:
+    the u current of legs {1, 3, 4} through gamma*/Z* and through a t-channel
+    d), and a loop vertex attaches their sum. ``_index`` holds per row the
+    ``(block, row)`` entries in block order; ``value`` adds their Feynman-rule
+    currents in that order (one entry: its current, as before)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
@@ -4258,7 +4550,8 @@ class _BlockRows:
                 ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
-                    bucket[key.chirality][helicities] = (block, row)
+                    entries = bucket[key.chirality].get(helicities, ())
+                    bucket[key.chirality][helicities] = (*entries, (block, row))
             slice_._cache["block-rows"] = index
         self._index = index
         self._rows = rows
@@ -4268,12 +4561,22 @@ class _BlockRows:
         return {chirality: tuple(rows) for chirality, rows in found.items()}
 
     def value(self, block, word, chirality, row, dimension):
-        tree, entry = self._index[(block.mask, block.field, block.orders, word)][
-            chirality
-        ][row]
-        variant = "source" if tree.is_source else "propagated"
-        sign = tree.wick_sign
-        return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
+        entries = self._index[(block.mask, block.field, block.orders, word)][chirality][
+            row
+        ]
+        total = None
+        for tree, entry in entries:
+            variant = "source" if tree.is_source else "propagated"
+            sign = tree.wick_sign
+            current = tuple(
+                sign * value for value in self._rows[(entry.current_id, variant)]
+            )
+            total = (
+                current
+                if total is None
+                else tuple(a + b for a, b in zip(total, current, strict=True))
+            )
+        return total
 
 
 def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
@@ -4666,7 +4969,18 @@ def _correction_orders(slice_) -> ew_policy.CorrectionOrders:
 
 def _predicted_sectors(slice_) -> frozenset[Orders]:
     """The sectors whose IR poles the request's operators predict
-    (``poles.predicted_sectors``), kept in the slice's cache.
+    (``_sector_predictions``)."""
+
+    return frozenset(
+        sector
+        for sector, reason in _sector_predictions(slice_).items()
+        if reason is None
+    )
+
+
+def _sector_predictions(slice_) -> dict[Orders, str | None]:
+    """``poles.sector_predictions`` of the slice (None: predicted, else the
+    typed reason), kept in the slice's cache.
 
     A tree of an order the Born program does not hold is absent when the
     order lies within the request's Born bounds (the program holds every
@@ -4679,10 +4993,11 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
     by its power in the order): e+ e- > t t~ h has no tree of order
     g_s^2 e, which the vertex test alone cannot tell. It runs only for a
     loop order whose lower tree lies outside the Born program, once per
-    slice, at the first IR-pole prediction."""
+    slice, at the first IR-pole prediction. A correction's separated
+    exchanges are ``_born_partitions``'."""
 
     cache = slice_._cache
-    found = cache.get("predicted-sectors")
+    found = cache.get("sector-predictions")
     if found is not None:
         return found
     compiled, request = slice_.compiled, slice_.request
@@ -4722,12 +5037,131 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
         )
         return order in found
 
-    found = cache["predicted-sectors"] = predicted_sectors(
+    correction_orders = _correction_orders(slice_)
+
+    def separated(name: str, orders: frozenset[Orders]) -> bool:
+        if name == correction_orders.strong:
+            abelian = False
+            charged = frozenset(
+                leg.label for leg in slice_.basis.legs if leg.representation != 1
+            )
+        elif name == correction_orders.abelian:
+            abelian = True
+            charged = frozenset(
+                leg.index + 1
+                for leg in slice_.families.legs
+                if exact_charge(names[leg.field].charge) != 0
+            )
+        else:
+            # A correction without an operator makes no prediction anyway.
+            return False
+        partitions = _born_partitions(slice_, charged)
+        return separated_exchange(
+            (p for order in orders for p in partitions.get(order, ())),
+            abelian=abelian,
+        )
+
+    found = cache["sector-predictions"] = sector_predictions(
         slice_.sectors,
         slice_.blocks.born_orders,
         request.corrections,
         tree_exists,
+        separated,
     )
+    return found
+
+
+def _born_partitions(slice_, charged: frozenset[int]) -> dict[Orders, frozenset]:
+    """Per Born amplitude order, the partitions (``poles.Partition``) of its
+    trees: the ``charged`` leg labels grouped by the lines of species that
+    the request's corrections circulate (``perturbative_species_orders``,
+    the loop selection's species condition), kept per slice and leg set.
+
+    A recursion over the Born DAG, never over its trees: per current the
+    set of its trees' (closed components, open component) states, the open
+    one the charged legs its own line joins; a line of a species no
+    requested correction circulates closes it. A root joins the open
+    components of its currents (and of its closure vertex's leg). Without
+    such a line between charged legs every tree has one component, and no
+    state is formed."""
+
+    cache = slice_._cache.setdefault("born-partitions", {})
+    found = cache.get(charged)
+    if found is not None:
+        return found
+    dag = slice_.blocks.born_dag
+    if hasattr(dag, "materialize"):
+        dag = dag.materialize()
+    species = slice_.prepared.structure.perturbative_species_orders or {}
+    corrections = frozenset(slice_.request.corrections)
+    full = (1 << len(slice_.blocks.process.legs)) - 1
+    charged_mask = sum(1 << (label - 1) for label in charged)
+    orders = {root.root_id: root.coupling_orders for root in slice_.blocks.born_roots}
+
+    def closes(node) -> bool:
+        index = node.index
+        return (
+            not node.is_source
+            and index.auxiliary_kind is None
+            and not species.get(abs(int(index.particle_id)), frozenset()) & corrections
+        )
+
+    if not any(
+        closes(node)
+        and node.index.external_mask & charged_mask
+        and (full ^ node.index.external_mask) & charged_mask
+        for node in dag.currents
+    ):
+        one = frozenset({frozenset({charged})} if charged else {frozenset()})
+        found = cache[charged] = {order: one for order in set(orders.values())}
+        return found
+    incoming: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for interaction in dag.interactions:
+        incoming[interaction.result_id].append(
+            (interaction.left_id, interaction.right_id)
+        )
+    states: dict[int, frozenset] = {}
+    empty: frozenset = frozenset()
+
+    def current(identifier: int) -> frozenset:
+        got = states.get(identifier)
+        if got is not None:
+            return got
+        node = dag.currents[identifier]
+        if node.is_source:
+            label = node.source_leg_label
+            got = frozenset(
+                {(empty, frozenset({label}) if label in charged else empty)}
+            )
+        else:
+            joined = {
+                (closed_l | closed_r, open_l | open_r)
+                for left, right in incoming[identifier]
+                for closed_l, open_l in current(left)
+                for closed_r, open_r in current(right)
+            }
+            if closes(node):
+                joined = {
+                    (closed | frozenset({open_}) if open_ else closed, empty)
+                    for closed, open_ in joined
+                }
+            got = frozenset(joined)
+        states[identifier] = got
+        return got
+
+    out: dict[Orders, set] = defaultdict(set)
+    for root in dag.amplitude_roots:
+        left, right = dag.currents[root.left_id], dag.currents[root.right_id]
+        sink = full ^ (left.index.external_mask | right.index.external_mask)
+        vertex = frozenset(label for label in charged if sink & (1 << (label - 1)))
+        for closed_l, open_l in current(root.left_id):
+            for closed_r, open_r in current(root.right_id):
+                component = open_l | open_r | vertex
+                partition = closed_l | closed_r
+                if component:
+                    partition = partition | frozenset({component})
+                out[orders[root.id]].add(partition)
+    found = cache[charged] = {order: frozenset(p) for order, p in out.items()}
     return found
 
 

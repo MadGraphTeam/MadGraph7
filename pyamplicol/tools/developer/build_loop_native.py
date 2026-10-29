@@ -23,6 +23,20 @@ directory; by default it is ``cargo-loop-native-<profile>`` next to a set
 ``build-info.json`` also records ``RUSTFLAGS``/``CARGO_ENCODED_RUSTFLAGS`` and
 whether the source tree had uncommitted changes (provenance only).
 
+On x86-64 Linux the C dependencies (GMP, MPFR and MPC through ``gmp-mpfr-sys``,
+the ``cc``-crate objects) are compiled with the traditional TLS dialect
+(``CC="<cc> -mtls-dialect=gnu"``, after any flag of the compiler wrapper):
+TLS-descriptor objects (``-mtls-dialect=gnu2``, the default of some compiler
+wrappers) make the linked natives need ``GLIBC_ABI_GNU2_TLS``, which only
+glibc builds carrying that ABI marker define. ``gmp-mpfr-sys`` does not rebuild
+when ``CC`` changes, so a target directory whose recorded C settings
+(``pyamplicol-c-dependencies.json``) differ first drops its ``gmp-mpfr-sys``
+outputs (``cargo clean -p gmp-mpfr-sys``); its own cache is keyed by ``CC``,
+so the first build on a host compiles GMP, MPFR and MPC from source (that
+needs ``make`` and ``m4`` on ``PATH``).
+``build-info.json`` records the C settings and the glibc versions each native
+library needs (its ELF version requirements).
+
 ``stage`` publishes such a directory into a checkout's ``src/pyamplicol``
 through the source-runtime contract of ``prepare_source_runtime.py``. It
 refuses a build whose digest differs from the checkout's native inputs and
@@ -33,8 +47,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
+import platform
+import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -55,13 +73,17 @@ _OUTPUTS = {
     "librusticol_loop_sdk.a": "librusticol_loop_sdk.a",
     "librusticol_loop_sdk.so": "librusticol_loop_sdk.so",
 }
+# The traditional x86-64 TLS dialect for the C dependencies (see the module
+# docstring); the stamp records it in the Cargo target directory.
+_TRADITIONAL_TLS = "-mtls-dialect=gnu"
+_C_DEPENDENCY_STAMP = "pyamplicol-c-dependencies.json"
 _VERIFY = """
 import sys
 sys.path.insert(0, sys.argv[1])
 from pyamplicol import _rusticol
 from pyamplicol._internal.versions import verify_native_module
 verify_native_module(_rusticol)
-assert _rusticol._loop.NativeVirtualRuntime
+assert _rusticol._loop.V2Executor
 """
 
 
@@ -92,6 +114,78 @@ def _target_directory(root: Path, env: dict[str, str], explicit: Path | None) ->
     return target
 
 
+def c_dependency_environment(env: dict[str, str]) -> dict[str, str]:
+    """The ``CC`` that compiles the C dependencies with the traditional TLS dialect.
+
+    Empty off x86-64 Linux (other targets have one TLS dialect) and for a C
+    compiler that does not accept ``-mtls-dialect=gnu`` (one without a TLS
+    descriptor dialect to switch from).
+    """
+
+    if not sys.platform.startswith("linux") or platform.machine() != "x86_64":
+        return {}
+    compiler = env.get("CC", "").strip() or "cc"
+    pinned = f"{compiler} {_TRADITIONAL_TLS}"
+    try:
+        probe = subprocess.run(
+            [*shlex.split(pinned), "-x", "c", "-c", "-o", os.devnull, "-"],
+            input="",
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+    except OSError:
+        return {}
+    return {"CC": pinned} if probe.returncode == 0 else {}
+
+
+def _drop_stale_c_dependencies(
+    root: Path, target: Path, env: dict[str, str], settings: dict[str, str]
+) -> None:
+    """Rebuild gmp-mpfr-sys in ``target`` if it was built with other C settings."""
+
+    stamp = target / _C_DEPENDENCY_STAMP
+    try:
+        recorded = json.loads(stamp.read_text())
+    except (OSError, ValueError):
+        recorded = None
+    if recorded == settings:
+        return
+    if any((target / "release" / "build").glob("gmp-mpfr-sys-*")):
+        subprocess.run(
+            [
+                "cargo",
+                "clean",
+                "--release",
+                "--target-dir",
+                str(target),
+                "-p",
+                "gmp-mpfr-sys",
+            ],
+            cwd=root,
+            env=env,
+            check=True,
+        )
+
+
+def _glibc_version_needs(root: Path, paths: dict[str, Path]) -> dict[str, list[str]]:
+    """Each ELF library's ``GLIBC_*`` version requirements (``readelf -V``)."""
+
+    module = root / "src" / "pyamplicol" / "_native_loader.py"
+    spec = importlib.util.spec_from_file_location("_build_native_loader", module)
+    assert spec is not None and spec.loader is not None
+    loader = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loader)
+    needs = {}
+    for name, path in sorted(paths.items()):
+        if path.suffix == ".so":
+            names = loader.glibc_version_requirements(path)
+            if names is not None:
+                needs[name] = list(names)
+    return needs
+
+
 def build(
     root: Path, output: Path, target_dir: Path | None = None
 ) -> dict[str, object]:
@@ -114,6 +208,9 @@ def build(
         env.setdefault(key, value)
     target = _target_directory(root, env, target_dir)
     env.pop("CARGO_TARGET_DIR", None)
+    c_settings = c_dependency_environment(env)
+    env.update(c_settings)
+    _drop_stale_c_dependencies(root, target, env, c_settings)
     command = [
         "cargo",
         "build",
@@ -141,12 +238,25 @@ def build(
                 if filename.name in _OUTPUTS:
                     artifacts[_OUTPUTS[filename.name]] = filename
     if process.wait() != 0:
-        raise SystemExit(f"error: cargo build failed ({process.returncode})")
+        hint = ""
+        absent = [
+            tool
+            for tool in ("m4", "make")
+            if shutil.which(tool, path=env.get("PATH")) is None
+        ]
+        if c_settings and absent:
+            hint = (
+                "; gmp-mpfr-sys builds GMP, MPFR and MPC from source when its cache "
+                f"has no build for CC={c_settings['CC']!r}, and that needs "
+                f"{' and '.join(absent)} on PATH"
+            )
+        raise SystemExit(f"error: cargo build failed ({process.returncode}){hint}")
     missing = sorted(set(_OUTPUTS.values()) - set(artifacts))
     if missing:
         raise SystemExit(f"error: missing cargo outputs: {missing}")
     if runtime._native_build_inputs_digest(root) != digest:
         raise SystemExit("error: native build inputs changed during the build")
+    (target / _C_DEPENDENCY_STAMP).write_text(json.dumps(c_settings) + "\n")
 
     with (root / "Cargo.toml").open("rb") as stream:
         version = tomllib.load(stream)["workspace"]["package"]["version"]
@@ -168,6 +278,10 @@ def build(
         "profile": {"name": "release"}
         | {key: env[key] for key in sorted(env) if key.startswith("CARGO_PROFILE_")},
         "rustc": subprocess.check_output(["rustc", "-V"], text=True).strip(),
+        "c_dependencies": c_settings,
+        "glibc_version_needs": _glibc_version_needs(
+            root, {name: output / name for name in artifacts}
+        ),
         "files": {name: _sha256(output / name) for name in sorted(artifacts)},
     }
     (output / "build-info.json").write_text(

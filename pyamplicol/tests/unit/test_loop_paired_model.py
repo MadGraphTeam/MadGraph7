@@ -1,22 +1,14 @@
 # SPDX-License-Identifier: 0BSD
-"""Paired source values/diagnostics survive model, CT and field preparation."""
+"""Paired source values/diagnostics survive loop-model preparation
+(``loops.model.build_loop_model``, which v2's catalogue builds on)."""
 
 from __future__ import annotations
 
-import functools
-import json
 from dataclasses import replace
-from decimal import Decimal, localcontext
-from pathlib import Path
 
-import numpy as np
 import pytest
 
 from pyamplicol.loops.model import build_loop_model
-from pyamplicol.loops.physical_counterterms import (
-    distinct_flavour_model_virtual_program,
-    top_pair_model_virtual_program,
-)
 from pyamplicol.loops.scalar_frontend import lower_scalar_program
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
@@ -35,14 +27,6 @@ def raw(loop_sm_ufo, loop_native):
 @pytest.fixture(scope="module")
 def paired(raw):
     return build_loop_model(raw, scalar_program=lower_scalar_program(raw))
-
-
-def _points(name):
-    path = Path(__file__).resolve().parents[2] / "tools/loop_reference" / name
-    return np.asarray(
-        json.loads(path.read_text(), parse_float=str, parse_int=str)["points"],
-        dtype=str,
-    )
 
 
 def test_owner_and_exact_record_identity_are_preserved(raw, paired):
@@ -103,175 +87,3 @@ def test_full_ew_scalar_program_can_prepare_unsummed_model_ir(loop_gmu_ufo):
     assert model.kernels and model.scalar_program is program
     assert any(e.scalar_expression().diagnostic != 0 for e in model.kernels)
     assert not model.scheme_validated and not model.completeness_validated
-
-
-# Open defect (41ccde87): the CT Bose-slot proof requires every ordinary native
-# coupling to be owned by a paired source's scalar program, so a paired source
-# over the independent legacy control model (same coupling names, different
-# expressions) is rejected. Real paired sources compile through the generic
-# source path; this legacy-control composition needs an explicit ownership
-# decision before these controls can run again.
-_OWNERSHIP_ERROR = "ordinary native coupling overrides its source binding"
-
-
-def _legacy_control_ownership(test):
-    """Strict xfail on exactly the ownership rejection; any other error fails."""
-
-    @functools.wraps(test)
-    def checked(*args, **kwargs):
-        try:
-            return test(*args, **kwargs)
-        except ValueError as error:
-            if str(error) != _OWNERSHIP_ERROR:
-                raise AssertionError(f"unexpected ValueError: {error}") from error
-            raise
-
-    return pytest.mark.xfail(
-        raises=ValueError,
-        strict=True,
-        reason=f"41ccde87 rejects paired sources over the independent control "
-        f"model: {_OWNERSHIP_ERROR}",
-    )(checked)
-
-
-@pytest.mark.parametrize(
-    "arithmetic,precision,engine,tolerance",
-    [
-        ("double", None, "fast", Decimal("3e-13")),
-        ("double-double", None, "generic", Decimal("3e-29")),
-        ("arbitrary", 60, "generic", Decimal("3e-55")),
-    ],
-)
-@_legacy_control_ownership
-def test_paired_qcd_preserves_components_and_native_field_helpers(
-    raw, paired, arithmetic, precision, engine, tolerance
-):
-    points = _points("top_pair_qcd.json")[:2]
-    options = dict(arithmetic=arithmetic, precision=precision, reduction_engine=engine)
-    legacy = top_pair_model_virtual_program(build_loop_model(raw), **options)
-    program = top_pair_model_virtual_program(paired, **options)
-    assert all(c.scalar_program is paired.scalar_program for c in program.currents)
-    assert all(
-        c.scalar_program is paired.scalar_program for c in program.field_currents
-    )
-    assert any(c.coefficient_diagnostic != 0 for c in program.field_currents)
-    scales, inputs = ["900000", "2100000"], ["0.100000000000000000000000001", "173"]
-    old = legacy.evaluate_decimal(points, scales, model_values=inputs)
-    new = program.evaluate_decimal(points, scales, model_values=inputs)
-    with localcontext() as context:
-        context.prec = 100
-        for name in (
-            "born",
-            "virtual",
-            "bare",
-            "uv",
-            "r2",
-            "uv_local",
-            "uv_external_fields",
-        ):
-            for left, right in zip(
-                getattr(old, name).flat, getattr(new, name).flat, strict=True
-            ):
-                assert abs(Decimal(left) - Decimal(right)) < tolerance * max(
-                    abs(Decimal(left)), Decimal("1")
-                )
-    # Conditional source coefficients cannot be extracted through a value-only
-    # insertion interface even if this particular point has a safe condition.
-    with pytest.raises(NotImplementedError, match="paired scalar"):
-        program.external_fields[0].coefficient(0)
-    current = next(
-        c for c in program.currents if any(d != 0 for d in c.coefficient_diagnostics)
-    )
-    with pytest.raises(NotImplementedError, match="paired scalar"):
-        current.insertion.coefficient_substitutions(current.epsilon_power)
-
-
-def _modified_coupling(raw, expression):
-    payload = raw.to_dict()
-    # Source R2 gluon/quark vertex occurs in the already calibrated uudd control.
-    base = build_loop_model(raw)
-    entry = next(e for e in base.kernels if e.vertex_name == "V_R2GUU")
-    fields = payload["collections"]["couplings"][entry.coupling.id]["fields"]
-    old = fields["value"]
-    assert old["kind"] == "expression"
-    fields["value"] = {
-        "kind": "expression",
-        "expression": expression.format(original=old["expression"]),
-    }
-    changed = RawLoopModel.from_dict(payload)
-    return build_loop_model(changed, scalar_program=lower_scalar_program(changed))
-
-
-@pytest.mark.parametrize(
-    "arithmetic,precision",
-    [("double", None), ("double-double", None), ("arbitrary", 60)],
-)
-@_legacy_control_ownership
-def test_inactive_ct_helper_and_zero_value_diagnostic_are_checked(
-    raw, arithmetic, precision
-):
-    # cond's source helper returns one for either branch even when its invalid
-    # condition chooses a finite value. Only the paired diagnostic catches this.
-    source = _modified_coupling(
-        raw, "({original}) * (1 if MU_R < 1500 else cond(1/(MT-173),1,1))"
-    )
-    program = distinct_flavour_model_virtual_program(
-        source, arithmetic=arithmetic, precision=precision
-    )
-    points = _points("uudd_qcd.json")[:2]
-    good = program.evaluate_decimal(
-        points, ["1000000", "1000000"], model_values=[".118", "173"]
-    )
-    assert np.isfinite(good.virtual.astype(float)).all()
-    with pytest.raises(
-        ArithmeticError,
-        match=r"counterterm scalar coefficients and active diagnostics.*\[\(1, 1\)\]",
-    ):
-        program.evaluate_decimal(
-            points, ["1000000", "4000000"], model_values=[".118", "173"]
-        )
-    zero = _modified_coupling(raw, "0 if 1/(MU_R-1000) else 0")
-    zero_program = distinct_flavour_model_virtual_program(
-        zero, arithmetic=arithmetic, precision=precision
-    )
-    assert any(
-        all(v == 0 for v in c.coefficient_expressions)
-        and any(d != 0 for d in c.coefficient_diagnostics)
-        for c in zero_program.currents
-    )
-    with pytest.raises(
-        ArithmeticError, match="counterterm scalar coefficients and active diagnostics"
-    ):
-        zero_program.evaluate_decimal(
-            points[:1], ["1000000"], model_values=[".118", "173"]
-        )
-
-
-@_legacy_control_ownership
-def test_external_field_branch_keeps_ct_dependency_diagnostic(raw):
-    payload = raw.to_dict()
-    particle = next(
-        p for p in payload["collections"]["particles"] if p["fields"]["pdg_code"] == 6
-    )
-    fields = particle["fields"]["counterterm"]["entries"]
-    assert fields
-    for _key, coefficients in fields:
-        for item in coefficients["entries"]:
-            item[1] = f"({item[1]}) * (1 if MU_R < 1500 else cond(1/(MT-173),1,1))"
-    changed = RawLoopModel.from_dict(payload)
-    source = build_loop_model(changed, scalar_program=lower_scalar_program(changed))
-    program = top_pair_model_virtual_program(
-        source, arithmetic="arbitrary", precision=60
-    )
-    points = _points("top_pair_qcd.json")[:2]
-    program.evaluate_decimal(
-        points, ["1000000", "1000000"], model_values=[".118", "173"]
-    )
-    with pytest.raises(
-        ArithmeticError,
-        match=r"external-field scalar coefficients and active diagnostics"
-        r".*\[\(1, 1\)\]",
-    ):
-        program.evaluate_decimal(
-            points, ["1000000", "4000000"], model_values=[".118", "173"]
-        )

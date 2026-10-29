@@ -607,7 +607,12 @@ def build_tree_blocks(
     """Compile the blocks and the Born of one loop request.
 
     The Born is ``compile_generic_dag`` of ``process`` with
-    ``born_coupling_orders``, exactly as a tree request compiles it. Blocks are
+    ``born_coupling_orders``, as a tree request compiles it, except that a
+    Dirac current closing on a Weyl sink is a root (``loop_born``: the
+    marker contraction ``dag_ordering.DIRAC_WEYL_CLOSURE``, which no tree
+    evaluator lowers, where a tree request refuses): the slice reads the
+    Born DAG's colour plan and its roots' orders, sectors and helicities,
+    and closes the Born on the blocks at a vertex holding leg 1. Blocks are
     exact colour-flow currents, so they are compiled at full colour whatever
     the requested accuracy; ``block_coupling_orders`` bounds the orders a
     block may carry (the loop-amplitude orders bound it without loss).
@@ -624,6 +629,7 @@ def build_tree_blocks(
         ignored_particle_ids=ignored_particles,
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
+        loop_born=True,
     )
     kernel_variant = model_tree_kernel_variant(model)
     from .dag_input import loop_request_blocks

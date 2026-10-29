@@ -13,7 +13,13 @@ from contextlib import suppress as _suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from ._internal.versions import package_version
+from . import _native_loader
+
+# First: pyamplicol._rusticol is loaded only after the running glibc is checked
+# against the library's ELF version requirements (NativePlatformError).
+_native_loader.install()
+
+from ._internal.versions import package_version  # noqa: E402
 
 if TYPE_CHECKING:
     from types import ModuleType as _ModuleType
@@ -32,6 +38,12 @@ try:
             raise
         # Keep configuration/source-only tooling usable without native deps.
         _symbolica = None
+    except ImportError as _error:
+        # A Symbolica build that needs a newer glibc: name both versions.
+        _translated = _native_loader.translate_loader_error(_error)
+        if _translated is None:
+            raise
+        raise _translated from _error
 
     _set_library_key = getattr(_symbolica, "set_library_key", None)
     if callable(_set_library_key):
@@ -83,6 +95,7 @@ if TYPE_CHECKING:
         ModelError,
         ModelParameter,
         ModelSource,
+        NativePlatformError,
         PhysicsReduction,
         ProcessAlias,
         ProcessPhysics,
@@ -176,6 +189,7 @@ __all__ = [
     "ModelError",
     "ModelParameter",
     "ModelSource",
+    "NativePlatformError",
     "PhysicsReduction",
     "ProcessAlias",
     "ProcessPhysics",
@@ -214,6 +228,7 @@ _ERROR_EXPORTS = (
     "EvaluationError",
     "GenerationError",
     "ModelError",
+    "NativePlatformError",
     "PyAmpliColError",
 )
 _REQUEST_EXPORTS = (

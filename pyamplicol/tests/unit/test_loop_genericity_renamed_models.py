@@ -241,7 +241,6 @@ def _card(
     process,
     rename,
     *,
-    engine="v2",
     process_extra="",
     compatibility=None,
     extra="",
@@ -264,7 +263,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "{engine}"
 [loop.preparation]
 {preparation}
 [loop.model]
@@ -312,22 +310,13 @@ def _renamed_orders(orders, rename):
     return {**out, **dict.fromkeys(rename.extra_orders, 0)}
 
 
-@pytest.mark.parametrize("engine", ["v2", "legacy"])
-def test_renamed_orders_take_the_same_dry_run(models, engine, tmp_path):
+def test_renamed_orders_take_the_same_dry_run(models, tmp_path):
     """u u~ > d d~ [QS] (the configuration names the correction in lower
-    case): on both engines the dry run equals the original's under the map,
-    the unused NPprop bounded at zero."""
+    case): the dry run equals the original's under the map, the unused
+    NPprop bounded at zero."""
 
-    original, _ = _plan_entry(
-        models, "loop_sm", None, "u u~ > d d~", tmp_path, engine=engine
-    )
-    renamed, rename = _plan_entry(
-        models, "loop_sm", "orders", "u u~ > d d~", tmp_path, engine=engine
-    )
-    if engine == "legacy":
-        for key in ("born_graph_count", "loop_graph_count", "denominator_family_count"):
-            assert renamed[key] == original[key] > 0
-        return
+    original, _ = _plan_entry(models, "loop_sm", None, "u u~ > d d~", tmp_path)
+    renamed, rename = _plan_entry(models, "loop_sm", "orders", "u u~ > d d~", tmp_path)
     assert dict(renamed["born_orders"]) == _renamed_orders(
         original["born_orders"], rename
     )
@@ -341,8 +330,8 @@ def test_renamed_orders_take_the_same_dry_run(models, engine, tmp_path):
     )
 
 
-def test_renamed_orders_give_the_same_legacy_virtual(models, tmp_path):
-    """u u~ > d d~ [QS] on the legacy engine: public generation (with its
+def test_renamed_orders_give_the_same_public_virtual(models, tmp_path):
+    """u u~ > d d~ [QS] through the public route: generation (with its
     post-build validation) and runtime values equal the original's."""
 
     from pyamplicol import Runtime
@@ -362,7 +351,6 @@ def test_renamed_orders_give_the_same_legacy_virtual(models, tmp_path):
                 directory / "out",
                 "u u~ > d d~",
                 rename,
-                engine="legacy",
                 extra="[generation.validation]\npost_build_validation = true\n"
                 "samples = 1\n",
             )
@@ -780,33 +768,6 @@ def test_renamed_goldstones_are_repaired_identically(loop_gmu_ufo, tmp_path):
             record["fields"]["goldstoneboson"] = True
     with pytest.raises(ValueError, match="recognized Gmu anti metadata mismatch"):
         build_covariant_structure(RawLoopModel.from_dict(payload), compatibility=GMU)
-
-
-def test_renumbered_singlets_receive_the_same_certificates(loop_gmu_ufo, tmp_path):
-    """m5: the counterterm bases of the renumbered Z (9000023) and G0
-    (9000250) get the certificates of the original's, entry by entry."""
-
-    from pyamplicol.loops.model import build_loop_model
-    from pyamplicol.loops.model_catalogue import certified_source_counterterm_bases
-
-    variant = tmp_path / "gmu_particles_variant"
-    rename = write_variant(Path(loop_gmu_ufo), variant, "particles")
-    certificates = []
-    for source in (Path(loop_gmu_ufo), variant):
-        _, structure = _structure(source)
-        ir = build_loop_model(structure.raw, scalar_program=structure.scalars)
-        certificates.append(
-            {
-                v.source_key: (tuple(v.particle_pdgs), v.conformance_control)
-                for v in certified_source_counterterm_bases(ir)
-            }
-        )
-    original, renamed = certificates
-    assert renamed == {
-        key: (tuple(rename.pdg(p) for p in pdgs), control)
-        for key, (pdgs, control) in original.items()
-    }
-    assert any(9000023 in pdgs for pdgs, _ in renamed.values())
 
 
 # ------------------------------------------------------------ mass nature

@@ -27,10 +27,6 @@ cross-host acceptance (its docstring), on:
 * the loop SDK (C ABI through ``rusticol_virtual_open``, which dispatches a
   plan v4 artifact to the native ``V2Runtime``): bitwise equal to the Python
   API at both locations and usable without a licence by concurrent processes;
-  the legacy loop SDK, whose evaluation decodes exact states, runs without a
-  licence in concurrent processes while another process holds the user's
-  restricted permit (pyAmpliCol's Symbolica library key in the native code,
-  crate ``rust/crates/pyamplicol``);
 * unlicensed concurrent processes (Symbolica's restricted mode admits one
   thread per user, so any state access of the Rust copy of Symbolica aborts
   while another process holds the permit): two pyAmpliCol processes without
@@ -526,9 +522,7 @@ def test_tree_c_api_relocates_bitwise_without_a_licence(
 # ------------------------------------------------------------------ loops
 
 
-def _loop_card(
-    model: Path, output: Path, name: str, expression: str, engine: str = "v2"
-) -> str:
+def _loop_card(model: Path, output: Path, name: str, expression: str) -> str:
     return f"""
 action = "generate"
 [model]
@@ -542,7 +536,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "{engine}"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
 {SCHEME}
@@ -1074,48 +1067,3 @@ def test_unlicensed_extended_precision_loop_evaluations_run_concurrently(
     )
     assert refused.returncode != 0
     assert RESTRICTED in refused.stdout + refused.stderr
-
-
-@pytest.fixture(scope="module")
-def legacy_loop_artifact(loop_sm_compiled_model, tmp_path_factory):
-    """A legacy-engine loop artifact of g g > g g (about 25 s)."""
-
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.config import resolve_config
-
-    root = tmp_path_factory.mktemp("legacy-gg")
-    output = root / "artifact"
-    card = root / "card.toml"
-    card.write_text(
-        _loop_card(loop_sm_compiled_model, output, "gg", "g g > g g", "legacy")
-    )
-    Generator(resolve_config(card)).generate(
-        ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),)), output
-    )
-    return output
-
-
-@pytest.mark.loop_physics
-def test_legacy_loop_sdk_runs_unlicensed_while_the_permit_is_held(
-    legacy_loop_artifact, loop_sdk_client, tmp_path
-):
-    """The loop SDK's evaluation of a legacy artifact decodes Symbolica exact
-    states in the Rust copy of Symbolica: pyAmpliCol's library key unlocks
-    it, so two concurrent SDK processes without a licence complete while
-    another process holds the user's restricted permit."""
-
-    points = tmp_path / "points.json"
-    points.write_text(json.dumps(portability.points(4, 1)))
-    record = portability.sdk(
-        legacy_loop_artifact,
-        "gg",
-        points,
-        loop_sdk_client,
-        licence=False,
-        instances=2,
-        workdir=tmp_path / "sdk",
-        hold_permit=True,
-    )
-    assert record["permit"]["verified"], record["permit"]
-    assert record["exit_status"] == [0, 0], record["stderr"]
-    assert not record["symbolica_restricted"]

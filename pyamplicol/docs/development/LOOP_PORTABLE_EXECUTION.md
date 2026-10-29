@@ -2,6 +2,11 @@
 
 # Internal graph-free loop execution
 
+> Historical: this describes the plan v3 runtime of the per-diagram legacy
+> loop engine, removed on 2026-10-29 (MQ-LEGACY-REMOVE; `loops/portable.py`
+> and the native `PortableLoopPlan`/`NativeLoopProgram` no longer exist).
+> Plan v4 (the v2 engine) is described in `loop_v2/DESIGN.md` §12.
+
 `loops.portable.write_loop_pacbin` lowers a retained, complete source/legacy
 model-R2 or certified direct-R2 four-gluon program to the existing
 `evaluators.pacbin` envelope.

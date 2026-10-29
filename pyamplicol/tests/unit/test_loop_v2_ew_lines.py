@@ -51,7 +51,6 @@ from types import SimpleNamespace
 import pytest
 
 from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-from tools.loop_reference import legacy_capture
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "loop"
@@ -952,13 +951,16 @@ def test_dilepton_two_gluon_colour_projections_are_formal_nc_projections(
 
     from pyamplicol.loops.v2 import assemble, colour
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
 
     fixture = json.loads((FIXTURES / "dilepton-two-gluon.json").read_text())
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
     compiled = load_compiled_model(loop_sm_compiled_model)
+    # The shipped loop_sm declaration (MQ-NC): the closed quark loops of
+    # g g Z / g g A reach this request, which the example QCD subset
+    # (``legacy_capture.COLOUR_DECLARATION``) does not cover.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
 
     def build(accuracy, prune=True):
         request = SliceRequest(

@@ -174,94 +174,20 @@ impl Runtime {
         inputs.spin_sources = sources;
         self.evaluate_correlated_inputs(inputs, strategy, policy)
     }
+    /// Correlated (directed colour and spin) virtuals were served by the
+    /// removed legacy engine's runtime; plan v4 SDK runtimes serve ordinary
+    /// virtuals, and correlated ones go through the Python API.
     fn evaluate_correlated_inputs(
         &mut self,
-        inputs: LoopInputs,
-        strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
+        _inputs: LoopInputs,
+        _strategy: Option<&str>,
+        _policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let effective = policy.or_else(|| self.verification_policy()).cloned();
-        let native = self.v3_mut()?;
-        let (result, verification) = match effective.as_ref() {
-            Some(policy) => {
-                let output = native.evaluate_directed_verified(inputs, strategy, policy)?;
-                (output.result, output.diagnostics)
-            }
-            None => (native.evaluate_directed(inputs, strategy, true)?, vec![]),
-        };
-        CorrelatedEvaluation::from_native(
-            result,
-            verification,
-            self.correlated_shape(),
-            &self.history_ids,
-        )
+        Err(invalid(V4_ONLY_ORDINARY))
     }
 }
 
-fn pack_complex(
-    batch: &Batch,
-    points: usize,
-    histories: usize,
-    orders: usize,
-    epsilon: usize,
-) -> RusticolResult<Vec<Complex64>> {
-    let Data::Double(values) = batch.data() else {
-        return Err(invalid("standalone output is not binary64"));
-    };
-    if batch.rows() != points || batch.columns() != product(&[histories, orders, epsilon])? {
-        return Err(invalid(
-            "native correlated axes differ from history/order catalogue",
-        ));
-    }
-    values
-        .iter()
-        .map(|value| {
-            if !value.re.is_finite() || !value.im.is_finite() {
-                return Err(invalid("correlated result is not finite complex"));
-            }
-            Ok(Complex64 {
-                real: value.re,
-                imag: value.im,
-            })
-        })
-        .collect()
-}
 impl CorrelatedEvaluation {
-    fn from_native(
-        result: CompleteLoopResult<Arc<Batch>>,
-        verification: Vec<VerificationDiagnostic>,
-        shape: CorrelatedShape,
-        history_ids: &[String],
-    ) -> RusticolResult<Self> {
-        let directed = result
-            .directed
-            .as_ref()
-            .ok_or_else(|| invalid("native result is not directed"))?;
-        if directed.history_ids != history_ids || shape.histories != history_ids.len() {
-            return Err(invalid("native directed history catalogue differs"));
-        }
-        let points = result.point_ids.len();
-        let born = pack_complex(&result.born, points, shape.histories, shape.born_orders, 1)?;
-        let virtual_values = pack_complex(
-            &result.components[0],
-            points,
-            shape.histories,
-            shape.virtual_orders,
-            3,
-        )?;
-        let (statuses, diagnostics_json) = diagnostics(&result, &verification)?;
-        Ok(Self {
-            requested_point_ids: result.requested_point_ids,
-            successful_point_ids: result.point_ids,
-            statuses,
-            born,
-            virtual_values,
-            shape,
-            history_ids: history_ids.to_vec(),
-            spin_legs: directed.spin_legs.clone(),
-            diagnostics_json,
-        })
-    }
     pub fn spin_legs_json(&self) -> RusticolResult<String> {
         serde_json::to_string(&self.spin_legs).map_err(serialization)
     }
@@ -274,6 +200,37 @@ impl CorrelatedEvaluation {
 mod tests {
     use super::*;
     use rusticol_loop_reduction::Complex;
+    use rusticol_loop_reduction::runtime::{Batch, Data};
+
+    fn pack_complex(
+        batch: &Batch,
+        points: usize,
+        histories: usize,
+        orders: usize,
+        epsilon: usize,
+    ) -> RusticolResult<Vec<Complex64>> {
+        let Data::Double(values) = batch.data() else {
+            return Err(invalid("standalone output is not binary64"));
+        };
+        if batch.rows() != points || batch.columns() != product(&[histories, orders, epsilon])? {
+            return Err(invalid(
+                "native correlated axes differ from history/order catalogue",
+            ));
+        }
+        values
+            .iter()
+            .map(|value| {
+                if !value.re.is_finite() || !value.im.is_finite() {
+                    return Err(invalid("correlated result is not finite complex"));
+                }
+                Ok(Complex64 {
+                    real: value.re,
+                    imag: value.im,
+                })
+            })
+            .collect()
+    }
+
     #[test]
     fn complex_axes_keep_unequal_orders_and_labels_separate() {
         for (orders, epsilon) in [(2, 1), (3, 3)] {

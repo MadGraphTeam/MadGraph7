@@ -1103,7 +1103,8 @@ fn concatenated(a: &Lanes, b: &Lanes) -> Lanes {
 }
 
 /// The legacy engine's binary64 fast plans (`PolynomialPlan` `fast` and
-/// `fast-tensor`; the default `loop.engine`) route by the same rule: light
+/// `fast-tensor`, kept as this crate's test oracle after the legacy engine's
+/// removal) route by the same rule: light
 /// lanes give the legacy generic binary64 plan's bits with the invariant
 /// matrix, not the massless lines' integrals the snap computed, and are
 /// refused without it (`light_mass_needs_invariants`; the next test); the

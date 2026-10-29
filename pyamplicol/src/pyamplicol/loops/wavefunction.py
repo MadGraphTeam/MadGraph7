@@ -8,19 +8,16 @@ and each allowed loop-species alternative contributes once, as in MadLoop.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from .._internal.physics.symbols import symbols
-from .graphs import GraphIR, LoopProcessIR
 from .model import LoopModelIR
 from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
-from .orders import canonical_order, squared_order
 from .scalar_frontend import (
     ScalarExpression,
     require_laurent_scalar,
-    require_scalar_value,
 )
 
 
@@ -217,89 +214,3 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
                 )
             )
     return tuple(rules)
-
-
-@dataclass(frozen=True, slots=True)
-class ExternalFieldInsertion:
-    born: GraphIR = field(repr=False)
-    external_index: int
-    rule: ExternalFieldRule
-    alternative_index: int
-
-    @property
-    def order(self):
-        return squared_order(self.born.order, self.rule.order)
-
-    def coefficient_expression(self, epsilon_power: int) -> ScalarExpression:
-        return self.rule.coefficient_expression(epsilon_power)
-
-    def coefficient(self, epsilon_power: int):
-        return require_scalar_value(
-            self.coefficient_expression(epsilon_power),
-            "external-field coefficient",
-            self.rule.scalar_program,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ExternalFieldProcessIR:
-    insertions: tuple[ExternalFieldInsertion, ...]
-    stage: str = field(default="external-field-born-factor-oracle", init=False)
-    scheme_validated: bool = field(default=False, init=False)
-
-
-def match_external_field_counterterms(
-    source: LoopModelIR,
-    loops: LoopProcessIR,
-    *,
-    selected_corrections: Iterable[str],
-    forbidden_particles: Iterable[int] = (),
-    allowed_amplitude_orders: Iterable[tuple[tuple[str, int], ...]] | None = None,
-) -> ExternalFieldProcessIR:
-    """Attach model factors to admitted Borns, retaining leg/alternative identity.
-
-    ``forbidden_particles`` is the caller's complete resolved process restriction,
-    including native particle-selection/veto filters. ``allowed_amplitude_orders``
-    optionally applies the caller's generated amplitude-order envelope. Neither
-    is inferred from a numerical Born or from a loop-order difference.
-    """
-    selected = frozenset(selected_corrections)
-    if selected != frozenset(loops.orders.correction_names):
-        raise ValueError(
-            "external fields and loop catalogue must share correction selection"
-        )
-    forbidden_values = tuple(forbidden_particles)
-    if any(
-        isinstance(pdg, bool) or not isinstance(pdg, int) for pdg in forbidden_values
-    ):
-        raise ValueError("forbidden external-field species must be integer PDGs")
-    forbidden = frozenset(abs(pdg) for pdg in forbidden_values)
-    allowed = (
-        None
-        if allowed_amplitude_orders is None
-        else frozenset(canonical_order(order) for order in allowed_amplitude_orders)
-    )
-    rules = prepare_external_field_rules(source)
-    insertions = []
-    for born in loops.born:
-        for leg in born.edges:
-            if leg.external_index is None:
-                continue
-            for rule in rules:
-                if abs(leg.pdg) != rule.pdg or rule.correction not in selected:
-                    continue
-                if leg.spin != rule.spin or abs(leg.color) != abs(rule.color):
-                    raise ValueError(
-                        "external-field source/native particle representations differ"
-                    )
-                order = squared_order(born.order, rule.order)
-                if allowed is not None and order not in allowed:
-                    continue
-                for index, alternative in enumerate(rule.alternatives):
-                    if not forbidden.intersection(alternative):
-                        insertions.append(
-                            ExternalFieldInsertion(
-                                born, leg.external_index, rule, index
-                            )
-                        )
-    return ExternalFieldProcessIR(tuple(insertions))

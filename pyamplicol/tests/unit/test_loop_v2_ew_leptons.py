@@ -31,16 +31,16 @@ owns). Checks:
   gauge, lhv = 1) per Laurent coefficient and component (bare, R2, UV,
   field and counterterm parts), Bhabha on loop_qcd_qed_sm against MadLoop
   (``required/emep_emep_ew``: the s- and t-channel lines through the boxes),
-  O2 per family against the legacy engine (L1/L2) on e- e+ > mu- mu+ with
-  massless and massive muons and on Bhabha (O13: the legacy families are
-  FeynKit's diagrams with their overall factors), the poles of
+  O2 per family against the removed legacy engine's frozen families
+  (L1/L2) on e- e+ > mu- mu+ with massless and massive muons and on Bhabha
+  (O13: the legacy families are FeynKit's diagrams with their overall
+  factors), the poles of
   e- e+ > mu- mu+ on loop_qcd_qed_sm against the QED Catani operator (full
   EW; photon-only corrections are refused, ``refusals``
   "veto-unlabelled-counterterms", through the slice, the public API, the
   CLI and the dry run: the model's counterterm labels cannot express the
   veto, and without the guard the single pole misses Catani's, a strict
-  xfail), the legacy engine's FFS projector exchange checked
-  against MadLoop before the legacy engine serves as the second engine, the
+  xfail), the
   native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N), and
   e- e+ > t t~ h against Recola (``required/emep_ttxh_ew``; MadLoop
   excluded, it omits the G0 t t~ R2 of the b loops, and with that coupling
@@ -974,89 +974,32 @@ def test_mumu_control_validates_with_native_inputs(gmu_slices):
 
 # -------------------------------------------------- O2 against the legacy engine
 
-# Legacy (``loops.physical_source``) inputs of the G_mu controls: the
-# restriction "full" with the default restriction's zeros fixed.
-_LEGACY_ZEROS = (
-    "aEW0M1",
-    "MD",
-    "MU",
-    "MS",
-    "MC",
-    "MB",
-    "Me",
-    "MTA",
-    "lamWS",
-    "AWS",
-    "rhoWS",
-    "etaWS",
-    "ymdo",
-    "ymup",
-    "yms",
-    "ymc",
-    "ymb",
-    "yme",
-    "ymtau",
-)
-_LEGACY_ONES = ("epsUV", "epsIR", "LogSwitch", "GfRedefinitionChoice")
 # 60 digits (O2's arbitrary carrier, ``test_loop_v2_slice.O2_TOLERANCE``).
 O2_DIGITS = 60
 O2_TOLERANCE = 1e-50
+# Frozen per-family numerators of the removed legacy engine (captured once,
+# 60 digits, before its removal; each file records its provenance).
+LEGACY_FAMILIES = {
+    ("e- e+ > m- m+", "massless"): "ew_families_mumu_massless.json.gz",
+    ("e- e+ > m- m+", "massive"): "ew_families_mumu_massive.json.gz",
+    ("e- e+ > e- e+", "massless"): "ew_families_bhabha_massless.json.gz",
+}
 
 
-def _legacy_families(loop_gmu_ufo, process: str, muons: str, point, scale) -> dict:
+def _legacy_families(process: str, muons: str, point, scale) -> dict:
     """The legacy engine's per-family numerators of a 2 -> 2 lepton process
     (full EW, G_mu) at one point, in ``tools/loop_reference/legacy_capture``'s
-    layout (60 digits). Its families are FeynKit's loop diagrams, each with
-    its FeynKit overall factor (closed-loop and external-fermion signs)."""
+    layout (60 digits), frozen. Its families are FeynKit's loop diagrams,
+    each with its FeynKit overall factor (closed-loop and external-fermion
+    signs)."""
 
-    import numpy as np
+    import gzip
 
-    from pyamplicol.loops.covariant_model import build_covariant_structure
-    from pyamplicol.loops.physical_source import source_bare_program
-    from pyamplicol.models.loop_import import load_raw_loop_model
-    from tools.loop_reference.legacy_capture import _family_layout
-
-    zeros = _LEGACY_ZEROS + (("MM", "ymm") if muons == "massless" else ())
-    source = build_covariant_structure(
-        load_raw_loop_model(str(loop_gmu_ufo), restriction="full"),
-        compatibility="gmu_particle_anti",
-        fixed_parameters={
-            **dict.fromkeys(zeros, "0"),
-            **dict.fromkeys(_LEGACY_ONES, "1"),
-        },
-        covariant_multiplets={
-            23: [23, 250, 9000002, -9000002],
-            24: [24, 251, 9000003, -9000004],
-            -24: [-24, -251, 9000004, -9000003],
-        },
-    )
-    parameters = {**_control_parameters(muons), **ZERO_WIDTHS, "MU_R": "1000"}
-    initial, final = (tuple(side.split()) for side in process.split(">"))
-    program = source_bare_program(
-        source,
-        initial,
-        final,
-        selected_corrections=["QED"],
-        born_order_bounds={"QCD": 0, "QED": 2},
-        loop_order_bounds={"QCD": 0, "QED": 4},
-        parameters=parameters,
-        arithmetic="arbitrary",
-        precision=O2_DIGITS,
-        reduction_engine="generic",
-        coefficient_engine="interpreted",
-    )
-    bare = program.bare
-    currents = bare.prepare_currents_native(np.asarray([point], dtype=str), [scale])
-    weights = getattr(bare, "dual_born_weights", None)
-    dual = None if weights is None else weights.evaluate_batch(currents.born)
-    rows = []
-    for family in bare.families:
-        values = family.projector.evaluate_batch(
-            bare.family_projection_arguments(currents, family, weights=dual)
-        ).to_decimal()
-        width = len(family.powers)
-        rows.append([values[i : i + width] for i in range(0, len(values), width)])
-    return {"families": _family_layout(bare), "rows": rows}
+    path = FIXTURES / "legacy" / LEGACY_FAMILIES[process, muons]
+    data = json.loads(gzip.decompress(path.read_bytes()))
+    assert (data["process"], data["muons"]) == (process, muons)
+    assert (data["point"], data["scale_squared"]) == (point, scale)
+    return {"families": data["families"], "rows": data["rows"]}
 
 
 def _assert_families_equal_legacy(slice_, legacy: dict, point, scale, parameters):
@@ -1152,7 +1095,7 @@ def _assert_families_equal_legacy(slice_, legacy: dict, point, scale, parameters
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("muons", ["massless", "massive"])
-def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
+def test_family_numerators_equal_the_legacy_engine(gmu_slices, muons):
     """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
     corrections (``_assert_families_equal_legacy``). This localises a sign
     of a Goldstone, ghost or lepton line to a family: the families of the
@@ -1169,14 +1112,14 @@ def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muo
         point = control["exact_points"][0]
     scale = "1000000"
     process = "e- e+ > m- m+"
-    legacy = _legacy_families(loop_gmu_ufo, process, muons, point, scale)
+    legacy = _legacy_families(process, muons, point, scale)
     _assert_families_equal_legacy(
         gmu_slices(process, muons), legacy, point, scale, _control_parameters(muons)
     )
 
 
 @pytest.mark.loop_nightly
-def test_bhabha_families_carry_feynkit_overall_factors(gmu_slices, loop_gmu_ufo):
+def test_bhabha_families_carry_feynkit_overall_factors(gmu_slices):
     """O13 EW (DESIGN §14, WP3.2 EWI-5): e- e+ > e- e+ with full EW
     corrections, per family against the legacy engine, whose families are
     FeynKit's loop diagrams with FeynKit's overall factors (the closed-loop
@@ -1192,7 +1135,7 @@ def test_bhabha_families_carry_feynkit_overall_factors(gmu_slices, loop_gmu_ufo)
     point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
     scale = "1000000"
     process = "e- e+ > e- e+"
-    legacy = _legacy_families(loop_gmu_ufo, process, "massless", point, scale)
+    legacy = _legacy_families(process, "massless", point, scale)
     _assert_families_equal_legacy(
         gmu_slices(process, "massless"),
         legacy,
@@ -1645,7 +1588,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [loop.model]
 loop_coupling_orders = ["QED"]
 uv_complete = true
@@ -1785,100 +1727,3 @@ def test_qed_poles_of_photon_only_mumu_on_loop_qcd_qed_sm_are_catani(
         assemble, "require_labelled_counterterms_for_veto", lambda *args: None
     )
     _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
-
-
-# ------------------------------- the legacy loop path as an EW oracle (L1/L2)
-
-
-def _undo_projector_exchange(original):
-    """``loops.vertex_frames.native_physical_vertex`` with its FFS
-    ProjM/ProjP exchange undone (the same simultaneous replacement applied
-    once more): the negative control."""
-
-    def vertex(graph, vertex_id, lorentz):
-        from symbolica import Replacement
-        from symbolica.community import tensor as t
-
-        from pyamplicol._internal.physics.symbols import symbols
-
-        result = original(graph, vertex_id, lorentz)
-        spins = {edge.id: edge.spin for edge in graph.edges}
-        attached = sorted(
-            spins[edge]
-            for _half, vertex_, edge, _flow in graph.half_edges
-            if vertex_ == vertex_id
-        )
-        if attached != [1, 2, 2]:
-            return result
-        left, right = symbols.qualified(
-            "loop_vertex_frame::left_", "loop_vertex_frame::right_"
-        )
-        minus = t.TensorExpression.projm(4)(left, right).to_expression()
-        plus = t.TensorExpression.projp(4)(left, right).to_expression()
-        return result.replace_multiple(
-            [Replacement(minus, plus), Replacement(plus, minus)]
-        )
-
-    return vertex
-
-
-@pytest.mark.loop_nightly
-def test_legacy_ffs_projector_exchange_is_checked_by_the_massive_muon_control(
-    loop_gmu_ufo, loop_native, monkeypatch
-):
-    """The legacy loop path (``loops.vertex_frames``) keeps its own ProjM/
-    ProjP exchange of FFS vertices, which ``models.tensors`` dropped
-    (EWI-4a). Before it serves as the second engine (L1/L2, O2) of the
-    electroweak controls it is re-checked with a Goldstone-sign-sensitive
-    oracle: MadLoop's isolated FFS loops of e- e+ > mu- mu+ with a massive
-    muon (the G0 and G+- Yukawas of the muon and the top;
-    ``tools/loop_reference/massive_muon_ew.json``). The exchange gives
-    MadLoop's FFS subset (2e-8, the legacy test's tolerance); undone, the
-    subset misses by O(1) and the bare virtual by 1e-7 (the 2e-9 component
-    check of ``test_loop_physical_massive_source`` fails)."""
-
-    import numpy as np
-
-    import pyamplicol.loops.graph_basis as graph_basis
-
-    legacy = _sibling("test_loop_physical_massive_source")
-    reference = legacy.reference.__wrapped__()
-    points = np.asarray(reference["points"], dtype=str)
-    scales = reference["scales_squared"]
-    expected = np.asarray(reference["ffs_bare"])
-
-    def ffs_subset():
-        structure, prepared = legacy.source_model.__wrapped__(loop_gmu_ufo, loop_native)
-        from symbolica import E
-
-        from pyamplicol.loops.physical_source import source_model_program
-
-        program = source_model_program(
-            structure,
-            prepared,
-            ("e-", "e+"),
-            ("m-", "m+"),
-            selected_corrections=["QED"],
-            state_kinds=("u", "v_bar", "u_bar", "v"),
-            initial_average=E("4"),
-            born_order_bounds={"QCD": 0, "QED": 2},
-            loop_order_bounds={"QCD": 0, "QED": 4},
-            parameters=reference["parameters"],
-            arithmetic="double",
-            reduction_engine="fast",
-            coefficient_engine="jit",
-        )
-        bare = program.source_bare.bare
-        filtered = legacy._ffs_only(bare, prepared.native)
-        values = filtered.evaluate_decimal(points, scales).virtual[:, :, 0]
-        return values.astype(float)
-
-    np.testing.assert_allclose(ffs_subset(), expected, rtol=2e-8, atol=1e-19)
-    monkeypatch.setattr(
-        graph_basis,
-        "native_physical_vertex",
-        _undo_projector_exchange(graph_basis.native_physical_vertex),
-    )
-    undone = ffs_subset()
-    miss = np.max(np.abs(undone - expected)) / np.max(np.abs(expected))
-    assert miss > 1e-2, miss

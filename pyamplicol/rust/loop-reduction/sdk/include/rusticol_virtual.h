@@ -1,6 +1,34 @@
 /* SPDX-License-Identifier: 0BSD */
 #ifndef RUSTICOL_VIRTUAL_H
 #define RUSTICOL_VIRTUAL_H
+/* Linux glibc floor of the shared library (README, "glibc floor (Linux)").
+ * librusticol_loop_sdk.so of a release native build needs the glibc symbol
+ * versions it links, at most GLIBC_2.38 and no glibc ABI marker
+ * (`readelf -V` lists a build's own requirements), so the floor is glibc
+ * RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR.RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR (2.38).
+ * Linking a client executable with a toolchain on an older glibc fails at
+ * link time ("librusticol_loop_sdk.so: undefined reference to
+ * `__isoc23_strtol@GLIBC_2.38'"); a client built on glibc 2.38 or newer and
+ * run on an older one is stopped by the dynamic loader before main
+ * ("libc.so.6: version `GLIBC_2.38' not found (required by
+ * .../librusticol_loop_sdk.so)"). Define RUSTICOL_VIRTUAL_SHARED when
+ * compiling a client of the release build's shared library to stop at compile
+ * time instead, on a toolchain whose glibc is older (every glibc release
+ * defines the numbered versions of the releases before it). The macro states
+ * the release build's floor: omit it for an SDK built from source on an older
+ * host. */
+#define RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR 2
+#define RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR 38
+#if defined(RUSTICOL_VIRTUAL_SHARED) && defined(__linux__)
+#include <features.h>
+#if !defined(__GLIBC__)
+#error "librusticol_loop_sdk.so needs glibc >= 2.38 but this toolchain's C library is not glibc (the SDK's release libraries are built for glibc)"
+#elif __GLIBC__ < RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR || \
+    (__GLIBC__ == RUSTICOL_VIRTUAL_GLIBC_FLOOR_MAJOR && \
+     __GLIBC_MINOR__ < RUSTICOL_VIRTUAL_GLIBC_FLOOR_MINOR)
+#error "librusticol_loop_sdk.so needs glibc >= 2.38 but this toolchain's glibc is older; build and run the client with glibc 2.38 or newer (RUSTICOL_VIRTUAL_SHARED states the release build's floor: omit it for an SDK built from source on this host)"
+#endif
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #ifdef __cplusplus

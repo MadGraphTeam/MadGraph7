@@ -13,17 +13,32 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from pyamplicol.api.virtual_results import (
-        VirtualStabilityChecks,
-        VirtualStabilityPolicy,
-    )
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
     )
     from pyamplicol.models.loop_preparation import LoopPreparation
 
+from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
+
+# The removed engine switch, refused by name wherever it is set (TOML,
+# mapping, overrides, the CLI: ``config.resolver.REMOVED_FIELDS``, and
+# ``LoopConfig(engine=...)``).
+LOOP_ENGINE_REMOVED = (
+    "configuration field 'loop.engine' was removed: "
+    f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+)
+# The precision-rescue policy left with the legacy engine (refused by name in
+# EvaluationStabilityConfig, which keeps only its defaults).
+EVALUATION_STABILITY_REMOVED = (
+    "evaluation.stability (the precision-rescue policy: higher carriers, "
+    "tolerances, verify_successful) was removed with the legacy one-loop "
+    "engine; v2 loop runtimes return stability estimates "
+    "(evaluation.stability_checks) and leave precision escalation to the "
+    "caller; delete the setting"
+)
 
 
 class Action(StrEnum):
@@ -125,14 +140,6 @@ class PoleSelection(StrEnum):
     NONE = "none"
     UV = "uv"
     IR = "ir"
-
-
-class LoopEngine(StrEnum):
-    """One-loop engine: the per-diagram legacy engine (the oracle until gate
-    R3) or the shared-recursion engine v2 (plan v4 artifacts)."""
-
-    LEGACY = "legacy"
-    V2 = "v2"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -517,9 +524,13 @@ class ProcessConfig:
 
 @dataclass(frozen=True, slots=True)
 class ColorConfig:
-    accuracy: ColorAccuracy = field(
-        default=ColorAccuracy.LC,
-        metadata=_setting("str", choices=tuple(ColorAccuracy)),
+    # None: the request kind's default, resolved by ``RunConfig`` (leading
+    # colour for tree requests, full colour for one-loop requests: MadLoop's
+    # accuracy, user ruling 2026-10-28 Q1). A ``RunConfig`` always holds a
+    # resolved accuracy.
+    accuracy: ColorAccuracy | None = field(
+        default=None,
+        metadata=_setting("str", nullable=True, choices=tuple(ColorAccuracy)),
     )
     contraction: ColorContraction = field(
         default=ColorContraction.AUTO,
@@ -535,9 +546,12 @@ class ColorConfig:
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "accuracy", _enum(self.accuracy, ColorAccuracy, "color.accuracy")
-        )
+        if self.accuracy is not None:
+            object.__setattr__(
+                self,
+                "accuracy",
+                _enum(self.accuracy, ColorAccuracy, "color.accuracy"),
+            )
         object.__setattr__(
             self,
             "contraction",
@@ -557,6 +571,9 @@ class ColorConfig:
             "lc_flow_layout",
             _enum(self.lc_flow_layout, LCFlowLayout, "color.lc_flow_layout"),
         )
+        if self.accuracy is None:
+            # Validated once ``RunConfig`` resolves the request kind's default.
+            return
         if (
             self.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
             and self.accuracy is not ColorAccuracy.LC
@@ -724,7 +741,7 @@ class GenerationConfig:
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
     # Particles (model names; a particle vetoes its antiparticle too) removed
-    # from every tree vertex of one-loop generation with loop.engine='v2'
+    # from every tree vertex of one-loop generation
     # (Born, blocks, loop vertices and propagators, counterterm program);
     # counterterm terms whose loop content holds one are dropped.
     particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -1028,6 +1045,15 @@ class EvaluatorConfig:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationStabilityConfig:
+    """The removed precision-rescue policy: only its defaults are accepted.
+
+    The rescue (``higher`` carriers, tolerances, ``verify_successful``) was
+    served only by the removed legacy one-loop engine; v2 loop runtimes return
+    stability estimates (``evaluation.stability_checks``) and leave precision
+    escalation to the caller. The section stays so that stored configurations
+    with its defaults still resolve; any other value is refused with the reason.
+    """
+
     higher: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     relative_tolerance: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
@@ -1043,54 +1069,13 @@ class EvaluationStabilityConfig:
             "higher",
             _tuple_of_strings(self.higher, "evaluation.stability.higher"),
         )
-        self.to_policy()
-
-    def to_policy(self) -> VirtualStabilityPolicy | None:
-        """Translate configuration text to the existing virtual policy contract."""
-        prefix = "evaluation.stability"
-        if type(self.verify_successful) is not bool:
-            raise ConfigurationError(f"{prefix}.verify_successful must be a boolean")
-        if not self.higher:
-            if (
-                self.relative_tolerance is not None
-                or self.absolute_tolerance is not None
-                or self.verify_successful
-            ):
-                raise ConfigurationError(f"{prefix} options require higher levels")
-            return None
-        if self.relative_tolerance is None or self.absolute_tolerance is None:
-            raise ConfigurationError(
-                f"{prefix} requires both relative_tolerance and absolute_tolerance"
-            )
-        from pyamplicol.api.virtual_results import (
-            VirtualArithmeticSpec,
-            VirtualStabilityPolicy,
-        )
-
-        levels = []
-        try:
-            for token in self.higher:
-                if token in ("double", "double-double"):
-                    levels.append(
-                        VirtualArithmeticSpec(
-                            "double" if token == "double" else "double-double"
-                        )
-                    )
-                elif re.fullmatch(r"arbitrary:[0-9]+", token):
-                    levels.append(VirtualArithmeticSpec("arbitrary", int(token[10:])))
-                else:
-                    raise ValueError(
-                        f"invalid higher carrier {token!r}; use double, double-double "
-                        "or arbitrary:<positive decimal digits>"
-                    )
-            return VirtualStabilityPolicy(
-                tuple(levels),
-                self.relative_tolerance,
-                self.absolute_tolerance,
-                self.verify_successful,
-            )
-        except (TypeError, ValueError, DecimalException) as error:
-            raise ConfigurationError(f"{prefix}: {error}") from error
+        if (
+            self.higher
+            or self.relative_tolerance is not None
+            or self.absolute_tolerance is not None
+            or self.verify_successful is not False
+        ):
+            raise ConfigurationError(EVALUATION_STABILITY_REMOVED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1100,6 +1085,9 @@ class EvaluationStabilityChecksConfig:
     rotations: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     rotation_count: int = field(default=0, metadata=_setting("int"))
     reduction_direction: bool = field(default=False, metadata=_setting("bool"))
+    # The reduction-direction check at rescaled inputs (master integrals
+    # evaluated again); requires reduction_direction.
+    rescaled: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1110,10 +1098,11 @@ class EvaluationStabilityChecksConfig:
         _integer(
             self.rotation_count, "evaluation.stability_checks.rotation_count", minimum=0
         )
-        if type(self.reduction_direction) is not bool:
-            raise ConfigurationError(
-                "evaluation.stability_checks.reduction_direction must be a boolean"
-            )
+        for name in ("reduction_direction", "rescaled"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(
+                    f"evaluation.stability_checks.{name} must be a boolean"
+                )
         self.to_checks()
 
     def to_checks(self) -> VirtualStabilityChecks | None:
@@ -1126,7 +1115,9 @@ class EvaluationStabilityChecksConfig:
             )
         try:
             checks = VirtualStabilityChecks(
-                self.rotations or self.rotation_count, self.reduction_direction
+                self.rotations or self.rotation_count,
+                self.reduction_direction,
+                self.rescaled,
             )
         except (TypeError, ValueError, ZeroDivisionError) as error:
             raise ConfigurationError(f"evaluation.stability_checks: {error}") from error
@@ -1508,9 +1499,6 @@ class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
-    engine: LoopEngine = field(
-        default=LoopEngine.LEGACY, metadata=_setting("str", choices=tuple(LoopEngine))
-    )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
@@ -1519,6 +1507,13 @@ class LoopConfig:
     alpha_s_parameter: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
     )
+
+    def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
+        # The removed engine switch is refused with its reason, as in TOML,
+        # overrides and the CLI (``config.resolver``).
+        if "engine" in kwargs:
+            raise ConfigurationError(LOOP_ENGINE_REMOVED)
+        return object.__new__(cls)
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, LoopModelConfig):
@@ -1531,9 +1526,6 @@ class LoopConfig:
             )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
-        )
-        object.__setattr__(
-            self, "engine", _enum(self.engine, LoopEngine, "loop.engine")
         )
 
 
@@ -1586,6 +1578,17 @@ class RunConfig:
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
         mode = self.evaluator.execution_mode
         virtual = self.process.loop_coupling_orders is not None
+        if self.color.accuracy is None:
+            # The request kind's colour default (user ruling 2026-10-28 Q1):
+            # one-loop requests full colour, as MadLoop; tree requests LC.
+            object.__setattr__(
+                self,
+                "color",
+                replace(
+                    self.color,
+                    accuracy=ColorAccuracy.FULL if virtual else ColorAccuracy.LC,
+                ),
+            )
         if virtual and mode not in {
             EvaluatorExecutionMode.AUTO,
             EvaluatorExecutionMode.LOOP_RECURRENCE,
@@ -1599,12 +1602,10 @@ class RunConfig:
                 "evaluator.execution_mode='loop_recurrence' requires "
                 "process.loop_coupling_orders"
             )
-        if self.generation.particle_veto and not (
-            virtual and self.loop.engine is LoopEngine.V2
-        ):
+        if self.generation.particle_veto and not virtual:
             raise ConfigurationError(
                 "generation.particle_veto requires one-loop generation "
-                "(process.loop_coupling_orders) with loop.engine='v2'"
+                "(process.loop_coupling_orders)"
             )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT

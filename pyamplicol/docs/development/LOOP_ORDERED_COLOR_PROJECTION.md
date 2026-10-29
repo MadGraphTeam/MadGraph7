@@ -1,5 +1,10 @@
 # Complete history-family colour projection
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 Directed preparation and saved/public evaluation can project nonidentity colour
 histories on actual formally continued model-rule owners. The saved descriptor
 identifies each complete family and its sector degrees; it must agree across

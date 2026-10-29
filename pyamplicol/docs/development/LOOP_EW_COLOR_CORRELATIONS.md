@@ -1,5 +1,10 @@
 # Real-mass electroweak colour correlations
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 The retained control is `e- e+ -> u u~ [QED]` in the real-mass Gmu scheme,
 with complete model-supplied UV and R2. Ordinary components match independent
 binary64 references. Separate internal directed-source identities pass in
