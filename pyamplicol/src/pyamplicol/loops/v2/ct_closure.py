@@ -839,9 +839,7 @@ def promoted_root_entries(
 
     if program is None:
         return []
-    fields = {
-        abs(line.field_id) for line in program.clones.values() if line.promoted
-    }
+    fields = {abs(line.field_id) for line in program.clones.values() if line.promoted}
     if not fields:
         return []
     by_name = {
@@ -849,7 +847,9 @@ def promoted_root_entries(
     }
     out = []
     for rows in ordinary:
-        if not any(abs(int(by_name[n]["pdg_code"])) in fields for n in rows[0].particle_names):
+        if not any(
+            abs(int(by_name[n]["pdg_code"])) in fields for n in rows[0].particle_names
+        ):
             continue
         try:
             entries = read(rows)
@@ -1350,11 +1350,11 @@ __all__ = [
     "RootReachability",
     "UnprojectedU1Error",
     "counterterm_closure_entries",
-    "promoted_root_entries",
     "counterterm_program_blocks",
     "lowered_counterterm_model",
     "model_value",
     "program_propagated_currents",
+    "promoted_root_entries",
     "u1_leaking_structures",
     "u1_projected",
 ]

@@ -115,7 +115,8 @@ def gmu_a0(loop_gmu_ufo, tmp_path_factory):
     [
         ("qcd_qed", {}, "declares no conversion counterterm eCoup_DGmua0_UV_EW"),
         ("gmu", {}, r"no adjustable 1/alpha\(0\) at SMINPUTS \[1\] \(aEW0M1, aEW0"),
-        ("gmu_a0", {"particle_veto": (23,)}, r"removes the species \[23\]"),
+        # The Z's ghost goes with it (``ew_policy.gauge_closed_veto``).
+        ("gmu_a0", {"particle_veto": (23,)}, r"removes the species \[23, 9000002\]"),
         (
             "gmu_a0",
             {"fixed_parameters": {**ZERO_WIDTHS, "aEW0M1": "0"}},
@@ -147,7 +148,7 @@ def test_external_photons_without_the_convention_are_refused_before_the_trees(
         with pytest.raises(LoopRequestUnsupported) as vetoed:
             LoopSlice.generate(request.getfixturevalue(model), request_, loop_native)
         assert vetoed.value.key == "veto-unlabelled-counterterms"
-        assert "removes the species [23]" in str(vetoed.value)
+        assert "removes the species [23, 9000002]" in str(vetoed.value)
         monkeypatch.setattr(
             assemble, "require_labelled_counterterms_for_veto", lambda *args: None
         )

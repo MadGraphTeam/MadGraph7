@@ -1138,7 +1138,9 @@ class SiteClosure:
                 read = entry
                 if promoted:
                     hits = [
-                        k for k, index in enumerate(legs) if choice[index].id in promoted
+                        k
+                        for k, index in enumerate(legs)
+                        if choice[index].id in promoted
                     ]
                     if len(hits) > 1:
                         raise ValueError(
@@ -1697,6 +1699,7 @@ __all__ = [
     "CountertermSite",
     "CountertermSites",
     "Coverage",
+    "PromotedRootEntry",
     "ReadingSignError",
     "Signature",
     "SiteClosure",
@@ -1707,7 +1710,6 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
-    "PromotedRootEntry",
     "promoted_root_entry",
     "restricted_to_zero",
     "ufo_colour_network",

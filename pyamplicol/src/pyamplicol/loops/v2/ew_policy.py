@@ -538,7 +538,8 @@ def require_zero_widths(
 # lambda_HV, recognised by its declared TeX name; the model's R2 rules depend
 # on it (lambda_HV = 1: 't Hooft-Veltman, 0: four-dimensional helicity).
 HV_TEXNAME = r"\lambda_{HV}"
-# SLHA codes of the electroweak inputs the loops' coupling may depend on.
+
+
 def gauge_ghost_partners(compiled: Any) -> dict[int, frozenset[int]]:
     """|PDG| of every Faddeev-Popov ghost -> the |PDG| codes of the vector
     bosons it can be the ghost of: the vectors (spin 3, no ghost number) of
@@ -586,6 +587,7 @@ def gauge_closed_veto(compiled: Any, veto: Iterable[int]) -> tuple[int, ...]:
     return tuple(sorted(vetoed | added))
 
 
+# SLHA codes of the electroweak inputs the loops' coupling may depend on.
 SMINPUTS_ALPHA_INVERSE = ("SMINPUTS", (1,))
 SMINPUTS_FERMI = ("SMINPUTS", (2,))
 
