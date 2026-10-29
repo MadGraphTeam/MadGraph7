@@ -616,6 +616,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/emep_ttx_ew.json",
      "status": "committed",
      "madloop_process": "e- e+ > t t~ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -911,6 +912,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/uux_emep_ew.json",
      "status": "committed",
      "madloop_process": "u u~ > e- e+ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -3049,6 +3051,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/udx_wpg_ew.json",
      "status": "committed",
      "madloop_process": "u d~ > w+ g QCD=1 QED=1 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -6295,6 +6298,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/uux_ttx_ew.json",
      "status": "committed",
      "madloop_process": "u u~ > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -7780,6 +7784,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/ub_dt_ew.json",
      "status": "committed",
      "madloop_process": "u b > d t QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -8265,6 +8270,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/uux_ddx_ew.json",
      "status": "committed",
      "madloop_process": "u u~ > d d~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -9535,6 +9541,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/ag_uux_ew.json",
      "status": "committed",
      "madloop_process": "a g > u u~ QCD=1 QED=1 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -10332,6 +10339,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/gg_ttx_cms.json",
      "status": "committed",
      "madloop_process": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -13427,6 +13435,7 @@
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "components": "required/msm/components/udx_epve_ew_ckm.json",
      "status": "committed",
      "madloop_process": "u d~ > e+ ve QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [

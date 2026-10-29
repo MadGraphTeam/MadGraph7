@@ -287,3 +287,29 @@ def test_r2_name_list_reads_call_tokens(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(references, "ufo_r2_coupling_names", lambda model: {"R2_G0tt", "R2_G0tt_b", "R2_AAU"})
     record = references.madloop_r2_couplings(tmp_path, "model")
     assert record["called"] == ["R2_G0tt"] and record["ufo_r2_couplings"] == 3
+
+
+@pytest.mark.parametrize("run_id", [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"] if r.get("components")])
+def test_components_add_up_to_the_reference(campaign: dict, run_id: str) -> None:
+    """Rule 5 components (madloop_components.py): r2 + uv + rest = ct and bare +
+    ct = the reference's sector value per coefficient; R2 is finite and the UV
+    counterterms carry no double pole; every loop sector with a Born partner."""
+    run = _runs(campaign)[run_id]
+    record = json.loads((FIXTURES / run["components"]).read_text())
+    fixture = _fixture(run_id)
+    assert record["points"] == len(fixture["points"])
+    partnered = {f"QCD^2={s['QCD']},QED^2={s['QED']}" for s in fixture["rows"][0]["sectors"]["loop"]
+                 if s["born_sector"] is not None}
+    assert set(record["sectors"]) == partnered
+    for key, sector in record["sectors"].items():
+        assert sector["ct_amplitude_counts"]["rest"] == 0, key
+        for index, row in enumerate(sector["rows"]):
+            reference = next(s for s in fixture["rows"][index]["sectors"]["loop"]
+                             if f"QCD^2={s['QCD']},QED^2={s['QED']}" == key)
+            scale = max(abs(reference[k]) for k in LAURENT)
+            for k in LAURENT:
+                assert row["total"][k] == reference[k]
+                assert abs(row["r2"][k] + row["uv"][k] + row["rest"][k] - row["ct"][k]) <= 1e-12 * scale
+                assert abs(row["bare"][k] + row["ct"][k] - row["total"][k]) <= 1e-12 * scale
+            assert row["r2"]["single_pole"] == row["r2"]["double_pole"] == 0.0
+            assert row["uv"]["double_pole"] == 0.0
