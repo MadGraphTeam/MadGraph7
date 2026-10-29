@@ -189,6 +189,54 @@ def test_effective_scheme_must_match_explicit_colour_scheme(source):
         )
 
 
+def source_declaration(prepared):
+    """Explicit SU(N_c) source continuation of every kernel but the four-gluon R2
+    (from the removed test_loop_source_color_physical.py)."""
+    from symbolica import E, S
+
+    from pyamplicol.loops.source_color import SourceColorContinuation
+    from pyamplicol.loops.wavefunction import prepare_external_field_rules
+    from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+    nc = S("source_dy_control::Nc")
+    # Explicit test model input: standard SUN tensors plus CA/CF/TF/Ncol.
+    # Fixed-SU3 four-gluon R2 has deliberately NOT been admitted. This fixture
+    # does not certify all entries of loop_sm or a public model-name domain.
+    keys = frozenset(
+        entry.key
+        for entry in prepared.model.kernels
+        if not (
+            entry.kind == "R2"
+            and len(entry.particle_ids) == 4
+            and all(
+                prepared.model.raw.collections["particles"][i]["fields"]["spin"] == 3
+                and prepared.model.raw.collections["particles"][i]["fields"]["color"]
+                == 8
+                for i in entry.particle_ids
+            )
+        )
+    )
+    return SourceColorContinuation(
+        prepared.model,
+        nc,
+        {"Ncol": nc, "CA": nc, "CF": (nc**2 - 1) / (2 * nc), "TF": E("1/2")},
+        keys,
+        frozenset(
+            (rule.particle_id, rule.correction, rule.loop_group_index)
+            for rule in prepare_external_field_rules(prepared.model)
+        ),
+        LoopSchemeDeclaration(
+            "HV",
+            "physical-four-dimensional",
+            "source-4d",
+            "source-QCD",
+            "real",
+            "source-local-rules",
+            "explicit test source continuation",
+        ),
+    )
+
+
 def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip(loop_sm_ufo):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.loop_color_declaration import (
@@ -196,8 +244,6 @@ def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip(loop_sm_ufo)
         with_loop_color_declaration,
     )
     from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
-
-    from .test_loop_source_color_physical import declaration as source_declaration
 
     path = str(loop_sm_ufo)
     raw = load_raw_loop_model(path)

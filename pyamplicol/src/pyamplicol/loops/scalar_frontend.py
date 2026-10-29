@@ -59,21 +59,6 @@ def _producer_predicate(mode: str):
     return predicate
 
 
-def real_scalar_part(value: Any) -> Any:
-    """Keep an explicit real projection in saved, carrier-generic evaluators.
-
-    Use only at a boundary whose observable is known to be real. Replacing
-    this by an algebraic conjugate sum can leave imaginary rounding residues
-    after evaluator reassociation. Native execution rebinds this existing
-    scalar primitive separately for double, DoubleFloat and arbitrary precision.
-    """
-
-    return symbols.qualified(
-        "pyamplicol_scalar_v1::real_part",
-        eval={"complex": _producer_predicate("real_part")},
-    )(value)
-
-
 class ScalarFunctionLibrary:
     """A source-bound helper library; raw registry order never chooses a helper."""
 

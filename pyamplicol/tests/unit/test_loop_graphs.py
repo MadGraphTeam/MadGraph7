@@ -9,8 +9,8 @@ from collections import Counter, defaultdict
 
 import pytest
 
-from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.orders import BornLoopPair
+from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
 pytestmark = pytest.mark.loop_fast
 

@@ -10,6 +10,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
 
+from pyamplicol._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
+
 from .errors import ConfigurationError
 from .models import Action, ProcessEntry, RunConfig
 from .registry import (
@@ -21,6 +23,17 @@ from .registry import (
 )
 
 _DataclassT = TypeVar("_DataclassT")
+
+# Removed settings, refused with their reason wherever they are named (card,
+# mapping, dedicated CLI option or dotted override).
+REMOVED_FIELDS = MappingProxyType(
+    {
+        "loop.engine": (
+            f"configuration field 'loop.engine' was removed: "
+            f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+        ),
+    }
+)
 
 
 def _extend_errors(errors: list[str], error: ConfigurationError) -> None:
@@ -110,6 +123,8 @@ def _unknown_field(path: str) -> NoReturn:
 
 
 def _unknown_field_message(path: str) -> str:
+    if path in REMOVED_FIELDS:
+        return REMOVED_FIELDS[path]
     candidates = list(FIELD_REGISTRY)
     suggestion = difflib.get_close_matches(path, candidates, n=1, cutoff=0.55)
     suffix = f"; did you mean {suggestion[0]!r}?" if suggestion else ""

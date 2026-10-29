@@ -389,14 +389,6 @@ pyamplicol generate --card run.toml \
   --set generation.validation.post_build_validation=true
 ```
 
-Known limitation of the legacy loop engine: with colour-correlated outputs
-declared (for example the Casimir and dipole histories of `g g > g g`), its
-post-build validation can fail at the default tolerances ("saved virtual
-execution differs from source execution for 'gg/casimir'", an absolute
-difference of about 3e-10). Validate such legacy artifacts with
-`relative_tolerance = 3e-9` and `absolute_tolerance = 2e-12`; the v2 engine
-is not affected.
-
 The v2 engine's post-build validation compares the reopened artifact with
 its reference executor in binary64 at `relative_tolerance` (Borns per
 coupling order, virtual Laurent coefficients relative to their sector's
@@ -514,8 +506,7 @@ JSON entries. No `[process].loop_coupling_orders` declaration is needed to load
 an existing virtual artifact. See [virtual CLI evaluation](command-line-interface.md#saved-virtual-artifacts)
 for output shapes and currently available features.
 
-Optional virtual verification and partial numerical returns use the same policy
-as the Python runtime:
+Partial numerical returns use the same option as the Python runtime:
 
 ```toml
 [evaluation]
@@ -524,41 +515,44 @@ momenta = "data/points.json"
 arithmetic = "double"
 mu_r2 = "1000000"
 on_failure = "return"         # default: "raise"
-
-[evaluation.stability]
-higher = ["arbitrary:60", "arbitrary:80"]
-relative_tolerance = "1e-8"
-absolute_tolerance = "1e-20"
-verify_successful = false
 ```
 
-The policy is bound before the model parameters. `higher` is an ordered list of
-`double`, `double-double`, or `arbitrary:DIGITS`; only arbitrary arithmetic takes
-a digit suffix. Quote both tolerance strings to preserve their exact values.
-Higher levels require both tolerances, and policy fields without higher levels
-are rejected. Native admission checks increasing actual precision; configuration
-does not infer a carrier from a digit count.
-
-The default empty `[evaluation.stability]` enables no verification or rescue.
 With `on_failure = "return"`, numerical failures become unavailable whole-point
 rows with diagnostics (`null` in JSON); valid zero values remain zero. Invalid
-inputs and unsupported features still raise errors. These settings apply only to
-virtual `evaluate`, including resolved output, and are not silently used by
+inputs and unsupported features still raise errors for the whole call; on v2
+runtimes this includes a non-positive `mu_r2` and a scale at which a
+counterterm coupling is not finite in the lane's arithmetic (for example
+`mu_r2 = "1e-400"` in binary64), which raise a `ValueError` for the whole batch
+(returning such points one by one is an open item). This setting applies only
+to virtual `evaluate`, including resolved output, and is not silently used by
 profiling or generation.
+
+The precision-rescue policy `[evaluation.stability]` (`higher` carriers, the
+two tolerances, `verify_successful`, and the CLI options `--stability-higher`,
+`--stability-relative-tolerance`, `--stability-absolute-tolerance` and
+`--verify-successful`) was removed with the legacy loop engine, the only one
+that served it: any value other than the defaults is refused ("evaluation.stability
+(the precision-rescue policy ...) was removed ..."), and a Python
+`VirtualStabilityPolicy` is refused by v2 runtimes at load. v2 evaluations
+return stability estimates instead and leave escalating the arithmetic to the
+caller (below).
 
 ### The v2 loop engine
 
-`[loop] engine = "v2"` generates virtual processes with the shared-recursion
-one-loop engine (no loop diagram is listed) and publishes them as plan v4
-processes (runtime capability `rusticol.loop-runtime.v4`). Its UV and R2
+One-loop requests (`process.loop_coupling_orders`) generate virtual processes
+with the shared-recursion one-loop engine v2 (no loop diagram is listed),
+the only one-loop engine, and publish them as plan v4 processes (runtime
+capability `rusticol.loop-runtime.v4`). The per-diagram legacy engine was
+removed: a card, override or command line naming `loop.engine` (or
+`--loop-engine`) is refused ("configuration field 'loop.engine' was removed
+..."), and an artifact of the legacy engine (`rusticol.loop-runtime.v3`) is
+refused at load and inspection with the reason; regenerate it. Its UV and R2
 counterterms come from the same tree recursion as the Born, over the model's
 counterterm vertices (no counterterm diagram is listed either): every
 counterterm vertex of the model, two-point ones included, is an ordinary tree
 vertex inserted exactly once per contribution, within the requested coupling
-orders, and is not matched to the loops. The
-default `engine = "legacy"` keeps the per-diagram engine, which remains
-available as an oracle. A v2 evaluation can skip the poles and return stability
-estimates:
+orders, and is not matched to the loops. A v2 evaluation can skip the poles
+and return stability estimates:
 
 ```toml
 [evaluation]
@@ -586,11 +580,11 @@ Each check re-evaluates or re-reduces every point; the result then carries one
 `stability` estimate per point (relative accuracy of the whole virtual, of the
 finite part and, with poles, of each pole, plus each check's own budget).
 Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
-is left to the caller; `[evaluation.stability]` rescue policies belong to the
-legacy engine. `poles` is a pole selection (`PoleSelection` in Python):
+is left to the caller (the `[evaluation.stability]` rescue policy was removed,
+above). `poles` is a pole selection (`PoleSelection` in Python):
 `"all"` (the default), `"none"`, `"uv"` or `"ir"`; the finite part is the same
 under every selection, and `"none"` saves the pole work. The CLI spells these
-`--loop-engine v2`, `--poles {all,none,uv,ir}`,
+`--poles {all,none,uv,ir}`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT`,
 `--stability-reduction-direction` and `--stability-rescaled`.
 
@@ -600,8 +594,7 @@ the leg's squared mass at the evaluation's model parameters (zero, or a mass
 parameter such as `MT`), exactly, rather than the p² of the supplied momenta;
 everything else (trees, wavefunctions, loop-momentum shifts, invariants of
 several legs) uses the momenta as given, without projection or tolerance. This
-is always on and changes no input: it is what an external state means, and the
-legacy engine binds the same invariants. Momenta rounded to binary64 sit off
+is always on and changes no input: it is what an external state means. Momenta rounded to binary64 sit off
 their mass shells by about 1e-16 relative, so a point copied from a binary64
 evaluation gives the same finite part and poles in `double-double` and
 `arbitrary` arithmetic, to the accuracy of the binary64 value (its stability
@@ -617,7 +610,7 @@ as on that shell. A `double` evaluation never applies these: a loop whose
 squared masses or invariants at a point fall in that window (a keV-scale
 internal mass in GeV, the electron mass in TeV) is reduced by the exact generic
 binary64 engine instead, so these comparisons no longer depend on the units;
-only the cost of those loops changes, in the v2 and the legacy engine alike.
+only the cost of those loops changes.
 The exact engine uses Symbolica in the native code, under pyAmpliCol's package
 key, so a v2 binary64 evaluation with such a loop needs the key, which other v2
 binary64 evaluations do not (see
@@ -721,8 +714,6 @@ selected_color_sector_ids = [2]
 selected_source_helicities = {"1" = -1, "5" = 1}
 [color]
 accuracy = "lc"
-[loop]
-engine = "v2"
 ```
 
 The loop's leading colour is the leading N_c power of the squared matrix
@@ -942,11 +933,10 @@ The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
 
 MG5_aMC's `loop_qcd_qed_sm` needs
-`[loop.preparation] compatibility = "gmu_particle_anti"` with either engine (its
-`G-` loses the Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
-goldstoneboson"); `loop.preparation.covariant_multiplets` needs
-`engine = "legacy"`. With `engine = "v2"`, `color.contraction` selects the
-seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
+`[loop.preparation] compatibility = "gmu_particle_anti"` (its `G-` loses the
+Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
+goldstoneboson"); `loop.preparation.covariant_multiplets` is not supported by
+v2 (refused). `color.contraction` selects the seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
 the certified symmetric-group orbit pairs of the external gluons with the FFT
 and the rest directly, `direct` contracts everything directly, and
 `symmetric-group-fft` requires a certified pair (a process with fewer than two
@@ -973,8 +963,8 @@ content (the UFO `loop_particles`) holds a vetoed particle is dropped, and so is
 its external-field renormalisation. With loop_sm, `particle_veto = ["t"]` gives
 massless five-flavour QCD (no top loop, no top decoupling term), the convention
 of NJet. A vetoed particle cannot be external. The veto is stored with the
-artifact's generation request and in its generation filters; it is available
-with `loop.engine = "v2"` only.
+artifact's generation request and in its generation filters; it needs a
+one-loop request.
 
 Anomalous vetoes. A veto can keep model counterterms from cancelling that
 cancel with every flavour admitted: vetoing `d s b` (or `t`) in a request with
@@ -999,8 +989,8 @@ request:
 fixed_parameters = {MB = "0", WT = "0"}
 ```
 
-The legacy engine takes every propagator without width; a resonant coloured
-particle needs the complex-mass scheme (not available yet). An evaluation
+A resonant coloured particle needs the complex-mass scheme (not available
+yet). An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
 value that is not a finite decimal number (a number, or ASCII decimal text:
 surrounding whitespace and underscores are ignored, fractions and non-ASCII
@@ -1013,7 +1003,7 @@ update with one refused entry changes nothing, and every client checks the
 entries by name, so a mapping with several refused entries gets the same
 message everywhere. Other known parameters are accepted even where
 the process does not use them (for example a width only loop propagators would
-carry), as with the legacy engine. The renormalisation-scale parameter is the
+carry). The renormalisation-scale parameter is the
 external parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 Generation records which model-derived values depend on it: for the usual NLO
 models only the counterterms do, and a batch of points at several scales is

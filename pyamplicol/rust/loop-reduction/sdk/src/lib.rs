@@ -5,19 +5,17 @@ mod correlated;
 mod ffi;
 pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape, SpinSources};
 pub use ffi::*;
-use rusticol_core::loop_execution::{CompleteLoopResult, LoopInputs};
-use rusticol_core::loop_runtime::LoopRuntimePlan;
+use rusticol_core::loop_execution::LoopInputs;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
+#[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::{
     V2Poles, V2Runtime, decimal_parameter, is_v2_artifact, named_parameters,
 };
-use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
-use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
 use serde::Serialize;
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{collections::BTreeMap, path::Path};
 
 fn invalid(message: impl ToString) -> RusticolError {
     RusticolError::invalid_argument(message.to_string())
@@ -70,16 +68,23 @@ pub struct Evaluation {
     pub diagnostics_json: String,
 }
 
-/// The runtime behind an SDK handle: a plan v1-v3 loop runtime, or a plan v4
-/// process with native point inputs (`v2_runtime`, WP3.1 I6).
+/// The runtime behind an SDK handle: a plan v4 process with native point
+/// inputs (`v2_runtime`, WP3.1 I6). The plan v1-v3 runtime of the removed
+/// legacy one-loop engine is refused at open (`LEGACY_ENGINE_REMOVED`).
 enum Engine {
-    V3(VirtualRuntime),
     V4(Box<V2Runtime>),
 }
 
 const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved) \
     binary64 virtuals with model R2; resolved, correlated, verified and \
     rescued evaluations go through the Python API";
+
+/// The refusal of a loop artifact of the removed legacy engine (the Python
+/// API's `LEGACY_LOOP_ARTIFACT_REMOVED`).
+pub(crate) const LEGACY_ENGINE_REMOVED: &str = "this artifact holds legacy-engine \
+    virtual processes (rusticol.loop-runtime.v3): the legacy one-loop engine was \
+    removed; v2 (the shared-recursion engine) is the only one-loop engine; \
+    regenerate the artifact";
 
 /// The R2 strategy of a plan v4 process, as the Python API's
 /// `runtime.virtual.v2_r2_strategy`: v4 artifacts carry the model-supplied
@@ -150,7 +155,6 @@ pub struct Runtime {
     shape: Shape,
     poles: Poles,
     color_components: Vec<String>,
-    born_anchored_color: bool,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
 }
@@ -176,46 +180,7 @@ impl Runtime {
         if is_v2_artifact(path.as_ref())? {
             return Self::open_v4(path, process, parameters, r2_strategy, policy);
         }
-        let native = VirtualRuntime::open_with_policy(
-            path,
-            process,
-            "double",
-            None,
-            parameters,
-            r2_strategy,
-            policy,
-        )?;
-        let plan: LoopRuntimePlan =
-            serde_json::from_str(&native.plan_metadata_json()?).map_err(serialization)?;
-        let shape = Shape {
-            external_count: native.external_count(),
-            born_orders: native.metadata().orders.born.len(),
-            virtual_orders: native.metadata().orders.r#virtual.len(),
-            helicities: plan.helicities.len(),
-            born_color_components: plan.resolved_color_component_count(),
-            virtual_color_components: plan.resolved_color_component_count(),
-            epsilon_count: 3,
-            resolved_available: u32::from(native.metadata().resolved),
-        };
-        let color_components = plan.born_color_components.as_ref().map_or_else(
-            || vec![native.metadata().color_accuracy.clone()],
-            |partition| partition.ids.clone(),
-        );
-        let history_ids = native
-            .selected_histories()
-            .iter()
-            .map(|h| h.id.clone())
-            .collect();
-        let spin_classes = native.selected_spin_classes().to_vec();
-        Ok(Self {
-            engine: Engine::V3(native),
-            shape,
-            poles: Poles::All,
-            color_components,
-            born_anchored_color: plan.born_color_components.is_some(),
-            history_ids,
-            spin_classes,
-        })
+        Err(RusticolError::compatibility(LEGACY_ENGINE_REMOVED))
     }
     /// A plan v4 process: its stored native program evaluates every point
     /// (no Python, no generation; `rusticol_loop_reduction::v2_runtime`).
@@ -253,59 +218,36 @@ impl Runtime {
             engine: Engine::V4(Box::new(native)),
             shape,
             poles: Poles::All,
-            born_anchored_color: false,
             history_ids: vec![],
             spin_classes: vec![],
         })
-    }
-    /// The plan v1-v3 runtime (plan v4 serves ordinary virtuals only).
-    fn v3(&self) -> RusticolResult<&VirtualRuntime> {
-        match &self.engine {
-            Engine::V3(native) => Ok(native),
-            Engine::V4(_) => Err(invalid(V4_ONLY_ORDINARY)),
-        }
-    }
-    fn v3_mut(&mut self) -> RusticolResult<&mut VirtualRuntime> {
-        match &mut self.engine {
-            Engine::V3(native) => Ok(native),
-            Engine::V4(_) => Err(invalid(V4_ONLY_ORDINARY)),
-        }
     }
     pub fn shape(&self) -> Shape {
         self.shape
     }
     /// The pole selection of later evaluations (default all): "all",
-    /// "none", "uv" or "ir", the Python API's four (`Poles`). A plan v4
-    /// runtime serves all four; plan v1-v3 runtimes evaluate every pole.
+    /// "none", "uv" or "ir", the Python API's four (`Poles`).
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
-        if poles != Poles::All && matches!(self.engine, Engine::V3(_)) {
-            return Err(invalid(
-                "plan v1-v3 SDK runtimes evaluate every pole (poles \"all\")",
-            ));
-        }
         self.poles = poles;
         Ok(())
     }
     pub fn poles(&self) -> Poles {
         self.poles
     }
+    /// Plan v4 runtimes retain no verification policy (escalation is the
+    /// caller's, through the Python API).
     pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
-        match &self.engine {
-            Engine::V3(native) => native.verification_policy(),
-            Engine::V4(_) => None,
-        }
+        None
     }
     /// Existing artifact metadata includes exact order pairings and schemes.
     pub fn metadata_json(&self) -> RusticolResult<String> {
-        match &self.engine {
-            Engine::V3(native) => native.metadata_json(),
-            Engine::V4(native) => native.metadata_json(),
-        }
+        let Engine::V4(native) = &self.engine;
+        native.metadata_json()
     }
     pub fn capabilities_json(&self) -> RusticolResult<String> {
-        if let Engine::V4(native) = &self.engine {
-            let metadata = native.metadata();
-            return serde_json::to_string(&serde_json::json!({
+        let Engine::V4(native) = &self.engine;
+        let metadata = native.metadata();
+        serde_json::to_string(&serde_json::json!({
                 "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
                 "engine":"v2", "plan_sha256":native.plan_sha256(),
                 "point_inputs":"native-v2",
@@ -326,33 +268,7 @@ impl Runtime {
                 "retained_verification_policy":serde_json::Value::Null,
                 "normalization":"physical couplings and inclusive initial spin/color average"
             }))
-            .map_err(serialization);
-        }
-        let native = self.v3()?;
-        serde_json::to_string(&serde_json::json!({
-            "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
-            "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
-            "resolved": native.metadata().resolved, "correlations":native.metadata().correlations,
-            "correlation_histories":self.history_ids,
-            "spin_correlation_classes":self.spin_classes,
-            "correlated_resolved":false,
-            "correlated_layout":"point/history/order/epsilon; complex binary64",
-            "color_accuracy":native.metadata().color_accuracy,
-            "color_contraction":native.color_contraction_metadata(),
-            "color_components":self.color_components,
-            "color_component_semantics":if self.born_anchored_color {
-                "signed canonical Born tensor groups, potentially overcomplete; not sampling probabilities"
-            } else { "contracted colour" },
-            "available_r2_strategies": native.metadata().available_r2_strategies,
-            "r2_strategy":"model", "explicit_verification":true,
-            "source_only":true,
-            "retained_verification_policy":self.verification_policy().map(|p| serde_json::json!({
-                "higher":p.higher, "relative_tolerance":p.relative_tolerance,
-                "absolute_tolerance":p.absolute_tolerance, "verify_successful":p.verify_successful
-            })),
-            "source_binding_rescue":"configured policy retains exact inputs after a numerical primary failure; complete-result agreement remains required",
-            "normalization":"physical couplings and inclusive initial spin/color average; resolved helicities retain that average"
-        })).map_err(serialization)
+            .map_err(serialization)
     }
     /// Update model parameters. A plan v4 process validates the whole
     /// mapping first, as the Python API's `set_model_parameters` (in its
@@ -363,19 +279,12 @@ impl Runtime {
     /// `Compatibility` error, and a refused update changes nothing (its
     /// revision is always 0).
     pub fn update_parameters(&mut self, values: &SourceOverrides) -> RusticolResult<u64> {
-        match &mut self.engine {
-            Engine::V3(native) => native.update_parameters(values),
-            Engine::V4(native) => {
-                native.set_parameters(real_overrides(values)?)?;
-                Ok(0)
-            }
-        }
+        let Engine::V4(native) = &mut self.engine;
+        native.set_parameters(real_overrides(values)?)?;
+        Ok(0)
     }
-    pub fn clear(&mut self) {
-        if let Engine::V3(native) = &mut self.engine {
-            native.clear();
-        }
-    }
+    /// Plan v4 runtimes keep no evaluation caches to clear.
+    pub fn clear(&mut self) {}
     /// Binary64 inputs are encoded as their exact terminating decimal values,
     /// so higher arithmetic retries preserve the original C/Rust input numbers.
     pub fn evaluate(
@@ -416,25 +325,14 @@ impl Runtime {
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        if let Engine::V4(native) = &mut self.engine {
-            if let Some(strategy) = strategy {
-                v4_r2_strategy(strategy)?;
-            }
-            if resolved || policy.is_some() {
-                return Err(invalid(V4_ONLY_ORDINARY));
-            }
-            return Evaluation::from_v4(native, inputs, self.shape, self.poles);
+        let Engine::V4(native) = &mut self.engine;
+        if let Some(strategy) = strategy {
+            v4_r2_strategy(strategy)?;
         }
-        let effective = policy.or_else(|| self.verification_policy()).cloned();
-        let native = self.v3_mut()?;
-        let (result, verification) = match effective.as_ref() {
-            Some(policy) => {
-                let output = native.evaluate_verified(inputs, strategy, resolved, policy)?;
-                (output.result, output.diagnostics)
-            }
-            None => (native.evaluate_partial(inputs, strategy, resolved)?, vec![]),
-        };
-        Evaluation::from_native(result, verification, self.shape, resolved)
+        if resolved || policy.is_some() {
+            return Err(invalid(V4_ONLY_ORDINARY));
+        }
+        Evaluation::from_v4(native, inputs, self.shape, self.poles)
     }
     fn prepare_inputs(
         &self,
@@ -512,6 +410,7 @@ fn exact_double(value: f64) -> RusticolResult<String> {
         .to_owned())
 }
 
+#[cfg(test)]
 fn pack(
     batch: &Batch,
     points: usize,
@@ -619,91 +518,6 @@ impl Evaluation {
             diagnostics_json,
         })
     }
-    fn from_native(
-        result: CompleteLoopResult<Arc<Batch>>,
-        verification: Vec<VerificationDiagnostic>,
-        shape: Shape,
-        resolved: bool,
-    ) -> RusticolResult<Self> {
-        let helicities = if resolved { shape.helicities } else { 1 };
-        let born_colors = if resolved {
-            shape.born_color_components
-        } else {
-            1
-        };
-        let virtual_colors = if resolved {
-            shape.virtual_color_components
-        } else {
-            1
-        };
-        let rows_per_point = product(&[helicities, born_colors])?;
-        if born_colors != virtual_colors
-            || rows_per_point == 0
-            || result.born.rows() != product(&[result.point_ids.len(), rows_per_point])?
-        {
-            return Err(invalid("native resolved point identity shape differs"));
-        }
-        let successful_point_ids = result.point_ids.clone();
-        let (statuses, diagnostics_json) = diagnostics(&result, &verification)?;
-        let born = pack(
-            &result.born,
-            successful_point_ids.len(),
-            shape.born_orders,
-            helicities,
-            born_colors,
-            1,
-        )?;
-        let virtual_values = pack(
-            &result.components[0],
-            successful_point_ids.len(),
-            shape.virtual_orders,
-            helicities,
-            virtual_colors,
-            3,
-        )?;
-        Ok(Self {
-            requested_point_ids: result.requested_point_ids,
-            successful_point_ids,
-            statuses,
-            born,
-            virtual_values,
-            shape,
-            resolved,
-            diagnostics_json,
-        })
-    }
-}
-
-fn diagnostics(
-    result: &CompleteLoopResult<Arc<Batch>>,
-    verification: &[VerificationDiagnostic],
-) -> RusticolResult<(Vec<PointStatus>, String)> {
-    let verified: BTreeMap<_, _> = verification.iter().map(|v| (v.point_id, v)).collect();
-    let successful_point_ids = &result.point_ids;
-    let successes: std::collections::BTreeSet<_> = successful_point_ids.iter().copied().collect();
-    let statuses = result
-        .requested_point_ids
-        .iter()
-        .map(|id| match verified.get(id) {
-            Some(v) if v.status == "accuracy-not-established" => {
-                PointStatus::AccuracyNotEstablished
-            }
-            Some(v) if v.status == "rescued" => PointStatus::Rescued,
-            Some(v) if v.accuracy_established => PointStatus::Verified,
-            _ if successes.contains(id) => PointStatus::Success,
-            _ => PointStatus::Failed,
-        })
-        .collect();
-    let diagnostics_json = serde_json::to_string(&serde_json::json!({
-        "requested_point_ids":result.requested_point_ids,
-        "successful_point_ids":successful_point_ids,
-        "failures":result.failures, "verification":verification,
-        "reduction_statuses":result.statuses,
-        "source_revision":result.source_revision, "r2_strategy":result.r2_strategy,
-        "primary_color_contraction":result.primary_color_contraction,
-    }))
-    .map_err(serialization)?;
-    Ok((statuses, diagnostics_json))
 }
 
 #[cfg(test)]

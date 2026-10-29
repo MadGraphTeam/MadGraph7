@@ -328,8 +328,10 @@ The loop development source also provides an explicitly versioned
 [pyAmpliCol UMAMI virtual extension](../../rust/loop-reduction/sdk/umami/README.md).
 It reuses UMAMI's column-major batch layout and offset/count/stride conventions
 while returning all Born/virtual squared orders, all three Laurent coefficients
-and mandatory point statuses. It makes one bulk call to the shared virtual SDK,
-with optional resolved helicities and explicit verification/rescue.
+and mandatory point statuses. It makes one bulk call to the shared virtual SDK;
+its resolved-helicity and verification/rescue entry points refuse plan v4 (v2
+engine) processes with the reason, since the legacy engine that served them was
+removed.
 
 This is a pyAmpliCol extension, not standard UMAMI virtual interoperability.
 It adds separate versioned symbols and keys; the tree ABI described above is

@@ -109,13 +109,24 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }
 )
-LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
-# Plan v4 virtual processes of the shared-recursion engine (loops/v2).
+# Plan v4 virtual processes of the shared-recursion engine (loops/v2), the
+# only one-loop engine.
 LOOP_V2_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v4"
+# The format of the removed per-diagram legacy loop engine (user ruling
+# 2026-10-28, M-QCD Q3): recognised only to refuse it with this reason.
+RETIRED_LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
+LEGACY_LOOP_ENGINE_REMOVED = (
+    "the legacy one-loop engine was removed; v2 (the shared-recursion engine) "
+    "is the only one-loop engine"
+)
+LEGACY_LOOP_ARTIFACT_REMOVED = (
+    f"this artifact holds legacy-engine virtual processes "
+    f"({RETIRED_LOOP_RUNTIME_CAPABILITY}): {LEGACY_LOOP_ENGINE_REMOVED}; "
+    "regenerate the artifact"
+)
 KNOWN_EVALUATOR_RUNTIME_CAPABILITIES = EVALUATOR_RUNTIME_CAPABILITIES | frozenset(
     {
         # Parse/serialize these lanes, without admitting them to scalar Runtime.
-        LOOP_RUNTIME_CAPABILITY,
         LOOP_V2_RUNTIME_CAPABILITY,
         # Historical eager plan-v2 artifacts remain parseable for inspection
         # and actionable migration errors, but are not executable capabilities.

@@ -19,6 +19,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
+from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import (
     ArtifactBuilder,
@@ -56,7 +57,7 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
-    LOOP_RUNTIME_CAPABILITY,
+    LEGACY_LOOP_ARTIFACT_REMOVED,
     LOOP_V2_RUNTIME_CAPABILITY,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
@@ -73,6 +74,7 @@ from .._internal.versions import (
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RETIRED_LOOP_RUNTIME_CAPABILITY,
     RUNTIME_PHYSICS_SCHEMA_VERSION,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
@@ -108,7 +110,7 @@ from .evaluator_container import (
 from .loop_artifact import (
     LOOP_RUNTIME_KIND,
     LOOP_RUNTIME_PATH,
-    LoopProcessArtifact,
+    LoopV2ProcessArtifact,
     loop_process_payloads,
 )
 from .process_grouping import PROCESS_GROUPS_PATH, PROCESS_GROUPS_ROLE, ProcessGroupMap
@@ -395,7 +397,7 @@ ProcessArtifact = (
     | EagerPlanV3ProcessArtifact
     | RecurrenceProcessArtifact
     | OnTheFlyProcessArtifact
-    | LoopProcessArtifact
+    | LoopV2ProcessArtifact
 )
 
 
@@ -973,7 +975,7 @@ def write_schema_v3_artifact(
     effective_config = _config_payload(configuration.effective)
     bundle_requested = _bundle_requested(configuration.effective)
     loop_processes = tuple(
-        process for process in processes if isinstance(process, LoopProcessArtifact)
+        process for process in processes if isinstance(process, LoopV2ProcessArtifact)
     )
     has_loop = bool(loop_processes)
     hook = api_bundle_hook or _default_api_bundle_hook(
@@ -982,20 +984,15 @@ def write_schema_v3_artifact(
     if has_loop and len(loop_processes) != len(processes):
         raise ValueError("tree and virtual processes cannot share an artifact yet")
     loop_capabilities = {process.runtime_capability for process in loop_processes}
-    if len(loop_capabilities) > 1:
-        raise ValueError("legacy and v2 virtual processes cannot share an artifact")
     if existing is not None:
         existing_capabilities = set(existing.runtime["required_runtime_capabilities"])
-        existing_loop = bool(
-            existing_capabilities
-            & {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}
-        )
+        if RETIRED_LOOP_RUNTIME_CAPABILITY in existing_capabilities:
+            raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
+        existing_loop = LOOP_V2_RUNTIME_CAPABILITY in existing_capabilities
         if has_loop != existing_loop:
             raise ValueError(
                 "cannot append tree and virtual processes to the same artifact"
             )
-        if has_loop and not loop_capabilities <= existing_capabilities:
-            raise ValueError("legacy and v2 virtual processes cannot share an artifact")
     if has_loop:
         scheme = loop_processes[0].metadata.scheme
         if any(process.metadata.scheme != scheme for process in loop_processes):
@@ -1907,7 +1904,7 @@ def _write_process_payloads(
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
     schema: Mapping[str, object]
-    if isinstance(process, LoopProcessArtifact):
+    if isinstance(process, LoopV2ProcessArtifact):
         schema = {}
         runtime_path = f"{prefix}/{LOOP_RUNTIME_PATH}"
         evaluator_payloads.add_file(
@@ -1957,7 +1954,7 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    if isinstance(process, LoopProcessArtifact):
+    if isinstance(process, LoopV2ProcessArtifact):
         execution_record = builder.add_json(
             execution_path,
             loop_execution,
@@ -5183,7 +5180,7 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
-    if isinstance(process, LoopProcessArtifact):
+    if isinstance(process, LoopV2ProcessArtifact):
         return (process.runtime_capability,)
     if isinstance(process, OnTheFlyProcessArtifact):
         return _on_the_fly_process_runtime_capabilities(process)
@@ -5336,10 +5333,11 @@ def _required_runtime_capabilities(
             EAGER_PLAN_V3_RUNTIME_CAPABILITY,
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
-            LOOP_RUNTIME_CAPABILITY,
             LOOP_V2_RUNTIME_CAPABILITY,
         }
     )
+    if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
+        raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
     if unknown:
         raise ValueError(
             "unsupported evaluator runtime capabilities: " + ", ".join(sorted(unknown))
@@ -5374,7 +5372,7 @@ def _extensions(
             "filters": dict(process.generation_filters),
         }
         if _is_prepared_kernel_process(process) or isinstance(
-            process, LoopProcessArtifact
+            process, LoopV2ProcessArtifact
         ):
             record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
                 process.process_id

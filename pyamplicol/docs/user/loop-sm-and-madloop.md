@@ -19,9 +19,6 @@ restriction = "no_b_mass"       # MG5_aMC: import model loop_sm-no_b_mass
 entries = [{ expression = "u u~ > e- e+ g", name = "dy_jet" }]
 loop_coupling_orders = ["QCD"]  # MG5_aMC: [virt=QCD]
 
-[loop]
-engine = "v2"
-
 [loop.preparation]
 fixed_parameters = { WT = "0", WZ = "0", WW = "0", WH = "0" }
 

@@ -1,20 +1,15 @@
 # SPDX-License-Identifier: 0BSD
 """Frozen legacy oracles (O1, O2) and three-provider slice references (WP0.1).
 
-The provider checks only read committed fixtures. Regeneration reruns the
-legacy engine through ``tools/loop_reference/legacy_capture.py --check`` in a
-fresh interpreter and requires the files to be reproduced byte for byte.
+The checks only read committed fixtures: the legacy captures are frozen (the
+legacy engine that wrote them was removed, user ruling 2026-10-28, M-QCD Q3).
 """
 
 from __future__ import annotations
 
 import math
-import os
-import subprocess
-import sys
 from decimal import Decimal
 from itertools import combinations
-from pathlib import Path
 
 import pytest
 
@@ -43,7 +38,6 @@ COMPONENT_CONTROLS = {
 # external quarks only), so its whole UV part is the vertex counterterm.
 UV_SPLIT = ("uv_vertex", "wf")
 # The slowest control (uux_ggg) regenerates in about 400 s on this host.
-REGENERATION_TIMEOUT = 1800
 
 
 def relative(a, b, floor=0.0):
@@ -153,35 +147,3 @@ def test_legacy_drell_yan_agrees_with_madloop(loop_reference, carrier):
         assert_agrees(
             row, {"born": legacy["born"], **legacy["virtual"]}, f"dy point {index}"
         )
-
-
-_NIGHTLY = {"uux_ddxg", "uux_ggg", "uux_uuxg"}
-
-
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            name,
-            marks=pytest.mark.loop_nightly
-            if name in _NIGHTLY
-            else pytest.mark.loop_physics,
-        )
-        for name in legacy_capture.CONTROLS
-    ],
-)
-def test_legacy_fixtures_regenerate_bitwise(loop_sm_ufo, loop_native, name):
-    import pyamplicol
-
-    # A fresh interpreter: Symbolica's term order depends on earlier symbols.
-    source = str(Path(pyamplicol.__file__).resolve().parents[1])
-    path = os.pathsep.join(filter(None, (source, os.environ.get("PYTHONPATH"))))
-    command = [sys.executable, legacy_capture.__file__, "--ufo", str(loop_sm_ufo)]
-    completed = subprocess.run(
-        [*command, "--process", name, "--check"],
-        env={**os.environ, "PYTHONPATH": path},
-        capture_output=True,
-        text=True,
-        timeout=REGENERATION_TIMEOUT,
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr

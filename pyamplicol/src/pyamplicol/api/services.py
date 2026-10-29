@@ -417,10 +417,12 @@ class Runtime:
         the artifact's declared default.
 
         Virtual runtimes accept initial ``arithmetic``, ``precision`` and
-        ``r2_strategy`` and ``stability`` defaults. Arithmetic and the optional
-        verification policy are selected before exact model
-        parameters are evaluated. Omitted evaluation options retain these
-        defaults; tree runtimes select precision at evaluation time instead.
+        ``r2_strategy`` defaults, selected before exact model parameters are
+        evaluated. Omitted evaluation options retain these defaults; tree
+        runtimes select precision at evaluation time instead. ``stability`` (a
+        ``VirtualStabilityPolicy`` rescue) is refused by v2 loop runtimes, the
+        only ones since the legacy engine was removed: they return estimates
+        (``stability_checks``) and leave escalation to the caller.
         """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)

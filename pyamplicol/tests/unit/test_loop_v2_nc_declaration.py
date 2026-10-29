@@ -608,7 +608,6 @@ accuracy = "lc"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false

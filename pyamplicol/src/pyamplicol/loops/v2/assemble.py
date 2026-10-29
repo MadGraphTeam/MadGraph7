@@ -1607,7 +1607,6 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         loop_order_bounds=request.loop_order_bounds,
         fixed_parameters=fixed,
         compatibility=request.compatibility,
-        certify_primitives=False,
     )
     continuation = None
     if declaration is not None:

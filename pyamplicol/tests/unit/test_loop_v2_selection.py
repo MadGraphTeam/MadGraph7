@@ -1179,7 +1179,6 @@ accuracy = "{accuracy}"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [loop.preparation]
 fixed_parameters = {fixed}
 [generation]

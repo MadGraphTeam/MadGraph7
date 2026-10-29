@@ -31,7 +31,7 @@ massive parameter updates, equal-valued independent masses, all three carriers,
 and malformed saved bindings. The original rounded six-leg RAMBO controls remain
 in the physical regression, alongside exactly on-shell precision controls.
 
-The v2 engine (`loop.engine = "v2"`) binds the same invariants without a stored
+The v2 engine (the only one-loop engine) binds the same invariants without a stored
 assignment: in every loop family an invariant whose leg set is one external leg,
 or whose complement is, takes that leg's squared mass at the point's parameters,
 the exact value its propagators use, in double, DoubleFloat and arbitrary

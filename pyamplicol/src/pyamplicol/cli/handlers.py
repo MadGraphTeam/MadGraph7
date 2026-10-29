@@ -75,13 +75,12 @@ def dispatch(
     """Dispatch a typed config without importing a concrete domain backend."""
 
     if config.action != "evaluate" and (
-        config.evaluation.stability.higher
-        or config.evaluation.on_failure != "raise"
+        config.evaluation.on_failure != "raise"
         or config.evaluation.correlated_requests is not None
     ):
         raise ConfigurationError(
-            "evaluation.stability, evaluation.on_failure and correlated_requests "
-            "options require the evaluate action"
+            "evaluation.on_failure and correlated_requests options require the "
+            "evaluate action"
         )
     if config.action == "generate":
         return (
@@ -167,10 +166,7 @@ def _read_json(
 
 def _virtual_artifact_hint(path: Path) -> bool:
     """Choose CLI ingress only; the native loader checks the artifact itself."""
-    from pyamplicol._internal.versions import (
-        LOOP_RUNTIME_CAPABILITY,
-        LOOP_V2_RUNTIME_CAPABILITY,
-    )
+    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
     from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
 
     path = path.expanduser().resolve(strict=False)
@@ -178,9 +174,8 @@ def _virtual_artifact_hint(path: Path) -> bool:
     if not (root / MANIFEST_NAME).is_file():
         return False
     manifest = load_manifest(root, verify_payloads=False)
-    return bool(
-        {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}
-        & set(cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"]))
+    return LOOP_V2_RUNTIME_CAPABILITY in cast(
+        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
     )
 
 
@@ -426,7 +421,6 @@ class DefaultCliServices:
         artifact = config.evaluation.artifact
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
-        stability = evaluation.stability.to_policy()
         checks = evaluation.stability_checks.to_checks()
         # Pole-selection and stability-check options exist for v2 virtuals;
         # the defaults are omitted so other runtimes keep their signatures.
@@ -450,13 +444,12 @@ class DefaultCliServices:
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
-            or stability is not None
             or evaluation.on_failure != "raise"
             or v2_options
         ):
             raise ConfigurationError(
-                "arithmetic, mu_r2, r2_strategy, stability, poles, stability "
-                "checks and on_failure options require a virtual artifact; "
+                "arithmetic, mu_r2, r2_strategy, poles, stability checks and "
+                "on_failure options require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -490,7 +483,6 @@ class DefaultCliServices:
                     arithmetic=evaluation.arithmetic,
                     precision=evaluation.precision,
                     r2_strategy=config.loop.r2_strategy,
-                    stability=stability,
                 )
             return Runtime.load(
                 artifact,

@@ -61,15 +61,7 @@ def public_request(loop_sm_compiled_model, tmp_path):
     return card, output
 
 
-def test_real_public_virtual_cli_plan_never_compiles_numerators(
-    public_request, monkeypatch
-):
-    from pyamplicol.loops.compiler import PreparedLoopRequestModel
-
-    def forbidden(*args, **kwargs):
-        pytest.fail("dry-run compiled a numerator")
-
-    monkeypatch.setattr(PreparedLoopRequestModel, "compile", forbidden)
+def test_real_public_virtual_cli_plan_enumerates_no_loop_diagram(public_request):
     card, output = public_request
     stdout, stderr = io.StringIO(), io.StringIO()
     code = run_cli(
@@ -84,12 +76,10 @@ def test_real_public_virtual_cli_plan_never_compiles_numerators(
     assert not output.exists()
     processes = plan["estimated_coverage"]["processes"]
     assert {row["key"] for row in processes} == {"dy", "gg"}
-    assert all(row["loop_graph_count"] > 0 for row in processes)
-    assert all(
-        not row["numerator_and_reducer_capabilities_checked"] for row in processes
-    )
-    dy = next(row for row in processes if row["key"] == "dy")
-    assert dy["orders"]["virtual"][0]["order"] == [["QCD", 2], ["QED", 4]]
+    # Engine v2 (the only one-loop engine) plans without loop diagrams.
+    assert plan["estimated_coverage"]["engine"] == "v2"
+    assert all(row["engine"] == "v2" for row in processes)
+    assert all(row["loop_graph_count"] == 0 for row in processes)
 
 
 def test_real_public_generation_roundtrips_two_processes_and_cli(

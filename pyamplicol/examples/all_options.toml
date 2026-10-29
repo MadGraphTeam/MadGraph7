@@ -85,10 +85,6 @@ QED = 2
 # loop.r2_strategy: "auto", "model" (model-supplied UV/R2 rules), or "direct".
 # Default auto, which selects a complete eligible R2 branch of the artifact.
 r2_strategy = "auto"
-# loop.engine: One-loop engine of virtual generation: "legacy" (per-diagram
-# engine, the oracle until gate R3) or "v2" (shared-recursion engine, plan v4
-# artifacts with finite-only evaluation and stability checks). Default legacy.
-engine = "legacy"
 # loop.alpha_s_parameter: The v2 engine's alpha_s of the QCD IR-pole prediction
 # (an adjustable external model parameter). Default absent: the unique SLHA
 # SMINPUTS 3 parameter, else no QCD pole prediction (the virtual is unchanged).
@@ -162,11 +158,10 @@ workers = "auto"
 # generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
 # generation.particle_veto: Model particle names (a name vetoes its
-# antiparticle too) removed from every tree vertex of one-loop generation with
-# loop.engine "v2": Born, loop blocks, loop vertices and propagators and the
-# counterterm program; counterterm terms whose loop content (UFO
-# loop_particles) holds a vetoed particle are dropped. Virtual-only. Default
-# empty. Example: the five-flavour QCD of a model with a top quark.
+# antiparticle too) removed from every tree vertex of one-loop generation:
+# Born, loop blocks, loop vertices and propagators and the counterterm
+# program; counterterm terms whose loop content (UFO loop_particles) holds a
+# vetoed particle are dropped. Virtual-only. Default empty. Example: the five-flavour QCD of a model with a top quark.
 # particle_veto = ["t"]
 # generation.allow_anomalous_veto: Lower the Levi-Civita counterterm cells that
 # particle_veto keeps from cancelling but that cancel without it (an anomalous
@@ -334,18 +329,17 @@ momenta = "data/pp_zjj_momenta.json"
 poles = "all"
 
 [evaluation.stability]
-# evaluation.stability.higher: Optional virtual evaluate rescue carriers, in
-# order. An empty list enables no rescue. Explicit carriers: double,
-# double-double, arbitrary:DIGITS. Native precision must increase; there is no
-# implicit DoubleFloat selection by digit count. Default empty.
+# The precision-rescue policy was removed with the legacy loop engine: only
+# these defaults are accepted (stored configurations carry them); any other
+# value is refused with the reason. v2 virtuals return estimates
+# ([evaluation.stability_checks]) and leave escalating the arithmetic to you.
+# evaluation.stability.higher: Removed; default empty.
 higher = []
-# Both exact quoted tolerances are required with nonempty higher levels.
-# evaluation.stability.relative_tolerance: Exact relative tolerance text.
+# evaluation.stability.relative_tolerance: Removed; unset.
 # relative_tolerance = "1e-8"
-# evaluation.stability.absolute_tolerance: Exact absolute tolerance text.
+# evaluation.stability.absolute_tolerance: Removed; unset.
 # absolute_tolerance = "1e-20"
-# evaluation.stability.verify_successful: Also verify initially successful
-# points with the higher carriers. Default false.
+# evaluation.stability.verify_successful: Removed; default false.
 verify_successful = false
 
 [evaluation.stability_checks]

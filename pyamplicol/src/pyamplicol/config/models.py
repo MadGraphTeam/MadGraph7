@@ -13,17 +13,25 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from pyamplicol.api.virtual_results import (
-        VirtualStabilityChecks,
-        VirtualStabilityPolicy,
-    )
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
     )
     from pyamplicol.models.loop_preparation import LoopPreparation
 
+from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
+
+# The precision-rescue policy left with the legacy engine (refused by name in
+# EvaluationStabilityConfig, which keeps only its defaults).
+EVALUATION_STABILITY_REMOVED = (
+    "evaluation.stability (the precision-rescue policy: higher carriers, "
+    "tolerances, verify_successful) was removed with the legacy one-loop "
+    f"engine: {LEGACY_LOOP_ENGINE_REMOVED}; v2 loop runtimes return stability "
+    "estimates (evaluation.stability_checks) and leave precision escalation to "
+    "the caller; delete the setting"
+)
 
 
 class Action(StrEnum):
@@ -125,14 +133,6 @@ class PoleSelection(StrEnum):
     NONE = "none"
     UV = "uv"
     IR = "ir"
-
-
-class LoopEngine(StrEnum):
-    """One-loop engine: the per-diagram legacy engine (the oracle until gate
-    R3) or the shared-recursion engine v2 (plan v4 artifacts)."""
-
-    LEGACY = "legacy"
-    V2 = "v2"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -734,7 +734,7 @@ class GenerationConfig:
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
     # Particles (model names; a particle vetoes its antiparticle too) removed
-    # from every tree vertex of one-loop generation with loop.engine='v2'
+    # from every tree vertex of one-loop generation
     # (Born, blocks, loop vertices and propagators, counterterm program);
     # counterterm terms whose loop content holds one are dropped.
     particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -1038,6 +1038,15 @@ class EvaluatorConfig:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationStabilityConfig:
+    """The removed precision-rescue policy: only its defaults are accepted.
+
+    The rescue (``higher`` carriers, tolerances, ``verify_successful``) was
+    served only by the removed legacy one-loop engine; v2 loop runtimes return
+    stability estimates (``evaluation.stability_checks``) and leave precision
+    escalation to the caller. The section stays so that stored configurations
+    with its defaults still resolve; any other value is refused with the reason.
+    """
+
     higher: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     relative_tolerance: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
@@ -1053,54 +1062,13 @@ class EvaluationStabilityConfig:
             "higher",
             _tuple_of_strings(self.higher, "evaluation.stability.higher"),
         )
-        self.to_policy()
-
-    def to_policy(self) -> VirtualStabilityPolicy | None:
-        """Translate configuration text to the existing virtual policy contract."""
-        prefix = "evaluation.stability"
-        if type(self.verify_successful) is not bool:
-            raise ConfigurationError(f"{prefix}.verify_successful must be a boolean")
-        if not self.higher:
-            if (
-                self.relative_tolerance is not None
-                or self.absolute_tolerance is not None
-                or self.verify_successful
-            ):
-                raise ConfigurationError(f"{prefix} options require higher levels")
-            return None
-        if self.relative_tolerance is None or self.absolute_tolerance is None:
-            raise ConfigurationError(
-                f"{prefix} requires both relative_tolerance and absolute_tolerance"
-            )
-        from pyamplicol.api.virtual_results import (
-            VirtualArithmeticSpec,
-            VirtualStabilityPolicy,
-        )
-
-        levels = []
-        try:
-            for token in self.higher:
-                if token in ("double", "double-double"):
-                    levels.append(
-                        VirtualArithmeticSpec(
-                            "double" if token == "double" else "double-double"
-                        )
-                    )
-                elif re.fullmatch(r"arbitrary:[0-9]+", token):
-                    levels.append(VirtualArithmeticSpec("arbitrary", int(token[10:])))
-                else:
-                    raise ValueError(
-                        f"invalid higher carrier {token!r}; use double, double-double "
-                        "or arbitrary:<positive decimal digits>"
-                    )
-            return VirtualStabilityPolicy(
-                tuple(levels),
-                self.relative_tolerance,
-                self.absolute_tolerance,
-                self.verify_successful,
-            )
-        except (TypeError, ValueError, DecimalException) as error:
-            raise ConfigurationError(f"{prefix}: {error}") from error
+        if (
+            self.higher
+            or self.relative_tolerance is not None
+            or self.absolute_tolerance is not None
+            or self.verify_successful is not False
+        ):
+            raise ConfigurationError(EVALUATION_STABILITY_REMOVED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1524,9 +1492,6 @@ class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
-    engine: LoopEngine = field(
-        default=LoopEngine.LEGACY, metadata=_setting("str", choices=tuple(LoopEngine))
-    )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
@@ -1535,6 +1500,16 @@ class LoopConfig:
     alpha_s_parameter: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
     )
+
+    def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
+        # The removed engine switch is refused with its reason, as in TOML,
+        # overrides and the CLI (``config.resolver``).
+        if "engine" in kwargs:
+            raise ConfigurationError(
+                "configuration field 'loop.engine' was removed: "
+                f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+            )
+        return object.__new__(cls)
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, LoopModelConfig):
@@ -1547,9 +1522,6 @@ class LoopConfig:
             )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
-        )
-        object.__setattr__(
-            self, "engine", _enum(self.engine, LoopEngine, "loop.engine")
         )
 
 
@@ -1626,12 +1598,10 @@ class RunConfig:
                 "evaluator.execution_mode='loop_recurrence' requires "
                 "process.loop_coupling_orders"
             )
-        if self.generation.particle_veto and not (
-            virtual and self.loop.engine is LoopEngine.V2
-        ):
+        if self.generation.particle_veto and not virtual:
             raise ConfigurationError(
                 "generation.particle_veto requires one-loop generation "
-                "(process.loop_coupling_orders) with loop.engine='v2'"
+                "(process.loop_coupling_orders)"
             )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT

@@ -925,59 +925,6 @@ fn validate_antiparticle_identity_pair(
     Ok(())
 }
 
-pub(crate) fn validate_loop_vector_sources<'a>(
-    sources: impl IntoIterator<Item = (usize, &'a Value, i32, bool)>,
-) -> RusticolResult<()> {
-    let mut canonical = BTreeMap::new();
-    let mut by_leg = BTreeMap::new();
-    for (leg, value, pdg, massless) in sources {
-        let source: GenericSourceIrManifest = serde_json::from_value(value.clone())
-            .map_err(|error| RusticolError::artifact(format!("loop source {leg} SourceIR: {error}")))?;
-        validate_loop_vector_source(leg, &source, pdg, massless)?;
-        if let Some(previous) = by_leg.insert(leg, source.clone())
-            && previous != source
-        {
-            return Err(RusticolError::artifact(format!(
-                "loop source {leg} differs across saved joint classes"
-            )));
-        }
-        validate_canonical_source_ir(&mut canonical, leg, &source)?;
-    }
-    Ok(())
-}
-
-fn validate_loop_vector_source(
-    leg: usize,
-    source: &GenericSourceIrManifest,
-    pdg: i32,
-    massless: bool,
-) -> RusticolResult<()> {
-    validate_crossing_ir(leg, "declared", &source.crossing)?;
-    let identity = &source.identity;
-    validate_source_identity(leg, identity)?;
-    let helicities: &[i32] = if massless { &[-1, 1] } else { &[-1, 0, 1] };
-    if source.wavefunction_family != GenericWavefunctionFamilyManifest::Vector
-        || source.statistics != GenericParticleStatisticsManifest::Boson
-        || source.component_dimension != 4
-        || source.basis != "lorentz-vector"
-        || identity.pdg_label != pdg
-        || (identity.self_conjugate && identity.display_name != identity.anti_display_name)
-        || source.states.len() != helicities.len()
-        || !helicities.iter().all(|&helicity| {
-            source.states.iter().any(|state| {
-                state.helicity == helicity
-                    && state.chirality == 0
-                    && state.spin_state == GenericSourceSpinStateManifest::Scalar(helicity)
-            })
-        })
-    {
-        return Err(RusticolError::artifact(format!(
-            "loop source {leg} differs from its physical vector SourceIR"
-        )));
-    }
-    Ok(())
-}
-
 fn validate_source_identity(
     index: usize,
     identity: &GenericParticleIdentityIrManifest,
