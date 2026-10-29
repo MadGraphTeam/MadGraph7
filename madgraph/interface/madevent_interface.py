@@ -4499,26 +4499,51 @@ Beware that this can be dangerous for local multicore runs.""")
         else:
             hepmc_version = self.get_auto_hepmc_version()
 
+        # The jet rates of an MLM shower (Main:InternalAnalysis) split per jet
+        # sample (InternalAnalysis:jetSamples), for the DJR plots: a main164
+        # that cannot do it is patched (misc.patch_pythia8_main164_djrs).
+        jet_sample_djrs = bool(PY8_Card['Main:InternalAnalysis']) and \
+                                  bool(PY8_Card['InternalAnalysis:jetSamples'])
+        executable = None
+        if jet_sample_djrs:
+            try:
+                executable = self._get_pythia8_main164(hepmc_format,
+                                                       hepmc_version, True)
+            except self.InvalidCmd as error:
+                logger.warning('main164 could not be built to split the jet rates ' +
+                    'per jet sample, the DJR plots show their sum only:\n%s' % error)
+        if executable is None:
+            executable = self._get_pythia8_main164(hepmc_format, hepmc_version, False)
+        # a main164 that does not know the setting would refuse it
+        if not misc.pythia8_main164_knows_jet_samples(executable):
+            PY8_Card.vetoParamWriteOut('InternalAnalysis:jetSamples')
+        return executable
+
+    def _get_pythia8_main164(self, hepmc_format, hepmc_version, jet_sample_djrs):
+        """get_pythia8_main164 for a given HepMC version, falling back to the
+        version Pythia8 was configured with under HEPMCoutput:format = auto."""
+
         try:
-            return self.get_pythia8_main164_for(hepmc_version)
+            return self.get_pythia8_main164_for(hepmc_version, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             if hepmc_format != 'auto':
                 raise self.InvalidCmd(str(error))
             logger.warning('%s\nPythia8 writes the HepMC version it was '% error +
                            'configured with instead.')
         try:
-            return self.get_pythia8_main164_for(None)
+            return self.get_pythia8_main164_for(None, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             raise self.InvalidCmd(str(error))
 
-    def get_pythia8_main164_for(self, hepmc_version):
+    def get_pythia8_main164_for(self, hepmc_version, jet_sample_djrs=False):
         """main164 writing HepMC<hepmc_version> events (None: the version
         Pythia8 was configured with), see misc.get_pythia8_main164."""
 
         return misc.get_pythia8_main164(self.options['pythia8_path'],
                           fallback_dir=pjoin(self.me_dir, 'lib', 'PY8_main164'),
                           hepmc_version=hepmc_version,
-                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3))
+                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3),
+                          jet_sample_djrs=jet_sample_djrs)
 
     def setup_Pythia8RunAndCard(self, PY8_Card, run_type):
         """ Setup the Pythia8 Run environment and card. In particular all the process and run specific parameters
@@ -4662,6 +4687,16 @@ already exists and is not a fifo file."""%fifo_path)
                 logger.info("No user-defined value for Pythia8 parameter "+
             "'JetMatching:nJetMax'. Setting it automatically to %d."%nJetMax)
                 PY8_Card.MadGraphSet('JetMatching:nJetMax',nJetMax, force=True)
+            # the differential jet rates of the showered events, from which
+            # the DJR plots of the run are made (create_plot)
+            if 'main:internalanalysis' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('Main:InternalAnalysis', True)
+            # and per jet sample (the 0/1/2-jet contributions)
+            if 'internalanalysis:jetsamples' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:jetSamples', True)
+            if PY8_Card['Main:InternalAnalysis'] and \
+                    'internalanalysis:output' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:output', './djrs.dat')
             # cite the shower-kt MLM scheme only when it is actually enabled
             if common_run.citation is not None and \
                PY8_Card['JetMatching:doShowerKt'.lower()]:
@@ -4839,8 +4874,6 @@ already exists and is not a fifo file."""%fifo_path)
                                                     'pythia8_card_default.dat'))
         PY8_Card.read(pjoin(self.me_dir, 'Cards', 'pythia8_card.dat'),
                                                                   setter='user')
-        pythia_main = self.get_pythia8_main164(PY8_Card)
-        
         run_type = 'default'
         merged_run_types = ['MLM','CKKW']
         if int(self.run_card['ickkw'])==1:
@@ -4851,6 +4884,9 @@ already exists and is not a fifo file."""%fifo_path)
 
         # Edit the card and run environment according to the run specification
         HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type)
+        # after the setup: an MLM shower writes the jet rates (InternalAnalysis),
+        # which selects a main164 that also splits them per jet sample
+        pythia_main = self.get_pythia8_main164(PY8_Card)
 
 
         if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
@@ -4999,6 +5035,23 @@ You can follow PY8 run with the following command (in a separate terminal):
                     raise self.InvalidCmd('Pythia8 shower interrupted with return'+\
                         ' code %d.\n'%ret_code+\
                         'You can find more information in this log file:\n%s'%pythia_log)
+                # main164's differential jet rates (an MLM sample), in mb: to
+                # the <tag>_djrs.dat in pb that the DJR plots are made from
+                djr_file = pjoin(self.me_dir,'Events',self.run_name,'djrs.dat')
+                if os.path.isfile(djr_file):
+                    try:
+                        djr_HwU = histograms.HwUList.from_pythia8_main164(
+                                                          djr_file, scale=1e9)
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        djr_HwU = None
+                    if djr_HwU is not None:
+                        djr_HwU.output(pjoin(self.me_dir,'Events',self.run_name,'djrs'),
+                                                                     format='HwU')
+                        shutil.move(pjoin(self.me_dir,'Events',self.run_name,'djrs.HwU'),
+                            pjoin(self.me_dir,'Events',self.run_name,'%s_djrs.dat'%tag))
+                        os.remove(djr_file)
             else:
                 if self.run_card['event_norm']=='sum':
                     logger.error("")
@@ -5200,9 +5253,28 @@ tar -czf split_$1.tar.gz split_$1
                 # djr plots
                 djr_HwU = None
                 n_added = 0
-                for split_dir in split_dirs:
+                for i_split, split_dir in enumerate(split_dirs):
                     djr_file = pjoin(split_dir,'djrs.dat')
                     if not os.path.isfile(djr_file):
+                        continue
+                    # Pythia8's main164 writes its own, simpler histfile (see
+                    # HwUList.from_pythia8_main164): only the summed
+                    # histograms, without the per-sample cross sections, in mb
+                    # and normalised to the full cross section in each job
+                    try:
+                        new_djr_HwU = histograms.HwUList.from_pythia8_main164(
+                            djr_file, scale=1e9 * partition_for_PY8[i_split]
+                                                    / float(sum(partition_for_PY8)))
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        continue
+                    if new_djr_HwU is not None:
+                        if djr_HwU is None:
+                            djr_HwU = new_djr_HwU
+                        else:
+                            for i, hist in enumerate(djr_HwU):
+                                djr_HwU[i] = hist + new_djr_HwU[i]
                         continue
                     xsecs = self.extract_cross_sections_from_DJR(djr_file)
                     if len(xsecs)>0:

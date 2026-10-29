@@ -2552,6 +2552,50 @@ def mg7_proc(initial, final, model=None):
     return {'legs': legs, 'legs_with_decays': [], 'model': model or FakeModel()}
 
 
+class TestRunCardMG7AutoMLM(unittest.TestCase):
+    """A process generated with several jet multiplicities is set up as an MLM
+    merged sample at output time, as madevent's ickkw = 1 is."""
+
+    class PC(dict):
+        def __init__(self, ninitial=2):
+            super().__init__(ninitial=ninitial, loop_induced=False,
+                             colored_pdgs=[])
+
+    def build(self, processes):
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(), '', processes)
+        return rc
+
+    def test_extra_jets_turn_mlm_on(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12])],
+                         [mg7_proc([2, -1], [-11, 12, 21])]])
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], 30.0)
+        self.assertTrue(rc.is_mlm_merged())
+        self.assertEqual(rc['ickkw'], 1)
+        # drjj = drjl = 0, as madevent
+        self.assertNotIn('jet-delta_r', rc.dynamic_sections['cuts'])
+        self.assertNotIn('jet-lepton-delta_r', rc.dynamic_sections['cuts'])
+        self.assertIn('lepton-delta_r', rc.dynamic_sections['cuts'])
+
+    def test_an_extra_photon_is_no_merging(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12])],
+                         [mg7_proc([2, -1], [-11, 12, 22])]])
+        self.assertNotEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], 0.0)
+        self.assertIn('jet-delta_r', rc.dynamic_sections['cuts'])
+
+    def test_one_multiplicity_is_no_merging(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12, 21])]])
+        self.assertFalse(rc.is_mlm_merged())
+
+    def test_lepton_collider_is_no_merging(self):
+        rc = self.build([[mg7_proc([11, -11], [2, -2])],
+                         [mg7_proc([11, -11], [2, -2, 21])]])
+        self.assertFalse(rc.is_mlm_merged())
+        self.assertEqual(rc['phasespace']['xqcut'], 0.0)
+
+
 class TestRunCardMG7Histograms(unittest.TestCase):
     """[histograms]: the default plots written at output time."""
 
