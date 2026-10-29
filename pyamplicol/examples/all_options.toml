@@ -135,7 +135,7 @@ engine = "legacy"
 # epsUV = "1"
 
 [color]
-# color.accuracy: "lc", "nlc", or "full". Default lc.
+# color.accuracy: "lc", "nlc", or "full". Default: lc for tree requests, full for one-loop requests.
 accuracy = "lc"
 # color.contraction: "direct" or "symmetric-group-fft". Default direct.
 # The FFT method requires NLC/full with recurrence or on-the-fly execution.
