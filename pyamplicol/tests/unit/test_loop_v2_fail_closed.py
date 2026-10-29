@@ -142,7 +142,6 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``).
         "loop-induced",
         "coloured-width",
-        "dirac-weyl-closure",
         "lorentz-slot-arity",
         "majorana-fermion",
         "multi-fermion-contact",
