@@ -152,6 +152,8 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         # (``test_loop_v2_selection.py``).
         "selected-correlators",
         "subleading-colour-flows",
+        # MQ-NC's declared-N_c guard (``test_loop_v2_nc_declaration.py``).
+        "colour-declaration-coverage",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")

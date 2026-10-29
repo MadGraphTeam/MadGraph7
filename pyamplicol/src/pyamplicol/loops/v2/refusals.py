@@ -116,11 +116,28 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   grade splits included): its leading-colour value there is zero, while the
   restricted Born alone would set a lower degree. Next to a leading flow
   such a flow contributes exact zeros and is kept.
+* ``colour-declaration-coverage`` (MQ-NC): LC and NLC grade the counterterm
+  and external-field couplings by the formal-N_c continuation of the
+  request's colour declaration (design §6.7). A declaration covers the
+  counterterm kernels (``LoopColorDeclaration.kernel_keys``, plus the
+  kernels of its whole-rule recipes) and field factors (``field_keys``) it
+  states; the shipped ones (``models.loop_color_declarations``) cover the
+  vertices whose structural digest they record. A covered vertex's N_c
+  dependence is declared (and proved against the source at N_c = 3); an
+  uncovered one has none, and grading it by the identities alone could
+  read an N_c = 3 number as N_c-independent. So an LC or NLC request is
+  refused when its counterterm program can insert an uncovered vertex (one
+  that a tree of the request can hold: ``ct_closure.InsertionReachability``,
+  as for an unlowerable vertex, REQUIREMENTS_ADDENDUM J; one no tree can
+  hold contributes nothing and is left alone) or an external leg takes an
+  uncovered field factor (``require_declared_colour_rules``,
+  ``require_declared_colour_fields``), naming the vertices and factors.
+  Full colour needs no declaration.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -322,6 +339,20 @@ LOOP_ADMISSION_REFUSALS = (
         "MQ-SELECT (a guard)",
         "none (the leading-colour rule)",
     ),
+    LoopAdmissionRefusal(
+        "colour-declaration-coverage",
+        "a leading- or next-to-leading-colour request whose counterterm program "
+        "can insert a counterterm vertex, or whose external legs take a "
+        "field factor, that its colour declaration does not cover (e.g. a "
+        "vertex whose content differs from the shipped loop_sm data's)",
+        "LC and NLC grade counterterm and field couplings by the declaration's "
+        "formal-N_c continuation (design §6.7); an uncovered coupling has no "
+        "declared N_c dependence",
+        'full colour (color.accuracy = "full"), or a colour declaration that '
+        "covers the vertex (with_loop_color_declaration)",
+        "MQ-NC (a guard)",
+        "none (kept as the guard of declared N_c data)",
+    ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
 
@@ -416,6 +447,82 @@ def require_formal_nc_tables(accuracy: str, tables: Iterable[Any], what: str) ->
             "colour-accuracy-nc-exact",
             f"the {what} of an {accuracy.upper()} request reads seed tables over "
             "tree blocks that mix U(1)-subtraction grades",
+        )
+
+
+# ------------------------------------------------- declared colour coverage
+
+
+def _covered(continuation: Any, rule: Any) -> bool:
+    keys = continuation.kernel_keys
+    return all(entry.key in keys for entry in rule.entries)
+
+
+def _rule_label(name: str, rule: Any) -> str:
+    entry = rule.entries[0]
+    return f"{name} [{' '.join(entry.particle_names)}]"
+
+
+def require_declared_colour_rules(
+    continuation: Any,
+    rules: Mapping[str, Any],
+    reachability: Callable[[], Callable[[Any], bool]] | None,
+    process: str,
+) -> None:
+    """Refuse (``colour-declaration-coverage``) an LC or NLC request
+    (``continuation`` its ``SourceColorContinuation``; None at full colour)
+    whose counterterm ``rules`` (name -> prepared rule) hold a kernel the
+    continuation does not cover and whose vertex can enter a tree of the
+    request: ``reachability`` builds the ``rule -> bool`` test
+    (``ct_closure.InsertionReachability.admits``), only when a rule is
+    uncovered; None means every rule can."""
+
+    if continuation is None:
+        return
+    uncovered = {
+        name: rule for name, rule in rules.items() if not _covered(continuation, rule)
+    }
+    if not uncovered:
+        return
+    admits = None if reachability is None else reachability()
+    reached = sorted(
+        name for name, rule in uncovered.items() if admits is None or admits(rule)
+    )
+    if reached:
+        shown = "; ".join(_rule_label(name, uncovered[name]) for name in reached[:6])
+        more = f"; and {len(reached) - 6} more" if len(reached) > 6 else ""
+        raise LoopRequestUnsupported(
+            "colour-declaration-coverage",
+            f"{process!r}: its colour declaration states no N_c continuation of "
+            f"the counterterm vertices {shown}{more}, which can enter a tree of "
+            "the request",
+        )
+
+
+def require_declared_colour_fields(
+    continuation: Any, insertions: Iterable[Any], process: str
+) -> None:
+    """Refuse (``colour-declaration-coverage``) an LC or NLC request
+    (``continuation`` its ``SourceColorContinuation``; None at full colour)
+    whose external-field ``insertions`` (``wavefunction.ExternalFieldInsertion``)
+    take a field factor the continuation does not cover."""
+
+    if continuation is None:
+        return
+    keys = continuation.field_keys
+    missing = sorted(
+        {
+            (rule.particle_id, rule.correction, rule.loop_group_index)
+            for rule in (insertion.rule for insertion in insertions)
+        }
+        - set(keys)
+    )
+    if missing:
+        raise LoopRequestUnsupported(
+            "colour-declaration-coverage",
+            f"{process!r}: its colour declaration states no N_c continuation of "
+            "the external-field factors (particle record, correction, loop "
+            f"group) {missing}, which its external legs take",
         )
 
 
@@ -629,6 +736,8 @@ __all__ = [
     "mixed_grade_blocks",
     "representation_changing_vertices",
     "require_colour_preserving_fermion_lines",
+    "require_declared_colour_fields",
+    "require_declared_colour_rules",
     "require_formal_nc_tables",
     "require_labelled_counterterms_for_veto",
     "require_nc_exact",

@@ -414,9 +414,9 @@ def test_born_orders_the_root_closure_misses_are_refused(
     [
         pytest.param("uux_ddxg", [0], "python", marks=pytest.mark.loop_physics),
         pytest.param("uux_ddxg", [0], "native", marks=pytest.mark.loop_physics),
-        # Massive fermion loop lines: the tree reading's mass flips reach the
-        # native kernel constants (stable tops, all fixture parameters).
-        pytest.param("gg_ttx", [0, 1, 2], "python", marks=pytest.mark.loop_physics),
+        # g g > t t~ (massive fermion loop lines, the tree reading's mass
+        # flips in the native kernel constants) is the M-QCD campaign's row
+        # B01 (``test_loop_v2_mqcd_default``; PLAN §3.2 MQ-VALIDATE item 3).
         pytest.param("gg_gggg", [0], "python", marks=pytest.mark.loop_nightly),
         # gamma*/Z at seven legs: chiral couplings on loop quark lines, closed
         # quark loops with the Z, Furry-certified A g g triangles and the
