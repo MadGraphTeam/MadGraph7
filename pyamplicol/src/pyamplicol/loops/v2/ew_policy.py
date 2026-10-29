@@ -39,6 +39,10 @@ public generator, the tools, the tests and the artifacts all see them:
   currents no tree of the request completes (g g > g g on loop_qcd_qed_sm:
   a Higgs from the R2 g g H vertex), whose widths enter no amplitude.
 
+* ``gauge_closed_veto`` adds to a ``particle_veto`` the Faddeev-Popov
+  ghosts of the vector bosons it removes (``resolve_request``; any
+  correction): a ghost loop without its boson breaks the gauge
+  cancellations it exists for.
 * ``feynman_gauge_model`` is the gauge scope of an electroweak request
   (WP3.2 EWI-4b, DESIGN §6.8): Born, blocks, loop lines and counterterms
   all take the 't Hooft-Feynman gauge (xi = 1) with explicit Goldstones and
@@ -62,9 +66,11 @@ natively (A4's ``dag_input.NativeDag``) is asked directly. The two share
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any, NamedTuple
 
 from pyamplicol.api.errors import GenerationError
@@ -533,6 +539,53 @@ def require_zero_widths(
 # on it (lambda_HV = 1: 't Hooft-Veltman, 0: four-dimensional helicity).
 HV_TEXNAME = r"\lambda_{HV}"
 # SLHA codes of the electroweak inputs the loops' coupling may depend on.
+def gauge_ghost_partners(compiled: Any) -> dict[int, frozenset[int]]:
+    """|PDG| of every Faddeev-Popov ghost -> the |PDG| codes of the vector
+    bosons it can be the ghost of: the vectors (spin 3, no ghost number) of
+    the ghost's colour, |charge| and mass parameter, the ghost's mass being
+    its boson's in the 't Hooft-Feynman gauge of electroweak loops (MG5_aMC's
+    loop models: ghWp, ghWm with MW, ghZ with MZ, ghA massless and colourless,
+    ghG massless with colour 8). A structural reading, never names."""
+
+    vectors: dict[tuple[object, ...], set[int]] = defaultdict(set)
+    ghosts: dict[int, tuple[object, ...]] = {}
+    for record in compiled.model["particles"]:
+        spin = int(record["spin"])
+        number = int(record.get("ghost_number", 0) or 0)
+        key = (
+            int(record["color"]),
+            abs(Fraction(str(record.get("charge", 0) or 0))),
+            str(record["mass"]),
+        )
+        if spin == 3 and not number:
+            vectors[key].add(abs(int(record["pdg_code"])))
+        elif number:
+            ghosts[abs(int(record["pdg_code"]))] = key
+    return {
+        ghost: frozenset(vectors[key]) for ghost, key in ghosts.items() if vectors[key]
+    }
+
+
+def gauge_closed_veto(compiled: Any, veto: Iterable[int]) -> tuple[int, ...]:
+    """``veto`` (|PDG| codes, ``particle_veto``) with the Faddeev-Popov
+    ghosts of its vector bosons (``gauge_ghost_partners``; a ghost that could
+    belong to several vectors only when all of them are vetoed). A ghost
+    compensates the unphysical polarisations of its boson in the loops where
+    that boson runs; with the boson vetoed its ghost loops are left alone and
+    break the gauge cancellations: vetoing the W keeps W ghost loops in the
+    photon self-energy, ghWp ghWp~ A, which MadLoop's photon-only control
+    excludes (``mixed-uudd-bare-control.json``: its QED^6 bare sector of
+    u u~ > d d~ misses by 1.2 % of the single pole with them)."""
+
+    vetoed = {abs(int(pdg)) for pdg in veto}
+    added = {
+        ghost
+        for ghost, partners in gauge_ghost_partners(compiled).items()
+        if partners <= vetoed
+    }
+    return tuple(sorted(vetoed | added))
+
+
 SMINPUTS_ALPHA_INVERSE = ("SMINPUTS", (1,))
 SMINPUTS_FERMI = ("SMINPUTS", (2,))
 
@@ -641,6 +694,8 @@ __all__ = [
     "external_photon_scheme",
     "external_photons",
     "feynman_gauge_model",
+    "gauge_closed_veto",
+    "gauge_ghost_partners",
     "is_photon",
     "is_zero",
     "propagated_species",

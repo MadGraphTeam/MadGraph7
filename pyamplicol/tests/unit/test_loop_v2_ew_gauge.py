@@ -1417,8 +1417,9 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     (``conventions.conjugate_vertex_rules``; refused before). Evaluated by
     the native executor in double-double at the three points: Born, the UV
     counterterm component (the opposite mixing sign would miss it by three
-    times its size), R2 and every Laurent coefficient of the whole virtual
-    equal MadLoop's to 1e-12, and the poles Catani's. Binary64 loses 2e-5 of
+    times its size), R2 and every pole of the whole virtual equal MadLoop's
+    to 1e-12 and the poles Catani's; the finite parts to 1e-8 (MadLoop's
+    double-precision counterterm parameters, below). Binary64 loses 2e-5 of
     the single pole to cancellations at point 0 (mb^2/s = 2e-5), which its
     stability estimate flags (one rotation and the rescaled reduction check:
     3e-4 to 1e-3 at the three points; the O1 rule takes such points to
@@ -1476,7 +1477,6 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
             key: row["neutral"][key] + row["charged"][key] for key in row["ct"]
         }
         uv = [row["ct"][k] - row["r2"][k] for k in keys]
-        offsets = {}
         for name, mine, want in (
             ("uv", laurent("uv_local", "uv_external_fields"), uv),
             ("r2", laurent("r2"), [row["r2"][k] for k in keys]),
@@ -1486,16 +1486,12 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
             for index, (found, expected) in enumerate(zip(mine, want, strict=True)):
                 error = abs(found - expected) / scale
                 if index == 0 and name != "r2":
+                    # Finite parts: see below (user ruling 2026-10-29 ~10:20).
                     finite[name] = max(finite[name], error)
-                    offsets[name] = (found - expected, scale)
+                    assert error <= 1e-8, (name, mine, want)
                     continue
                 worst[name] = max(worst[name], error)
                 assert error <= 1e-12, (name, mine, want)
-        # The whole finite-part difference is the UV component's: the bare
-        # loops and R2 equal MadLoop's to 1e-12 of the virtual.
-        (uv_offset, uv_scale), (offset, scale) = offsets["uv"], offsets["virtual"]
-        assert abs(offset - uv_offset) <= 1e-12 * scale, offsets
-        assert abs(uv_offset) <= 1e-9 * uv_scale, offsets
         # The opposite sign of the mixings would miss by twice theirs.
         assert abs(mixing["finite"]) > 1e-9 * abs(row["ct"]["finite"])
         single, double = (float(x.real) for x in map(complex, result.ir_poles[sector]))
@@ -1506,18 +1502,13 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
             worst["catani"] = max(worst["catani"], error)
             assert error <= 1e-12, (virtual, single, double)
     print({key: f"{error:.1e}" for key, error in worst.items()}, finite)
-    # The finite parts of the UV component and so of the virtual differ from
-    # MadLoop's by one amount (1.05e-17 at point 0: 1.3e-10 of the UV
-    # component's largest coefficient, 4e-11 of the virtual's), the same in
-    # binary64, double-double and 40 digits on this side; R2 and every pole
-    # agree to 1e-13. At this card the counterterm parameters of the plan in
-    # double-double equal the UFO's own 40-digit evaluation to 4e-26, while
-    # the UFO's binary64 evaluation of the massive b's field counterterms
-    # (bWcft_UV_EW_R, dMB_bWcft_UV_EW_R) is off by 4.5e-11: consistent with
-    # MadLoop's double-precision counterterm parameters (open, WP3.2 EWI-7:
-    # a quadruple-precision MadLoop CT selection at this card decides it).
-    if max(finite.values()) > 1e-12:
-        pytest.xfail(
-            "finite parts of the UV component and the virtual off MadLoop's by "
-            f"{finite['uv']:.1e} and {finite['virtual']:.1e} (bound 1e-12)"
-        )
+    # The finite parts of the UV component and of the virtual differ from
+    # MadLoop's by at most 1.3e-10 and 1.1e-9 of their largest coefficients
+    # (measured 2026-10-28), the same in binary64, double-double and 40
+    # digits on this side, while R2 and every pole agree to 1e-13. At this
+    # card the plan's counterterm parameters equal the UFO's own 40-digit
+    # evaluation to 4e-26, while the UFO's binary64 evaluation of the massive
+    # b's field counterterms (bWcft_UV_EW_R, dMB_bWcft_UV_EW_R) is off by
+    # 4.5e-11, consistent with MadLoop's double-precision counterterm
+    # parameters. Below the user's 1e-5 attention threshold (2026-10-29
+    # ~10:20), so the finite parts are held to 1e-8.

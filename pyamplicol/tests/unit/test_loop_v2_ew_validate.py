@@ -27,13 +27,13 @@ widths zero, 't Hooft-Feynman gauge):
   1e-12 unless its estimate is larger, double-double within 1e-24), all
   three against the providers.
 
-Mixed-order partials (EW-32, review M11) on u u~ > d d~: the QCD
+Mixed-order partials (EW-32, review M11) on u u~ > d d~: the bare
+photon-only joint QCD + QED selection against MadLoop's
+``mixed-uudd-bare-control.json`` per squared order (here); the photon-only
+QCD control is ``test_loop_v2_artifact`` (``mixed-uudd-qcd``) and the QCD
 corrections of the full Standard-Model Born (gluon, photon, Z and W
-exchange; loop_sm, ``mixed-uudd-sm-qcd-control.json``, MadLoop) per squared
-order and Born order. The photon-only QCD control and the bare photon-only
-joint QCD + QED selection are ``test_loop_v2_artifact`` (``mixed-uudd-qcd``)
-and the legacy ``test_loop_physical_orders`` (``mixed-uudd-bare``; v2
-refuses that request, ``refusals`` "veto-unlabelled-counterterms").
+exchange; loop_sm with the Wolfenstein CKM, ``mixed-uudd-sm-qcd-control``)
+are the M-QCD campaign's row G01 (``tools/loop_benchmark/mqcd_manifest.py``).
 """
 
 from __future__ import annotations
@@ -320,6 +320,131 @@ def test_joint_top_pair_selection_equals_its_parts(loop_gmu_ufo, loop_native):
                 worst[name] = max(worst[name], *errors)
                 assert max(errors) <= LADDER_TOLERANCE, (name, provider, index, errors)
     print({k: f"{v:.1e}" for k, v in worst.items()})
+
+
+# The photon-only veto of MadLoop's mixed-order controls (Z, W, H and the
+# Goldstones; their ghosts follow from ``ew_policy.gauge_closed_veto``).
+PHOTON_ONLY = (23, 24, 25, 250, 251)
+
+
+@pytest.mark.loop_nightly
+def test_photon_only_joint_bare_selection_of_uudd_equals_madloop(
+    loop_qcd_qed_sm_ufo, loop_native, monkeypatch
+):
+    """The bare joint selection and the mixed-order sectors (EW-08, EW-32;
+    PLAN wp32 §3.2 EWI-7 "mixed-uudd"): u u~ > d d~ generated once with QCD
+    and QED corrections and its three loop orders on loop_qcd_qed_sm, the
+    Z, W, H and Goldstones vetoed, against MadLoop's photon-only control
+    (``mixed-uudd-bare-control.json``: bare N4 + R1 loops, no UV, R2 or
+    field terms) at its three points: the Born per squared order and the bare
+    component of the four sectors QCD^6 to QED^6 to 1e-12. The veto's
+    counterterm guard (``veto-unlabelled-counterterms``: this model's
+    electroweak counterterms do not declare their loop content) is lifted
+    here since only the bare loops are compared. The W ghost loops of the
+    photon self-energy go with the W (``ew_policy.gauge_closed_veto``); with
+    them the QED^6 single pole misses by 1.2 %. About 1 min."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    reference = json.loads((FIXTURES / "mixed-uudd-bare-control.json").read_text())
+    points = json.loads((ROOT / "tools/loop_reference/uudd_qcd.json").read_text())
+    born_key = {_orders_key(v): k for k, v in reference["born_orders"].items()}
+    loop_key = {_orders_key(v): k for k, v in reference["loop_orders"].items()}
+    monkeypatch.setattr(
+        assemble, "require_labelled_counterterms_for_veto", lambda *_args: None
+    )
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "u u~ > d d~",
+            {"QCD": 2, "QED": 2},
+            ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}, {"QCD": 0, "QED": 4}),
+            corrections=("QCD", "QED"),
+            fixed_parameters={**ZERO_WIDTHS, "MTA": "0", "ymtau": "0"},
+            particle_veto=PHOTON_ONLY,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+    )
+    assert set(slice_.request.particle_veto) > set(PHOTON_ONLY)  # the ghosts
+    parameters = {
+        "aS": reference["parameters"]["alpha_s"],
+        "aEWM1": reference["parameters"]["alpha_inverse"],
+        "MT": reference["parameters"]["MT"],
+    }
+    mu_r2 = str(Fraction(reference["parameters"]["mu_R"]) ** 2)
+    worst = 0.0
+    for point, row in zip(points["points"], reference["rows"], strict=True):
+        result = slice_.evaluate(
+            [[str(x) for x in leg] for leg in point], mu_r2, parameters=parameters
+        )
+        largest = max(abs(value) for value in row["born"].values())
+        assert {_orders_key(dict(k)) for k in result.born} <= set(born_key)
+        for order, key in born_key.items():
+            found = complex(result.born.get(tuple(order), 0)).real
+            assert abs(found - row["born"][key]) <= 1e-12 * largest, (order, found)
+        bare = result.components["bare"]
+        assert {_orders_key(dict(k)) for k in bare} == set(loop_key)
+        for sector, laurent in bare.items():
+            want = row["bare"][loop_key[_orders_key(dict(sector))]]
+            wanted = [want[k] for k in LAURENT]
+            scale = max(map(abs, wanted))
+            for found, target in zip(laurent.coefficients, wanted, strict=True):
+                error = abs(complex(found).real - target) / scale
+                worst = max(worst, error)
+                assert error <= 1e-12, (sector, laurent.coefficients, wanted)
+    print(f"bare sectors {worst:.1e}")
+
+
+def _orders_key(orders) -> tuple[tuple[str, int], ...]:
+    return tuple(sorted((name, int(power)) for name, power in orders.items() if power))
+
+
+def test_vetoed_vector_bosons_take_their_ghosts(loop_qcd_qed_sm_ufo):
+    """A particle_veto of a vector boson removes its Faddeev-Popov ghosts
+    (``ew_policy.gauge_closed_veto``, applied by ``resolve_request``): the
+    ghost of the vectors of its colour, |charge| and mass parameter, read
+    from the particle records (ghA of the photon, ghZ of the Z, ghWp and
+    ghWm of the W, ghG of the gluon); a veto without vectors is unchanged."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest, resolve_request
+    from pyamplicol.loops.v2.ew_policy import gauge_closed_veto, gauge_ghost_partners
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    codes = {
+        str(r["name"]): abs(int(r["pdg_code"])) for r in compiled.model["particles"]
+    }
+    ghosts = {name: codes[name] for name in ("ghA", "ghZ", "ghWp", "ghWm", "ghG")}
+    assert gauge_ghost_partners(compiled) == {
+        ghosts["ghA"]: frozenset({codes["A"]}),
+        ghosts["ghZ"]: frozenset({codes["Z"]}),
+        ghosts["ghWp"]: frozenset({codes["W+"]}),
+        ghosts["ghWm"]: frozenset({codes["W+"]}),
+        ghosts["ghG"]: frozenset({codes["G"]}),
+    }
+    assert gauge_closed_veto(compiled, PHOTON_ONLY) == tuple(
+        sorted({*PHOTON_ONLY, ghosts["ghZ"], ghosts["ghWp"], ghosts["ghWm"]})
+    )
+    assert gauge_closed_veto(compiled, (codes["A"],)) == tuple(
+        sorted((codes["A"], ghosts["ghA"]))
+    )
+    assert gauge_closed_veto(compiled, (6, 5)) == (5, 6)
+    request = SliceRequest(
+        "e- e+ > mu- mu+",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 0, "QED": 4},
+        corrections=("QED",),
+        particle_veto=(codes["Z"],),
+    )
+    assert resolve_request(compiled, request).particle_veto == (
+        codes["Z"],
+        ghosts["ghZ"],
+    )
 
 
 # ------------------------------------------------------------ DD / AP rung
