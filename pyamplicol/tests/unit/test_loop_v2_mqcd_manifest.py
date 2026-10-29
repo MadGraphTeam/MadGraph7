@@ -285,6 +285,7 @@ def test_rule7_is_mq_nc_s_column_or_waits_for_it(manifest, rows):
     if not any(row.nc_column for row in nc.values()):
         assert all(r.extras_pending["nc"].startswith("MQ-NC") for r in nc.values())
         assert smoke == "MQ-NC"
+        assert mqcd.delegated_ids(manifest) == []
         return
     import importlib
 
@@ -297,6 +298,10 @@ def test_rule7_is_mq_nc_s_column_or_waits_for_it(manifest, rows):
     for node in {node for row in nc.values() for node in row.nc_column}:
         assert (mqcd.ROOT / node.split("::")[0]).is_file(), node
     assert (mqcd.ROOT / smoke["test"].split("::")[0]).is_file()
+    # The sweep's list: each id once, the smoke last.
+    ids = mqcd.delegated_ids(manifest)
+    assert len(ids) == len(set(ids)) and ids[-1] == smoke["test"]
+    assert set(ids[:-1]) == {node for row in nc.values() for node in row.nc_column}
 
 
 # ------------------------------------------------------------ the helpers
