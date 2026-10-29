@@ -89,6 +89,8 @@ def test_transform_follows_mg5_on_the_gmu_records(cms):
     assert cms.yukawas["ymt"] == "CMASS_MT" and cms.yukawas["ymb"] == "MB"
     ymt = raw.record("parameters", "ymt")["fields"]
     assert ymt["nature"] == "internal" and "lhablock" not in ymt
+    # MG5's ymt = CMASS_MT in the real inputs (no coupling reads CMASS_MT).
+    assert ymt["value"]["expression"] == "cmath.sqrt(MT**2 - complex(0,1) * MT * WT)"
     for mass, alias in cms.masses.items():
         record = raw.record("parameters", alias)
         width = cms.widths[mass]
