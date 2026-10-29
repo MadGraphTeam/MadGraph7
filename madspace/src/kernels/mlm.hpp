@@ -88,14 +88,24 @@ KERNELSPEC FVal<T> dj_clus(
     FVal<T> jet_radius
 ) {
     if (!hadronic) {
-        // Durham e+e- measure: 2*min(E1^2, E2^2)*(1 - cos_theta)
+        // Durham e+e- measure: 2*min(E1^2, E2^2)*(1 - cos_theta), evaluated as
+        // 4*min(E1^2, E2^2)*sin^2(theta/2) with theta = atan2(|p1 x p2|,
+        // p1.p2). For a nearly collinear pair 1 - cos_theta is the difference
+        // of two numbers close to one and loses most of its digits.
         auto p1a = sqrt(esquare<T>(p1));
         auto p2a = sqrt(esquare<T>(p2));
         if (p1a * p2a == 0.0) {
             return 0.0;
         }
-        auto costh = edot<T>(p1, p2) / (p1a * p2a);
-        return 2.0 * min(p1[0] * p1[0], p2[0] * p2[0]) * max(1.0 - costh, 0.0);
+        auto cross_x = p1[2] * p2[3] - p1[3] * p2[2];
+        auto cross_y = p1[3] * p2[1] - p1[1] * p2[3];
+        auto cross_z = p1[1] * p2[2] - p1[2] * p2[1];
+        auto theta = atan2(
+            sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z),
+            edot<T>(p1, p2)
+        );
+        auto sin_half = sin(0.5 * theta);
+        return 4.0 * min(p1[0] * p1[0], p2[0] * p2[0]) * sin_half * sin_half;
     }
 
     // hadronic: massless+massive pair clusters to the lighter parton's mT^2
@@ -108,25 +118,32 @@ KERNELSPEC FVal<T> dj_clus(
         return djb_clus<T>(p2, true) * ONE_PLUS_TINY;
     }
 
-    // both massless or both massive: generalised kt measure in (eta, phi)
+    // both massless or both massive: generalised kt measure in (eta, phi),
+    // min(pt1^2, pt2^2) * 2 * (cosh(deta) - cos(dphi)) / D^2 as in cluster.f,
+    // evaluated as 4 * (sinh^2(deta/2) + sin^2(dphi/2)), with dphi from
+    // atan2(cross, dot) and eta = asinh(pz/pt). For a nearly collinear pair
+    // cosh(deta) and cos(dphi) are both close to one, and their difference
+    // lost up to eight digits, so that scalar and SIMD math (and the GPU) gave
+    // different scales; log((|p| + pz)/(|p| - pz)) also cancels for a forward
+    // parton.
     auto pt1_sq = p1[1] * p1[1] + p1[2] * p1[2];
     auto pt2_sq = p2[1] * p2[1] + p2[2] * p2[2];
     if (pt1_sq == 0.0 || pt2_sq == 0.0) {
         return 0.0;
     }
-    auto p1a = sqrt(pt1_sq + p1[3] * p1[3]);
-    auto p2a = sqrt(pt2_sq + p2[3] * p2[3]);
-    auto eta1 = 0.5 * log((p1a + p1[3]) / (p1a - p1[3]));
-    auto eta2 = 0.5 * log((p2a + p2[3]) / (p2a - p2[3]));
+    auto deta = asinh(p1[3] / sqrt(pt1_sq)) - asinh(p2[3] / sqrt(pt2_sq));
+    auto dphi =
+        atan2(p1[1] * p2[2] - p1[2] * p2[1], p1[1] * p2[1] + p1[2] * p2[2]);
+    auto sinh_half = sinh(0.5 * deta);
+    auto sin_half = sin(0.5 * dphi);
     auto m_max_sq = max(mass1 * mass1, mass2 * mass2);
-    auto dphi_cos = (p1[1] * p2[1] + p1[2] * p2[2]) / sqrt(pt1_sq * pt2_sq);
     auto result = m_max_sq +
-        min(pt1_sq, pt2_sq) * 2.0 * (cosh(eta1 - eta2) - dphi_cos) /
+        min(pt1_sq, pt2_sq) * 4.0 *
+            (sinh_half * sinh_half + sin_half * sin_half) /
             (jet_radius * jet_radius);
-    // An exactly collinear pair makes eta1 or eta2 infinite and their
-    // difference NaN. The Fortran zeroes both negative and NaN results here
-    // ("prevent numerical inaccuracies"); max() alone would let the NaN
-    // through.
+    // The Fortran zeroes both negative and NaN results here ("prevent
+    // numerical inaccuracies"); max() alone would let a NaN from extreme
+    // inputs through.
     if (!(result > 0.0)) {
         return 0.0;
     }
@@ -849,22 +866,17 @@ KERNELSPEC int mlm_clustering_walk(
     // pdf_reweighting == 2 under clustering_mean: walk the beam lines as
     // madevent does below, but keep only the pdf half of it - the lowered
     // leading scale, the ladder and the per-beam scale it ends at, which is
-    // also the factorisation scale then reported. mu_R, the alpha_s vertex
-    // scales, the jet scales and the merging-jet gating are put back to
-    // clustering_mean's after the walk. Without it clustering_mean evaluates
-    // both beam densities at the softest clustering scale, with no ladder.
+    // also the factorisation scale then reported. Without it clustering_mean
+    // evaluates both beam densities at the softest clustering scale, with no
+    // ladder.
     bool mean_with_ladder = scale_scheme != SCALES_MADEVENT && pdf_reweighting == 2;
-    FVal<T> mean_ren_scale = ren_scale_val;
-    FVal<T> mean_alphas_step[N_EXT_MAX - 3];
-    FVal<T> mean_outgoing[N_EXT_MAX];
-    for (int i = 0; i < cluster_max; ++i) {
-        mean_alphas_step[i] = alphas_step[i];
-    }
-    for (int i = 0; i < n_part - 2; ++i) {
-        mean_outgoing[i] = outgoing_scales[i];
-    }
 
     if (scale_scheme == SCALES_MADEVENT || mean_with_ladder) {
+        // Everything the walk writes besides the densities and mu_F - mu_R,
+        // the alpha_s vertex scales, the jet scales and the merging-jet gating
+        // - is madevent's only, and stays clustering_mean's under
+        // mean_with_ladder: every such write below sits under this flag.
+        bool madevent_scales = scale_scheme == SCALES_MADEVENT;
         // madevent clusters one step further than this kernel does: its loop
         // runs all the way to the 2 -> 1 configuration, so it has one more
         // scale than cluster_max. That last step absorbs whatever is left of
@@ -1124,10 +1136,12 @@ KERNELSPEC int mlm_clustering_walk(
                 }
             }
         }
-        for (int leg = 0; leg < n_part; ++leg) {
-            merging_jet[leg] = leg >= 2 && iqjets[leg] > 0;
+        if (madevent_scales) {
+            for (int leg = 0; leg < n_part; ++leg) {
+                merging_jet[leg] = leg >= 2 && iqjets[leg] > 0;
+            }
+            have_merging_jets = true;
         }
-        have_merging_jets = true;
         for (int j = 0; j < 2; ++j) {
             if (jfirst[j] < 0) {
                 jfirst[j] = jlast[j];
@@ -1190,8 +1204,10 @@ KERNELSPEC int mlm_clustering_walk(
                 pt_step[jlast[j]] = pt_step[jfirst[j]];
             }
         }
-        for (int i = 0; i < cluster_max; ++i) {
-            alphas_step[i] = pt_step[i];
+        if (madevent_scales) {
+            for (int i = 0; i < cluster_max; ++i) {
+                alphas_step[i] = pt_step[i];
+            }
         }
 
         // The jet scales madevent writes, the "Store jet info for matching"
@@ -1205,7 +1221,7 @@ KERNELSPEC int mlm_clustering_walk(
         //
         // Only the production scheme is madevent's; the emission scheme keeps
         // the booking above.
-        if (by_production) {
+        if (by_production && madevent_scales) {
             FVal<T> ptclus[N_EXT_MAX];
             for (int leg = 0; leg < n_part; ++leg) {
                 ptclus[leg] = 0.0;
@@ -1268,24 +1284,27 @@ KERNELSPEC int mlm_clustering_walk(
         // mu_R: the geometric mean of the four scales. madevent writes it as
         // (pt2 pt2 pt2 pt2)^(1/8) over squared scales, which is the same thing.
         FVal<T> last_scale = pt_step[steps - 1];
+        // madevent's mu_R, which mu_F falls back on; it only becomes the
+        // event's mu_R under madevent_scales
+        FVal<T> walk_ren_scale;
         // Take the roots before multiplying. A degenerate clustering leaves a
         // scale at SCALE_MAX, and the product of four of those overflows to
         // infinity, which then reaches alpha_s as a NaN.
         if (jlast[0] >= 0 && jlast[1] >= 0) {
-            ren_scale_val = pow(s_last[0], 0.25) * pow(s_central[0], 0.25) *
+            walk_ren_scale = pow(s_last[0], 0.25) * pow(s_central[0], 0.25) *
                 pow(s_last[1], 0.25) * pow(s_central[1], 0.25);
         } else if (jlast[0] >= 0) {
-            ren_scale_val = sqrt(s_last[0]) * sqrt(s_central[0]);
+            walk_ren_scale = sqrt(s_last[0]) * sqrt(s_central[0]);
         } else if (jlast[1] >= 0) {
-            ren_scale_val = sqrt(s_last[1]) * sqrt(s_central[1]);
+            walk_ren_scale = sqrt(s_last[1]) * sqrt(s_central[1]);
         } else if (jcentral[0] >= 0 && jcentral[1] >= 0) {
-            ren_scale_val = sqrt(s_central[0]) * sqrt(s_central[1]);
+            walk_ren_scale = sqrt(s_central[0]) * sqrt(s_central[1]);
         } else if (jcentral[0] >= 0) {
-            ren_scale_val = s_central[0];
+            walk_ren_scale = s_central[0];
         } else if (jcentral[1] >= 0) {
-            ren_scale_val = s_central[1];
+            walk_ren_scale = s_central[1];
         } else {
-            ren_scale_val = last_scale;
+            walk_ren_scale = last_scale;
         }
 
         // mu_F, one per beam. madevent stores q2fact = mu_F^2 as
@@ -1324,20 +1343,23 @@ KERNELSPEC int mlm_clustering_walk(
             }
         }
         if (!(fac_scale1 > 0.0)) {
-            fac_scale1 = ren_scale_val;
+            fac_scale1 = walk_ren_scale;
         }
         if (!(fac_scale2 > 0.0)) {
-            fac_scale2 = ren_scale_val;
+            fac_scale2 = walk_ren_scale;
         }
         // and keep everything inside the range the rest of the kernel uses
-        if (!(ren_scale_val > 0.0) || !(ren_scale_val < SCALE_MAX)) {
-            ren_scale_val = last_scale;
+        if (!(walk_ren_scale > 0.0) || !(walk_ren_scale < SCALE_MAX)) {
+            walk_ren_scale = last_scale;
         }
         if (!(fac_scale1 > 0.0) || !(fac_scale1 < SCALE_MAX)) {
-            fac_scale1 = ren_scale_val;
+            fac_scale1 = walk_ren_scale;
         }
         if (!(fac_scale2 > 0.0) || !(fac_scale2 < SCALE_MAX)) {
-            fac_scale2 = ren_scale_val;
+            fac_scale2 = walk_ren_scale;
+        }
+        if (madevent_scales) {
+            ren_scale_val = walk_ren_scale;
         }
 
         // The pdf half of rewgt in Template/LO/SubProcesses/reweight.f, the
@@ -1431,19 +1453,6 @@ KERNELSPEC int mlm_clustering_walk(
                 }
             }
         }
-    }
-    if (mean_with_ladder) {
-        ren_scale_val = mean_ren_scale;
-        for (int i = 0; i < cluster_max; ++i) {
-            alphas_step[i] = mean_alphas_step[i];
-        }
-        for (int i = 0; i < n_part - 2; ++i) {
-            outgoing_scales[i] = mean_outgoing[i];
-        }
-        for (int i = 0; i < n_part; ++i) {
-            merging_jet[i] = false;
-        }
-        have_merging_jets = false;
     }
 
     // The merging cut. A matrix-element jet below xqcut is radiation the parton

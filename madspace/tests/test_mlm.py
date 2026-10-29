@@ -718,25 +718,100 @@ def djb_clus_reference(p, hadronic=True):
 
 
 def dj_clus_reference(p1, p2, mass1, mass2, jet_radius):
-    """The both-massless / both-massive branch of dj_clus."""
+    """The both-massless / both-massive branch of dj_clus:
+    min(pt1^2, pt2^2) * 2 * (cosh(deta) - cos(dphi)) / D^2, in the form the
+    kernel evaluates it, 4 * (sinh^2(deta/2) + sin^2(dphi/2)), which keeps its
+    digits for a nearly collinear pair."""
     pt1_sq = p1[1] ** 2 + p1[2] ** 2
     pt2_sq = p2[1] ** 2 + p2[2] ** 2
     if pt1_sq == 0.0 or pt2_sq == 0.0:
         return 0.0
-    p1a = np.sqrt(pt1_sq + p1[3] ** 2)
-    p2a = np.sqrt(pt2_sq + p2[3] ** 2)
-    eta1 = 0.5 * np.log((p1a + p1[3]) / (p1a - p1[3]))
-    eta2 = 0.5 * np.log((p2a + p2[3]) / (p2a - p2[3]))
+    deta = np.arcsinh(p1[3] / np.sqrt(pt1_sq)) - np.arcsinh(p2[3] / np.sqrt(pt2_sq))
+    dphi = np.arctan2(p1[1] * p2[2] - p1[2] * p2[1], p1[1] * p2[1] + p1[2] * p2[2])
     m_max_sq = max(mass1**2, mass2**2)
-    dphi_cos = (p1[1] * p2[1] + p1[2] * p2[2]) / np.sqrt(pt1_sq * pt2_sq)
     return max(
         m_max_sq
         + min(pt1_sq, pt2_sq)
-        * 2.0
-        * (np.cosh(eta1 - eta2) - dphi_cos)
+        * 4.0
+        * (np.sinh(deta / 2) ** 2 + np.sin(dphi / 2) ** 2)
         / jet_radius**2,
         0.0,
     )
+
+
+def durham_reference(p1, p2):
+    """The lepton-collider branch of dj_clus, 2 * min(E1^2, E2^2) *
+    (1 - cos_theta), as 4 * min(E1^2, E2^2) * sin^2(theta/2)."""
+    cross = np.cross(p1[1:], p2[1:])
+    theta = np.arctan2(np.linalg.norm(cross), np.dot(p1[1:], p2[1:]))
+    return 4.0 * min(p1[0] ** 2, p2[0] ** 2) * np.sin(theta / 2) ** 2
+
+
+def massless(px, py, pz):
+    return np.array([np.sqrt(px * px + py * py + pz * pz), px, py, pz])
+
+
+def collinear_pair_event(hadronic):
+    """Two final-state partons about 1e-5 apart, legs 2 and 4 (e+ e- > d d~ g)
+    or 2 and 3 (g g > g g g), with the third one recoiling and the beams along
+    z: momentum is conserved. For such a pair cosh(deta) - cos(dphi), or
+    1 - cos_theta, is of order 1e-10."""
+    def pt_eta_phi(pt, eta, phi):
+        return massless(pt * np.cos(phi), pt * np.sin(phi), pt * np.sinh(eta))
+    a = pt_eta_phi(300.0, 2.5, 0.7)
+    b = pt_eta_phi(250.0, 2.5 + 8e-6, 0.7 + 6e-6)
+    if hadronic:
+        c = massless(-(a[1] + b[1]), -(a[2] + b[2]), -400.0)
+        final = [a, b, c]
+    else:
+        c = massless(-(a[1] + b[1]), -(a[2] + b[2]), -(a[3] + b[3]))
+        final = [a, c, b]
+    energy = sum(p[0] for p in final)
+    pz = sum(p[3] for p in final)
+    beam1 = np.array([(energy + pz) / 2, 0.0, 0.0, (energy + pz) / 2])
+    beam2 = np.array([(energy - pz) / 2, 0.0, 0.0, -(energy - pz) / 2])
+    return np.array([[beam1, beam2] + final])
+
+
+@pytest.mark.parametrize("hadronic", [True, False], ids=["kt", "durham"])
+def test_a_nearly_collinear_pair_keeps_its_clustering_scale(hadronic):
+    """The clustering scale of two partons 1e-5 apart. Written as in cluster.f,
+    cosh(deta) - cos(dphi) (or 1 - cos_theta) is the difference of two numbers
+    within 1e-10 of one, which left about 1e-6 of relative error, enough for
+    scalar and SIMD math to give different scales and histories. The kernel's
+    form of the measure has none of that cancellation."""
+    jet_radius = 0.4
+    if hadronic:
+        pdg_ids = [21, 21, 21, 21, 21]
+        vertices = [["o0", "o1", "p0"], ["i0", "o2", "p1"], ["p1", "p0", "i1"]]
+        legs = (2, 3)
+    else:
+        pdg_ids = [-11, 11, 1, -1, 21]
+        vertices = [["o0", "o2", "p0"], ["p0", "o1", "p1"], ["i0", "p1", "i1"]]
+        legs = (2, 4)
+    diagrams = [{
+        "incoming_masses": [0.0, 0.0],
+        "outgoing_masses": [0.0, 0.0, 0.0],
+        "propagators": [[0.0, 0.0], [0.0, 0.0]],
+        "vertices": vertices,
+        "permutations": [[0, 1, 2, 3, 4]],
+    }]
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius,
+        hadronic=hadronic, clustering_mean_pdf_ladder=False,
+        jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission,
+    )
+    event = collinear_pair_event(hadronic)
+    _, _, _, jets, _ = run(clustering, event)
+    p1, p2 = event[0][legs[0]], event[0][legs[1]]
+    if hadronic:
+        expected = np.sqrt(dj_clus_reference(p1, p2, 0.0, 0.0, jet_radius))
+    else:
+        expected = np.sqrt(durham_reference(p1, p2))
+    assert 1e-4 < expected < 1e-1, "not the collinear configuration intended"
+    # the softest clustering is that pair: both its legs carry its scale
+    for leg in legs:
+        assert jets[0][leg - 2] == pytest.approx(expected, rel=1e-9)
 
 
 def first_step_candidates(clustering, n_ext, event, jet_radius, masses):
@@ -1657,6 +1732,62 @@ def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
     assert np.array_equal(fact2_o, fact2_m)
 
 
+@pytest.mark.parametrize(
+    "history", list(ms.MLMClustering.ClusteringHistory.__members__.values())
+)
+@pytest.mark.parametrize(
+    "jet_scale_scheme", list(ms.MLMClustering.JetScaleScheme.__members__.values())
+)
+def test_the_ladder_leaves_every_other_clustering_mean_output_alone(
+    process, history, jet_scale_scheme
+):
+    """The walk under clustering_mean + ladder only writes the densities and
+    mu_F; everything else it computes is madevent's, and has to stay out of the
+    event. Checked on the gluon-rich processes, for every history and both jet
+    scale schemes, against plain clustering_mean (every non-pdf output, exactly)
+    and against madevent (mu_F and every ladder output, exactly)."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    scheme = ms.MLMClustering.ScaleScheme
+
+    def clustering(**kwargs):
+        return make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, xqcut=20.0,
+            clustering_history=history, jet_scale_scheme=jet_scale_scheme,
+            **kwargs,
+        )
+
+    ladder = clustering(scale_scheme=scheme.clustering_mean)
+    mean = clustering(
+        scale_scheme=scheme.clustering_mean, clustering_mean_pdf_ladder=False
+    )
+    madevent = clustering(scale_scheme=scheme.madevent)
+
+    ren, fact1, fact2, jets, diagram, veto = run_all(ladder, momenta)
+    ren_m, _, _, jets_m, diagram_m, veto_m = run_all(mean, momenta)
+    assert np.array_equal(ren, ren_m)
+    assert np.array_equal(jets, jets_m)
+    assert np.array_equal(diagram, diagram_m)
+    assert np.array_equal(veto, veto_m)
+    for got, want in zip(
+        alphas_outputs(ladder, momenta), alphas_outputs(mean, momenta)
+    ):
+        assert np.array_equal(got, want)
+
+    _, fact1_e, fact2_e, _, diagram_e, _ = run_all(madevent, momenta)
+    # the same history, or mu_F and the ladder have nothing to agree on
+    same = diagram == diagram_e
+    assert same.mean() > 0.5
+    assert np.array_equal(fact1[same], fact1_e[same])
+    assert np.array_equal(fact2[same], fact2_e[same])
+    # (no ladder step fires on these two fixtures, under madevent either: the
+    # steps themselves are compared on the t-channel process above)
+    out = pdf_outputs(ladder, momenta)
+    out_e = pdf_outputs(madevent, momenta)
+    for name in PDF_OUTPUTS:
+        assert np.array_equal(out[name][same], out_e[name][same]), name
+
+
 def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
     """The point of the whole thing: with it on, the density is asked for at or
     below the factorisation scale, and for a real part of the sample strictly
@@ -1772,11 +1903,14 @@ def write_flat_pdf_grid(path, value):
 
 
 def t_channel_integrand_outputs(
-    tmp_path, pdf_value, batch_size=4000, pdf_reweighting=True, partial_weights=False
+    tmp_path, pdf_value, batch_size=4000, pdf_reweighting=True, partial_weights=False,
+    min_scale=0.0, **clustering_kwargs,
 ):
     """Every output of the t-channel process run through a whole Integrand
     under MLM (pdf reweighting by default), with the built-in flat test matrix
-    element and a flat PDF of the given value."""
+    element and a flat PDF of the given value. clustering_kwargs go to
+    t_channel_clustering (scale_scheme madevent unless given); min_scale is the
+    scale floor of the EnergyScale, beam.min_scale in a run."""
     context = ms.Context(device=ms.cpu_device(), thread_count=1)
     alphas_file = tmp_path / "alphas.info"
     alphas_file.write_text(
@@ -1820,7 +1954,8 @@ def t_channel_integrand_outputs(
         pdf_grid=pdf_grid,
         running_coupling=ms.RunningCoupling(alphas_grid),
         energy_scale=ms.EnergyScale(
-            t_channel_clustering(pdf_reweighting=pdf_reweighting)
+            t_channel_clustering(pdf_reweighting=pdf_reweighting, **clustering_kwargs),
+            min_scale=min_scale,
         ),
         channel_indices=[0],
         partial_weights=partial_weights,
@@ -1830,21 +1965,40 @@ def t_channel_integrand_outputs(
     )
 
 
-def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
+def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000, **kwargs):
     """Weights and momenta of t_channel_integrand_outputs."""
-    out = t_channel_integrand_outputs(tmp_path, pdf_value, batch_size)
+    out = t_channel_integrand_outputs(tmp_path, pdf_value, batch_size, **kwargs)
     return np.asarray(out[0]), np.asarray(out[1])
 
 
-def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path):
+# The ladder under clustering_mean (clustering_mean_pdf_ladder, on by default)
+# goes through the same integrand path. This process has a single flavour and no
+# mirror, which is where a weight_after_cuts left out of the weight product
+# would drop the ladder's veto without a trace. With no jet cut, the geometric
+# mean mu_R of clustering_mean falls below the alpha_s grid for a few percent of
+# the events, so that case runs with the 2 GeV floor of beam.min_scale, which
+# drops them as a run does (without it their weight is 0 * NaN).
+LADDER_SCHEMES = [
+    pytest.param({"scale_scheme": ms.MLMClustering.ScaleScheme.madevent},
+                 id="madevent"),
+    pytest.param({"scale_scheme": ms.MLMClustering.ScaleScheme.clustering_mean,
+                  "min_scale": 2.0},
+                 id="clustering_mean_pdf_ladder"),
+]
+
+
+@pytest.mark.parametrize("scheme", LADDER_SCHEMES)
+def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path, scheme):
     """reweight.f sets rewgt = 0 when the density it would divide by is under
     1e-10. With x f = 1e-12 everywhere every step of the ladder is such a
     division, so every event with a step on it must come out at zero.
 
     A ramp in the denominator used to let these through at num den 1e20 - a
     hundredth of the weight per step here, not zero."""
-    weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12)
-    out = pdf_outputs(t_channel_clustering(pdf_reweighting=True), momenta)
+    weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12, **scheme)
+    clustering = {k: v for k, v in scheme.items() if k != "min_scale"}
+    out = pdf_outputs(t_channel_clustering(pdf_reweighting=True, **clustering), momenta)
+    assert not np.isnan(weights).any()
     stepped = (out["pdf_rw_active"] == 1.0).any(axis=1)
     assert stepped.any() and not stepped.all(), "both kinds needed"
     assert np.all(weights[stepped] == 0.0)
@@ -1869,6 +2023,14 @@ def test_no_pdf_product_for_the_systematics_under_pdf_reweighting(tmp_path):
     # ... and left out with it
     assert (output_count(pdf_reweighting=True, partial_weights=True)
             == output_count(pdf_reweighting=True))
+    # the same under clustering_mean: left out with the ladder, which is on by
+    # default, and there without it
+    mean = {"scale_scheme": ms.MLMClustering.ScaleScheme.clustering_mean}
+    assert (output_count(partial_weights=True, **mean)
+            == output_count(**mean))
+    no_ladder = dict(mean, clustering_mean_pdf_ladder=False)
+    assert (output_count(partial_weights=True, **no_ladder)
+            == output_count(**no_ladder) + 1)
 
 
 # --------------------------------------------------------------------------

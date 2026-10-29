@@ -192,6 +192,20 @@ def me_parameters(run_card):
     return parameters
 
 
+def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
+    """Whether an MLM sample's beam densities walk the clustering ladder, the
+    pdf half of madevent's rewgt: under scale_scheme "madevent", and under
+    "clustering_mean" with clustering_mean_pdf_ladder. The Python side of
+    EnergyScale::mlm_pdf_reweighting, which decides the same for the kernel;
+    the systematics then vary the ladder as madevent's do."""
+    beam = run_card["beam"]
+    return bool(
+        mlm_clustering and not is_decay and not leptonic
+        and beam["pdf_reweighting"]
+        and (beam["scale_scheme"] == "madevent"
+             or beam["clustering_mean_pdf_ladder"]))
+
+
 def interference_helicities_summed(run_card):
     """Whether [generation] interference_helicity is "summed".
 
@@ -1164,16 +1178,11 @@ class MadgraphProcess:
             config.alps = [float(v) for v in syst["alps"]]
         else:
             config.alps = [1.0]
-        # the pdf reweighting ladder of an MLM sample under madevent's scale
-        # scheme (or clustering_mean's with clustering_mean_pdf_ladder), varied
-        # as madevent's systematics vary it; a varied scale is kept inside the
-        # PDF grid, where LHAPDF freezes it for madevent
-        beam = self.run_card["beam"]
-        config.pdf_ladder = bool(
-            self.mlm_clustering and not self.is_decay and not self.leptonic
-            and beam["pdf_reweighting"]
-            and (beam["scale_scheme"] == "madevent"
-                 or beam["clustering_mean_pdf_ladder"]))
+        # the pdf reweighting ladder of an MLM sample, varied as madevent's
+        # systematics vary it; a varied scale is kept inside the PDF grid,
+        # where LHAPDF freezes it for madevent
+        config.pdf_ladder = mlm_pdf_ladder(
+            self.run_card, self.mlm_clustering, self.is_decay, self.leptonic)
         if config.pdf_ladder:
             config.ladder_min_scale = float(self.min_pdf_scale)
             config.ladder_max_scale = float(self.max_scale)

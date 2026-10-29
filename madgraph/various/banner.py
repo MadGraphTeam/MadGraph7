@@ -4582,7 +4582,8 @@ class RunCardLO(RunCard):
         #matching
         self.add_param("scalefact", 1.0)
         self.add_param("ickkw", 0, allowed=[0,1], hidden=True,                  comment="\'0\' for standard fixed order computation.\n\'1\' for MLM merging activates alphas and pdf re-weighting according to a kt clustering of the QCD radiation.")
-        self.add_param("highestmult", 1, fortran_name="nhmult", hidden=True)
+        self.add_param("highestmult", 1, fortran_name="nhmult",
+            hidden=True)
         self.add_param("ktscheme", 1, hidden=True)
         self.add_param("alpsfact", 1.0, hidden=True)
         self.add_param("chcluster", False, hidden=True)
@@ -6714,6 +6715,9 @@ class RunCardMG7(RunCard):
         self.section_of = {}
         # set of internal keys (section.key) relevant during gridpack execution
         self.gridpack_params = set()
+        # declared default of each fixed parameter: a hidden one (no line in
+        # the template) is only written out once it differs from it
+        self.toml_defaults = {}
         # free-form sections kept as nested dicts
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
@@ -6746,6 +6750,7 @@ class RunCardMG7(RunCard):
         # not a fortran parameter: never goes to an include file
         opts.setdefault('include', False)
         self.add_param(internal, value, **opts)
+        self.toml_defaults[internal] = copy.deepcopy(value)
         self.section_of[internal] = section
         self.toml_sections.setdefault(section, [])
         if key not in self.toml_sections[section]:
@@ -6889,7 +6894,8 @@ class RunCardMG7(RunCard):
         # hidden run_card d (common/to_dj/D) and FxFx's value, and Pythia's
         # JetMatching:coneRadius default.
         self.add_toml_param('beam', 'jet_radius', 1.0,
-            comment="jet radius of the MLM clustering measure (dynamical_scale_choice = mlm)")
+            comment="jet radius of the MLM clustering measure (dynamical_scale_choice = mlm)",
+            hidden=True)
         # Heaviest quark flavour treated as a jet by the MLM back-clustering
         # (the counterpart of maxjetflavor in the legacy run_card).
         self.add_toml_param('beam', 'max_jet_flavor', 4,
@@ -6904,7 +6910,8 @@ class RunCardMG7(RunCard):
         #                 the softest clustering it takes part in.
         self.add_toml_param('beam', 'jet_scale_scheme', "production",
             allowed=['production', 'emission'],
-            comment="MLM clustering scale of each outgoing jet: production or emission")
+            comment="MLM clustering scale of each outgoing jet: production or emission",
+            hidden=True)
         # How mu_R and mu_F are read off the clustering history:
         #   "clustering_mean": geometric mean of every clustering scale, with a
         #                      single factorisation scale.
@@ -6915,7 +6922,8 @@ class RunCardMG7(RunCard):
         # section, unlike jet_scale_scheme.
         self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
             allowed=['clustering_mean', 'madevent'],
-            comment="how mu_R and mu_F are read off the MLM clustering history")
+            comment="how mu_R and mu_F are read off the MLM clustering history",
+            hidden=True)
         # How a beam's parton line is decided to carry on past a vertex (only
         # read when scale_scheme = "madevent"):
         #   "goodjet": a line stays a parton line only while every clustering
@@ -6927,7 +6935,8 @@ class RunCardMG7(RunCard):
         #              would have stopped them.
         self.add_toml_param('beam', 'parton_line_scheme', "goodjet",
             allowed=['goodjet', 'flavor'],
-            comment="when a beam's parton line carries on past an MLM clustering")
+            comment="when a beam's parton line carries on past an MLM clustering",
+            hidden=True)
         # Evaluate alpha_s at the scale of each clustering vertex instead of
         # once at the event scale, which is what madevent does for a merged
         # sample (the rewgt loop in Template/LO/SubProcesses/reweight.f). A
@@ -6941,7 +6950,8 @@ class RunCardMG7(RunCard):
         # Only read when dynamical_scale_choice = "mlm".
         self.add_toml_param('beam', 'alphas_reweighting', "per_vertex",
             allowed=['per_vertex', 'geometric_mean', 'none'],
-            comment="where alpha_s is evaluated for an MLM merged event")
+            comment="where alpha_s is evaluated for an MLM merged event",
+            hidden=True)
         # Re-evaluate the beam densities along the clustering ladder instead of
         # once at the factorisation scale: the density is taken at the scale of
         # the emission that pulled the parton out of the beam and walked back
@@ -6951,18 +6961,19 @@ class RunCardMG7(RunCard):
         # and under scale_scheme = "clustering_mean" only together with
         # clustering_mean_pdf_ladder.
         self.add_toml_param('beam', 'pdf_reweighting', True,
-            comment="re-evaluate the beam densities along the MLM clustering ladder")
+            comment="re-evaluate the beam densities along the MLM clustering ladder",
+            hidden=True)
         # The same ladder under scale_scheme = "clustering_mean": the beam
         # densities are then evaluated as madevent evaluates them (per-beam
         # factorisation scale, lowered to the scale that pulled the parton out
         # of the beam and walked back up), while mu_R, the alpha_s vertex
         # scales and the jet scales stay clustering_mean's. Without it
         # clustering_mean takes both densities once at the softest clustering
-        # scale, which leaves a 10-15% hole in the 0->1 jet rate just above
-        # qcut against madevent for W+jets and W Z+jets (and +14% for tt~+jets,
-        # halved by the ladder). Needs pdf_reweighting.
+        # scale, which moves the merged rates just above qcut away from
+        # madevent's. Needs pdf_reweighting.
         self.add_toml_param('beam', 'clustering_mean_pdf_ladder', True,
-            comment="also walk the pdf ladder under scale_scheme = clustering_mean")
+            comment="also walk the pdf ladder under scale_scheme = clustering_mean",
+            hidden=True)
         # Which measure scores a candidate final-state clustering. The two only
         # differ for a non-resonant pair with a massless mother and one massive
         # and one massless daughter (q* > q W, g* > g h), or a massive mother
@@ -6975,7 +6986,8 @@ class RunCardMG7(RunCard):
         # Only read when dynamical_scale_choice = "mlm".
         self.add_toml_param('beam', 'clustering_measure', "fxfx",
             allowed=['fxfx', 'madevent'],
-            comment="measure scoring a candidate MLM final-state clustering")
+            comment="measure scoring a candidate MLM final-state clustering",
+            hidden=True)
         # Which diagrams the clustering history may follow:
         #   "all_diagrams": the smallest-measure history over every diagram at
         #                   once, each line's flavour taken from the first
@@ -6995,7 +7007,8 @@ class RunCardMG7(RunCard):
         # from one flavour assignment per subprocess.
         self.add_toml_param('beam', 'clustering_history', "all_diagrams",
             allowed=['all_diagrams', 'diagram', 'madevent'],
-            comment="which diagrams the MLM clustering history may follow")
+            comment="which diagrams the MLM clustering history may follow",
+            hidden=True)
         # Floor on mu_R and mu_F. Below the lowest Q of a PDF grid the
         # densities are undefined, so the scales are raised to it, which is
         # what LHAPDF's freezing does for madevent. Under
@@ -8195,7 +8208,9 @@ class RunCardMG7(RunCard):
             for key in keys:
                 internal = '%s.%s' % (section, key)
                 data[internal] = self.format_toml_value(self[internal])
+        in_template = set(re.findall(r'%\(([\w.]+)\)s', text))
         text = text % data
+        text = self.add_hidden_parameters(text, in_template)
 
         # free-form sections inserted at their markers
         for section in self.dynamic_section_names:
@@ -8218,6 +8233,37 @@ class RunCardMG7(RunCard):
                 fsock.write(text)
         else:
             output_file.write(text)
+
+    def add_hidden_parameters(self, text, in_template):
+        """Add to the rendered card the hidden parameters (those with no line
+        in the template) that the user set or that no longer hold their
+        default, at the end of their section, so that they survive a rewrite
+        of the card."""
+        missing = collections.OrderedDict()
+        for section, keys in self.toml_sections.items():
+            for key in keys:
+                internal = '%s.%s' % (section, key)
+                if internal in in_template or internal not in self.hidden_param:
+                    continue
+                if internal not in self.user_set and \
+                        self[internal] == self.toml_defaults.get(internal):
+                    continue
+                line = '%s = %s' % (key, self.format_toml_value(self[internal]))
+                if self.comments.get(internal):
+                    line += ' # %s' % self.comments[internal]
+                missing.setdefault(section, []).append(line)
+        for section, lines in missing.items():
+            block = '\n'.join(lines) + '\n'
+            header = re.search(r'^\[%s\][ \t]*$' % re.escape(section), text, re.M)
+            if not header:
+                text = text.rstrip('\n') + '\n\n[%s]\n%s' % (section, block)
+                continue
+            # the section ends at the next table header, or at the end
+            following = re.search(r'^\[', text[header.end():], re.M)
+            end = header.end() + following.start() if following else len(text)
+            body = text[:end].rstrip('\n') + '\n'
+            text = body + block + ('\n' + text[end:] if following else '')
+        return text
 
     def write_gridpack_card(self, output_file):
         """Write a minimal ``grid_run_card.toml`` containing only the parameters
