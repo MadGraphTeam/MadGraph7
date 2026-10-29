@@ -274,11 +274,10 @@ class TEST_pythia8_main164(unittest.TestCase):
         os.chmod(self.examples, 0o755)
         shutil.rmtree(self.tmpdir)
 
-    # the lines of Pythia8's main164.cc (8.316, 8.317) that the per-jet-sample
-    # DJR patch anchors on
+    # the lines of Pythia8's main164.cc (8.316 to 8.318) that the
+    # per-jet-sample DJR patch anchors on
     main164_djr_anchors = (
-        '  CombineMatchingInput jetMatchingHook;\n'
-        '  if (doJetMatching) jetMatchingHook.setHook(pythia);\n'
+        '  pythia.settings.addWord("InternalAnalysis:output", "analysis.dat");\n'
         '  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n'
         '      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n'
         '        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n'
@@ -445,10 +444,12 @@ class TEST_pythia8_main164(unittest.TestCase):
         patched in; an unknown source is left alone"""
         patched = misc.patch_pythia8_main164_djrs(self.main164_djr_anchors)
         self.assertIsNotNone(patched)
+        self.assertIn('pythia.settings.addFlag("InternalAnalysis:jetSamples", false);',
+                      patched)
         self.assertIn('dynamic_pointer_cast<JetMatchingMadgraph>', patched)
-        self.assertIn('madgraphHook->nMEpartons().first', patched)
-        self.assertIn('<jethistograms njet=', patched)
-        self.assertIn('table(output, false, false, true)', patched)
+        self.assertIn('jetMatchingPtr->nMEpartons().first', patched)
+        self.assertIn('pythia.mode("Merging:nRecluster")', patched)
+        self.assertIn('<jetsample njet=', patched)
         self.assertNotIn('<< "\\"" << "\\">', patched)
         self.assertTrue(misc.pythia8_main164_writes_jet_sample_djrs(patched))
         self.assertFalse(misc.pythia8_main164_writes_jet_sample_djrs(
@@ -460,8 +461,12 @@ class TEST_pythia8_main164(unittest.TestCase):
         executable = misc.get_pythia8_main164(self.py8, jet_sample_djrs=True)
         shared = os.path.join(self.examples, 'main164_djr')
         self.assertEqual(executable, os.path.join(shared, 'main164'))
-        # the stub make copies the source: it is the patched one
+        # the stub make copies the source: it is the patched one, which knows
+        # InternalAnalysis:jetSamples (the stock one does not)
         self.assertIn('nMEpartons', open(executable).read())
+        self.assertTrue(misc.pythia8_main164_knows_jet_samples(executable))
+        self.assertFalse(misc.pythia8_main164_knows_jet_samples(
+            misc.get_pythia8_main164(self.py8)))
         # Pythia8's own main164.cc is never modified
         self.assertEqual(open(os.path.join(self.examples, 'main164.cc')).read(),
                          self.main164_djr_anchors)
@@ -473,10 +478,26 @@ class TEST_pythia8_main164(unittest.TestCase):
         self.assertEqual(misc.get_pythia8_main164(self.py8),
                          os.path.join(self.examples, 'main164'))
 
+    def test_main164_djr_patch_is_the_proposed_pythia8_change(self):
+        """Against the real main164.cc of a Pythia8 release, when one is
+        installed: the patch applies, and writes the <run id> fixed"""
+        import glob
+        sources = glob.glob(os.path.join(os.environ.get('HOME', ''), 'Documents',
+                            'HEPTools', 'pythia8', 'share', 'Pythia8', 'examples',
+                            'main164.cc'))
+        if not sources:
+            self.skipTest('no Pythia8 installation to check against')
+        source = open(sources[0]).read()
+        if misc.pythia8_main164_writes_jet_sample_djrs(source):
+            self.skipTest('this Pythia8 already has InternalAnalysis:jetSamples')
+        patched = misc.patch_pythia8_main164_djrs(source)
+        self.assertIsNotNone(patched)
+        self.assertIn('output << "<run id=\\"" << i << "\\">\\n";', patched)
+
     def test_jet_sample_djrs_not_patched_when_not_needed_or_possible(self):
         # a main164 that splits per jet sample by itself
         self.write_sources(source=self.main164_djr_anchors +
-                                   '// madgraphHook->nMEpartons()\n')
+            '  pythia.settings.addFlag("InternalAnalysis:jetSamples", false);\n')
         self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
                          os.path.join(self.examples, 'main164'))
         # a main164.cc the patch does not know: the stock one

@@ -957,6 +957,25 @@ class TestPythia8Main164DJRs(unittest.TestCase):
         self.assertEqual([b.wgts['central'] for b in histos[1].bins], [0.0, 2000.0])
         self.assertEqual([b.wgts['stat_error'] for b in histos[1].bins], [0.0, 100.0])
 
+    def test_jetsample_blocks_of_pythia8(self):
+        """main164 with InternalAnalysis:jetSamples: <jetsample njet="n">
+        blocks after the totals, two columns"""
+        text = ('<histfile>\n<run id="0">\n'
+                '<histogram name="log10d01" unit="[]" weight="all">\n'
+                '  0.0  3.0e-06\n  1.0  2.0e-06\n</histogram>\n'
+                '<jetsample njet="0">\n'
+                '<histogram name="log10d01" unit="[]" weight="all">\n'
+                '  0.0  3.0e-06\n  1.0  0.0\n</histogram>\n'
+                '</jetsample>\n<jetsample njet="1">\n'
+                '<histogram name="log10d01" unit="[]" weight="all">\n'
+                '  0.0  0.0\n  1.0  2.0e-06\n</histogram>\n'
+                '</jetsample>\n</run>\n</histfile>\n')
+        histos = histograms.HwUList.from_pythia8_main164(self.write(text), scale=1e9)
+        self.assertEqual([(h.title, h.jetsample) for h in histos],
+                         [('log10d01 []', 0), ('log10d01 []', 1)])
+        self.assertEqual([b.wgts['central'] for b in histos[0].bins], [3000.0, 0.0])
+        self.assertTrue(all(b.wgts['stat_error'] == 0.0 for b in histos[1].bins))
+
     def test_a_file_without_histograms(self):
         self.assertIsNone(histograms.HwUList.from_pythia8_main164(
             self.write('<histfile>\n</histfile>\n')))

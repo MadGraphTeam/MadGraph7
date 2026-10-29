@@ -3207,8 +3207,9 @@ class HwUList(histograms_PhysicsObjectList):
         histograms log10d01 ... log10d34 of the whole sample, one row per bin
         with its lower edge and weighted content (and, from a main164 that
         prints it, its uncertainty), and possibly the same per jet sample
-        (number of matrix-element partons) in <jethistograms njet="n"> blocks.
-        Returns the histograms of the first run as a HwUList: the per-sample
+        (number of matrix-element partons) in <jetsample njet="n"> blocks
+        (InternalAnalysis:jetSamples). Returns the histograms of the first run
+        as a HwUList: the per-sample
         ones, titled |JETSAMPLE@n as the plots expect, when the file has them,
         the whole-sample ones otherwise; None when it holds none, or when it is
         the former MG5aMC_PY8_interface format (whose <run> carries a weight
@@ -3243,11 +3244,13 @@ class HwUList(histograms_PhysicsObjectList):
                     return None
                 if line.startswith('</run'):
                     break
-                block = re.match(r'<jethistograms\s+njet="(-?\d+)"', line)
+                # <jetsample>: main164 with InternalAnalysis:jetSamples;
+                # <jethistograms>: the first MadGraph7 patch of main164
+                block = re.match(r'<(?:jetsample|jethistograms)\s+njet="(-?\d+)"', line)
                 if block:
                     sample = int(block.group(1))
                     continue
-                if line.startswith('</jethistograms'):
+                if line.startswith('</jetsample') or line.startswith('</jethistograms'):
                     sample = None
                     continue
                 start = re.match(r'<histogram\s+name="([^"]*)"(?:\s+unit="([^"]*)")?', line)

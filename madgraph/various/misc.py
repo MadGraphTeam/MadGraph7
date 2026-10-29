@@ -1877,52 +1877,79 @@ def get_pythia8_hepmc_flags(pythia8_path, hepmc_version, hepmc_paths=()):
 
 # Version of the per-jet-sample DJR patch of main164 below. It is part of the
 # build stamp, so that a change to the patch rebuilds the patched main164.
-MAIN164_DJR_PATCH_VERSION = 1
+MAIN164_DJR_PATCH_VERSION = 2
 
 def pythia8_main164_writes_jet_sample_djrs(source):
-    """Whether a main164.cc histograms the differential jet rates per jet
-    sample (number of matrix-element partons) by itself."""
+    """Whether a main164.cc can histogram the differential jet rates per jet
+    sample by itself (its InternalAnalysis:jetSamples setting)."""
 
-    return 'nMEpartons' in source
+    return '"InternalAnalysis:jetSamples"' in source
+
+def pythia8_main164_knows_jet_samples(executable):
+    """Whether the main164 executable was built from a main164.cc that knows
+    InternalAnalysis:jetSamples (a Pythia8 setting it would refuse otherwise).
+    The source sits next to the executable, as get_pythia8_main164 builds it."""
+
+    try:
+        source = open(pjoin(os.path.dirname(executable), 'main164.cc')).read()
+    except (IOError, OSError):
+        return False
+    return pythia8_main164_writes_jet_sample_djrs(source)
 
 def patch_pythia8_main164_djrs(source):
-    """The main164.cc of Pythia8 made to write, next to the summed DJR
-    histograms of its internal analysis, the same per jet sample in
-    <jethistograms njet="n"> blocks (the number of matrix-element partons of
-    the MLM matching, JetMatchingMadgraph::nMEpartons, as the former
-    MG5aMC_PY8_interface split them), with the bin uncertainties as a third
-    column and the '<run id="0"">' of Pythia8 <= 8.317 fixed.
+    """The main164.cc of Pythia8 with the change proposed to Pythia8: the
+    setting InternalAnalysis:jetSamples (default off) also writes the
+    differential jet rate histograms of its internal analysis per jet sample,
+    in <jetsample njet="n"> blocks after the totals of each <run>, and the
+    '<run id="0"">' of Pythia8 <= 8.318 is fixed. The jet sample is the
+    number of matrix-element partons of MLM matching (nMEpartons().first,
+    getProcessSubset().size() for shower-kT, npNLO() for FxFx), or
+    Merging:nRequested less Merging:nRecluster for merging.
 
-    Until a Pythia8 release does this itself, MadGraph7 builds this patched
-    copy for its MLM showers; Pythia8's own main164.cc is never modified.
-    Returns None when the source is not the main164.cc this was written
-    against (Pythia8 8.316 and 8.317): the stock main164 is then used, and the
-    DJR plots show the summed histograms only."""
+    Until a Pythia8 release has it, MadGraph7 builds this patched copy for
+    its MLM showers; Pythia8's own main164.cc is never modified. Returns None
+    when the source is not the main164.cc this was written against (Pythia8
+    8.316 to 8.318): the stock main164 is then used, and the DJR plots show
+    the summed histograms only."""
 
     edits = [
-        ("  CombineMatchingInput jetMatchingHook;\n"
-         "  if (doJetMatching) jetMatchingHook.setHook(pythia);\n",
-         "  // MadGraph7: the MadGraph-style matching hook knows the number of\n"
-         "  // matrix-element partons of each event, i.e. its jet sample.\n"
-         "  shared_ptr<JetMatchingMadgraph> madgraphHook = doJetMatching\n"
-         "    ? dynamic_pointer_cast<JetMatchingMadgraph>(jetMatchingHook.hook)\n"
-         "    : nullptr;\n"),
+        ('  pythia.settings.addWord("InternalAnalysis:output", "analysis.dat");\n',
+         '  // Optionally also write the histograms of each jet sample separately.\n'
+         '  pythia.settings.addFlag("InternalAnalysis:jetSamples", false);\n'),
         ("  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n",
-         "  // MadGraph7: the same per jet sample, per subrun.\n"
-         "  vector< map<int, vector<Hist> > > sampleHists;\n"),
+         "  // Optionally also for each jet sample, as known by merging or by\n"
+         "  // MadGraph-style (not Alpgen-style) jet matching.\n"
+         '  bool doJetSamples = pythia.flag("InternalAnalysis:jetSamples");\n'
+         "  shared_ptr<JetMatchingMadgraph> jetMatchingPtr\n"
+         "    = dynamic_pointer_cast<JetMatchingMadgraph>(jetMatchingHook.hook);\n"
+         "  vector<map<int, vector<Hist> > > jetSampleHists;\n"),
         ('      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n',
-         "      sampleHists.push_back(map<int, vector<Hist> >());\n"),
+         "      jetSampleHists.push_back(map<int, vector<Hist> >());\n"),
         ("        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n",
-         "        // MadGraph7: and in the histograms of the jet sample of the event.\n"
-         "        int nSample = madgraphHook ? madgraphHook->nMEpartons().first : -1;\n"
-         "        if (nSample >= 0) {\n"
-         "          map<int, vector<Hist> >& samples = sampleHists.back();\n"
-         "          if (samples.find(nSample) == samples.end())\n"
-         '            samples[nSample] = { Hist("d01", 100., 0., 3.),\n'
+         "        // Optionally also for the jet sample of the event: for jet matching\n"
+         "        // the number of matrix-element partons (only those to be matched\n"
+         "        // for shower-kT, those of the Born for FxFx), for merging the\n"
+         "        // requested number of jets less the reclustered ones.\n"
+         "        int nJetSample = -1;\n"
+         "        if (doJetSamples && jetMatchingPtr) {\n"
+         '          if (pythia.flag("JetMatching:doFxFx"))\n'
+         "            nJetSample = jetMatchingPtr->npNLO();\n"
+         '          else if (pythia.flag("JetMatching:doShowerKt"))\n'
+         "            nJetSample = jetMatchingPtr->getProcessSubset().size();\n"
+         "          else\n"
+         "            nJetSample = jetMatchingPtr->nMEpartons().first;\n"
+         "        } else if (doJetSamples && doMerging) {\n"
+         '          nJetSample = pythia.mode("Merging:nRequested")\n'
+         '            - pythia.mode("Merging:nRecluster");\n'
+         "        }\n"
+         "        if (nJetSample >= 0) {\n"
+         "          vector<Hist>& sampleHists = jetSampleHists.back()[nJetSample];\n"
+         "          if (sampleHists.empty())\n"
+         '            sampleHists = { Hist("d01", 100., 0., 3.),\n'
          '              Hist("d12", 100., 0., 3.), Hist("d23", 100., 0., 3.),\n'
          '              Hist("d34", 100., 0., 3.) };\n'
-         "          for (int k = 0; k < 4 && k < int(dij.size()); ++k)\n"
-         "            samples[nSample][k].fill(log10(dij[k]), w);\n"
+         "          for (int iHist = 0; iHist < 4 && iHist < int(dij.size()); ++iHist)\n"
+         "            sampleHists[iHist].fill(log10(dij[iHist]), w);\n"
          "        }\n"),
     ]
     for anchor, addition in edits:
@@ -1930,38 +1957,26 @@ def patch_pythia8_main164_djrs(source):
             return None
         source = source.replace(anchor, anchor + addition)
 
-    # the output of the internal analysis, one <run> per subrun
-    start = '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
-    end = '      output << "</run>\\n";\n'
-    if source.count(start) != 1 or source.count(end) != 1 or \
-            source.index(start) > source.index(end):
+    run_header = '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
+    run_end = '      output << "</run>\\n";\n'
+    if source.count(run_header) != 1 or source.count(run_end) != 1:
         return None
-    output = (
-        '      output << "<run id=\\"" << i << "\\">\\n";\n'
-        "      // MadGraph7: lower bin edge, content and uncertainty; the summed\n"
-        "      // histograms, then those of each jet sample.\n"
-        '      const string names[4] = {"log10d01", "log10d12", "log10d23",\n'
-        '        "log10d34"};\n'
-        "      const Hist* totals[4] = {&d01Hists[i], &d12Hists[i], &d23Hists[i],\n"
-        "        &d34Hists[i]};\n"
-        "      for (int k = 0; k < 4; ++k) {\n"
-        '        output << "<histogram name=\\"" << names[k] << "\\""\n'
-        '               << " unit=\\"[]\\" weight=\\"all\\">\\n";\n'
-        "        totals[k]->table(output, false, false, true);\n"
-        '        output << "</histogram>\\n";\n'
-        "      }\n"
-        "      for (auto& sample : sampleHists[i]) {\n"
-        '        output << "<jethistograms njet=\\"" << sample.first << "\\">\\n";\n'
-        "        for (int k = 0; k < 4; ++k) {\n"
-        '          output << "<histogram name=\\"" << names[k] << "\\""\n'
-        '                 << " unit=\\"[]\\" weight=\\"all\\">\\n";\n'
-        "          sample.second[k].table(output, false, false, true);\n"
+    source = source.replace(run_header,
+                            '      output << "<run id=\\"" << i << "\\">\\n";\n')
+    source = source.replace(run_end,
+        "      // Optionally print the histograms of each jet sample.\n"
+        "      for (const auto& jetSample : jetSampleHists[i]) {\n"
+        '        output << "<jetsample njet=\\"" << jetSample.first << "\\">\\n";\n'
+        "        for (const Hist& hist : jetSample.second) {\n"
+        '          output << "<histogram name=\\"" << "log10" << hist.getTitle() << "\\""\n'
+        '                 << " unit=\\"" << "[]" << "\\""\n'
+        '                 << " weight=\\"" << "all" << "\\">\\n";\n'
+        "          hist.table(output, false, false);\n"
         '          output << "</histogram>\\n";\n'
         "        }\n"
-        '        output << "</jethistograms>\\n";\n'
-        "      }\n")
-    i, j = source.index(start), source.index(end)
-    source = source[:i] + output + source[j:]
+        '        output << "</jetsample>\\n";\n'
+        "      }\n"
+        "\n" + run_end)
     return ('// Patched by MadGraph7 (version %d of the per-jet-sample DJR patch,\n'
             '// see patch_pythia8_main164_djrs in madgraph/various/misc.py).\n'
             % MAIN164_DJR_PATCH_VERSION) + source

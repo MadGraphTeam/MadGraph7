@@ -4500,19 +4500,24 @@ Beware that this can be dangerous for local multicore runs.""")
             hepmc_version = self.get_auto_hepmc_version()
 
         # The jet rates of an MLM shower (Main:InternalAnalysis) split per jet
-        # sample, for the DJR plots: a main164 that does not do it is patched
-        # (misc.patch_pythia8_main164_djrs), unless DJRoutput:jetSamples is off.
-        # Not a Pythia8 setting either.
-        PY8_Card.vetoParamWriteOut('DJRoutput:jetSamples')
+        # sample (InternalAnalysis:jetSamples), for the DJR plots: a main164
+        # that cannot do it is patched (misc.patch_pythia8_main164_djrs).
         jet_sample_djrs = bool(PY8_Card['Main:InternalAnalysis']) and \
-                                         bool(PY8_Card['DJRoutput:jetSamples'])
+                                  bool(PY8_Card['InternalAnalysis:jetSamples'])
+        executable = None
         if jet_sample_djrs:
             try:
-                return self._get_pythia8_main164(hepmc_format, hepmc_version, True)
+                executable = self._get_pythia8_main164(hepmc_format,
+                                                       hepmc_version, True)
             except self.InvalidCmd as error:
                 logger.warning('main164 could not be built to split the jet rates ' +
                     'per jet sample, the DJR plots show their sum only:\n%s' % error)
-        return self._get_pythia8_main164(hepmc_format, hepmc_version, False)
+        if executable is None:
+            executable = self._get_pythia8_main164(hepmc_format, hepmc_version, False)
+        # a main164 that does not know the setting would refuse it
+        if not misc.pythia8_main164_knows_jet_samples(executable):
+            PY8_Card.vetoParamWriteOut('InternalAnalysis:jetSamples')
+        return executable
 
     def _get_pythia8_main164(self, hepmc_format, hepmc_version, jet_sample_djrs):
         """get_pythia8_main164 for a given HepMC version, falling back to the
@@ -4686,6 +4691,9 @@ already exists and is not a fifo file."""%fifo_path)
             # the DJR plots of the run are made (create_plot)
             if 'main:internalanalysis' not in PY8_Card.user_set:
                 PY8_Card.MadGraphSet('Main:InternalAnalysis', True)
+            # and per jet sample (the 0/1/2-jet contributions)
+            if 'internalanalysis:jetsamples' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:jetSamples', True)
             if PY8_Card['Main:InternalAnalysis'] and \
                     'internalanalysis:output' not in PY8_Card.user_set:
                 PY8_Card.MadGraphSet('InternalAnalysis:output', './djrs.dat')
