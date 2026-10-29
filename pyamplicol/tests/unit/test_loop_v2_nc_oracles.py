@@ -90,7 +90,7 @@ POINTS = {"tth": TTH_POINT, "bbx": BBX_POINT}
 def _point(masses):
     from tools.loop_reference import exact_points
 
-    if masses in POINTS:
+    if isinstance(masses, str):
         return POINTS[masses]
     point = exact_points.generate(list(masses), count=1)[0]
     return [[exact_points.decimal_string(x) for x in p] for p in point]
