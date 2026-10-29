@@ -10985,6 +10985,316 @@
    ]
   },
   {
+   "row": "D28",
+   "class": "Q-EWBorn",
+   "process": "u u~ > w+ w- g (4F)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "pyamplicol_route": {
+    "restriction": "default",
+    "fixed_parameters": {
+     "WT": "0",
+     "WZ": "0",
+     "WW": "0",
+     "WH": "0"
+    },
+    "scheme": "qcd-4fs",
+    "note": "= no_widths"
+   },
+   "note": "VV + jet (mq-ewjoin: the loop vertex attaches the sum of a field current's flavour-flow trees)",
+   "references": [
+    {
+     "run": "uux_wpwmg_4fs",
+     "fixture": "required/mqcd/uux_wpwmg_4fs.json",
+     "process_key": "uux_wpwmg_4fs",
+     "note": null,
+     "reference_notes": {},
+     "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
+     "status": "committed",
+     "madloop_process": "u u~ > w+ w- g QED=2 [virt=QCD]",
+     "pdgs": [
+      2,
+      -2,
+      24,
+      -24,
+      21
+     ],
+     "born_orders": {
+      "QCD": 1,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 1,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "scheme": "qcd-4fs",
+     "restriction": "default",
+     "madloop_model": "loop_sm",
+     "gauge": "Feynman",
+     "parameter_overrides": {},
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "regular",
+     "madloop_qp_point": false,
+     "point_labels": [
+      "regular",
+      "regular",
+      "regular",
+      "regular (mu_R = mu_0/2)"
+     ],
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "madloop_evaluation": "quadruple",
+     "evaluation_precision": [
+      "quadruple",
+      "quadruple",
+      "quadruple",
+      "quadruple"
+     ],
+     "binding_rows": [
+      0,
+      1,
+      2,
+      3
+     ],
+     "outliers": {},
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=4,QED^2=4": 2.3589791837954323e-14
+      },
+      {
+       "QCD^2=4,QED^2=4": 7.097215141545917e-15
+      },
+      {
+       "QCD^2=4,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=4,QED^2=4": 0.0
+      }
+     ],
+     "second_provider_outcome": {},
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 2,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 4,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
+   "existing_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/mqcd/uux_wpwmg_4fs.json",
+     "rows": [
+      0,
+      1,
+      2,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "row": "D29",
+   "class": "Q-EWBorn",
+   "process": "b b~ > w+ w- g",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "pyamplicol_route": {
+    "restriction": "default",
+    "fixed_parameters": {
+     "MB": "0",
+     "ymb": "0",
+     "WT": "0",
+     "WZ": "0",
+     "WW": "0",
+     "WH": "0"
+    },
+    "scheme": "qcd",
+    "note": "default restriction with MB = ymb = 0 (until MQ-5F, then also 5F); the MadLoop reference is the 5F (no_b_mass) one: the same QCD parameter values (default keeps MTA = ymtau = 1.777 where no_b_mass has 0; no tau enters these QCD rows)"
+   },
+   "note": "MQ-5F; VV + jet with a massive t-channel line (mq-ewjoin)",
+   "references": [
+    {
+     "run": "bbx_wpwmg",
+     "fixture": "required/mqcd/bbx_wpwmg.json",
+     "process_key": "bbx_wpwmg",
+     "note": null,
+     "reference_notes": {},
+     "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
+     "status": "committed",
+     "madloop_process": "b b~ > w+ w- g QED=2 [virt=QCD]",
+     "pdgs": [
+      5,
+      -5,
+      24,
+      -24,
+      21
+     ],
+     "born_orders": {
+      "QCD": 1,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 1,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "scheme": "qcd",
+     "restriction": "no_b_mass",
+     "madloop_model": "loop_sm-no_b_mass",
+     "gauge": "Feynman",
+     "parameter_overrides": {},
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "regular",
+     "madloop_qp_point": false,
+     "point_labels": [
+      "regular",
+      "regular",
+      "regular",
+      "regular (mu_R = mu_0/2)"
+     ],
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "madloop_return_codes": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "madloop_evaluation": "quadruple",
+     "evaluation_precision": [
+      "quadruple",
+      "quadruple",
+      "quadruple",
+      "quadruple"
+     ],
+     "binding_rows": [
+      0,
+      1,
+      2,
+      3
+     ],
+     "outliers": {},
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=4,QED^2=4": 1.205320895966651e-14
+      },
+      {
+       "QCD^2=4,QED^2=4": 2.4860611130261957e-15
+      },
+      {
+       "QCD^2=4,QED^2=4": 0.0
+      },
+      {
+       "QCD^2=4,QED^2=4": 0.0
+      }
+     ],
+     "second_provider_outcome": {},
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 2,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 4,
+        "QED": 4
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null
+    }
+   ],
+   "existing_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/mqcd/bbx_wpwmg.json",
+     "rows": [
+      0,
+      1,
+      2,
+      3
+     ]
+    }
+   ]
+  },
+  {
    "row": "E01",
    "class": "Q-ttX",
    "process": "g g > t t~ h",
