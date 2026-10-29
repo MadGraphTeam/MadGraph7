@@ -487,14 +487,24 @@ def export_trees(
     interactions, saved = _interaction_program(trees)
     index = _BlockRows(slice_, None)._index
     block_rows = []
+    # A row whose block current the tree engine splits into several trees
+    # (``_BlockRows``): its first tree is the row's slot, each further one a
+    # (row, start, Wick sign) term the executor adds in order.
+    block_row_terms = []
     for current, word, chirality, row, dimension in exporter.block_rows:
-        tree, entry = index[(current.mask, current.field, current.orders, word)][
+        entries = index[(current.mask, current.field, current.orders, word)][
             chirality
         ][row]
-        start, size = slot(tree, entry)
-        if size != dimension:
-            raise ValueError("a block row's dimension differs from its tree current")
-        block_rows.append([start, dimension, tree.wick_sign])
+        for k, (tree, entry) in enumerate(entries):
+            start, size = slot(tree, entry)
+            if size != dimension:
+                raise ValueError(
+                    "a block row's dimension differs from its tree current"
+                )
+            if k == 0:
+                block_rows.append([start, dimension, tree.wick_sign])
+            else:
+                block_row_terms.append([len(block_rows) - 1, start, tree.wick_sign])
     # ---------------------------------------------------------------- Born
     _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
     couplings: dict[tuple[str, int], int] = {}
@@ -711,6 +721,7 @@ def export_trees(
         "source_fill": schema["source_fill"],
         "interactions": interactions,
         "block_rows": block_rows,
+        **({"block_row_terms": block_row_terms} if block_row_terms else {}),
         "born": {
             "rows": len(rows),
             "components": len(components),
@@ -2245,6 +2256,8 @@ def prune_program(
 
     for start, size, _sign in program["block_rows"]:
         read(int(start), int(size))
+    for row, start, _sign in program.get("block_row_terms", ()):
+        read(int(start), int(program["block_rows"][int(row)][1]))
     # Per closure block the widest prefix of its rows a term reads: per
     # layout the width of each slot (its largest current component + 1).
     born_blocks = program["born"]["blocks"]

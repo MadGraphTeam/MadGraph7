@@ -4282,7 +4282,15 @@ def _interfere(
 
 class _BlockRows:
     """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
-    keyed by the contents' block names (``PositionColour.block_names``)."""
+    keyed by the contents' block names (``PositionColour.block_names``).
+
+    A row is the sum of the tree blocks of one name, chirality and helicity
+    row: the tree engine splits a field current into several DAG currents
+    whose keys differ only by the flavour flow of their trees (u u~ > w+ w- g:
+    the u current of legs {1, 3, 4} through gamma*/Z* and through a t-channel
+    d), and a loop vertex attaches their sum. ``_index`` holds per row the
+    ``(block, row)`` entries in block order; ``value`` adds their Feynman-rule
+    currents in that order (one entry: its current, as before)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
@@ -4308,7 +4316,8 @@ class _BlockRows:
                 ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
-                    bucket[key.chirality][helicities] = (block, row)
+                    entries = bucket[key.chirality].get(helicities, ())
+                    bucket[key.chirality][helicities] = (*entries, (block, row))
             slice_._cache["block-rows"] = index
         self._index = index
         self._rows = rows
@@ -4318,12 +4327,22 @@ class _BlockRows:
         return {chirality: tuple(rows) for chirality, rows in found.items()}
 
     def value(self, block, word, chirality, row, dimension):
-        tree, entry = self._index[(block.mask, block.field, block.orders, word)][
+        entries = self._index[(block.mask, block.field, block.orders, word)][
             chirality
         ][row]
-        variant = "source" if tree.is_source else "propagated"
-        sign = tree.wick_sign
-        return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
+        total = None
+        for tree, entry in entries:
+            variant = "source" if tree.is_source else "propagated"
+            sign = tree.wick_sign
+            current = tuple(
+                sign * value for value in self._rows[(entry.current_id, variant)]
+            )
+            total = (
+                current
+                if total is None
+                else tuple(a + b for a, b in zip(total, current, strict=True))
+            )
+        return total
 
 
 def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
