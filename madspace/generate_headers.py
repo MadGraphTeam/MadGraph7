@@ -311,6 +311,19 @@ def instruction_set_mixin(commands, out_dir):
         f_op.write("\n")
 
 
+def custom_op_func(prefix, cmd):
+    """The C++ function of a custom op. custom_op can name an implementation shared
+    by several instructions instead of True, with the leading template arguments
+    custom_op_args."""
+    custom_op = cmd["custom_op"]
+    name = custom_op if isinstance(custom_op, str) else cmd["base_name"]
+    template_args = list(cmd.get("custom_op_args", []))
+    if "ctype" in cmd:
+        template_args.append(cmd["ctype"])
+    func = f"{prefix}{name}"
+    return f"{func}<{', '.join(template_args)}>" if template_args else func
+
+
 def runtime_mixin(commands, device, out_dir):
     with open(out_dir / device / "runtime_mixin.inc", "w") as f:
         write_autogen(f)
@@ -320,9 +333,7 @@ def runtime_mixin(commands, device, out_dir):
             base_name = cmd["base_name"]
             suffix = cmd["types_suffix"]
             if cmd.get("custom_op", False):
-                func = f"op_{base_name}"
-                if "ctype" in cmd:
-                    func += f"<{cmd['ctype']}>"
+                func = custom_op_func("op_", cmd)
             else:
                 n_inputs = len(cmd["inputs"])
                 n_outputs = len(cmd["outputs"])
@@ -364,9 +375,7 @@ def runtime_backward_mixin(commands, device, out_dir):
             base_name = cmd["base_name"]
             suffix = cmd["types_suffix"]
             if cmd.get("custom_op", False):
-                func = f"backward_op_{base_name}"
-                if "ctype" in cmd:
-                    func += f"<{cmd['ctype']}>"
+                func = custom_op_func("backward_op_", cmd)
                 f.write(
                     f"case {opcode}:\n"
                     f"    {func}(instr, locals, local_grads, device);\n"

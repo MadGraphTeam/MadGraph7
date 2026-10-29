@@ -290,9 +290,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         "fuse_conversions",
         &fuse_conversions,
         py::arg("function"),
-        "Fuses single-precision conversions into the instructions producing the "
-        "converted values (the lowering the GPU backend applies when it builds a "
-        "runtime)."
+        "Fuses single-precision conversions and network activations into the "
+        "instructions producing their inputs (the lowering the GPU backend applies "
+        "when it builds a runtime)."
     );
 
     py::classh<Device> device(m, "Device", pydoc::doc("Device"));

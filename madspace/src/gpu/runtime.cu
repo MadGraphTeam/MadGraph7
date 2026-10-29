@@ -6,6 +6,7 @@
 #include <format>
 #include <functional>
 #include <tuple>
+#include <type_traits>
 
 #include <thrust/copy.h>
 #include <thrust/device_ptr.h>
@@ -289,6 +290,90 @@ void op_matmul_to_float64(
     bias.reset(device);
 }
 
+// linear[j * batch_size + i] += bias[j] and y = Act(linear) in one pass over the
+// output of a gemm, rounding exactly like kernel_add_bias and the activation kernel
+template <typename Act, typename F>
+__global__ void kernel_bias_activation(
+    std::size_t total,
+    std::size_t batch_size,
+    const F* __restrict__ bias,
+    F* __restrict__ linear,
+    F* __restrict__ y
+) {
+    std::size_t i = blockDim.x * static_cast<std::size_t>(blockIdx.x) + threadIdx.x;
+    if (i < total) {
+        F value = linear[i] + bias[i / batch_size];
+        linear[i] = value;
+        y[i] = Act::template forward<GpuTypesT<F>>(value);
+    }
+}
+
+// matmul followed by the activation Act, with the outputs linear (before the
+// activation, for the backward pass) and y: two launches instead of three
+template <typename Act, typename F>
+void op_matmul_activation(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto input =
+        locals[instruction.input_indices[0]].contiguous(device, AllocHint::temporary);
+    auto weight =
+        locals[instruction.input_indices[1]].contiguous(device, AllocHint::temporary);
+    auto bias =
+        locals[instruction.input_indices[2]].contiguous(device, AllocHint::temporary);
+    auto& linear = locals[instruction.output_indices[0]];
+    auto& output = locals[instruction.output_indices[1]];
+    std::size_t batch_size = input.size(0);
+    std::size_t dims_in = input.size(1);
+    std::size_t dims_out = weight.size(1);
+    linear = Tensor(
+        dtype_of<F>(), {batch_size, dims_out}, device, instruction.output_alloc_hints[0]
+    );
+    output = Tensor(
+        dtype_of<F>(), {batch_size, dims_out}, device, instruction.output_alloc_hints[1]
+    );
+    if (batch_size == 0) {
+        return;
+    }
+
+    gpublasHandle_t handle = instruction.runtime.gpublas_handle();
+    check_error(gpublasSetStream(handle, device.stream()));
+    F alpha = 1., beta = 0.;
+    check_error(
+        gpublas_gemm<F>(
+            handle,
+            GPUBLAS_OP_N,
+            GPUBLAS_OP_T,
+            batch_size,
+            dims_out,
+            dims_in,
+            &alpha,
+            static_cast<F*>(input.data()),
+            batch_size,
+            static_cast<F*>(weight.data()),
+            dims_out,
+            &beta,
+            static_cast<F*>(linear.data()),
+            batch_size
+        )
+    );
+    std::size_t total = batch_size * dims_out;
+    launch_kernel(
+        kernel_bias_activation<Act, F>,
+        total,
+        device.stream(),
+        total,
+        batch_size,
+        static_cast<const F*>(bias.data()),
+        static_cast<F*>(linear.data()),
+        static_cast<F*>(output.data())
+    );
+    input.reset(device);
+    weight.reset(device);
+    bias.reset(device);
+}
+
 // bias_grad[j] += sum_i output_grad[i, j]; the matrix is column-major with
 // leading dimension batch_size, so each column is a contiguous segment. One block
 // per column: single launch, no atomics (deterministic) and no temporary storage.
@@ -337,9 +422,42 @@ __global__ void kernel_bias_grad_convert(
     }
 }
 
-// OutGradF64: the gradient of the output is float64 (matmul_to_float64) and is
-// converted to F together with the bias gradient reduction
-template <typename F, bool OutGradF64>
+// the same reduction over the gradient of the input of the activation Act of
+// matmul_<activation>, linear_grad += Act'(linear, y) * y_grad, which is written
+// back for the gemms. It rounds like the activation backward and kernel_bias_grad.
+template <typename Act, typename F>
+__global__ void kernel_bias_grad_activation(
+    std::size_t batch_size,
+    const F* __restrict__ linear,
+    const F* __restrict__ y,
+    const F* __restrict__ y_grad,
+    F* __restrict__ linear_grad,
+    F* bias_grad
+) {
+    using BlockReduce = cub::BlockReduce<double, BIAS_GRAD_THREADS>;
+    __shared__ typename BlockReduce::TempStorage temp_storage;
+    std::size_t offset = blockIdx.x * batch_size;
+    double sum = 0.;
+    for (std::size_t i = threadIdx.x; i < batch_size; i += BIAS_GRAD_THREADS) {
+        std::size_t k = offset + i;
+        F value = linear_grad[k] +
+            Act::template backward<GpuTypesT<F>>(linear[k], y[k], y_grad[k]);
+        linear_grad[k] = value;
+        sum += value;
+    }
+    sum = BlockReduce(temp_storage).Sum(sum);
+    if (threadIdx.x == 0) {
+        bias_grad[blockIdx.x] += static_cast<F>(sum);
+    }
+}
+
+// How the gradient of the matmul output is obtained: as is (matmul), converted
+// from float64 (matmul_to_float64) or through an activation struct (matmul_<act>),
+// in the last two cases together with the bias gradient reduction
+struct OutputGrad {};
+struct OutputGradFromFloat64 {};
+
+template <typename F, typename Grad>
 void backward_matmul_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -387,7 +505,7 @@ void backward_matmul_impl(
     gpuStream_t stream = device.stream();
     check_error(gpublasSetStream(handle, stream));
 
-    if constexpr (OutGradF64) {
+    if constexpr (std::is_same_v<Grad, OutputGradFromFloat64>) {
         // compute bias_grad += sum_i output_grad_ij and convert the gradient
         Tensor output_grad_f(
             dtype_of<F>(), output_grad.shape(), device, AllocHint::temporary
@@ -401,6 +519,30 @@ void backward_matmul_impl(
         check_error();
         output_grad.reset(device);
         output_grad = output_grad_f;
+    } else if constexpr (!std::is_same_v<Grad, OutputGrad>) {
+        // the gradient of linear (output_grad) and bias_grad through the activation
+        auto linear = locals[instruction.output_indices[0]].contiguous(
+            device, AllocHint::temporary
+        );
+        auto y = locals[instruction.output_indices[1]].contiguous(
+            device, AllocHint::temporary
+        );
+        auto y_grad = local_grads[instruction.output_indices[1]].contiguous(
+            device, AllocHint::temporary
+        );
+        kernel_bias_grad_activation<Grad, F>
+            <<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
+                batch_size,
+                static_cast<const F*>(linear.data()),
+                static_cast<const F*>(y.data()),
+                static_cast<const F*>(y_grad.data()),
+                static_cast<F*>(output_grad.data()),
+                static_cast<F*>(bias_grad.data())
+            );
+        check_error();
+        linear.reset(device);
+        y.reset(device);
+        y_grad.reset(device);
     }
 
     // compute input_grad += output_grad * weight
@@ -443,7 +585,7 @@ void backward_matmul_impl(
         )
     );
 
-    if constexpr (!OutGradF64) {
+    if constexpr (std::is_same_v<Grad, OutputGrad>) {
         // compute bias_grad += sum_i output_grad_ij
         kernel_bias_grad<F><<<dims_out, BIAS_GRAD_THREADS, 0, stream>>>(
             batch_size,
@@ -464,7 +606,7 @@ void backward_op_matmul(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    backward_matmul_impl<F, false>(instruction, locals, local_grads, device);
+    backward_matmul_impl<F, OutputGrad>(instruction, locals, local_grads, device);
 }
 
 void backward_op_matmul_to_float64(
@@ -473,7 +615,19 @@ void backward_op_matmul_to_float64(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    backward_matmul_impl<float, true>(instruction, locals, local_grads, device);
+    backward_matmul_impl<float, OutputGradFromFloat64>(
+        instruction, locals, local_grads, device
+    );
+}
+
+template <typename Act, typename F>
+void backward_op_matmul_activation(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const AsyncGpuDevice& device
+) {
+    backward_matmul_impl<F, Act>(instruction, locals, local_grads, device);
 }
 
 struct NotMinusOne {
