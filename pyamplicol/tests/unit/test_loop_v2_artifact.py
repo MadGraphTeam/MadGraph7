@@ -2594,9 +2594,11 @@ def test_qed_declaring_model_names_its_blockers(
 ):
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
-    boundary). Without the compatibility profile v2 refuses its G-
-    Goldstone flag, which the dry run reports from the model preparation.
-    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    boundary). Without the compatibility profile the structural source
+    repair restores its G- Goldstone flag (MS-MODEL, rule
+    ``antiparticle-goldstone-flag``): the dry run admits the request. With
+    the profile (still accepted), u u~ > d d~ at the card's W and Z widths
+    is refused by the
     electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
     widths fixed to zero, or the complex-mass scheme), before its tree
     kernels and the counterterm lowering. With those widths fixed to zero
@@ -2622,9 +2624,7 @@ def test_qed_declaring_model_names_its_blockers(
     plain = _qed_model_generator(
         loop_qcd_qed_sm_ufo, tmp_path, "a", entries, profiled=False
     )
-    assert plain.plan(processes).unsupported_features == (
-        "antiparticle metadata mismatch for G+: goldstoneboson",
-    )
+    assert plain.plan(processes).unsupported_features == ()
     profiled = _qed_model_generator(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, profiled=True
     )
