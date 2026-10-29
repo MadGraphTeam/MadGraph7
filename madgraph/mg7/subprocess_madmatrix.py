@@ -233,6 +233,8 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        # set from the survey by set_madnis_auto_settings
+        self.madnis_supported = True
         self.multi_channel_data = None
 
         self.unmerged_meta = None
@@ -326,16 +328,71 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = ms.EnergyScale(
-            particle_count=self.particle_count,
-            custom_scale=self.process.custom_function(
-                "scale", self.particle_count, representative_pids
-            ),
-            **self.process.scale_kwargs
-        )
+        # The scale range exists to keep the densities inside the PDF grid, so
+        # a run without beam densities - a lepton collider or a decay - has
+        # none: a floor there would only throw away events whose scale is
+        # legitimately low, a decay of a particle lighter than min_scale say.
+        if self.process.leptonic:
+            min_scale = max_scale = 0.0
+        else:
+            min_scale = self.process.run_card["beam"]["min_scale"]
+            max_scale = self.process.max_scale
+        if self.process.mlm_clustering:
+            self.scale = self.build_mlm_scale(min_scale, max_scale)
+        else:
+            self.scale = ms.EnergyScale(
+                particle_count=self.particle_count,
+                custom_scale=self.process.custom_function(
+                    "scale", self.particle_count, representative_pids
+                ),
+                min_scale=min_scale,
+                max_scale=max_scale,
+                **self.process.scale_kwargs,
+            )
 
         # the libraries were all built up front by MadgraphProcess.compile_matrix_elements
         self.load_matrix_elements(api_path_formats, member_metas)
+
+    def build_mlm_scale(self, min_scale: float, max_scale: float):
+        """The scales of the MLM clustering history of each event."""
+        mc_data = self.build_multi_channel_data()
+        beam = self.process.run_card["beam"]
+        all_pids = (clean_pids(self.meta["incoming"])
+                    + clean_pids(self.meta["outgoing"]))
+        return ms.EnergyScale(
+            ms.MLMClustering(
+                topologies=[topo[0] for topo in mc_data.topologies],
+                permutations=mc_data.permutations,
+                diagram_indices=mc_data.diagram_indices,
+                cm_energy=self.process.e_cm,
+                jet_scale_scheme=getattr(
+                    ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
+                scale_scheme=getattr(
+                    ms.MLMClustering.ScaleScheme, beam["scale_scheme"]),
+                pdg_color_types={
+                    int(key): value
+                    for key, value in self.meta["pdg_color_types"].items()
+                },
+                xqcut=self.process.run_card["phasespace"]["xqcut"],
+                bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+                jet_radius=beam["jet_radius"],
+                hadronic=not self.process.leptonic,
+                external_pdg_ids=all_pids,
+                max_jet_flavor=beam["max_jet_flavor"],
+                parton_line_scheme=getattr(
+                    ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
+                alphas_scheme=getattr(
+                    ms.MLMClustering.AlphasScheme, beam["alphas_reweighting"]),
+                pdf_reweighting=beam["pdf_reweighting"],
+                clustering_measure=getattr(
+                    ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
+                clustering_history=getattr(
+                    ms.MLMClustering.ClusteringHistory, beam["clustering_history"]),
+                clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
+            ),
+            min_scale=min_scale,
+            max_scale=max_scale,
+        )
 
     def load_matrix_elements(self, api_path_formats, member_metas):
         """The matrix element and [surrogate] of every member subprocess."""
@@ -823,7 +880,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
-    def set_madnis_auto_settings(self, rsd: float):
+    def set_madnis_auto_settings(self, rsd: float, random_dim: int):
+        """Choose the MadNIS settings of this subprocess from the relative
+        spread rsd of the survey. random_dim is the smallest number of random
+        numbers of its channels: a normalizing flow needs at least two, so a
+        one-dimensional phase space (a 2 -> 1 process) never uses MadNIS."""
         madnis_args = self.process.run_card["madnis"]
         n_out = len(self.meta["outgoing"])
         n_events = self.process.run_card["generation"]["events"]
@@ -856,6 +917,14 @@ class MadgraphSubprocess:
             run_card_value = madnis_args[key]
             if run_card_value != "auto":
                 self.madnis_settings[key] = run_card_value
+        self.madnis_supported = random_dim >= 2
+        if not self.madnis_supported and self.madnis_settings["enable"]:
+            logger.warning(
+                "MadNIS disabled for subprocess %s: its phase space has %d "
+                "random dimension(s), a normalizing flow needs at least 2",
+                self.subproc_id, random_dim,
+            )
+            self.madnis_settings["enable"] = False
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
@@ -1135,6 +1204,11 @@ class MadgraphSubprocess:
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
+        # With an MLM history picked per diagram, the cross section at the
+        # scales of that history is the first matrix-element evaluation rescaled
+        # by alpha_s and PDF ratios when every diagram has the same power of
+        # alpha_s (-1: mixed powers, evaluate the matrix element again)
+        mlm_history_qcd_power = int(self.meta.get("qcd_power", -1))
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -1169,6 +1243,7 @@ class MadgraphSubprocess:
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
                 phasespace.mapping_chan_weights,
+                mlm_history_qcd_power,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

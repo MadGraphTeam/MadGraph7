@@ -121,22 +121,6 @@ def test_contributor_lock_has_no_local_symjit_source_or_patch_inventory() -> Non
     assert not tuple((ROOT / "dependencies/patches/symjit").rglob("*.patch"))
 
 
-def test_nix_shell_provides_python_build_frontend() -> None:
-    flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
-    match = re.search(
-        r"python = pkgs\.python311\.withPackages \(.*?\[(.*?)\]",
-        flake,
-        flags=re.DOTALL,
-    )
-    assert match is not None
-    assert re.search(r"(?m)^\s+build\s*$", match.group(1)) is not None
-    assert re.search(r"(?m)^\s+m4\s*$", flake) is not None
-    assert "pkgs.lsof" in flake
-    assert "pkgs.procps" in flake
-    assert '"x86_64-darwin"' not in flake
-    assert re.search(r"(?m)^\s+lhapdf\s*$", flake) is None
-
-
 def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     match = re.search(

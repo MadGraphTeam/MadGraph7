@@ -256,6 +256,13 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
 
 class AmplicolSubprocess(MadgraphSubprocess):
     def __init__(self, process, meta, subproc_id, unmerged_meta=None):
+        if process.mlm_clustering:
+            # the clustering needs Feynman-diagram topologies, which AmpliCol lacks
+            raise RuntimeError(
+                "dynamical_scale_choice = mlm is not supported for [amplicol] "
+                f"subprocesses ({meta['incoming']} > {meta['outgoing']}): "
+                "use a closed-form scale choice"
+            )
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
         self.check_flavor_blind_cuts()

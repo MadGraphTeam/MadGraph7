@@ -237,6 +237,7 @@ jobs:
     #   acceptancetest_mg7_vegas_reproducibility
     #   acceptancetest_mg7_gridpack_reproducibility
     #   acceptancetest_mg7_gridpack_reproducibility_vegas
+    #   acceptancetest_mg7_simd_consistency
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
@@ -341,6 +342,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_gridpack_reproducibility_vegas_mg7 -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_simd_consistency ----
+      # mg7 seeded generation (g g > t t~ g), repeated for every madspace SIMD
+      # mode (madspace_cpu_mode) supported by the runner: the VEGAS cross
+      # sections must agree with the scalar one up to rounding, the madnis ones
+      # within their statistical uncertainties, and the runs of a gridpack trained
+      # in scalar mode again up to rounding. Self-skips if the runner supports
+      # no SIMD mode or the madspace + LHAPDF(NNPDF23) stack is unavailable.
+      - name: "acceptancetest_mg7_simd_consistency"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_vegas_simd_consistency_mg7 test_madnis_simd_consistency_mg7 test_madnis_gridpack_simd_consistency_mg7 -pA -t0 -l INFO
 
 
   acceptancetest_mg7_bundle_3:
@@ -593,3 +608,23 @@ jobs:
             # LHAPDF_DATA_PATH (install_lhapdf_pdfset) holds only NNPDF23: unset, these
             # tests find NNPDF40_lo_as_01180 in the heptools data dir via lhapdf-config
             env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_launcher_cut_names:
+    needs: build_madspace
+    # Unit tests, but they belong here rather than in unittest.yml: they need a
+    # compiled madspace to check that the cut names the mg7 launcher writes are
+    # ones ms.Observable accepts, and the unit jobs have none (they would skip).
+    # No LHAPDF or model files: nothing is generated, the launcher's cut helpers
+    # are called on a stand-in run card. Hence no heptools restore, and no -pA:
+    # these live in the default tests/unit_tests path.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test the mg7 launcher writes cut names madspace can build
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_every_cut_it_writes_builds_an_observable test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut test_it_drops_the_jet_cone_cuts test_with_the_option_off_it_only_zeroes_cuts_above_xqcut test_it_leaves_an_unmerged_run_alone -t0 -l INFO

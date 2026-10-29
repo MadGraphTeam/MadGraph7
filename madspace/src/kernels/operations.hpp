@@ -68,7 +68,23 @@ void backward_batch_foreach(
     for (int i = 0; i < n_in; ++i) {
         auto input_index = instruction.input_indices[i];
         auto& input_grad = local_grads[input_index];
-        if (!input_grad) {
+        bool discard_grad = false;
+        if constexpr (requires { instruction.discard_input_grad; }) {
+            discard_grad = instruction.discard_input_grad[i];
+        }
+        if (discard_grad) {
+            // The gradient of this input is never used (literal or integer). A
+            // batch-size-one gradient would be a broadcast output, which forces the
+            // scalar kernel on a single thread, so write it to batch-sized scratch
+            // memory instead.
+            auto& input = locals[input_index];
+            if (!input_grad || input_grad.size(0) != batch_size) {
+                Sizes shape = input.shape();
+                shape[0] = batch_size;
+                input_grad =
+                    Tensor(input.dtype(), shape, device, AllocHint::temporary);
+            }
+        } else if (!input_grad) {
             auto& input = locals[input_index];
             /*if (input.size(0) != batch_size && input.dtype() == DataType::dt_float) {
                 throw std::runtime_error("backward not possible for broadcasting args");

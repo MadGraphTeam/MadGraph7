@@ -131,6 +131,9 @@ public:
      *                                          rescale the weight accordingly.
      * @param partial_weights                   If true, emit the per-factor
      *                                          weights for buffered unweighting.
+     *                                          Ignored under MLM pdf
+     *                                          reweighting, whose densities are
+     *                                          not at the factorisation scale.
      * @param channel_indices                   Global indices of this
      *                                          integrand's channels.
      * @param active_flavors                    Flavour indices this integrand
@@ -162,6 +165,15 @@ public:
      *                                          Its sampled diagram is the
      *                                          diagram index of the event when
      *                                          the matrix element returns none.
+     * @param mlm_history_qcd_power             Power of alpha_s in |M|^2 when it
+     *                                          is the same for every diagram,
+     *                                          -1 otherwise. With an MLM history
+     *                                          picked per diagram, the matrix
+     *                                          element at the scales of that
+     *                                          history is then the first
+     *                                          evaluation rescaled by the alpha_s
+     *                                          and PDF ratios instead of a second
+     *                                          evaluation.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -194,7 +206,8 @@ public:
         std::size_t compressed_channel_weight_count = 50,
         const std::optional<CustomFunction>& custom_bias = std::nullopt,
         const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
-        const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt
+        const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt,
+        int mlm_history_qcd_power = -1
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -266,10 +279,34 @@ private:
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
     NamedVector<Type> compute_channel_part_ret_types() const;
+    // Whether build_channel_part multiplies anything into weight_after_cuts:
+    // flavor or mirror sampling, or the merging weights and the scale veto of
+    // the history over every diagram. The common part leaves weight_after_cuts
+    // out of its product otherwise, as it is then one by construction.
+    bool has_channel_weight_after_cuts() const;
     NamedVector<Value>
     build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
     NamedVector<Value>
     build_common_part(FunctionBuilder& fb, const NamedVector<Value>& channel_out) const;
+    // The beam densities at the scales an MLM or dynamical scale choice
+    // produced, for the sampled flavour.
+    std::array<Value, 2> evaluate_pdfs(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id
+    ) const;
+    // The factors an MLM clustering puts on the event weight: the merging cut,
+    // the alpha_s and the pdf reweighting, each with its veto. With `ladder`,
+    // also the pdf reweighting ladder itself, as the systematics need it to
+    // vary it (see emits_pdf_ladder in integrand.cpp).
+    ValueVec mlm_weights(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id,
+        NamedVector<Value>* ladder = nullptr
+    ) const;
 
     PhaseSpaceMapping _mapping;
     std::vector<DifferentialCrossSection> _diff_xs;
@@ -282,8 +319,31 @@ private:
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
+    // The pdf reweighting asks for densities the flavour sampling never does:
+    // the flavour of a beam line partway up the clustering ladder. One density
+    // over every flavour that can turn up there, picked per event by index.
+    std::optional<PartonDensity> _pdf_rw;
+    // Flavour class (as the mlm kernel emits it) and sampled flavour option to
+    // an index into that density, flattened as class * option_count + option,
+    // with the class offsets alongside so that the two can be added as ints.
+    std::vector<me_int_t> _pdf_rw_table;
+    std::vector<me_int_t> _pdf_rw_class_offsets;
+    // pdg id of each parton of _pdf_rw, as a float for gather
+    std::vector<double> _pdf_rw_pdgs;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
+    // One row with a 1 for every matrix-element diagram the MLM clustering has
+    // a history of its own for, used to restrict the per-event diagram pick.
+    nested_vector2<double> _mlm_diagram_mask;
+    // MLMClustering::diagram_start_states padded to the matrix element's
+    // diagram count, so that any diagram the pick can return has an entry.
+    std::vector<me_int_t> _mlm_start_states;
+    // see mlm_history_qcd_power in the constructor; -1 re-evaluates
+    int _mlm_history_qcd_power = -1;
+    // abs pdg id of every external leg per flavour option, row-major, for the
+    // clusterings that only exist for some flavours of a merged subprocess.
+    // Empty when the clustering does not depend on the flavours.
+    std::vector<me_int_t> _mlm_leg_flavors;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<MappingChannelWeights> _mapping_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;

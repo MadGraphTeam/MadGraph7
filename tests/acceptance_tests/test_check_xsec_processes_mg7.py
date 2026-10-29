@@ -30,8 +30,9 @@ tests). Each test:
      set (``NNPDF23_lo_as_0130_qed``), so the references stay valid no matter
      which set the template defaults to; it also sets the event count and, for
      the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md). An
-     entry may add cuts (``"cuts": {"<cut>.<bound>": value}``) and set
-     ``[phasespace] cut_decays`` (``"cut_decays": true``),
+     entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
+     ``[phasespace] cut_decays`` (``"cut_decays": true``) and switch MadNIS
+     off (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
   5. asserts the relative difference to the reference stays within the
@@ -46,6 +47,14 @@ tests). Each test:
 
 The source of truth is ``check_xsec_processes_reference.json`` (mirrors the
 table in CLAUDE.md, produced with fixed scale and 1M events).
+
+MadNIS training (``[madnis] enable = "auto"``: always on for four or more
+final-state particles, on for three when the survey spread is large) is ~95%
+of the run time of the processes that use it, independently of the event
+count. Half of those entries therefore carry ``"madnis": false`` and run on
+the VEGAS multichannel sampling alone, including the inclusive ``p p > ...``
+ones (whose reference is the sum of the sub-channel references); the other
+half keeps the default, so both samplers stay covered.
 
 Four knobs are read from the environment so the CI can dial them without
 touching the code:
@@ -159,9 +168,9 @@ def _require_mg7_runtime(test):
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None):
+                   cut_decays=None, madnis=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
-    entry's extra cuts and set its cut_decays.
+    entry's extra cuts and set its cut_decays and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
     (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
@@ -199,6 +208,13 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^cut_decays = \w+',
                            'cut_decays = %s' % str(bool(cut_decays)).lower(), t)
         assert count == 1, 'no cut_decays in %s' % toml_path
+    if madnis is not None:
+        # the first `enable` after the [madnis] header ([vegas] and
+        # [systematics] have one too)
+        t, count = re.subn(r'(?m)(^\[madnis\]\n(?:(?!^\[).*\n)*?)enable = .*$',
+                           lambda m: m.group(1) + 'enable = %s'
+                           % str(bool(madnis)).lower(), t)
+        assert count == 1, 'no [madnis] enable in %s' % toml_path
     open(toml_path, 'w').write(t)
 
 
@@ -308,7 +324,8 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
 
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
-                       entry.get('cuts'), entry.get('cut_decays'))
+                       entry.get('cuts'), entry.get('cut_decays'),
+                       entry.get('madnis'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:

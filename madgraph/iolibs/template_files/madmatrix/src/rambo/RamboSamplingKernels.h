@@ -92,7 +92,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  // Compability port mirroring the massless momenta implementation
+  // Compatibility port mirroring the massless momenta implementation
   // For now own RNG internally (or keep to match Fortran) TODO 
   // rndmom just for interface (maybe delete later) TODO
   class RamboSamplingKernelHost final : public SamplingKernelBase, public NumberOfEvents
@@ -122,7 +122,7 @@ namespace madmatrix
     // The EXTERNAL masses 
     std::vector<double> m_masses;
 
-    // The number of inital particles
+    // The number of initial particles
     const int m_ninitial;
   };
 

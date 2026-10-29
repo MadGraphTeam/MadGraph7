@@ -84,3 +84,16 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
         if _LHAPDF.config:
             os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
     return _LHAPDF
+
+
+def lhapdf_index_paths() -> list:
+    """The PDF directories to look an lhaid up in. Without LHAPDF there may be
+    no pdfsets.index anywhere yet, so fetch one into the download directory."""
+
+    paths = lhapdf_paths()
+    data_paths = list(paths.data_paths)
+    if not any(os.path.exists(os.path.join(p, "pdfsets.index")) for p in data_paths) \
+            and paths.download_path \
+            and misc.download_lhapdf_index(paths.download_path):
+        data_paths.append(paths.download_path)
+    return data_paths

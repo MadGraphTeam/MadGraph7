@@ -74,7 +74,7 @@ code, and everything below is one file inside it.
 `Cards/run_card.toml`, section by section. The ones you will actually touch
 are marked.
 
-  [run]             seed, device (cpu/gpu), cpu_mode, simd_vector_size,
+  [run]             seed, device (cpu/gpu), cpu_mode, madspace_cpu_mode,
                     the thread pools, output_format, verbosity          <-
   [beam]            beam energies, PDF
   [generation]      events, the survey iterations and target precision,

@@ -332,7 +332,7 @@ class TestAddVariable(unittest.TestCase):
         self.assertEqual(sum.prefactor, 1)
         
     def testmultaddint(self):
-        """test the multiplication of an AddVariable by a Integer"""
+        """test the multiplication of an AddVariable by an Integer"""
         
         prod1 = 3 * self.add1
         prod2 = self.add2 * 2
@@ -360,7 +360,7 @@ class TestAddVariable(unittest.TestCase):
 
     
     def testmultadd_legacy(self):
-        """ int * AddVariable doens't change the content of AddVariable """
+        """ int * AddVariable doesn't change the content of AddVariable """
         
         var1 = aloha_obj.P(1,2)
         var2 = aloha_obj.P(2,2)
@@ -2553,7 +2553,7 @@ class TestSomeObjectProperty(unittest.TestCase):
         
     def test_short_parity_for_epsilon(self):
 
-        # usefull shortcut
+        # useful shortcut
         Epsilon = aloha_obj.Epsilon
         # test some value
         eps = Epsilon(1,2,3,4)
@@ -2572,7 +2572,7 @@ class TestSomeObjectProperty(unittest.TestCase):
     def testEpsilonProperty(self):
         """Test the property of the epsilon object"""
         
-        # usefull shortcut
+        # useful shortcut
         Epsilon = aloha_obj.Epsilon
 
         # test some value
@@ -3294,7 +3294,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         # check for correct behavior if wrong input:
         # 1) check that it fail for non loop routine
         self.assertRaises(AssertionError, helas_suite.get_info, 'rank', 'VVVV2', 0, []) 
-        # 2) check that unknow information fails.
+        # 2) check that unknown information fails.
         self.assertRaises(create_aloha.ALOHAERROR, helas_suite.get_info, 'SW', 'VVVV2', 2, ['L1'])
         # 3) check that appropriate error is raise for invalid input
         self.assertRaises(AssertionError, helas_suite.get_info, 'rank', 'VVVV2', 1, ['L1'])

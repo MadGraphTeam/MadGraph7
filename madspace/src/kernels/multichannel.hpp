@@ -8,7 +8,7 @@ namespace kernels {
 template <typename T>
 KERNELSPEC void kernel_collect_channel_weights(
     FIn<T, 1> amp2,
-    IIn<T, 1> channel_indices,
+    ISIn<T, 1> channel_indices,
     IIn<T, 0> channel_count,
     FOut<T, 1> channel_weights
 ) {
@@ -76,9 +76,9 @@ KERNELSPEC void kernel_density_channel_weights(
 template <typename T>
 KERNELSPEC void kernel_sde2_channel_weights(
     FIn<T, 1> invariants,
-    FIn<T, 2> masses,
-    FIn<T, 2> widths,
-    IIn<T, 2> indices,
+    FSIn<T, 2> masses,
+    FSIn<T, 2> widths,
+    ISIn<T, 2> indices,
     FOut<T, 1> channel_weights
 ) {
     // TODO: MG has a special case here if tprid != 0. check what that is and if we need
@@ -111,11 +111,11 @@ KERNELSPEC void kernel_sde2_channel_weights(
 template <typename T>
 KERNELSPEC void kernel_subchannel_weights(
     FIn<T, 1> invariants,
-    FIn<T, 2> masses,
-    FIn<T, 2> widths,
-    IIn<T, 2> indices,
-    IIn<T, 2> on_shell,
-    IIn<T, 1> group_sizes,
+    FSIn<T, 2> masses,
+    FSIn<T, 2> widths,
+    ISIn<T, 2> indices,
+    ISIn<T, 2> on_shell,
+    ISIn<T, 1> group_sizes,
     FOut<T, 1> channel_weights
 ) {
     FVal<T> channel_weights_norm(0.);
@@ -156,8 +156,8 @@ template <typename T>
 KERNELSPEC void kernel_apply_subchannel_weights(
     FIn<T, 1> channel_weights_in,
     FIn<T, 1> subchannel_weights,
-    IIn<T, 1> channel_indices,
-    IIn<T, 1> subchannel_indices,
+    ISIn<T, 1> channel_indices,
+    ISIn<T, 1> subchannel_indices,
     FOut<T, 1> channel_weights_out
 ) {
     for (std::size_t i = 0; i < channel_indices.size(); ++i) {

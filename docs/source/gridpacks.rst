@@ -131,6 +131,9 @@ gridpack is created.
       - ``device``
       - ``--device`` (several entries are allowed)
     * -
+      - ``madspace_cpu_mode``
+      - ``--madspace_cpu_mode``
+    * -
       - ``cpu_thread_pool_size``, ``gpu_thread_pool_size``
       - ``--cpu_thread_pool_size``, ``--gpu_thread_pool_size``
     * -

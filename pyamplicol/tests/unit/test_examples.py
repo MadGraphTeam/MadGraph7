@@ -441,7 +441,6 @@ def test_readme_states_current_release_boundary_and_public_surfaces() -> None:
     assert "p p > Z j j" in readme
     assert "Runtime.load" in readme
     assert "pyamplicol examples copy" in readme
-    assert "pyamplicol profiling-campaign copy" in readme
     for interface in ("Python", "C11", "C++17", "Fortran 2008", "Rust 2021"):
         assert interface in readme
     assert "one source distribution and three `cp311-abi3` wheels" in status

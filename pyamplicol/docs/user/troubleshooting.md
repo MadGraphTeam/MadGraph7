@@ -7,7 +7,7 @@ parent: "Profiling and Benchmarking"
 # Troubleshooting
 
 This page starts with cheap, authoritative checks and then narrows common
-generation, runtime, native-SDK, and profiling-campaign failures. Avoid broad
+generation, runtime, and native-SDK failures. Avoid broad
 rebuilds until the failing boundary is known.
 
 ## First checks
@@ -305,78 +305,6 @@ Python precision other than 16 also loads retained Symbolica state. Native
 languages are f64-only and never perform a Symbolica license check. See
 [Symbolica and Licensing](symbolica-and-licensing.md).
 
-## A profiling campaign seems to have lost earlier results
-
-Running without `--continue-across-revisions` does **not** delete old attempts.
-It limits active planning to the current source cohort. To extend a campaign
-across source changes:
-
-```console
-./steer_performance_campaign.py run \
-  --continue-across-revisions \
-  ...ordinary selectors...
-```
-
-Compatible historical currents can then remain while new work uses the active
-revision. Numerical authorities required by new current-revision work are
-replanned safely.
-
-The command that resets state is:
-
-```console
-pyamplicol profiling-campaign copy DEST --force
-```
-
-It resets only managed state below that destination, and refuses while a
-campaign is active. See [Profiling Campaigns](profiling-campaigns.md).
-
-## The campaign reads the wrong directory after a rename
-
-All state is local to `DEST/campaign_artifacts/`. If a directory was renamed
-while the shell remained inside the old inode, the prompt may show a logical
-name that no longer matches the physical directory.
-
-```console
-pwd
-pwd -P
-```
-
-Start a new shell or `cd` through the campaign's current absolute path. Current
-launchers reject a stale logical/physical mismatch before opening state.
-
-Move the whole campaign directory; do not copy individual currents or
-coordination files.
-
-## A campaign reports `unverified`
-
-`unverified` is intentional for a compiled/eager timing measured without an
-independent successful recurrence or original-AmpliCol authority. It is not an
-OK current, is excluded from best-mode ratios/summaries, and is automatically
-retryable after authority becomes available.
-
-By default, ordinary selection adds the available authority closure. If you
-used `--no-dependencies-added`, rerun without it, or explicitly select the
-authority and candidate. Replay exact IDs from:
-
-```console
-./steer_performance_campaign.py run \
-  --cell-id-file campaign_summary_ids/unverified.txt
-```
-
-## A campaign is slow to render its PDF
-
-`refresh-pdf` scans compact current records and displays a colored progress
-bar. It does not need to hash or load every retained heavy attempt.
-
-```console
-./steer_performance_campaign.py refresh-pdf
-```
-
-Use `--quiet` only when progress and LaTeX output should be suppressed. If the
-scan is unexpectedly dominated by old payloads, confirm you are using the
-current copied controller and that state is below `campaign_artifacts/`, not a
-legacy campaign layout.
-
 ## Memory use while loading a large JIT artifact
 
 PACBIN-backed runtimes snapshot the container into anonymous read-only memory.
@@ -404,7 +332,6 @@ Also include:
 - host OS/architecture and Python version;
 - execution mode, backend, color accuracy, and target;
 - the complete error, not only its final status code;
-- for a campaign, the canonical cell ID and compact worker log/result path;
 - whether the artifact is reproducible from a public example.
 
 Do **not** upload proprietary UFO code, license keys, or an untrusted native

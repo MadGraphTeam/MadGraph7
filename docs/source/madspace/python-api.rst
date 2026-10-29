@@ -170,8 +170,9 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/format_with_error
    python/hip_device
    python/select_combine_channel_index
+   python/set_simd_mode
+   python/supported_simd_modes
    python/set_lib_path
-   python/set_simd_vector_size
    python/weighting_groups_from_json
    python/weighting_groups_to_json
 

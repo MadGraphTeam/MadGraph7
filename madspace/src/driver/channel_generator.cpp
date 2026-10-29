@@ -35,6 +35,12 @@ int particle_extra_flags(
     if (index_map.contains("cluster_scales")) {
         flags |= ParticleRecord::f_clustering;
     }
+    if (index_map.contains("alphas_scales")) {
+        flags |= ParticleRecord::f_alphas_scales;
+    }
+    if (index_map.contains("ladder_x")) {
+        flags |= ParticleRecord::f_pdf_ladder;
+    }
     return flags;
 }
 
@@ -347,6 +353,30 @@ void ChannelEventGenerator::init_field_indices() {
         _field_indices.partial_weight_product = index_map.at("partial_weight_product");
     } else {
         _field_indices.partial_weight_product = -1;
+    }
+    if (index_map.contains("cluster_scales")) {
+        _field_indices.cluster_scales = index_map.at("cluster_scales");
+    } else {
+        _field_indices.cluster_scales = -1;
+    }
+    if (index_map.contains("alphas_scales")) {
+        _field_indices.alphas_scales = index_map.at("alphas_scales");
+    } else {
+        _field_indices.alphas_scales = -1;
+    }
+    if (index_map.contains("ladder_x")) {
+        const char* names[] = {
+            "ladder_x",
+            "ladder_pdg",
+            "ladder_q",
+            "ladder_info",
+            "ladder_lead_q",
+        };
+        for (std::size_t k = 0; k < _field_indices.ladder.size(); ++k) {
+            _field_indices.ladder[k] = index_map.at(names[k]);
+        }
+    } else {
+        _field_indices.ladder.fill(-1);
     }
     if (index_map.contains("subprocess_index")) {
         _field_indices.subprocess_index = index_map.at("subprocess_index");
@@ -916,6 +946,54 @@ void ChannelEventGenerator::fill_event_buffers(
         for (std::size_t i = 0; i < pw_view.size(); ++i) {
             auto event = event_buffer.event(i);
             event.partial_weight_product() = pw_view[i];
+        }
+    }
+
+    if (_field_indices.cluster_scales != -1) {
+        auto cluster_view =
+            unweighted_events.at(_field_indices.cluster_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = cluster_view[i];
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.alphas_scales != -1) {
+        // vertex i on outgoing particle 2 + i; there is one vertex less than
+        // there are outgoing particles, the remaining slots hold zero
+        auto alphas_view =
+            unweighted_events.at(_field_indices.alphas_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = alphas_view[i];
+            std::size_t vertex_count = scales.size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.alphas_scale() =
+                    j >= 2 && j - 2 < vertex_count ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.ladder[0] != -1) {
+        auto slot_view = [&](std::size_t k) {
+            return unweighted_events.at(_field_indices.ladder[k]).view<double, 2>();
+        };
+        auto x_view = slot_view(0), pdg_view = slot_view(1), q_view = slot_view(2),
+             info_view = slot_view(3), lead_q_view = slot_view(4);
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            std::size_t slot_count = x_view[i].size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                bool has_slot = j < slot_count;
+                particle.ladder_x() = has_slot ? x_view[i][j] : 0.;
+                particle.ladder_pdg() = has_slot ? pdg_view[i][j] : 0.;
+                particle.ladder_q() = has_slot ? q_view[i][j] : 0.;
+                particle.ladder_info() = has_slot ? info_view[i][j] : 0.;
+                particle.ladder_lead_q() = j < 2 ? lead_q_view[i][j] : 0.;
+            }
         }
     }
 

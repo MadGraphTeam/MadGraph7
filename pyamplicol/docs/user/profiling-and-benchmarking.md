@@ -7,19 +7,8 @@ has_children: true
 
 # Profiling and Benchmarking
 
-pyAmpliCol has three intentionally separate performance tools:
-
-- `pyamplicol profile` measures one generated artifact through the same
-  optimized total path as `Runtime.evaluate()`;
-- a copied [profiling campaign](profiling-campaigns.md) coordinates many model,
-  process, color, and execution-mode cells and renders comparison PDFs;
-- the source-checkout [FullColor FFT profiler](fullcolor-fft-profiling.md)
-  schedules resumable direct/FFT, reference, AmpliCol, and MadGraph comparison
-  cells under explicit per-child resource limits.
-
-Use the direct profiler for a focused runtime question. Use a copied campaign
-for a reproducible general matrix. Use the FullColor FFT driver for the
-dedicated exact-colour scaling comparison.
+`pyamplicol profile` measures one generated artifact through the same
+optimized total path as `Runtime.evaluate()`.
 
 ## First profile
 
@@ -273,33 +262,14 @@ wall timing rather than the Rusticol f64 breakdown. OTF rejects non-f64
 precision altogether. See [Python API](python-api.md) and
 [Symbolica and Licensing](symbolica-and-licensing.md).
 
-## Reproducible campaign reports
+## Published reports
 
-To create an independent campaign workspace from an installed wheel:
-
-```console
-pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
-cd pyamplicol-profiling-campaign
-./steer_performance_campaign.py run \
-  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
-  --color-approximation lc --generation-mode non-union-flow \
-  --generation-engine recurrence --model built_in
-./steer_performance_campaign.py refresh-pdf
-```
-
-That intentionally small smoke measures only the final-state-multiplicity-one
-`d d~ > Z` recurrence cell. Broad campaign matrices belong on dedicated hosts.
-See [Profiling Campaigns](profiling-campaigns.md) for continuation, selective
-retry, artifact retention, optional original-AmpliCol comparison, and PDF
-section controls.
-
-The repository publishes two rendered manual snapshots:
+The upstream repository publishes two rendered manual snapshots:
 
 - [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
 - [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
-They are measurement-host results, not release-CI benchmarks. Raw attempts and
-campaign workspaces remain local.
+They are measurement-host results, not release-CI benchmarks.
 
 ## Comparing results responsibly
 
@@ -318,17 +288,12 @@ campaign workspaces remain local.
 - [Runtime and Selectors](runtime-and-selectors.md)
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
 - [LC workloads and execution modes](lc-workloads-and-execution-modes.md)
-- [Profiling Campaigns](profiling-campaigns.md)
-- [FullColor FFT Profiling](fullcolor-fft-profiling.md)
 - [Examples Gallery](examples-gallery.md)
 
 <!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
 ```{toctree}
 :hidden:
 
-profiling-campaigns
-fullcolor-fft-profiling
 troubleshooting
 release-and-support
-../performance_reports/README
 ```

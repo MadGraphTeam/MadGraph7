@@ -107,6 +107,13 @@ def main() -> None:
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
+        "--madspace_cpu_mode",
+        type=str,
+        default=run_args.get("madspace_cpu_mode", "auto"),
+        choices=["auto", "scalar", "simd_128", "simd_256", "avx512y", "simd_512"],
+        help="SIMD width of the phase-space sampling (madspace) on the 'cpu' devices",
+    )
+    parser.add_argument(
         "--cpu_thread_pool_size", type=int, default=run_args["cpu_thread_pool_size"]
     )
     parser.add_argument(
@@ -155,6 +162,8 @@ def main() -> None:
         print(f"\033[1m\033[31mWARNING\033[39m: {message}\033[0m")
         print()
     seed = resolve_seed(args.seed)
+    # has to be set before the madspace CPU backend is first loaded
+    ms.set_simd_mode(args.madspace_cpu_mode)
 
     # initialize output directories; command line paths are relative to the
     # invocation directory, run card paths to the gridpack

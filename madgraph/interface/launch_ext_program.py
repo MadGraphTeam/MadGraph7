@@ -84,7 +84,7 @@ class ExtLauncher(object):
 
         
     def prepare_run(self):
-        """ aditional way to prepare the run"""
+        """ additional way to prepare the run"""
         pass
     
     def launch_program(self):

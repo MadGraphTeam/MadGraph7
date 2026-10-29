@@ -24,6 +24,13 @@ inline double unweighted_event_weight(double weight, double max_weight) {
 /// carry, except for the bias, which is divided out of the weight.
 DataLayout combined_event_layout(int extra_event_flags, int extra_particle_flags);
 
+/// The MLM alpha_s vertex scale and pdf ladder particle flags of any of
+/// `channels`: a merged run mixes 2 -> 1 samples without vertices with the jet
+/// samples, and channel 0 may be either.
+int mlm_particle_flags(
+    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels
+);
+
 /**
  * Copy event `in_index` of a channel's event buffer to event `out_index` of a
  * combined buffer (layout @ref combined_event_layout), padding the momenta of
@@ -34,6 +41,9 @@ DataLayout combined_event_layout(int extra_event_flags, int extra_particle_flags
  * @param subprocess_index  Stored if the channel records no per-event
  *                          subprocess index.
  * @param extra_flags       The channel's extra `EventRecord` layout flags.
+ * @param in_particle_flags The channel's extra `ParticleRecord` layout flags.
+ * @param out_particle_flags The extra `ParticleRecord` layout flags of the
+ *                          combined buffer.
  */
 void copy_channel_event(
     EventBuffer& in_buffer,
@@ -42,17 +52,22 @@ void copy_channel_event(
     std::size_t out_index,
     double weight,
     int subprocess_index,
-    int extra_flags
+    int extra_flags,
+    int in_particle_flags,
+    int out_particle_flags
 );
 
 /// Build `lhe_event` from event `event_index` of a combined buffer and
-/// complete it with `lhe_completer`.
+/// complete it with `lhe_completer`. `extra_event_flags` and
+/// `extra_particle_flags` are the extra layout flags of the buffer's channels.
 void fill_lhe_event(
     LHECompleter& lhe_completer,
     LHEEvent& lhe_event,
     EventBuffer& buffer,
     std::size_t event_index,
-    MixMaxRandom& rand_gen
+    MixMaxRandom& rand_gen,
+    int extra_event_flags,
+    int extra_particle_flags
 );
 
 /// Write the particles of `lhe_event` to event `event_index` of a buffer with

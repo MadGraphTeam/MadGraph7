@@ -43,13 +43,7 @@ def _copy_pyamplicol_docs():
         "_config.yml", "_includes", "css", "results", "archive", "arxiv", ".*"
     )
 
-    def ignore(directory, names):
-        # Only the report index is tracked; campaigns are local output.
-        if os.path.basename(directory) == "performance_reports":
-            return {name for name in names if name != "README.md"}
-        return jekyll_only(directory, names)
-
-    shutil.copytree(source, target, ignore=ignore)
+    shutil.copytree(source, target, ignore=jekyll_only)
 
 
 _copy_pyamplicol_docs()

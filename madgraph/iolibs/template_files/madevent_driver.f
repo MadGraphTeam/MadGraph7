@@ -1,6 +1,6 @@
       Program DRIVER
 c**************************************************************************
-c     This is the driver for the whole calulation
+c     This is the driver for the whole calculation
 c**************************************************************************
           use model_object
       implicit none
@@ -127,7 +127,7 @@ c      open (unit=lun+1,file='results.dat',status='unknown',err=13)
       include 'pmass.inc'        !Sets up particle masses
       %(load_onia_card)s         !Sets up ldmes and masses for bound states
       call setcuts               !Sets up cuts 
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       nconfigs = 1
 
@@ -173,8 +173,14 @@ c
           fixed_fac_scale1 = .true.
           fixed_fac_scale2 = .true.
           ickkw = 0
-      endif 
-      minvar(1,1) = 0              !This tells it to map things invarients
+c         Scan the helicities event by event: in vector mode all the events
+c         of a warp share the beam orientation (IMIRROR), so the MAXTRIES
+c         events of the scan could all be mirrored (or not) and miss the
+c         helicities that are only non-zero in the other orientation
+c         (e.g. the Z at rest of q q~ > z).
+          VECSIZE_USED = 1
+      endif
+      minvar(1,1) = 0              !This tells it to map things invariants
       write(*,*) 'Attempting mappinvarients',nconfigs,nexternal
       if (mincfig.lt.0)then
          maxcfig = -1*mincfig

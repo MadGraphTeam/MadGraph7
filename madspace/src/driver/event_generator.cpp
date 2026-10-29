@@ -781,7 +781,15 @@ void EventGenerator::combine_to_lhe_npy(
         process_combined_batch(buffer, syst_weights);
         buffer_out.resize(buffer.event_count());
         for (std::size_t i = 0; i < buffer.event_count(); ++i) {
-            fill_lhe_event(lhe_completer, lhe_event, buffer, i, rand_gen);
+            fill_lhe_event(
+                lhe_completer,
+                lhe_event,
+                buffer,
+                i,
+                rand_gen,
+                _channels.at(0)->event_layout_extra_flags(),
+                _channels.at(0)->particle_layout_extra_flags()
+            );
             buffer_out.event(i).from_lhe_event(lhe_event);
             copy_event_fields(buffer, i, buffer_out, i, syst_weights);
             write_lhe_particles(lhe_event, buffer_out, i);
@@ -879,7 +887,13 @@ void EventGenerator::combine_to_lhe(
                     process_combined_batch(in_buffer, syst_weights);
                     for (std::size_t i = 0; i < in_buffer.event_count(); ++i) {
                         fill_lhe_event(
-                            lhe_completer, lhe_event, in_buffer, i, rand_gen
+                            lhe_completer,
+                            lhe_event,
+                            in_buffer,
+                            i,
+                            rand_gen,
+                            _channels.at(0)->event_layout_extra_flags(),
+                            _channels.at(0)->particle_layout_extra_flags()
                         );
                         fill_systematics(
                             lhe_event, in_buffer, i, syst_weights, syst_ids
@@ -921,7 +935,7 @@ void EventGenerator::combine_to_lhe(
 DataLayout EventGenerator::combined_layout() const {
     return combined_event_layout(
         _channels.at(0)->event_layout_extra_flags(),
-        _channels.at(0)->particle_layout_extra_flags()
+        _channels.at(0)->particle_layout_extra_flags() | mlm_particle_flags(_channels)
     );
 }
 
@@ -941,10 +955,14 @@ EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const
             extra_flags |= EventRecord::f_syst_weights;
         }
     }
+    // the alpha_s vertex scales and the pdf ladder only serve the systematics,
+    // which run on the combined buffer: no event file carries them
     return DataLayout(
         EventRecord::layout(event_flags | extra_flags, syst_ids),
         ParticleRecord::layout(
-            particle_flags | _channels.at(0)->particle_layout_extra_flags()
+            particle_flags |
+            (_channels.at(0)->particle_layout_extra_flags() &
+             ~(ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder))
         )
     );
 }
@@ -1195,6 +1213,8 @@ void EventGenerator::read_and_combine(
     buffer.resize(event_count);
 
     int extra_flags = _channels.at(0)->event_layout_extra_flags();
+    int particle_flags =
+        _channels.at(0)->particle_layout_extra_flags() | mlm_particle_flags(_channels);
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
@@ -1235,7 +1255,9 @@ void EventGenerator::read_and_combine(
                 sampled_chan->weight_buffer, sampled_chan->buffer_index
             ) * norm_factors.at(channel_index),
             static_cast<int>(channel->status().subprocess),
-            extra_flags
+            extra_flags,
+            channel->particle_layout_extra_flags(),
+            particle_flags
         );
         ++sampled_chan->buffer_index;
     }

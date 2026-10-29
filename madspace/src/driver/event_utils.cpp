@@ -17,6 +17,30 @@ madspace::combined_event_layout(int extra_event_flags, int extra_particle_flags)
     );
 }
 
+int madspace::mlm_particle_flags(
+    const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels
+) {
+    int flags = 0;
+    for (auto& channel : channels) {
+        flags |= channel->particle_layout_extra_flags() &
+            (ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder);
+    }
+    return flags;
+}
+
+namespace {
+
+// the pdf ladder fields of one particle, or zeros (an inactive slot)
+void copy_ladder(ParticleRecord in, ParticleRecord out, bool from_in) {
+    out.ladder_x() = from_in ? in.ladder_x().value() : 0.;
+    out.ladder_pdg() = from_in ? in.ladder_pdg().value() : 0.;
+    out.ladder_q() = from_in ? in.ladder_q().value() : 0.;
+    out.ladder_info() = from_in ? in.ladder_info().value() : 0.;
+    out.ladder_lead_q() = from_in ? in.ladder_lead_q().value() : 0.;
+}
+
+} // namespace
+
 void madspace::copy_channel_event(
     EventBuffer& in_buffer,
     std::size_t in_index,
@@ -24,8 +48,16 @@ void madspace::copy_channel_event(
     std::size_t out_index,
     double weight,
     int subprocess_index,
-    int extra_flags
+    int extra_flags,
+    int in_particle_flags,
+    int out_particle_flags
 ) {
+    bool has_clustering = out_particle_flags & ParticleRecord::f_clustering;
+    bool has_alphas_scales = out_particle_flags & ParticleRecord::f_alphas_scales;
+    bool has_ladder = out_particle_flags & ParticleRecord::f_pdf_ladder;
+    bool channel_has_alphas_scales =
+        in_particle_flags & ParticleRecord::f_alphas_scales;
+    bool channel_has_ladder = in_particle_flags & ParticleRecord::f_pdf_ladder;
     auto event_in = in_buffer.event(in_index);
     auto event_out = out_buffer.event(out_index);
     // unweighted with the bias b, so the event carries 1 / b
@@ -61,6 +93,17 @@ void madspace::copy_channel_event(
         particle_out.px() = particle_in.px();
         particle_out.py() = particle_in.py();
         particle_out.pz() = particle_in.pz();
+        if (has_clustering) {
+            particle_out.cluster_scale() = particle_in.cluster_scale();
+        }
+        if (has_alphas_scales) {
+            // zero from a channel without vertices (2 -> 1)
+            particle_out.alphas_scale() =
+                channel_has_alphas_scales ? particle_in.alphas_scale().value() : 0.;
+        }
+        if (has_ladder) {
+            copy_ladder(particle_in, particle_out, channel_has_ladder);
+        }
     }
     for (; i < out_buffer.particle_count(); ++i) {
         auto particle_out = out_buffer.particle(out_index, i);
@@ -68,6 +111,17 @@ void madspace::copy_channel_event(
         particle_out.px() = 0.;
         particle_out.py() = 0.;
         particle_out.pz() = 0.;
+        // the buffer is reused: a padding slot must not keep the scales of
+        // an earlier, higher-multiplicity event
+        if (has_clustering) {
+            particle_out.cluster_scale() = 0.;
+        }
+        if (has_alphas_scales) {
+            particle_out.alphas_scale() = 0.;
+        }
+        if (has_ladder) {
+            copy_ladder(particle_out, particle_out, false);
+        }
     }
 }
 
@@ -76,7 +130,9 @@ void madspace::fill_lhe_event(
     LHEEvent& lhe_event,
     EventBuffer& buffer,
     std::size_t event_index,
-    MixMaxRandom& rand_gen
+    MixMaxRandom& rand_gen,
+    int extra_event_flags,
+    int extra_particle_flags
 ) {
     EventRecord event_in = buffer.event(event_index);
     lhe_event.weight = event_in.weight();
@@ -84,6 +140,16 @@ void madspace::fill_lhe_event(
     lhe_event.scale = event_in.ren_scale();
     lhe_event.alpha_qed = 0; // TODO: populate this
     lhe_event.alpha_qcd = event_in.alpha_qcd();
+    // Both scales, as LHEF3 <scales> attributes: SCALUP holds only one number
+    // and the codes do not agree on which, so write them out explicitly.
+    lhe_event.mu_r = event_in.ren_scale();
+    lhe_event.mu_f1 = (extra_event_flags & EventRecord::f_beam1)
+        ? double(event_in.fact_scale1())
+        : double(event_in.ren_scale());
+    lhe_event.mu_f2 = (extra_event_flags & EventRecord::f_beam2)
+        ? double(event_in.fact_scale2())
+        : lhe_event.mu_f1;
+    lhe_event.has_scales = true;
     lhe_event.particles.clear();
     for (std::size_t i = 0; i < buffer.particle_count(); ++i) {
         auto particle_in = buffer.particle(event_index, i);
@@ -98,6 +164,14 @@ void madspace::fill_lhe_event(
                 .energy = particle_in.energy(),
             }
         );
+    }
+    bool has_clustering = extra_particle_flags & ParticleRecord::f_clustering;
+    lhe_event.has_cluster_scales = has_clustering;
+    if (has_clustering) {
+        for (std::size_t i = 0; i < lhe_event.particles.size(); ++i) {
+            lhe_event.particles.at(i).cluster_scale =
+                buffer.particle(event_index, i).cluster_scale();
+        }
     }
     lhe_completer.complete_event_data(
         lhe_event,
@@ -115,10 +189,12 @@ void madspace::write_lhe_particles(
 ) {
     std::size_t i = 0;
     for (; i < lhe_event.particles.size(); ++i) {
-        buffer.particle(event_index, i).from_lhe_particle(lhe_event.particles[i]);
+        buffer.particle(event_index, i)
+            .from_lhe_particle(lhe_event.particles[i], lhe_event.has_cluster_scales);
     }
     for (; i < buffer.particle_count(); ++i) {
-        buffer.particle(event_index, i).from_lhe_particle(LHEParticle{});
+        buffer.particle(event_index, i)
+            .from_lhe_particle(LHEParticle{}, lhe_event.has_cluster_scales);
     }
 }
 

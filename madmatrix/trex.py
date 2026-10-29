@@ -565,7 +565,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
     
     def handle_param_card(self, model_line, args, type_rwgt):
         """override handle_param_card to get rid of all the unnecessary checks and file writing
-        now simply loads the param_card and uses get_diff to tranlate into internal format"""    
+        now simply loads the param_card and uses get_diff to translate into internal format"""
 
         if self.rwgt_dir:
             path_me =self.rwgt_dir
@@ -605,7 +605,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
                 Shell_internal = None
             if not isinstance(self.mother, (extended_cmd.CmdShell, Shell_internal)): 
                 raise Exception("scan are not allowed on the Web")
-            # at least one scan parameter found. create an iterator to go trough the cards
+            # at least one scan parameter found. create an iterator to go through the cards
             main_card = check_param_card.ParamCardIterator(new_card)
             if self.options['rwgt_name']:
                 self.options['rwgt_name'] = '%s_0' % self.options['rwgt_name']

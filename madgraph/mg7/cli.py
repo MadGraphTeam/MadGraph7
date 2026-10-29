@@ -12,7 +12,7 @@ from madgraph.various.banner import RunCardMG7
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7.driver import compute_decay_widths, force_lhe_output_if_needed, run_generation
 from madgraph.mg7.model_widths import compute_auto_widths, load_process_model
-from madgraph.mg7.options import lhapdf_paths, load_mg5_options
+from madgraph.mg7.options import lhapdf_index_paths, load_mg5_options
 from madgraph.mg7.postprocess import _off, _setup_logging
 
 class MG7Cmd(Cmd):
@@ -439,7 +439,7 @@ def build_selector_cmd(mother=None):
                     # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
                     # beam or for both) onto the per-beam [beam] entries
                     if rest and nlow in run_card.lo_beam_params:
-                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        data_paths = lhapdf_index_paths() if nlow == "lhaid" else ()
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:

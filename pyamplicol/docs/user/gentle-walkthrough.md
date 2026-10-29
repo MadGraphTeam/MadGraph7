@@ -623,9 +623,7 @@ compiled, eager, and OTF are summarized in
 From here, continue with [Configuration](configuration.md) for all run-card
 choices, [Models and Processes](models-and-processes.md) for UFO/JSON and multiprocess details,
 [Runtime and Selectors](runtime-and-selectors.md) for evaluation, and [Native APIs](native-apis.md) for
-language integration. To compare many validated process/mode combinations and
-turn the measurements into the report, follow the
-[profiling-campaign walkthrough](profiling-campaign-walkthrough.md). Every
+language integration. Every
 maintained packaged card and script is indexed in the
 [examples guide](https://github.com/MadGraphTeam/MadGraph7/blob/main/pyamplicol/examples/README.md).
 
@@ -634,5 +632,4 @@ maintained packaged card and script is indexed in the
 :hidden:
 
 lc-workloads-and-execution-modes
-profiling-campaign-walkthrough
 ```

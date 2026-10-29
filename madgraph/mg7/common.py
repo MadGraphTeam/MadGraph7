@@ -154,6 +154,20 @@ def me_parameters(run_card):
     return parameters
 
 
+def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
+    """Whether an MLM sample's beam densities walk the clustering ladder, the
+    pdf half of madevent's rewgt: under scale_scheme "madevent", and under
+    "clustering_mean" with clustering_mean_pdf_ladder. The Python side of
+    EnergyScale::mlm_pdf_reweighting, which decides the same for the kernel;
+    the systematics then vary the ladder as madevent's do."""
+    beam = run_card["beam"]
+    return bool(
+        mlm_clustering and not is_decay and not leptonic
+        and beam["pdf_reweighting"]
+        and (beam["scale_scheme"] == "madevent"
+             or beam["clustering_mean_pdf_ladder"]))
+
+
 def interference_helicities_summed(run_card):
     """Whether [generation] interference_helicity is "summed".
 

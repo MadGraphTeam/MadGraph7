@@ -31,6 +31,7 @@ from madgraph.mg7.options import (  # noqa: F401
     _ROOTED_OPTIONS,
     load_mg5_options,
     lhapdf_paths,
+    lhapdf_index_paths,
 )
 from madgraph.mg7.model_widths import (  # noqa: F401
     _model_hash_warned,

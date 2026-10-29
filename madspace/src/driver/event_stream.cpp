@@ -37,7 +37,7 @@ EventStream::EventStream(
         }
         return combined_event_layout(
             channels.at(0)->event_layout_extra_flags(),
-            channels.at(0)->particle_layout_extra_flags()
+            channels.at(0)->particle_layout_extra_flags() | mlm_particle_flags(channels)
         );
     }()),
     _select_rng(DerivedSeed(seed, DerivedSeed::combine_select, 0, 0, stream_rng_index)),
@@ -465,7 +465,10 @@ std::vector<LHEEvent> EventStream::next_events(std::size_t count) {
                 i,
                 channel->unweighted_weight(job.weights, event_index),
                 static_cast<int>(channel->status().subprocess),
-                channel->event_layout_extra_flags()
+                channel->event_layout_extra_flags(),
+                channel->particle_layout_extra_flags(),
+                _channels.at(0)->particle_layout_extra_flags() |
+                    mlm_particle_flags(_channels)
             );
             // keep the buffers filled while the batch is assembled
             if (state.buffered_events == 0) {
@@ -480,7 +483,15 @@ std::vector<LHEEvent> EventStream::next_events(std::size_t count) {
 
     std::vector<LHEEvent> events(count);
     for (std::size_t i = 0; i < count; ++i) {
-        fill_lhe_event(_lhe_completer, events.at(i), buffer, i, _lhe_rng);
+        fill_lhe_event(
+            _lhe_completer,
+            events.at(i),
+            buffer,
+            i,
+            _lhe_rng,
+            _channels.at(0)->event_layout_extra_flags(),
+            _channels.at(0)->particle_layout_extra_flags()
+        );
     }
     return events;
 }

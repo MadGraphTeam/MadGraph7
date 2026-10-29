@@ -644,7 +644,7 @@ boost_beam:
       type: [float, n, 4]
       desc: "momenta in the partonic center-of-mass frame"
     - name: masses
-      type: [float, n]
+      type: [float, single, n]
       desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
@@ -664,7 +664,7 @@ boost_beam_inverse:
       type: [float, n, 4]
       desc: "momenta in the lab frame"
     - name: masses
-      type: [float, n]
+      type: [float, single, n]
       desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
@@ -701,7 +701,7 @@ r_to_x1x2:
       type: [float]
       desc: "partonic invariant mass squared"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
   outputs:
     - name: x1
@@ -724,7 +724,7 @@ x1x2_to_r:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
   outputs:
     - name: r
@@ -744,10 +744,10 @@ r_to_x1x2_window:
       type: [float]
       desc: "partonic invariant mass squared"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
     - name: y_max
-      type: [float]
+      type: [float, single]
       desc: "largest allowed absolute rapidity of the partonic system"
   outputs:
     - name: x1
@@ -770,10 +770,10 @@ x1x2_to_r_window:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
     - name: y_max
-      type: [float]
+      type: [float, single]
       desc: "largest allowed absolute rapidity of the partonic system"
   outputs:
     - name: r
@@ -802,7 +802,7 @@ diff_cross_section:
       type: [float]
       desc: "matrix element value"
     - name: e_cm2
-      type: [float]
+      type: [float, single]
       desc: "squared center-of-mass energy"
   outputs:
     - name: result
@@ -889,13 +889,13 @@ com_cos_theta_window:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: pt_min
-      type: [float]
+      type: [float, single]
       desc: "lower bound on the transverse momentum of the products"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the first product, negative for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the second product, negative for none"
   outputs:
     - name: r_out
@@ -927,13 +927,13 @@ com_cos_theta_window_inverse:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: pt_min
-      type: [float]
+      type: [float, single]
       desc: "lower bound on the transverse momentum of the products"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the first product, negative for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the second product, negative for none"
   outputs:
     - name: r_cos_theta
@@ -1601,13 +1601,13 @@ t_rapidity_clamp:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the peeled particle, negative or 100 and above for none"
   outputs:
     - name: t_min_out
@@ -1651,13 +1651,13 @@ t1_rapidity_clamp_doublet:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t1_min_out
@@ -1695,13 +1695,13 @@ t2_rapidity_clamp_doublet:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t2_min_out
@@ -2056,10 +2056,10 @@ s23_arcsine_sample:
       type: [float]
       desc: "upper kinematic limit of the 2-3 invariant mass squared"
     - name: power
-      type: [float]
+      type: [float, single]
       desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass of the sampling, as in @ref Invariant"
   outputs:
     - name: u
@@ -2094,10 +2094,10 @@ s23_arcsine_sample_inverse:
       type: [float]
       desc: "upper kinematic limit of the 2-3 invariant mass squared"
     - name: power
-      type: [float]
+      type: [float, single]
       desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass of the sampling, as in @ref Invariant"
   outputs:
     - name: r
@@ -2114,7 +2114,7 @@ invariants_from_momenta:
       type: [float, n, 4]
       desc: "external four-momenta"
     - name: factors
-      type: [float, m, n]
+      type: [float, single, m, n]
       desc: "coefficient matrix selecting the invariant combinations"
   outputs:
     - name: invariants
@@ -2128,13 +2128,13 @@ sde2_channel_weights:
       type: [float, m]
       desc: "propagator invariants"
     - name: masses
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator masses per channel"
     - name: widths
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator widths per channel"
     - name: indices
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "invariant index feeding each propagator"
   outputs:
     - name: channel_weights
@@ -2148,16 +2148,16 @@ subchannel_weights:
       type: [float, m]
       desc: "propagator invariants"
     - name: masses
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator masses per channel"
     - name: widths
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator widths per channel"
     - name: indices
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "invariant index feeding each propagator"
     - name: on_shell
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "flag marking on-shell propagators per channel"
     - name: group_sizes
       type: [int, single, g]
@@ -2177,10 +2177,10 @@ apply_subchannel_weights:
       type: [float, n]
       desc: "weight per subchannel"
     - name: channel_indices
-      type: [int, d]
+      type: [int, single, d]
       desc: "channel index per diagram"
     - name: subchannel_indices
-      type: [int, d]
+      type: [int, single, d]
       desc: "subchannel index per diagram"
   outputs:
     - name: channel_weights_out
@@ -2262,7 +2262,7 @@ momenta_to_x1x2:
       type: [float, n, 4]
       desc: "external four-momenta"
     - name: e_cm
-      type: [float]
+      type: [float, single]
       desc: "hadronic center-of-mass energy"
   outputs:
     - name: x1
@@ -2337,10 +2337,10 @@ breit_wigner_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: s_min
       type: [float]
@@ -2363,10 +2363,10 @@ breit_wigner_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: s_min
       type: [float]
@@ -2389,13 +2389,13 @@ flat_window_breit_wigner_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: window
-      type: [float]
+      type: [float, single]
       desc: "half-width of the flattened window, in units of the width"
     - name: s_min
       type: [float]
@@ -2418,13 +2418,13 @@ flat_window_breit_wigner_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: window
-      type: [float]
+      type: [float, single]
       desc: "half-width of the flattened window, in units of the width"
     - name: s_min
       type: [float]
@@ -2447,7 +2447,7 @@ stable_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: s_min
       type: [float]
@@ -2470,7 +2470,7 @@ stable_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: s_min
       type: [float]
@@ -2493,10 +2493,10 @@ stable_invariant_nu:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: nu
-      type: [float]
+      type: [float, single]
       desc: "exponent of the power law"
     - name: s_min
       type: [float]
@@ -2519,10 +2519,10 @@ stable_invariant_nu_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: nu
-      type: [float]
+      type: [float, single]
       desc: "exponent of the power law"
     - name: s_min
       type: [float]
@@ -2694,10 +2694,10 @@ cut_one:
       type: [float]
       desc: "observable value"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound"
   outputs:
     - name: w
@@ -2711,10 +2711,10 @@ cut_all:
       type: [float, n]
       desc: "observable values"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound applied to each observable"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound applied to each observable"
   outputs:
     - name: w
@@ -2728,10 +2728,10 @@ cut_any:
       type: [float, n]
       desc: "observable values"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound applied to each observable"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound applied to each observable"
   outputs:
     - name: w
@@ -2786,6 +2786,252 @@ scale_partonic_energy:
       desc: "the energy scale"
   desc: "Dynamical scale set to the partonic center-of-mass energy. See @ref EnergyScale."
 
+mlm_clustering_hadronic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+    - name: cm_energy
+      type: [float, single]
+      desc:
+    - name: jet_scale_scheme
+      type: [int, single]
+      desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
+      desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
+
+  vectorized: False
+
+mlm_clustering_leptonic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+    - name: cm_energy
+      type: [float, single]
+      desc:
+    - name: jet_scale_scheme
+      type: [int, single]
+      desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
+      desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
+
+  vectorized: False
+
 ---
 title: Chili
 
@@ -2801,10 +3047,10 @@ chili_forward:
       type: [float, n]
       desc: "mass of each final-state particle"
     - name: pt_min
-      type: [float, n]
+      type: [float, single, n]
       desc: "minimum transverse momentum per final-state particle"
     - name: y_max
-      type: [float, n]
+      type: [float, single, n]
       desc: "maximum rapidity per final-state particle"
   outputs:
     - name: p_ext
@@ -2827,10 +3073,10 @@ chili_inverse:
       type: [float, n]
       desc: "mass of each final-state particle"
     - name: pt_min
-      type: [float, n]
+      type: [float, single, n]
       desc: "minimum transverse momentum per final-state particle"
     - name: y_max
-      type: [float, n]
+      type: [float, single, n]
       desc: "maximum rapidity per final-state particle"
   outputs:
     - name: r
@@ -3260,6 +3506,7 @@ permute_momenta:
     - name: output
       type: [float, n, 4]
       desc: "permuted momenta"
+  vectorized: False
   desc: "Reorders momenta according to a stored permutation selected per event. Building block of @ref MultiChannelMapping."
 
 gather:
@@ -3284,7 +3531,7 @@ gather_int:
       type: [int]
       desc: "index to select"
     - name: choices
-      type: [int, n]
+      type: [int, single, n]
       desc: "vector of choices"
   outputs:
     - name: output
@@ -3327,7 +3574,7 @@ select:
       type: [float, n]
       desc: "source vector"
     - name: indices
-      type: [int, m]
+      type: [int, single, m]
       desc: "indices to gather"
       backward_arg: True
   outputs:

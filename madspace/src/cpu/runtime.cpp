@@ -4,6 +4,7 @@
 #include <memory>
 #include <random>
 #include <ranges>
+#include <set>
 #include <tuple>
 
 #include "../kernels/kernels.hpp"
@@ -46,7 +47,32 @@ using namespace madspace;
 using namespace madspace::cpu;
 using namespace madspace::kernels;
 
+#ifdef USE_SIMD
+// the single kernel parameters match the single inputs of instruction_set.yaml
+#include "kernel_checks.inc"
+#endif
+
 namespace {
+
+// External tensors (e.g. row-major numpy arrays, or expanded gradients from
+// torch) can have a batch stride other than one. The vectorized kernels only
+// handle batch stride one and leave everything else to the scalar kernels, which
+// round slightly differently, so copy them once to make the results independent
+// of the memory layout of the arguments.
+TensorVec batch_contiguous(const TensorVec& tensors) {
+    TensorVec ret;
+    ret.reserve(tensors.size());
+    for (auto& tensor : tensors) {
+        if (tensor && tensor.dtype() != DataType::batch_sizes &&
+            tensor.shape().size() > 0 && tensor.size(0) > 1 &&
+            tensor.stride()[0] != 1) {
+            ret.push_back(tensor.contiguous());
+        } else {
+            ret.push_back(tensor);
+        }
+    }
+    return ret;
+}
 
 template <typename D>
 void op_matrix_element(
@@ -60,7 +86,11 @@ void op_matrix_element(
     std::vector<UmamiInputKey> input_keys(input_count);
     std::vector<UmamiOutputKey> output_keys(output_count);
     std::vector<void*> input_ptrs(input_count), output_ptrs(output_count);
-    for (std::size_t i = 0; i < input_count; ++i) {
+    // Only prepare the inputs if the matrix element is actually called: making an
+    // input contiguous can start an asynchronous copy, whose target would be freed
+    // while the copy is still running if we returned early below.
+    bool call_matrix_element = me_index != 0xBADCAFE && batch_size > 0;
+    for (std::size_t i = 0; i < input_count && call_matrix_element; ++i) {
         input_keys[i] = static_cast<UmamiInputKey>(
             locals[instruction.input_indices[3 + 2 * i]].index_value()
         );
@@ -105,7 +135,7 @@ void op_matrix_element(
             }
         }
     }
-    if (me_index == 0xBADCAFE || batch_size == 0) {
+    if (!call_matrix_element) {
         return;
     }
     auto& matrix_element = instruction.runtime.context().matrix_element(me_index);
@@ -1037,6 +1067,10 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     _requires_grad_init.resize(function.locals().size());
     LastUseOfLocals last_use(function);
     std::vector<int> local_sources(function.locals().size(), -1);
+    std::set<std::size_t> global_locals;
+    for (auto& [name, value] : function.globals()) {
+        global_locals.insert(value.local_index);
+    }
     std::vector<SizeVec> local_uses(function.locals().size());
     SizeVec instr_index_map;
 
@@ -1097,6 +1131,17 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
              dep_instrs_bw,
              dep_count_bw}
         );
+        for (auto& in : instr.inputs) {
+            auto& local = function.locals().at(in.local_index);
+            bool is_literal =
+                !std::holds_alternative<std::monostate>(local.literal_value);
+            bool is_int_intermediate = local.type.dtype == DataType::dt_int &&
+                static_cast<std::size_t>(in.local_index) >= function.inputs().size() &&
+                !global_locals.contains(in.local_index);
+            _instructions.back().discard_input_grad.push_back(
+                is_literal || is_int_intermediate
+            );
+        }
 
         for (std::size_t local_index : last_use.local_indices(instr_index)) {
             std::size_t free_dep_count = 0;
@@ -1162,8 +1207,11 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         std::visit(
             Overloaded{
                 [&](auto val) {
-                    Tensor tensor(val, cpu_device());
-                    _locals_init[local.local_index] = tensor;
+                    // padded so that the vectorized kernels can load it like a
+                    // batched tensor, see Tensor::simd_padded_literal
+                    _locals_init[local.local_index] = Tensor::simd_padded_literal(
+                        LiteralValue(val), simd_vec_size, cpu_device()
+                    );
                 },
                 [](std::monostate val) {}
             },
@@ -1183,6 +1231,13 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
+        // literal outputs are returned unpadded, so that callers see a plain tensor
+        auto& literal_value = function.locals().at(out.local_index).literal_value;
+        _literal_outputs.push_back(
+            std::holds_alternative<std::monostate>(literal_value)
+                ? Tensor()
+                : Tensor::simd_padded_literal(literal_value, 1, cpu_device())
+        );
         _copy_output_grads.push_back(
             grad_accumulated.at(out.local_index) ||
             output_counts.at(out.local_index) > 1
@@ -1190,22 +1245,33 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     }
 }
 
+TensorVec CpuRuntime::collect_outputs(const TensorVec& locals) const {
+    TensorVec outputs;
+    for (auto [index, literal] : zip(_output_indices, _literal_outputs)) {
+        outputs.push_back(literal ? literal : locals[index]);
+    }
+    return outputs;
+}
+
 TensorVec CpuRuntime::run(const TensorVec& inputs) {
+    auto contiguous_inputs = batch_contiguous(inputs);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
-        auto [outputs, locals, eval_grad] = run_concurrent(inputs, {}, false);
+        auto [outputs, locals, eval_grad] =
+            run_concurrent(contiguous_inputs, {}, false);
         return outputs;
     } else {
-        return run_single(inputs);
+        return run_single(contiguous_inputs);
     }
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) {
+    auto contiguous_inputs = batch_contiguous(inputs);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
-        return run_concurrent(inputs, input_requires_grad, true);
+        return run_concurrent(contiguous_inputs, input_requires_grad, true);
     } else {
-        return run_with_grad_single(inputs, input_requires_grad);
+        return run_with_grad_single(contiguous_inputs, input_requires_grad);
     }
 }
 
@@ -1215,13 +1281,14 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward(
     const std::vector<bool>& eval_grad,
     bool return_contiguous_grads
 ) {
+    auto contiguous_output_grads = batch_contiguous(output_grads);
     if (_concurrent && _context->thread_pool().thread_count() > 1) {
         return run_backward_concurrent(
-            output_grads, stored_locals, eval_grad, return_contiguous_grads
+            contiguous_output_grads, stored_locals, eval_grad, return_contiguous_grads
         );
     } else {
         return run_backward_single(
-            output_grads, stored_locals, eval_grad, return_contiguous_grads
+            contiguous_output_grads, stored_locals, eval_grad, return_contiguous_grads
         );
     }
 }
@@ -1240,10 +1307,7 @@ TensorVec CpuRuntime::run_single(const TensorVec& inputs) const {
 #include "runtime_mixin.inc"
         }
     }
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     return outputs;
 }
 
@@ -1291,10 +1355,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_with_grad_si
 #include "runtime_mixin.inc"
         }
     }
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     return {outputs, locals, eval_grad};
 }
 
@@ -1481,10 +1542,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> CpuRuntime::run_concurrent(
         }
     }
 
-    TensorVec outputs;
-    for (auto index : _output_indices) {
-        outputs.push_back(locals[index]);
-    }
+    TensorVec outputs = collect_outputs(locals);
     if (with_grad) {
         return {outputs, locals, eval_grad};
     } else {

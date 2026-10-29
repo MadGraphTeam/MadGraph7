@@ -10,6 +10,10 @@
 #include "simd_x86_256.hpp"
 #endif
 
+#ifdef USE_SIMD_AVX512Y
+#include "simd_x86_256y.hpp"
+#endif
+
 #ifdef USE_SIMD_AVX512
 #include "simd_x86_512.hpp"
 #endif

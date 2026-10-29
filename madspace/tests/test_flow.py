@@ -47,3 +47,22 @@ def test_block_gradient(inverse):
     r_in = rand((n_points, n_dims), generator=g, requires_grad=True)
     r_cond = randn((n_points, n_cond), generator=g, requires_grad=True)
     torch.autograd.gradcheck(module, [r_in, r_cond], raise_exception=True, rtol=1e-4)
+
+
+def test_one_dimensional_flow_is_refused():
+    # a coupling block needs two non-empty halves: a 2 -> 1 phase space has a
+    # single random number, which used to leave a flow without any block and
+    # crash initialize_from_vegas with an IndexError
+    for input_dim in [0, 1]:
+        with pytest.raises(ValueError, match="at least 2"):
+            ms.Flow(input_dim=input_dim)
+
+
+@pytest.mark.parametrize("input_dim", [2, 3, 5])
+def test_flow_initialize_from_vegas(input_dim):
+    context = ms.Context(ms.cpu_device())
+    vegas = ms.VegasMapping(input_dim, 10, "vegas")
+    vegas.initialize_globals(context)
+    flow = ms.Flow(input_dim=input_dim, prefix="flow", bin_count=10)
+    flow.initialize_from_vegas(context, vegas.grid_name(), 42)
+    assert flow.input_dim() == input_dim

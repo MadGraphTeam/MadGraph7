@@ -269,9 +269,7 @@ For the adjoint basis, single-helicity full-colour recurrence benchmarks of
 `g g > (n-2) g` on one core showed it faster than trace for `n >= 6`: at
 `n = 10` it evaluated 3.9x faster per sample (57.8 versus 227 ms), generated
 4.2x faster and used 2.4x less memory during generation. Below `n = 6` the two
-bases are comparable, so compare setup and warmed runtime for other workloads. See
-[FullColor FFT Profiling](fullcolor-fft-profiling.md) for the resumable
-comparison driver and published snapshots.
+bases are comparable, so compare setup and warmed runtime for other workloads.
 
 ```toml
 [color]

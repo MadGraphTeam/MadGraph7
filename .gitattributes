@@ -6,24 +6,13 @@
 .bzrignore export-ignore
 
 # pyamplicol tests and development tooling stay in the repository for its own
-# PyPI releases. The MadGraph7 installer builds the wheel without them, except
-# for the legacy-oracle modules that the wheel bundles.
+# PyPI releases. The MadGraph7 installer builds the wheel without them.
 pyamplicol/tests/ export-ignore
-pyamplicol/tools/developer/** export-ignore
-pyamplicol/tools/developer/legacy_amplicol.py -export-ignore
-pyamplicol/tools/developer/legacy_oracle -export-ignore
-pyamplicol/tools/developer/legacy_oracle/** -export-ignore
-pyamplicol/tools/fft_profiling/ export-ignore
-pyamplicol/umami_example/ export-ignore
-pyamplicol/flake.nix export-ignore
-pyamplicol/flake.lock export-ignore
-pyamplicol/run_fft_profiling_render.sh export-ignore
+pyamplicol/tools/developer/ export-ignore
 
 # Generated pyamplicol data: GitHub collapses these in PR diffs.
 pyamplicol/Cargo.lock linguist-generated
-pyamplicol/flake.lock linguist-generated
 pyamplicol/dependencies/python-runtime-lock.toml linguist-generated
 pyamplicol/tests/fixtures/** linguist-generated
 pyamplicol/src/pyamplicol/assets/selftest/** linguist-generated
 pyamplicol/src/pyamplicol/assets/models/json/** linguist-generated
-pyamplicol/src/pyamplicol/_profiling_campaign/results/*.json linguist-generated
