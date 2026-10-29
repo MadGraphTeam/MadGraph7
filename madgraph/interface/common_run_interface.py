@@ -1472,9 +1472,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         PY8_plots_root_path = pjoin(self.me_dir,'HTML',
                                            self.run_name,'%s_PY8_plots'%tag)
 
-        if 'ickkw' in self.run_card:
-            if int(self.run_card['ickkw'])==1 or \
-                  self.run_card['ktdurham']>0.0 or self.run_card['ptlund']>0.0:
+        # read through __getitem__: an mg7 run card answers these legacy keys
+        # (ickkw = 1 for an MLM sample) without containing them
+        try:
+            ickkw = int(self.run_card['ickkw'])
+            ckkw_cut = self.run_card['ktdurham'] > 0.0 or self.run_card['ptlund'] > 0.0
+        except KeyError:
+            ickkw, ckkw_cut = 0, False
+        if ickkw or ckkw_cut:
+            if ickkw==1 or ckkw_cut:
                 self.update_status('Create matching plots for Pythia8',
                                                                 level='pythia8')
 
@@ -1491,6 +1497,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                              self.run_name, '%s_pts.dat' % tag)
                 for observable_name, data_path in [('djr',djr_path),
                                                    ('pt',pt_path)]:
+                    # Pythia8's main164 writes the DJRs only (no pts.dat):
+                    # an observable without data is skipped, not the plots
+                    if not os.path.isfile(data_path):
+                        continue
                     try:
                         if not self.generate_Pythia8_HwU_plots(
                                     PY8_plots_root_path, merging_scale_name,

@@ -8146,6 +8146,14 @@ This implies that with decay chains:
             logger.warning('Pythia8 is installed but its main164 could not be ' +
                 'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
             return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
         # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
         if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
             self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')

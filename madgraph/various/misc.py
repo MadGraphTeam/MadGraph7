@@ -1875,8 +1875,132 @@ def get_pythia8_hepmc_flags(pythia8_path, hepmc_version, hepmc_paths=()):
     return '-I%s -L%s -Wl,-rpath,%s -l%s' % (pjoin(prefix, 'include'), libdir, libdir,
                                              'HepMC3' if hepmc_version == 3 else 'HepMC')
 
+# Version of the per-jet-sample DJR patch of main164 below. It is part of the
+# build stamp, so that a change to the patch rebuilds the patched main164.
+MAIN164_DJR_PATCH_VERSION = 2
+
+def pythia8_main164_writes_jet_sample_djrs(source):
+    """Whether a main164.cc can histogram the differential jet rates per jet
+    sample by itself (its InternalAnalysis:jetSamples setting)."""
+
+    return '"InternalAnalysis:jetSamples"' in source
+
+def pythia8_main164_knows_jet_samples(executable):
+    """Whether the main164 executable was built from a main164.cc that knows
+    InternalAnalysis:jetSamples (a Pythia8 setting it would refuse otherwise).
+    The source sits next to the executable, as get_pythia8_main164 builds it."""
+
+    try:
+        source = open(pjoin(os.path.dirname(executable), 'main164.cc')).read()
+    except (IOError, OSError):
+        return False
+    return pythia8_main164_writes_jet_sample_djrs(source)
+
+def patch_pythia8_main164_djrs(source):
+    """The main164.cc of Pythia8 with the change proposed to Pythia8: the
+    setting InternalAnalysis:jetSamples (default off) also writes the
+    differential jet rate histograms of its internal analysis per jet sample,
+    in <jetsample njet="n"> blocks after the totals of each <run>, and the
+    '<run id="0"">' of Pythia8 <= 8.318 is fixed. The jet sample is the
+    number of matrix-element partons of MLM matching (nMEpartons().first,
+    getProcessSubset().size() for shower-kT, npNLO() for FxFx), or
+    Merging:nRequested less Merging:nRecluster for merging.
+
+    Until a Pythia8 release has it, MadGraph7 builds this patched copy for
+    its MLM showers; Pythia8's own main164.cc is never modified. Returns None
+    when the source is not the main164.cc this was written against (Pythia8
+    8.316 to 8.318): the stock main164 is then used, and the DJR plots show
+    the summed histograms only."""
+
+    edits = [
+        ('  pythia.settings.addWord("InternalAnalysis:output", "analysis.dat");\n',
+         '  // Optionally also write the histograms of each jet sample separately.\n'
+         '  pythia.settings.addFlag("InternalAnalysis:jetSamples", false);\n'),
+        ("  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n",
+         "  // Optionally also for each jet sample, as known by merging or by\n"
+         "  // MadGraph-style (not Alpgen-style) jet matching.\n"
+         '  bool doJetSamples = pythia.flag("InternalAnalysis:jetSamples");\n'
+         "  shared_ptr<JetMatchingMadgraph> jetMatchingPtr\n"
+         "    = dynamic_pointer_cast<JetMatchingMadgraph>(jetMatchingHook.hook);\n"
+         "  vector<map<int, vector<Hist> > > jetSampleHists;\n"),
+        ('      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n',
+         "      jetSampleHists.push_back(map<int, vector<Hist> >());\n"),
+        ("        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n",
+         "        // Optionally also for the jet sample of the event: for jet matching\n"
+         "        // the number of matrix-element partons (only those to be matched\n"
+         "        // for shower-kT, those of the Born for FxFx), for merging the\n"
+         "        // requested number of jets less the reclustered ones.\n"
+         "        int nJetSample = -1;\n"
+         "        if (doJetSamples && jetMatchingPtr) {\n"
+         '          if (pythia.flag("JetMatching:doFxFx"))\n'
+         "            nJetSample = jetMatchingPtr->npNLO();\n"
+         '          else if (pythia.flag("JetMatching:doShowerKt"))\n'
+         "            nJetSample = jetMatchingPtr->getProcessSubset().size();\n"
+         "          else\n"
+         "            nJetSample = jetMatchingPtr->nMEpartons().first;\n"
+         "        } else if (doJetSamples && doMerging) {\n"
+         '          nJetSample = pythia.mode("Merging:nRequested")\n'
+         '            - pythia.mode("Merging:nRecluster");\n'
+         "        }\n"
+         "        if (nJetSample >= 0) {\n"
+         "          vector<Hist>& sampleHists = jetSampleHists.back()[nJetSample];\n"
+         "          if (sampleHists.empty())\n"
+         '            sampleHists = { Hist("d01", 100., 0., 3.),\n'
+         '              Hist("d12", 100., 0., 3.), Hist("d23", 100., 0., 3.),\n'
+         '              Hist("d34", 100., 0., 3.) };\n'
+         "          for (int iHist = 0; iHist < 4 && iHist < int(dij.size()); ++iHist)\n"
+         "            sampleHists[iHist].fill(log10(dij[iHist]), w);\n"
+         "        }\n"),
+    ]
+    for anchor, addition in edits:
+        if source.count(anchor) != 1:
+            return None
+        source = source.replace(anchor, anchor + addition)
+
+    run_header = '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
+    run_end = '      output << "</run>\\n";\n'
+    if source.count(run_header) != 1 or source.count(run_end) != 1:
+        return None
+    source = source.replace(run_header,
+                            '      output << "<run id=\\"" << i << "\\">\\n";\n')
+    source = source.replace(run_end,
+        "      // Optionally print the histograms of each jet sample.\n"
+        "      for (const auto& jetSample : jetSampleHists[i]) {\n"
+        '        output << "<jetsample njet=\\"" << jetSample.first << "\\">\\n";\n'
+        "        for (const Hist& hist : jetSample.second) {\n"
+        '          output << "<histogram name=\\"" << "log10" << hist.getTitle() << "\\""\n'
+        '                 << " unit=\\"" << "[]" << "\\""\n'
+        '                 << " weight=\\"" << "all" << "\\">\\n";\n'
+        "          hist.table(output, false, false);\n"
+        '          output << "</histogram>\\n";\n'
+        "        }\n"
+        '        output << "</jetsample>\\n";\n'
+        "      }\n"
+        "\n" + run_end)
+    return ('// Patched by MadGraph7 (version %d of the per-jet-sample DJR patch,\n'
+            '// see patch_pythia8_main164_djrs in madgraph/various/misc.py).\n'
+            % MAIN164_DJR_PATCH_VERSION) + source
+
+def _pythia8_main164_djr_source(examples):
+    """The patched main164.cc for per-jet-sample DJRs, or None when it is not
+    needed (the installed main164 does it) or not possible (an unknown
+    main164.cc), see patch_pythia8_main164_djrs."""
+
+    try:
+        source = open(pjoin(examples, 'main164.cc')).read()
+    except (IOError, OSError):
+        return None
+    if pythia8_main164_writes_jet_sample_djrs(source):
+        return None
+    patched = patch_pythia8_main164_djrs(source)
+    if patched is None:
+        logger.info('The main164 of this Pythia8 version cannot be patched to ' +
+                    'histogram the jet rates per jet sample: the DJR plots show ' +
+                    'their sum only.')
+    return patched
+
 def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
-                        hepmc_paths=()):
+                        hepmc_paths=(), jet_sample_djrs=False):
     """Return the path of a compiled main164, compiling it if needed.
 
     main164 is built in the Pythia8 examples directory with the Makefile that
@@ -1889,7 +2013,13 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
     with, a dedicated main164 is built against the HepMC installation found in
     hepmc_paths or next to Pythia8: in <examples>/main164_hepmc<version>, so
     that it is shared by all processes, or in <fallback_dir>_hepmc<version>
-    if the examples directory is read-only."""
+    if the examples directory is read-only.
+
+    With jet_sample_djrs, main164 histograms the jet rates of an MLM shower
+    per jet sample too: when the installed main164.cc does not, a patched copy
+    (patch_pythia8_main164_djrs) is built in the same way, in a directory
+    named with _djr appended. When the patch does not apply, the stock main164
+    is returned."""
 
     executable, examples = find_pythia8_main164(pythia8_path)
     if not examples:
@@ -1903,6 +2033,9 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
             '%s. MadGraph7 showers LO events with main164, an example program of ' % pythia8_path +
             "Pythia8 that exists since Pythia 8.311 (it can be installed with 'install pythia8').")
 
+    source = _pythia8_main164_djr_source(examples) if jet_sample_djrs else None
+
+    hepmc = None
     if hepmc_version and hepmc_version != pythia8_hepmc_version(examples):
         if not os.path.isfile(pjoin(examples, 'main164.cc')):
             raise MadGraph5Error('main164.cc cannot be found in %s, so that ' % examples +
@@ -1915,9 +2048,14 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
                 'no HepMC%d installation was found (it can be installed with ' % hepmc_version +
                 "'install %s'), and Pythia8 was configured with another version." % default)
         hepmc = (hepmc_version,) + hepmc
+
+    if hepmc or source:
+        suffix = ('_hepmc%d' % hepmc[0] if hepmc else '') + ('_djr' if source else '')
         stamp = _pythia8_main164_stamp(pythia8_path, examples, hepmc)
-        shared_dir = pjoin(examples, 'main164_hepmc%d' % hepmc_version)
-        local_dir = '%s_hepmc%d' % (fallback_dir, hepmc_version) if fallback_dir else None
+        if source:
+            stamp += '\ndjr patch %d' % MAIN164_DJR_PATCH_VERSION
+        shared_dir = pjoin(examples, 'main164' + suffix)
+        local_dir = fallback_dir + suffix if fallback_dir else None
         for build_dir in (shared_dir, local_dir):
             if build_dir and _pythia8_main164_is_built(build_dir, stamp):
                 return pjoin(build_dir, 'main164')
@@ -1927,9 +2065,10 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
             build_dir = local_dir
         else:
             raise MadGraph5Error('No writable directory to compile main164 ' +
-                                 'for HepMC%d.' % hepmc_version)
+                (('for HepMC%d.' % hepmc[0]) if hepmc else 'with per-jet-sample jet rates.'))
         return _compile_pythia8_main164(examples, build_dir, stamp,
-                                        _pythia8_main164_makefile_inc(examples, hepmc))
+                                        _pythia8_main164_makefile_inc(examples, hepmc),
+                                        source=source)
 
     if executable:
         return executable
@@ -2027,10 +2166,12 @@ def _pythia8_main164_is_built(build_dir, stamp):
     return os.path.isfile(pjoin(build_dir, 'main164')) and \
            os.path.isfile(stamp_file) and open(stamp_file).read() == stamp
 
-def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None):
+def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None,
+                             source=None):
     """Compile main164 in build_dir and return its path. If build_dir is not the
-    Pythia8 examples directory, main164.cc and the Makefile are copied there,
-    with makefile_inc as Makefile.inc, and the build is stamped."""
+    Pythia8 examples directory, main164.cc (or the given source in its place)
+    and the Makefile are copied there, with makefile_inc as Makefile.inc, and
+    the build is stamped."""
 
     executable = pjoin(build_dir, 'main164')
     stamp_file = pjoin(build_dir, 'BUILD_STAMP')
@@ -2042,6 +2183,9 @@ def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None)
             os.makedirs(build_dir)
         for name in ('main164.cc', 'Makefile'):
             shutil.copy(pjoin(examples, name), build_dir)
+        if source is not None:
+            with open(pjoin(build_dir, 'main164.cc'), 'w') as fsock:
+                fsock.write(source)
         with open(pjoin(build_dir, 'Makefile.inc'), 'w') as fsock:
             fsock.write(makefile_inc)
 

@@ -12,7 +12,7 @@ constexpr double INV_GEV2_TO_PB = 0.38937937217186e9;
 template <typename T>
 struct FourMom {
     KERNELSPEC FVal<T>& operator[](int i) { return p[i]; }
-    KERNELSPEC FVal<T>& operator[](int i) const { return p[i]; }
+    KERNELSPEC const FVal<T>& operator[](int i) const { return p[i]; }
     FVal<T> p[4];
 };
 
@@ -212,6 +212,16 @@ KERNELSPEC FVal<T> esquare(FourMom<T> p) {
 // between an azimuth set by atan2(q_y, q_x) and a fixed one on the exact test
 // q_t == 0, and turned the azimuth by an arbitrary angle, often pi/2, whenever
 // the two sides rounded q_t differently.)
+template <typename T>
+KERNELSPEC FVal<T> ldot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[0] * p2[0] - p1[1] * p2[1] - p1[2] * p2[2] - p1[3] * p2[3];
+}
+
+template <typename T>
+KERNELSPEC FVal<T> edot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[1] * p2[1] + p1[2] * p2[2] + p1[3] * p2[3];
+}
+
 template <typename T>
 KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
     auto qq = sqrt(max(esquare<T>(q), FVal<T>(1e-300)));

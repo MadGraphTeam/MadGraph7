@@ -2097,6 +2097,20 @@ class PY8Card(ConfigFile):
         # Visible parameters
         # ==================
         self.add_param("Main:numberOfEvents", 0)
+        # main164's own analysis: the differential jet rates log10 d_{n,n+1}
+        # of the showered events, written to InternalAnalysis:output (the
+        # djrs.dat the DJR plots are made from). Switched on by MadGraph7 for
+        # an MLM sample.
+        self.add_param("Main:InternalAnalysis", False, hidden=True,
+                                                 always_write_to_card=False)
+        self.add_param("InternalAnalysis:output", './djrs.dat', hidden=True,
+                                                 always_write_to_card=False)
+        # main164's setting to also write those jet rates per jet sample
+        # (number of matrix-element partons), on for an MLM sample. When the
+        # installed main164 does not know it, MadGraph7 builds a patched copy
+        # (misc.patch_pythia8_main164_djrs); off, the plots show their sum.
+        self.add_param("InternalAnalysis:jetSamples", False, hidden=True,
+                                                 always_write_to_card=False)
         # for MLM merging
         # -1.0 means that it will be set automatically by MadGraph7
         self.add_param("JetMatching:qCut", -1.0, always_write_to_card=False)
@@ -2568,9 +2582,6 @@ class PY8Card(ConfigFile):
                 # special case for HepMC needs two flags
                 if 'HepMC:output' == param_entry:
                     output.write(' %s=%s\n'%('Main:HepMC', 'on'))
-                    if 'Main:InternalAnalysis'.lower() in self.user_set and \
-                        self['Main:InternalAnalysis'].lower() == 'on':
-                        output.write('InternalAnalysis:output = ./djrs.dat\n')
 
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
@@ -4467,6 +4478,38 @@ def get_model_flavour_scheme(proc_def):
     return None
 
 
+def mlm_matching_needed(proc_def):
+    """Whether the generated processes call for MLM merging: they come in more
+    than one multiplicity, and the highest one only adds jets (light quarks,
+    b quarks, gluons) to the lowest one. madevent then turns on ickkw = 1 with
+    xqcut = 30, MadGraph7 its "mlm" scale choice with the same xqcut."""
+    try:
+        multiplicities = [len(proc[0]['legs']) for proc in proc_def]
+    except (TypeError, KeyError, IndexError):
+        return False
+    if not multiplicities:
+        return False
+    min_particle, max_particle = min(multiplicities), max(multiplicities)
+    if min_particle == max_particle:
+        return False
+    # take one of the processes with min_particle
+    for procmin in proc_def:
+        if len(procmin[0]['legs']) == min_particle:
+            idsmin = [l['id'] for l in procmin[0]['legs']]
+            break
+    for procmax in proc_def:
+        if len(procmax[0]['legs']) != max_particle:
+            continue
+        idsmax = [l['id'] for l in procmax[0]['legs']]
+        for i in idsmin:
+            if i in idsmax:
+                idsmax.remove(i)
+        if all(j in [1,-1,2,-2,3,-3,4,-4,5,-5,21,81,-81] for j in idsmax):
+            # all are jets => matching is ON
+            return True
+    return False
+
+
 class RunCardLO(RunCard):
     """an object to handle in a nice way the run_card information"""
     
@@ -4582,7 +4625,8 @@ class RunCardLO(RunCard):
         #matching
         self.add_param("scalefact", 1.0)
         self.add_param("ickkw", 0, allowed=[0,1], hidden=True,                  comment="\'0\' for standard fixed order computation.\n\'1\' for MLM merging activates alphas and pdf re-weighting according to a kt clustering of the QCD radiation.")
-        self.add_param("highestmult", 1, fortran_name="nhmult", hidden=True)
+        self.add_param("highestmult", 1, fortran_name="nhmult",
+            hidden=True)
         self.add_param("ktscheme", 1, hidden=True)
         self.add_param("alpsfact", 1.0, hidden=True)
         self.add_param("chcluster", False, hidden=True)
@@ -5263,48 +5307,17 @@ class RunCardLO(RunCard):
             
             
         # Check if need matching
-        min_particle = 99
-        max_particle = 0
-        for proc in proc_def:
-            min_particle = min(len(proc[0]['legs']), min_particle)
-            max_particle = max(len(proc[0]['legs']), max_particle)
-        if min_particle != max_particle:
-            #take one of the process with min_particle
-            for procmin in proc_def:
-                if len(procmin[0]['legs']) != min_particle:
-                    continue
-                else:
-                    idsmin = [l['id'] for l in procmin[0]['legs']]
-                    break
-            matching = False
-            for procmax in proc_def:
-                if len(procmax[0]['legs']) != max_particle:
-                    continue
-                idsmax =  [l['id'] for l in procmax[0]['legs']]
-                for i in idsmin:
-                    if i not in idsmax:
-                        continue
-                    else:
-                        idsmax.remove(i)
-                for j in idsmax:
-                    if j not in [1,-1,2,-2,3,-3,4,-4,5,-5,21,81,-81]:
-                        break
-                else:
-                    # all are jet => matching is ON
-                    matching=True
-                    break 
-            
-            if matching:
-                self['ickkw'] = 1
-                self['xqcut'] = 30
-                #self['use_syst'] = False 
-                self['drjj'] = 0
-                self['drjl'] = 0
-                self['sys_alpsfact'] = "0.5 1 2"
-                self['systematics_arguments'].append('--alps=0.5,1,2')
-                self.display_block.append('mlm')
-                self.display_block.append('ckkw')
-                self['dynamical_scale_choice'] = -1
+        if mlm_matching_needed(proc_def):
+            self['ickkw'] = 1
+            self['xqcut'] = 30
+            #self['use_syst'] = False 
+            self['drjj'] = 0
+            self['drjl'] = 0
+            self['sys_alpsfact'] = "0.5 1 2"
+            self['systematics_arguments'].append('--alps=0.5,1,2')
+            self.display_block.append('mlm')
+            self.display_block.append('ckkw')
+            self['dynamical_scale_choice'] = -1
                 
                 
         # For interference module, the systematics are wrong.
@@ -6714,6 +6727,9 @@ class RunCardMG7(RunCard):
         self.section_of = {}
         # set of internal keys (section.key) relevant during gridpack execution
         self.gridpack_params = set()
+        # declared default of each fixed parameter: a hidden one (no line in
+        # the template) is only written out once it differs from it
+        self.toml_defaults = {}
         # free-form sections kept as nested dicts
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
@@ -6746,6 +6762,7 @@ class RunCardMG7(RunCard):
         # not a fortran parameter: never goes to an include file
         opts.setdefault('include', False)
         self.add_param(internal, value, **opts)
+        self.toml_defaults[internal] = copy.deepcopy(value)
         self.section_of[internal] = section
         self.toml_sections.setdefault(section, [])
         if key not in self.toml_sections[section]:
@@ -6882,8 +6899,136 @@ class RunCardMG7(RunCard):
             comment="multiplies the dynamical scale; fixed scales are unaffected")
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
-                     'half_transverse_mass', 'partonic_energy'],
+                     'half_transverse_mass', 'partonic_energy', 'mlm'],
             comment="dynamical scale used unless the scale is fixed")
+        # Jet radius entering the kt clustering measure of the MLM back-clustering
+        # (only used when dynamical_scale_choice = "mlm"). 1.0 is madevent's
+        # hidden run_card d (common/to_dj/D) and FxFx's value, and Pythia's
+        # JetMatching:coneRadius default.
+        self.add_toml_param('beam', 'jet_radius', 1.0,
+            comment="jet radius of the MLM clustering measure (dynamical_scale_choice = mlm)",
+            hidden=True)
+        # Heaviest quark flavour treated as a jet by the MLM back-clustering
+        # (the counterpart of maxjetflavor in the legacy run_card).
+        self.add_toml_param('beam', 'max_jet_flavor', 4,
+            comment="heaviest quark flavour the MLM back-clustering treats as a jet")
+        # How the MLM back-clustering assigns a clustering scale to each
+        # outgoing jet (written to the LHE as pt_clust_i, and used by Pythia as
+        # the shower starting scale for that parton).
+        #   "production": the hardest vertex on the parton line the leg belongs
+        #                 to, i.e. the scale at which that line was produced.
+        #                 This is what madevent does.
+        #   "emission":   the vertex at which the leg itself was emitted, i.e.
+        #                 the softest clustering it takes part in.
+        self.add_toml_param('beam', 'jet_scale_scheme', "production",
+            allowed=['production', 'emission'],
+            comment="MLM clustering scale of each outgoing jet: production or emission",
+            hidden=True)
+        # How mu_R and mu_F are read off the clustering history:
+        #   "clustering_mean": geometric mean of every clustering scale, with a
+        #                      single factorisation scale.
+        #   "madevent":        follow each beam's parton line and use
+        #                      (s_jlast1 s_jcentral1 s_jlast2 s_jcentral2)^(1/4),
+        #                      with a separate factorisation scale per beam.
+        # Left at "clustering_mean" by default because it moves the cross
+        # section, unlike jet_scale_scheme.
+        self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
+            allowed=['clustering_mean', 'madevent'],
+            comment="how mu_R and mu_F are read off the MLM clustering history",
+            hidden=True)
+        # How a beam's parton line is decided to carry on past a vertex (only
+        # read when scale_scheme = "madevent"):
+        #   "goodjet": a line stays a parton line only while every clustering
+        #              it has been through was a jet vertex, so one non-jet
+        #              vertex in its history stops it for good. What madevent
+        #              does.
+        #   "flavor":  decided from the flavour of the emitted object alone,
+        #              which keeps lines alive past vertices where madevent
+        #              would have stopped them.
+        self.add_toml_param('beam', 'parton_line_scheme', "goodjet",
+            allowed=['goodjet', 'flavor'],
+            comment="when a beam's parton line carries on past an MLM clustering",
+            hidden=True)
+        # Evaluate alpha_s at the scale of each clustering vertex instead of
+        # once at the event scale, which is what madevent does for a merged
+        # sample (the rewgt loop in Template/LO/SubProcesses/reweight.f). A
+        # merged sample without it is short by roughly one factor of
+        # alphas(pt_emission)/alphas(mu_R) per extra jet, compounding with
+        # multiplicity.
+        #   "per_vertex":     alphas(pt_i) at each vertex, what madevent does
+        #   "geometric_mean": one coupling at the geometric mean of the pt_i,
+        #                     raised to the number of vertices
+        #   "none":           a single coupling at mu_R for the whole event
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'alphas_reweighting', "per_vertex",
+            allowed=['per_vertex', 'geometric_mean', 'none'],
+            comment="where alpha_s is evaluated for an MLM merged event",
+            hidden=True)
+        # Re-evaluate the beam densities along the clustering ladder instead of
+        # once at the factorisation scale: the density is taken at the scale of
+        # the emission that pulled the parton out of the beam and walked back
+        # up, with the momentum fraction rescaled at each step. This is the
+        # pdf half of the same rewgt loop, madevent's hidden pdfwgt flag, which
+        # is on by default there. Only read when dynamical_scale_choice = "mlm",
+        # and under scale_scheme = "clustering_mean" only together with
+        # clustering_mean_pdf_ladder.
+        self.add_toml_param('beam', 'pdf_reweighting', True,
+            comment="re-evaluate the beam densities along the MLM clustering ladder",
+            hidden=True)
+        # The same ladder under scale_scheme = "clustering_mean": the beam
+        # densities are then evaluated as madevent evaluates them (per-beam
+        # factorisation scale, lowered to the scale that pulled the parton out
+        # of the beam and walked back up), while mu_R, the alpha_s vertex
+        # scales and the jet scales stay clustering_mean's. Without it
+        # clustering_mean takes both densities once at the softest clustering
+        # scale, which moves the merged rates just above qcut away from
+        # madevent's. Needs pdf_reweighting.
+        self.add_toml_param('beam', 'clustering_mean_pdf_ladder', True,
+            comment="also walk the pdf ladder under scale_scheme = clustering_mean",
+            hidden=True)
+        # Which measure scores a candidate final-state clustering. The two only
+        # differ for a non-resonant pair with a massless mother and one massive
+        # and one massless daughter (q* > q W, g* > g h), or a massive mother
+        # with two massless daughters:
+        #   "fxfx":     cluster_scale of Template/NLO/SubProcesses/cluster.f,
+        #               sqrt(|p_j.(p_i+p_j)|)/2 and the invariant mass
+        #   "madevent": DJ of Template/LO/Source/kin_functions.f, as madevent's
+        #               LO clustering does: the massless one's transverse mass
+        #               for a massless-massive pair, the kt measure otherwise
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'clustering_measure', "fxfx",
+            allowed=['fxfx', 'madevent'],
+            comment="measure scoring a candidate MLM final-state clustering",
+            hidden=True)
+        # Which diagrams the clustering history may follow:
+        #   "all_diagrams": the smallest-measure history over every diagram at
+        #                   once, each line's flavour taken from the first
+        #                   diagram that has it.
+        #   "diagram":      pick one diagram per event with probability
+        #                   proportional to its |A_i|^2 and cluster along it
+        #                   alone, with its own line flavours. Tells a VBF
+        #                   diagram's W/Z lines from gluon fusion's gluons.
+        #   "madevent":     keep the all_diagrams history unless it calls a
+        #                   different number of legs merging jets than the
+        #                   picked diagram does, as setclscales reclusters
+        #                   along the integration channel.
+        # Anything but "all_diagrams" evaluates the matrix element twice per
+        # event: once for the diagram weights, once at the scales of the chosen
+        # history. Only read when dynamical_scale_choice = "mlm", which also
+        # turns phasespace.merge_subprocesses off: the clustering is built
+        # from one flavour assignment per subprocess.
+        self.add_toml_param('beam', 'clustering_history', "all_diagrams",
+            allowed=['all_diagrams', 'diagram', 'madevent'],
+            comment="which diagrams the MLM clustering history may follow",
+            hidden=True)
+        # Floor on mu_R and mu_F. Below the lowest Q of a PDF grid the
+        # densities are undefined, so the scales are raised to it, which is
+        # what LHAPDF's freezing does for madevent. Under
+        # dynamical_scale_choice = "mlm" an event whose scales fall under it is
+        # dropped instead, as madevent's setclscales does at 2 GeV. Ignored
+        # for a run without beam PDFs (lepton collider, decay). 0 disables it.
+        self.add_toml_param('beam', 'min_scale', 2.0,
+            comment="floor on mu_R and mu_F (0 disables it)")
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True,
@@ -6921,6 +7066,11 @@ class RunCardMG7(RunCard):
             comment="renormalization scale factors")
         self.add_toml_param('systematics', 'muf', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
             comment="factorization scale factors")
+        # madevent's sys_alpsfact, which it sets to "0.5 1 2" for a matched
+        # process: the alpha_s of every MLM clustering vertex at the factor
+        # times the vertex scale, in an "Emission scale variation" group
+        self.add_toml_param('systematics', 'alps', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="MLM emission scale factors (dynamical_scale_choice = mlm only)")
         self.add_toml_param('systematics', 'together', True, gridpack=True,
             comment="true: all mur x muf combinations; false: vary one scale at a time")
         self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,
@@ -6985,6 +7135,21 @@ class RunCardMG7(RunCard):
             comment="number of widths around the mass sampled with a Breit-Wigner")
         self.add_toml_param('phasespace', 'cut_decays', False,
             comment="apply the [cuts] to the decay products of on-shell particles")
+        # Generation-level merging cut, the counterpart of xqcut in the legacy
+        # run_card: a matrix-element jet emission below this scale is left to
+        # the parton shower, so the event is dropped. Only used with
+        # dynamical_scale_choice = "mlm"; 0 disables it.
+        self.add_toml_param('phasespace', 'xqcut', 0.0,
+            comment="MLM merging cut on the kt of matrix-element jets (0 disables it)")
+        # Counterpart of madevent's auto_ptj_mjj. With a merging cut in place
+        # the matrix-element jets are already bounded from below by xqcut, so
+        # the jet pt and pair-mass cuts are raised to it - free physically, and
+        # a large gain in integration efficiency - and the jet dR cuts are
+        # dropped, since xqcut supersedes them and a dR cut would otherwise
+        # carve a hole out of the region the shower is meant to fill.
+        # Only read when dynamical_scale_choice = "mlm" and xqcut > 0.
+        self.add_toml_param('phasespace', 'auto_ptj_mjj', True,
+            comment="raise the jet pt and pair-mass cuts to xqcut, drop the jet dR cuts")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
             comment="sample symmetric channels adaptively")
 
@@ -7175,8 +7340,9 @@ class RunCardMG7(RunCard):
         'ievo_eva', 'evaorder', 'event_norm', 'dynamical_scale_choice',
         'nevents',
         # keys read by the reused madevent post-processing tools (shower, ...).
-        # mg7 does no MLM/CKKW merging, so these all take their "no merging"
-        # value, which keeps the tools on the plain (unmatched) code path.
+        # mg7 does no CKKW merging, so those take their "no merging" value; an
+        # MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
+        # ickkw = 1 and its xqcut, so that the shower does the jet matching.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
         'dparameter', 'lhaid', 'iseed', 'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
@@ -7197,6 +7363,16 @@ class RunCardMG7(RunCard):
         'half_transverse_mass': 3,
         'transverse_energy': 1,
     }
+
+    def is_mlm_merged(self):
+        """Whether the events are an MLM merged sample: clustered with
+        dynamical_scale_choice = "mlm" and vetoed at a merging cut xqcut > 0,
+        on hadronic beams. Such a sample needs MLM jet matching in the shower
+        (ickkw = 1 for the madevent tools) or it double counts."""
+        beam = self['beam']
+        return (beam['dynamical_scale_choice'] == 'mlm'
+                and not bool(beam['leptonic'])
+                and float(self['phasespace']['xqcut']) > 0)
 
     def _legacy_compat(self, key):
         beam = self['beam']
@@ -7225,7 +7401,9 @@ class RunCardMG7(RunCard):
             return float(beam['scale_factor'])
         if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
-        if key in ('ickkw', 'ievo_eva', 'evaorder'):
+        if key == 'ickkw':
+            return 1 if self.is_mlm_merged() else 0
+        if key in ('ievo_eva', 'evaorder'):
             return 0
         if key == 'event_norm':
             return 'average'
@@ -7233,15 +7411,23 @@ class RunCardMG7(RunCard):
             if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
                 return -1  # fixed scale: no dynamical-scale variation
             return self._dyn_scale_legacy.get(beam['dynamical_scale_choice'], -1)
-        # --- merging / matching: mg7 does none, keep the "off" values ---
+        # --- merging / matching: MLM through ickkw / xqcut, no CKKW ---
         if key in ('ktdurham', 'ptlund'):
-            return -1.0          # <=0 => no CKKW / no MLM shower matching
-        if key in ('xqcut', 'sys_matchscale'):
+            return -1.0          # <=0 => no CKKW-L merging
+        if key == 'xqcut':
+            if self.is_mlm_merged():
+                return float(self['phasespace']['xqcut'])
+            return 0.0
+        if key == 'sys_matchscale':
             return 0.0
         if key == 'maxjetflavor':
+            # JetMatching:nQmatch: the heaviest quark the matching treats as a
+            # jet, which must be the one the clustering treated as a jet
+            if self.is_mlm_merged():
+                return int(beam['max_jet_flavor'])
             return 5
         if key == 'dparameter':
-            return 0.4           # only used by the (unused) matching machinery
+            return 0.4           # only used by the (unused) CKKW-L machinery
         # --- run / seed bookkeeping ---
         if key == 'lhaid':
             return self.get_lhapdf_id()
@@ -7682,6 +7868,9 @@ class RunCardMG7(RunCard):
             jet = self._lo_jet_group(flavours)
             self.dynamic_sections['multiparticles']['jet'] = jet
             changes['multiparticles.jet'] = jet
+            # the MLM clustering's jet flavours, which madevent's maxjetflavor
+            # also sets
+            put('beam.max_jet_flavor', flavours)
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
@@ -8031,7 +8220,9 @@ class RunCardMG7(RunCard):
             for key in keys:
                 internal = '%s.%s' % (section, key)
                 data[internal] = self.format_toml_value(self[internal])
+        in_template = set(re.findall(r'%\(([\w.]+)\)s', text))
         text = text % data
+        text = self.add_hidden_parameters(text, in_template)
 
         # free-form sections inserted at their markers
         for section in self.dynamic_section_names:
@@ -8054,6 +8245,37 @@ class RunCardMG7(RunCard):
                 fsock.write(text)
         else:
             output_file.write(text)
+
+    def add_hidden_parameters(self, text, in_template):
+        """Add to the rendered card the hidden parameters (those with no line
+        in the template) that the user set or that no longer hold their
+        default, at the end of their section, so that they survive a rewrite
+        of the card."""
+        missing = collections.OrderedDict()
+        for section, keys in self.toml_sections.items():
+            for key in keys:
+                internal = '%s.%s' % (section, key)
+                if internal in in_template or internal not in self.hidden_param:
+                    continue
+                if internal not in self.user_set and \
+                        self[internal] == self.toml_defaults.get(internal):
+                    continue
+                line = '%s = %s' % (key, self.format_toml_value(self[internal]))
+                if self.comments.get(internal):
+                    line += ' # %s' % self.comments[internal]
+                missing.setdefault(section, []).append(line)
+        for section, lines in missing.items():
+            block = '\n'.join(lines) + '\n'
+            header = re.search(r'^\[%s\][ \t]*$' % re.escape(section), text, re.M)
+            if not header:
+                text = text.rstrip('\n') + '\n\n[%s]\n%s' % (section, block)
+                continue
+            # the section ends at the next table header, or at the end
+            following = re.search(r'^\[', text[header.end():], re.M)
+            end = header.end() + following.start() if following else len(text)
+            body = text[:end].rstrip('\n') + '\n'
+            text = body + block + ('\n' + text[end:] if following else '')
+        return text
 
     def write_gridpack_card(self, output_file):
         """Write a minimal ``grid_run_card.toml`` containing only the parameters
@@ -8089,6 +8311,10 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # process dependent defaults (mirrors RunCardLO.create_default_for_process)
     # ------------------------------------------------------------------
+    # merging cut set up for a process generated with several jet
+    # multiplicities, madevent's
+    default_mlm_xqcut = 30.0
+
     def create_default_for_process(self, proc_characteristic, history, proc_def):
         """Adjust default values depending on the process, then read the
         site/user default file (``input/default_run_card_mg7.toml``)."""
@@ -8109,6 +8335,14 @@ class RunCardMG7(RunCard):
         hadronic = set([1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 21, 22, 81, -81])
         leptons = set([11, -11, 13, -13, 15, -15, 82, -82])
 
+        if beam_id & hadronic:
+            # the heaviest quark the MLM clustering treats as a jet follows the
+            # flavour scheme of the model, as madevent's maxjetflavor does: 5
+            # once the b is massless and in the proton
+            nflav = get_model_flavour_scheme(proc_def) or 4
+            self['beam']['max_jet_flavor'] = max(
+                [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
+
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy, no hadronic cuts
             self['beam']['leptonic'] = True
@@ -8125,6 +8359,21 @@ class RunCardMG7(RunCard):
             for key in ('beam.pdf1', 'beam.pdf2'):
                 if key not in self.user_set:
                     self[key] = self.photon_pdf
+
+        # More than one multiplicity, the higher ones only adding jets: an MLM
+        # merged sample, as madevent sets it up (ickkw = 1, xqcut = 30, drjj =
+        # drjl = 0). The shower then does the jet matching (is_mlm_merged), and
+        # auto_ptj_mjj ties the jet cuts to xqcut.
+        if beam_id & hadronic and not self['beam']['leptonic'] and \
+                mlm_matching_needed(proc_def):
+            self['beam']['dynamical_scale_choice'] = 'mlm'
+            self['phasespace']['xqcut'] = self.default_mlm_xqcut
+            cuts = self.dynamic_sections['cuts']
+            for key in ('jet-delta_r', 'jet-lepton-delta_r'):
+                if isinstance(cuts.get(key), dict):
+                    cuts[key].pop('min', None)
+                    if not cuts[key]:
+                        del cuts[key]
 
         # 1 -> N decay: no cuts at all. A partial width is an inclusive
         # quantity, so any kinematic cut biases it low (the collider defaults
@@ -8605,9 +8854,10 @@ class RunCardMG7(RunCard):
         'iseed', 'nhel', 'limhel', 'hel_recycling', 'hel_filtering',
         'hel_splitamp', 'hel_zeroamp',
         # matching / merging
-        'ickkw', 'xqcut', 'ktdurham', 'dparameter', 'ptlund', 'highestmult',
+        # (ickkw, xqcut and auto_ptj_mjj are translated: see MLM merging)
+        'ktdurham', 'dparameter', 'ptlund', 'highestmult',
         'ktscheme', 'alpsfact', 'chcluster', 'pdfwgt', 'asrwgtflavor',
-        'clusinfo', 'auto_ptj_mjj', 'pdgs_for_merging_cut',
+        'clusinfo', 'pdgs_for_merging_cut',
         # bias
         'bias_module', 'bias_parameters',
         # unsupported cuts: needs the opposite-hemisphere condition on the two
@@ -8725,6 +8975,31 @@ class RunCardMG7(RunCard):
         elif dyn not in (-1, 10) and nondefault('dynamical_scale_choice'):
             dropped.append('dynamical_scale_choice=%s (no mg7 equivalent)' % dyn)
 
+        # --- MLM merging ---
+        # madevent's ickkw = 1 back-clusters every event and vetoes it at
+        # xqcut; with its default dynamical_scale_choice -1 the scales are
+        # setclscales', which is mg7's "mlm" choice under scale_scheme
+        # "madevent". mg7 has no MLM with a closed-form scale choice: the
+        # clustering scales are used whatever dynamical_scale_choice said.
+        ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
+        if ickkw == 1:
+            xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
+            if xqcut > 0:
+                mg7.set('beam.dynamical_scale_choice', 'mlm')
+                mg7.set('beam.scale_scheme', 'madevent')
+                mg7.set('phasespace.xqcut', xqcut)
+                if 'auto_ptj_mjj' in lo:
+                    mg7.set('phasespace.auto_ptj_mjj', bool(lo['auto_ptj_mjj']))
+                if dyn != -1:
+                    dropped.append('dynamical_scale_choice=%s with ickkw=1 '
+                                   '(mg7 uses the MLM clustering scales)' % dyn)
+            else:
+                dropped.append('ickkw=1 with xqcut=%s (no merging cut: not '
+                               'merged)' % xqcut)
+        elif nondefault('xqcut'):
+            dropped.append('xqcut=%s without ickkw=1 (no MLM merging)'
+                           % lo['xqcut'])
+
         # --- SDE strategy ---
         sde = lo['SDE_strategy'] if 'SDE_strategy' in lo else 1
         mg7.set('phasespace.sde_strategy',
@@ -8753,6 +9028,7 @@ class RunCardMG7(RunCard):
         if 'maxjetflavor' in lo:
             mg7.dynamic_sections['multiparticles']['jet'] = \
                 cls._lo_jet_group(int(lo['maxjetflavor']))
+            mg7.set('beam.max_jet_flavor', int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
