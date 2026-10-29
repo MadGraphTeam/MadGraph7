@@ -707,3 +707,18 @@ def test_event_stream_cross_section(fixed_gridpack):
     assert abs(status.mean - stream_status.mean) < 4 * np.hypot(
         status.error, stream_status.error
     )
+
+
+def test_event_stream_status_without_inactive_channels(fixed_gridpack):
+    """A channel without fixed step maxima returns no events, so it does not
+    count in the cross section of the stream."""
+    gridpack = dict(fixed_gridpack)
+    channel_json = json.loads(gridpack["channels"][1])
+    del channel_json["step_max_weights"]
+    gridpack["channels"] = [gridpack["channels"][0], json.dumps(channel_json)]
+    stream = make_stream(gridpack)
+    integral = json.loads(gridpack["channels"][0])["integral"]
+    status = stream.status()
+    assert status.mean == pytest.approx(integral["mean"], rel=1e-12)
+    assert status.error == pytest.approx(integral["error"], rel=1e-12)
+    assert stream.channel_probabilities()[1] == 0.0

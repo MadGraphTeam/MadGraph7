@@ -488,7 +488,14 @@ std::vector<LHEEvent> EventStream::next_events(std::size_t count) {
 GeneratorStatus EventStream::status() const {
     std::unique_lock lock(_mutex);
     GeneratorStatus status{};
-    sum_channel_status(_channels, status);
+    // the inactive channels return no events
+    std::vector<std::shared_ptr<ChannelEventGenerator>> active_channels;
+    for (auto [channel, state] : zip(_channels, _channel_states)) {
+        if (state.active) {
+            active_channels.push_back(channel);
+        }
+    }
+    sum_channel_status(active_channels, status);
     status.count_unweighted = _event_count;
     status.count_target = 0;
     status.optimized = true;

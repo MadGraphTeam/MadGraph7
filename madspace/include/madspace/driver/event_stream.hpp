@@ -82,8 +82,9 @@ public:
     /// Stop the coordinator thread and discard the running jobs. Called by
     /// the destructor.
     void close();
-    /// Combined status over every channel. `count_unweighted` is the number of
-    /// events returned so far.
+    /// Combined status over the channels with fixed maximum weights, the others
+    /// return no events. `count_unweighted` is the number of events returned
+    /// so far.
     GeneratorStatus status() const;
     /// Per-channel status; `count_unweighted` is the number of events of the
     /// channel returned so far.
