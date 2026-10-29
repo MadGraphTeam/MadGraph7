@@ -2132,6 +2132,16 @@ class LoopSlice:
         entries = [e for site in root_sites for e in site.rule.entries]
         entries += _conjugate_site_entries(root_sites, conjugates, program)
         entries += [e for rows in ordinary for e in rows]
+        # Root vertices read on a Goldstone-vector mixing line's Goldstone
+        # side (WP3.2 EWI-7): their promoted entries.
+        from .ct_closure import promoted_root_entries
+
+        entries += promoted_root_entries(
+            None if program is None else program.blocks,
+            ordinary,
+            lambda rows: rows if conjugates.closed(rows) else conjugates.of(rows),
+            data,
+        )
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
         )

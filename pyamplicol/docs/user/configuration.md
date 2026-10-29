@@ -881,13 +881,6 @@ names the rule, for example:
   joins a coloured and a colour-singlet fermion ...", before any tree is
   built. Veto a particle of the vertex (`particle_veto`) or bound its
   coupling order so that the request cannot use it;
-- a Goldstone-vector mixing counterterm (G0-Z, G0-A, G+-W-) whose line ends
-  on its Goldstone side at the vertex of leg 1 (a massive top at leg 1 with
-  electroweak corrections: `t t~ > z h`, `t t~ > t t~`):
-  "counterterm-root-goldstone-mixing: ... consumes a Goldstone-vector mixing
-  line on its Goldstone side ...", while the counterterm program is built.
-  Request QCD corrections, or order the legs so that leg 1 has no Goldstone
-  vertex where the process allows it;
 - a loop vertex that the request's restricted tree model does not hold while
   its couplings are not shown to vanish at the model's restriction:
   "loop-vertex-outside-tree-model: ... the loop vertex V (...) at the

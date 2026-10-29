@@ -1024,6 +1024,26 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "u d~ > t b~ QCD=0 QED=2 [virt=QED] QED^2==6"},
       "recola": {"process": "u d~ -> t b~"}
+    },
+    {
+      "name": "ttx_ttx_ew",
+      "role": "ewi7",
+      "pdgs": [6, -6, 6, -6],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "t t~ > t t~ QCD=0 QED=2 [virt=QCD QED] QCD^2==0 QED^2==6"},
+      "recola": {"process": "t t~ -> t t~"}
+    },
+    {
+      "name": "ttx_zh_ew",
+      "role": "ewi7",
+      "pdgs": [6, -6, 23, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "t t~ > z h QCD=0 QED=2 [virt=QCD QED] QCD^2==0 QED^2==6"},
+      "recola": {"process": "t t~ -> Z H"}
     }
   ]
 }

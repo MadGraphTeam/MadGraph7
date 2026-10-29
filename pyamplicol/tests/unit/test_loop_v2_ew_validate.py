@@ -138,15 +138,19 @@ def _evaluate(executor, reference, index, precision=None, stability=None):
     return result
 
 
-def _assert_providers(result, reference, index, tolerance) -> dict[str, float]:
+def _assert_providers(
+    result, reference, index, tolerance, providers=None
+) -> dict[str, float]:
     """Born and the virtual's Laurent coefficients (summed over sectors)
-    against every provider of the fixture's row ``index``; the worst metric
-    per provider."""
+    against every provider of the fixture's row ``index`` (or those named
+    in ``providers``); the worst metric per provider."""
 
     alpha = float(reference["derived_parameters"]["alpha"])
     born, *virtual = (float(x) for x in result.totals[:4])
     worst = {}
     for provider, values in reference["rows"][index]["providers"].items():
+        if providers is not None and provider not in providers:
+            continue
         floor = abs(values["born"]) * alpha / (2 * math.pi)
         errors = [_metric(born, values["born"], 0.0)]
         errors += [
@@ -158,10 +162,11 @@ def _assert_providers(result, reference, index, tolerance) -> dict[str, float]:
     return worst
 
 
-def _assert_catani(result) -> float:
+def _assert_catani(result, tolerance=None) -> float:
     """The virtual's single and double pole per sector against the Catani
     operators' prediction (QCD with alpha_s/2pi, QED with the loops' alpha;
-    ``poles.sector_sum``): every sector of the request is predicted."""
+    ``poles.sector_sum``): every sector of the request is predicted.
+    ``tolerance`` defaults to ``CATANI_TOLERANCE``."""
 
     assert result.ir_poles, "no Catani prediction"
     worst = 0.0
@@ -174,7 +179,7 @@ def _assert_catani(result) -> float:
             (complex(virtual.double_pole), double),
         ):
             worst = max(worst, abs(got - want) / scale)
-    assert worst <= CATANI_TOLERANCE, worst
+    assert worst <= (CATANI_TOLERANCE if tolerance is None else tolerance), worst
     return worst
 
 
@@ -976,44 +981,83 @@ def _family_species(slice_):
     return out
 
 
-def _refused_before_programs(compiled, request, loop_native, key):
-    from pyamplicol.loops.v2.assemble import LoopSlice
-    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
-
-    with pytest.raises(LoopRequestUnsupported) as refused:
-        LoopSlice.generate(compiled, request, loop_native)
-    assert refused.value.key == key
-    return str(refused.value)
-
-
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("process", ["t t~ > z h", "t t~ > t t~"])
-def test_goldstone_side_root_mixing_is_a_listed_refusal(
-    process, loop_gmu_ufo, loop_native
+@pytest.mark.parametrize("name", ["ttx_ttx_ew", "ttx_zh_ew"])
+def test_goldstone_side_root_mixing_of_top_pair_initial_states_equals_recola(
+    name, loop_gmu_ufo, loop_native, loop_reference
 ):
-    """WP3.2 EWI-7 routed item (v): a Goldstone-vector mixing line ending on
-    its Goldstone side at the root (the top Yukawa of leg 1, QED
-    corrections) is refused with the listed key
-    ``counterterm-root-goldstone-mixing``, naming the root vertex, before
-    any value (about 4 min, at the counterterm program)."""
+    """WP3.2 EWI-7 routed item (v): t t~ > t t~ and t t~ > z h with
+    electroweak corrections reach Goldstone-vector mixing lines (G0-Z,
+    G0-A) that end at the root on their Goldstone side (the top Yukawa of
+    leg 1), closed through the root vertex's promoted entries
+    (``ct_sites.promoted_root_entry``: the Goldstone leg takes the line's
+    vector current contracted with its momentum, as the vertex copies inside
+    the blocks do; refused before). Against Recola (``required/<name>``) at
+    its three points: Born and every Laurent coefficient within the
+    ladder's tolerance (binary64, native executor), the poles Catani's.
+    MadLoop's Born, poles, bare part (virtual - ct) and UV counterterms
+    (ct - r2, the mixings included; ``goldstone-mixing.json``) agree to
+    1e-11, while its R2 exceeds ours by exactly its finite-part difference
+    from Recola (2.5 % and 7.7 % of the finite part): MadLoop omits
+    R2_G0tt_b (its exports call R2_G0TT, R2_HTT and R2_HTT_B and never
+    R2_G0TT_B; slice-status DECISIONS 2026-10-28 ~08:10 (1)). About 6 min
+    each."""
 
-    from pyamplicol.loops.v2.assemble import SliceRequest
+    compiled = _gmu(loop_gmu_ufo)
+    reference, slice_ = _fixture_slice(name, compiled, loop_native)
+    components = loop_reference("goldstone-mixing")["processes"][name]
+    assert components["points"] == reference["points"]
+    executor = _executor(slice_)
+    worst = {"recola": 0.0, "madloop": 0.0, "catani": 0.0}
+    for index in range(len(reference["points"])):
+        result = _evaluate(executor, reference, index)
+        recola = _assert_providers(
+            result, reference, index, LADDER_TOLERANCE, providers=("recola",)
+        )
+        worst["recola"] = max(worst["recola"], recola["recola"])
+        # binary64 single poles of 4-top scattering: 2.8e-12 (user ruling
+        # 2026-10-29 ~10:20: below 1e-5 is no finding).
+        worst["catani"] = max(worst["catani"], _assert_catani(result, 1e-10))
+        (sector,) = result.components["virtual"]
 
-    message = _refused_before_programs(
-        _gmu(loop_gmu_ufo),
-        SliceRequest(
-            process,
-            {"QCD": 0, "QED": 2},
-            {"QCD": 0, "QED": 4},
-            corrections=("QED",),
-            fixed_parameters=G_MU_FIXED,
-            compatibility="gmu_particle_anti",
-            scale_parameter="MU_R",
-        ),
-        loop_native,
-        "counterterm-root-goldstone-mixing",
-    )
-    assert "Goldstone side" in message and "Instead: QCD corrections" in message
+        def laurent(*names, result=result, sector=sector):
+            return [
+                sum(
+                    float(complex(result.components[n][sector].coefficients[i]).real)
+                    for n in names
+                )
+                for i in range(3)
+            ]
+
+        row = components["rows"][index]
+        providers = reference["rows"][index]["providers"]
+        virtual = [row["virtual"][k] for k in LAURENT]
+        scale = max(map(abs, virtual))
+        born = float(complex(sum(result.born.values())).real)
+        assert born == pytest.approx(row["born"], rel=1e-12)
+        expected = {
+            "bare": [virtual[i] - row["ct"][k] for i, k in enumerate(LAURENT)],
+            "uv": [row["ct"][k] - row["r2"][k] for k in LAURENT],
+        }
+        found = {
+            "bare": laurent("bare"),
+            "uv": laurent("uv_local", "uv_external_fields"),
+        }
+        for name, want in expected.items():
+            for got, target in zip(found[name], want, strict=True):
+                error = abs(got - target) / scale
+                worst["madloop"] = max(worst["madloop"], error)
+                assert error <= 1e-11, (index, name, found[name], want)
+        for i in (1, 2):
+            assert abs(laurent("virtual")[i] - virtual[i]) <= 1e-11 * scale
+        # MadLoop's R2 exceeds ours by its finite-part difference from Recola.
+        omitted = providers["madloop"]["finite"] - providers["recola"]["finite"]
+        assert abs(omitted) > 1e-3 * abs(virtual[0])
+        r2 = row["r2"]["finite"] - laurent("r2")[0]
+        assert abs(r2 - omitted) <= 1e-11 * scale, (index, r2, omitted)
+        # The mixings: 0.3 % to 5.6 % of MadLoop's UV single pole.
+        assert abs(row["mixing"]["single_pole"]) > 1e-3 * abs(row["ct"]["single_pole"])
+    print({k: f"{v:.1e}" for k, v in worst.items()})
 
 
 @pytest.mark.loop_nightly

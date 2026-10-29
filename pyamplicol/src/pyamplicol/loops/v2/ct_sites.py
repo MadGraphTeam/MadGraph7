@@ -123,7 +123,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from fractions import Fraction
 from functools import reduce
 from itertools import product
@@ -140,6 +140,7 @@ from pyamplicol.color.connections import (
 )
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.color.correlator_matrices import process_color_legs
+from pyamplicol.loops.model import KernelBasisEntry
 
 from .blocks import Block, TreeBlocks, _NativeFields, _parity, identity_pairing_sign
 from .catalogue import (
@@ -836,6 +837,34 @@ class SiteTerm:
     colour: ConnectedColorTensor = field(repr=False)
 
 
+@dataclass(frozen=True, slots=True)
+class PromotedRootEntry(KernelBasisEntry):
+    """A root vertex entry read on a scalar-vector mixing line (WP3.2
+    EWI-7, routed item (v)): its scalar leg ``promoted_leg`` (0-based) takes
+    the line's vector current, contracted with the leg's momentum, exactly as
+    the scalar-side vertex copies of ``models.ct_line_insertions`` do inside
+    the blocks (Lorentz structure ``L * P(mu_k, k)``,
+    ``_promoted_lorentz``). Its key (``collection``) and Lorentz name differ
+    from the entry's; colour, coupling and orders are the entry's. The kernel
+    catalogue builds it from the base structure ``base_lorentz_name``
+    (``catalogue._CatalogueBuilder.add_counterterm_sites``)."""
+
+    promoted_leg: int = -1
+    base_lorentz_name: str = ""
+
+
+def promoted_root_entry(entry: Any, leg: int) -> PromotedRootEntry:
+    """``entry`` with its scalar leg ``leg`` (0-based) promoted to the vector
+    leg of a scalar-vector mixing line (``PromotedRootEntry``)."""
+
+    values = {item.name: getattr(entry, item.name) for item in fields(KernelBasisEntry)}
+    values["collection"] = f"{entry.collection}/promoted-leg-{leg + 1}"
+    values["lorentz_name"] = f"{entry.lorentz_name}__P{leg + 1}"
+    return PromotedRootEntry(
+        **values, promoted_leg=leg, base_lorentz_name=entry.lorentz_name
+    )
+
+
 class ConjugateVertices:
     """The model's conjugate rule of each vertex not closed under conjugation.
 
@@ -1078,9 +1107,17 @@ class SiteClosure:
         return {site: frozenset(cells) for site, cells in out.items()}
 
     def vertex_terms(
-        self, entries: Iterable[Any], attachments: Sequence[BlockCurrent]
+        self,
+        entries: Iterable[Any],
+        attachments: Sequence[BlockCurrent],
+        promoted: frozenset[int] = frozenset(),
     ) -> tuple[SiteTerm, ...]:
-        """Terms of the vertex ``entries`` with ``attachments`` on its UFO legs."""
+        """Terms of the vertex ``entries`` with ``attachments`` on its UFO legs.
+
+        ``promoted`` are the ids of blocks that carry the vector current of a
+        scalar-vector mixing line read as its scalar (``ct_closure.CloneLine.
+        promoted``): the kernel leg such a block fills reads it through the
+        entry's promoted copy (``promoted_root_entry``)."""
 
         options = []
         for current in attachments:
@@ -1098,8 +1135,19 @@ class SiteClosure:
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
             for choice in product(*options):
+                read = entry
+                if promoted:
+                    hits = [
+                        k for k, index in enumerate(legs) if choice[index].id in promoted
+                    ]
+                    if len(hits) > 1:
+                        raise ValueError(
+                            f"{entry.vertex_name}: several mixing lines at one root"
+                        )
+                    if hits:
+                        read = promoted_root_entry(entry, hits[0])
                 chiralities = tuple(choice[index].key.chirality for index in legs)
-                key = CountertermSiteKey(*_entry_key(entry), chiralities)
+                key = CountertermSiteKey(*_entry_key(read), chiralities)
                 binding = self._bindings.get(key)
                 if binding is None:
                     if any(chiralities):
@@ -1110,11 +1158,11 @@ class SiteClosure:
                     wick *= block.wick_sign
                 out.append(
                     SiteTerm(
-                        entry,
+                        read,
                         binding,
                         choice,
                         legs,
-                        sign * wick * self._reading_sign(entry, binding),
+                        sign * wick * self._reading_sign(read, binding),
                         self._colour(colour_entry or entry, attachments, choice),
                     )
                 )
@@ -1659,6 +1707,8 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
+    "PromotedRootEntry",
+    "promoted_root_entry",
     "restricted_to_zero",
     "ufo_colour_network",
     "vanishes_identically",

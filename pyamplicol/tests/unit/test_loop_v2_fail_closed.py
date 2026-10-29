@@ -137,8 +137,6 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         LINE_REFUSAL,
         # WP3.2 EWI-5's interim veto guard (``test_loop_v2_ew_leptons.py``).
         "veto-unlabelled-counterterms",
-        # WP3.2 EWI-7's routed item (v) (``test_loop_v2_ew_validate``).
-        "counterterm-root-goldstone-mixing",
         # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
         "loop-vertex-outside-tree-model",
         # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``).

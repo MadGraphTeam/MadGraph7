@@ -75,6 +75,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from fractions import Fraction
 from itertools import permutations, product
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
@@ -1156,18 +1157,37 @@ class _CatalogueBuilder:
             raise LoopKernelCatalogueError(
                 f"counterterm {entry.vertex_name} has a ghost leg"
             )
-        lorentz = self.lorentz.get(entry.lorentz_name)
+        # A root entry promoted onto a scalar-vector mixing line
+        # (``ct_sites.PromotedRootEntry``): its scalar leg takes a vector
+        # current contracted with the leg's momentum, L * P(mu_k, k).
+        promoted = getattr(entry, "promoted_leg", None)
+        name = entry.lorentz_name if promoted is None else entry.base_lorentz_name
+        lorentz = self.lorentz.get(name)
         if lorentz is None:
             raise LoopKernelCatalogueError(
-                f"counterterm Lorentz structure {entry.lorentz_name!r} is not in "
+                f"counterterm Lorentz structure {name!r} is not in "
                 f"the compiled payload of {self.compiled.name!r}"
+            )
+        structure = str(lorentz["structure"])
+        if promoted is not None:
+            if records[promoted].spin != 1:
+                raise LoopKernelCatalogueError(
+                    f"{entry.vertex_name}: leg {promoted + 1} is not a scalar leg"
+                )
+            vector = self._promotion_vector(records[promoted])
+            records = (*records[:promoted], vector, *records[promoted + 1 :])
+            pdgs = tuple(record.pdg_code for record in records)
+            leg = promoted + 1
+            structure = (
+                f"({structure})*UFO::{{}}::P("
+                f"UFO::{{}}::idx(1,{leg}),UFO::{{}}::idx(1,{leg}))"
             )
         spins = tuple(record.spin for record in records)
         try:
             # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ), the
             # dense ``tensors.LEVI_CIVITA``.
             expression = normalize_lorentz_expression(
-                str(lorentz["structure"]),
+                structure,
                 spins,
                 model_symbols=self.model_symbols,
             ).expression
@@ -1187,6 +1207,30 @@ class _CatalogueBuilder:
             *(_state_chiralities(self.model, pdg) for pdg in pdgs)
         ):
             self._add_counterterm_site(entry, pdgs, spins, expression, chiralities)
+
+    def _promotion_vector(self, scalar: Any) -> Any:
+        """A vector record whose current a promoted scalar leg takes (four
+        components, no chirality): the uncoloured, non-ghost vector of the
+        scalar's charge with the lowest |PDG| code (a mixing line's vector
+        current enters the kernel as is, whichever vector it was)."""
+
+        charge = Fraction(str(scalar.charge))
+        found = sorted(
+            (
+                record
+                for record in self.by_pdg.values()
+                if record.spin == 3
+                and record.ghost_number == 0
+                and int(record.color) == 1
+                and Fraction(str(record.charge)) == charge
+            ),
+            key=lambda record: (abs(record.pdg_code), record.pdg_code),
+        )
+        if not found:
+            raise LoopKernelCatalogueError(
+                f"no vector of charge {charge} for a promoted scalar leg"
+            )
+        return found[0]
 
     def _add_counterterm_site(
         self,
