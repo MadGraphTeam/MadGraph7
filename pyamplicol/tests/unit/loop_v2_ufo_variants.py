@@ -3,8 +3,10 @@
 external mass parameter is made internal with the same value (genericity
 audit M2; ``test_loop_v2_onshell.py``, ``test_loop_v2_ew.py``), a model
 whose strong coupling runs with the renormalisation scale (genericity audit
-2 m3; ``test_loop_v2_sdk_parity.py``) and one whose colour-scheme constant is
-an external parameter (genericity audit 2 M2; ``test_loop_v2_sdk_parity.py``).
+2 m3; ``test_loop_v2_sdk_parity.py``), one whose colour-scheme constant is
+an external parameter (genericity audit 2 M2; ``test_loop_v2_sdk_parity.py``)
+and one whose particle propagates with a complex pole mass
+(``test_loop_v2_native_complex_masses.py``).
 """
 
 from __future__ import annotations
@@ -12,6 +14,50 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
+
+
+def complex_mass_ufo(
+    source: Path, destination: Path, particle: str, mass: str, width: str
+) -> Path:
+    """A copy of a UFO whose particle ``particle`` (its ``Particle(...)``
+    definition's variable name) propagates with the complex pole mass
+    ``CMASS_<mass> = sqrt(mass^2 - i mass width)`` and width ``ZERO``, as
+    MG5_aMC's complex-mass scheme gives it (``Model.
+    change_mass_to_complex_scheme``): an internal parameter of complex type
+    that every propagator of the particle (and its antiparticle) reads. Its
+    couplings and counterterms keep the real ``mass``: a complex-parameter
+    fixture of the native plumbing (MS-CMS-N), not the scheme's model. Use it
+    with the particle internal only (external states stay stable). Pickled
+    model caches are not copied (they would shadow the edit)."""
+
+    shutil.copytree(
+        source, destination, ignore=shutil.ignore_patterns("*.pkl", "__pycache__")
+    )
+    alias = f"CMASS_{mass}"
+    path = destination / "parameters.py"
+    text = path.read_text()
+    assert f"name = '{alias}'" not in text, alias
+    path.write_text(
+        text
+        + f"\n{alias} = Parameter(name = '{alias}',\n"
+        "                 nature = 'internal',\n"
+        "                 type = 'complex',\n"
+        f"                 value = 'cmath.sqrt({mass}**2 - complex(0,1)*{mass}*{width})',\n"
+        f"                 texname = '{alias}')\n"
+    )
+    path = destination / "particles.py"
+    text = path.read_text()
+    match = re.search(
+        rf"^{particle} = Particle\((?:.*\n)*?.*\)\n", text, re.MULTILINE
+    )
+    assert match is not None, particle
+    block = match.group(0)
+    edited = block.replace(f"mass = Param.{mass},", f"mass = Param.{alias},").replace(
+        f"width = Param.{width},", "width = Param.ZERO,"
+    )
+    assert edited.count(alias) == 1 and "Param.ZERO" in edited, block
+    path.write_text(text.replace(block, edited))
+    return destination
 
 
 def running_coupling_ufo(source: Path, destination: Path) -> Path:

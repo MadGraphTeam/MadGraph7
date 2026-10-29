@@ -88,6 +88,19 @@ def _complex_text(value: Any) -> list[str]:
     return [_fraction_text(value.real), _fraction_text(value.imag)]
 
 
+def _mass_text(value: Any) -> str | list[str]:
+    """A squared plan mass as the executor reads it (``V2Batch``): an exact
+    text, or an ``[re, im]`` pair for a complex value (a complex-mass
+    scheme's pole mass, M^2 - i M Gamma)."""
+
+    if isinstance(value, int | Fraction):
+        return _fraction_text(value)
+    value = rx.exact(value)
+    if value.imag == 0:
+        return _fraction_text(value.real)
+    return [_fraction_text(value.real), _fraction_text(value.imag)]
+
+
 def born_helicities(slice_: Any) -> tuple[tuple[int, ...], ...]:
     """Per leg (label order) its sorted helicities: the Born rows are their
     product (``born_rows``)."""
@@ -1566,7 +1579,7 @@ class NativeExecutor:
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
-                [_fraction_text(masses[m]) for m in exported.masses],
+                [_mass_text(masses[m]) for m in exported.masses],
                 [
                     _fraction_text(m)
                     for m in _leg_masses(slice_, evaluation.parameters, working)
@@ -1834,7 +1847,9 @@ class NativeExecutor:
     def bound_masses(self, points, scales, parameters=None, precision=None):
         """The squared masses the native lane binds for a batch
         (``inputs="native"``, ``TreeProgram::bind``): per plan mass and per
-        leg (the on-shell invariants, DESIGN §11.1), exact ``Fraction``s."""
+        leg (the on-shell invariants, DESIGN §11.1), exact ``Fraction``s; a
+        complex plan mass (``["complex", o]``, a complex-mass scheme's pole
+        mass) as its ``(real, imaginary)`` pair of ``Fraction``s."""
 
         from .assemble import Precision
 
@@ -1842,8 +1857,16 @@ class NativeExecutor:
         arithmetic, digits = self._arithmetic(precision, False)
         evaluations = self._native_points(points, scales, parameters, precision)
         native = self.native(arithmetic, digits, len(evaluations))
-        masses, legs = native.bound_masses(self._inputs(evaluations, arithmetic))
-        return [Fraction(m) for m in masses], [Fraction(m) for m in legs]
+        masses, legs, imaginary = native.bound_masses(
+            self._inputs(evaluations, arithmetic)
+        )
+        plan = [Fraction(m) for m in masses]
+        if imaginary:
+            plan = [
+                (m, Fraction(i)) if Fraction(i) != 0 else m
+                for m, i in zip(plan, imaginary, strict=True)
+            ]
+        return plan, [Fraction(m) for m in legs]
 
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
