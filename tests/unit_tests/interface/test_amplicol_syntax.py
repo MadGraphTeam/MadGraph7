@@ -232,6 +232,7 @@ class AmplicolExportTest(unittest.TestCase):
                     {'phasespace_order': [0, 4, 1, 2, 3], 'resonances': []},
                     {'phasespace_order': [0, 4, 1, 2, 3],
                      'resonances': [{'pdg': 24, 'legs': [2, 3]}]}],
+                'colored_resonances': [{'pdg': 6, 'legs': [2, 3, 4], 'color': 3}],
                 'processes': [
                     {'multichannels': [0, 1], 'color_flows': 0,
                      'matrix_elements': [{'pdg_ids': index, 'factor': 1}
@@ -252,3 +253,77 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertEqual(entries[0]['phasespace_channels'][1],
                          {'order': [0, 4, 1, 2, 3],
                           'resonances': [{'pdg': 24, 'legs': [2, 3]}]})
+        # the launch rejects a coloured resonance that goes on shell
+        self.assertEqual(entries[0]['colored_resonances'],
+                         [{'pdg': 6, 'legs': [2, 3, 4], 'color': 3}])
+
+
+class AmplicolLaunchResonancesTest(unittest.TestCase):
+    """The s-channel resonances of an [amplicol] subprocess are fixed at output;
+    the launch keeps those that go on shell with the param card values."""
+
+    # q q~ > e- e+ mu- mu+ through Z Z, Z and H > Z Z
+    order = [0, 2, 3, 4, 5, 1]
+    z_e, z_mu = {'pdg': 23, 'legs': [2, 3]}, {'pdg': 23, 'legs': [4, 5]}
+    h = {'pdg': 25, 'legs': [2, 3, 4, 5]}
+
+    def setUp(self):
+        try:
+            from madgraph.mg7 import subprocess_amplicol
+        except ImportError:
+            self.skipTest('madspace is not installed')
+        self.module = subprocess_amplicol
+        self.meta = {
+            'incoming': [2, -2], 'outgoing': [11, -11, 13, -13],
+            'phasespace_channels': [
+                {'order': self.order, 'resonances': []},
+                {'order': self.order, 'resonances': [self.z_e, self.z_mu]},
+                {'order': self.order, 'resonances': [self.h, self.z_e]},
+                {'order': self.order, 'resonances': [self.h]},
+            ],
+            'colored_resonances': [{'pdg': 6, 'legs': [2, 3], 'color': 3}],
+            'flavors': [
+                {'channels': [0, 1, 2, 3],
+                 'resonance_pdgs': [[], [23, 23], [25, 23], [25]]},
+                {'channels': [3, 1], 'resonance_pdgs': [[25], [23, 23]]},
+            ],
+        }
+
+    def active(self, masses, widths):
+        return self.module.active_resonances(
+            self.meta, lambda pid: masses.get(pid, 0.), lambda pid: widths.get(pid, 0.))
+
+    def test_all_resonances_on_shell(self):
+        meta = self.active({23: 91., 25: 125.}, {23: 2.5, 25: 4e-3})
+        self.assertEqual(meta['phasespace_channels'], self.meta['phasespace_channels'])
+        self.assertEqual(meta['flavors'], self.meta['flavors'])
+
+    def test_stable_resonance_is_dropped_and_channels_merged(self):
+        # without a Higgs width, H > Z Z becomes Z and H the non-resonant channel
+        meta = self.active({23: 91., 25: 125.}, {23: 2.5})
+        self.assertEqual(meta['phasespace_channels'], [
+            {'order': self.order, 'resonances': []},
+            {'order': self.order, 'resonances': [self.z_e, self.z_mu]},
+            {'order': self.order, 'resonances': [self.z_e]},
+        ])
+        self.assertEqual([(f['channels'], f['resonance_pdgs']) for f in meta['flavors']],
+                         [([0, 1, 2], [[], [23, 23], [23]]), ([0, 1], [[], [23, 23]])])
+        # the LHE diagram masks follow the merged channels
+        diagrams, masks = self.module.lhe_diagrams(meta)
+        self.assertEqual(diagrams, [(0, ()), (1, (23, 23)), (2, (23,))])
+        self.assertEqual(masks, [[1., 1., 1.], [1., 1., 0.]])
+
+    def test_resonance_below_its_decay_threshold_is_dropped(self):
+        # mu+ mu- of 2 x 70 GeV: neither Z > mu+ mu- nor H > 4l are on shell
+        meta = self.active({13: 70., 23: 91., 25: 125.}, {23: 2.5, 25: 4e-3})
+        self.assertEqual(
+            [c['resonances'] for c in meta['phasespace_channels']], [[], [self.z_e]])
+        self.assertEqual([f['channels'] for f in meta['flavors']], [[0, 1], [0, 1]])
+        self.assertEqual(self.meta['flavors'][1]['channels'], [3, 1])
+
+    def test_coloured_resonance_on_shell_is_an_error(self):
+        masses, widths = {6: 173., 23: 91.}, {23: 2.5}
+        self.active(masses, widths)
+        widths[6] = 1.5
+        with self.assertRaisesRegex(RuntimeError, 'coloured s-channel resonance 6'):
+            self.active(masses, widths)

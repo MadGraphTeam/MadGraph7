@@ -4,9 +4,11 @@ Each subprocess is one UMAMI channel of an AmpliCol provider: colour orderings
 integrated at leading colour over a common set of colour-ordered phase-space
 channels. They differ in where the colour singlets attach to the colour lines
 and in the s-channel resonances they map out, and are weighted by the densities
-of their mappings. A second pass re- or unweights the events to full colour with
-the ratio of the full-colour to the leading-colour matrix element summed over
-all colour orderings, at the helicity of the event.
+of their mappings. Resonances that cannot go on shell with the param card
+masses and widths are dropped at launch. A second pass re- or
+unweights the events to full colour with the ratio of the full-colour to the
+leading-colour matrix element summed over all colour orderings, at the
+helicity of the event.
 """
 
 from __future__ import annotations
@@ -135,6 +137,53 @@ def channel_topologies(meta: dict, process: MadgraphProcess) -> list[tuple]:
     ]
 
 
+def active_resonances(meta: dict, get_mass, get_width) -> dict:
+    """The subprocess meta without the s-channel resonances that cannot go on
+    shell: a resonance is active if its width is positive and its mass above
+    the masses of its decay legs. Phase-space channels that then agree are
+    merged, and the flavours renumbered to them."""
+    leg_masses = [
+        get_mass(pid) for pid in clean_pids(meta["incoming"] + meta["outgoing"])
+    ]
+
+    def active(resonance):
+        pdg = abs(resonance["pdg"])
+        return get_width(pdg) > 0 and get_mass(pdg) > sum(
+            leg_masses[leg] for leg in resonance["legs"]
+        )
+
+    for resonance in meta.get("colored_resonances", []):
+        if active(resonance):
+            raise RuntimeError(
+                f"the coloured s-channel resonance {resonance['pdg']} can go on "
+                "shell, which [amplicol] phase-space mappings do not follow yet; "
+                "generate the process with on-shell decays or with the madmatrix "
+                "backend"
+            )
+    channels, lookup, remap, kept = [], {}, [], []
+    for channel in meta["phasespace_channels"]:
+        keep = [i for i, r in enumerate(channel["resonances"]) if active(r)]
+        resonances = [channel["resonances"][i] for i in keep]
+        key = (
+            tuple(channel["order"]),
+            tuple((abs(r["pdg"]), tuple(r["legs"])) for r in resonances),
+        )
+        if key not in lookup:
+            lookup[key] = len(channels)
+            channels.append({**channel, "resonances": resonances})
+        remap.append(lookup[key])
+        kept.append(keep)
+    flavors = []
+    for flavor in meta["flavors"]:
+        indices, pdgs = [], []
+        for index, resonance_pdgs in zip(flavor["channels"], flavor["resonance_pdgs"]):
+            if remap[index] not in indices:
+                indices.append(remap[index])
+                pdgs.append([resonance_pdgs[i] for i in kept[index]])
+        flavors.append({**flavor, "channels": indices, "resonance_pdgs": pdgs})
+    return {**meta, "phasespace_channels": channels, "flavors": flavors}
+
+
 def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
     """The diagrams that the LHE writer takes the resonances of an event from,
     one per phase-space channel and resonance charges, and per flavour a mask
@@ -159,6 +208,7 @@ def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]
 def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArgs:
     """LHE completion of an AmpliCol subprocess: its diagrams are the
     phase-space channels, with the resonances they map out."""
+    meta = active_resonances(meta, process.get_mass, process.get_width)
     diagrams, _ = lhe_diagrams(meta)
     if diagrams:
         topologies = channel_topologies(meta, process)
@@ -207,6 +257,7 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
 class AmplicolSubprocess(MadgraphSubprocess):
     def __init__(self, process, meta, subproc_id, unmerged_meta=None):
         super().__init__(process, meta, subproc_id, unmerged_meta)
+        self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
         self.check_flavor_blind_cuts()
 
     def check_flavor_blind_cuts(self):

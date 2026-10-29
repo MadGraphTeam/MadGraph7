@@ -403,6 +403,7 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
             'phasespace_channels': [
                 {'order': ps['phasespace_order'], 'resonances': ps['resonances']}
                 for ps in phasespace],
+            'colored_resonances': channel.get('colored_resonances', []),
             'masses': provider['masses'],
             'supports_alpha_s': provider['supports_alpha_s'],
             'flavors': flavors,
