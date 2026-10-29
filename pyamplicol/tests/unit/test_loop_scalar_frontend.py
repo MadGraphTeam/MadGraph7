@@ -174,15 +174,9 @@ def test_active_invalid_predicate_and_inactive_branch(
     if precision is not None:
         options["precision"] = precision
     batch = native.NativeBatch.from_decimal(values, 3, 2, **options)
-    for engine in (
-        ("interpreted", "jit") if arithmetic == "double" else ("interpreted",)
-    ):
-        plan = native.CoefficientPlan(
-            [saved], [[0, 1]], 2, [2, 3], **options, engine=engine
-        )
-        result = plan.evaluate_batch(batch)
-        assert result.nonfinite_rows() == [1, 2]
-        assert Decimal(result.to_decimal()[0][0]) == 1
+    result = native.CoefficientEvaluator(saved, **options).evaluate_batch(batch)
+    assert result.nonfinite_rows() == [1, 2]
+    assert Decimal(result.to_decimal()[0][0]) == 1
 
 
 def test_complete_gmu_scalar_source_coverage(loop_gmu_ufo):
@@ -233,17 +227,12 @@ def test_native_component_access_preserves_extremes(
         1,
         **options,
     )
-    for engine in (
-        ("interpreted", "jit") if arithmetic == "double" else ("interpreted",)
-    ):
-        plan = native.CoefficientPlan(
-            [saved], [[0]], 1, list(range(1, 9)), **options, engine=engine
-        )
-        result = plan.evaluate_batch(batch)
-        assert not result.nonfinite_rows()
-        values, original = result.to_decimal(), batch.to_decimal()
-        for row in range(2):
-            assert Decimal(values[8 * row][0]) == Decimal(original[row][0])
-            assert Decimal(values[8 * row + 2][0]) == Decimal(original[row][1])
-            assert Decimal(values[8 * row + 4][0]) == 0
-            assert Decimal(values[8 * row + 6][0]) == 1
+    result = native.CoefficientEvaluator(saved, **options).evaluate_batch(batch)
+    assert not result.nonfinite_rows()
+    values, original = result.to_decimal(), batch.to_decimal()
+    width = len(expressions)
+    for row in range(2):
+        assert Decimal(values[width * row][0]) == Decimal(original[row][0])
+        assert Decimal(values[width * row + 1][0]) == Decimal(original[row][1])
+        assert Decimal(values[width * row + 2][0]) == 0
+        assert Decimal(values[width * row + 3][0]) == 1

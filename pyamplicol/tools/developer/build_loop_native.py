@@ -83,7 +83,7 @@ sys.path.insert(0, sys.argv[1])
 from pyamplicol import _rusticol
 from pyamplicol._internal.versions import verify_native_module
 verify_native_module(_rusticol)
-assert _rusticol._loop.NativeVirtualRuntime
+assert _rusticol._loop.V2Executor
 """
 
 
