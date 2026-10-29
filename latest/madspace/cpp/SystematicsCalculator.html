@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -683,6 +689,12 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21SystematicsCalculator26emission_variation_indicesEv">
+<span id="_CPPv3NK8madspace21SystematicsCalculator26emission_variation_indicesEv"></span><span id="_CPPv2NK8madspace21SystematicsCalculator26emission_variation_indicesEv"></span><span id="madspace::SystematicsCalculator::emission_variation_indicesC"></span><span class="target" id="classmadspace_1_1SystematicsCalculator_1a7a5e9bbd7e721fa85d465d9ae0599f9d"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">emission_variation_indices</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21SystematicsCalculator26emission_variation_indicesEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Indices into <a class="reference internal" href="#classmadspace_1_1SystematicsCalculator_1a375134dea0a946ade94fb8f55bcea637"><span class="std std-ref">variations</span></a> of the MLM emission scale variations (their own envelope group). </p>
+</dd></dl>
+
+<dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace21SystematicsCalculator10pdf_groupsEv">
 <span id="_CPPv3NK8madspace21SystematicsCalculator10pdf_groupsEv"></span><span id="_CPPv2NK8madspace21SystematicsCalculator10pdf_groupsEv"></span><span id="madspace::SystematicsCalculator::pdf_groupsC"></span><span class="target" id="classmadspace_1_1SystematicsCalculator_1afd46145aa9f2912c5a0c4056fa42a33f"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="PdfGroupInfo.html#_CPPv4N8madspace12PdfGroupInfoE" title="madspace::PdfGroupInfo"><span class="n"><span class="pre">PdfGroupInfo</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdf_groups</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21SystematicsCalculator10pdf_groupsEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>The PDF groups, one per set with members among <a class="reference internal" href="#classmadspace_1_1SystematicsCalculator_1a375134dea0a946ade94fb8f55bcea637"><span class="std std-ref">variations</span></a>. </p>
@@ -829,6 +841,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator7membersEv"><code class="docutils literal notranslate"><span class="pre">members()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator8warningsEv"><code class="docutils literal notranslate"><span class="pre">warnings()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator23scale_variation_indicesEv"><code class="docutils literal notranslate"><span class="pre">scale_variation_indices()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator26emission_variation_indicesEv"><code class="docutils literal notranslate"><span class="pre">emission_variation_indices()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator10pdf_groupsEv"><code class="docutils literal notranslate"><span class="pre">pdf_groups()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator7computeER11EventBufferRNSt6vectorIdEE"><code class="docutils literal notranslate"><span class="pre">compute()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21SystematicsCalculator13reweight_infoER11EventBufferNSt6size_tE"><code class="docutils literal notranslate"><span class="pre">reweight_info()</span></code></a></li>

@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -633,6 +639,31 @@
 </dd></dl>
 
 <dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace17SystematicsConfig4alpsE">
+<span id="_CPPv3N8madspace17SystematicsConfig4alpsE"></span><span id="_CPPv2N8madspace17SystematicsConfig4alpsE"></span><span id="madspace::SystematicsConfig::alps__std::vector:double:"></span><span class="target" id="structmadspace_1_1SystematicsConfig_1a98cdc111838d96c8589f8a754313827f"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alps</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17SystematicsConfig4alpsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Emission scale factors of an MLM merged sample, madevent’s <code class="docutils literal notranslate"><span class="pre">alpsfact</span></code>: the alpha_s of every clustering vertex is evaluated at the factor times the vertex scale. </p>
+<p><code class="docutils literal notranslate"><span class="pre">1.0</span></code> is the nominal point; the other values are written in an “Emission scale variation” group. Only for events whose record carries the vertex scales (ParticleRecord::f_alphas_scales). </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace17SystematicsConfig10pdf_ladderE">
+<span id="_CPPv3N8madspace17SystematicsConfig10pdf_ladderE"></span><span id="_CPPv2N8madspace17SystematicsConfig10pdf_ladderE"></span><span id="madspace::SystematicsConfig::pdf_ladder__b"></span><span class="target" id="structmadspace_1_1SystematicsConfig_1abadffb220fe8701c3efa862a7a0d2461"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">pdf_ladder</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17SystematicsConfig10pdf_ladderE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>If true, the events may carry an MLM pdf reweighting ladder (ParticleRecord::f_pdf_ladder): every parton of the PDF set is then made available, since a ladder step can be any of them. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace17SystematicsConfig16ladder_min_scaleE">
+<span id="_CPPv3N8madspace17SystematicsConfig16ladder_min_scaleE"></span><span id="_CPPv2N8madspace17SystematicsConfig16ladder_min_scaleE"></span><span id="madspace::SystematicsConfig::ladder_min_scale__double"></span><span class="target" id="structmadspace_1_1SystematicsConfig_1a97f94ecc15f62b69bdbe744d0187417b"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_min_scale</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17SystematicsConfig16ladder_min_scaleE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Range the varied scales of the pdf ladder are clamped to, normally the Q range of the PDF grid, where LHAPDF freezes the density for madevent; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables a bound. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace17SystematicsConfig16ladder_max_scaleE">
+<span id="_CPPv3N8madspace17SystematicsConfig16ladder_max_scaleE"></span><span id="_CPPv2N8madspace17SystematicsConfig16ladder_max_scaleE"></span><span id="madspace::SystematicsConfig::ladder_max_scale__double"></span><span class="target" id="structmadspace_1_1SystematicsConfig_1a16f048e0c105f044b42656ea7a078853"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_max_scale</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17SystematicsConfig16ladder_max_scaleE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>See <a class="reference internal" href="#structmadspace_1_1SystematicsConfig_1a97f94ecc15f62b69bdbe744d0187417b"><span class="std std-ref">ladder_min_scale</span></a>. </p>
+</dd></dl>
+
+<dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace17SystematicsConfig8togetherE">
 <span id="_CPPv3N8madspace17SystematicsConfig8togetherE"></span><span id="_CPPv2N8madspace17SystematicsConfig8togetherE"></span><span id="madspace::SystematicsConfig::together__b"></span><span class="target" id="structmadspace_1_1SystematicsConfig_1abac4c2d8341a014e399905862c243f06"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">together</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17SystematicsConfig8togetherE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>If true, vary every <code class="docutils literal notranslate"><span class="pre">(mur,</span> <span class="pre">muf)</span></code> combination; if false, vary one factor at a time. </p>
@@ -762,6 +793,10 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfigE"><code class="docutils literal notranslate"><span class="pre">madspace::SystematicsConfig</span></code></a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig3murE"><code class="docutils literal notranslate"><span class="pre">mur</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig3mufE"><code class="docutils literal notranslate"><span class="pre">muf</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig4alpsE"><code class="docutils literal notranslate"><span class="pre">alps</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig10pdf_ladderE"><code class="docutils literal notranslate"><span class="pre">pdf_ladder</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig16ladder_min_scaleE"><code class="docutils literal notranslate"><span class="pre">ladder_min_scale</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig16ladder_max_scaleE"><code class="docutils literal notranslate"><span class="pre">ladder_max_scale</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig8togetherE"><code class="docutils literal notranslate"><span class="pre">together</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig10dyn_scalesE"><code class="docutils literal notranslate"><span class="pre">dyn_scales</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace17SystematicsConfig12scale_factorE"><code class="docutils literal notranslate"><span class="pre">scale_factor</span></code></a></li>

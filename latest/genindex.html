@@ -333,6 +333,9 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/MatrixElement.html">MatrixElement</a></li>
@@ -464,6 +467,9 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/MatrixElement.html">MatrixElement</a></li>
@@ -649,16 +655,22 @@
           <li><a href="madspace/python/VegasGridOptimizer.html#madspace.VegasGridOptimizer.add_data">(madspace.VegasGridOptimizer method)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.add_int">add_int() (madspace.FunctionBuilder method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/Context.html#madspace.Context.add_matrix_element">add_matrix_element() (madspace.Context method)</a>
 </li>
         <li><a href="madspace/python/Cuts.html#madspace.Cuts.all">all (madspace.Cuts attribute)</a>
 
         <ul>
           <li><a href="madspace/python/Cuts.html#madspace.Cuts.CutMode.all">(madspace.Cuts.CutMode attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.all_diagrams">all_diagrams (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringHistory.all_diagrams">(madspace.MLMClustering.ClusteringHistory attribute)</a>
 </li>
         </ul></li>
         <li><a href="madspace/python/LHEEvent.html#madspace.LHEEvent.alpha_qcd">alpha_qcd (madspace.LHEEvent property)</a>
@@ -673,6 +685,12 @@
         </ul></li>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid">AlphaSGrid (class in madspace)</a>
 </li>
+        <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.alps">alps (madspace.SystematicsConfig property)</a>
+
+        <ul>
+          <li><a href="madspace/python/Variation.html#madspace.Variation.alps">(madspace.Variation property)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/LHEParticle.html#madspace.LHEParticle.anti_color">anti_color (madspace.LHEParticle property)</a>
 </li>
         <li><a href="madspace/python/Cuts.html#madspace.Cuts.any">any (madspace.Cuts attribute)</a>
@@ -749,14 +767,14 @@
 </li>
         <li><a href="madspace/python/LHEMeta.html#madspace.LHEMeta.beam2_pdg_id">beam2_pdg_id (madspace.LHEMeta property)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.beam_index_in">beam_index_in (madspace.MatrixElement attribute)</a>
 
         <ul>
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.beam_index_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/SubprocessSystArgs.html#madspace.SubprocessSystArgs.beam_pdgs">beam_pdgs (madspace.SubprocessSystArgs property)</a>
 </li>
         <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping.beam_rapidity">beam_rapidity() (madspace.PhaseSpaceMapping method)</a>
@@ -812,6 +830,10 @@
         <li><a href="madspace/python/FunctionGenerator.html#madspace.FunctionGenerator.build_function">build_function() (madspace.FunctionGenerator method)</a>
 </li>
         <li><a href="madspace/python/Mapping.html#madspace.Mapping.build_inverse">build_inverse() (madspace.Mapping method)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.bw_masses">bw_masses (madspace.MLMClustering property)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.bw_widths">bw_widths (madspace.MLMClustering property)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -879,6 +901,18 @@
 </li>
         <li><a href="madspace/python/Logger.html#madspace.Logger.clear_log_handler">clear_log_handler() (madspace.Logger static method)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.cluster_state_machine">cluster_state_machine (madspace.MLMClustering property)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.clustering_history">clustering_history (madspace.MLMClustering property)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.clustering_mean">clustering_mean (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ScaleScheme.clustering_mean">(madspace.MLMClustering.ScaleScheme attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.clustering_measure">clustering_measure (madspace.MLMClustering property)</a>
+</li>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.coefficients_shape">coefficients_shape() (madspace.AlphaSGrid method)</a>
 
         <ul>
@@ -917,12 +951,12 @@
 </li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.combine_thread_count">combine_thread_count (madspace.GeneratorConfig property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_compact_npy">combine_to_compact_npy() (madspace.EventGenerator method)</a>
 </li>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_lhe">combine_to_lhe() (madspace.EventGenerator method)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_lhe_npy">combine_to_lhe_npy() (madspace.EventGenerator method)</a>
 </li>
         <li><a href="madspace/python/LHECompleter.html#madspace.LHECompleter.complete_event_data">complete_event_data() (madspace.LHECompleter method)</a>
@@ -1061,6 +1095,12 @@
 </li>
         <li><a href="madspace/python/Diagram.html#madspace.Diagram">Diagram (class in madspace)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.diagram">diagram (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringHistory.diagram">(madspace.MLMClustering.ClusteringHistory attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.diagram_amp2_out">diagram_amp2_out (madspace.MatrixElement attribute)</a>
 
         <ul>
@@ -1087,11 +1127,13 @@
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementOutput.diagram_index_out">(madspace.MatrixElement.MatrixElementOutput attribute)</a>
 </li>
         </ul></li>
-        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.diagram_indices">diagram_indices (madspace.SubprocArgs property)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.diagram_indices">diagram_indices (madspace.SubprocArgs property)</a>
+</li>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.diagram_propagator_pdgs">diagram_propagator_pdgs (madspace.SubprocArgs property)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.diagram_start_states">diagram_start_states (madspace.MLMClustering property)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.diff_cross_section">diff_cross_section() (madspace.FunctionBuilder method)</a>
 </li>
@@ -1173,16 +1215,24 @@
         </ul></li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.elu">elu() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.emission">emission (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.JetScaleScheme.emission">(madspace.MLMClustering.JetScaleScheme attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.emission_variation_indices">emission_variation_indices (madspace.SystematicsCalculator property)</a>
+</li>
         <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping.empty">empty() (madspace.PhaseSpaceMapping method)</a>
 </li>
         <li><a href="madspace/python/LHEParticle.html#madspace.LHEParticle.energy">energy (madspace.LHEParticle property)</a>
 </li>
         <li><a href="madspace/python/Integrand.html#madspace.Integrand.energy_scale">energy_scale() (madspace.Integrand method)</a>
 </li>
-        <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale">EnergyScale (class in madspace)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale">EnergyScale (class in madspace)</a>
+</li>
         <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale.DynamicalScaleType">EnergyScale.DynamicalScaleType (class in madspace)</a>
 </li>
         <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus.error">error (madspace.GeneratorStatus property)</a>
@@ -1208,6 +1258,8 @@
         <li><a href="madspace/python/EventHistogramSpec.html#madspace.EventHistogramSpec">EventHistogramSpec (class in madspace)</a>
 </li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.external_inputs">external_inputs() (madspace.MatrixElement method)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.external_masses">external_masses (madspace.MLMClustering property)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -1259,6 +1311,12 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.flat_window_breit_wigner_invariant_inverse">flat_window_breit_wigner_invariant_inverse() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.flavor">flavor (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.PartonLineScheme.flavor">(madspace.MLMClustering.PartonLineScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.flavor_in">flavor_in (madspace.MatrixElement attribute)</a>
 
         <ul>
@@ -1313,6 +1371,12 @@
 </li>
         <li><a href="madspace/python/FunctionRuntime.html#madspace.FunctionRuntime">FunctionRuntime (class in madspace)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.fxfx">fxfx (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringMeasure.fxfx">(madspace.MLMClustering.ClusteringMeasure attribute)</a>
+</li>
+        </ul></li>
     </ul></td>
   </tr></table>
 </section>
@@ -1343,6 +1407,12 @@
 </li>
         <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus">GeneratorStatus (class in madspace)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.geometric_mean">geometric_mean (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.AlphasScheme.geometric_mean">(madspace.MLMClustering.AlphasScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/Context.html#madspace.Context.get_global">get_global() (madspace.Context method)</a>
 
         <ul>
@@ -1365,6 +1435,12 @@
 </li>
         <li><a href="madspace/python/Function.html#madspace.Function.globals">globals (madspace.Function property)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.goodjet">goodjet (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.PartonLineScheme.goodjet">(madspace.MLMClustering.PartonLineScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.gpu_batch_size">gpu_batch_size (madspace.GeneratorConfig property)</a>
 </li>
         <li><a href="madspace/python/MadnisConfig.html#madspace.MadnisConfig.gpu_generator_batch_granularity">gpu_generator_batch_granularity (madspace.MadnisConfig property)</a>
@@ -1493,10 +1569,10 @@
 </li>
         <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.initrwgt">initrwgt() (madspace.SystematicsCalculator method)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.input">input() (madspace.FunctionBuilder method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/Flow.html#madspace.Flow.input_dim">input_dim() (madspace.Flow method)</a>
 
         <ul>
@@ -1543,6 +1619,10 @@
 </li>
         <li><a href="madspace/python/Mapping.html#madspace.Mapping.inverse_function">inverse_function() (madspace.Mapping method)</a>
 </li>
+        <li><a href="madspace/python/Variation.html#madspace.Variation.is_emission">is_emission (madspace.Variation property)</a>
+</li>
+        <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale.is_mlm">is_mlm() (madspace.EnergyScale method)</a>
+</li>
         <li><a href="madspace/python/Variation.html#madspace.Variation.is_scale">is_scale (madspace.Variation property)</a>
 </li>
         <li><a href="madspace/python/GeneratorStatus.html#madspace.GeneratorStatus.iterations">iterations (madspace.GeneratorStatus property)</a>
@@ -1581,6 +1661,10 @@
   <h2>L</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.ladder_max_scale">ladder_max_scale (madspace.SystematicsConfig property)</a>
+</li>
+        <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.ladder_min_scale">ladder_min_scale (madspace.SystematicsConfig property)</a>
+</li>
         <li><a href="madspace/python/MLP.html#madspace.MLP.last_layer_bias_name">last_layer_bias_name() (madspace.MLP method)</a>
 </li>
         <li><a href="madspace/python/Integrand.html#madspace.Integrand.latent_dims">latent_dims() (madspace.Integrand method)</a>
@@ -1639,10 +1723,10 @@
 </li>
         <li><a href="madspace/python/LHEParticle.html#madspace.LHEParticle.lifetime">lifetime (madspace.LHEParticle property)</a>
 </li>
-        <li><a href="madspace/python/PrettyBox.html#madspace.PrettyBox.line_count">line_count (madspace.PrettyBox property)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/PrettyBox.html#madspace.PrettyBox.line_count">line_count (madspace.PrettyBox property)</a>
+</li>
         <li><a href="madspace/python/MLP.html#madspace.MLP.linear">linear (madspace.MLP attribute)</a>
 
         <ul>
@@ -1713,6 +1797,16 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/Cuts.html#madspace.Cuts.m_inv_min">m_inv_min() (madspace.Cuts method)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.madevent">madevent (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringHistory.madevent">(madspace.MLMClustering.ClusteringHistory attribute)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringMeasure.madevent">(madspace.MLMClustering.ClusteringMeasure attribute)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ScaleScheme.madevent">(madspace.MLMClustering.ScaleScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.madnis_abs_weight">madnis_abs_weight() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.madnis_multi_channel_variance">madnis_multi_channel_variance() (madspace.FunctionBuilder method)</a>
@@ -2265,6 +2359,10 @@
 </li>
         <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScaleE">madspace::EnergyScale (C++ class)</a>
 </li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale26build_mlm_from_start_stateER15FunctionBuilder5Value5Value5ValueRKNSt6vectorI8me_int_tEE">madspace::EnergyScale::build_mlm_from_start_state (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale22build_mlm_with_flavorsER15FunctionBuilder5Value5ValueRKNSt6vectorI8me_int_tEE">madspace::EnergyScale::build_mlm_with_flavors (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale18DynamicalScaleTypeE">madspace::EnergyScale::DynamicalScaleType (C++ enum)</a>
 </li>
         <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale18DynamicalScaleType20half_transverse_massE">madspace::EnergyScale::DynamicalScaleType::half_transverse_mass (C++ enumerator)</a>
@@ -2275,7 +2373,29 @@
 </li>
         <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale18DynamicalScaleType15transverse_massE">madspace::EnergyScale::DynamicalScaleType::transverse_mass (C++ enumerator)</a>
 </li>
-        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE">madspace::EnergyScale::EnergyScale (C++ function)</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE18DynamicalScaleType">[1]</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE18DynamicalScaleTypebbddddRKNSt8optionalI14CustomFunctionEE">[2]</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tEd">[3]</a>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE">madspace::EnergyScale::EnergyScale (C++ function)</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE18DynamicalScaleTypebbddddRKNSt8optionalI14CustomFunctionEEdd">[1]</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tE18DynamicalScaleTypedd">[2]</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleENSt6size_tEddd">[3]</a>, <a href="madspace/cpp/EnergyScale.html#_CPPv4N8madspace11EnergyScale11EnergyScaleERK13MLMClusteringdd">[4]</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale15has_scale_rangeEv">madspace::EnergyScale::has_scale_range (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale14has_scale_vetoEv">madspace::EnergyScale::has_scale_veto (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale6is_mlmEv">madspace::EnergyScale::is_mlm (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale9max_scaleEv">madspace::EnergyScale::max_scale (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale9min_scaleEv">madspace::EnergyScale::min_scale (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale22mlm_alphas_reweightingEv">madspace::EnergyScale::mlm_alphas_reweighting (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale24mlm_diagram_start_statesEv">madspace::EnergyScale::mlm_diagram_start_states (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale20mlm_flavor_dependentEv">madspace::EnergyScale::mlm_flavor_dependent (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale23mlm_history_per_diagramEv">madspace::EnergyScale::mlm_history_per_diagram (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale21mlm_pdf_absolute_pdgsEv">madspace::EnergyScale::mlm_pdf_absolute_pdgs (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/EnergyScale.html#_CPPv4NK8madspace11EnergyScale19mlm_pdf_reweightingEv">madspace::EnergyScale::mlm_pdf_reweighting (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/EventBuffer.html#_CPPv4N8madspace11EventBufferE">madspace::EventBuffer (C++ class)</a>
 </li>
@@ -2751,7 +2871,7 @@
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand12energy_scaleEv">madspace::Integrand::energy_scale (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/Integrand.html#_CPPv4N8madspace9Integrand9IntegrandERK17PhaseSpaceMappingRKNSt6vectorI24DifferentialCrossSectionEERK15AdaptiveMappingRK16AdaptiveDiscreteRK16AdaptiveDiscreteRK14nested_vector2I8me_int_tERK9PdfSourceRKNSt8optionalI15RunningCouplingEERKNSt8optionalI11EnergyScaleEERKNSt8optionalI24PropagatorChannelWeightsEERKNSt8optionalI17SubchannelWeightsEERKNSt8optionalI20ChannelWeightNetworkEERK14nested_vector2I8me_int_tENSt6size_tERKNSt6vectorI8me_int_tEENSt6size_tEbbbRKNSt6vectorINSt6size_tEEERK14nested_vector2INSt6size_tEERKNSt6vectorINSt6size_tEEERKNSt6vectorIdEERKNSt6vectorIbEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEENSt6size_tERKNSt8optionalI14CustomFunctionEERKNSt8optionalI7PdfGridEE">madspace::Integrand::Integrand (C++ function)</a>
+        <li><a href="madspace/cpp/Integrand.html#_CPPv4N8madspace9Integrand9IntegrandERK17PhaseSpaceMappingRKNSt6vectorI24DifferentialCrossSectionEERK15AdaptiveMappingRK16AdaptiveDiscreteRK16AdaptiveDiscreteRK14nested_vector2I8me_int_tERK9PdfSourceRKNSt8optionalI15RunningCouplingEERKNSt8optionalI11EnergyScaleEERKNSt8optionalI24PropagatorChannelWeightsEERKNSt8optionalI17SubchannelWeightsEERKNSt8optionalI20ChannelWeightNetworkEERK14nested_vector2I8me_int_tENSt6size_tERKNSt6vectorI8me_int_tEENSt6size_tEbbbRKNSt6vectorINSt6size_tEEERK14nested_vector2INSt6size_tEERKNSt6vectorINSt6size_tEEERKNSt6vectorIdEERKNSt6vectorIbEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEENSt6size_tERKNSt8optionalI14CustomFunctionEERKNSt8optionalI7PdfGridEEi">madspace::Integrand::Integrand (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand11latent_dimsEv">madspace::Integrand::latent_dims (C++ function)</a>
 </li>
@@ -2841,7 +2961,17 @@
 </li>
         <li><a href="madspace/cpp/LHEEvent.html#_CPPv4NK8madspace8LHEEvent9format_toERNSt6stringE">madspace::LHEEvent::format_to (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent18has_cluster_scalesE">madspace::LHEEvent::has_cluster_scales (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent10has_scalesE">madspace::LHEEvent::has_scales (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent7lo_infoE">madspace::LHEEvent::lo_info (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent5mu_f1E">madspace::LHEEvent::mu_f1 (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent5mu_f2E">madspace::LHEEvent::mu_f2 (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent4mu_rE">madspace::LHEEvent::mu_r (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/LHEEvent.html#_CPPv4N8madspace8LHEEvent9particlesE">madspace::LHEEvent::particles (C++ member)</a>
 </li>
@@ -2900,6 +3030,8 @@
         <li><a href="madspace/cpp/LHEParticle.html#_CPPv4N8madspace11LHEParticleE">madspace::LHEParticle (C++ struct)</a>
 </li>
         <li><a href="madspace/cpp/LHEParticle.html#_CPPv4N8madspace11LHEParticle10anti_colorE">madspace::LHEParticle::anti_color (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LHEParticle.html#_CPPv4N8madspace11LHEParticle13cluster_scaleE">madspace::LHEParticle::cluster_scale (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/LHEParticle.html#_CPPv4N8madspace11LHEParticle5colorE">madspace::LHEParticle::color (C++ member)</a>
 </li>
@@ -2971,6 +3103,8 @@
 </li>
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfoE">madspace::LOReweightInfo (C++ struct)</a>
 </li>
+        <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo5asrwtE">madspace::LOReweightInfo::asrwt (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo11fact_scale1E">madspace::LOReweightInfo::fact_scale1 (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo11fact_scale2E">madspace::LOReweightInfo::fact_scale2 (C++ member)</a>
@@ -2978,6 +3112,12 @@
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo9has_beam1E">madspace::LOReweightInfo::has_beam1 (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo9has_beam2E">madspace::LOReweightInfo::has_beam2 (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo11ladder_pdgsE">madspace::LOReweightInfo::ladder_pdgs (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo8ladder_qE">madspace::LOReweightInfo::ladder_q (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo8ladder_xE">madspace::LOReweightInfo::ladder_x (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/LOReweightInfo.html#_CPPv4N8madspace14LOReweightInfo4pdg1E">madspace::LOReweightInfo::pdg1 (C++ member)</a>
 </li>
@@ -3025,8 +3165,6 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17adam_weight_decayE">madspace::MadnisTraining::Config::adam_weight_decay (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config17batch_size_offsetE">madspace::MadnisTraining::Config::batch_size_offset (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config22batch_size_per_channelE">madspace::MadnisTraining::Config::batch_size_per_channel (C++ member)</a>
@@ -3049,6 +3187,8 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config24cpu_generator_batch_sizeE">madspace::MadnisTraining::Config::cpu_generator_batch_size (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE">madspace::MadnisTraining::Config::fixed_cwnet_fraction (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config28generator_target_size_factorE">madspace::MadnisTraining::Config::generator_target_size_factor (C++ member)</a>
@@ -3234,6 +3374,50 @@
         <li><a href="madspace/cpp/MixMaxRandom.html#_CPPv4N8madspace12MixMaxRandom12MixMaxRandomE11DerivedSeed">madspace::MixMaxRandom::MixMaxRandom (C++ function)</a>, <a href="madspace/cpp/MixMaxRandom.html#_CPPv4N8madspace12MixMaxRandom12MixMaxRandomENSt8uint64_tE">[1]</a>, <a href="madspace/cpp/MixMaxRandom.html#_CPPv4N8madspace12MixMaxRandom12MixMaxRandomEv">[2]</a>
 </li>
         <li><a href="madspace/cpp/MixMaxRandom.html#_CPPv4N8madspace12MixMaxRandom8set_seedE11DerivedSeed">madspace::MixMaxRandom::set_seed (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4N8madspace13MLMClusteringE">madspace::MLMClustering (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering13alphas_schemeEv">madspace::MLMClustering::alphas_scheme (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering19build_along_diagramER15FunctionBuilder5Value5Value">madspace::MLMClustering::build_along_diagram (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering22build_from_start_stateER15FunctionBuilder5Value5Value5ValueRKNSt6vectorI8me_int_tEE">madspace::MLMClustering::build_from_start_state (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering18build_with_flavorsER15FunctionBuilder5Value5ValueRKNSt6vectorI8me_int_tEE">madspace::MLMClustering::build_with_flavors (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering9bw_massesEv">madspace::MLMClustering::bw_masses (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering9bw_widthsEv">madspace::MLMClustering::bw_widths (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering21cluster_state_machineEv">madspace::MLMClustering::cluster_state_machine (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering18clustering_historyEv">madspace::MLMClustering::clustering_history (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering26clustering_mean_pdf_ladderEv">madspace::MLMClustering::clustering_mean_pdf_ladder (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering18clustering_measureEv">madspace::MLMClustering::clustering_measure (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering20diagram_start_statesEv">madspace::MLMClustering::diagram_start_states (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering15external_massesEv">madspace::MLMClustering::external_masses (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering32has_flavor_dependent_clusteringsEv">madspace::MLMClustering::has_flavor_dependent_clusterings (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4N8madspace13MLMClustering13MLMClusteringENSt6vectorI8TopologyEE14nested_vector3INSt6size_tEE14nested_vector2INSt6size_tEEd14JetScaleScheme11ScaleSchemeNSt13unordered_mapIiiEEdddbNSt6vectorIiEEi16PartonLineScheme12AlphasSchemeb17ClusteringMeasure17ClusteringHistoryb">madspace::MLMClustering::MLMClustering (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering17pdf_absolute_pdgsEv">madspace::MLMClustering::pdf_absolute_pdgs (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering15pdf_reweightingEv">madspace::MLMClustering::pdf_reweighting (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClustering.html#_CPPv4NK8madspace13MLMClustering12scale_schemeEv">madspace::MLMClustering::scale_scheme (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClusteringAlongDiagram.html#_CPPv4N8madspace25MLMClusteringAlongDiagramE">madspace::MLMClusteringAlongDiagram (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClusteringAlongDiagram.html#_CPPv4N8madspace25MLMClusteringAlongDiagram25MLMClusteringAlongDiagramERK13MLMClustering">madspace::MLMClusteringAlongDiagram::MLMClusteringAlongDiagram (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClusteringWithFlavors.html#_CPPv4N8madspace24MLMClusteringWithFlavorsE">madspace::MLMClusteringWithFlavors (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/MLMClusteringWithFlavors.html#_CPPv4N8madspace24MLMClusteringWithFlavors24MLMClusteringWithFlavorsERK13MLMClusteringNSt6vectorI8me_int_tEE">madspace::MLMClusteringWithFlavors::MLMClusteringWithFlavors (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MLP.html#_CPPv4N8madspace3MLPE">madspace::MLP (C++ class)</a>
 </li>
@@ -3447,9 +3631,13 @@
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecordE">madspace::ParticleRecord (C++ class)</a>
 </li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord12alphas_scaleEv">madspace::ParticleRecord::alphas_scale (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord13cluster_scaleEv">madspace::ParticleRecord::cluster_scale (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord6energyEv">madspace::ParticleRecord::energy (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord15f_alphas_scalesE">madspace::ParticleRecord::f_alphas_scales (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord12f_clusteringE">madspace::ParticleRecord::f_clustering (C++ member)</a>
 </li>
@@ -3459,7 +3647,19 @@
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord15f_particle_dataE">madspace::ParticleRecord::f_particle_data (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle">madspace::ParticleRecord::from_lhe_particle (C++ function)</a>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord12f_pdf_ladderE">madspace::ParticleRecord::f_pdf_ladder (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb">madspace::ParticleRecord::from_lhe_particle (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord11ladder_infoEv">madspace::ParticleRecord::ladder_info (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord13ladder_lead_qEv">madspace::ParticleRecord::ladder_lead_q (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord10ladder_pdgEv">madspace::ParticleRecord::ladder_pdg (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord8ladder_qEv">madspace::ParticleRecord::ladder_q (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord8ladder_xEv">madspace::ParticleRecord::ladder_x (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ParticleRecord.html#_CPPv4N8madspace14ParticleRecord6layoutEi">madspace::ParticleRecord::layout (C++ function)</a>
 </li>
@@ -3779,6 +3979,8 @@
 </li>
         <li><a href="madspace/cpp/SystematicsCalculator.html#_CPPv4N8madspace21SystematicsCalculator15dynamical_scaleEiRKNSt6vectorINSt5arrayIdXL4EEEEEE">madspace::SystematicsCalculator::dynamical_scale (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/SystematicsCalculator.html#_CPPv4NK8madspace21SystematicsCalculator26emission_variation_indicesEv">madspace::SystematicsCalculator::emission_variation_indices (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/SystematicsCalculator.html#_CPPv4N8madspace21SystematicsCalculator13format_numberEd">madspace::SystematicsCalculator::format_number (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsCalculator.html#_CPPv4NK8madspace21SystematicsCalculator8initrwgtEv">madspace::SystematicsCalculator::initrwgt (C++ function)</a>
@@ -3807,11 +4009,17 @@
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfigE">madspace::SystematicsConfig (C++ struct)</a>
 </li>
+        <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig4alpsE">madspace::SystematicsConfig::alps (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig10dyn_scalesE">madspace::SystematicsConfig::dyn_scales (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig8first_idE">madspace::SystematicsConfig::first_id (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig7has_pdfE">madspace::SystematicsConfig::has_pdf (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig16ladder_max_scaleE">madspace::SystematicsConfig::ladder_max_scale (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig16ladder_min_scaleE">madspace::SystematicsConfig::ladder_min_scale (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig3mufE">madspace::SystematicsConfig::muf (C++ member)</a>
 </li>
@@ -3824,6 +4032,8 @@
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig13nominal_lhaidE">madspace::SystematicsConfig::nominal_lhaid (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig16nominal_set_nameE">madspace::SystematicsConfig::nominal_set_name (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig10pdf_ladderE">madspace::SystematicsConfig::pdf_ladder (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig11pdf_membersE">madspace::SystematicsConfig::pdf_members (C++ member)</a>
 </li>
@@ -4071,6 +4281,8 @@
 </li>
         <li><a href="madspace/cpp/Topology.html#_CPPv4NK8madspace8Topology19t_propagator_massesEv">madspace::Topology::t_propagator_masses (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Topology.html#_CPPv4NK8madspace8Topology20t_propagator_pdg_idsEv">madspace::Topology::t_propagator_pdg_ids (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Topology.html#_CPPv4NK8madspace8Topology19t_propagator_widthsEv">madspace::Topology::t_propagator_widths (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Topology.html#_CPPv4NK8madspace8Topology9to_stringEv">madspace::Topology::to_string (C++ function)</a>
@@ -4161,9 +4373,13 @@
 </li>
         <li><a href="madspace/cpp/Variation.html#_CPPv4N8madspace9VariationE">madspace::Variation (C++ struct)</a>
 </li>
+        <li><a href="madspace/cpp/Variation.html#_CPPv4N8madspace9Variation4alpsE">madspace::Variation::alps (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/Variation.html#_CPPv4N8madspace9Variation3dynE">madspace::Variation::dyn (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/Variation.html#_CPPv4N8madspace9Variation2idE">madspace::Variation::id (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/Variation.html#_CPPv4NK8madspace9Variation11is_emissionEv">madspace::Variation::is_emission (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Variation.html#_CPPv4NK8madspace9Variation10is_nominalEv">madspace::Variation::is_nominal (C++ function)</a>
 </li>
@@ -4309,6 +4525,28 @@
 </li>
         <li><a href="madspace/python/MixMaxRandom.html#madspace.MixMaxRandom">MixMaxRandom (class in madspace)</a>
 </li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.mlm_clustering_hadronic">mlm_clustering_hadronic() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.mlm_clustering_leptonic">mlm_clustering_leptonic() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering">MLMClustering (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.AlphasScheme">MLMClustering.AlphasScheme (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringHistory">MLMClustering.ClusteringHistory (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringMeasure">MLMClustering.ClusteringMeasure (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.JetScaleScheme">MLMClustering.JetScaleScheme (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.PartonLineScheme">MLMClustering.PartonLineScheme (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ScaleScheme">MLMClustering.ScaleScheme (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClusteringAlongDiagram.html#madspace.MLMClusteringAlongDiagram">MLMClusteringAlongDiagram (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/MLMClusteringWithFlavors.html#madspace.MLMClusteringWithFlavors">MLMClusteringWithFlavors (class in madspace)</a>
+</li>
         <li><a href="madspace/python/MLP.html#madspace.MLP">MLP (class in madspace)</a>
 </li>
         <li><a href="madspace/python/ChannelWeightNetwork.html#madspace.ChannelWeightNetwork.mlp">mlp() (madspace.ChannelWeightNetwork method)</a>
@@ -4385,10 +4623,10 @@
 </li>
         <li><a href="madspace/python/NamedValues.html#madspace.NamedValues">NamedValues (class in madspace)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.nominal_description">nominal_description (madspace.SystematicsConfig property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.nominal_error_type">nominal_error_type (madspace.SystematicsConfig property)</a>
 </li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.nominal_lhaid">nominal_lhaid (madspace.SystematicsConfig property)</a>
@@ -4399,6 +4637,10 @@
 
         <ul>
           <li><a href="madspace/python/AdamOptimizer.html#madspace.AdamOptimizer.LRSchedule.none">(madspace.AdamOptimizer.LRSchedule attribute)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.none">(madspace.MLMClustering attribute)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.AlphasScheme.none">(madspace.MLMClustering.AlphasScheme attribute)</a>
 </li>
         </ul></li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.nonzero">nonzero() (madspace.FunctionBuilder method)</a>
@@ -4689,9 +4931,13 @@
           <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale.DynamicalScaleType.partonic_energy">(madspace.EnergyScale.DynamicalScaleType attribute)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.pdf_absolute_pdgs">pdf_absolute_pdgs (madspace.MLMClustering property)</a>
+</li>
         <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.pdf_groups">pdf_groups (madspace.SystematicsCalculator property)</a>
 </li>
         <li><a href="madspace/python/Variation.html#madspace.Variation.pdf_index">pdf_index (madspace.Variation property)</a>
+</li>
+        <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.pdf_ladder">pdf_ladder (madspace.SystematicsConfig property)</a>
 </li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.pdf_members">pdf_members (madspace.SystematicsConfig property)</a>
 </li>
@@ -4733,14 +4979,20 @@
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.pdg_ids_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.per_vertex">per_vertex (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.AlphasScheme.per_vertex">(madspace.MLMClustering.AlphasScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.permutations">permutations (madspace.SubprocArgs property)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.permute_momenta">permute_momenta() (madspace.FunctionBuilder method)</a>
 </li>
-        <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping">PhaseSpaceMapping (class in madspace)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping">PhaseSpaceMapping (class in madspace)</a>
+</li>
         <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping.TChannelMode">PhaseSpaceMapping.TChannelMode (class in madspace)</a>
 </li>
         <li><a href="madspace/python/Observable.html#madspace.Observable.photon_pids">photon_pids (madspace.Observable attribute)</a>
@@ -4775,6 +5027,12 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.product">product() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.production">production (madspace.MLMClustering attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.JetScaleScheme.production">(madspace.MLMClustering.JetScaleScheme attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/Integrand.html#madspace.Integrand.prop_chan_weights">prop_chan_weights() (madspace.Integrand method)</a>
 </li>
         <li><a href="madspace/python/Propagator.html#madspace.Propagator">Propagator (class in madspace)</a>
@@ -5486,6 +5744,18 @@
 </li>
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementOutput.value">(madspace.MatrixElement.MatrixElementOutput property)</a>
 </li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.AlphasScheme.value">(madspace.MLMClustering.AlphasScheme property)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringHistory.value">(madspace.MLMClustering.ClusteringHistory property)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ClusteringMeasure.value">(madspace.MLMClustering.ClusteringMeasure property)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.JetScaleScheme.value">(madspace.MLMClustering.JetScaleScheme property)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.PartonLineScheme.value">(madspace.MLMClustering.PartonLineScheme property)</a>
+</li>
+          <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.ScaleScheme.value">(madspace.MLMClustering.ScaleScheme property)</a>
+</li>
           <li><a href="madspace/python/MLP.html#madspace.MLP.Activation.value">(madspace.MLP.Activation property)</a>
 </li>
           <li><a href="madspace/python/Observable.html#madspace.Observable.ObservableOption.value">(madspace.Observable.ObservableOption property)</a>
@@ -5495,14 +5765,14 @@
           <li><a href="madspace/python/Verbosity.html#madspace.Verbosity.value">(madspace.Verbosity property)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.values">values (madspace.AlphaSGrid property)</a>
 
         <ul>
           <li><a href="madspace/python/PdfGrid.html#madspace.PdfGrid.values">(madspace.PdfGrid property)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/NamedTypes.html#madspace.NamedTypes.values">values() (madspace.NamedTypes method)</a>
 
         <ul>

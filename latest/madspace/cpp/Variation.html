@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -627,6 +633,12 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace9Variation11is_emissionEv">
+<span id="_CPPv3NK8madspace9Variation11is_emissionEv"></span><span id="_CPPv2NK8madspace9Variation11is_emissionEv"></span><span id="madspace::Variation::is_emissionC"></span><span class="target" id="structmadspace_1_1Variation_1a76e8a2b7c32b825af68b11521c13fe67"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_emission</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace9Variation11is_emissionEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether this is an emission scale variation (a non-nominal <code class="docutils literal notranslate"><span class="pre">alps</span></code> at the nominal scales and PDF member). </p>
+</dd></dl>
+
+<dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace9Variation10is_nominalEv">
 <span id="_CPPv3NK8madspace9Variation10is_nominalEv"></span><span id="_CPPv2NK8madspace9Variation10is_nominalEv"></span><span id="madspace::Variation::is_nominalC"></span><span class="target" id="structmadspace_1_1Variation_1a2d6b4313144a362b5fa4d2272ae8a8b5"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_nominal</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace9Variation10is_nominalEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Whether this is the nominal point (nominal scale and PDF member). </p>
@@ -663,6 +675,12 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace9Variation3dynE">
 <span id="_CPPv3N8madspace9Variation3dynE"></span><span id="_CPPv2N8madspace9Variation3dynE"></span><span id="madspace::Variation::dyn__i"></span><span class="target" id="structmadspace_1_1Variation_1ae1ed8cbff2bcb865e7e867b86e239bf8"></span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">dyn</span></span></span><a class="headerlink" href="#_CPPv4N8madspace9Variation3dynE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Dynamical scale choice; <code class="docutils literal notranslate"><span class="pre">-1</span></code> for the scale the events were generated with. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace9Variation4alpsE">
+<span id="_CPPv3N8madspace9Variation4alpsE"></span><span id="_CPPv2N8madspace9Variation4alpsE"></span><span id="madspace::Variation::alps__double"></span><span class="target" id="structmadspace_1_1Variation_1ad611a9fe047c2bde6128bb9a5be2a943"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alps</span></span></span><a class="headerlink" href="#_CPPv4N8madspace9Variation4alpsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Emission scale factor of the MLM alpha_s vertices (madevent’s <code class="docutils literal notranslate"><span class="pre">alpsfact</span></code>); <code class="docutils literal notranslate"><span class="pre">1</span></code> for the nominal vertex scales. </p>
 </dd></dl>
 
 </div>
@@ -728,12 +746,14 @@
 <li><a class="reference internal" href="#">Variation</a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace9VariationE"><code class="docutils literal notranslate"><span class="pre">madspace::Variation</span></code></a><ul>
 <li><a class="reference internal" href="#_CPPv4NK8madspace9Variation8is_scaleEv"><code class="docutils literal notranslate"><span class="pre">is_scale()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace9Variation11is_emissionEv"><code class="docutils literal notranslate"><span class="pre">is_emission()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace9Variation10is_nominalEv"><code class="docutils literal notranslate"><span class="pre">is_nominal()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace9Variation2idE"><code class="docutils literal notranslate"><span class="pre">id</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace9Variation3murE"><code class="docutils literal notranslate"><span class="pre">mur</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace9Variation3mufE"><code class="docutils literal notranslate"><span class="pre">muf</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace9Variation9pdf_indexE"><code class="docutils literal notranslate"><span class="pre">pdf_index</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace9Variation3dynE"><code class="docutils literal notranslate"><span class="pre">dyn</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace9Variation4alpsE"><code class="docutils literal notranslate"><span class="pre">alps</span></code></a></li>
 </ul>
 </li>
 </ul>

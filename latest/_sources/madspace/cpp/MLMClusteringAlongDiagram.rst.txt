@@ -1,0 +1,6 @@
+MLMClusteringAlongDiagram
+=========================
+
+.. doxygenclass:: madspace::MLMClusteringAlongDiagram
+   :members:
+   :undoc-members:

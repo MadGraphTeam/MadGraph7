@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -672,6 +678,34 @@
 </dd></dl>
 
 <dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent18has_cluster_scalesE">
+<span id="_CPPv3N8madspace8LHEEvent18has_cluster_scalesE"></span><span id="_CPPv2N8madspace8LHEEvent18has_cluster_scalesE"></span><span id="madspace::LHEEvent::has_cluster_scales__b"></span><span class="target" id="structmadspace_1_1LHEEvent_1ab747b4f5069fb284ce90bf42a0253593"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">has_cluster_scales</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent18has_cluster_scalesE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether the MLM clustering scales of the outgoing particles are written (<code class="docutils literal notranslate"><span class="pre">pt_clust_&lt;i&gt;</span></code> attributes of <code class="docutils literal notranslate"><span class="pre">&lt;scales&gt;</span></code>). </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent4mu_rE">
+<span id="_CPPv3N8madspace8LHEEvent4mu_rE"></span><span id="_CPPv2N8madspace8LHEEvent4mu_rE"></span><span id="madspace::LHEEvent::mu_r__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1aff103e4d5317de186c040ad38ba5fbd3"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mu_r</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent4mu_rE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The renormalisation and factorisation scales, written as the standard LHEF3 <code class="docutils literal notranslate"><span class="pre">&lt;scales&gt;</span></code> attributes. </p>
+<p>SCALUP carries only one number, and the two codes do not agree on which: unwgt.f writes sqrt(max(q2fact)) there, i.e. mu_F, while this writer puts mu_R. Emitting both explicitly means a comparison does not have to guess. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent5mu_f1E">
+<span id="_CPPv3N8madspace8LHEEvent5mu_f1E"></span><span id="_CPPv2N8madspace8LHEEvent5mu_f1E"></span><span id="madspace::LHEEvent::mu_f1__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1aac1b94a17ef1f080dfc8e0dcc77c268b"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mu_f1</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent5mu_f1E" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent5mu_f2E">
+<span id="_CPPv3N8madspace8LHEEvent5mu_f2E"></span><span id="_CPPv2N8madspace8LHEEvent5mu_f2E"></span><span id="madspace::LHEEvent::mu_f2__double"></span><span class="target" id="structmadspace_1_1LHEEvent_1aad975e941872732303a8aaa730bb5c39"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">mu_f2</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent5mu_f2E" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent10has_scalesE">
+<span id="_CPPv3N8madspace8LHEEvent10has_scalesE"></span><span id="_CPPv2N8madspace8LHEEvent10has_scalesE"></span><span id="madspace::LHEEvent::has_scales__b"></span><span class="target" id="structmadspace_1_1LHEEvent_1afb4a3aea72f1310d713ee8a0a3229042"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">has_scales</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent10has_scalesE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace8LHEEvent8rwgt_idsE">
 <span id="_CPPv3N8madspace8LHEEvent8rwgt_idsE"></span><span id="_CPPv2N8madspace8LHEEvent8rwgt_idsE"></span><span id="madspace::LHEEvent::rwgt_ids__std::vector:i:"></span><span class="target" id="structmadspace_1_1LHEEvent_1a01dc03be702d551a8796eb588ecdd336"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">rwgt_ids</span></span></span><a class="headerlink" href="#_CPPv4N8madspace8LHEEvent8rwgt_idsE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Optional LHEF v3 weights (<code class="docutils literal notranslate"><span class="pre">&lt;rwgt&gt;</span></code> block); <code class="docutils literal notranslate"><span class="pre">rwgt_ids</span></code> and <code class="docutils literal notranslate"><span class="pre">rwgt</span></code> have the same length. </p>
@@ -757,6 +791,11 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent9alpha_qedE"><code class="docutils literal notranslate"><span class="pre">alpha_qed</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent9alpha_qcdE"><code class="docutils literal notranslate"><span class="pre">alpha_qcd</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent9particlesE"><code class="docutils literal notranslate"><span class="pre">particles</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent18has_cluster_scalesE"><code class="docutils literal notranslate"><span class="pre">has_cluster_scales</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent4mu_rE"><code class="docutils literal notranslate"><span class="pre">mu_r</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent5mu_f1E"><code class="docutils literal notranslate"><span class="pre">mu_f1</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent5mu_f2E"><code class="docutils literal notranslate"><span class="pre">mu_f2</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent10has_scalesE"><code class="docutils literal notranslate"><span class="pre">has_scales</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent8rwgt_idsE"><code class="docutils literal notranslate"><span class="pre">rwgt_ids</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent4rwgtE"><code class="docutils literal notranslate"><span class="pre">rwgt</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8LHEEvent7lo_infoE"><code class="docutils literal notranslate"><span class="pre">lo_info</span></code></a></li>

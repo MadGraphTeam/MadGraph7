@@ -55,6 +55,9 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/IntegrandCommonPart
    cpp/IntegrandConcatenator
    cpp/IntegrandProbability
+   cpp/MLMClustering
+   cpp/MLMClusteringAlongDiagram
+   cpp/MLMClusteringWithFlavors
    cpp/MLP
    cpp/MadnisLoss
    cpp/MatrixElement

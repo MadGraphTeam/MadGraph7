@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElement.html">MatrixElement</a></li>
@@ -620,6 +626,12 @@
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>One weight variation computed by SystematicsCalculator — a scale choice, a PDF member, or the nominal point.</p>
 <dl class="py property">
+<dt class="sig sig-object py" id="madspace.Variation.alps">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">alps</span></span><a class="headerlink" href="#madspace.Variation.alps" title="Link to this definition">¶</a></dt>
+<dd><p>Emission scale factor of the MLM alpha_s vertices (madevent’s <code class="docutils literal notranslate"><span class="pre">alpsfact</span></code>); <code class="docutils literal notranslate"><span class="pre">1</span></code> for the nominal vertex scales.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="madspace.Variation.dyn">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">dyn</span></span><a class="headerlink" href="#madspace.Variation.dyn" title="Link to this definition">¶</a></dt>
 <dd><p>Dynamical scale choice; <code class="docutils literal notranslate"><span class="pre">-1</span></code> for the scale the events were generated with.</p>
@@ -629,6 +641,12 @@
 <dt class="sig sig-object py" id="madspace.Variation.id">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">id</span></span><a class="headerlink" href="#madspace.Variation.id" title="Link to this definition">¶</a></dt>
 <dd><p>LHEF <code class="docutils literal notranslate"><span class="pre">&lt;weight&gt;</span></code> id.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.Variation.is_emission">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">is_emission</span></span><a class="headerlink" href="#madspace.Variation.is_emission" title="Link to this definition">¶</a></dt>
+<dd><p>Whether this is an emission scale variation (a non-nominal <code class="docutils literal notranslate"><span class="pre">alps</span></code> at the nominal scales and PDF member).</p>
 </dd></dl>
 
 <dl class="py property">
@@ -716,8 +734,10 @@
             <ul>
 <li><a class="reference internal" href="#">Variation</a><ul>
 <li><a class="reference internal" href="#madspace.Variation"><code class="docutils literal notranslate"><span class="pre">Variation</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.Variation.alps"><code class="docutils literal notranslate"><span class="pre">Variation.alps</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Variation.dyn"><code class="docutils literal notranslate"><span class="pre">Variation.dyn</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Variation.id"><code class="docutils literal notranslate"><span class="pre">Variation.id</span></code></a></li>
+<li><a class="reference internal" href="#madspace.Variation.is_emission"><code class="docutils literal notranslate"><span class="pre">Variation.is_emission</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Variation.is_scale"><code class="docutils literal notranslate"><span class="pre">Variation.is_scale</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Variation.muf"><code class="docutils literal notranslate"><span class="pre">Variation.muf</span></code></a></li>
 <li><a class="reference internal" href="#madspace.Variation.mur"><code class="docutils literal notranslate"><span class="pre">Variation.mur</span></code></a></li>

@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElement.html">MatrixElement</a></li>
@@ -620,6 +626,18 @@
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Configuration of the scale and PDF variations computed by SystematicsCalculator.</p>
 <dl class="py property">
+<dt class="sig sig-object py" id="madspace.SystematicsConfig.alps">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">alps</span></span><a class="headerlink" href="#madspace.SystematicsConfig.alps" title="Link to this definition">¶</a></dt>
+<dd><p>the alpha_s of every clustering vertex is evaluated at the factor times the vertex scale.</p>
+<p><code class="docutils literal notranslate"><span class="pre">1.0</span></code> is the nominal point; the other values are written in an “Emission scale variation” group. Only for events whose record carries the vertex scales (ParticleRecord::f_alphas_scales).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Emission scale factors of an MLM merged sample, madevent’s <code class="docutils literal notranslate"><span class="pre">alpsfact</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="madspace.SystematicsConfig.dyn_scales">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">dyn_scales</span></span><a class="headerlink" href="#madspace.SystematicsConfig.dyn_scales" title="Link to this definition">¶</a></dt>
 <dd><p>Alternative dynamical scale choices, combined with <code class="docutils literal notranslate"><span class="pre">mur</span></code>/<code class="docutils literal notranslate"><span class="pre">muf</span></code>; <code class="docutils literal notranslate"><span class="pre">1</span></code> = sum of transverse energies, <code class="docutils literal notranslate"><span class="pre">2</span></code> = sum of transverse masses, <code class="docutils literal notranslate"><span class="pre">3</span></code> = half of that, <code class="docutils literal notranslate"><span class="pre">4</span></code> = partonic center-of-mass energy.</p>
@@ -645,6 +663,18 @@
 <dd class="field-odd"><p>If false, the beams are leptonic</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.SystematicsConfig.ladder_max_scale">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ladder_max_scale</span></span><a class="headerlink" href="#madspace.SystematicsConfig.ladder_max_scale" title="Link to this definition">¶</a></dt>
+<dd><p>See ladder_min_scale.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.SystematicsConfig.ladder_min_scale">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ladder_min_scale</span></span><a class="headerlink" href="#madspace.SystematicsConfig.ladder_min_scale" title="Link to this definition">¶</a></dt>
+<dd><p>Range the varied scales of the pdf ladder are clamped to, normally the Q range of the PDF grid, where LHAPDF freezes the density for madevent; <code class="docutils literal notranslate"><span class="pre">0</span></code> disables a bound.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -681,6 +711,17 @@
 <dt class="sig sig-object py" id="madspace.SystematicsConfig.nominal_set_name">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">nominal_set_name</span></span><a class="headerlink" href="#madspace.SystematicsConfig.nominal_set_name" title="Link to this definition">¶</a></dt>
 <dd><p>LHAPDF set name the events were generated with.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.SystematicsConfig.pdf_ladder">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pdf_ladder</span></span><a class="headerlink" href="#madspace.SystematicsConfig.pdf_ladder" title="Link to this definition">¶</a></dt>
+<dd><p>every parton of the PDF set is then made available, since a ladder step can be any of them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>If true, the events may carry an MLM pdf reweighting ladder (ParticleRecord::f_pdf_ladder)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py property">
@@ -773,16 +814,20 @@
             <ul>
 <li><a class="reference internal" href="#">SystematicsConfig</a><ul>
 <li><a class="reference internal" href="#madspace.SystematicsConfig"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.SystematicsConfig.alps"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.alps</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.dyn_scales"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.dyn_scales</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.first_id"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.first_id</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.from_json"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.from_json()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.has_pdf"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.has_pdf</span></code></a></li>
+<li><a class="reference internal" href="#madspace.SystematicsConfig.ladder_max_scale"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.ladder_max_scale</span></code></a></li>
+<li><a class="reference internal" href="#madspace.SystematicsConfig.ladder_min_scale"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.ladder_min_scale</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.muf"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.muf</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.mur"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.mur</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.nominal_description"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.nominal_description</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.nominal_error_type"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.nominal_error_type</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.nominal_lhaid"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.nominal_lhaid</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.nominal_set_name"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.nominal_set_name</span></code></a></li>
+<li><a class="reference internal" href="#madspace.SystematicsConfig.pdf_ladder"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.pdf_ladder</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.pdf_members"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.pdf_members</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.scale_factor"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.scale_factor</span></code></a></li>
 <li><a class="reference internal" href="#madspace.SystematicsConfig.to_json"><code class="docutils literal notranslate"><span class="pre">SystematicsConfig.to_json()</span></code></a></li>

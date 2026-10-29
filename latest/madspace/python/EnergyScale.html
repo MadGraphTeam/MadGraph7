@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/MatrixElement.html">MatrixElement</a></li>
@@ -666,6 +672,8 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>particle_count</strong> – Number of external particles.</p></li>
 <li><p><strong>type</strong> – The dynamical scale choice.</p></li>
+<li><p><strong>min_scale</strong> – Floor on the scales, see the full constructor.</p></li>
+<li><p><strong>max_scale</strong> – Ceiling on the scales, see the full constructor.</p></li>
 </ul>
 </dd>
 </dl>
@@ -678,11 +686,13 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>particle_count</strong> – Number of external particles.</p></li>
 <li><p><strong>fixed_scale</strong> – The constant scale value.</p></li>
+<li><p><strong>min_scale</strong> – Floor on the scales, see the full constructor.</p></li>
+<li><p><strong>max_scale</strong> – Ceiling on the scales, see the full constructor.</p></li>
 </ul>
 </dd>
 </dl>
 <ol class="arabic simple" start="4">
-<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat, scale_factor: typing.SupportsFloat = 1.0, custom_scale: madspace._madspace_py.CustomFunction | None = None) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat, scale_factor: typing.SupportsFloat = 1.0, custom_scale: madspace._madspace_py.CustomFunction | None = None, min_scale: typing.SupportsFloat = 0.0, max_scale: typing.SupportsFloat = 0.0) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -696,6 +706,21 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <li><p><strong>fact_scale2</strong> – Fixed factorization scale for the second beam.</p></li>
 <li><p><strong>scale_factor</strong> – Factor on the dynamical scale; fixed scales are left alone.</p></li>
 <li><p><strong>custom_scale</strong> – Optional user-supplied function that replaces the dynamical scale choice.</p></li>
+<li><p><strong>min_scale</strong> – Floor on mu_R and mu_F. The scales are clamped to it, so that a pdf is never asked for a density below the bottom of its grid. Zero disables it.</p></li>
+<li><p><strong>max_scale</strong> – Upper end of the same range, normally the top of the PDF grid. Zero disables it.</p></li>
+</ul>
+</dd>
+</dl>
+<ol class="arabic simple" start="5">
+<li><p>__init__(self: madspace._madspace_py.EnergyScale, clustering: madspace._madspace_py.MLMClustering, min_scale: typing.SupportsFloat = 0.0, max_scale: typing.SupportsFloat = 0.0) -&gt; None</p></li>
+</ol>
+<p>Scales from an MLM clustering of the event (dynamical_scale_choice mlm).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>clustering</strong> – The compiled clustering histories of the subprocess.</p></li>
+<li><p><strong>min_scale</strong> – As in the full constructor; here an event whose scales fall outside the range is also vetoed, through an extra <code class="docutils literal notranslate"><span class="pre">scale_weight</span></code> output, as setclscales does.</p></li>
+<li><p><strong>max_scale</strong> – As in the full constructor.</p></li>
 </ul>
 </dd>
 </dl>
@@ -751,6 +776,12 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <dt class="sig sig-object py" id="madspace.EnergyScale.half_transverse_mass">
 <span class="sig-name descname"><span class="pre">half_transverse_mass</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DynamicalScaleType.half_transverse_mass:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.EnergyScale.half_transverse_mass" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.EnergyScale.is_mlm">
+<span class="sig-name descname"><span class="pre">is_mlm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EnergyScale" title="madspace._madspace_py.EnergyScale"><span class="pre">madspace._madspace_py.EnergyScale</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.EnergyScale.is_mlm" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the scales come from an MLM clustering of the event.</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.EnergyScale.partonic_energy">
@@ -837,6 +868,7 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 </ul>
 </li>
 <li><a class="reference internal" href="#madspace.EnergyScale.half_transverse_mass"><code class="docutils literal notranslate"><span class="pre">EnergyScale.half_transverse_mass</span></code></a></li>
+<li><a class="reference internal" href="#madspace.EnergyScale.is_mlm"><code class="docutils literal notranslate"><span class="pre">EnergyScale.is_mlm()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EnergyScale.partonic_energy"><code class="docutils literal notranslate"><span class="pre">EnergyScale.partonic_energy</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EnergyScale.transverse_energy"><code class="docutils literal notranslate"><span class="pre">EnergyScale.transverse_energy</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EnergyScale.transverse_mass"><code class="docutils literal notranslate"><span class="pre">EnergyScale.transverse_mass</span></code></a></li>

@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -715,8 +721,38 @@
 <dd></dd></dl>
 
 <dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle">
-<span id="_CPPv3N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle"></span><span id="_CPPv2N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle"></span><span id="madspace::ParticleRecord::from_lhe_particle__LHEParticleCR"></span><span class="target" id="classmadspace_1_1ParticleRecord_1a465a8cbcd3f890f441d206429fadd8e1"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">from_lhe_particle</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="LHEParticle.html#_CPPv4N8madspace11LHEParticleE" title="madspace::LHEParticle"><span class="n"><span class="pre">LHEParticle</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">particle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle" title="Link to this definition">¶</a><br /></dt>
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord12alphas_scaleEv">
+<span id="_CPPv3N8madspace14ParticleRecord12alphas_scaleEv"></span><span id="_CPPv2N8madspace14ParticleRecord12alphas_scaleEv"></span><span id="madspace::ParticleRecord::alphas_scale"></span><span class="target" id="classmadspace_1_1ParticleRecord_1abc4464477b10ff24ed4037cc7635e204"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">alphas_scale</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord12alphas_scaleEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord8ladder_xEv">
+<span id="_CPPv3N8madspace14ParticleRecord8ladder_xEv"></span><span id="_CPPv2N8madspace14ParticleRecord8ladder_xEv"></span><span id="madspace::ParticleRecord::ladder_x"></span><span class="target" id="classmadspace_1_1ParticleRecord_1a826bac8db4cff9437615c9166289197c"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_x</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord8ladder_xEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord10ladder_pdgEv">
+<span id="_CPPv3N8madspace14ParticleRecord10ladder_pdgEv"></span><span id="_CPPv2N8madspace14ParticleRecord10ladder_pdgEv"></span><span id="madspace::ParticleRecord::ladder_pdg"></span><span class="target" id="classmadspace_1_1ParticleRecord_1aee248c3b193e68ba137ba7ca894e87ee"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_pdg</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord10ladder_pdgEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord8ladder_qEv">
+<span id="_CPPv3N8madspace14ParticleRecord8ladder_qEv"></span><span id="_CPPv2N8madspace14ParticleRecord8ladder_qEv"></span><span id="madspace::ParticleRecord::ladder_q"></span><span class="target" id="classmadspace_1_1ParticleRecord_1aafc25eff648e61642e81c9f1d1249aae"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_q</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord8ladder_qEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord11ladder_infoEv">
+<span id="_CPPv3N8madspace14ParticleRecord11ladder_infoEv"></span><span id="_CPPv2N8madspace14ParticleRecord11ladder_infoEv"></span><span id="madspace::ParticleRecord::ladder_info"></span><span class="target" id="classmadspace_1_1ParticleRecord_1afab77da09ad92c5c49de15b173de9d3d"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_info</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord11ladder_infoEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord13ladder_lead_qEv">
+<span id="_CPPv3N8madspace14ParticleRecord13ladder_lead_qEv"></span><span id="_CPPv2N8madspace14ParticleRecord13ladder_lead_qEv"></span><span id="madspace::ParticleRecord::ladder_lead_q"></span><span class="target" id="classmadspace_1_1ParticleRecord_1a954a7056a5c935888ba8155dd7cd37ff"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><a class="reference internal" href="UnalignedRef.html#_CPPv4I0EN8madspace12UnalignedRefE" title="madspace::UnalignedRef"><span class="n"><span class="pre">UnalignedRef</span></span></a><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_lead_q</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord13ladder_lead_qEv" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb">
+<span id="_CPPv3N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb"></span><span id="_CPPv2N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb"></span><span id="madspace::ParticleRecord::from_lhe_particle__LHEParticleCR.b"></span><span class="target" id="classmadspace_1_1ParticleRecord_1ae7efced5c911de2a7253e27cbebcec07"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">from_lhe_particle</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="LHEParticle.html#_CPPv4N8madspace11LHEParticleE" title="madspace::LHEParticle"><span class="n"><span class="pre">LHEParticle</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">particle</span></span>, <span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">has_clustering</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="k"><span class="pre">false</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb" title="Link to this definition">¶</a><br /></dt>
 <dd></dd></dl>
 
 </div>
@@ -748,6 +784,16 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord12f_clusteringE">
 <span id="_CPPv3N8madspace14ParticleRecord12f_clusteringE"></span><span id="_CPPv2N8madspace14ParticleRecord12f_clusteringE"></span><span id="madspace::ParticleRecord::f_clustering__i"></span><span class="target" id="classmadspace_1_1ParticleRecord_1af82e14101e7dc497362974f082ac8bf6"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">f_clustering</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord12f_clusteringE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord15f_alphas_scalesE">
+<span id="_CPPv3N8madspace14ParticleRecord15f_alphas_scalesE"></span><span id="_CPPv2N8madspace14ParticleRecord15f_alphas_scalesE"></span><span id="madspace::ParticleRecord::f_alphas_scales__i"></span><span class="target" id="classmadspace_1_1ParticleRecord_1a20073d42b8e33496c6e55797136c5e6d"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">f_alphas_scales</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord15f_alphas_scalesE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14ParticleRecord12f_pdf_ladderE">
+<span id="_CPPv3N8madspace14ParticleRecord12f_pdf_ladderE"></span><span id="_CPPv2N8madspace14ParticleRecord12f_pdf_ladderE"></span><span id="madspace::ParticleRecord::f_pdf_ladder__i"></span><span class="target" id="classmadspace_1_1ParticleRecord_1a117b9af94717a26d15133393a73e28d4"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">f_pdf_ladder</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14ParticleRecord12f_pdf_ladderE" title="Link to this definition">¶</a><br /></dt>
 <dd></dd></dl>
 
 </div>
@@ -831,12 +877,20 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord12lhe_lifetimeEv"><code class="docutils literal notranslate"><span class="pre">lhe_lifetime()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord8lhe_spinEv"><code class="docutils literal notranslate"><span class="pre">lhe_spin()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord13cluster_scaleEv"><code class="docutils literal notranslate"><span class="pre">cluster_scale()</span></code></a></li>
-<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticle"><code class="docutils literal notranslate"><span class="pre">from_lhe_particle()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord12alphas_scaleEv"><code class="docutils literal notranslate"><span class="pre">alphas_scale()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord8ladder_xEv"><code class="docutils literal notranslate"><span class="pre">ladder_x()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord10ladder_pdgEv"><code class="docutils literal notranslate"><span class="pre">ladder_pdg()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord8ladder_qEv"><code class="docutils literal notranslate"><span class="pre">ladder_q()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord11ladder_infoEv"><code class="docutils literal notranslate"><span class="pre">ladder_info()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord13ladder_lead_qEv"><code class="docutils literal notranslate"><span class="pre">ladder_lead_q()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord17from_lhe_particleERK11LHEParticleb"><code class="docutils literal notranslate"><span class="pre">from_lhe_particle()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord6layoutEi"><code class="docutils literal notranslate"><span class="pre">layout()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord6f_noneE"><code class="docutils literal notranslate"><span class="pre">f_none</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord15f_particle_dataE"><code class="docutils literal notranslate"><span class="pre">f_particle_data</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord14f_lhe_particleE"><code class="docutils literal notranslate"><span class="pre">f_lhe_particle</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord12f_clusteringE"><code class="docutils literal notranslate"><span class="pre">f_clustering</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord15f_alphas_scalesE"><code class="docutils literal notranslate"><span class="pre">f_alphas_scales</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14ParticleRecord12f_pdf_ladderE"><code class="docutils literal notranslate"><span class="pre">f_pdf_ladder</span></code></a></li>
 </ul>
 </li>
 </ul>

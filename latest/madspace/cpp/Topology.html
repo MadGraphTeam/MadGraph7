@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -658,6 +664,13 @@
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace8Topology19t_propagator_widthsEv">
 <span id="_CPPv3NK8madspace8Topology19t_propagator_widthsEv"></span><span id="_CPPv2NK8madspace8Topology19t_propagator_widthsEv"></span><span id="madspace::Topology::t_propagator_widthsC"></span><span class="target" id="classmadspace_1_1Topology_1af34b5ff9b00be8397571bba79b8b2830"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="n"><span class="pre">t_propagator_widths</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace8Topology19t_propagator_widthsEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Widths of the <code class="docutils literal notranslate"><span class="pre">t</span></code>-channel propagators. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace8Topology20t_propagator_pdg_idsEv">
+<span id="_CPPv3NK8madspace8Topology20t_propagator_pdg_idsEv"></span><span id="_CPPv2NK8madspace8Topology20t_propagator_pdg_idsEv"></span><span id="madspace::Topology::t_propagator_pdg_idsC"></span><span class="target" id="classmadspace_1_1Topology_1a3f87c4471e847440d1a97522ec458bee"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="sig-name descname"><span class="n"><span class="pre">t_propagator_pdg_ids</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace8Topology20t_propagator_pdg_idsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>The pdg ids of the <code class="docutils literal notranslate"><span class="pre">t</span></code>-channel propagators, in the same order as <a class="reference internal" href="#classmadspace_1_1Topology_1aeb2f12815c8bafd0be6c321b3ac00606"><span class="std std-ref">t_propagator_masses()</span></a>. </p>
+<p>Needed to tell a QCD splitting off the initial state from a QED/EW one. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -900,6 +913,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace8Topology19t_integration_orderEv"><code class="docutils literal notranslate"><span class="pre">t_integration_order()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace8Topology19t_propagator_massesEv"><code class="docutils literal notranslate"><span class="pre">t_propagator_masses()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace8Topology19t_propagator_widthsEv"><code class="docutils literal notranslate"><span class="pre">t_propagator_widths()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace8Topology20t_propagator_pdg_idsEv"><code class="docutils literal notranslate"><span class="pre">t_propagator_pdg_ids()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace8Topology6decaysEv"><code class="docutils literal notranslate"><span class="pre">decays()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace8Topology17raise_decay_e_minENSt6size_tEd"><code class="docutils literal notranslate"><span class="pre">raise_decay_e_min()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace8Topology23decay_integration_orderEv"><code class="docutils literal notranslate"><span class="pre">decay_integration_order()</span></code></a></li>

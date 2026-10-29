@@ -1,0 +1,6 @@
+MLMClustering
+=============
+
+.. doxygenclass:: madspace::MLMClustering
+   :members:
+   :undoc-members:

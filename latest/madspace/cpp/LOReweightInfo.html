@@ -335,6 +335,9 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/HistItem.html">HistItem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Integrand.html">Integrand</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/MatrixElement.html">MatrixElement</a></li>
@@ -466,6 +469,9 @@
 <li class="toctree-l2"><a class="reference internal" href="IntegrandCommonPart.html">IntegrandCommonPart</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandConcatenator.html">IntegrandConcatenator</a></li>
 <li class="toctree-l2"><a class="reference internal" href="IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClustering.html">MLMClustering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringAlongDiagram.html">MLMClusteringAlongDiagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="MLMClusteringWithFlavors.html">MLMClusteringWithFlavors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MLP.html">MLP</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="MatrixElement.html">MatrixElement</a></li>
@@ -676,6 +682,31 @@
 <span id="_CPPv3N8madspace14LOReweightInfo11fact_scale2E"></span><span id="_CPPv2N8madspace14LOReweightInfo11fact_scale2E"></span><span id="madspace::LOReweightInfo::fact_scale2__double"></span><span class="target" id="structmadspace_1_1LOReweightInfo_1a3b93f4161b17eca66495dd3d88ccc45f"></span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">fact_scale2</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14LOReweightInfo11fact_scale2E" title="Link to this definition">¶</a><br /></dt>
 <dd></dd></dl>
 
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14LOReweightInfo11ladder_pdgsE">
+<span id="_CPPv3N8madspace14LOReweightInfo11ladder_pdgsE"></span><span id="_CPPv2N8madspace14LOReweightInfo11ladder_pdgsE"></span><span id="madspace::LOReweightInfo::ladder_pdgs__std::array:std::vector:i:.2:"></span><span class="target" id="structmadspace_1_1LOReweightInfo_1a0a7063de60006fe70c2d6f1a197915a0"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">int</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">2</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_pdgs</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14LOReweightInfo11ladder_pdgsE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>MLM pdf reweighting ladder of each beam, as madevent’s <code class="docutils literal notranslate"><span class="pre">&lt;pdfrwt&gt;</span></code> books it: the beam parton at its leading scale, then one entry per ladder step (line flavour, momentum fraction before the step, scale). </p>
+<p>Empty: a single entry from pdg/x/fact_scale. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14LOReweightInfo8ladder_xE">
+<span id="_CPPv3N8madspace14LOReweightInfo8ladder_xE"></span><span id="_CPPv2N8madspace14LOReweightInfo8ladder_xE"></span><span id="madspace::LOReweightInfo::ladder_x__std::array:std::vector:double:.2:"></span><span class="target" id="structmadspace_1_1LOReweightInfo_1a7539f4bd2aed9ab39bca185c1c7e31c8"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">2</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_x</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14LOReweightInfo8ladder_xE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>See <a class="reference internal" href="#structmadspace_1_1LOReweightInfo_1a0a7063de60006fe70c2d6f1a197915a0"><span class="std std-ref">ladder_pdgs</span></a>. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14LOReweightInfo8ladder_qE">
+<span id="_CPPv3N8madspace14LOReweightInfo8ladder_qE"></span><span id="_CPPv2N8madspace14LOReweightInfo8ladder_qE"></span><span id="madspace::LOReweightInfo::ladder_q__std::array:std::vector:double:.2:"></span><span class="target" id="structmadspace_1_1LOReweightInfo_1adea706c4d7135e471010bd374bdcc38f"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">array</span></span><span class="p"><span class="pre">&lt;</span></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="m"><span class="pre">2</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">ladder_q</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14LOReweightInfo8ladder_qE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>See <a class="reference internal" href="#structmadspace_1_1LOReweightInfo_1a0a7063de60006fe70c2d6f1a197915a0"><span class="std std-ref">ladder_pdgs</span></a>. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace14LOReweightInfo5asrwtE">
+<span id="_CPPv3N8madspace14LOReweightInfo5asrwtE"></span><span id="_CPPv2N8madspace14LOReweightInfo5asrwtE"></span><span id="madspace::LOReweightInfo::asrwt__std::vector:double:"></span><span class="target" id="structmadspace_1_1LOReweightInfo_1a203beb12ad7ac895c4dee21b164e9ccf"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">asrwt</span></span></span><a class="headerlink" href="#_CPPv4N8madspace14LOReweightInfo5asrwtE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Scales of the MLM alpha_s vertices (<code class="docutils literal notranslate"><span class="pre">&lt;asrwt&gt;</span></code>); <code class="docutils literal notranslate"><span class="pre">qcd_power</span></code> counts them too, the <code class="docutils literal notranslate"><span class="pre">&lt;rscale&gt;</span></code> power is what is left at the renormalisation scale. </p>
+</dd></dl>
+
 </div>
 </dd></dl>
 
@@ -748,6 +779,10 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo2x2E"><code class="docutils literal notranslate"><span class="pre">x2</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo11fact_scale1E"><code class="docutils literal notranslate"><span class="pre">fact_scale1</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo11fact_scale2E"><code class="docutils literal notranslate"><span class="pre">fact_scale2</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo11ladder_pdgsE"><code class="docutils literal notranslate"><span class="pre">ladder_pdgs</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo8ladder_xE"><code class="docutils literal notranslate"><span class="pre">ladder_x</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo8ladder_qE"><code class="docutils literal notranslate"><span class="pre">ladder_q</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace14LOReweightInfo5asrwtE"><code class="docutils literal notranslate"><span class="pre">asrwt</span></code></a></li>
 </ul>
 </li>
 </ul>

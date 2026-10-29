@@ -54,6 +54,9 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/HistItem
    python/Integrand
    python/IntegrandProbability
+   python/MLMClustering
+   python/MLMClusteringAlongDiagram
+   python/MLMClusteringWithFlavors
    python/MLP
    python/MadnisLoss
    python/MatrixElement
