@@ -230,9 +230,10 @@ def test_native_component_access_preserves_extremes(
     result = native.CoefficientEvaluator(saved, **options).evaluate_batch(batch)
     assert not result.nonfinite_rows()
     values, original = result.to_decimal(), batch.to_decimal()
-    width = len(expressions)
+    # One (value, validity) output pair per expression.
+    width = 2 * len(expressions)
     for row in range(2):
         assert Decimal(values[width * row][0]) == Decimal(original[row][0])
-        assert Decimal(values[width * row + 1][0]) == Decimal(original[row][1])
-        assert Decimal(values[width * row + 2][0]) == 0
-        assert Decimal(values[width * row + 3][0]) == 1
+        assert Decimal(values[width * row + 2][0]) == Decimal(original[row][1])
+        assert Decimal(values[width * row + 4][0]) == 0
+        assert Decimal(values[width * row + 6][0]) == 1
