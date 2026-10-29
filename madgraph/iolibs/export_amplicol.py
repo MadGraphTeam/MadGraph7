@@ -43,6 +43,8 @@ logger = logging.getLogger('madgraph.export_amplicol')
 pjoin = os.path.join
 
 MODEL_FILE = 'amplicol_model.pyamplicol-model'
+# the pyamplicol that generated the output, checked before compiling
+PYAMPLICOL_RECORD = 'amplicol_pyamplicol.json'
 
 MAKEFILE = """\
 # Builds the AmpliCol matrix elements of this process into ../../lib.
@@ -50,6 +52,7 @@ RUSTICOL_CONFIG ?= $(CURDIR)/../rusticol-config
 BUILD := $(CURDIR)/build
 
 all:
+\t$(CURDIR)/../check-pyamplicol
 \t$(MAKE) -C lc/API/umami shared BUILD_DIR=$(BUILD)/lc RUSTICOL_CONFIG=$(RUSTICOL_CONFIG)
 \t$(MAKE) -C reweight shared BUILD_DIR=$(BUILD)/reweight RUSTICOL_CONFIG=$(RUSTICOL_CONFIG)
 %(copies)s
@@ -72,27 +75,43 @@ RUSTICOL_CONFIG = """\
 PYTHONPATH=%(install)s${PYTHONPATH:+:$PYTHONPATH} exec %(python)s -m rusticol_config "$@"
 """
 
+# fails unless that pyamplicol is the one recorded in PYAMPLICOL_RECORD
+CHECK_PYAMPLICOL = """\
+#!/bin/sh
+PYTHONPATH=%(install)s${PYTHONPATH:+:$PYTHONPATH} exec %(python)s -c \\
+  'import sys; sys.path.insert(0, sys.argv[1]); from madgraph.mg7.bootstrap import check_pyamplicol_build; check_pyamplicol_build(sys.argv[2])' \\
+  %(mg_root)s "$(dirname "$0")/%(record)s"
+"""
+
 
 def check_pyamplicol(interactive=None, jobs=None):
     """Install pyamplicol in pyamplicol/install if needed and put it first on
-    sys.path, which the worker inherits. Never imported here, see amplicol_worker."""
+    sys.path, which the worker inherits. Never imported here, see amplicol_worker.
+    Returns its version and source hash."""
     from madgraph.mg7 import bootstrap
     try:
         bootstrap.ensure_pyamplicol(interactive=interactive, jobs=jobs)
+        return bootstrap.check_pyamplicol_source_hash()
     except RuntimeError as error:
         raise madgraph.InvalidCmd('The [amplicol] processes need pyamplicol: %s' % error)
-    bootstrap.check_pyamplicol_source_hash()
 
 
-def write_rusticol_config(subproc_dir):
-    """SubProcesses/rusticol-config, the RUSTICOL_CONFIG of the makefiles."""
+def write_rusticol_config(subproc_dir, pyamplicol):
+    """SubProcesses/rusticol-config, the RUSTICOL_CONFIG of the makefiles, and
+    check-pyamplicol with the pyamplicol it has to be."""
     from madgraph.mg7 import bootstrap
-    path = pjoin(subproc_dir, 'rusticol-config')
-    with open(path, 'w') as stream:
-        stream.write(RUSTICOL_CONFIG % {
-            'install': shlex.quote(str(bootstrap.PYAMPLICOL_INSTALL_DIR)),
-            'python': shlex.quote(sys.executable)})
-    os.chmod(path, 0o755)
+    values = {'install': shlex.quote(str(bootstrap.PYAMPLICOL_INSTALL_DIR)),
+              'python': shlex.quote(sys.executable),
+              'mg_root': shlex.quote(str(bootstrap.MG_ROOT)),
+              'record': PYAMPLICOL_RECORD}
+    for name, template in (('rusticol-config', RUSTICOL_CONFIG),
+                           ('check-pyamplicol', CHECK_PYAMPLICOL)):
+        path = pjoin(subproc_dir, name)
+        with open(path, 'w') as stream:
+            stream.write(template % values)
+        os.chmod(path, 0o755)
+    with open(pjoin(subproc_dir, PYAMPLICOL_RECORD), 'w') as stream:
+        json.dump(pyamplicol, stream, indent=2)
 
 
 def run_worker(job):
@@ -389,9 +408,9 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
     """Write SubProcesses/A<n>_<name> for every '[amplicol]' process definition
     and return the subprocesses.json entries. ``interactive`` and ``jobs`` are
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol."""
-    check_pyamplicol(interactive, jobs)
+    pyamplicol = check_pyamplicol(interactive, jobs)
     subproc_dir = pjoin(dir_path, 'SubProcesses')
-    write_rusticol_config(subproc_dir)
+    write_rusticol_config(subproc_dir, pyamplicol)
     processes = []
     for number, procdef in enumerate(proc_defs, start=1):
         name = 'A%d_%s' % (number, process_name(procdef, model, multiparticles or {}))

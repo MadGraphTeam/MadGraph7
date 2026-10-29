@@ -79,5 +79,26 @@ class TestRunWorker(unittest.TestCase):
         self.assertIsNotNone(workers[0].returncode)
 
 
+class TestCheckPyamplicol(unittest.TestCase):
+
+    def test_stale_install_is_an_error(self):
+        from madgraph.mg7 import bootstrap
+        with mock.patch.object(bootstrap, 'ensure_pyamplicol'), \
+                mock.patch.object(bootstrap, 'check_pyamplicol_source_hash',
+                                  side_effect=RuntimeError('mismatch')):
+            with self.assertRaisesRegex(madgraph.InvalidCmd, 'mismatch'):
+                export_amplicol.check_pyamplicol()
+
+    def test_check_script_rejects_another_pyamplicol(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        export_amplicol.write_rusticol_config(
+            tmp, {'version': '0.0.0', 'source_hash': 'stale'})
+        result = subprocess.run([os.path.join(tmp, 'check-pyamplicol')],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('generated with pyamplicol 0.0.0', result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
