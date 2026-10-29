@@ -28,6 +28,53 @@ def _primitive(name: str) -> Any:
     )
 
 
+def test_helper_bodies_inline_and_evaluate_as_symbolica_does() -> None:
+    """Dyadic inputs keep every value exact, so the comparison is bitwise."""
+    from symbolica import Expression, FunctionDefinition, S
+
+    equal, truth, less = (_primitive(name) for name in ("equal", "truth", "less"))
+    choose = symbols.qualified("symbolica::if")
+    x, y, a, b = (S(f"symjit_helper_{name}") for name in "xyab")
+    helper = symbols.qualified("pyamplicol_symjit_helper_test::helper")
+    body = choose(equal(a, b), a, 3 * b) + choose(truth(less(a, b)), b * b, a)
+    evaluator = Expression.evaluator_multiple(
+        [helper(x, y) + 2 * helper(y, y), _primitive("real_part")(x) * helper(x, x + y)],
+        [x, y],
+        functions=[FunctionDefinition(helper, [a, b], body, inlining="never")],
+        jit_compile=False,
+        n_cores=1,
+    )
+    exported = evaluator.get_instructions()
+    assert exported.sub_evaluators
+    program = _symbolica_instruction_program_repr(exported)
+    assert "'pyamplicol_scalar_v1::equal'" in program
+
+    application = _rusticol._compile_symjit_plane_application_v2(
+        program, 2, 2, 2, False
+    )
+    rows = np.array(
+        [
+            [1.5, 1.5],
+            [1.5, 2.5],
+            [2.5, 1.5],
+            [1 + 2j, 1 + 2j],
+            [1 + 2j, 1 - 2j],
+            [0.0, -0.0],
+            [3j, 3.0],
+            [-4.0, -4.0],
+            [0.25, 8.0],
+        ],
+        dtype=np.complex128,
+    )
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        application, 2, 2, rows.view(np.float64).ravel().tolist(), len(rows)
+    )
+    values = np.asarray(flat, dtype=np.float64).view(np.complex128).reshape(-1, 2)
+    assert np.isfinite(expected).all()
+    assert values.tobytes() == expected.tobytes()
+
+
 def _nested_helpers_evaluator() -> tuple[Any, Any]:
     """Three helpers, each calling the previous one, none inlined by
     Symbolica: the exporters inline bodies nested three deep."""
