@@ -9,9 +9,11 @@
 //! program with observable columns (`TreeProgram::set_columns`, whose
 //! outputs the columns, the block rows and the seeds' Born components are)
 //! then evaluates only what those read: the plan block rows of the read
-//! factor and current rows, and the root closures (Born and counterterm) of
-//! the kept Born rows. The interactions and output slots of both
-//! interaction programs follow by backward liveness over their states
+//! factor and current rows (each with its further terms, `block_row_terms`,
+//! where the tree engine splits the block current into several trees by
+//! flavour flow), and the root closures (Born and counterterm) of the kept
+//! Born rows. The interactions and output slots of both interaction
+//! programs follow by backward liveness over their states
 //! (an output is kept when a later read or a closure reads its slot, an
 //! interaction when an output reads its accumulator); the closures skip the
 //! other rows, whose Born and counterterm components stay zero, as a spin
@@ -79,13 +81,13 @@ impl TreeProgram {
             .counterterm_trees
             .as_ref()
             .map_or(0, |ct| ct.layout.size);
-        let mut trees = vec![false; size];
+        let mut trees = block_slots(
+            &self.block_rows,
+            &self.block_row_terms,
+            &restriction.blocks,
+            size,
+        );
         let mut counterterms = vec![false; counterterm_size];
-        for (&(start, dimension, _sign), &read) in self.block_rows.iter().zip(&restriction.blocks) {
-            if read {
-                trees[start..start + dimension].fill(true);
-            }
-        }
         // The state components the closure terms read on the kept rows: a
         // term input below the trees' state size is a tree slot, any other
         // a counterterm-program slot.
@@ -125,6 +127,31 @@ impl TreeProgram {
     }
 }
 
+/// The tree state components the read plan block rows `read` take: each
+/// read row's slot (`block_rows`: start, dimension, Wick sign) and the slots
+/// of its further terms (`block_row_terms`: row, start, Wick sign; a block
+/// current the tree engine splits into several trees by flavour flow), on a
+/// state of `size` components.
+fn block_slots(
+    block_rows: &[(usize, usize, i32)],
+    block_row_terms: &[(usize, usize, i32)],
+    read: &[bool],
+    size: usize,
+) -> Vec<bool> {
+    let mut slots = vec![false; size];
+    for (&(start, dimension, _sign), &read) in block_rows.iter().zip(read) {
+        if read {
+            slots[start..start + dimension].fill(true);
+        }
+    }
+    for &(row, start, _sign) in block_row_terms {
+        if read[row] {
+            slots[start..start + block_rows[row].1].fill(true);
+        }
+    }
+    slots
+}
+
 /// Keep the interactions and outputs of `interactions` that the state
 /// components `needed` (after the program) depend on: backward over the
 /// steps, an output is kept when it writes a needed component (which it
@@ -159,7 +186,7 @@ fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
 #[cfg(test)]
 mod tests {
     use super::super::{Edge, Interactions, Step};
-    use super::prune;
+    use super::{block_slots, prune};
     use symbolica::domains::rational::Rational;
 
     fn edge(left: usize, right: usize, accumulator: usize) -> Edge {
@@ -217,6 +244,26 @@ mod tests {
                 (edges, outputs)
             })
             .collect()
+    }
+
+    /// A read block row takes its slot and its further terms' slots (a
+    /// split block current); an unread row takes none of them.
+    #[test]
+    fn a_read_block_row_takes_its_further_terms_slots() {
+        // Rows 0 (slot 0..2) and 1 (slot 2..4); row 0 adds slots 6..8,
+        // row 1 adds 8..10 and 10..12.
+        let rows = [(0, 2, 1), (2, 2, -1)];
+        let terms = [(0, 6, 1), (1, 8, -1), (1, 10, 1)];
+        let taken = |read: &[bool]| -> Vec<usize> {
+            block_slots(&rows, &terms, read, 14)
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, &taken)| taken.then_some(slot))
+                .collect()
+        };
+        assert_eq!(taken(&[true, false]), [0, 1, 6, 7]);
+        assert_eq!(taken(&[false, true]), [2, 3, 8, 9, 10, 11]);
+        assert_eq!(taken(&[false, false]), Vec::<usize>::new());
     }
 
     #[test]
