@@ -1,0 +1,7139 @@
+{
+ "schema_version": 1,
+ "plan": "workspace/reports/engine-v2/m-sm/PLAN.md \u00a71.4, \u00a73.2 MS-VALIDATE, \u00a74",
+ "description": "M-SM validation campaign rows (one per PLAN \u00a74.2 core row), in the record type of the M-QCD manifest. tools/loop_benchmark/mqcd.py reads it; tests/unit/test_loop_v2_msm_*.py run it.",
+ "models": {
+  "loop_qcd_qed_sm_Gmu": {
+   "fixture": "loop_gmu_ufo"
+  },
+  "loop_qcd_qed_sm": {
+   "fixture": "loop_qcd_qed_sm_ufo"
+  },
+  "loop_qcd_qed_sm_Gmu_massive_muon": {
+   "base": "loop_qcd_qed_sm_Gmu",
+   "restriction_card_from": "tests/fixtures/loop/electroweak-massive-mumu-control.json"
+  }
+ },
+ "restriction_codes": {
+  "G0": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu",
+   "alpha": 0.0075467722613403515
+  },
+  "Ga": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-a0",
+   "alpha": 0.0075467722613403515
+  },
+  "Gb": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_b_mass",
+   "fixed_parameters": {
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-b-mass",
+   "alpha": 0.0075467722613403515
+  },
+  "Gm": {
+   "model": "loop_qcd_qed_sm_Gmu_massive_muon",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-mm",
+   "alpha": 0.0075467722613403515
+  },
+  "Gk": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "ckm",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-ckm",
+   "alpha": 0.0075467722613403515
+  },
+  "Gt": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_technical",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-tech",
+   "alpha": 0.0075467722613403515
+  },
+  "Gc": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "scheme": "ew-gmu-cms",
+   "alpha": 0.0075467722613403515
+  },
+  "Gca": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "scheme": "ew-gmu-a0-cms",
+   "alpha": 0.0075467722613403515
+  },
+  "Lc": {
+   "model": "loop_sm",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-cms",
+   "alpha": 0.0075467711139788835
+  },
+  "Az": {
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-qcd-qed-sm",
+   "alpha": 0.0075467711139788835
+  },
+  "L5": {
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd",
+   "alpha": 0.0075467711139788835
+  }
+ },
+ "unblockers": [
+  "MS-REF",
+  "EWI-7",
+  "MS-PHOTON",
+  "MS-CMS",
+  "MS-CMS-N",
+  "MS-MODEL",
+  "MS-VALIDATE"
+ ],
+ "classes": [
+  "W-CMS",
+  "W-DY",
+  "W-V",
+  "W-jets",
+  "W-lep",
+  "W-multi",
+  "W-photon",
+  "W-scheme",
+  "W-singletop",
+  "W-top"
+ ],
+ "features": [
+  "2->2",
+  "2->3",
+  "2->4",
+  "2->5",
+  "U4",
+  "capped",
+  "charged-current",
+  "ckm",
+  "cms",
+  "coloured-width",
+  "cross-order-catani",
+  "epsilon-sign",
+  "external:W",
+  "external:Z",
+  "goldstone-vector-mixing",
+  "higgs",
+  "identical-flavours",
+  "initial:qqbar",
+  "internal-W",
+  "joint",
+  "lepton-hadron",
+  "lepton-line-through-loop",
+  "leptons-only",
+  "loop_sm",
+  "massive-initial",
+  "massive:b",
+  "massive:muon",
+  "massive:top",
+  "mixed-born",
+  "multiparticle",
+  "photon:final",
+  "photon:initial",
+  "quark-final-state",
+  "r2-rule",
+  "radiation-zero",
+  "root-closure",
+  "root-mixing",
+  "scalar-loops",
+  "scheme:alpha-mz",
+  "single-top",
+  "target",
+  "two-lepton-lines",
+  "vbf"
+ ],
+ "cost_probes": {
+  "DY07": {
+   "process": "u u~ > e- e+ m- m+",
+   "corrections": [
+    "QED"
+   ],
+   "model": "G0",
+   "generate_s": 255.2,
+   "export_native_s": 95.3,
+   "peak_gb": 11.2,
+   "source": "workspace/tmp/ms-validate/probe/dy07 (2026-10-29, 4 cores, host load ~70)",
+   "tier": "the 2->4 EW rows (DY07, DY08, CM08) are nightly: one generation fits a 30-min job"
+  }
+ },
+ "nightly_jobs": {
+  "budget_seconds": 1500,
+  "measurement": "DEFAULT_SECONDS per id until a nightly run measures them",
+  "jobs": [
+   {
+    "job": 1,
+    "seconds": 1200,
+    "rows": [
+     "DY05",
+     "LL01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly.py"
+   },
+   {
+    "job": 2,
+    "seconds": 1200,
+    "rows": [
+     "LL02",
+     "LL03"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
+   },
+   {
+    "job": 3,
+    "seconds": 1200,
+    "rows": [
+     "LL10",
+     "SC01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
+   },
+   {
+    "job": 4,
+    "seconds": 1200,
+    "rows": [
+     "SC05",
+     "TT01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
+   },
+   {
+    "job": 5,
+    "seconds": 1200,
+    "rows": [
+     "TT05",
+     "TV06"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
+   },
+   {
+    "job": 6,
+    "seconds": 1200,
+    "rows": [
+     "VJ03",
+     "VV06"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "LL01",
+   "class": "W-lep",
+   "process": "e- e+ > m- m+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E electroweak-mumu-control.json (+ scale control)",
+   "reference": {
+    "format": "ew-control",
+    "path": "tests/fixtures/loop/electroweak-mumu-control.json",
+    "points_path": "tools/loop_reference/uudd_qcd.json",
+    "mu_r2": "1000000",
+    "parameters": {
+     "Gf": "0.0000116639",
+     "MW": "80.419",
+     "MZ": "91.188",
+     "MH": "125",
+     "MT": "173.3",
+     "ymt": "173.3",
+     "aS": "0.118"
+    }
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ap",
+    "uv"
+   ],
+   "features": [
+    "2->2",
+    "leptons-only",
+    "two-lepton-lines"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R"
+  },
+  {
+   "id": "LL02",
+   "class": "W-lep",
+   "process": "e- e+ > m- m+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu_massive_muon",
+   "restriction": "default",
+   "restriction_code": "Gm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-mm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E electroweak-massive-mumu-control.json",
+   "reference": {
+    "format": "ew-control",
+    "path": "tests/fixtures/loop/electroweak-massive-mumu-control.json",
+    "mu_r2": "1000000",
+    "parameters": {
+     "Gf": "0.0000116639",
+     "MW": "80.419",
+     "MZ": "91.188",
+     "MH": "125",
+     "MT": "173.3",
+     "ymt": "173.3",
+     "aS": "0.118",
+     "MM": "0.105658",
+     "ymm": "0.105658"
+    }
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "massive:muon"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R"
+  },
+  {
+   "id": "LL03",
+   "class": "W-lep",
+   "process": "e- e+ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/emep_emep_ew.json",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/emep_emep_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "madloop_r2": [
+     "R2_AABOSON1",
+     "R2_AABOSON2",
+     "R2_AABOSON3",
+     "R2_AAD",
+     "R2_AAT3",
+     "R2_AAU",
+     "R2_AWWCS",
+     "R2_AZBOSON1",
+     "R2_AZBOSON2",
+     "R2_AZBOSON3",
+     "R2_AZD",
+     "R2_AZL",
+     "R2_AZT3",
+     "R2_AZU",
+     "R2_EEACM",
+     "R2_EEACP",
+     "R2_EEZCM",
+     "R2_EEZCP",
+     "R2_GG_1_0",
+     "R2_GG_1_R2_GG_2_R2_GG_3_0",
+     "R2_GG_1_R2_GG_3_0",
+     "R2_LLZCP",
+     "R2_ZZBOSON1",
+     "R2_ZZBOSON2",
+     "R2_ZZBOSON3",
+     "R2_ZZD",
+     "R2_ZZL",
+     "R2_ZZT3",
+     "R2_ZZU",
+     "R2_ZZV"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "lepton-line-through-loop",
+    "scheme:alpha-mz"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467711139788835
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_omitted_r2": []
+  },
+  {
+   "id": "LL05",
+   "class": "W-lep",
+   "process": "e- e+ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   }
+  },
+  {
+   "id": "LL08",
+   "class": "W-lep",
+   "process": "e- e+ > m- m+ a",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 5
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Ga",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3-5 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0"
+   ],
+   "features": [
+    "2->3",
+    "photon:final"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
+   }
+  },
+  {
+   "id": "LL09",
+   "class": "W-lep",
+   "process": "e- e+ > t t~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "massive:top"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "LL10",
+   "class": "W-lep",
+   "process": "e- e+ > t t~ h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 5
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/emep_ttxh_ew.json (Recola primary: R2 rule)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/emep_ttxh_ew.json",
+    "providers": [
+     "recola",
+     "madloop"
+    ],
+    "madloop_r2": [
+     "R2_AABOSON1",
+     "R2_AABOSON2",
+     "R2_AABOSON3",
+     "R2_AAD",
+     "R2_AAH",
+     "R2_AAHT",
+     "R2_AAT3",
+     "R2_AAU",
+     "R2_AG0H",
+     "R2_AWWCS",
+     "R2_AZBOSON1",
+     "R2_AZBOSON2",
+     "R2_AZBOSON3",
+     "R2_AZD",
+     "R2_AZH",
+     "R2_AZHT",
+     "R2_AZL",
+     "R2_AZT3",
+     "R2_AZU",
+     "R2_CCA2CP_S",
+     "R2_CCZ2CP_S",
+     "R2_EEACM",
+     "R2_EEACP",
+     "R2_EEZCM",
+     "R2_EEZCP",
+     "R2_G0G0BOSON1",
+     "R2_G0TT",
+     "R2_GG_1_0",
+     "R2_GG_1_R2_GG_2_R2_GG_3_0",
+     "R2_GG_1_R2_GG_3_0",
+     "R2_GMGPTB2",
+     "R2_HHBOSON2",
+     "R2_HHT1",
+     "R2_HTT",
+     "R2_HTT_B",
+     "R2_LLZCP",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_SS_1_R2_SS_2_0",
+     "R2_TTA2CM",
+     "R2_TTA2CM_B",
+     "R2_TTA2CP",
+     "R2_TTC0",
+     "R2_TTZ2CM",
+     "R2_TTZ2CM_B",
+     "R2_TTZ2CP",
+     "R2_UUCM",
+     "R2_ZG0H",
+     "R2_ZG0HT",
+     "R2_ZZBOSON1",
+     "R2_ZZBOSON2",
+     "R2_ZZBOSON3",
+     "R2_ZZD",
+     "R2_ZZH",
+     "R2_ZZHT",
+     "R2_ZZL",
+     "R2_ZZT3",
+     "R2_ZZU",
+     "R2_ZZV"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "r2-rule",
+    "massive:top"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_omitted_r2": [
+    "R2_G0tt_b"
+   ]
+  },
+  {
+   "id": "DY01",
+   "class": "W-DY",
+   "process": "u u~ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv",
+    "hel",
+    "sp"
+   ],
+   "features": [
+    "2->2"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   },
+   "extras_pending": {
+    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)",
+    "hel": "MS-REF (per-helicity SLOOPMATRIXHEL references)",
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "DY02",
+   "class": "W-DY",
+   "process": "u d~ > e+ ve",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "charged-current"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "DY03",
+   "class": "W-DY",
+   "process": "u u~ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "scheme:alpha-mz"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467711139788835
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "DY04",
+   "class": "W-DY",
+   "process": "e- u > e- u",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "lepton-hadron"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "DY05",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/uux_emepg_ew.json (3 providers, s^2e^6) + N top-up s^4e^4 ~3 min",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_emepg_ew.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ],
+    "madloop_r2": [
+     "R2_AABOSON1",
+     "R2_AABOSON2",
+     "R2_AABOSON3",
+     "R2_AAD",
+     "R2_AAT3",
+     "R2_AAU",
+     "R2_AWWCS",
+     "R2_AZBOSON1",
+     "R2_AZBOSON2",
+     "R2_AZBOSON3",
+     "R2_AZD",
+     "R2_AZL",
+     "R2_AZT3",
+     "R2_AZU",
+     "R2_CCA2CM",
+     "R2_CCA2CP",
+     "R2_CCA2CP_S",
+     "R2_CCZ2CM",
+     "R2_CCZ2CP",
+     "R2_CCZ2CP_S",
+     "R2_EEACM",
+     "R2_EEACP",
+     "R2_EEZCM",
+     "R2_EEZCP",
+     "R2_GBB2CP",
+     "R2_GCC2CM",
+     "R2_GCC2CPS",
+     "R2_GG_1_0",
+     "R2_GG_1_R2_GG_2_R2_GG_3_0",
+     "R2_GG_1_R2_GG_3_0",
+     "R2_LLZCP",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_UUCM",
+     "R2_ZZBOSON1",
+     "R2_ZZBOSON2",
+     "R2_ZZBOSON3",
+     "R2_ZZD",
+     "R2_ZZL",
+     "R2_ZZT3",
+     "R2_ZZU",
+     "R2_ZZV"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward",
+    "joint",
+    "ap",
+    "nc"
+   ],
+   "features": [
+    "2->3",
+    "initial:qqbar"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "notes": "the s^2e^6 sector of the existing reference; the s^4e^4 top-up (MS-REF) extends the request to both sectors",
+   "extras_pending": {
+    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)",
+    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
+   },
+   "madloop_omitted_r2": []
+  },
+  {
+   "id": "DY07",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ m- m+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 6
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~8-15 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->4",
+    "two-lepton-lines"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 10
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 10
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "notes": "the 2->4 cost probe (m-sm/PLAN.md \u00a73.2 item 3): generation 255 s, native export 95 s, peak 11.2 GB (tmp/ms-validate/probe/dy07, 2026-10-29): nightly",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-15 min)"
+   }
+  },
+  {
+   "id": "DY08",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~8-15 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "2->4"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    },
+    {
+     "QCD": 4,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    },
+    {
+     "QCD": 4,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-15 min)"
+   },
+   "extras_pending": {
+    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
+   }
+  },
+  {
+   "id": "VJ01",
+   "class": "W-V",
+   "process": "u u~ > z g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->2",
+    "external:Z"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "VJ02",
+   "class": "W-V",
+   "process": "u d~ > w+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "default",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "2->2",
+    "external:W"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   },
+   "extras_pending": {
+    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
+   }
+  },
+  {
+   "id": "VJ03",
+   "class": "W-V",
+   "process": "u u~ > a g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 3
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Ga",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E uux_ag_ew (s^2e^4) + N top-up ~1 min",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_ag_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 1,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW"
+    },
+    "madloop_r2": [
+     "R2_CCA2CM",
+     "R2_CCA2CP",
+     "R2_CCA2CP_S",
+     "R2_GBB2CP",
+     "R2_GCC2CM",
+     "R2_GCC2CPS",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_UUCM"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0",
+    "ward"
+   ],
+   "features": [
+    "2->2",
+    "photon:final"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "parameters": {
+    "aEW0M1": "137.035999"
+   },
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the tagged final photon (Q1 (a)); the s^4e^2 top-up (MS-REF) extends the request",
+   "madloop_omitted_r2": []
+  },
+  {
+   "id": "VV01",
+   "class": "W-V",
+   "process": "u u~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "sp"
+   ],
+   "features": [
+    "2->2",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   },
+   "extras_pending": {
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "VV02",
+   "class": "W-V",
+   "process": "u u~ > z z",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "hel"
+   ],
+   "features": [
+    "2->2"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   },
+   "extras_pending": {
+    "hel": "MS-REF (per-helicity SLOOPMATRIXHEL references)"
+   }
+  },
+  {
+   "id": "VV03",
+   "class": "W-V",
+   "process": "u d~ > w+ z",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   }
+  },
+  {
+   "id": "VV05",
+   "class": "W-V",
+   "process": "u d~ > w+ a",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Ga",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0",
+    "ward",
+    "sp"
+   ],
+   "features": [
+    "2->2",
+    "photon:final",
+    "radiation-zero"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min)"
+   },
+   "extras_pending": {
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "VV06",
+   "class": "W-V",
+   "process": "u u~ > a a",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Ga",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E uux_aa_ew (e^6) + N top-up ~1 min",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/uux_aa_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 2,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW"
+    },
+    "madloop_r2": [
+     "R2_CCA2CM",
+     "R2_CCA2CP",
+     "R2_CCA2CP_S",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_UUCM"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0"
+   ],
+   "features": [
+    "2->2",
+    "photon:final"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "parameters": {
+    "aEW0M1": "137.035999"
+   },
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the two tagged final photons (Q1 (a)); the s^2e^4 top-up (MS-REF) extends the request",
+   "madloop_omitted_r2": []
+  },
+  {
+   "id": "VV07",
+   "class": "W-V",
+   "process": "u u~ > w+ w- g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 2
+    },
+    {
+     "QCD": 1,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~5 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->3",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~5 min)"
+   }
+  },
+  {
+   "id": "V301",
+   "class": "W-V",
+   "process": "u u~ > w+ w- z",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 5
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10-15 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10-15 min)"
+   }
+  },
+  {
+   "id": "VH01",
+   "class": "W-V",
+   "process": "u u~ > z h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "higgs"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "VH02",
+   "class": "W-V",
+   "process": "u d~ > w+ h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "higgs"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "VH03",
+   "class": "W-V",
+   "process": "u d > u d h QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 3
+    },
+    {
+     "QCD": 0,
+     "QED": 5
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "vbf",
+    "capped"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    },
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    },
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "notes": "capped (QCD = 0): typed unpredicted sectors are allowed",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
+   }
+  },
+  {
+   "id": "TT01",
+   "class": "W-top",
+   "process": "g g > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/gg_ttx + gg_ttx_ew (3 providers)",
+   "reference": {
+    "format": "sectors",
+    "parameters_from": 1,
+    "parts": [
+     {
+      "path": "tests/fixtures/loop/required/gg_ttx.json",
+      "sector": {
+       "QCD": 6
+      },
+      "born_sector": {
+       "QCD": 4
+      }
+     },
+     {
+      "path": "tests/fixtures/loop/required/gg_ttx_ew.json",
+      "sector": {
+       "QCD": 4,
+       "QED": 2
+      },
+      "born_sector": {
+       "QCD": 4
+      }
+     }
+    ],
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "joint",
+    "ap",
+    "uv"
+   ],
+   "features": [
+    "2->2",
+    "massive:top",
+    "joint"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture",
+   "extras_pending": {
+    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)",
+    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
+   }
+  },
+  {
+   "id": "TT02",
+   "class": "W-top",
+   "process": "u u~ > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    },
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "so"
+   ],
+   "features": [
+    "2->2",
+    "massive:top",
+    "mixed-born"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "TT03",
+   "class": "W-top",
+   "process": "g g > t t~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 0
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 3,
+     "QED": 0
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 5,
+     "QED": 0
+    },
+    {
+     "QCD": 3,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~4-6 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->3",
+    "massive:top"
+   ],
+   "sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    },
+    {
+     "QCD": 6,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    },
+    {
+     "QCD": 6,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~4-6 min)"
+   }
+  },
+  {
+   "id": "TT04",
+   "class": "W-top",
+   "process": "t t~ > t t~ QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E required/ttx_ttx_ew (ew-validate; Recola primary: R2 rule, 7.7 %)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "root-mixing",
+    "r2-rule"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "EWI-7",
+    "reason": "the row's package: EWI-7"
+   }
+  },
+  {
+   "id": "TT05",
+   "class": "W-top",
+   "process": "g t > t t t~",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E gt_tttx_ew (goldstone-mixing.json, MadLoop double) + its omitted R2_G0tt_b component",
+   "reference": {
+    "format": "madloop-components",
+    "path": "tests/fixtures/loop/goldstone-mixing.json",
+    "key": "gt_tttx_ew",
+    "madloop_r2": [
+     "R2_AABOSON1",
+     "R2_AABOSON2",
+     "R2_AABOSON3",
+     "R2_AAD",
+     "R2_AAT3",
+     "R2_AAU",
+     "R2_AZBOSON1",
+     "R2_AZBOSON2",
+     "R2_AZBOSON3",
+     "R2_AZD",
+     "R2_AZL",
+     "R2_AZT3",
+     "R2_AZU",
+     "R2_CCA2CP_S",
+     "R2_CCZ2CP_S",
+     "R2_G0G0BOSON1",
+     "R2_G0TT",
+     "R2_GCC2CPS",
+     "R2_GG_1_0",
+     "R2_GG_1_R2_GG_2_R2_GG_3_0",
+     "R2_GG_1_R2_GG_3_0",
+     "R2_GMGPTB2",
+     "R2_GTT2CM",
+     "R2_GTT2CMB",
+     "R2_GTT2CP",
+     "R2_HHBOSON1",
+     "R2_HHBOSON2",
+     "R2_HHT1",
+     "R2_HTT",
+     "R2_HTT_B",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_SS_1_R2_SS_2_0",
+     "R2_TTA2CM",
+     "R2_TTA2CM_B",
+     "R2_TTA2CP",
+     "R2_TTC0",
+     "R2_TTZ2CM",
+     "R2_TTZ2CM_B",
+     "R2_TTZ2CP",
+     "R2_UUCM",
+     "R2_ZZBOSON1",
+     "R2_ZZBOSON2",
+     "R2_ZZBOSON3",
+     "R2_ZZD",
+     "R2_ZZL",
+     "R2_ZZT3",
+     "R2_ZZU",
+     "R2_ZZV"
+    ],
+    "omitted_r2": {
+     "component": "r2_g0tt",
+     "coupling": "R2_G0tt_b",
+     "proportional_to": "R2_G0tt",
+     "ratio": "0.8688964002350662"
+    }
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "2->3",
+    "massive:top",
+    "r2-rule",
+    "goldstone-vector-mixing"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_omitted_r2": [
+    "R2_G0tt_b"
+   ]
+  },
+  {
+   "id": "TT06",
+   "class": "W-top",
+   "process": "g b > t t~ b",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_b_mass",
+   "restriction_code": "Gb",
+   "fixed_parameters": {
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-b-mass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E goldstone-mixing.json (gb_ttxb_ew_mb, MadLoop double)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "massive:b"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "EWI-7",
+    "reason": "the row's package: EWI-7"
+   }
+  },
+  {
+   "id": "TV01",
+   "class": "W-top",
+   "process": "g g > t t~ h",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 1
+    },
+    {
+     "QCD": 2,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~8-12 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "higgs"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-12 min)"
+   }
+  },
+  {
+   "id": "TV02",
+   "class": "W-top",
+   "process": "g g > t t~ z",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 1
+    },
+    {
+     "QCD": 2,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~8-12 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "external:Z"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-12 min)"
+   }
+  },
+  {
+   "id": "TV03",
+   "class": "W-top",
+   "process": "u d~ > t t~ w+",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 1
+    },
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 1
+    },
+    {
+     "QCD": 2,
+     "QED": 3
+    },
+    {
+     "QCD": 0,
+     "QED": 5
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~4-6 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "so"
+   ],
+   "features": [
+    "2->3",
+    "mixed-born"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~4-6 min)"
+   }
+  },
+  {
+   "id": "TV06",
+   "class": "W-top",
+   "process": "g g > t t~ e- e+",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E required/gg_ttxemep_ew (3 providers)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ttxemep_ew.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ],
+    "madloop_r2": [
+     "R2_AABOSON1",
+     "R2_AABOSON2",
+     "R2_AABOSON3",
+     "R2_AAD",
+     "R2_AAT3",
+     "R2_AAU",
+     "R2_AWWCS",
+     "R2_AZBOSON1",
+     "R2_AZBOSON2",
+     "R2_AZBOSON3",
+     "R2_AZD",
+     "R2_AZL",
+     "R2_AZT3",
+     "R2_AZU",
+     "R2_CCA2CP_S",
+     "R2_CCZ2CP_S",
+     "R2_EEACM",
+     "R2_EEACP",
+     "R2_EEZCM",
+     "R2_EEZCP",
+     "R2_GCC2CPS",
+     "R2_GGAADOWN",
+     "R2_GGAAUP",
+     "R2_GGHT",
+     "R2_GGVV_0",
+     "R2_GGZADOWN",
+     "R2_GGZAUP",
+     "R2_GGZDOWN",
+     "R2_GGZZDOWN",
+     "R2_GGZZUP",
+     "R2_GGZ_0",
+     "R2_GG_1_0",
+     "R2_GG_1_R2_GG_2_R2_GG_3_0",
+     "R2_GG_1_R2_GG_3_0",
+     "R2_GTT2CM",
+     "R2_GTT2CMB",
+     "R2_GTT2CP",
+     "R2_LLZCP",
+     "R2_QQCP0",
+     "R2_QQCPCS",
+     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
+     "R2_QQ_4_0",
+     "R2_TTA2CM",
+     "R2_TTA2CM_B",
+     "R2_TTA2CP",
+     "R2_TTC0",
+     "R2_TTZ2CM",
+     "R2_TTZ2CM_B",
+     "R2_TTZ2CP",
+     "R2_UUCM",
+     "R2_ZZBOSON1",
+     "R2_ZZBOSON2",
+     "R2_ZZBOSON3",
+     "R2_ZZD",
+     "R2_ZZL",
+     "R2_ZZT3",
+     "R2_ZZU",
+     "R2_ZZV"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->4",
+    "massive:top"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_omitted_r2": []
+  },
+  {
+   "id": "TV07",
+   "class": "W-top",
+   "process": "g g > t t~ e- e+ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 3,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 5,
+     "QED": 2
+    },
+    {
+     "QCD": 3,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "campaign",
+   "status": "active",
+   "reference_legend": "E required/gg_ttxemepg_ew (3 providers) + gg_ttxemepg_qcd",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/gg_ttxemepg_ew.json",
+    "providers": [
+     "madloop",
+     "recola",
+     "openloops"
+    ],
+    "sector": {
+     "QCD": 6,
+     "QED": 6
+    },
+    "born_sector": {
+     "QCD": 6,
+     "QED": 4
+    },
+    "sectors_subset": true
+   },
+   "points": {
+    "campaign": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward",
+    "joint"
+   ],
+   "features": [
+    "2->5",
+    "massive:top",
+    "target"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 6
+    },
+    {
+     "QCD": 8,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 6
+    },
+    {
+     "QCD": 8,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "inputs": "native",
+   "variants": [
+    {
+     "name": "qcd",
+     "gating": true,
+     "tier": "campaign",
+     "notes": "the joint twin: the s^8e^4 sector against gg_ttxemepg_qcd (loop_sm, MW derived from aEWM1 = 132.507: the G_mu inputs at that MW give the same alpha)",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/gg_ttxemepg_qcd.json",
+      "providers": [
+       "madloop",
+       "recola",
+       "openloops"
+      ],
+      "sector": {
+       "QCD": 8,
+       "QED": 4
+      },
+      "born_sector": {
+       "QCD": 6,
+       "QED": 4
+      },
+      "sectors_subset": true
+     },
+     "parameters": {
+      "MW": "80.4190024457561601055171371731"
+     },
+     "extras": [],
+     "extras_pending": {}
+    }
+   ],
+   "catani": "engine",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "notes": "the required 2->5 target (EWI-9): the joint request's s^6e^6 sector against gg_ttxemepg_ew, its s^8e^4 sector (variant @qcd) against gg_ttxemepg_qcd at loop_sm's derived MW",
+   "extras_pending": {
+    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)"
+   }
+  },
+  {
+   "id": "ST01",
+   "class": "W-singletop",
+   "process": "u b > d t",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "single-top"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "ST02",
+   "class": "W-singletop",
+   "process": "u d~ > t b~ QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E required/udx_tbx_ew (ew-validate; MadLoop + Recola)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "single-top"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "EWI-7",
+    "reason": "the row's package: EWI-7"
+   }
+  },
+  {
+   "id": "ST03",
+   "class": "W-singletop",
+   "process": "g b > t w-",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->2",
+    "single-top"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "ST04",
+   "class": "W-singletop",
+   "process": "u d~ > t b~ QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_b_mass",
+   "restriction_code": "Gb",
+   "fixed_parameters": {
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-b-mass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "R commit ew-validate's workspace run udx_tbx_ew_mb (MadLoop)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "single-top",
+    "massive:b"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R commit ew-validate's workspace run udx_tbx_ew_mb (MadLoop))"
+   }
+  },
+  {
+   "id": "JJ01",
+   "class": "W-jets",
+   "process": "u u~ > d d~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    },
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "so",
+    "uv"
+   ],
+   "features": [
+    "2->2",
+    "mixed-born"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   },
+   "extras_pending": {
+    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
+   }
+  },
+  {
+   "id": "JJ02",
+   "class": "W-jets",
+   "process": "u u~ > u u~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    },
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "identical-flavours"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "JJ03",
+   "class": "W-jets",
+   "process": "u u~ > g g",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "JJ04",
+   "class": "W-jets",
+   "process": "u u~ > d d~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 3,
+     "QED": 0
+    },
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 5,
+     "QED": 0
+    },
+    {
+     "QCD": 3,
+     "QED": 2
+    },
+    {
+     "QCD": 1,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3-5 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "so"
+   ],
+   "features": [
+    "2->3",
+    "cross-order-catani"
+   ],
+   "sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    },
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 8,
+     "QED": 0
+    },
+    {
+     "QCD": 6,
+     "QED": 2
+    },
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
+   }
+  },
+  {
+   "id": "PI01",
+   "class": "W-photon",
+   "process": "a a > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min (one job serves both twins)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0"
+   ],
+   "features": [
+    "2->2",
+    "photon:initial"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-PHOTON"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min (one job serves both twins))"
+   }
+  },
+  {
+   "id": "PI02",
+   "class": "W-photon",
+   "process": "a a > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2-3 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "photon:initial",
+    "internal-W"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-PHOTON",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2-3 min)"
+   }
+  },
+  {
+   "id": "PI03",
+   "class": "W-photon",
+   "process": "a g > u u~",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "photon:initial"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-PHOTON"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "PI04",
+   "class": "W-photon",
+   "process": "a u > a u",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Ga",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0"
+   ],
+   "features": [
+    "2->2",
+    "photon:initial",
+    "photon:final"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-PHOTON"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "CM01",
+   "class": "W-CMS",
+   "process": "e- e+ > m- m+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E cms-ufo-standard-gmu.json + cms-source-gmu.json + small-width control (MadLoop double)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ap",
+    "sp"
+   ],
+   "features": [
+    "2->2",
+    "cms"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-CMS",
+    "reason": "the row's package: MS-CMS"
+   },
+   "extras_pending": {
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "CM02",
+   "class": "W-CMS",
+   "process": "u u~ > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~2 min (at and off sqrt(s) = M_Z)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "sp"
+   ],
+   "features": [
+    "2->2",
+    "cms"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min (at and off sqrt(s) = M_Z))"
+   },
+   "extras_pending": {
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "CM03",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~2 min (near M_W)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "sp"
+   ],
+   "features": [
+    "2->2",
+    "cms"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min (near M_W))"
+   },
+   "extras_pending": {
+    "sp": "MS-REF (special points S1-S4)"
+   }
+  },
+  {
+   "id": "CM04",
+   "class": "W-CMS",
+   "process": "g g > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 0
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "cms"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 0
+    },
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   }
+  },
+  {
+   "id": "CM05",
+   "class": "W-CMS",
+   "process": "u u~ > e- e+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 2
+    },
+    {
+     "QCD": 1,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->3",
+    "cms"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
+   }
+  },
+  {
+   "id": "CM07",
+   "class": "W-CMS",
+   "process": "g g > t t~ e- e+ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 3,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "campaign",
+   "status": "pending",
+   "reference_legend": "N ~35-45 min",
+   "reference": null,
+   "points": {
+    "campaign": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "2->5",
+    "cms",
+    "U4"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS-N"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~35-45 min)"
+   }
+  },
+  {
+   "id": "CM08",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve b b~ QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "Gc",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~10 min (2->4)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->4",
+    "cms",
+    "coloured-width"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS-N"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 min (2->4))"
+   }
+  },
+  {
+   "id": "CM09",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve a",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 3
+    },
+    {
+     "QCD": 0,
+     "QED": 5
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "restriction_code": "Gca",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-a0-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3-5 min (MadLoop CMS x the MG5 formula)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [
+    "a0",
+    "ward"
+   ],
+   "features": [
+    "2->3",
+    "cms",
+    "photon:final"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    },
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    },
+    {
+     "QCD": 0,
+     "QED": 8
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS-N"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min (MadLoop CMS x the MG5 formula))"
+   }
+  },
+  {
+   "id": "CM10",
+   "class": "W-CMS",
+   "process": "u d~ > w+ b b~ QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 3
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_sm",
+   "restriction": "default",
+   "restriction_code": "Lc",
+   "fixed_parameters": {
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-cms",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~3 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->3",
+    "cms",
+    "coloured-width",
+    "loop_sm"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-CMS-N"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
+   }
+  },
+  {
+   "id": "MP01",
+   "class": "W-multi",
+   "process": "p p > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N multi-P ~3-5 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "multiparticle"
+   ],
+   "sectors": [],
+   "predicted_sectors": [],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-MODEL"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~3-5 min)"
+   }
+  },
+  {
+   "id": "MP02",
+   "class": "W-multi",
+   "process": "p p > t t~",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 0
+    },
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 4,
+     "QED": 0
+    },
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N multi-P ~4-6 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "multiparticle"
+   ],
+   "sectors": [],
+   "predicted_sectors": [],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "MS-MODEL"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~4-6 min)"
+   }
+  },
+  {
+   "id": "SC01",
+   "class": "W-scheme",
+   "process": "e- e+ > u u~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E electroweak-eeuu-control.json",
+   "reference": {
+    "format": "ew-control",
+    "path": "tests/fixtures/loop/electroweak-eeuu-control.json",
+    "points_path": "tools/loop_reference/uudd_qcd.json",
+    "mu_r2": "1000000",
+    "parameters": {
+     "Gf": "0.0000116639",
+     "MW": "80.419",
+     "MZ": "91.188",
+     "MH": "125",
+     "MT": "173.3",
+     "ymt": "173.3",
+     "aS": "0.118"
+    }
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "nc"
+   ],
+   "features": [
+    "2->2",
+    "quark-final-state"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "extras_pending": {
+    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
+   }
+  },
+  {
+   "id": "SC02",
+   "class": "W-scheme",
+   "process": "u u~ > m- m+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu_massive_muon",
+   "restriction": "default",
+   "restriction_code": "Gm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-mm",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "massive:muon"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
+   }
+  },
+  {
+   "id": "SC03",
+   "class": "W-scheme",
+   "process": "u d~ > e+ ve",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "ckm",
+   "restriction_code": "Gk",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-ckm",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "ckm"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "SC04",
+   "class": "W-scheme",
+   "process": "b b~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_b_mass",
+   "restriction_code": "Gb",
+   "fixed_parameters": {
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu-b-mass",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "massive:b"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "MS-REF",
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   }
+  },
+  {
+   "id": "SC05",
+   "class": "W-scheme",
+   "process": "u u~ > e- e+ g g / d s b",
+   "born_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 4,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "restriction_code": "L5",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E epsilon-sign.json",
+   "reference": {
+    "format": "process-components",
+    "path": "tests/fixtures/loop/epsilon-sign.json",
+    "key": "uu"
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->4",
+    "epsilon-sign",
+    "loop_sm"
+   ],
+   "sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 6,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "particle_veto": [
+    1,
+    3,
+    5
+   ]
+  },
+  {
+   "id": "SC06",
+   "class": "W-scheme",
+   "process": "w+ w- > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N, S ~2-4 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "massive-initial",
+    "root-closure"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2-4 min)"
+   }
+  },
+  {
+   "id": "SC07",
+   "class": "W-scheme",
+   "process": "h h > h h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~1-2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "scalar-loops",
+    "root-closure"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   }
+  },
+  {
+   "id": "SC08",
+   "class": "W-scheme",
+   "process": "t t~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "N ~2 min",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "root-closure"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": [
+     "MS-REF",
+     "EWI-7"
+    ],
+    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
+   }
+  },
+  {
+   "id": "SC09",
+   "class": "W-scheme",
+   "process": "t t~ > z h QCD=0",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "pending",
+   "reference_legend": "E required/ttx_zh_ew (ew-validate; MadLoop + Recola; Recola primary: R2 rule, 2.5 %)",
+   "reference": null,
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "root-mixing",
+    "r2-rule"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "pending": {
+    "waits_for": "EWI-7",
+    "reason": "the row's package: EWI-7"
+   }
+  }
+ ]
+}
