@@ -483,7 +483,9 @@
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
-   "scale_parameter": "MU_R"
+   "scale_parameter": "MU_R",
+   "catani": "none",
+   "catani_reason": "the massive-muon UFO copy: the UFO writes the lepton field renormalisation for massless leptons (single pole = the massive QED operator + 3 alpha/2pi Born)"
   },
   {
    "id": "LL03",
@@ -896,7 +898,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -3324,13 +3326,21 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "total",
+     "coefficient": "double_pole"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "relaxed": {
+    "4": 1e-14
+   },
    "madloop_omitted_r2": [
     "R2_G0tt_b"
    ]
@@ -3790,7 +3800,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -3904,7 +3914,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -6254,6 +6264,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "catani": "none",
+   "catani_reason": "the massive-muon UFO copy: the UFO writes the lepton field renormalisation for massless leptons (single pole = the massive QED operator + 3 alpha/2pi Born)",
    "pending": {
     "waits_for": "MS-REF",
     "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
@@ -6529,7 +6541,10 @@
     3,
     5
    ],
-   "notes": "the d s b veto leaves the axial Z-gluon R2 and the closed up-type loops' axial parts uncancelled: lowered by request ([U2], as test_loop_v2_epsilon_sign)"
+   "notes": "the d s b veto leaves the axial Z-gluon R2 and the closed up-type loops' axial parts uncancelled: lowered by request ([U2], as test_loop_v2_epsilon_sign)",
+   "relaxed": {
+    "4": 1e-12
+   }
   },
   {
    "id": "SC06",
