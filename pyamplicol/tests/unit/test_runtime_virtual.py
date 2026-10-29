@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: 0BSD
 """Public virtual artifact transport, exact ingress and arithmetic selection."""
 
-import json
+from dataclasses import asdict, replace
 from decimal import Decimal
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.api.virtual_results import (
+    VirtualFailureDiagnostic,
+    VirtualLaneDiagnostic,
+)
 from pyamplicol.runtime.virtual import _inputs, _parameters
 
 pytestmark = pytest.mark.loop_fast
@@ -45,12 +48,24 @@ def test_exact_input_transport_and_rejection():
         _inputs([[[1, 0, 0, 1]]], {1: "1000000"}, 1)
 
 
-@pytest.fixture(scope="module")
-def source_artifact(saved_loop_fixture, loop_native):
-    path = str(saved_loop_fixture("source-public-v3/gg"))
-    fixture = (
-        Path(__file__).resolve().parents[2]
-        / "tools/loop_reference/gluon_scattering_qcd.json"
+def test_failure_diagnostics_are_frozen_and_accuracy_status_is_invalid():
+    def failure(point):
+        return VirtualFailureDiagnostic(
+            point,
+            1,
+            2,
+            7,
+            "reduction",
+            "partial transport control",
+            color_component_index=2,
+        )
+
+    values = [failure(1)]
+    diagnostic = VirtualLaneDiagnostic(
+        "accuracy-not-established", "double", 53, False, failures=values
     )
-    points = json.loads(fixture.read_text(), parse_int=str, parse_float=str)["points"]
-    return Path(path), points
+    values.clear()
+    assert diagnostic.failures == (failure(1),) and not diagnostic.valid
+    assert asdict(diagnostic)["failures"][0]["point_id"] == 1
+    with pytest.raises(ValueError, match="unrecovered"):
+        replace(diagnostic, status="success")
