@@ -334,9 +334,12 @@ private:
         bool max_weight_fixed = false;
         std::vector<double> large_weights;
         double count_accepted = 0.;
+        // like _freeze_count, the expected accepted events of this step alone
+        double freeze_count = 0.;
     };
 
     void apply_truncation_budget();
+    void apply_step_truncation_budget(std::size_t step, std::size_t count_target);
     void update_status_integrals();
     void unweight_step_file(MixMaxRandom& rand_gen);
     StepChainResult step_chain(EventBuffer& weight_buffer, std::size_t index) const;

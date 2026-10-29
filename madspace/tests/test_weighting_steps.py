@@ -77,6 +77,8 @@ def generate(
     override_outputs=(),
     integrand_outputs=("matrix_element",),
     step_channel=-1,
+    step_kwargs=None,
+    config_kwargs=None,
 ):
     """Survey and generate, returns the status, the combined events and the
     channels. step_me and step_outputs can be lists, one entry per step."""
@@ -93,6 +95,8 @@ def generate(
     config = make_config()
     config.target_count = target_count
     config.cpu_batch_size = 500
+    for key, value in (config_kwargs or {}).items():
+        setattr(config, key, value)
     channels = [
         ms.ChannelEventGenerator(
             contexts=[context],
@@ -107,7 +111,12 @@ def generate(
         for i, pt_min in enumerate(pt_mins)
     ]
     steps = [
-        ms.WeightingStep([me], mode=mode, override_outputs=list(override_outputs))
+        ms.WeightingStep(
+            [me],
+            mode=mode,
+            override_outputs=list(override_outputs),
+            **(step_kwargs or {}),
+        )
         for me, mode in zip(step_mes, step_modes)
     ]
     groups = [ms.WeightingGroup(list(grouped), steps)] if steps else []
@@ -195,6 +204,40 @@ def test_reproducible(tmp_path, step_modes):
     assert len(events_a) == 5000
     assert np.array_equal(events_a, events_b)
     assert status_a.mean == status_b.mean
+
+
+def heavy_tailed_me(momenta):
+    return surrogate_me(momenta) * (
+        1.0 + 0.05 / (0.002 + np.abs(np.sin(momenta[:, 3, 1] / 7.0)))
+    )
+
+
+def test_reproducible_step_freeze(tmp_path):
+    """The step maximum freezes while the first one still rises, in an order
+    relative to the step decisions that depends on the threads."""
+    results = [
+        generate(
+            str(tmp_path / str(threads)),
+            heavy_tailed_me,
+            ["unweight"],
+            threads=threads,
+            pt_mins=(20.0, 40.0, 60.0),
+            grouped=(0, 1, 2),
+            step_kwargs={"freeze_max_weight_after": 300},
+            config_kwargs={
+                "freeze_max_weight_after": 100000,
+                "max_overweight_truncation": 0.002,
+            },
+        )
+        for threads in (1, 2, 4, 8)
+    ]
+    status_a, events_a, channels_a = results[0]
+    for status_b, events_b, channels_b in results[1:]:
+        assert [c.step_max_weight(1) for c in channels_a] == [
+            c.step_max_weight(1) for c in channels_b
+        ]
+        assert np.array_equal(events_a, events_b)
+        assert status_a.mean == status_b.mean
 
 
 def test_index_outputs(tmp_path):

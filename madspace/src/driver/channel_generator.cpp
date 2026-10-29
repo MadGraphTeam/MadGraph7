@@ -751,6 +751,7 @@ void ChannelEventGenerator::clear_events() {
         }
         state.large_weights.clear();
         state.count_accepted = 0.;
+        state.freeze_count = 0.;
     }
     for (auto& hist : _histograms) {
         std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
@@ -1228,8 +1229,9 @@ void ChannelEventGenerator::update_step_max_weight(
 ) {
     auto& state = _step_states.at(step - 1);
     auto& settings = _step_settings.at(step - 1);
+    // not count_accepted, it depends on the first maximum at the time of the call
     if (state.max_weight_fixed ||
-        state.count_accepted > settings.freeze_max_weight_after) {
+        state.freeze_count > settings.freeze_max_weight_after) {
         return;
     }
     double min_nonzero = 0.;
@@ -1245,8 +1247,21 @@ void ChannelEventGenerator::update_step_max_weight(
     if (state.max_weight == 0) {
         state.max_weight = min_nonzero;
     }
+    std::sort(state.large_weights.begin(), state.large_weights.end(), std::greater{});
+    apply_step_truncation_budget(step, count_target);
+    if (state.max_weight > 0) {
+        for (double value : values) {
+            state.freeze_count += std::min(1., std::abs(value) / state.max_weight);
+        }
+    }
+}
+
+void ChannelEventGenerator::apply_step_truncation_budget(
+    std::size_t step, std::size_t count_target
+) {
+    auto& state = _step_states.at(step - 1);
+    auto& settings = _step_settings.at(step - 1);
     auto& large_weights = state.large_weights;
-    std::sort(large_weights.begin(), large_weights.end(), std::greater{});
     // same truncation as for the first step, see apply_truncation_budget()
     double max_truncation = settings.max_overweight_truncation *
         static_cast<double>(std::min(count_target, settings.freeze_max_weight_after));
@@ -1266,6 +1281,7 @@ void ChannelEventGenerator::update_step_max_weight(
                 for (std::size_t i = step - 1; i < _step_states.size(); ++i) {
                     _step_states.at(i).count_accepted *= factor;
                 }
+                state.freeze_count *= factor;
                 state.max_weight = value;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;
