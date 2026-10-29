@@ -52,15 +52,22 @@ struct BVec {
     __m256d v;
 };
 
-inline __m128i stride_seq(std::size_t stride) {
-    return _mm_mullo_epi32(_mm_set1_epi32(stride), _mm_set_epi32(3, 2, 1, 0));
-}
-
-inline __m128i
-mem_indices(std::size_t batch_stride, std::size_t index_stride, IVec indices) {
-    return _mm_add_epi32(
-        _mm_mullo_epi32(truncate_i64_to_i32(indices), _mm_set1_epi32(index_stride)),
-        stride_seq(batch_stride)
+// 64-bit element offsets index * index_stride + lane * batch_stride of four lanes,
+// from the low 32 bits of the 64-bit indices (indices >= 0, strides < 2^32)
+inline __m256i mem_indices(
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    __m256i indices,
+    long long first_lane = 0
+) {
+    return _mm256_add_epi64(
+        _mm256_mul_epu32(indices, _mm256_set1_epi64x(index_stride)),
+        _mm256_mul_epu32(
+            _mm256_set1_epi64x(batch_stride),
+            _mm256_add_epi64(
+                _mm256_set1_epi64x(first_lane), _mm256_set_epi64x(3, 2, 1, 0)
+            )
+        )
     );
 }
 
@@ -71,7 +78,7 @@ inline FVec vgather(
     std::size_t index_stride,
     IVec indices
 ) {
-    return _mm256_i32gather_pd(
+    return _mm256_i64gather_pd(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 8
     );
 }
@@ -83,7 +90,7 @@ inline IVec vgather(
     std::size_t index_stride,
     IVec indices
 ) {
-    return _mm256_cvtepi32_epi64(_mm_i32gather_epi32(
+    return _mm256_cvtepi32_epi64(_mm256_i64gather_epi32(
         base_ptr, mem_indices(batch_stride, index_stride, indices), 4
     ));
 }
@@ -274,13 +281,15 @@ struct BVec32 {
     __m256 v;
 };
 
+// 64-bit offsets of the lower (half = 0) or upper four of the eight lanes
+template <int half>
 inline __m256i
 mem_indices32(std::size_t batch_stride, std::size_t index_stride, IVec32 indices) {
-    return _mm256_add_epi32(
-        _mm256_mullo_epi32(indices, _mm256_set1_epi32(index_stride)),
-        _mm256_mullo_epi32(
-            _mm256_set1_epi32(batch_stride), _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0)
-        )
+    return mem_indices(
+        batch_stride,
+        index_stride,
+        _mm256_cvtepi32_epi64(_mm256_extracti128_si256(indices, half)),
+        4 * half
     );
 }
 
@@ -291,8 +300,13 @@ inline FVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm256_i32gather_ps(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    return _mm256_set_m128(
+        _mm256_i64gather_ps(
+            base_ptr, mem_indices32<1>(batch_stride, index_stride, indices), 4
+        ),
+        _mm256_i64gather_ps(
+            base_ptr, mem_indices32<0>(batch_stride, index_stride, indices), 4
+        )
     );
 }
 
@@ -303,8 +317,13 @@ inline IVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm256_i32gather_epi32(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    return _mm256_set_m128i(
+        _mm256_i64gather_epi32(
+            base_ptr, mem_indices32<1>(batch_stride, index_stride, indices), 4
+        ),
+        _mm256_i64gather_epi32(
+            base_ptr, mem_indices32<0>(batch_stride, index_stride, indices), 4
+        )
     );
 }
 
@@ -334,12 +353,9 @@ inline void vscatter(
     float values_buf[8];
     int indices_buf[8];
     _mm256_storeu_ps(values_buf, values);
-    _mm256_storeu_si256(
-        reinterpret_cast<__m256i*>(indices_buf),
-        mem_indices32(batch_stride, index_stride, indices)
-    );
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(indices_buf), indices);
     for (int i = 0; i < 8; ++i) {
-        base_ptr[indices_buf[i]] = values_buf[i];
+        base_ptr[index_stride * indices_buf[i] + batch_stride * i] = values_buf[i];
     }
 }
 
@@ -353,12 +369,9 @@ inline void vscatter(
     int values_buf[8];
     int indices_buf[8];
     _mm256_storeu_si256(reinterpret_cast<__m256i*>(values_buf), values);
-    _mm256_storeu_si256(
-        reinterpret_cast<__m256i*>(indices_buf),
-        mem_indices32(batch_stride, index_stride, indices)
-    );
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(indices_buf), indices);
     for (int i = 0; i < 8; ++i) {
-        base_ptr[indices_buf[i]] = values_buf[i];
+        base_ptr[index_stride * indices_buf[i] + batch_stride * i] = values_buf[i];
     }
 }
 

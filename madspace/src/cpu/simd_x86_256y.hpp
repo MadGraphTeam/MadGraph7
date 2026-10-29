@@ -268,13 +268,17 @@ struct BVec32 {
     __mmask8 v;
 };
 
+// 64-bit offsets of the lower (half = 0) or upper four of the eight lanes
+template <int half>
 inline __m256i
 mem_indices32(std::size_t batch_stride, std::size_t index_stride, IVec32 indices) {
-    return _mm256_add_epi32(
-        _mm256_mullo_epi32(indices, _mm256_set1_epi32(index_stride)),
-        _mm256_mullo_epi32(
-            _mm256_set1_epi32(batch_stride), _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0)
-        )
+    return _mm256_add_epi64(
+        mem_indices(
+            batch_stride,
+            index_stride,
+            _mm256_cvtepi32_epi64(_mm256_extracti128_si256(indices, half))
+        ),
+        _mm256_set1_epi64x(4 * half * batch_stride)
     );
 }
 
@@ -285,8 +289,13 @@ inline FVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm256_i32gather_ps(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    return _mm256_set_m128(
+        _mm256_i64gather_ps(
+            base_ptr, mem_indices32<1>(batch_stride, index_stride, indices), 4
+        ),
+        _mm256_i64gather_ps(
+            base_ptr, mem_indices32<0>(batch_stride, index_stride, indices), 4
+        )
     );
 }
 
@@ -297,8 +306,13 @@ inline IVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm256_i32gather_epi32(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), 4
+    return _mm256_set_m128i(
+        _mm256_i64gather_epi32(
+            base_ptr, mem_indices32<1>(batch_stride, index_stride, indices), 4
+        ),
+        _mm256_i64gather_epi32(
+            base_ptr, mem_indices32<0>(batch_stride, index_stride, indices), 4
+        )
     );
 }
 
@@ -325,8 +339,17 @@ inline void vscatter(
     IVec32 indices,
     FVec32 values
 ) {
-    _mm256_i32scatter_ps(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), values, 4
+    _mm256_i64scatter_ps(
+        base_ptr,
+        mem_indices32<0>(batch_stride, index_stride, indices),
+        _mm256_castps256_ps128(values),
+        4
+    );
+    _mm256_i64scatter_ps(
+        base_ptr,
+        mem_indices32<1>(batch_stride, index_stride, indices),
+        _mm256_extractf128_ps(values, 1),
+        4
     );
 }
 
@@ -337,8 +360,17 @@ inline void vscatter(
     IVec32 indices,
     IVec32 values
 ) {
-    _mm256_i32scatter_epi32(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), values, 4
+    _mm256_i64scatter_epi32(
+        base_ptr,
+        mem_indices32<0>(batch_stride, index_stride, indices),
+        _mm256_castsi256_si128(values),
+        4
+    );
+    _mm256_i64scatter_epi32(
+        base_ptr,
+        mem_indices32<1>(batch_stride, index_stride, indices),
+        _mm256_extracti128_si256(values, 1),
+        4
     );
 }
 

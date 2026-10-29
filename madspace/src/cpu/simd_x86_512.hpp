@@ -43,19 +43,22 @@ struct BVec {
     __mmask8 v;
 };
 
-inline __m256i stride_seq(std::size_t stride) {
-    return _mm256_mullo_epi32(
-        _mm256_set1_epi32(stride), _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0)
-    );
-}
-
-inline __m256i
-mem_indices(std::size_t batch_stride, std::size_t index_stride, IVec indices) {
-    return _mm256_add_epi32(
-        _mm256_mullo_epi32(
-            _mm512_cvtepi64_epi32(indices), _mm256_set1_epi32(index_stride)
-        ),
-        stride_seq(batch_stride)
+// 64-bit element offsets index * index_stride + lane * batch_stride of eight lanes,
+// from the low 32 bits of the 64-bit indices (indices >= 0, strides < 2^32)
+inline __m512i mem_indices(
+    std::size_t batch_stride,
+    std::size_t index_stride,
+    __m512i indices,
+    long long first_lane = 0
+) {
+    return _mm512_add_epi64(
+        _mm512_mul_epu32(indices, _mm512_set1_epi64(index_stride)),
+        _mm512_mul_epu32(
+            _mm512_set1_epi64(batch_stride),
+            _mm512_add_epi64(
+                _mm512_set1_epi64(first_lane), _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0)
+            )
+        )
     );
 }
 
@@ -66,7 +69,7 @@ inline FVec vgather(
     std::size_t index_stride,
     IVec indices
 ) {
-    return _mm512_i32gather_pd(
+    return _mm512_i64gather_pd(
         mem_indices(batch_stride, index_stride, indices), base_ptr, 8
     );
 }
@@ -78,8 +81,8 @@ inline IVec vgather(
     std::size_t index_stride,
     IVec indices
 ) {
-    return _mm512_cvtepi32_epi64(_mm256_i32gather_epi32(
-        base_ptr, mem_indices(batch_stride, index_stride, indices), 4
+    return _mm512_cvtepi32_epi64(_mm512_i64gather_epi32(
+        mem_indices(batch_stride, index_stride, indices), base_ptr, 4
     ));
 }
 
@@ -108,7 +111,7 @@ inline void vscatter(
     IVec indices,
     FVec values
 ) {
-    _mm512_i32scatter_pd(
+    _mm512_i64scatter_pd(
         base_ptr, mem_indices(batch_stride, index_stride, indices), values, 8
     );
 }
@@ -279,15 +282,28 @@ struct BVec32 {
     __mmask16 v;
 };
 
+// 64-bit offsets of the lower (half = 0) or upper eight of the sixteen lanes
+template <int half>
 inline __m512i
 mem_indices32(std::size_t batch_stride, std::size_t index_stride, IVec32 indices) {
-    return _mm512_add_epi32(
-        _mm512_mullo_epi32(indices, _mm512_set1_epi32(index_stride)),
-        _mm512_mullo_epi32(
-            _mm512_set1_epi32(batch_stride),
-            _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
-        )
+    return mem_indices(
+        batch_stride,
+        index_stride,
+        _mm512_cvtepi32_epi64(_mm512_extracti64x4_epi64(indices, half)),
+        8 * half
     );
+}
+
+// the halves of a float32 vector (no AVX512DQ for the 32-bit inserts and extracts)
+inline __m512 join_halves(__m256 low, __m256 high) {
+    return _mm512_castpd_ps(_mm512_insertf64x4(
+        _mm512_castps_pd(_mm512_castps256_ps512(low)), _mm256_castps_pd(high), 1
+    ));
+}
+
+template <int half>
+inline __m256 get_half(__m512 v) {
+    return _mm256_castpd_ps(_mm512_extractf64x4_pd(_mm512_castps_pd(v), half));
 }
 
 inline FVec32 vgather(
@@ -297,8 +313,13 @@ inline FVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm512_i32gather_ps(
-        mem_indices32(batch_stride, index_stride, indices), base_ptr, 4
+    return join_halves(
+        _mm512_i64gather_ps(
+            mem_indices32<0>(batch_stride, index_stride, indices), base_ptr, 4
+        ),
+        _mm512_i64gather_ps(
+            mem_indices32<1>(batch_stride, index_stride, indices), base_ptr, 4
+        )
     );
 }
 
@@ -309,8 +330,14 @@ inline IVec32 vgather(
     std::size_t index_stride,
     IVec32 indices
 ) {
-    return _mm512_i32gather_epi32(
-        mem_indices32(batch_stride, index_stride, indices), base_ptr, 4
+    return _mm512_inserti64x4(
+        _mm512_castsi256_si512(_mm512_i64gather_epi32(
+            mem_indices32<0>(batch_stride, index_stride, indices), base_ptr, 4
+        )),
+        _mm512_i64gather_epi32(
+            mem_indices32<1>(batch_stride, index_stride, indices), base_ptr, 4
+        ),
+        1
     );
 }
 
@@ -337,8 +364,17 @@ inline void vscatter(
     IVec32 indices,
     FVec32 values
 ) {
-    _mm512_i32scatter_ps(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), values, 4
+    _mm512_i64scatter_ps(
+        base_ptr,
+        mem_indices32<0>(batch_stride, index_stride, indices),
+        get_half<0>(values),
+        4
+    );
+    _mm512_i64scatter_ps(
+        base_ptr,
+        mem_indices32<1>(batch_stride, index_stride, indices),
+        get_half<1>(values),
+        4
     );
 }
 
@@ -349,8 +385,17 @@ inline void vscatter(
     IVec32 indices,
     IVec32 values
 ) {
-    _mm512_i32scatter_epi32(
-        base_ptr, mem_indices32(batch_stride, index_stride, indices), values, 4
+    _mm512_i64scatter_epi32(
+        base_ptr,
+        mem_indices32<0>(batch_stride, index_stride, indices),
+        _mm512_extracti64x4_epi64(values, 0),
+        4
+    );
+    _mm512_i64scatter_epi32(
+        base_ptr,
+        mem_indices32<1>(batch_stride, index_stride, indices),
+        _mm512_extracti64x4_epi64(values, 1),
+        4
     );
 }
 
