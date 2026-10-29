@@ -11,7 +11,11 @@ flavours: one colour word reached by trees of two N_c grades, separate blocks
 at LC and NLC, ``generation.dag_grades``). Oracles:
 
 * providers (O8): MadLoop, Recola and OpenLoops within 1e-9 (the
-  required-references metric) for the virtual's three Laurent coefficients;
+  required-references metric) for the virtual's three Laurent coefficients
+  (gg -> gg is M-QCD campaign row A01, ``test_loop_v2_mqcd_default``, and
+  uu~ -> uu~ row A06, ``test_loop_v2_mqcd_nightly*``: double-double within
+  1e-12 of MadLoop in quadruple precision, per squared-order sector and
+  strictly relative per coefficient);
 * legacy (O1): Born and the six components within 1e-12 (binary64) and
   1e-40 (200 bits) of the frozen 200-bit legacy values. The legacy binary64
   values themselves deviate from those by up to ~7e-12 on the five-leg
@@ -463,9 +467,15 @@ def _provider_rows(loop_reference, name: str) -> list[dict]:
     return [row["providers"] for row in reference["rows"]]
 
 
+# gg -> gg's and uu~ -> uu~'s provider comparisons are the M-QCD campaign's
+# rows A01 and A06 (``tests/fixtures/loop/mqcd/manifest.json``; PLAN §3.2
+# MQ-VALIDATE item 3).
+PROVIDER_SLICE = tuple(name for name in SLICE if name not in ("gg_gg", "uux_uux"))
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("name", SLICE)
+@pytest.mark.parametrize("name", PROVIDER_SLICE)
 def test_virtual_agrees_with_providers(evaluated, loop_reference, name, carrier):
     rows = _provider_rows(loop_reference, name)
     for index, (result, providers) in enumerate(
