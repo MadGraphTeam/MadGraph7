@@ -2793,7 +2793,9 @@ class LoopSlice:
                     for right, q in by_order[b]:
                         for power, value in self.overlaps(left, right).items():
                             if value:
-                                out[key] = max(out.get(key, power + p + q), power + p + q)
+                                out[key] = max(
+                                    out.get(key, power + p + q), power + p + q
+                                )
         return out
 
     def _refuse_subleading_flows(

@@ -95,8 +95,7 @@ def _feature_blockers(backend, processes):
         )
     selection = backend._process_selection
     if not _v2_leading_colour(run) and any(
-        getattr(selection, name) is not None
-        for name in _SELECTORS
+        getattr(selection, name) is not None for name in _SELECTORS
     ):
         # Leading-colour v2 requests take them (``_v2_selection``).
         reasons.append(
@@ -472,11 +471,7 @@ def _check_correlators(backend, correlators):
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
     selection = backend._process_selection
-    partial = tuple(
-        name
-        for name in _SELECTORS
-        if getattr(selection, name) is not None
-    )
+    partial = tuple(name for name in _SELECTORS if getattr(selection, name) is not None)
     declared = bool(
         correlators.color_correlations
         or correlators.spin_correlations

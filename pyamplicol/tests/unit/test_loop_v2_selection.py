@@ -39,6 +39,7 @@ import pytest
 
 from pyamplicol.api.errors import CompatibilityError, EvaluationError
 from pyamplicol.loops.v2 import selection as lc
+from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ROOT / "tests" / "fixtures" / "loop" / "legacy"
@@ -454,7 +455,9 @@ def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(
     assert mixed.slice.degrees() == observables.slice.degrees()
     chosen = _runtime(mixed)
     flows = [flow.id for flow in chosen.selection_catalogue().flows]
-    assert flows == ["flow:2,1,3,5,4", "flow:2,4,3,5,1", "flow:2,5,1,3,4"]
+    # The tree plan's first three sectors, in its order.
+    assert flows == [flow.id for flow in runtime.selection_catalogue().flows][:3]
+    assert sorted(flows) == ["flow:2,1,3,5,4", "flow:2,4,3,5,1", "flow:2,5,1,3,4"]
     for flow in ("flow:2,1,3,5,4", "flow:2,5,1,3,4"):
         value = chosen.evaluate(pts, mu_r2=scales, color_flows=[flow])
         assert _values(value) == [0.0, 0.0, 0.0, 0.0]
@@ -779,8 +782,7 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
         [{"color_flows": flows[k::3]} for k in range(3)],
         [{"helicities": helicities[:half]}, {"helicities": helicities[half:]}],
     )
-    # The recommended checks (``loops.v2.stability.RECOMMENDED_CHECKS``).
-    checks = VirtualStabilityChecks(1, True, rescaled=True)
+    checks = VirtualStabilityChecks(RECOMMENDED_CHECKS.rotations, True, rescaled=True)
     for arithmetic in ("double", "double-double"):
 
         def values(arithmetic=arithmetic, **selectors):
@@ -1068,7 +1070,9 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         pts,
         mu_r2=scales,
         color_flows=["flow:2,4,3,5,1"],
-        stability_checks=VirtualStabilityChecks(1, True, rescaled=True),
+        stability_checks=VirtualStabilityChecks(
+            RECOMMENDED_CHECKS.rotations, True, rescaled=True
+        ),
     )
     assert checked.stability is not None and checked.stability[0].relative < 1e-9
     # A stored selection is one column set formed from the stored resolved
@@ -1160,9 +1164,7 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
 
 
 @pytest.mark.loop_physics
-def test_evaluation_time_selections_are_kept_most_recently_used(
-    artifacts, monkeypatch
-):
+def test_evaluation_time_selections_are_kept_most_recently_used(artifacts, monkeypatch):
     """A loaded artifact keeps the formed column sets of its most recently
     used evaluation-time selections only (``$PYAMPLICOL_LOOP_SELECTION_CACHE
     = 2`` here): a third distinct selection releases the least recently used
