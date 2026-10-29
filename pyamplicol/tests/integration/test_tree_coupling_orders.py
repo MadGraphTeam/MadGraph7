@@ -74,6 +74,7 @@ from pyamplicol.config import (
     ProcessConfig,
     RunConfig,
 )
+from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
 from pyamplicol.models.prepared import load_prepared_model_bundle
 
@@ -569,8 +570,9 @@ def test_recurrence_lane_refuses_flows_without_roots(
 # t t~ > b b~ 1.2x, e+ e- > b b~ w+ w- 0.24x at the first point). Its
 # structural-demand pass now refuses a closure anchor whose complement is a
 # Dirac state of a closable fermion pair that no closure row joins to the
-# anchor's Weyl state (``construct.rs`` ``DiracWeylClosureGuard``, key
-# ``dirac-weyl-closure``); the loop engine admits the class (its Born closes at
+# anchor's Weyl state, reached within the request's coupling-order limits
+# (``construct.rs`` ``DiracWeylClosureGuard``, ``StructuralOrderReachability``,
+# key ``dirac-weyl-closure``); the loop engine admits the class (its Born closes at
 # a vertex, ``test_loop_v2_dirac_weyl``). The MadGraph references stay for a
 # Dirac-Weyl closure contraction.
 _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION = "vt vt~ > w+ w-"
@@ -729,23 +731,33 @@ def test_on_the_fly_minimal_policy_refuses_a_process_of_dirac_weyl_closures_only
     no viable order but the Dirac-Weyl pair's and refuses at the first
     query instead of falling back to the explicit limits."""
 
-    (point,) = _reference("b u > d t", NO_B_MASS_REFERENCE)["points"][:1]
-    top = math.sqrt(point[3][0] ** 2 - sum(x * x for x in point[3][1:]))
-    (point,) = _reference("b b~ > w+ w-", NO_B_MASS_REFERENCE)["points"][:1]
-    w = math.sqrt(point[2][0] ** 2 - sum(x * x for x in point[2][1:]))
     runtime = _runtime(
         sm_no_b_mass_model, "g b > t w-", tmp_path / "artifact", accuracy="lc",
         execution_mode="on-the-fly", policy="minimal",
     )  # fmt: skip
+    masses = (0.0, 0.0, _parameter(runtime, "MT"), _parameter(runtime, "MW"))
     with pytest.raises(
         EvaluationError,
         match=r"dirac-weyl-closure: the coupling-order policy's closure would",
     ):
-        runtime.evaluate([_on_shell_two_to_two((0.0, 0.0, top, w), 0.3)])
+        runtime.evaluate([_on_shell_two_to_two(masses, 0.3)])
+
+
+def _parameter(runtime: Runtime, name: str) -> float:
+    """A real model parameter's default, read from the runtime's physics."""
+
+    (value,) = (
+        parameter.default_real
+        for parameter in runtime.physics.model_parameters
+        if parameter.name == name
+    )
+    return value
 
 
 def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
-    """A 2 -> 2 point at sqrt(s) = 1000 GeV in the centre-of-mass frame."""
+    """A 2 -> 2 point at sqrt(s) = 1000 GeV in the centre-of-mass frame, in
+    binary64 with a free scattering angle (``test_loop_v2_dirac_weyl._point``
+    is the loop tests' 45-digit point at one fixed angle)."""
 
     m1, m2, m3, m4 = masses
     root = 1000.0
@@ -796,6 +808,50 @@ def test_tree_lanes_build_a_massive_line_closing_on_no_weyl_sink(
             mine = complex(mine)
             assert theirs.real > 0.0 and mine.imag == 0.0
             assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
+
+
+@pytest.mark.parametrize("policy", ["explicit", "minimal"])
+@pytest.mark.parametrize(
+    ("process", "limits"),
+    [
+        ("t t~ > b b~", {"QCD": 2, "QED": 0}),
+        ("g g > t t~ b b~", {"QCD": 4, "QED": 0}),
+    ],
+)
+def test_recurrence_lane_builds_a_massless_b_where_the_orders_keep_the_w_off(
+    sm_no_b_mass_model: ModelSource,
+    tmp_path: Path,
+    process: str,
+    limits: dict[str, int],
+    policy: str,
+) -> None:
+    """The guard is order-aware: with a massless b and QED 0 no W joins the
+    b and the top, so no Dirac b current is reached within the limits and the
+    recurrence builds, equal to the eager lane at full colour (the
+    structural-demand pass alone, which carries no orders, refused these)."""
+
+    eager = _runtime(
+        sm_no_b_mass_model, process, tmp_path / "eager", execution_mode="eager",
+        limits=limits, policy=policy,
+    )  # fmt: skip
+    top = _parameter(eager, "MT")
+    if process == "t t~ > b b~":
+        points = [_on_shell_two_to_two((top, top, 0.0, 0.0), 0.3)]
+    else:
+        beams = [[500.0, 0.0, 0.0, 500.0], [500.0, 0.0, 0.0, -500.0]]
+        final = massive_rambo_final_state(
+            4, sqrt_s=1000.0, masses=(top, top, 0.0, 0.0), seed=11
+        )
+        points = [[*beams, *([float(x) for x in leg] for leg in final)]]
+    expected = [complex(value) for value in eager.evaluate(points)]
+    recurrence = _runtime(
+        sm_no_b_mass_model, process, tmp_path / "recurrence", limits=limits,
+        policy=policy,
+    )  # fmt: skip
+    for mine, theirs in zip(recurrence.evaluate(points), expected, strict=True):
+        mine = complex(mine)
+        assert theirs.real > 0.0 and mine.imag == 0.0
+        assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])

@@ -332,8 +332,23 @@ def test_the_no_b_mass_class_equals_the_massive_b_route(
     )
 
 
-@pytest.mark.loop_nightly
-@pytest.mark.parametrize(("restriction", "process"), CLASS)
+# The class member in the default tier: a W line a non-diagonal CKM element
+# takes between a light quark and the top (about 16 s); the rest nightly.
+_DEFAULT_TIER_MEMBER = ("ckm", "u s > d t")
+
+
+@pytest.mark.parametrize(
+    ("restriction", "process"),
+    [
+        pytest.param(
+            *member,
+            marks=pytest.mark.loop_physics
+            if member == _DEFAULT_TIER_MEMBER
+            else pytest.mark.loop_nightly,
+        )
+        for member in CLASS
+    ],
+)
 def test_the_dirac_weyl_class_generates(restricted, loop_native, restriction, process):
     """The restricted-UFO class generates and its renormalised virtual has
     Catani's poles (double-double) at a point."""

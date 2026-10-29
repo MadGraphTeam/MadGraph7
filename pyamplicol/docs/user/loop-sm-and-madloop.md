@@ -79,7 +79,7 @@ MG5_aMC syntax inside a process expression is refused with the key
 | --- | --- |
 | 4FS with tops (massive b) | `restriction = "no_widths"` (all widths zero, MB = ymb = 4.7) |
 | 5FS (massless b) | `restriction = "no_b_mass"` with `[loop.preparation] fixed_parameters = { WT = "0" }` whenever a top propagates in a tree current |
-| 5FS with a b and a t on one fermion line (`u d~ > t b~`, `u b > d t`, `g b > t w-`, `b b~ > w+ w-`) | `restriction = "no_b_mass"` with `fixed_parameters = { WT = "0" }` as above, or the default restriction with `{ MB = "0", ymb = "0", WT = "0" }`: the same parameter values and the same virtual (binary64 to 1e-13) |
+| 5FS with a b and a t on one fermion line (`u d~ > t b~`, `u b > d t`, `g b > t w-`, `b b~ > w+ w-`) | `restriction = "no_b_mass"` with `fixed_parameters = { WT = "0" }` as above. The default restriction with `{ MB = "0", ymb = "0", WT = "0" }` gave the same virtual (binary64 to 1e-13) for the 2 -> 2 processes `g b > t w-`, `b b~ > w+ w-`, `u b > d t`, `b u > d t` and `t t~ > b b~`, but it is no general substitute: for `b b~ > w+ w- g` its virtual fails the Catani and Ward checks where `no_b_mass` passes them (an open defect of W-pair production with a jet) |
 | massive charm | `restriction = "c_mass"` |
 | non-diagonal CKM | `restriction = "zeromass_ckm"` or `"ckm"` |
 
@@ -88,9 +88,15 @@ loop_sm's other restrictions (`default`, `no_masses`, `no_tau_mass`,
 massless quark (the top and a massless b at `no_b_mass`, a massive and a
 massless quark through the CKM matrix at `zeromass_ckm`, `ckm` and `c_mass`)
 generates at one loop: the Born closes at a vertex. Tree-level requests
-refuse such a line with `dirac-weyl-closure` (tree lanes install no
-Dirac-Weyl closure contraction); keep the light quark massive there, with
-its mass fixed to zero in the default restriction. The one-loop engine is
+refuse such a line (tree lanes install no Dirac-Weyl closure contraction)
+with `dirac-weyl-closure`: the eager and recurrence lanes at generation,
+the on-the-fly lane at the first query whose anchor closes on the line (an
+`EvaluationError`; queries anchored elsewhere evaluate). Some processes meet
+an older recurrence refusal first (`b u > d t` and `b u > t d`: "no exact
+closure for physical LC sector"). A request whose coupling-order limits keep
+the W off the line builds (`t t~ > b b~` at QED 0). Otherwise keep the light
+quark massive in the tree model, with its mass fixed to zero in the default
+restriction. The one-loop engine is
 real on-shell: a
 coloured particle with a width in a tree current (the top at every shipped
 restriction but `no_widths`) is refused with `coloured-width`, whose message

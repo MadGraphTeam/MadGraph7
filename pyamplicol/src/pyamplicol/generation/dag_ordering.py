@@ -40,7 +40,7 @@ class DiracWeylClosureUnsupported(GenerationError, ValueError):
     (``key`` ``dirac-weyl-closure``, the key the Rust recurrence and
     on-the-fly lanes refuse the class with, ``recurrence::construct``'s
     ``DiracWeylClosureGuard``). A ``ValueError`` as the untyped refusal its
-    callers handle."""
+    callers handle. The message starts with ``key``."""
 
     key = "dirac-weyl-closure"
 
@@ -107,8 +107,9 @@ def _direct_contraction_ir(
         if loop_born:
             return DIRAC_WEYL_CLOSURE
         raise DiracWeylClosureUnsupported(
-            "dirac-weyl-closure: a Dirac (chirality-0) current cannot close on "
-            f"a Weyl (chirality {left.chirality or right.chirality}) current: "
+            f"{DiracWeylClosureUnsupported.key}: a Dirac (chirality-0) current "
+            f"cannot close on a Weyl (chirality {left.chirality or right.chirality}) "
+            "current: "
             f"particles {left.particle_id} and {right.particle_id}, external "
             f"labels {left.external_labels} and {right.external_labels}; a "
             "fermion line that joins massive and massless fermions through a "
