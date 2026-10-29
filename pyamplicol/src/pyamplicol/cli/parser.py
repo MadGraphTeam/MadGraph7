@@ -667,6 +667,17 @@ def _add_evaluation_options(
         help="v2 virtual check: reduce every loop numerator again, reversed",
     )
     parser.add_argument(
+        "--stability-rescaled",
+        dest="evaluation.stability_checks.rescaled",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtual check: run the reduction-direction check at rescaled "
+            "inputs, evaluating the master integrals again (with "
+            "--stability-reduction-direction)"
+        ),
+    )
+    parser.add_argument(
         "--verify-successful",
         dest="evaluation.stability.verify_successful",
         action=argparse.BooleanOptionalAction,

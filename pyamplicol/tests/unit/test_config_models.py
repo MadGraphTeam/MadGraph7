@@ -43,7 +43,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 116
+    assert len(FIELD_REGISTRY) == 117
     # The legacy one-loop engine and its switch were removed (v2 only).
     assert "loop.engine" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
@@ -56,6 +56,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
+    assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
     assert (
         FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
