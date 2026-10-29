@@ -18,9 +18,11 @@ Usage::
             batch.px                    # shape (10000, max_particle_count)
 
 Event weights are in units of the maximum weight: +-1, except for overweight
-events. To normalize a sample to the cross section, scale its weights by
-``stream.integral / sum(weights)``. The event sequence is reproducible from the seed,
-independent of the thread count and of how it is split into batches.
+events and for events reweighted in a later step (the default [amplicol]
+mode = "reweight"), which carry the ratio of the matrix elements. To normalize
+a sample to the cross section, scale its weights by
+``stream.integral / sum(weights)``. The event sequence is reproducible from the
+seed, independent of the thread count and of how it is split into batches.
 """
 
 import dataclasses
@@ -62,7 +64,8 @@ class EventBatch:
 
     #: Process ID of the event (IDPRUP).
     process_id: Any
-    #: Event weight, +-1 or larger in magnitude for overweight events (XWGTUP).
+    #: Event weight (XWGTUP), +-1 or larger in magnitude for overweight events, times
+    #: the matrix-element ratio of a reweighting step. Not normalized.
     weight: Any
     #: Renormalization scale in GeV (SCALUP).
     scale: Any
