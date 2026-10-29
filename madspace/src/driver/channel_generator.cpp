@@ -742,6 +742,7 @@ void ChannelEventGenerator::clear_events() {
     _abs_cross_section.reset();
     _large_weights.clear();
     _first_step_count = 0.;
+    _freeze_count = 0.;
     _final_integral = {};
     ++_event_epoch;
     for (auto& state : _step_states) {
@@ -757,11 +758,9 @@ void ChannelEventGenerator::clear_events() {
     }
 }
 
-void ChannelEventGenerator::update_max_weight(Tensor weights) {
-    // with steps, the first step freezes on its own accepted events
-    double unweighted_count =
-        _step_settings.empty() ? _status.count_unweighted : _first_step_count;
-    if (_max_weight_fixed || unweighted_count > _config.freeze_max_weight_after) {
+void ChannelEventGenerator::update_max_weight(Tensor weights, bool unweight) {
+    // not the written events, they are committed in a thread dependent order
+    if (_max_weight_fixed || _freeze_count > _config.freeze_max_weight_after) {
         return;
     }
 
@@ -781,6 +780,11 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
     apply_truncation_budget();
+    if (unweight && _max_weight > 0) {
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            _freeze_count += std::min(1., std::abs(w_view[i]) / _max_weight);
+        }
+    }
 }
 
 void ChannelEventGenerator::set_target_count(std::size_t target_count) {
@@ -791,10 +795,8 @@ void ChannelEventGenerator::set_target_count(std::size_t target_count) {
     // (e.g. generate()'s round-one seed) would otherwise never be corrected: a
     // channel that has met its smaller target is not revisited. Tighten the cap
     // now; unweight_all() re-unweights the whole file against it at the end.
-    double unweighted_count =
-        _step_settings.empty() ? _status.count_unweighted : _first_step_count;
     if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
-        unweighted_count <= _config.freeze_max_weight_after) {
+        _freeze_count <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
 }
@@ -816,6 +818,7 @@ void ChannelEventGenerator::apply_truncation_budget() {
             if (_max_weight < w) {
                 _status.count_unweighted *= _max_weight / w;
                 _first_step_count *= _max_weight / w;
+                _freeze_count *= _max_weight / w;
                 for (auto& state : _step_states) {
                     state.count_accepted *= _max_weight / w;
                 }

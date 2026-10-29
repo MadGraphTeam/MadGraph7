@@ -75,7 +75,7 @@ void EventGenerator::commit_generate_job(GeneratorBatchJob& job) {
     }
     channel->integrate(job);
     update_integral_status();
-    channel->update_max_weight(job.weights);
+    channel->update_max_weight(job.weights, job.unweight);
     --channel_job_count;
     --_context_job_counts.at(job.context_index);
     if (job.unweight) {
@@ -338,7 +338,7 @@ void EventGenerator::survey(std::size_t survey_pass) {
                     }
                     channel->integrate(gen_job);
                     update_integral();
-                    channel->update_max_weight(gen_job.weights);
+                    channel->update_max_weight(gen_job.weights, gen_job.unweight);
                     --channel_job_count;
                     --_context_job_counts.at(gen_job.context_index);
                     // Global order is ascending job id and so is the per-channel one,

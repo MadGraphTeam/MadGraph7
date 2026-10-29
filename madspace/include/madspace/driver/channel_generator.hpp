@@ -305,8 +305,9 @@ public:
     std::size_t next_vegas_batch_size();
     /// Discard the accumulated event and weight files.
     void clear_events();
-    /// Update @ref max_weight from a batch of `weights`.
-    void update_max_weight(Tensor weights);
+    /// Update @ref max_weight from a batch of `weights`, which are unweighted
+    /// later if `unweight` is true.
+    void update_max_weight(Tensor weights, bool unweight);
     /// Append `unweighted_events` to @ref event_file, recording
     /// `job_max_weight`.
     void write_events(const TensorVec& unweighted_events, double job_max_weight);
@@ -430,6 +431,9 @@ private:
     std::vector<StepState> _step_states;
     std::vector<double> _loaded_step_max_weights;
     double _first_step_count = 0.;
+    // expected number of unweighted events, counted in the commit order of the
+    // jobs to freeze the maximum weight independently of the thread timing
+    double _freeze_count = 0.;
     StepIntegral _final_integral;
     std::size_t _event_epoch = 0;
 
