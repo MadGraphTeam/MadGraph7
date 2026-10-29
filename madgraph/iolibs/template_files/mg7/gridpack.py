@@ -77,7 +77,7 @@ def main() -> None:
     run_args = run_card["run"]
     gen_args = run_card["generation"]
     grid_args = run_card.get("gridpack", {})
-    amplicol_args = run_card["amplicol"]
+    amplicol_args = run_card.get("amplicol", {})
     madspace_data = load_madspace_data()
 
     # parse command line arguments
@@ -137,13 +137,13 @@ def main() -> None:
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
     parser.add_argument(
         "--first_pass_max_overweight_truncation", type=float,
-        default=amplicol_args["first_pass_max_overweight_truncation"],
+        default=amplicol_args.get("first_pass_max_overweight_truncation", 0.01),
         help="max_overweight_truncation of the leading-colour unweighting of "
              "[amplicol] processes unweighted to full colour"
     )
     parser.add_argument(
         "--first_pass_freeze_max_weight_after", type=int,
-        default=amplicol_args["first_pass_freeze_max_weight_after"],
+        default=amplicol_args.get("first_pass_freeze_max_weight_after", 10000),
         help="freeze_max_weight_after of the leading-colour unweighting of "
              "[amplicol] processes unweighted to full colour"
     )
