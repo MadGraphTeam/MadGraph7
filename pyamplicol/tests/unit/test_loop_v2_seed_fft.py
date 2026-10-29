@@ -18,8 +18,8 @@ contraction are equal before rounding, and the checks here are:
 * processes without a certified pair fall back to direct, reported, and the
   forced FFT refuses them at generation; the forced FFT runs in every
   floating carrier (the exact carrier contracts directly);
-* the public route (``color.contraction = "symmetric-group-fft"`` with
-  ``loop.engine = "v2"``): the artifact stores the record, the runtime and
+* the public route (``color.contraction = "symmetric-group-fft"``): the
+  artifact stores the record, the runtime and
   the SDKs' Rust runtime run and report the FFT, and the values equal the
   direct artifact's to rounding.
 """
@@ -405,7 +405,6 @@ accuracy = "full"
 contraction = "{contraction}"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
 {SCHEME}
@@ -422,8 +421,8 @@ samples = 1
 def test_public_route_serves_the_seed_fft(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
-    """``color.contraction = "symmetric-group-fft"`` with ``loop.engine =
-    "v2"`` generates (the dry run lists no blocker), stores the record, and
+    """``color.contraction = "symmetric-group-fft"`` generates (the dry run
+    lists no blocker), stores the record, and
     the loaded runtime and the SDKs' Rust runtime run and report the FFT; the
     values equal the direct artifact's to rounding."""
 

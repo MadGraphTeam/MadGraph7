@@ -19,7 +19,6 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
-    LoopEngine,
     PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
@@ -479,12 +478,13 @@ def _add_evaluator_options(
             choices=("auto", "model", "direct"),
             default=argparse.SUPPRESS,
         )
+        # Removed with the legacy loop engine; still parsed so that naming it
+        # is refused with the removal reason (``config.resolver.REMOVED_FIELDS``).
         parser.add_argument(
             "--loop-engine",
             dest="loop.engine",
-            choices=tuple(engine.value for engine in LoopEngine),
             default=argparse.SUPPRESS,
-            help="one-loop engine of virtual generation (default legacy)",
+            help=argparse.SUPPRESS,
         )
         parser.add_argument(
             "--execution-mode",

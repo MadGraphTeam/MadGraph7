@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
-    LOOP_RUNTIME_CAPABILITY,
     LOOP_V2_RUNTIME_CAPABILITY,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -1939,18 +1938,6 @@ def load_runtime_backend(
 
         # The v2 loader verifies every payload and the regenerated plan v4.
         return cast(Callable[..., RuntimeBackend], V2VirtualRuntime)(
-            path,
-            process=process,
-            model_parameters=parameters,
-            mute_warnings=mute_warnings,
-            **options,
-        )
-    if LOOP_RUNTIME_CAPABILITY in capabilities:
-        from .virtual import VirtualRuntimeBackend
-
-        # This is only a dispatch hint. The virtual native loader authenticates
-        # all payloads and resolves the requested process authoritatively.
-        return cast(Callable[..., RuntimeBackend], VirtualRuntimeBackend)(
             path,
             process=process,
             model_parameters=parameters,

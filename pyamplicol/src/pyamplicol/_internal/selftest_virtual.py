@@ -69,7 +69,7 @@ def _card(root: Path) -> dict[str, object]:
             "loop_coupling_orders": ["QCD"],
             "coupling_order_policy": "minimal",
         },
-        "loop": {"r2_strategy": "model", "engine": "v2"},
+        "loop": {"r2_strategy": "model"},
         "generation": {
             "output": str(root / "artifact"),
             "emit_api_bundle": False,

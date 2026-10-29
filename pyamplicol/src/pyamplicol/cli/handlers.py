@@ -167,10 +167,7 @@ def _read_json(
 
 def _virtual_artifact_hint(path: Path) -> bool:
     """Choose CLI ingress only; the native loader checks the artifact itself."""
-    from pyamplicol._internal.versions import (
-        LOOP_RUNTIME_CAPABILITY,
-        LOOP_V2_RUNTIME_CAPABILITY,
-    )
+    from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
     from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
 
     path = path.expanduser().resolve(strict=False)
@@ -178,9 +175,8 @@ def _virtual_artifact_hint(path: Path) -> bool:
     if not (root / MANIFEST_NAME).is_file():
         return False
     manifest = load_manifest(root, verify_payloads=False)
-    return bool(
-        {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}
-        & set(cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"]))
+    return LOOP_V2_RUNTIME_CAPABILITY in cast(
+        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
     )
 
 

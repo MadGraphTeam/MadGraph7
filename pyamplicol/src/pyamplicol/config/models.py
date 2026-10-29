@@ -127,14 +127,6 @@ class PoleSelection(StrEnum):
     IR = "ir"
 
 
-class LoopEngine(StrEnum):
-    """One-loop engine: the per-diagram legacy engine (the oracle until gate
-    R3) or the shared-recursion engine v2 (plan v4 artifacts)."""
-
-    LEGACY = "legacy"
-    V2 = "v2"
-
-
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
 _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
@@ -734,7 +726,7 @@ class GenerationConfig:
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
     # Particles (model names; a particle vetoes its antiparticle too) removed
-    # from every tree vertex of one-loop generation with loop.engine='v2'
+    # from every tree vertex of one-loop generation
     # (Born, blocks, loop vertices and propagators, counterterm program);
     # counterterm terms whose loop content holds one are dropped.
     particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -1518,9 +1510,6 @@ class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
-    engine: LoopEngine = field(
-        default=LoopEngine.LEGACY, metadata=_setting("str", choices=tuple(LoopEngine))
-    )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
     # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
@@ -1541,9 +1530,6 @@ class LoopConfig:
             )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
-        )
-        object.__setattr__(
-            self, "engine", _enum(self.engine, LoopEngine, "loop.engine")
         )
 
 
@@ -1620,12 +1606,10 @@ class RunConfig:
                 "evaluator.execution_mode='loop_recurrence' requires "
                 "process.loop_coupling_orders"
             )
-        if self.generation.particle_veto and not (
-            virtual and self.loop.engine is LoopEngine.V2
-        ):
+        if self.generation.particle_veto and not virtual:
             raise ConfigurationError(
                 "generation.particle_veto requires one-loop generation "
-                "(process.loop_coupling_orders) with loop.engine='v2'"
+                "(process.loop_coupling_orders)"
             )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
