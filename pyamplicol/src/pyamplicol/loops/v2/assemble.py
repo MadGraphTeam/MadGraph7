@@ -179,6 +179,8 @@ from .poles import (
 from .poly_affine import MonomialLayout, leg_momentum
 from .refusals import (
     require_colour_preserving_fermion_lines,
+    require_declared_colour_fields,
+    require_declared_colour_rules,
     require_labelled_counterterms_for_veto,
     require_nc_exact,
 )
@@ -1435,13 +1437,30 @@ class SliceRequest:
 
 def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
     """``request`` with its correction orders resolved
-    (``ew_policy.request_corrections``): unchanged when it names them."""
+    (``ew_policy.request_corrections``) and, for LC and NLC, its colour
+    declaration: the model's own (``resolve_loop_color_declaration``: the
+    source's declaration, else the shipped one of its counterterm vertices,
+    ``models.loop_color_declarations``) when the request names none.
+    Unchanged when it names both."""
 
-    if request.corrections is not None:
-        return request
-    return replace(
-        request, corrections=ew_policy.request_corrections(compiled, request)
-    )
+    if request.corrections is None:
+        request = replace(
+            request, corrections=ew_policy.request_corrections(compiled, request)
+        )
+    raw = getattr(compiled, "raw_loop_model", None)
+    if (
+        request.accuracy != "full"
+        and request.colour_declaration is None
+        and raw is not None
+    ):
+        from pyamplicol.models.loop_color_declaration import (
+            resolve_loop_color_declaration,
+        )
+
+        declaration = resolve_loop_color_declaration(raw)
+        if declaration is not None:
+            request = replace(request, colour_declaration=declaration)
+    return request
 
 
 def check_model_parameters(
@@ -2032,6 +2051,7 @@ class LoopSlice:
             else CountertermSites((), {}, (), 0)
         )
         field_rules = prepare_external_field_rules(prepared.counterterms.source)
+        source_field_rules = field_rules
         if photons is not None:
             # alpha(0)'s field-like term on each external photon (EWI-6b).
             field_rules = (
@@ -2046,6 +2066,30 @@ class LoopSlice:
             blocks.born_orders,
             forbidden=request.particle_veto,
         )
+        # LC and NLC: every source field factor an external leg takes and
+        # every counterterm rule a site closes needs declared N_c data (the
+        # recursion's rules are checked in ``counterterm_program_blocks``;
+        # ``refusals``, listed; MQ-NC). The alpha(0) photon terms are the
+        # engine's own, not source factors. Full colour (with or without a
+        # declaration) reads the source couplings at N_c = 3: no check.
+        projected = continuation if request.accuracy != "full" else None
+        require_declared_colour_fields(
+            projected,
+            (i for i in insertions if i.rule in source_field_rules),
+            request.process,
+        )
+        if program is None:
+            closed = {id(site.rule) for site in sites.sites}
+            require_declared_colour_rules(
+                projected,
+                {
+                    name: rule
+                    for name, rule in prepared.counterterms.rules.items()
+                    if id(rule) in closed
+                },
+                None,
+                request.process,
+            )
         ordinary = _ordinary_entries(prepared, data)
         root_sites = (*sites.sites, *(() if program is None else program.root_sites))
         # The root closure reads a vertex not closed under conjugation (a W

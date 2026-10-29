@@ -282,12 +282,15 @@ def _projection_request(compiled, name: str, accuracy: str, carrier: str):
     scale and parameters."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
     from tools.loop_reference import exact_points, legacy_capture
 
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
+    # The shipped loop_sm declaration (MQ-NC): u u~ > u u~ e+ e- reaches the
+    # closed-quark-loop R2 of g g Z, which the example QCD subset
+    # (``legacy_capture.COLOUR_DECLARATION``) does not cover.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     colour = {
         "accuracy": accuracy,
         "colour_declaration": declaration,

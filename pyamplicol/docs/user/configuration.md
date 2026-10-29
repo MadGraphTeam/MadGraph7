@@ -729,7 +729,8 @@ accuracy); LC and NLC are opt-in. MG5_aMC's loop_sm ships with pyAmpliCol
 [One-loop QCD on loop_sm](loop-sm-and-madloop.md).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
-model's source colour declaration; formal-N_c projections for any number of
+model's formal-N_c colour declaration, shipped for loop_sm and its
+restrictions; formal-N_c projections for any number of
 quark lines, identical flavours such as `u u~ > u u~ g` included); double,
 double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin

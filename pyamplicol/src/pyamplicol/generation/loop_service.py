@@ -29,7 +29,10 @@ from pyamplicol.config import ColorContraction
 from pyamplicol.loops.covariant_model import with_source_repairs
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
-from pyamplicol.models.loop_color_declaration import resolve_loop_color_declaration
+from pyamplicol.models.loop_color_declaration import (
+    resolve_loop_color_declaration,
+    source_loop_color_declaration,
+)
 from pyamplicol.models.loop_declaration import (
     resolve_loop_model_declaration,
     with_loop_model_declaration,
@@ -206,7 +209,14 @@ def _prepare(
     color_data = None
     projected = run.color.accuracy in ("lc", "nlc")
     if projected or run.resolved_color.contraction != "direct":
-        color_data = resolve_loop_color_declaration(compiled.raw_loop_model)
+        # LC and NLC take the shipped declaration of a model that carries
+        # none (MQ-NC, ``models.loop_color_declarations``); a full-colour
+        # request's contraction choice reads the model's own only, as before.
+        color_data = (
+            resolve_loop_color_declaration
+            if projected
+            else source_loop_color_declaration
+        )(compiled.raw_loop_model)
         # The FFT detects and certifies its seed orbits on the exact seed
         # cells (``loops.v2.colour.seed_fourier``), so at full colour it
         # needs no formal-colour continuation; LC and NLC do.

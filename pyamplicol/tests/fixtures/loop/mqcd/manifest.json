@@ -185,7 +185,9 @@
     "points_from": "B01"
    }
   },
-  "lc_every_restriction": "MQ-NC"
+  "lc_every_restriction": {
+   "test": "tests/unit/test_loop_v2_nc_declaration.py::test_lc_and_nlc_smoke_on_every_shipped_restriction"
+  }
  },
  "nightly_jobs": {
   "budget_seconds": 1200,
@@ -451,8 +453,12 @@
      "reference_outliers": []
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A01]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_gg_gg",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani_on_gg_gg"
+    ]
    }
   },
   {
@@ -977,8 +983,12 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "helicity_reference": "tests/fixtures/loop/required/mqcd/gg_ggg_hel.json",
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A08]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_gg_ggg[0]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_gg_ggg[1]"
+    ]
    }
   },
   {
@@ -1103,8 +1113,15 @@
      }
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A09]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A09-0]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A09-1]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_ward_identity_at_other_nc_needs_the_declared_r2",
+     "tests/unit/test_loop_v2_colour.py::test_bdk_five_point_colour_sum_o14",
+     "tests/unit/test_loop_v2_observables_nightly.py::test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14"
+    ]
    }
   },
   {
@@ -1212,8 +1229,14 @@
      "reference_outliers": []
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A12]",
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_at_the_nightly_points_of_default_rows[A12]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_uux_ddxg",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A12-0]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A12-1]"
+    ]
    }
   },
   {
@@ -1320,8 +1343,12 @@
      "reference_outliers": []
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A13]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A13-0]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_full_colour_at_other_nc_equals_njet_on_quark_rows[A13-1]"
+    ]
    }
   },
   {
@@ -1465,8 +1492,10 @@
    "inputs": "native",
    "catani": "tree",
    "tree_correlations": "tests/fixtures/loop/mqcd/references/tree-correlations-A15.json",
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A15]"
+    ]
    }
   },
   {
@@ -1536,8 +1565,10 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-10,
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A18]"
+    ]
    }
   },
   {
@@ -1850,8 +1881,10 @@
      "reference_outliers": []
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[A21]"
+    ]
    }
   },
   {
@@ -2497,8 +2530,12 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[B03]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani[B03]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_ward_identity_at_other_nc[B03]"
+    ]
    }
   },
   {
@@ -2892,8 +2929,11 @@
    "relaxed": {
     "6": 1e-30
    },
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[C01]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani[C01]"
+    ]
    }
   },
   {
@@ -3629,8 +3669,13 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[D05]",
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_at_the_nightly_points_of_default_rows[D05]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani[D05]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_ward_identity_at_other_nc[D05]"
+    ]
    }
   },
   {
@@ -5237,8 +5282,11 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[E01]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani[E01]"
+    ]
    }
   },
   {
@@ -5592,8 +5640,11 @@
      }
     }
    ],
-   "extras_pending": {
-    "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_nc_projection.py::test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[F01]",
+     "tests/unit/test_loop_v2_nc_oracles.py::test_poles_at_other_nc_equal_catani[F01]"
+    ]
    }
   },
   {

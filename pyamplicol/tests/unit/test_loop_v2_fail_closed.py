@@ -148,6 +148,8 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "multi-fermion-contact",
         # MQ-FFT's forced seed FFT guard (``test_loop_v2_seed_fft.py``).
         "forced-seed-fft-unserved",
+        # MQ-NC's declared-N_c guard (``test_loop_v2_nc_declaration.py``).
+        "colour-declaration-coverage",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")
