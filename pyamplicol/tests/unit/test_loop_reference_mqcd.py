@@ -25,12 +25,12 @@ FIXTURES = ROOT / "tests" / "fixtures" / "loop"
 CAMPAIGN = ROOT / "tools" / "loop_reference" / "mqcd_campaign.json"
 MANIFEST = FIXTURES / "required" / "mqcd_references.json"
 LAURENT = ("finite", "single_pole", "double_pole")
-# §4.2 of the plan: 76 core rows.
+# §4.2 of the plan: 76 core rows, plus D28 and D29 (q q~ > W+ W- g, mq-ewjoin).
 ROW_COUNTS = {
     "A": 22,
     "B": 7,
     "C": 9,
-    "D": 23,
+    "D": 25,
     "E": 4,
     "F": 4,
     "G": 2,
