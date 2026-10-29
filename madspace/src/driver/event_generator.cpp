@@ -291,15 +291,27 @@ void EventGenerator::survey(std::size_t survey_pass) {
     }
     print_survey_init();
 
+    auto iterates = [&](auto& channel, std::size_t iter) {
+        return channel->status().iterations <= iter &&
+            !(iter >= min_iters &&
+              channel->abs_cross_section().rel_error() < target_precision);
+    };
+    // the events for the steps, until it is known whether the channel iterates
+    // again and clears them
+    std::vector<std::vector<GeneratorBatchJob>> deferred_jobs(_channels.size());
+    auto release_deferred = [&](std::size_t channel_index, bool keep) {
+        auto& jobs = deferred_jobs.at(channel_index);
+        if (keep) {
+            for (auto& job : jobs) {
+                _pipeline->add_events(job);
+            }
+        }
+        jobs.clear();
+    };
     std::size_t iter = 0;
     for (; !done && iter < max_iters; ++iter) {
         for (std::size_t i = 0; auto channel : _channels) {
-            if (channel->status().iterations > iter) {
-                ++i;
-                continue;
-            }
-            if (iter >= min_iters &&
-                channel->abs_cross_section().rel_error() < target_precision) {
+            if (!iterates(channel, iter)) {
                 ++i;
                 continue;
             }
@@ -378,8 +390,12 @@ void EventGenerator::survey(std::size_t survey_pass) {
                     order.pop_front();
                     auto& uw_job = _running_jobs.at(commit_id);
                     auto& channel = _channels.at(uw_job.channel_index);
+                    bool defer = false;
                     if (_pipeline && _pipeline->contains(uw_job.channel_index)) {
-                        _pipeline->add_events(uw_job);
+                        defer = iter + 1 < max_iters;
+                        if (!defer) {
+                            _pipeline->add_events(uw_job);
+                        }
                     } else {
                         channel->write_events(
                             uw_job.unweighted_events, uw_job.max_weight
@@ -398,7 +414,16 @@ void EventGenerator::survey(std::size_t survey_pass) {
                         channel->optimize_vegas(uw_job);
                         done_event_count += uw_job.batch_event_count;
                     }
+                    std::size_t channel_index = uw_job.channel_index;
+                    if (defer) {
+                        deferred_jobs.at(channel_index).push_back(std::move(uw_job));
+                    }
                     _running_jobs.erase(commit_id);
+                    // otherwise it depends on the other channels, see below
+                    if (defer && channel_job_count == 0 &&
+                        (!done || !iterates(channel, iter + 1))) {
+                        release_deferred(channel_index, !iterates(channel, iter + 1));
+                    }
                 }
             }
             std::size_t job_id_refill = _job_id;
@@ -407,6 +432,15 @@ void EventGenerator::survey(std::size_t survey_pass) {
                 start_pipeline_jobs();
             print_survey_update(false, done_event_count, total_event_count, iter);
         }
+        for (std::size_t channel_index = 0; channel_index < _channels.size();
+             ++channel_index) {
+            release_deferred(
+                channel_index,
+                done || iter + 1 >= max_iters ||
+                    !iterates(_channels.at(channel_index), iter + 1)
+            );
+        }
+        update_counts();
         drain_pipeline();
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);

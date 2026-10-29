@@ -247,6 +247,27 @@ def test_reproducible_step_freeze(tmp_path):
         assert status_a.mean == status_b.mean
 
 
+def test_survey_skips_cleared_iterations(tmp_path):
+    """Only the middle channel iterates again in the survey, so the steps of its
+    earlier iteration are skipped, independently of the threads."""
+    results = [
+        generate(
+            str(tmp_path / str(threads)),
+            [surrogate_me, heavy_tailed_me, surrogate_me],
+            ["reweight", "unweight"],
+            threads=threads,
+            pt_mins=(20.0, 40.0, 60.0),
+            grouped=(0, 1, 2),
+            config_kwargs={"survey_max_iters": 6, "survey_target_precision": 0.02},
+        )
+        for threads in (1, 4)
+    ]
+    (status_a, events_a, channels_a), (status_b, events_b, _) = results
+    assert [c.status().iterations for c in channels_a] == [3, 4, 3]
+    assert np.array_equal(events_a, events_b)
+    assert status_a.mean == status_b.mean
+
+
 def test_step_budget_of_smaller_target(tmp_path):
     """A smaller target applies its truncation budget to the step maxima too,
     and rescales the unweighted count accordingly. EventGenerator does this at
