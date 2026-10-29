@@ -534,6 +534,18 @@ def _overlay_of(seeds: Mapping[str, Any]) -> dict[str, Any] | None:
     return overlay
 
 
+def _flows_record(slice_: Any) -> dict[str, Any]:
+    """The leading-colour flows of an LC process (``selection.slice_flows``),
+    which its runtime selects (``helicities``/``color_flows``); NLC and full
+    colour store none (their record is unchanged)."""
+
+    from . import selection
+
+    if slice_.request.accuracy != "lc":
+        return {}
+    return {"color_flows": [flow.record() for flow in selection.slice_flows(slice_)]}
+
+
 @dataclass(frozen=True)
 class ObservableSet:
     """One stored column set: the seed records of its plan over the process
@@ -598,6 +610,7 @@ class StoredObservables:
         rows = tuple(exported.rows)
         record: dict[str, Any] = {
             "schema": SCHEMA,
+            **_flows_record(slice_),
             "rows": [[list(x) for x in row] for row in rows],
             "basis": len(slice_.basis.tensors),
             "spin_classes": [list(legs) for legs in observables.spin_classes],
@@ -779,6 +792,11 @@ class StoredObservableSlice:
         )
         self.rows = tuple(_row(row) for row in stored.record["rows"])
         self.components = tuple(range(int(stored.record["basis"])))
+        from .selection import Flow
+
+        self.flows = tuple(
+            Flow.from_record(flow) for flow in stored.record.get("color_flows", ())
+        )
         # One runner per stored column set, member and executor options: its
         # native executors are built once and serve every call that selects
         # some of its columns.
@@ -801,6 +819,19 @@ class StoredObservableSlice:
         requested histories, served by the stored correlated set;
         ``resolved``: its resolution, which must be the stored one)."""
 
+        from .selection import SELECTION
+
+        if kind == SELECTION:
+            # A leading-colour selection (``selection.column``): one column
+            # set formed from the stored resolved set's records
+            # (``selection_parts``), dressed and reduced once per sector.
+            # Not kept here: the runtime keeps its most recently used
+            # selections (``selection.SelectionCache``).
+            found = StoredColumns(
+                self, "resolved", member=member, selection=value, **options
+            )
+            grouped = len(found.plan.columns) > 1
+            return _Selection(found, None, group=value.key if grouped else None)
         if kind not in KINDS:
             raise ValueError(f"unknown column set {kind!r}")
         key = (kind, id(member), tuple(sorted(options.items())))
@@ -822,26 +853,46 @@ class StoredObservableSlice:
 
 class _Selection:
     """Some columns of a stored column set (``StoredColumns``): the requested
-    histories of a correlated call, or every resolved column."""
+    histories of a correlated call, every resolved column, or (``group``, a
+    leading-colour selection's key) the sum of some resolved columns as one
+    output."""
 
-    def __init__(self, columns: StoredColumns, wanted: tuple[Any, ...] | None):
+    def __init__(
+        self,
+        columns: StoredColumns,
+        wanted: tuple[Any, ...] | None,
+        group: Any = None,
+    ):
         self.columns = columns
         self.wanted = wanted
+        self.group = group
 
     def evaluate(self, points, scales, **options):
-        return self.columns.evaluate(points, scales, wanted=self.wanted, **options)
+        return self.columns.evaluate(
+            points, scales, wanted=self.wanted, group=self.group, **options
+        )
 
 
 class _ColumnPlanView:
     """``observables.ColumnPlan``'s assembly and estimates on stored lanes
     (``_Assembly`` with the native interferences as its local part)."""
 
-    def __init__(self, observables: StoredObservableSlice, kind: str):
+    def __init__(
+        self,
+        observables: StoredObservableSlice,
+        kind: str,
+        parts: _SelectionParts | None = None,
+    ):
         from .observables import Column
 
-        meta = observables.stored.record["sets"][kind]
         self.observables = observables
         self.slice = observables.slice
+        if parts is not None:
+            self.columns = list(parts.columns)
+            self.lanes = dict(parts.lanes)
+            self.index = {column.key: k for k, column in enumerate(self.columns)}
+            return
+        meta = observables.stored.record["sets"][kind]
         self.columns = [
             Column(
                 _key_of(item["key"]),
@@ -862,6 +913,226 @@ class _ColumnPlanView:
         self.index = {column.key: k for k, column in enumerate(self.columns)}
 
 
+@dataclass(frozen=True)
+class _SelectionParts:
+    """A leading-colour selection's column set on a loaded process
+    (``selection_parts``): its seed records and interference programs
+    (``set``), the resolved set's lane labels (``meta``), its output columns
+    and their lanes."""
+
+    set: ObservableSet
+    meta: Mapping[str, Any]
+    columns: tuple[Any, ...]
+    lanes: Mapping[tuple[Any, Orders], tuple[int, int]]
+    # Per plan (process, companion) the families whose seeds the selection
+    # reads (``live_families``); None keeps every family.
+    families: tuple[tuple[int, ...] | None, ...] = (None, None)
+
+
+def live_families(plan: Mapping[str, Any], overlay: Mapping[str, Any]) -> Any:
+    """The families of ``plan`` with a leaf on a seed key that ``overlay``'s
+    seed records (``SEED_FIELDS``) make nonzero in some column: the others
+    dress zero seeds and contribute exact zeros. None when every family is
+    live, or when the plan holds a forward or merged program, which reads
+    the families by index."""
+
+    if plan.get("forward") is not None or plan.get("merged") is not None:
+        return None
+    classes = [
+        any(weights for weights in record["columns"])
+        for record in overlay["seed_classes"]
+    ]
+    seeds = [any(classes[c] for c, *_x in key["classes"]) for key in overlay["seeds"]]
+    kept = tuple(
+        f
+        for f, family in enumerate(plan["families"])
+        if any(seeds[leaf["seed"]] for leaf in family["leaves"])
+    )
+    return None if len(kept) == len(plan["families"]) else kept
+
+
+def _merged_weights(lists: Sequence[Sequence[Sequence[Any]]]) -> list[list[Any]]:
+    """The sum of seed-weight lists (``[component, re, im]``, exact texts):
+    their concatenation when no component repeats (one Born basis element
+    per list), else the exact sum per component."""
+
+    from .plan_export import _fraction_text
+
+    terms = [term for weights in lists for term in weights]
+    if len({int(term[0]) for term in terms}) == len(terms):
+        return [list(term) for term in terms]
+    total: dict[int, tuple[Fraction, Fraction]] = {}
+    for j, re, im in terms:
+        a, b = total.get(int(j), (Fraction(0), Fraction(0)))
+        total[int(j)] = (a + Fraction(re), b + Fraction(im))
+    return [
+        [j, _fraction_text(re), _fraction_text(im)]
+        for j, (re, im) in total.items()
+        if re or im
+    ]
+
+
+def selection_parts(observables: StoredObservableSlice, column: Any) -> _SelectionParts:
+    """The column set of a leading-colour selection (``selection.column``:
+    Born helicity rows and basis elements) of a loaded process, formed from
+    its stored resolved set (one column per (row, basis element), dressed
+    and reduced each) without regeneration: one seed column per sector whose
+    seed weights are the selected basis elements' (their seed-weight columns
+    summed) on the selected rows, and one interference column with those
+    rows and basis elements. The loop is linear in its seeds and the
+    interferences in their bra, so this equals the sum of the selected
+    resolved columns, at the cost of one inclusive column rather than of
+    every resolved one. Rows whose selected resolved columns read other
+    seed-weight columns get a column of their own, summed (``_Selection``
+    group)."""
+
+    from .observables import Column
+
+    stored = observables.stored
+    meta = stored.record["sets"]["resolved"]
+    base = stored.sets["resolved"]
+    items = meta["columns"]
+    row_index = {row: k for k, row in enumerate(observables.rows)}
+    rows, basis = column.rows, column.basis
+
+    def chosen(item: Mapping[str, Any]) -> bool:
+        (row,) = item["rows"]
+        (b,) = item["basis"]
+        return (rows is None or _row(row) in rows) and (basis is None or b in basis)
+
+    kept = [k for k, item in enumerate(items) if chosen(item)]
+    if not kept:
+        raise ValueError("a selection keeps no resolved column")
+    by_key = {json.dumps(item["key"]): k for k, item in enumerate(items)}
+    sectors: dict[str, Orders] = {}
+    seed_column: dict[tuple[int, str], int] = {}
+    for key, sector, direct, swapped in meta["lanes"]:
+        if direct != swapped:
+            raise ValueError("a resolved column reads one seed column per sector")
+        label = json.dumps(sector)
+        sectors.setdefault(label, _orders_of(sector))
+        seed_column[by_key[json.dumps(key)], label] = int(direct)
+    overlays = [json.loads(base.overlay_json)]
+    if base.companion_overlay_json is not None:
+        overlays.append(json.loads(base.companion_overlay_json))
+    if any(overlay is None for overlay in overlays):
+        raise ValueError("the resolved set stores no seed records of its own")
+    weight_of = [
+        overlay.get("column_weights") or list(range(int(overlay["columns"])))
+        for overlay in overlays
+    ]
+    # Per row, per sector and seed plan (process, companion): the seed-weight
+    # columns of its selected basis elements; rows with equal ones share a
+    # column.
+    per_row: dict[int, dict[tuple[str, int], set[int]]] = {}
+    for k in kept:
+        (row,) = items[k]["rows"]
+        h = row_index[_row(row)]
+        for label in sectors:
+            i = seed_column[k, label]
+            for p, weights in enumerate(weight_of):
+                per_row.setdefault(h, {}).setdefault((label, p), set()).add(weights[i])
+    groups: dict[tuple[Any, ...], list[int]] = {}
+    for h in sorted(per_row):
+        signature = tuple(
+            (label, p, tuple(sorted(found)))
+            for (label, p), found in sorted(per_row[h].items())
+        )
+        groups.setdefault(signature, []).append(h)
+    records = json.loads(base.columns_json)
+    programs = {
+        (
+            records["columns"][k]["program"],
+            records["columns"][k]["cells"],
+            records["columns"][k]["swapped"],
+        )
+        for k in kept
+    }
+    if len(programs) != 1:
+        raise ValueError("the selected resolved columns read different programs")
+    ((program, cells, swapped),) = programs
+    every = len(observables.rows)
+    out_columns = []
+    lanes: dict[tuple[Any, Orders], tuple[int, int]] = {}
+    seeds: list[list[tuple[int, ...]]] = [[] for _ in overlays]
+    seed_rows: list[list[int] | None] = []
+    interference = []
+    chosen_basis = None if basis is None else sorted(basis)
+    for g, (signature, hs) in enumerate(groups.items()):
+        kept_rows = (
+            None if len(hs) == every else frozenset(observables.rows[h] for h in hs)
+        )
+        key = column.key if len(groups) == 1 else (column.key, g)
+        out_columns.append(Column(key, None, kept_rows, basis))
+        interference.append(
+            {
+                "program": program,
+                "cells": cells,
+                "swapped": swapped,
+                "rows": None if kept_rows is None else list(hs),
+                "basis": chosen_basis,
+            }
+        )
+        found = {(label, p): ws for label, p, ws in signature}
+        for label, orders in sectors.items():
+            lanes[key, orders] = (len(seed_rows), len(seed_rows))
+            seed_rows.append(None if kept_rows is None else list(hs))
+            for p in range(len(overlays)):
+                seeds[p].append(found[label, p])
+    plans = [observables.process.plan_json]
+    if len(overlays) > 1:
+        plans.append(observables.process.scaleless.plan_json)
+    formed = []
+    for overlay, plan_json, weight_columns in zip(overlays, plans, seeds, strict=True):
+        classes = overlay.get("seed_classes")
+        keys = overlay.get("seeds")
+        if classes is None:
+            plan = json.loads(plan_json)
+            classes, keys = plan["seed_classes"], plan["seeds"]
+        formed.append(
+            {
+                "seed_classes": [
+                    {
+                        "columns": [
+                            _merged_weights([record["columns"][w] for w in ws])
+                            for ws in weight_columns
+                        ]
+                    }
+                    for record in classes
+                ],
+                "seeds": keys,
+                "columns": len(seed_rows),
+                "column_rows": seed_rows
+                if any(r is not None for r in seed_rows)
+                else None,
+                "column_weights": None,
+                "born_components": overlay["born_components"],
+            }
+        )
+    from .plan_export import dumps
+
+    columns_json = json.dumps(
+        {**records, "columns": interference}, separators=(",", ":")
+    )
+    families = tuple(
+        live_families(json.loads(plan_json), overlay)
+        for plan_json, overlay in zip(plans, formed, strict=True)
+    )
+    return _SelectionParts(
+        ObservableSet(
+            dumps(formed[0]),
+            base.plan_components,
+            columns_json,
+            None if len(formed) == 1 else dumps(formed[1]),
+            base.companion_components,
+        ),
+        meta,
+        tuple(out_columns),
+        lanes,
+        families + (None,) * (2 - len(families)),
+    )
+
+
 def _plan_class():
     from .observables import ColumnPlan, _Assembly
 
@@ -878,8 +1149,13 @@ def _plan_class():
             self.lanes = view.lanes
             self.index = view.index
             self._scaleless = [None]
+            # Summed outputs (``results(group=...)``): key -> column keys.
+            self.groups: dict[Any, tuple[Any, ...]] = {}
 
-        def results(self, evaluation, wanted=None):
+        def results(self, evaluation, wanted=None, group=None):
+            """The outputs of the columns ``wanted`` (keys; None: every
+            column); with ``group`` their sum as the one output ``group``."""
+
             columns = (
                 self.columns
                 if wanted is None
@@ -887,7 +1163,24 @@ def _plan_class():
             )
             with evaluation.numbers.scope():
                 assembly = _StoredAssembly(self, evaluation)
-                return {column.key: assembly.result(column) for column in columns}
+                out = {column.key: assembly.result(column) for column in columns}
+                if group is None:
+                    return out
+                from .observables import _sum_results
+
+                self.groups[group] = tuple(out)
+                return {group: _sum_results(list(out.values()))}
+
+        def _lanes_of(self, key):
+            """A group's lanes are its columns' (``ColumnPlan._lanes_of``)."""
+
+            members = self.groups.get(key)
+            if members is None:
+                return super()._lanes_of(key)
+            out = {}
+            for member in members:
+                out.update(super()._lanes_of(member))
+            return out
 
     return _StoredPlan
 
@@ -906,6 +1199,7 @@ class StoredColumns:
         lanes: int | None = None,
         threads: int | None = None,
         schedule: str = "B",
+        selection: Any = None,
     ):
         from .plan_export import DEFAULT_LANES
 
@@ -919,11 +1213,16 @@ class StoredColumns:
         self.member = member
         self.lanes = lanes or DEFAULT_LANES
         self.threads = threads
-        self.set = stored.sets[kind]
-        self.meta = stored.record["sets"][kind]
-        self.plan = _plan_class()(_ColumnPlanView(observables, kind))
+        # ``selection``: a leading-colour selection's column, served by a set
+        # formed from the resolved one (``selection_parts``).
+        parts = None if selection is None else selection_parts(observables, selection)
+        self.set = stored.sets[kind] if parts is None else parts.set
+        self.meta = stored.record["sets"][kind] if parts is None else parts.meta
+        self.plan = _plan_class()(_ColumnPlanView(observables, kind, parts))
+        self.families = (None, None) if parts is None else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
+        self.last_report: dict[str, Any] | None = None
 
     def check_resolution(self, resolution: Any) -> None:
         stored = self.observables.stored.record["resolution"]
@@ -949,7 +1248,15 @@ class StoredColumns:
                 base, overlay = process.plan_json, self.set.overlay_json
             if overlay is None:
                 raise ValueError("the column set stores no companion seeds")
-            found = self._plans[twin] = _plan_of(base, overlay)
+            found = _plan_of(base, overlay)
+            kept = self.families[int(twin)]
+            if kept is not None:
+                # A selection's set: the families of its live seeds only
+                # (``live_families``; lanes keep their family labels apart).
+                plan = json.loads(found)
+                plan["families"] = [plan["families"][f] for f in kept]
+                found = json.dumps(plan, separators=(",", ":"))
+            self._plans[twin] = found
         return found
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
@@ -1007,6 +1314,7 @@ class StoredColumns:
         scales,
         *,
         wanted=None,
+        group=None,
         spin=None,
         ward=None,
         parameters=None,
@@ -1015,7 +1323,9 @@ class StoredColumns:
         stability=None,
     ):
         """``observables.NativeObservables.evaluate`` on the stored columns:
-        the outputs of the columns ``wanted`` (keys; None: every column)."""
+        the outputs of the columns ``wanted`` (keys; None: every column), or
+        with ``group`` their sum as the one output ``group`` (its estimate
+        from the budgets of all their lanes)."""
 
         from .assemble import Precision
         from .observables import (
@@ -1068,13 +1378,13 @@ class StoredColumns:
             if index in failures:
                 out.append(None)
                 continue
-            result = self.plan.results(reference, wanted)
+            result = self.plan.results(reference, wanted, group)
             if stability.enabled:
                 result = self.plan.checked(
                     result,
                     reference,
                     [
-                        (run[index], self.plan.results(run[index], wanted))
+                        (run[index], self.plan.results(run[index], wanted, group))
                         for run in runs
                     ],
                     precision.unit_roundoff,
@@ -1134,6 +1444,9 @@ class StoredColumns:
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
         output = native.evaluate(inputs, schedule="B", **options)
+        # The native report of the latest batch (stages and counts, as
+        # ``plan_export.NativeExecutor.last_report``).
+        self.last_report = output["report"]
         extra = None
         if splits(mode) and self.set.companion_overlay_json is not None:
             twin = self._executor(arithmetic, digits, len(evaluations), True)

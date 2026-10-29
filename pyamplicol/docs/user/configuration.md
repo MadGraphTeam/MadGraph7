@@ -665,6 +665,91 @@ on a newer glibc is stopped by the dynamic loader on an older one
 (``version `GLIBC_2.38' not found``); see
 [Native libraries and glibc](installation.md#native-libraries-and-glibc).
 
+#### Leading-colour helicity and colour-flow selection
+
+At leading colour (`[color] accuracy = "lc"`) a v2 virtual offers the tree
+engine's selectors, with the tree engine's identifiers and selector
+conventions (per-flow values at a cross order of several Born orders follow
+the loop's convention, below).
+At evaluation, `Runtime.evaluate(..., helicities=[...], color_flows=[...])`
+returns the sum of the selected Born helicity rows and colour flows (Born
+included): helicities by tree ID (`h:-1,+1,...`, values in leg order) or the
+runtime's `h<index>`, flows by tree ID (`flow:2,4,3,5,1`) or 1-based ordinal.
+`runtime.physics.born_anchored_color_components` lists the flows the
+artifact computes, numbered as the tree runtime with the same `[process]`
+selectors numbers its flows: in the order of the tree engine's
+leading-colour plan (after `reference_color_order` and `max_color_sectors`;
+`reference_color_order` alone selects nothing and only orders), and under
+a generation-time colour selection only the selected flows. The physics
+helicity entries keep the runtime's `h<index>` IDs (the helicity axis of
+`evaluate_resolved` at every colour accuracy); their tree ID is `h:`
+followed by their `values`. A complete set of selections sums to the
+inclusive value; a (helicity, flow) selection equals its `evaluate_resolved`
+entry. `evaluate_resolved` takes the same selectors and returns the selected
+helicity rows and the selected flows' Born basis elements, each entry as
+without selectors. At generation, `process.selected_source_helicities` (leg label to
+helicity) and `process.selected_color_sector_ids` (sectors of the tree
+engine's leading-colour plan, after `reference_color_order` and
+`max_color_sectors`) prune the recursion to the selection: fewer Born rows,
+skeletons and tree currents. The artifact's `evaluate()` then returns the
+selection, and its physics reports `helicity_coverage` and `color_coverage`
+`"selected"`. A sector of a folded trace holds two flows, the sector's and
+its reflection, as in the tree engine. As in the tree engine, declared
+colour or spin correlations with any of these selectors are refused at
+generation (`selected-correlators`): generate the correlations in an
+inclusive artifact. An evaluation-time selection costs at most one inclusive
+evaluation: it runs only the loop families its flows read, and only the
+helicity rows its helicities reach in the loop dressing and the tree
+currents. A generation-time selection is somewhat cheaper still (one
+helicity and one flow, binary64: u u~ > g g g about 0.7 ms per point at
+evaluation and 0.6 ms at generation, against 2.0 ms inclusive at leading
+colour; u u~ > g g g g 4.0 ms and 2.9 ms, against 30 ms). The first call of
+each distinct evaluation-time selection also forms and compiles its column
+set once (u u~ > g g g g: about 1 s and 66 MB for a new (helicity, flow)
+pair). The runtime keeps the 8 most recently used selections for later
+calls; the environment variable `PYAMPLICOL_LOOP_SELECTION_CACHE` sets
+another count (0 keeps none), and `Runtime.clear()` releases them. Sampling
+many distinct selections one event at a time therefore pays that setup per
+selection; the kept sets bound the memory, apart from about 1.5 MB that each
+formation leaves in the native heap (as every rebuild of a native executor
+does today, e.g. `Runtime.clear()` followed by an evaluation). A
+generation-time selection has no such setup.
+
+```toml
+[process]
+selected_color_sector_ids = [2]
+selected_source_helicities = {"1" = -1, "5" = 1}
+[color]
+accuracy = "lc"
+[loop]
+engine = "v2"
+```
+
+The loop's leading colour is the leading N_c power of the squared matrix
+element. A tree flow below it, such as a flow of u u~ > d d~ g that joins
+each quark to its own antiquark, has no leading-colour Born or virtual. Its
+selection is zero at evaluation. At generation it contributes exact zeros
+next to a leading flow (`max_color_sectors = 3` on u u~ > d d~ g keeps two
+such flows and a leading one), and a selection without a leading flow is
+refused (`subleading-colour-flows`). With several Born orders (QCD and
+electroweak Born amplitudes, e.g. u u~ > d d~ with photon exchange) a flow
+can interfere at the leading power with another flow between the two orders
+(there QCD^2 QED^2): its evaluation-time selection keeps that term, and a
+generation-time selection that would drop it is refused
+(`interfering-colour-flows`); select the interfering flows together, or
+select at evaluation. At such a cross order a flow's value is the selected
+flow interfering with the whole Born of the other order (bra the flow, ket
+every flow), not the tree engine's per-flow `evaluate_orders` value: it can
+be nonzero where the inclusive leading-colour value vanishes (u u~ > d d~
+at QCD^2 QED^2: the two flows give +-8.5e-3 and sum to 0), and complete
+sets of flows sum to the inclusive value. Identical-flavour quark lines (u u~ >
+u u~ g) take every selection. A member of an exact flavour group
+(`process.flavor_blind`) lists no flows and takes no evaluation-time
+selection (`CompatibilityError`): select on its representative process,
+which evaluates the member. Next-to-leading and full colour expose no
+selection: they evaluate every helicity and colour, and their API and plans
+are unchanged.
+
 #### Ultraviolet and infrared poles
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is

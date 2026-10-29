@@ -515,10 +515,18 @@ def export_trees(
     block_starts: list[list[int | None]] = []
     block_dimensions: list[int] = []
 
-    def block_id(block: Any) -> int:
+    unread: set[int] = set()
+
+    def block_id(block: Any) -> int | None:
+        """The block's closure record; None for a block without a row on any
+        Born row (a helicity selection, ``selection.restrict_rows``, keeps
+        rows the counterterm program's blocks still have)."""
+
         found = block_ids.get(id(block))
         if found is not None:
             return found
+        if id(block) in unread:
+            return None
         if ct is not None and id(block) in ct.blocks:
             by_helicity = {}
             for row in block.rows:
@@ -537,6 +545,10 @@ def export_trees(
             start, dimension = slot(block, entry)
             starts.append(start)
             dimensions.add(dimension)
+        selection = slice_.request.selection
+        if not dimensions and selection is not None and selection.helicities:
+            unread.add(id(block))
+            return None
         if len(dimensions) != 1:
             raise ValueError("a closure block's rows differ in dimension")
         found = block_ids[id(block)] = len(block_starts)
@@ -572,9 +584,21 @@ def export_trees(
             ],
         }
 
-    def closure_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
+    def readable(term: Any) -> bool:
+        """Whether every block of a closure term has a Born row (a term on a
+        block without one vanishes on every kept row)."""
+
+        return all(block_id(block) is not None for block in term.blocks)
+
+    def closure_term(
+        term: Any, contributions: list[list[Any]]
+    ) -> dict[str, Any] | None:
         """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
-        tree blocks) as a plan kernel on its blocks' rows and momenta."""
+        tree blocks) as a plan kernel on its blocks' rows and momenta; None
+        for a term on a block without a Born row (``readable``)."""
+
+        if not readable(term):
+            return None
 
         kernel = exporter._kernel(term.binding, ())
         ids = [block_id(block) for block in term.blocks]
@@ -598,10 +622,12 @@ def export_trees(
                 raise ValueError(f"a closure kernel reads a {kind} input")
         return record(term, kernel, inputs, contributions)
 
-    def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
+    def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any] | None:
         """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
         sum of products of Minkowski contractions of block rows as a plan
         kernel on the blocks' four components."""
+        if not readable(term):
+            return None
 
         ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
@@ -1016,8 +1042,11 @@ def _counterterm_program(
                 for degree, expression in term.grades:
                     slot = whole_slot(term, degree, expression)
                     contribute(contributions, slot, vector, degree, items, power2)
-                if contributions:
-                    terms.append(whole_term(term, contributions))
+                if (
+                    contributions
+                    and (record := whole_term(term, contributions)) is not None
+                ):
+                    terms.append(record)
                 continue
             name = term.entry.coupling.name
             for power in LAURENT_POWERS:
@@ -1030,8 +1059,11 @@ def _counterterm_program(
                 for grade, _column in grades:
                     slot = scalar_slot(name, power, grade, power)
                     contribute(contributions, slot, vector, grade, items, power2)
-            if contributions:
-                terms.append(closure_term(term, contributions))
+            if (
+                contributions
+                and (record := closure_term(term, contributions)) is not None
+            ):
+                terms.append(record)
     program = slice_.counterterm_program
     for item in () if program is None else program.closure.terms:
         # A root term of the counterterm recursion (``ct_closure.ClosureTerm``)
@@ -1055,8 +1087,11 @@ def _counterterm_program(
                 contribute(
                     contributions, slot, vector, degree + item.grade, items, power2
                 )
-            if contributions:
-                terms.append(whole_term(term, contributions))
+            if (
+                contributions
+                and (record := whole_term(term, contributions)) is not None
+            ):
+                terms.append(record)
             continue
         name, power = item.coupling
         for grade, _column in layout.get(item.coupling, ()):
@@ -1068,8 +1103,8 @@ def _counterterm_program(
                 else scaled_slot(name, power, grade, item.power, item.scale)
             )
             contribute(contributions, slot, vector, grade + item.grade, items, power2)
-        if contributions:
-            terms.append(closure_term(term, contributions))
+        if contributions and (record := closure_term(term, contributions)) is not None:
+            terms.append(record)
     born_index = {order: o for o, order in enumerate(born_orders)}
     sector_of = {
         pair: s for s, (_sector, pairs) in enumerate(slice_.sectors) for pair in pairs

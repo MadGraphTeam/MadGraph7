@@ -368,6 +368,75 @@ fn families_and_split_candidates_stay_within_the_bound() {
     }
 }
 
+/// A plan of `families` scalar bubble families over a leg of `helicities`
+/// helicity rows (one constant kernel term per row) and a one-row leg, each
+/// family a seeded step on the first leg and a trace step on the second,
+/// with `columns` observable columns of which each keeps `kept` consecutive
+/// Born rows (`column_rows`: helicity-resolved columns, so the plan's
+/// live-row pruning and the kept links' read rows, `plan/live.rs`, run).
+fn row_restricted_plan(families: usize, helicities: usize, columns: usize, kept: usize) -> Value {
+    let mut plan = empty();
+    plan["legs"] = json!(2);
+    plan["rows"] = json!(helicities);
+    plan["helicities"] = json!([(0..helicities).collect::<Vec<_>>(), [0]]);
+    plan["columns"] = json!(columns);
+    plan["constants"] = json!(2);
+    plan["kernels"] = json!([
+        {"inputs": [], "outputs": [[[0, []]]]},
+        {"inputs": [], "outputs": [[[1, []]]]},
+    ]);
+    let term = |row: usize, kernel: usize| {
+        json!({
+            "slots": [], "dimensions": [], "vertex": -1, "split": [], "rows": [[row, []]],
+            "bindings": [{"kernel": kernel, "inputs": [], "entries": [0]}],
+        })
+    };
+    plan["contents"] = json!([
+        {
+            "d_in": 1, "d_out": 1, "degree": 0, "rows": helicities, "mask": 1,
+            "row_helicities": (0..helicities).map(|h| json!([h])).collect::<Vec<_>>(),
+            "fused": [[0, 0, 0, 0, 0, 0]],
+            "terms": (0..helicities).map(|h| term(h, h % 2)).collect::<Vec<_>>(),
+        },
+        {
+            "d_in": 1, "d_out": 1, "degree": 0, "rows": 1, "mask": 2,
+            "row_helicities": [[0]], "fused": [[0, 0, 0, 0, 0, 0]], "terms": [term(0, 1)],
+        },
+    ]);
+    plan["factors"] = json!([[0, 0], [1, 1]]);
+    plan["seed_classes"] = json!([{"columns": vec![json!([[0, "1", "0"]]); columns]}]);
+    plan["seeds"] = json!([{"classes": [[0, "1", "0"]]}]);
+    let family = json!({
+        "sequence": [[1, 0], [2, 0]], "rank": 0, "orders": [0],
+        "leaves": [{"seed": 0, "weight": "3"}],
+        "steps": [
+            {"seeded": true, "trace": -1, "out": 2, "d_alpha": 1, "d_out": 1, "degree": 0,
+             "rank_in": 0, "edges": [{"leaf": 0, "child": -1, "factor": 0}]},
+            {"seeded": false, "trace": 0, "out": 0, "d_alpha": 1, "d_out": 1, "degree": 0,
+             "rank_in": 0, "edges": [{"leaf": -1, "child": 0, "factor": 1}]},
+        ],
+    });
+    plan["families"] = vec![family; families].into();
+    plan["column_rows"] = (0..columns)
+        .map(|c| {
+            let first = (c * kept) % helicities;
+            json!((first..first + kept).map(|r| r % helicities).collect::<Vec<_>>())
+        })
+        .collect();
+    plan
+}
+
+#[test]
+fn row_restricted_columns_stay_within_the_bound() {
+    for (families, helicities, columns, kept) in
+        [(400, 2, 2, 1), (8, 256, 4, 3), (64, 64, 16, 1), (40, 16, 2, 8)]
+    {
+        let plan = row_restricted_plan(families, helicities, columns, kept);
+        let name = format!("row-restricted {families} x {helicities} x {columns} x {kept}");
+        measure(&name, &text(&plan));
+    }
+}
+
 #[test]
 #[ignore = "exported plans from LOOP_PLAN_BOUND_PLANS (evidence runs)"]
 fn exported_plans_stay_within_their_bound() {

@@ -78,6 +78,15 @@ _LOGGER = logging.getLogger("pyamplicol.generation")
 # mq-stab).
 _BINARY64_ESTIMATE_CAP = 1e-9
 
+# The tree engine's ``[process]`` helicity and colour selectors, which
+# leading-colour v2 requests take (``_v2_selection``).
+_SELECTORS = (
+    "max_color_sectors",
+    "reference_color_order",
+    "selected_color_sector_ids",
+    "selected_source_helicities",
+)
+
 
 def _feature_blockers(backend, processes):
     run = backend._run_config
@@ -88,18 +97,14 @@ def _feature_blockers(backend, processes):
             "actions; the requested trace-basis conversion is unavailable"
         )
     selection = backend._process_selection
-    if any(
-        getattr(selection, name) is not None
-        for name in (
-            "max_color_sectors",
-            "reference_color_order",
-            "selected_color_sector_ids",
-            "selected_source_helicities",
-        )
+    if not _v2_leading_colour(run) and any(
+        getattr(selection, name) is not None for name in _SELECTORS
     ):
+        # Leading-colour v2 requests take them (``_v2_selection``).
         reasons.append(
-            "public loop generation currently requires inclusive helicity "
-            "and colour selectors"
+            "public loop generation requires inclusive helicity and colour "
+            "selectors at next-to-leading and full colour; leading colour "
+            "(color.accuracy='lc') with loop.engine='v2' selects them"
         )
     if processes.aliases or run.process.analyze_process_groups != "none":
         reasons.append(
@@ -475,6 +480,25 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
+    selection = backend._process_selection
+    partial = tuple(name for name in _SELECTORS if getattr(selection, name) is not None)
+    declared = bool(
+        correlators.color_correlations
+        or correlators.spin_correlations
+        or correlators.all_color_through_order is not None
+    )
+    if partial and declared and _v2_leading_colour(backend._run_config):
+        # Selectors exist at leading colour only (``_feature_blockers``).
+        # As the tree engine's correlated generation (``generation.
+        # correlated``): a spin source on a leg of fixed helicity would
+        # ignore the selection.
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "selected-correlators",
+            "correlated generation requires complete colour and helicity "
+            "coverage; remove " + ", ".join(f"process.{name}" for name in partial),
+        )
     if backend._run_config.color.contraction == "symmetric-group-fft":
         raise GenerationError(
             "forced rectangular FFT requires certified ordinary/resolved banks; "
@@ -1187,6 +1211,83 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     return tuple(reasons)
 
 
+def _v2_leading_colour(run) -> bool:
+    return run.loop.engine is LoopEngine.V2 and run.color.accuracy == "lc"
+
+
+def _v2_selection(backend, compiled, process: str, label: str):
+    """The leading-colour selection of a v2 request (``loops.v2.selection.
+    Selection``) from the tree engine's generation selectors, or None when
+    they keep every helicity and colour flow.
+
+    ``selected_source_helicities`` fixes leg helicities (labels as the tree
+    engine's; an unknown leg or a helicity the leg does not have is refused
+    here, so in the dry run too). The colour selectors pick sectors of the
+    tree engine's leading-colour plan (``reference_color_order`` first, at most
+    ``max_color_sectors``, then ``selected_color_sector_ids`` by id), each a
+    flow and, for a folded trace, its reflection (the tree engine's physical
+    flows); a missing sector id is refused as the tree engine refuses it.
+    The plan options are kept with the selection (``color_order``,
+    ``max_sectors``): the artifact numbers its flows in that plan's order,
+    as the tree runtime does (``reference_color_order`` alone selects
+    nothing and only orders)."""
+
+    from pyamplicol.loops.v2 import selection as lc
+
+    chosen = backend._process_selection
+    helicities = tuple(sorted((chosen.selected_source_helicities or {}).items()))
+    try:
+        lc.require_leg_helicities(compiled, process, helicities)
+    except ValueError as error:
+        raise GenerationError(f"process {label}: {error}") from error
+    order = (
+        tuple(int(x) for x in chosen.reference_color_order)
+        if chosen.reference_color_order
+        else None
+    )
+    flows = None
+    if (
+        chosen.max_color_sectors is not None
+        or chosen.selected_color_sector_ids is not None
+    ):
+        plan = lc.leading_colour_plan(
+            compiled,
+            process,
+            max_sectors=chosen.max_color_sectors,
+            reference_color_order=order,
+        )
+        wanted = chosen.selected_color_sector_ids
+        known = {int(sector.id) for sector in plan.sectors}
+        if wanted is not None and (missing := sorted(set(wanted) - known)):
+            raise GenerationError(
+                f"process {label} did not materialize requested LC colour sector "
+                "ids: " + ", ".join(str(sector_id) for sector_id in missing)
+            )
+        complete = {
+            flow.id
+            for flow in lc.plan_flows(lc.leading_colour_plan(compiled, process), ())
+        }
+        kept = tuple(
+            flow
+            for flow in lc.plan_flows(plan, ())
+            if wanted is None or flow.sector in wanted
+        )
+        if not kept:
+            raise GenerationError(f"process {label} keeps no leading-colour flow")
+        if {flow.id for flow in kept} != complete:
+            flows = tuple(flow.word for flow in kept)
+    if not helicities and flows is None and order is None:
+        return None
+    # A sector cap orders only the flows of a truncated plan: kept with a
+    # colour-flow subset (a cap that keeps every flow keeps the plan).
+    return lc.Selection(
+        helicities,
+        flows,
+        order,
+        chosen.max_color_sectors if flows is not None else None,
+    )
+
+
 def _blocked(backend, processes) -> tuple[str, ...]:
     reasons = _feature_blockers(backend, processes) + _v2_blockers(backend)
     if reasons:
@@ -1346,6 +1447,11 @@ def _v2_request(backend, context, index):
         )
     require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy
+    selection = (
+        _v2_selection(backend, compiled, process, label)
+        if _v2_leading_colour(run)
+        else None
+    )
     return SliceRequest(
         process,
         dict(limits),
@@ -1360,6 +1466,7 @@ def _v2_request(backend, context, index):
         alpha_s_parameter=run.loop.alpha_s_parameter,
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
+        selection=selection,
     )
 
 

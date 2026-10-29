@@ -104,6 +104,26 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``LoopSlice._plan_contraction``, ``ObservableSlice.of``) instead of
   silently contracting directly. ``"auto"`` serves all of them, reporting the
   algorithm it ran.
+* ``selected-correlators`` (MQ-SELECT, a guard): declared colour or spin
+  correlations (or the Ward mode) with a leading-colour selection
+  (``selection.Selection``) are refused, as the tree engine's correlated
+  generation refuses its selectors (``generation.correlated``): on the
+  public route by the selectors set (``loop_service._check_correlators``),
+  in ``ObservableSlice.of`` by a selection that keeps fewer helicities or
+  flows (``Selection.restricts``).
+* ``subleading-colour-flows`` (MQ-SELECT): a generation-time colour-flow
+  selection none of whose flows reaches the process's leading N_c degree in
+  a squared Born order they reach (``LoopSlice._refuse_inexact_flows``,
+  from the slice's own grading of the unrestricted Born, identical-flavour
+  grade splits included): its leading-colour value there is zero, while the
+  restricted Born alone would set a lower degree. Next to a leading flow
+  such a flow contributes exact zeros and is kept.
+* ``interfering-colour-flows`` (MQ-SELECT): a generation-time colour-flow
+  selection one of whose flows has a leading-power term with an unselected
+  flow in a squared Born order (``LoopSlice._refuse_inexact_flows``;
+  possible between two Born orders only, e.g. QCD and photon Born
+  amplitudes): the restricted Born would drop that term, while the
+  evaluation-time selection keeps it.
 * ``colour-declaration-coverage`` (MQ-NC): LC and NLC grade the counterterm
   and external-field couplings by the formal-N_c continuation of the
   request's colour declaration (design §6.7). A declaration covers the
@@ -280,6 +300,54 @@ LOOP_ADMISSION_REFUSALS = (
         'directly, the algorithm reported) or "direct"',
         "MQ-FFT (a guard)",
         "none (kept: a forced FFT is never silently direct)",
+    ),
+    LoopAdmissionRefusal(
+        "selected-correlators",
+        "declared colour or spin correlations (or the Ward mode) with a "
+        "leading-colour helicity or colour-flow selection (the public route's "
+        "process.selected_source_helicities, selected_color_sector_ids, "
+        "max_color_sectors or reference_color_order; SliceRequest.selection)",
+        "correlated generation requires complete colour and helicity coverage, "
+        "as the tree engine's correlated generation: a spin source on a leg "
+        "whose helicity is selected would ignore the selection",
+        "generate the correlations without selectors (an inclusive artifact), "
+        "and the selection in an artifact of its own",
+        "MQ-SELECT (a guard)",
+        "none (the tree engine's rule)",
+    ),
+    LoopAdmissionRefusal(
+        "subleading-colour-flows",
+        "a leading-colour colour-flow selection at generation (the public "
+        "route's selected_color_sector_ids or a truncating max_color_sectors; "
+        "SliceRequest.selection) none of whose flows reaches the leading N_c "
+        "power of the squared Born at a squared Born order the flows reach "
+        "(e.g. u u~ > d d~ g's tree flows joining each quark to its own "
+        "antiquark)",
+        "the loop's leading colour is the leading N_c power of the squared "
+        "matrix element: there such a selection's leading-colour Born and "
+        "virtual are zero, while its restricted Born alone would set a lower "
+        "power and return a subleading value",
+        "select at least one flow of the process's leading colour with it "
+        "(the others then contribute exact zeros), or select the flows at "
+        "evaluation (Runtime.evaluate(..., color_flows=...): exactly zero)",
+        "MQ-SELECT (a guard)",
+        "none (the leading-colour rule)",
+    ),
+    LoopAdmissionRefusal(
+        "interfering-colour-flows",
+        "a leading-colour colour-flow selection at generation (the public "
+        "route's selected_color_sector_ids or a truncating max_color_sectors; "
+        "SliceRequest.selection) one of whose flows interferes at the leading "
+        "N_c power of a squared Born order with an unselected flow (several "
+        "Born orders, e.g. u u~ > d d~'s QCD flow (2,4,3,1) with the photon "
+        "Born's (2,1,3,4) at QCD^2 QED^2)",
+        "a generation-time selection restricts the Born itself, so it would "
+        "drop that leading term of the squared Born, which the "
+        "evaluation-time selection of the flow keeps",
+        "select the interfering flows with it, or select the flows at "
+        "evaluation (Runtime.evaluate(..., color_flows=...): exact)",
+        "MQ-SELECT (a guard)",
+        "none (the leading-colour rule)",
     ),
     LoopAdmissionRefusal(
         "colour-declaration-coverage",

@@ -1408,8 +1408,18 @@ class SliceRequest:
     # recursion over the CT-lowered model (``ct_closure``), "sites" from the
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
+    # A leading-colour selection (MQ-SELECT, ``selection.Selection``): the
+    # Born helicities of some legs and the colour flows kept, to which the
+    # generation prunes its recursion; None (the default) keeps every
+    # helicity and flow (the request record then has no entry).
+    selection: Any = None
 
     def __post_init__(self) -> None:
+        if self.selection is not None and self.accuracy != "lc":
+            raise ValueError(
+                "helicity and colour-flow selection is a leading-colour option "
+                "(accuracy='lc')"
+            )
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
@@ -1946,6 +1956,13 @@ class LoopSlice:
             # passes here).
             require_nc_exact(blocks, request.accuracy, request.process)
             blocks, kernels = with_ward_kernels(blocks, model, fixed)
+            if request.selection is not None and request.selection.helicities:
+                # A helicity selection keeps the selected rows of every block
+                # (``selection.restrict_rows``): Born rows, frames, dressing
+                # and the tree program follow.
+                from .selection import restrict_rows
+
+                blocks = restrict_rows(blocks, request.selection.helicities)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
@@ -2155,6 +2172,16 @@ class LoopSlice:
                 f"the Born root closure at leg 1 has no terms at the Born "
                 f"orders {sorted(missing)} of the tree program"
             )
+        inclusive_born = born_terms
+        if request.selection is not None and request.selection.flows is not None:
+            # A leading-colour selection keeps its flows' Born tensors only
+            # (``selection.restrict_born_terms``): the basis, the seed table,
+            # the colour pruning and the Born and counterterm bras follow.
+            from .selection import restrict_born_terms
+
+            born_terms = restrict_born_terms(
+                born_terms, closure.legs, request.selection.flows
+            )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
             colour, readings, basis, compress=request.compress_colour
@@ -2216,6 +2243,8 @@ class LoopSlice:
             cancelled_cells=cancelled,
             external_photons=photons,
         )
+        if born_terms is not inclusive_born:
+            slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
@@ -2370,6 +2399,10 @@ class LoopSlice:
         """
 
         accuracy = self.request.accuracy
+        selection = self.request.selection
+        # A colour-flow selection's Born basis is its flows' tensors
+        # (``selection.restrict_born_terms``): pruned ring-aware below.
+        ring_aware = selection is not None and selection.flows is not None
         grades = self._born_grades()
         criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
@@ -2390,10 +2423,25 @@ class LoopSlice:
                 )
             return found
 
-        def keep(skeleton) -> bool:
+        def own(skeleton) -> bool:
             return any(
                 class_live(c, skeleton.orders) for c, _x in self.class_of[skeleton]
             )
+
+        keep = own
+        if ring_aware:
+            # The selected flows' basis elements only: a skeleton is kept
+            # when its ring (``SkeletonView`` readings, rotations and the
+            # reflection) is live in the plan's reading of that ring, whose
+            # seed it dresses, or in its own.
+            view = SkeletonView(self.loop_catalogue, self.colour)
+            rings: dict[Any, bool] = {}
+            for reading in rx.reading_skeletons(self.plan):
+                ring = view.view(reading).canonical
+                rings[ring] = rings.get(ring, False) or own(reading)
+
+            def keep(skeleton) -> bool:
+                return rings.get(view.view(skeleton).canonical, False) or own(skeleton)
 
         # Each surviving family keeps its frame, so the pruned schedules dress
         # the remaining skeletons exactly as before (dropped ones contributed
@@ -2742,6 +2790,136 @@ class LoopSlice:
                     out[b, order].update(item.nc_power + g for g in couplings)
         self._cache["born-grades"] = out
         return out
+
+    def _flow_degrees(
+        self, born_terms: Mapping[Orders, tuple[Any, ...]]
+    ) -> dict[tuple[Any, Any, Orders], int]:
+        """The leading N_c degree of the squared Born's term between two
+        colour flows ``x`` and ``y`` (``selection._item_flow`` keys) per
+        squared Born order ``s``, keyed ``(x, y, s)``, for the Born terms
+        ``born_terms`` (e.g. the unrestricted ones of a colour-flow
+        selection): the slice's grading of the Born (``_born_grades``: an
+        item's N_c power plus its coupling's grades, so the N_c grade split
+        of identical-flavour lines is included) and the exact overlaps of the
+        flows' tensors. Structural, as ``degrees``. Within one Born order the
+        cross term of two distinct flows closes fewer index loops than a
+        flow's own term, so it is below the mean of their own degrees, hence
+        below the leading degree, and only a flow's own term (``x == y``) is
+        graded there; between two Born orders (QCD and electroweak Born
+        amplitudes) a cross term can be leading (u u~ > d d~: the QCD flow
+        (2,4,3,1) with the photon's (2,1,3,4) at QCD^2 QED^2), so every pair
+        of flows is graded there."""
+
+        from .fields import field_definitions
+        from .selection import _item_flow
+
+        _plan, layout = self._scalar_plan(LAURENT_POWERS)
+        missing = {
+            (term.entry.coupling.name, 0)
+            for terms in born_terms.values()
+            for term in terms
+        } - set(layout)
+        if missing:
+            # Couplings only the unselected flows' Born terms bind.
+            _part, extra = self._scalar_part(
+                sorted(missing), field_definitions(self.fields)
+            )
+            layout = {**layout, **extra}
+        keys: dict[Orders, dict[Any, set[tuple[Any, int]]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        for order, terms in born_terms.items():
+            for term in terms:
+                grades = {g for g, _c in layout.get((term.entry.coupling.name, 0), ())}
+                for item in term.colour.terms:
+                    keys[order][_item_flow(item)].update(
+                        (item.tensor, item.nc_power + g) for g in grades
+                    )
+        out: dict[tuple[Any, Any, Orders], int] = {}
+        for a, b in product(keys, repeat=2):
+            squared = add_orders(a, b)
+            pairs = ((x, x) for x in keys[a]) if a == b else product(keys[a], keys[b])
+            for x, y in pairs:
+                for left, p in keys[a][x]:
+                    for right, q in keys[b][y]:
+                        for power, value in self.overlaps(left, right).items():
+                            if value:
+                                key = (x, y, squared)
+                                degree = power + p + q
+                                out[key] = max(out.get(key, degree), degree)
+        return out
+
+    def _refuse_inexact_flows(
+        self, inclusive: Mapping[Orders, tuple[Any, ...]]
+    ) -> None:
+        """A colour-flow selection (``selection.restrict_born_terms``) is the
+        evaluation-time selection of its flows only if, at every squared Born
+        order of the unrestricted Born ``inclusive`` (``_flow_degrees``):
+
+        * no selected flow's term with an unselected flow reaches the leading
+          degree there (the restricted Born drops it; possible between two
+          Born orders only): refused, ``interfering-colour-flows``;
+        * the selected flows' terms reach the leading degree there, or none
+          is nonzero (an exact zero there): else they would set a lower
+          degree and return a subleading value, so a selection below the
+          process's leading colour wherever it reaches it is refused,
+          ``subleading-colour-flows``. Next to a leading flow a subleading
+          one contributes exact zeros (the projection keeps the process's
+          degree P, as an evaluation-time selection of it is exactly
+          zero)."""
+
+        from .colour import outer_flow
+        from .refusals import LoopRequestUnsupported
+        from .selection import _item_flow, leading_colour_plan, plan_flows
+
+        degrees = self._flow_degrees(inclusive)
+        kept = {
+            _item_flow(item)
+            for terms in self.born_terms.values()
+            for term in terms
+            for item in term.colour.terms
+        }
+        top: dict[Orders, int] = {}
+        reached: dict[Orders, int] = {}
+        for (x, y, squared), degree in degrees.items():
+            top[squared] = max(top.get(squared, degree), degree)
+            if x in kept and y in kept:
+                reached[squared] = max(reached.get(squared, degree), degree)
+        selected = [list(w) for w in self.request.selection.flows]
+        below = [s for s, degree in sorted(reached.items()) if degree < top[s]]
+        if below or not reached:
+            orders = below or sorted(top)
+            raise LoopRequestUnsupported(
+                "subleading-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} are below the process's leading colour at "
+                f"the squared Born orders {[dict(s) for s in orders]}, and no "
+                "selected flow reaches it there",
+            )
+        crossing = {
+            (squared, y if x in kept else x)
+            for (x, y, squared), degree in degrees.items()
+            if (x in kept) != (y in kept) and degree >= top[squared]
+        }
+        if crossing:
+            # The unselected flows by their tree words (a piece of no planar
+            # flow by its strings and traces).
+            representations = {
+                leg.label: leg.representation for leg in self.closure.legs
+            }
+            plan = leading_colour_plan(self.compiled, self.request.process)
+            words = {
+                outer_flow(flow.word, representations): list(flow.word)
+                for flow in plan_flows(plan, ())
+            }
+            named = sorted((s, str(words.get(f, f))) for s, f in crossing)
+            raise LoopRequestUnsupported(
+                "interfering-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} interfere at the leading N_c power with the "
+                "unselected flows "
+                + ", ".join(f"{flow} at {dict(s)}" for s, flow in named),
+            )
 
     def degrees(
         self,
