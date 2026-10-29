@@ -25,6 +25,7 @@ a sample to the cross section, scale its weights by
 seed, independent of the thread count and of how it is split into batches.
 """
 
+import collections
 import dataclasses
 import json
 import sys
@@ -108,6 +109,27 @@ class EventBatch:
         return len(self.weight)
 
 
+def _events_to_arrays(events: list, template: dict) -> dict:
+    """The fields of ms.LHEEvent objects as arrays like those of
+    ms.EventStream.next_batch, with the dtypes and padding of ``template``."""
+    arrays = {}
+    for key, value in template.items():
+        if key == "particle_count":
+            data = [len(event.particles) for event in events]
+        elif value.ndim == 1:
+            data = [getattr(event, key) for event in events]
+        else:
+            data = np.zeros((len(events), value.shape[1]), value.dtype)
+            for row, event in zip(data, events):
+                row[: len(event.particles)] = [getattr(p, key) for p in event.particles]
+        arrays[key] = np.asarray(data, value.dtype)
+    return arrays
+
+
+def _concatenate(first: dict, second: dict) -> dict:
+    return {key: np.concatenate([first[key], second[key]]) for key in first}
+
+
 class EventStream:
     """Endless stream of unweighted events from this gridpack.
 
@@ -145,6 +167,8 @@ class EventStream:
         ignore_source_hash: bool = False,
     ):
         self._stream = None
+        # events fetched for the iterator but not returned yet
+        self._pending = collections.deque()
         run_card = load_run_card()
         run_args = run_card["run"]
         gen_args = run_card["generation"]
@@ -204,20 +228,32 @@ class EventStream:
 
     def __iter__(self) -> Iterator["ms.LHEEvent"]:
         """Endless iterator over the events as ms.LHEEvent objects. It takes
-        events from the stream in chunks of 1000; those of the last chunk that
-        are not iterated over are dropped."""
+        events from the stream in chunks of 1000. The events of a chunk that are
+        not iterated over are kept: the next calls return them first, so no
+        event is lost when the loop is left early."""
         while True:
-            yield from self._stream.next_events(_ITER_CHUNK)
+            if not self._pending:
+                self._pending.extend(self._stream.next_events(_ITER_CHUNK))
+            yield self._pending.popleft()
+
+    def _take_pending(self, count: int) -> list:
+        return [self._pending.popleft() for _ in range(min(count, len(self._pending)))]
 
     def next_events(self, count: int) -> list:
         """The next ``count`` events as ms.LHEEvent objects."""
-        return self._stream.next_events(count)
+        events = self._take_pending(count)
+        if len(events) < count:
+            events.extend(self._stream.next_events(count - len(events)))
+        return events
 
     def next_batch(self, batch_size: int, output_type: str = "numpy") -> EventBatch:
         """The next ``batch_size`` events as an :class:`EventBatch`."""
         if output_type not in ("numpy", "torch"):
             raise ValueError('output_type must be "numpy" or "torch"')
-        arrays = self._stream.next_batch(batch_size)
+        pending = self._take_pending(batch_size)
+        arrays = self._stream.next_batch(batch_size - len(pending))
+        if pending:
+            arrays = _concatenate(_events_to_arrays(pending, arrays), arrays)
         counts = arrays["particle_count"]
         max_count = arrays["pdg_id"].shape[1]
         arrays["particle_mask"] = np.arange(max_count)[None, :] < counts[:, None]
@@ -234,6 +270,8 @@ class EventStream:
     ) -> Iterator[EventBatch]:
         """Iterator over batches of ``batch_size`` events, endless unless
         ``max_events`` is given (the last batch may then be smaller)."""
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
         remaining = max_events
         while remaining is None or remaining > 0:
             size = batch_size if remaining is None else min(batch_size, remaining)

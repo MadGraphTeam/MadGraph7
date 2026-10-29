@@ -98,7 +98,8 @@ Output formats
 There are three ways to get events from a stream:
 
 - Iterating over the stream yields one ``madspace.LHEEvent`` at a time. The events are
-  completed in chunks of 1000 internally.
+  completed in chunks of 1000 internally. If the loop is left early, the rest of the chunk
+  is returned first by the next call, so no event is skipped.
 - :py:meth:`next_events <event_stream.EventStream.next_events>` returns a list of a given
   number of ``LHEEvent`` objects.
 - :py:meth:`batches <event_stream.EventStream.batches>` and
