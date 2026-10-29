@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-from madgraph.mg7.common import backend_of, fptype_of, get_start_time, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
+from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
 from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
@@ -1774,7 +1774,6 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
         systematics = self.build_systematics()
