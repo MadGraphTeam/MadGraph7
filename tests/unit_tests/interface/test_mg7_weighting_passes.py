@@ -78,6 +78,25 @@ class FirstPassSettingsTest(unittest.TestCase):
         self.assertIsNone(groups[0].first_pass_freeze_max_weight_after)
 
 
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class SurrogateWithAmplicolTest(unittest.TestCase):
+
+    def test_is_refused(self):
+        import madgraph.various.banner as banner_mod
+        from madgraph.mg7 import madgraph_process
+        process = object.__new__(madgraph_process.MadgraphProcess)
+        process.run_card = banner_mod.RunCardMG7()
+        process.run_card['surrogate']['function'] = 'surrogate.py'
+        process.subprocess_data = [{'me_path': 'a'}, {'backend': 'amplicol'}]
+        with self.assertRaisesRegex(RuntimeError, r'\[surrogate\] is not supported'):
+            process.init_surrogate()
+        # without [amplicol] subprocesses, the next check is reached
+        process.subprocess_data = process.subprocess_data[:1]
+        with self.assertRaisesRegex(RuntimeError, 'file not found'):
+            process.init_surrogate()
+
+
 _TEMPLATES = (Path(__file__).resolve().parents[3] / 'madgraph' / 'iolibs'
               / 'template_files' / 'mg7')
 

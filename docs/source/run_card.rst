@@ -380,7 +380,7 @@ its optimization use the surrogate. The events are then reweighted or unweighted
 time with the full matrix element, which is only evaluated for the events that pass the
 first unweighting. The cross section and the events are those of the full matrix element.
 The surrogate does not return channel weights, so it needs ``sde_strategy =
-"denominators"``.
+"denominators"``. It is not supported for outputs with ``[amplicol]`` subprocesses.
 
 ``function`` (``""``)
     The surrogate. An empty string disables it.

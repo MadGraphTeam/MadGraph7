@@ -391,6 +391,11 @@ class MadgraphProcess:
         if not settings["function"]:
             return
         path = settings["function"]
+        if any(is_amplicol(meta) for meta in self.subprocess_data):
+            raise RuntimeError(
+                "[surrogate] is not supported with [amplicol] subprocesses: "
+                "set [surrogate] function = \"\" or use the madmatrix backend"
+            )
         if path.endswith(".py") and not os.path.isfile(path):
             raise RuntimeError(f"[surrogate] function = {path!r}: file not found")
         if self.run_card["phasespace"]["sde_strategy"] != "denominators":
