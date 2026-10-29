@@ -52,15 +52,15 @@ each row's ids here.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
-from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
+
+from .loop_nc_scan import exact_point
+from .loop_nc_scan import request_spec as _spec
+from .loop_nc_scan import scan as _scan
 
 ROOT = Path(__file__).resolve().parents[2]
 NJET = ROOT / "tests/fixtures/loop/nc/njet_nc_scan.json"
@@ -88,59 +88,10 @@ POINTS = {"tth": TTH_POINT, "bbx": BBX_POINT}
 
 
 def _point(masses):
-    from tools.loop_reference import exact_points
+    """A point of ``POINTS`` by key, or the first exact point of the
+    external masses."""
 
-    if isinstance(masses, str):
-        return POINTS[masses]
-    point = exact_points.generate(list(masses), count=1)[0]
-    return [[exact_points.decimal_string(x) for x in p] for p in point]
-
-
-def _spec(process, born, point, *, fixed=None, veto=(), mu_r2="1000000", **extra):
-    return {
-        "process": process,
-        "born": born,
-        "loop": {**born, "QCD": born["QCD"] + 2},
-        "fixed_parameters": dict(fixed or {}),
-        "particle_veto": list(veto),
-        "point": point,
-        "mu_r2": mu_r2,
-        "parameters": {"aS": "0.118"},
-        **extra,
-    }
-
-
-def _scan(model, spec, values, precision, cache) -> dict[str, dict]:
-    """``loop_nc_scan request`` of ``spec`` at each N of ``values`` (one
-    process each, concurrently): N -> its JSON."""
-
-    def run(n):
-        environment = dict(
-            os.environ,
-            PYAMPLICOL_CACHE_DIR=str(cache / f"nc-{n.replace('/', '_')}"),
-        )
-        process = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "tests.unit.loop_nc_scan",
-                "request",
-                str(model),
-                json.dumps(spec),
-                n,
-                precision,
-            ],
-            cwd=ROOT,
-            env=environment,
-            capture_output=True,
-            text=True,
-            timeout=3600,
-        )
-        assert process.returncode == 0, (n, process.stderr[-4000:])
-        return json.loads(process.stdout.strip().splitlines()[-1])
-
-    with ThreadPoolExecutor(len(values)) as pool:
-        return dict(zip(values, pool.map(run, values), strict=True))
+    return POINTS[masses] if isinstance(masses, str) else exact_point(masses)
 
 
 def _relative(a: Decimal, b: Decimal) -> Decimal:
@@ -190,6 +141,7 @@ def _njet_errors(model, name, index, values, cache):
     return out
 
 
+@pytest.mark.loop_fast
 def test_njet_fixture_values_carry_the_n_c_3_colour_average():
     """The fixture's BLHA rows are NJet's raw values times avg(N_c)/avg(3)
     (``run_njet.colour_average`` of the BLHA process line's incoming legs:

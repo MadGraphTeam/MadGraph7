@@ -4,78 +4,118 @@
 Rule 7 asks two things of every ``nc`` row: the formal projection equals the
 N_c scan within 1e-24 in double-double, and the MQ-NC independent oracles
 hold at their tolerances. ``NC_COLUMN`` names, per row, the test ids that
-make up its column: this file's projection id and the row's oracle ids in
+make up its column: this file's projection ids and the row's oracle ids in
 ``test_loop_v2_nc_oracles`` (NJet's NJetNc, Catani and Ward at N_c != 3)
 and ``test_loop_v2_colour`` / ``test_loop_v2_observables_nightly`` (BDK
 O14).
 
 The formal projection is the engine's LC and NLC: ``accuracy="lc"`` and
-``"nlc"`` with the shipped loop_sm colour declaration (the request names
-none), the production native path, double-double. They are the N_c^P part
-(LC) and the N_c^P, N_c^(P-1), N_c^(P-2) parts (NLC) of full colour at
-N_c = 3, P being the leading degree of each squared-order sector
-(``LoopSlice.degrees``; design §7.4-§7.6).
+``"nlc"`` with the shipped loop_sm colour declaration (resolved from the
+model, ``resolve_loop_color_declaration``, and handed to the request; the
+path where a request names no declaration is
+``test_loop_v2_nc_declaration``'s), on the production native path (native
+point inputs: the plan's tree program, as a stored artifact runs it). They
+are the N_c^P part (LC) and the N_c^P, N_c^(P-1), N_c^(P-2) parts (NLC) of
+full colour at N_c = 3, P being the leading degree of each squared-order
+sector (``LoopSlice.degrees``; design §7.4-§7.6).
 
 The N_c scan is full colour as a function of N_c (``loop_nc_scan
-request``): N_c = N wherever the engine substitutes it, one process per N,
-on the Python reference path at ``SCAN_DIGITS`` digits. Full colour has no
-grade split, so the scan does not rest on the grade bookkeeping that LC and
-NLC use. FC(N) = sum_p c_p N^p, with the external colour average of
-N_c = 3 at every N. The window p = P_top - span .. P_top (P_top the
-request's largest leading degree, span twice the number of coloured
-external legs) is solved exactly from the first span + 1 ``FIT_NODES``.
-Then, per Born order and per component, sector and Laurent coefficient,
-within 1e-24 of the sector's largest term |c_p 3^p|:
+request``): N_c = N wherever the engine substitutes it, one process per N
+(one generation for all of a row's points), on the Python reference path at
+``SCAN_DIGITS`` digits. Full colour has no grade split, so the scan does
+not rest on the grade bookkeeping that LC and NLC use. FC(N) = sum_p c_p
+N^p, with the external colour average of N_c = 3 at every N. The window p =
+P_top - span .. P_top (P_top the request's largest leading degree, span
+twice the number of coloured external legs) is solved exactly from the
+first span + 1 ``FIT_NODES``.
+
+Points: the campaign's (PLAN §4.2), read from the row's binding reference
+fixture (``tests/fixtures/loop/required/mqcd_references.json``): points 0,
+1 and 2 at their mu_R and point 3, point 0 at mu_R / 2. The default tier
+runs points 0 and 1 of the default rows (``DEFAULT_ROWS``), the nightly
+tier the others (every point of the nightly rows; points 2 and 3 of the
+default rows). The fixture's fixed parameters (zero widths; MB = ymb = 0,
+MTA = ymtau = 0 for the 5F rows, which run on the default restriction:
+'5F*' until MQ-5F) and alpha_s.
+
+Every check is per point, per squared-order sector and per coefficient
+(PLAN §1.4), Born included: rel(a, r) = |a - r| / max(|a|, |r|), strictly
+relative. A value r that vanishes identically, |r| <= 1e-28 A (four orders
+under the absolute band: the scan's structural zeros and the analytically
+vanishing projections, e.g. the leading colour of u u~ > e- e+ g's ``uv``
+finite part), is held absolutely, |a - r| <= 1e-24 A, with A = F_s =
+|B_s| alpha_s / 2 pi of a component's sector (PLAN's F_s rule at rule 7's
+tolerance) and A = |B_s| for a Born, the summed |B| where B_s vanishes.
+Within 1e-24:
 
 * the fit reproduces the scan at both ``CHECK_NODES`` (nodes inside the
-  window's node range), and the window's two lowest powers vanish: a power
-  outside the window fails one or the other;
+  window's node range), and the window's two lowest powers vanish
+  (|c_p 3^p| <= 1e-24 A): a power outside the window fails one or the other;
 * c_p = 0 for every p above the sector's own P (the leading degrees are
   the scan's);
-* LC = c_P 3^P and NLC = sum over p = P-2 .. P of c_p 3^p;
-* the native double-double full colour equals the scan's FC(3).
+* on native MPFR (``AP_DIGITS``), every component (``virtual``, ``bare``,
+  the counterterm and field parts): LC = c_P 3^P, NLC = sum over
+  p = P-2 .. P of c_p 3^p and FC = FC(3), the projection identity itself;
+* in double-double, the same for the Born and the virtual, the plan's
+  wording of rule 7. At an ill-conditioned point double-double's own
+  accuracy is coarser than 1e-24; such a point is listed in ``DD_LISTED``
+  with its measured error and estimate, and there each double-double
+  coefficient beyond 1e-24 must lie within 10 E_DD (E_DD: one exact rotation
+  z, 3/5, 4/5 plus the reduction direction, the O1 configuration; rule 3's
+  bracket, rules 4 and 6's band) while the identity holds on MPFR. An
+  unlisted point beyond 1e-24 fails. Whether rule 7's double-double part
+  takes rules 4/6's band max(1e-24, 10 E_DD) instead of the list is routed
+  to the coordinator.
 
 The scan's integer N other than 3 also give the poles of the renormalised
-virtual at N. They are compared with Catani's operator at N (C_A = N,
-C_F = (N^2-1)/(2N), beta_0 and the colour-correlated Borns at N; no colour
-declaration enters it) within 1e-24, rule 4's double-double band. This is
-MQ-NC oracle (c) on every row, not only the five rows PLAN §3.2 lists.
+virtual at N, compared with Catani's operator at N (C_A = N, C_F = (N^2-1)
+/ (2N), beta_0 and the colour-correlated Borns at N; no colour declaration
+enters it) per sector and pole within 1e-24, rule 4's double-double band.
+This is MQ-NC oracle (c) on every row, not only the five rows PLAN §3.2
+lists.
 
-Rows (PLAN §4.2), one exact point each. The A rows run on the default
-restriction with a massless b (MB = ymb = 0) and zero widths ('5F*'); the
-others are configured as ``test_loop_v2_nc_oracles.CATANI_ROWS``. Default
-tier: A12 and D05. The others are nightly: 50-90 s per 2->2/2->3 row, and
-2->4 scan processes of 1-6 min each.
+Tiers. PLAN §4.2 marks A01, A09, A12, C01 and D05 as default rows with nc;
+the default tier keeps A12 (quark lines: U(1)-subtraction weights and the
+quark-line counterterms at N) and D05 (an electroweak Born: the declaration
+of the counterterms with EW legs) at points 0 and 1, and A01, A09 and C01
+run their projection nightly (A01 and A09 keep their default-tier NJet,
+Catani and Ward oracle ids), the user's fast-default-tier rule (DECISIONS
+2026-10-28 ~17:05).
 """
 
 from __future__ import annotations
 
+import ast
 import json
 from decimal import Decimal
 from fractions import Fraction
+from functools import cache
+from pathlib import Path
 
 import pytest
 
-from .test_loop_v2_nc_oracles import CATANI_ROWS, _point, _scan, _spec
+from .loop_nc_scan import request_spec, scan
 
-FIVE_F = {"MB": "0", "ymb": "0", "WT": "0", "WZ": "0", "WW": "0", "WH": "0"}
+ROOT = Path(__file__).resolve().parents[2]
+CAMPAIGN = ROOT / "tests/fixtures/loop/required/mqcd_references.json"
+FIXTURES = ROOT / "tests/fixtures/loop"
 
-# Row: process, Born orders, external masses (or a point key of
-# ``test_loop_v2_nc_oracles.POINTS``), fixed parameters.
-NC_ROWS = {
-    "A01": ("g g > g g", {"QCD": 2, "QED": 0}, (0,) * 4, FIVE_F),
-    "A08": ("g g > g g g", {"QCD": 3, "QED": 0}, (0,) * 5, FIVE_F),
-    "A09": ("u u~ > g g g", {"QCD": 3, "QED": 0}, (0,) * 5, FIVE_F),
-    "A12": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, (0,) * 5, FIVE_F),
-    "A13": ("u u~ > u u~ g", {"QCD": 3, "QED": 0}, (0,) * 5, FIVE_F),
-    "A15": ("u u~ > g g g g", {"QCD": 4, "QED": 0}, (0,) * 6, FIVE_F),
-    "A18": ("g g > u u~ u u~", {"QCD": 4, "QED": 0}, (0,) * 6, FIVE_F),
-    "A21": ("u u~ > u u~ u u~", {"QCD": 4, "QED": 0}, (0,) * 6, FIVE_F),
-    **CATANI_ROWS,
-}
+# The nc rows of PLAN §4.2 (``mqcd_references.json`` gives each row's
+# process, Born orders and binding fixture).
+NC_ROWS = (
+    *("A01", "A08", "A09", "A12", "A13", "A15", "A18", "A21"),
+    *("B03", "C01", "D05", "E01", "F01"),
+)
 DEFAULT_ROWS = frozenset({"A12", "D05"})
+DEFAULT_POINTS = (0, 1)
+# Point 3 of every campaign fixture is point 0 at mu_R / 2.
+ALL_POINTS = (0, 1, 2, 3)
 
-# The rows' nc columns (rule 7): this file's projection id, then the
+# Points where double-double's own accuracy is coarser than 1e-24 (module
+# docstring): (row, point) -> the measured error and estimate.
+DD_LISTED: dict[tuple[str, int], str] = {}
+
+# The rows' nc columns (rule 7): this file's projection ids, then the
 # independent oracles' ids.
 _ORACLES = "tests/unit/test_loop_v2_nc_oracles.py::"
 _BDK = (
@@ -83,6 +123,7 @@ _BDK = (
     "tests/unit/test_loop_v2_observables_nightly.py::"
     "test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14",
 )
+_PROJECTION = "tests/unit/test_loop_v2_nc_projection.py::"
 
 
 def _njet_quark(row: str) -> tuple[str, ...]:
@@ -127,13 +168,20 @@ NC_COLUMN_ORACLES = {
         for row in ("B03", "D05")
     },
 }
+
+
+def _projection_ids(row: str) -> tuple[str, ...]:
+    ids = (f"{_PROJECTION}test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[{row}]",)
+    if row in DEFAULT_ROWS:
+        ids += (
+            f"{_PROJECTION}test_lc_and_nlc_at_the_nightly_points_of_default_rows"
+            f"[{row}]",
+        )
+    return ids
+
+
 NC_COLUMN = {
-    row: (
-        "tests/unit/test_loop_v2_nc_projection.py::"
-        f"test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[{row}]",
-        *oracles,
-    )
-    for row, oracles in NC_COLUMN_ORACLES.items()
+    row: (*_projection_ids(row), *oracles) for row, oracles in NC_COLUMN_ORACLES.items()
 }
 
 # The scan's fit nodes are geometric about 1, which keeps the exact Laurent
@@ -166,12 +214,59 @@ FIT_NODES = (
 )
 CHECK_NODES = ("3/2", "2/3")
 SCAN_DIGITS = 60
+AP_DIGITS = 50
 TOLERANCE = Fraction(1, 10**24)
+VANISHING = Fraction(1, 10**28)
+BRACKET = 10
 CATANI_NC = frozenset({"2", "4", "8", "16", "32"})
+CHECK_ROTATION = ("z", "3/5", "4/5")
+# alpha_s / 2 pi of F_s (a scale only: 30 digits of pi suffice).
+_PI = Fraction(Decimal("3.14159265358979323846264338328"))
 
 
 def _exact(value) -> Fraction:
     return Fraction(Decimal(str(value)))
+
+
+@cache
+def _campaign() -> dict:
+    return {row["row"]: row for row in json.loads(CAMPAIGN.read_text())["rows"]}
+
+
+def campaign_row(row: str) -> dict:
+    """Process, Born orders, fixed parameters, alpha_s and the points
+    [(point, mu_R^2)] of a campaign row (its first binding reference
+    fixture)."""
+
+    entry = _campaign()[row]
+    reference = entry["references"][0]
+    fixture = json.loads((FIXTURES / reference["fixture"]).read_text())
+    return {
+        "process": entry["process"],
+        "born": dict(reference["born_orders"]),
+        "fixed": dict(fixture["fixed_parameters"]),
+        "alpha_s": fixture["parameters"]["aS"],
+        "points": [
+            (point, str(_exact(mu) ** 2))
+            for point, mu in zip(fixture["points"], fixture["mu_r"], strict=True)
+        ],
+    }
+
+
+def row_spec(row: str, indices) -> dict:
+    """The ``loop_nc_scan request`` JSON of the row at its campaign points
+    ``indices``."""
+
+    data = campaign_row(row)
+    spec = request_spec(
+        data["process"],
+        data["born"],
+        None,
+        fixed=data["fixed"],
+        points=[list(data["points"][i]) for i in indices],
+    )
+    spec["parameters"] = {"aS": data["alpha_s"]}
+    return spec
 
 
 def _entries(born, components) -> dict:
@@ -196,6 +291,34 @@ def _result_entries(result) -> dict:
     )
 
 
+def _born_order(sector: str) -> str:
+    """The Born order (repr) of a QCD-corrected sector (repr)."""
+
+    orders = dict(ast.literal_eval(sector))
+    orders["QCD"] = orders.get("QCD", 0) - 2
+    return repr(tuple(sorted((k, v) for k, v in orders.items() if v)))
+
+
+def absolute_scale(entries: dict, key, alpha_s: Fraction) -> Fraction:
+    """A of an entry (module docstring) from the Born of ``entries``."""
+
+    borns = {k[1]: abs(v) for k, v in entries.items() if k[0] == "born"}
+    total = sum(borns.values(), Fraction(0))
+    if key[0] == "born":
+        return borns.get(key[1]) or total
+    flux = alpha_s / (2 * _PI)
+    return (borns.get(_born_order(key[1])) or total) * flux
+
+
+def deviation(got: Fraction, want: Fraction, scale: Fraction) -> Fraction:
+    """rel(got, want), or |got - want| / A where ``want`` vanishes
+    identically (|want| <= 1e-28 A): within 1e-24 passes either way."""
+
+    if abs(want) <= VANISHING * scale:
+        return abs(got - want) / scale if scale else abs(got - want)
+    return abs(got - want) / max(abs(got), abs(want))
+
+
 def _solve(matrix, rhs):
     """The exact solution of the square system ``matrix x = rhs``."""
 
@@ -213,18 +336,18 @@ def _solve(matrix, rhs):
     return [rows[r][size] / rows[r][r] for r in range(size)]
 
 
-def row_spec(row: str) -> dict:
-    process, born, masses, fixed = NC_ROWS[row]
-    return _spec(process, born, _point(masses), fixed=fixed)
-
-
-def projections(compiled, native, spec) -> dict:
-    """The formal projections of ``spec``: accuracy -> (slice, exact entries)
-    for LC, NLC and FC with the model's (shipped) colour declaration, on the
-    production native path (default seed contraction) in double-double."""
+def native_projections(compiled, native, spec, indices) -> dict:
+    """The formal projections of ``spec`` at its points: accuracy -> (slice,
+    {carrier: [entries per point]}) for LC, NLC and FC with the model's
+    shipped colour declaration on the production native path (native point
+    inputs, default seed contraction), in double-double and in MPFR at
+    ``AP_DIGITS``; for the points ``indices`` (positions in ``spec``'s
+    points) also double-double with the O1 stability checks (carrier
+    ``"dd-estimate"``: entries and, per virtual key, E_DD relative)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
     from pyamplicol.models.loop_color_declaration import (
         resolve_loop_color_declaration,
         source_loop_color_declaration,
@@ -235,21 +358,59 @@ def projections(compiled, native, spec) -> dict:
     assert source_loop_color_declaration(compiled.raw_loop_model) is None
     declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     assert declaration is not None
+    points = [point for point, _scale in spec["points"]]
+    scales = [scale for _point, scale in spec["points"]]
+    checks = StabilityChecks((Rotation.about(*CHECK_ROTATION),), True)
     out = {}
     for accuracy in ("lc", "nlc", "full"):
         slice_ = LoopSlice.generate(
             compiled, slice_request(spec, declaration, accuracy, "auto"), native
         )
         executor = NativeExecutor(
-            slice_, forward=False, exported=export_plan(slice_, forward=False)
+            slice_,
+            forward=False,
+            exported=export_plan(slice_, forward=False, trees=True, born_squared=True),
+            inputs="native",
         )
-        (result,) = executor.evaluate(
-            [spec["point"]],
-            [spec["mu_r2"]],
-            parameters=spec["parameters"],
-            precision=Precision.double_double(),
-        )
-        out[accuracy] = (slice_, _result_entries(result))
+
+        def run(selected, precision, stability=None, executor=executor):
+            return executor.evaluate(
+                [points[i] for i in selected],
+                [scales[i] for i in selected],
+                parameters=spec["parameters"],
+                precision=precision,
+                stability=stability,
+            )
+
+        every = range(len(points))
+        found = {
+            "dd": [_result_entries(r) for r in run(every, Precision.double_double())],
+            "mpfr": [
+                _result_entries(r) for r in run(every, Precision.arbitrary(AP_DIGITS))
+            ],
+        }
+        if indices:
+            estimated = run(indices, Precision.double_double(), checks)
+            found["dd-estimate"] = {
+                i: (_result_entries(r), _relative_estimates(r))
+                for i, r in zip(indices, estimated, strict=True)
+            }
+        out[accuracy] = (slice_, found)
+    return out
+
+
+def _relative_estimates(result) -> dict:
+    """("virtual", sector, k) -> E_DD relative to the coefficient."""
+
+    out = {}
+    for sector, budget in result.stability.absolute.items():
+        laurent = result.components["virtual"][sector].coefficients
+        coefficients = budget.coefficients
+        for k, (e, value) in enumerate(
+            zip(coefficients, laurent[: len(coefficients)], strict=True)
+        ):
+            size = abs(_exact(value))
+            out["virtual", repr(sector), k] = abs(_exact(e)) / size if size else None
     return out
 
 
@@ -262,16 +423,21 @@ def sector_degrees(slice_) -> dict:
     return out
 
 
-def fit(scan: dict, span: int, top: int):
+def sector_of(key) -> tuple:
+    """The degree key of an entry: Born order, or the virtual sector of any
+    component."""
+
+    return ("born", key[1]) if key[0] == "born" else ("virtual", key[1])
+
+
+def fit(data: dict, span: int, top: int, alpha_s: Fraction):
     """The exact c_p (p = top - span .. top) of every entry from the first
-    span + 1 ``FIT_NODES`` of ``scan`` (N -> loop_nc_scan JSON), and the
-    relative miss of the fit at each of the ``CHECK_NODES`` (relative to the
-    entry's sector's largest |c_p N^p|)."""
+    span + 1 ``FIT_NODES`` of ``data`` (N -> entries at one point), and the
+    largest deviation of the fit from the scan at the ``CHECK_NODES``."""
 
     powers = list(range(top - span, top + 1))
     used = FIT_NODES[: span + 1]
     assert len(used) == span + 1, (span, len(FIT_NODES))
-    data = {n: _entries(scan[n]["born"], scan[n]["components"]) for n in scan}
     keys = set().union(*data.values())
     matrix = [[Fraction(n) ** p for p in powers] for n in used]
     coefficients = {
@@ -284,128 +450,216 @@ def fit(scan: dict, span: int, top: int):
         )
         for key in keys
     }
-    misses = {}
+    miss = Fraction(0)
     for n in CHECK_NODES:
         x = Fraction(n)
-        terms = {
-            key: [c * x**p for p, c in row.items()] for key, row in coefficients.items()
-        }
-        size: dict = {}
-        for key, row in terms.items():
-            size[key[:2]] = max(size.get(key[:2], 0), *map(abs, row))
-        misses[n] = max(
-            abs(data[n].get(key, 0) - sum(row)) / (size[key[:2]] or 1)
-            for key, row in terms.items()
-        )
-    return coefficients, misses
+        for key, row in coefficients.items():
+            scale = absolute_scale(data[n], key, alpha_s)
+            predicted = sum(c * x**p for p, c in row.items())
+            miss = max(miss, deviation(predicted, data[n].get(key, 0), scale))
+    return coefficients, miss
 
 
-def sector_of(key) -> tuple:
-    """The degree key of an entry: Born order, or the virtual sector of any
-    component."""
-
-    return ("born", key[1]) if key[0] == "born" else ("virtual", key[1])
-
-
-def projection_errors(coefficients, mine, degrees) -> dict:
-    """Per check, the largest error relative to the sector's largest term
-    |c_p 3^p|: the window's two lowest powers, the powers above P, LC, NLC
-    and FC(3)."""
+def expected_projections(coefficients: dict, degrees: dict) -> dict:
+    """accuracy -> key -> the scan's LC, NLC and FC(3)."""
 
     three = Fraction(3)
-    size: dict = {}
+    out = {"lc": {}, "nlc": {}, "full": {}}
     for key, row in coefficients.items():
-        largest = max(abs(c * three**p) for p, c in row.items())
-        size[key[:2]] = max(size.get(key[:2], 0), largest)
+        degree = degrees[sector_of(key)]
+        out["full"][key] = sum(c * three**p for p, c in row.items())
+        for accuracy, depth in (("lc", 0), ("nlc", 2)):
+            out[accuracy][key] = sum(
+                c * three**p
+                for p, c in row.items()
+                if degree is not None and degree - depth <= p <= degree
+            )
+    return out
+
+
+def power_errors(coefficients: dict, degrees: dict, at_three: dict, alpha_s):
+    """The window's two lowest powers ("floor") and the powers above each
+    sector's P ("above"): |c_p 3^p| / A, which must vanish."""
+
+    three = Fraction(3)
     floor = min(min(row) for row in coefficients.values())
-    errors = dict.fromkeys(("floor", "above", "lc", "nlc", "fc"), Fraction(0))
-    keys = set(coefficients) | set().union(*(m for m in mine.values()))
-    for key in keys:
-        row = coefficients.get(key, {})
-        scale = size.get(key[:2]) or 1
+    errors = {"floor": Fraction(0), "above": Fraction(0)}
+    for key, row in coefficients.items():
+        scale = absolute_scale(at_three, key, alpha_s)
         degree = degrees[sector_of(key)]
         for p, c in row.items():
-            term = abs(c * three**p) / scale
+            term = abs(c * three**p) / scale if scale else abs(c)
             if degree is None or p > degree:
                 errors["above"] = max(errors["above"], term)
             if p <= floor + 1:
                 errors["floor"] = max(errors["floor"], term)
-        for accuracy, depth in (("lc", 0), ("nlc", 2), ("fc", None)):
-            if accuracy == "fc":
-                expected = sum(c * three**p for p, c in row.items())
-                got = mine["full"].get(key, 0)
-            else:
-                expected = sum(
-                    c * three**p
-                    for p, c in row.items()
-                    if degree is not None and degree - depth <= p <= degree
-                )
-                got = mine[accuracy].get(key, 0)
-            errors[accuracy] = max(errors[accuracy], abs(got - expected) / scale)
     return errors
 
 
-def catani_errors(scan: dict) -> dict:
-    """N -> the largest relative deviation of the poles from Catani at N."""
+def carrier_errors(expected: dict, mine: dict, at_three: dict, alpha_s, keys=None):
+    """accuracy -> [(deviation, key)] of ``mine`` (accuracy -> entries)
+    against the scan's projections, over ``keys`` (a predicate; all keys by
+    default)."""
 
     out = {}
-    for n, result in scan.items():
-        if n not in CATANI_NC:
-            continue
-        errors = []
-        assert result["ir_poles"], (n, "no Catani prediction")
-        for sector, (single, double) in result["ir_poles"].items():
-            virtual = result["components"]["virtual"][sector]
-            predicted = (_exact(single), _exact(double))
-            scale = max(map(abs, predicted))
-            for got, want in zip((virtual[1], virtual[2]), predicted, strict=True):
-                errors.append(abs(_exact(got) - want) / scale)
-        out[n] = max(errors)
+    for accuracy, values in expected.items():
+        rows = []
+        for key in set(values) | set(mine[accuracy]):
+            if keys is not None and not keys(key):
+                continue
+            scale = absolute_scale(at_three, key, alpha_s)
+            got = mine[accuracy].get(key, 0)
+            rows.append((deviation(got, values.get(key, 0), scale), key))
+        out[accuracy] = rows
     return out
 
 
-def rule_seven(model, compiled, native, spec, cache) -> dict:
-    """Rule 7's projection part and the scan's Catani poles for ``spec``:
-    the errors of every check (all within ``TOLERANCE`` to pass), the
-    window and the fitted coefficients."""
+def catani_errors(scan_point: dict, alpha_s) -> Fraction:
+    """The largest deviation of the poles from Catani at the integer N of
+    ``CATANI_NC`` (N -> one point's scan record), per sector and pole."""
 
-    found = projections(compiled, native, spec)
+    worst = Fraction(0)
+    for n, result in scan_point.items():
+        if n not in CATANI_NC:
+            continue
+        assert result["ir_poles"], (n, "no Catani prediction")
+        entries = _entries(result["born"], result["components"])
+        for sector, (single, double) in result["ir_poles"].items():
+            virtual = result["components"]["virtual"][sector]
+            for k, want in ((1, single), (2, double)):
+                scale = absolute_scale(entries, ("virtual", sector, k), alpha_s)
+                worst = max(worst, deviation(_exact(virtual[k]), _exact(want), scale))
+    return worst
+
+
+def _born_or_virtual(key) -> bool:
+    return key[0] in ("born", "virtual")
+
+
+def rule_seven(model, compiled, native, row: str, indices, cache, listed=None):
+    """Rule 7's projection part and the scan's Catani poles of a campaign
+    row at its points ``indices``: per point the largest deviation of every
+    check (``TOLERANCE`` to pass) and, at the ``listed`` points (default
+    ``DD_LISTED``), the double-double coefficients beyond 1e-24 with their
+    E_DD."""
+
+    listed = DD_LISTED if listed is None else listed
+    indices = tuple(indices)
+    spec = row_spec(row, indices)
+    alpha_s = _exact(spec["parameters"]["aS"])
+    estimated = [j for j, i in enumerate(indices) if (row, i) in listed]
+    found = native_projections(compiled, native, spec, estimated)
     lc = found["lc"][0]
     degrees = sector_degrees(lc)
     assert degrees == sector_degrees(found["nlc"][0])
     top = max(v for v in degrees.values() if v is not None)
     span = 2 * sum(1 for leg in lc.basis.legs if leg.representation != 1)
     values = (*FIT_NODES[: span + 1], *CHECK_NODES)
-    scan = _scan(model, spec, values, f"arbitrary:{SCAN_DIGITS}", cache)
-    coefficients, misses = fit(scan, span, top)
-    mine = {accuracy: entries for accuracy, (_s, entries) in found.items()}
-    errors = projection_errors(coefficients, mine, degrees)
-    errors["fit"] = max(misses.values())
-    errors["catani"] = max(catani_errors(scan).values())
-    return {
-        "errors": errors,
-        "top": top,
-        "span": span,
-        "coefficients": coefficients,
-        "misses": misses,
-    }
+    scanned = scan(model, spec, values, f"arbitrary:{SCAN_DIGITS}", cache)
+    report = {"row": row, "top": top, "span": span, "points": []}
+    for j, index in enumerate(indices):
+        records = {n: scanned[n]["results"][j] for n in values}
+        data = {n: _entries(r["born"], r["components"]) for n, r in records.items()}
+        coefficients, miss = fit(data, span, top, alpha_s)
+        at_three = data["3"]
+        expected = expected_projections(coefficients, degrees)
+        errors = {"fit": miss, **power_errors(coefficients, degrees, at_three, alpha_s)}
+        errors["catani"] = catani_errors(records, alpha_s)
+        mpfr = carrier_errors(
+            expected,
+            {a: found[a][1]["mpfr"][j] for a in expected},
+            at_three,
+            alpha_s,
+        )
+        dd = carrier_errors(
+            expected,
+            {a: found[a][1]["dd"][j] for a in expected},
+            at_three,
+            alpha_s,
+            _born_or_virtual,
+        )
+        for accuracy in expected:
+            errors[f"mpfr-{accuracy}"] = max(e for e, _key in mpfr[accuracy])
+            errors[f"dd-{accuracy}"] = max(e for e, _key in dd[accuracy])
+        beyond = []
+        if j in estimated:
+            for accuracy in expected:
+                entries, estimates = found[accuracy][1]["dd-estimate"][j]
+                assert entries == found[accuracy][1]["dd"][j], (row, index)
+                beyond += [
+                    {
+                        "accuracy": accuracy,
+                        "key": list(key),
+                        "error": float(e),
+                        "e_dd": None
+                        if estimates.get(key) is None
+                        else float(estimates[key]),
+                        "bracketed": estimates.get(key) is not None
+                        and e <= BRACKET * estimates[key],
+                    }
+                    for e, key in dd[accuracy]
+                    if e > TOLERANCE
+                ]
+        report["points"].append(
+            {
+                "index": index,
+                "listed": (row, index) in listed,
+                "errors": errors,
+                "dd_beyond": beyond,
+            }
+        )
+    return report
 
 
+def verdict(report: dict) -> list[str]:
+    """The failures of a ``rule_seven`` report (empty: rule 7's projection
+    part holds at every point)."""
+
+    failures = []
+    for point in report["points"]:
+        index = point["index"]
+        for name, error in point["errors"].items():
+            if error <= TOLERANCE:
+                continue
+            if name.startswith("dd-") and point["listed"]:
+                continue
+            failures.append(f"point {index}: {name} {float(error):.3g}")
+        if point["listed"]:
+            failures += [
+                f"point {index}: dd {b['accuracy']} {b['key']} {b['error']:.3g} "
+                f"beyond 10 E_DD = {b['e_dd']}"
+                for b in point["dd_beyond"]
+                if not b["bracketed"]
+            ]
+    return failures
+
+
+def _printable(report: dict) -> str:
+    return json.dumps(
+        {
+            **{k: report[k] for k in ("row", "top", "span")},
+            "points": [
+                {
+                    **{k: p[k] for k in ("index", "listed", "dd_beyond")},
+                    **{k: float(v) for k, v in p["errors"].items()},
+                }
+                for p in report["points"]
+            ],
+        }
+    )
+
+
+@pytest.mark.loop_fast
 def test_nc_column_names_the_plan_rows_and_existing_oracles():
     """Every nc row of PLAN §4.2 has a column, the column's first id is this
-    file's, and every oracle id names a test of the oracle files (the
-    parametrised ids among the declared parameters)."""
+    file's, every oracle id names a test of the oracle files (the
+    parametrised ids among the declared parameters), and every row has a
+    campaign fixture with the four points (point 3 = point 0 at mu_R / 2)."""
 
     from . import test_loop_v2_nc_oracles as oracles
 
-    assert (
-        set(NC_COLUMN)
-        == set(NC_ROWS)
-        == {
-            *("A01", "A08", "A09", "A12", "A13", "A15", "A18", "A21"),
-            *("B03", "C01", "D05", "E01", "F01"),
-        }
-    )
+    assert set(NC_COLUMN) == set(NC_ROWS) == set(NC_COLUMN_ORACLES)
+    assert set(NC_ROWS) >= DEFAULT_ROWS
     parameters = {
         "test_full_colour_at_other_nc_equals_njet_on_gg_ggg": {"0", "1"},
         "test_full_colour_at_other_nc_equals_njet_on_quark_rows": {
@@ -416,7 +670,9 @@ def test_nc_column_names_the_plan_rows_and_existing_oracles():
     }
     for row, ids in NC_COLUMN.items():
         assert ids[0].endswith(f"_scan[{row}]"), row
-        for test_id in ids[1:]:
+        projection = [i for i in ids if i.startswith(_PROJECTION)]
+        assert len(projection) == (2 if row in DEFAULT_ROWS else 1), row
+        for test_id in ids[len(projection) :]:
             path, name = test_id.split("::")
             if path.endswith("test_loop_v2_nc_oracles.py"):
                 base, _, parameter = name.partition("[")
@@ -425,6 +681,23 @@ def test_nc_column_names_the_plan_rows_and_existing_oracles():
                     assert parameter[:-1] in parameters[base], test_id
             else:
                 assert test_id in _BDK, test_id
+        data = campaign_row(row)
+        assert len(data["points"]) == len(ALL_POINTS), row
+        (p0, mu0), (p3, mu3) = data["points"][0], data["points"][3]
+        assert p3 == p0 and _exact(mu3) * 4 == _exact(mu0), row
+    for row, index in DD_LISTED:
+        assert row in NC_ROWS and index in ALL_POINTS, (row, index)
+
+
+def _run(model, native, tmp_path, row, indices):
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(model)
+    report = rule_seven(model, compiled, native, row, indices, tmp_path)
+    # The measured deviations, one JSON line (shown with -s or -rP).
+    print(_printable(report))
+    failures = verdict(report)
+    assert not failures, (row, failures)
 
 
 @pytest.mark.parametrize(
@@ -442,19 +715,22 @@ def test_nc_column_names_the_plan_rows_and_existing_oracles():
 def test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan(
     loop_sm_compiled_model, loop_native, tmp_path, row
 ):
-    """Rule 7 on the row (module docstring): LC, NLC and FC in double-double
-    against the exact N_c fit of the scan, the fit's own checks, the leading
-    degrees, and Catani at N, each within 1e-24."""
+    """Rule 7 on the row (module docstring) at its campaign points (default
+    rows: points 0 and 1; nightly rows: all four): LC, NLC and FC on native
+    MPFR and in double-double against the exact N_c fit of the scan, the
+    fit's own checks, the leading degrees, and Catani at N, each per
+    coefficient within 1e-24."""
 
-    from pyamplicol.models.loading import load_compiled_model
+    indices = DEFAULT_POINTS if row in DEFAULT_ROWS else ALL_POINTS
+    _run(loop_sm_compiled_model, loop_native, tmp_path, row, indices)
 
-    compiled = load_compiled_model(loop_sm_compiled_model)
-    found = rule_seven(
-        loop_sm_compiled_model, compiled, loop_native, row_spec(row), tmp_path
-    )
-    errors = {k: float(v) for k, v in found["errors"].items()}
-    # The measured errors, one JSON line (shown with -s or -rP).
-    print(
-        json.dumps({"row": row, "top": found["top"], "span": found["span"], **errors})
-    )
-    assert all(e <= TOLERANCE for e in found["errors"].values()), (row, errors)
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("row", sorted(DEFAULT_ROWS))
+def test_lc_and_nlc_at_the_nightly_points_of_default_rows(
+    loop_sm_compiled_model, loop_native, tmp_path, row
+):
+    """Rule 7 at points 2 and 3 (point 0 at mu_R / 2) of the default rows."""
+
+    indices = tuple(i for i in ALL_POINTS if i not in DEFAULT_POINTS)
+    _run(loop_sm_compiled_model, loop_native, tmp_path, row, indices)

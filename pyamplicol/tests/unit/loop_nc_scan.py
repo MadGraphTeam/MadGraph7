@@ -26,25 +26,102 @@ process its own ``PYAMPLICOL_CACHE_DIR``.
 names ``process``, ``born`` and ``loop`` orders, optional
 ``fixed_parameters`` and ``particle_veto``, the ``point``, ``mu_r2`` and
 ``parameters``; the output adds the Catani prediction of each sector
-(``ir_poles``). With ``"ward": true`` it runs the gauge-Ward check of the
-request at N_c = N instead (``ward_main``; ``precision`` is the Ward
-carrier, "double" or "double-double"); ``"identities"`` replaces some of the
-declaration's identities (a control). With ``use_nc(n, catani=True)`` (this
-entry) Catani's operator also takes N_c = N: C_A = N, C_F = (N^2-1)/(2N),
-beta_0's C_A (``loops.v2.poles``) and the colour-correlated Borns at N (the
-Python correlators; the native ones are contracted at N_c = 3). No colour
-declaration enters it, so the renormalised virtual's poles at N against it
-test the counterterms' UV N_c dependence. At N_c = 1, where C_F vanishes,
-and with ``"catani": false`` the operator is not patched and ``ir_poles``
-is null.
+(``ir_poles``). With ``"points"`` (a list of ``[point, mu_r2]``) instead of
+``point`` and ``mu_r2`` one generation serves every point, and the output's
+``results`` hold one such record per point. At N != 3 a request with a
+colour-triplet leg must have rescaled a U(1)-subtraction weight (the tree
+patch below), or the entry fails. With ``"ward": true`` it runs the
+gauge-Ward check of the request at N_c = N instead (``ward_main``;
+``precision`` is the Ward carrier, "double" or "double-double");
+``"identities"`` replaces some of the declaration's identities (a control).
+With ``use_nc(n, catani=True)`` (this entry) Catani's operator also takes
+N_c = N: C_A = N, C_F = (N^2-1)/(2N), beta_0's C_A (``loops.v2.poles``) and
+the colour-correlated Borns at N (the Python correlators; the native ones
+are contracted at N_c = 3). No colour declaration enters it, so the
+renormalised virtual's poles at N against it test the counterterms' UV N_c
+dependence. At N_c = 1, where C_F vanishes, and with ``"catani": false`` the
+operator is not patched and ``ir_poles`` is null.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def exact_point(masses) -> list[list[str]]:
+    """The first exact point (``tools/loop_reference/exact_points``) of the
+    external ``masses``, as decimal strings."""
+
+    from tools.loop_reference import exact_points
+
+    point = exact_points.generate(list(masses), count=1)[0]
+    return [[exact_points.decimal_string(x) for x in p] for p in point]
+
+
+def request_spec(
+    process, born, point, *, fixed=None, veto=(), mu_r2="1000000", **extra
+) -> dict:
+    """The request JSON of the ``request`` entry: QCD corrections of the
+    Born orders ``born`` at ``point`` (``None`` with ``points`` in
+    ``extra``), alpha_s = 0.118."""
+
+    spec = {
+        "process": process,
+        "born": born,
+        "loop": {**born, "QCD": born["QCD"] + 2},
+        "fixed_parameters": dict(fixed or {}),
+        "particle_veto": list(veto),
+        "point": point,
+        "mu_r2": mu_r2,
+        "parameters": {"aS": "0.118"},
+        **extra,
+    }
+    if point is None:
+        del spec["point"], spec["mu_r2"]
+    return spec
+
+
+def scan(model, spec, values, precision, cache) -> dict[str, dict]:
+    """The ``request`` entry of ``spec`` at each N of ``values`` (one process
+    each, concurrently, each with its own ``PYAMPLICOL_CACHE_DIR`` under
+    ``cache``): N -> its JSON."""
+
+    def run(n):
+        environment = dict(
+            os.environ,
+            PYAMPLICOL_CACHE_DIR=str(cache / f"nc-{n.replace('/', '_')}"),
+        )
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tests.unit.loop_nc_scan",
+                "request",
+                str(model),
+                json.dumps(spec),
+                n,
+                precision,
+            ],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        assert process.returncode == 0, (n, process.stderr[-4000:])
+        return json.loads(process.stdout.strip().splitlines()[-1])
+
+    with ThreadPoolExecutor(len(values)) as pool:
+        return dict(zip(values, pool.map(run, values), strict=True))
 
 
 class _Rational(Fraction):
@@ -217,29 +294,32 @@ def request_main(argv: list[str]) -> None:
     with dag_input.native_flags(dag=False, program=False):
         full = LoopSlice.generate(compiled, request, load_loop_native())
     assert not full.blocks.graded
-    result = full.evaluate(
-        spec["point"],
-        spec["mu_r2"],
-        parameters=spec.get("parameters", {}),
-        precision=_precision(precision_text),
-    )
-    poles = (
-        {
-            repr(sector): [str(single), str(double)]
-            for sector, (single, double) in (result.ir_poles or {}).items()
-        }
-        if catani or n == 3
-        else None
-    )
-    print(
-        json.dumps(
-            {
-                "rescaled": counter["interactions"],
-                "ir_poles": poles,
-                **result_json(result),
-            }
+    if n != 3 and any(abs(leg.representation) == 3 for leg in full.basis.legs):
+        # The quark lines' U(1)-subtraction weights must take 1/N.
+        assert counter["interactions"], "no U(1)-subtraction weight was rescaled"
+
+    def record(point, mu_r2) -> dict:
+        result = full.evaluate(
+            point,
+            mu_r2,
+            parameters=spec.get("parameters", {}),
+            precision=_precision(precision_text),
         )
-    )
+        poles = (
+            {
+                repr(sector): [str(single), str(double)]
+                for sector, (single, double) in (result.ir_poles or {}).items()
+            }
+            if catani or n == 3
+            else None
+        )
+        return {"ir_poles": poles, **result_json(result)}
+
+    if "points" in spec:
+        out = {"results": [record(point, mu_r2) for point, mu_r2 in spec["points"]]}
+    else:
+        out = record(spec["point"], spec["mu_r2"])
+    print(json.dumps({"rescaled": counter["interactions"], **out}))
 
 
 def ward_main(compiled, request, spec, carrier: str, counter) -> None:
