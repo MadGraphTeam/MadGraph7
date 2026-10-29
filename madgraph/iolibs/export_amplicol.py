@@ -27,6 +27,7 @@ relabelling that is a symmetry of the allowed vertices are generated once
 representative.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -251,9 +252,10 @@ def coupling_orders(procdef, model):
             for order, weight in hierarchy.items() if weight > lowest}
 
 
-def model_job(model, cache_path):
+def model_job(model, cache_path, pyamplicol=None):
     """The UFO model of the output with its restriction, compiled for
-    pyamplicol once per output."""
+    pyamplicol once per output and again when the model, its restriction or
+    pyamplicol change: the cache is keyed by a sidecar json file."""
     path = model.get('modelpath')
     reference = model.get('name')
     # the suffix after the UFO directory name, which may itself contain '-'
@@ -264,9 +266,32 @@ def model_job(model, cache_path):
         restriction = 'none'
     else:
         restriction = pjoin(path, 'restrict_%s.dat' % suffix)
-    if not os.path.exists(cache_path):
+    sources = {'model': os.path.realpath(path), 'restriction': restriction,
+               'restriction_card': file_hash(pjoin(path, 'restrict_default.dat')
+                                             if restriction == 'default' else restriction),
+               'pyamplicol': pyamplicol}
+    key = hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest()
+    key_file = os.path.splitext(cache_path)[0] + '.json'
+    if not (os.path.exists(cache_path) and cached_model_key(key_file) == key):
         logger.info('Compiling the model %s for AmpliCol' % reference)
-    return {'path': path, 'restriction': restriction, 'cache': cache_path}
+    return {'path': path, 'restriction': restriction, 'cache': cache_path,
+            'key': key, 'key_file': key_file, 'sources': sources}
+
+
+def file_hash(path):
+    if not os.path.isfile(path):
+        return None
+    with open(path, 'rb') as stream:
+        return hashlib.sha256(stream.read()).hexdigest()
+
+
+def cached_model_key(key_file):
+    """The key of the cached model, see amplicol_worker.model_source."""
+    try:
+        with open(key_file) as stream:
+            return json.load(stream).get('key')
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def representative_processes(proc_defs, model):
@@ -426,7 +451,8 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
     with tempfile.TemporaryDirectory(prefix='amplicol_job_') as scratch:
         job = pjoin(scratch, 'job.json')
         with open(job, 'w') as stream:
-            json.dump({'model': model_job(model, pjoin(subproc_dir, MODEL_FILE)),
+            json.dump({'model': model_job(model, pjoin(subproc_dir, MODEL_FILE),
+                                         pyamplicol),
                        'processes': processes,
                        'result': pjoin(scratch, 'providers.json')}, stream)
         run_worker(job)

@@ -16,6 +16,7 @@
 instead of pyamplicol."""
 
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -131,6 +132,57 @@ class TestModelJob(unittest.TestCase):
         self.assertEqual(self.restriction('my-model_UFO-full'), 'none')
         self.assertEqual(self.restriction('my-model_UFO-no_b-mass'),
                          os.path.join(self.path, 'restrict_no_b-mass.dat'))
+
+
+class TestModelCache(unittest.TestCase):
+    """The compiled model is reused only for the same model, restriction and
+    pyamplicol."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.path = os.path.join(self.tmp, 'sm')
+        os.mkdir(self.path)
+        self.cache = os.path.join(self.tmp, export_amplicol.MODEL_FILE)
+        self.compiled = []
+        source = mock.Mock()
+        source.compile.side_effect = lambda prepared_output, evaluator: (
+            self.compiled.append(prepared_output),
+            open(prepared_output, 'w').close())
+        self.pyamplicol = mock.Mock()
+        self.pyamplicol.ModelSource.from_path.return_value = source
+        config = mock.Mock()
+        patcher = mock.patch.dict(sys.modules, {'pyamplicol': self.pyamplicol,
+                                                'pyamplicol.config': config})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def compile(self, version):
+        from madgraph.iolibs import amplicol_worker
+        job = export_amplicol.model_job(FakeModel(self.path, 'sm'), self.cache,
+                                        {'version': version, 'source_hash': 'h'})
+        amplicol_worker.model_source(self.pyamplicol, json.loads(json.dumps(job)))
+        return job
+
+    def test_cache_is_reused_for_the_same_pyamplicol(self):
+        first = self.compile('1')
+        self.assertEqual(self.compile('1')['key'], first['key'])
+        self.assertEqual(len(self.compiled), 1)
+
+    def test_cache_is_rebuilt_for_another_pyamplicol(self):
+        self.compile('1')
+        self.compile('2')
+        self.assertEqual(len(self.compiled), 2)
+
+    def test_cache_is_rebuilt_for_another_restriction_card(self):
+        card = os.path.join(self.path, 'restrict_default.dat')
+        with open(card, 'w') as stream:
+            stream.write('a')
+        self.compile('1')
+        with open(card, 'w') as stream:
+            stream.write('b')
+        self.compile('1')
+        self.assertEqual(len(self.compiled), 2)
 
 
 if __name__ == '__main__':

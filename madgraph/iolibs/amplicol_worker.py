@@ -26,14 +26,30 @@ import sys
 
 
 def model_source(pyamplicol, model):
-    """The model compiled for pyamplicol, cached in the output."""
+    """The model compiled for pyamplicol, cached in the output and compiled
+    again unless the key of the cache is model['key']."""
     import os
-    if not os.path.exists(model['cache']):
+    import shutil
+    try:
+        with open(model['key_file']) as stream:
+            cached = json.load(stream).get('key')
+    except (OSError, ValueError, AttributeError):
+        cached = None
+    if cached != model['key'] or not os.path.exists(model['cache']):
         from pyamplicol.config import EvaluatorConfig, JITConfig
+        if os.path.exists(model['key_file']):
+            os.remove(model['key_file'])
+        if os.path.isdir(model['cache']):
+            shutil.rmtree(model['cache'])
+        elif os.path.exists(model['cache']):
+            os.remove(model['cache'])
         source = pyamplicol.ModelSource.from_path(model['path'],
                                                   restriction=model['restriction'])
         source.compile(prepared_output=model['cache'],
                        evaluator=EvaluatorConfig(jit=JITConfig(optimization_level=2)))
+        with open(model['key_file'], 'w') as stream:
+            json.dump({'key': model['key'], 'sources': model['sources']}, stream,
+                      indent=2)
     return pyamplicol.ModelSource.from_path(model['cache'])
 
 
