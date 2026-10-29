@@ -156,7 +156,13 @@ def test_rows_are_well_formed(manifest, rows):
         assert row.catani == ("none" if row.inputs == "native" else "python"), name
         if row.base is not None:
             base = rows[row.base]
-            assert row.tier == "nightly" and row.reference != base.reference, name
+            # A variant is another reference on the base request, or the
+            # base request and reference on another restriction (its own
+            # generation: the restricted-UFO variants of the 5F* rows).
+            assert row.tier == "nightly", name
+            assert (
+                row.reference != base.reference or row.restriction != base.restriction
+            ), name
             # A subprocess variant of a multiparticle row is one of the
             # processes MadLoop lists for it; any other variant keeps the
             # base request.
@@ -711,6 +717,30 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
     assert rows["A18"]["reference_tolerance"] == 1e-10
     line = next(x for x in table.splitlines() if x.startswith("| A18"))
     assert "| 1e-10 |" in line
+    # A pending variant is reported and leaves its row's status alone.
+    record("D17", "nightly", True)
+    data = builder.build([tmp_path], {}, findings)
+    d17 = next(row for row in data["rows"] if row["id"] == "D17")
+    assert d17["status"] == "pass"
+    assert {v["id"]: v["status"] for v in d17["variants"]}["D17@5F"] == "pending"
+    line = next(x for x in builder.markdown(data).splitlines() if x.startswith("| D17"))
+    assert "+5F (waits for MQ-5F)" in line
+
+
+def test_restricted_ufo_variants_wait_for_mq5f(rows):
+    """The 5F* rows' restricted-UFO variants (PLAN §3.0 MQ-5F): the base
+    request and reference on no_b_mass, pending until MQ-5F lands, and out of
+    the nightly tier while pending."""
+
+    nightly = set(mqcd.nightly_ids())
+    for name in ("D17", "F01", "F02", "F04"):
+        base, variant = rows[name], rows[f"{name}@5F"]
+        assert base.restriction_code == "5F*" and variant.restriction == "no_b_mass"
+        assert variant.reference == base.reference and variant.process == base.process
+        assert variant.gating and not variant.subprocess
+        if not variant.active:
+            assert variant.pending["waits_for"] == "MQ-5F"
+            assert variant.id not in nightly
 
 
 def test_reference_records_without_a_reference_skip_rule1_only():
