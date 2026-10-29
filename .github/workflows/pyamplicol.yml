@@ -73,7 +73,7 @@ jobs:
           if [[ -z "$base" || "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             changed=true
           elif git diff --name-only "$base" HEAD \
-              | grep -qE '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|VERSION$)'; then
+              | grep -qE '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|madspace/include/madspace/umami\.h$|madgraph/mg7/bootstrap\.py$|VERSION$)'; then
             changed=true
           else
             changed=false
@@ -173,7 +173,7 @@ jobs:
           python - <<'EOF'
           import sys
           sys.path.insert(0, ".")
-          from madgraph.iolibs.template_files.mg7 import bootstrap
+          from madgraph.mg7 import bootstrap
           bootstrap.ensure_pyamplicol(interactive=False)
           bootstrap.check_pyamplicol_license()
           assert bootstrap.check_pyamplicol_source_hash()
