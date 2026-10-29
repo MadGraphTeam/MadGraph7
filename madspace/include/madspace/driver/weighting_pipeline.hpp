@@ -3,6 +3,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -125,10 +126,12 @@ private:
 
     struct ContextRuntimes {
         RuntimePtr gather;
-        RuntimePtr concat;
+        // by the number of concatenated parts, built when first needed
+        std::map<std::size_t, RuntimePtr> concats;
         std::vector<RuntimePtr> steps;
     };
     struct Group {
+        NamedVector<Type> types;
         std::vector<StepSettings> settings;
         std::vector<ContextRuntimes> runtimes;
         // [context][stage - 1], stage step_count + 1 copies the events to the CPU
@@ -157,6 +160,16 @@ private:
     );
     void run_job(Job& job);
     void gather_events(Chunk& chunk, ContextRuntimes& runtimes);
+    // the rows of `chunks` from their shared `source`, concatenated
+    TensorVec gather_rows(
+        const TensorVec& source,
+        const std::vector<Chunk*>& chunks,
+        std::size_t context_index,
+        ContextRuntimes& runtimes
+    );
+    RuntimePtr& concat_runtime(
+        std::size_t group_index, std::size_t context_index, std::size_t part_count
+    );
     std::size_t batch_size(std::size_t context_index) const;
 
     std::vector<ContextPtr> _contexts;
@@ -171,6 +184,7 @@ private:
     std::vector<std::vector<std::map<std::size_t, ChunkPtr>>> _ready;
     std::unordered_map<std::size_t, Job> _jobs;
     std::vector<std::size_t> _context_job_counts;
+    std::mutex _concat_mutex;
     std::size_t _job_counter = 0;
     std::size_t _chunk_count = 0;
     Sink _sink;

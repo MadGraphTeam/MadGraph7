@@ -47,9 +47,9 @@ Function gather_function(const NamedVector<Type>& types) {
     return fb.function();
 }
 
-Function concat_function(const NamedVector<Type>& types) {
+Function concat_function(const NamedVector<Type>& types, std::size_t part_count) {
     NamedVector<Type> arg_types;
-    for (std::size_t part = 1; part <= 2; ++part) {
+    for (std::size_t part = 1; part <= part_count; ++part) {
         for (auto [key, type] : zip(types.keys(), types)) {
             arg_types.push_back(std::format("arg{}_{}", part, key), type);
         }
@@ -57,7 +57,11 @@ Function concat_function(const NamedVector<Type>& types) {
     FunctionBuilder fb(arg_types, types);
     int count = static_cast<int>(types.size());
     for (int i = 0; i < count; ++i) {
-        auto [cat, sizes] = fb.batch_cat({fb.input(i), fb.input(i + count)});
+        ValueVec parts;
+        for (std::size_t part = 0; part < part_count; ++part) {
+            parts.push_back(fb.input(i + static_cast<int>(part) * count));
+        }
+        auto [cat, sizes] = fb.batch_cat(parts);
         fb.output(i, cat);
     }
     return fb.function();
@@ -359,17 +363,16 @@ WeightingPipeline::WeightingPipeline(
         }
 
         Function gather = gather_function(types);
-        Function concat = concat_function(types);
         for (auto& context : contexts) {
             ContextRuntimes runtimes{
                 .gather = build_runtime(gather, context, false),
-                .concat = build_runtime(concat, context, false),
             };
             for (auto& function : step_functions) {
                 runtimes.steps.push_back(build_runtime(function, context, false));
             }
             group.runtimes.push_back(std::move(runtimes));
         }
+        group.types = types;
         group.buffers.assign(
             contexts.size(), std::vector<std::vector<ChunkPtr>>(step_count + 1)
         );
@@ -661,37 +664,64 @@ void WeightingPipeline::gather_events(Chunk& chunk, ContextRuntimes& runtimes) {
     if (!chunk.keep && chunk.offset == 0 && source.at(0).size(0) == count) {
         chunk.events = source;
     } else {
-        Tensor indices(DataType::dt_int, {count});
-        auto view = indices.view<me_int_t, 1>();
-        for (std::size_t i = 0; i < count; ++i) {
-            view[i] = static_cast<me_int_t>(
-                chunk.offset + (chunk.keep ? chunk.keep->at(i) : i)
-            );
-        }
-        auto device = _contexts.at(chunk.context_index)->device();
-        if (device != cpu_device()) {
-            Tensor device_indices(DataType::dt_int, {count}, device);
-            device_indices.copy_from(indices);
-            indices = device_indices;
-        }
-        TensorVec args{indices};
-        args.insert(args.end(), source.begin(), source.end());
-        chunk.events = runtimes.gather->run(args);
+        chunk.events = gather_rows(source, {&chunk}, chunk.context_index, runtimes);
     }
     chunk.source.reset();
     chunk.keep.reset();
     chunk.offset = 0;
 }
 
+TensorVec WeightingPipeline::gather_rows(
+    const TensorVec& source,
+    const std::vector<Chunk*>& chunks,
+    std::size_t context_index,
+    ContextRuntimes& runtimes
+) {
+    std::size_t count = 0;
+    for (auto chunk : chunks) {
+        count += chunk->size();
+    }
+    Tensor indices(DataType::dt_int, {count});
+    auto view = indices.view<me_int_t, 1>();
+    for (std::size_t row = 0; auto chunk : chunks) {
+        for (std::size_t i = 0; i < chunk->size(); ++i, ++row) {
+            view[row] = static_cast<me_int_t>(
+                chunk->offset + (chunk->keep ? chunk->keep->at(i) : i)
+            );
+        }
+    }
+    auto device = _contexts.at(context_index)->device();
+    if (device != cpu_device()) {
+        Tensor device_indices(DataType::dt_int, {count}, device);
+        device_indices.copy_from(indices);
+        indices = device_indices;
+    }
+    TensorVec args{indices};
+    args.insert(args.end(), source.begin(), source.end());
+    return runtimes.gather->run(args);
+}
+
+RuntimePtr& WeightingPipeline::concat_runtime(
+    std::size_t group_index, std::size_t context_index, std::size_t part_count
+) {
+    std::lock_guard lock(_concat_mutex);
+    auto& group = _groups.at(group_index);
+    auto& runtime = group.runtimes.at(context_index).concats[part_count];
+    if (!runtime) {
+        runtime = build_runtime(
+            concat_function(group.types, part_count), _contexts.at(context_index), false
+        );
+    }
+    return runtime;
+}
+
 void WeightingPipeline::run_job(Job& job) {
     auto& group = _groups.at(job.group);
     auto& runtimes = group.runtimes.at(job.context_index);
-    for (auto& chunk : job.chunks) {
-        gather_events(*chunk, runtimes);
-    }
     if (job.stage > group.settings.size()) {
         // after the last step, the events go to the CPU to be written
         for (auto& chunk : job.chunks) {
+            gather_events(*chunk, runtimes);
             for (auto& tensor : chunk->events) {
                 chunk->cpu_events.push_back(tensor.cpu());
             }
@@ -700,26 +730,48 @@ void WeightingPipeline::run_job(Job& job) {
         return;
     }
 
-    std::vector<TensorVec> parts;
+    // one gather per source, then one concatenation of the sources
+    std::vector<std::vector<ChunkPtr>> source_chunks;
     for (auto& chunk : job.chunks) {
-        parts.push_back(std::move(chunk->events));
-        chunk->events.clear();
-    }
-    // concatenate pairwise, so every event is copied log(chunks) times
-    while (parts.size() > 1) {
-        std::vector<TensorVec> next_parts;
-        for (std::size_t i = 0; i < parts.size(); i += 2) {
-            if (i + 1 == parts.size()) {
-                next_parts.push_back(std::move(parts.at(i)));
-            } else {
-                TensorVec args = parts.at(i);
-                args.insert(args.end(), parts.at(i + 1).begin(), parts.at(i + 1).end());
-                next_parts.push_back(runtimes.concat->run(args));
-            }
+        auto found =
+            std::find_if(source_chunks.begin(), source_chunks.end(), [&](auto& chunks) {
+                return chunks.at(0)->source == chunk->source;
+            });
+        if (found == source_chunks.end()) {
+            source_chunks.push_back({chunk});
+        } else {
+            found->push_back(chunk);
         }
-        parts = std::move(next_parts);
     }
-    TensorVec events = std::move(parts.at(0));
+    job.chunks.clear();
+    TensorVec events, concat_args;
+    for (auto& chunks : source_chunks) {
+        auto& first = *chunks.at(0);
+        auto& source = *first.source;
+        TensorVec part;
+        if (chunks.size() == 1 && !first.keep && first.offset == 0 &&
+            source.at(0).size(0) == first.size()) {
+            part = source;
+        } else {
+            std::vector<Chunk*> chunk_ptrs;
+            for (auto& chunk : chunks) {
+                chunk_ptrs.push_back(chunk.get());
+            }
+            part = gather_rows(source, chunk_ptrs, job.context_index, runtimes);
+        }
+        concat_args.insert(concat_args.end(), part.begin(), part.end());
+        for (auto& chunk : chunks) {
+            chunk->source.reset();
+            chunk->keep.reset();
+            chunk->offset = 0;
+            // the chunks in the order of the events
+            job.chunks.push_back(chunk);
+        }
+    }
+    events = source_chunks.size() == 1
+        ? std::move(concat_args)
+        : concat_runtime(job.group, job.context_index, source_chunks.size())
+              ->run(concat_args);
 
     TensorVec step_args{
         events.at(group.momenta), events.at(group.alpha_s), events.at(group.flavor)
