@@ -4472,7 +4472,11 @@ impl DiracWeylClosureGuard {
         } else {
             (complement, anchor)
         };
-        Err(invalid(format!(
+        // An evaluation-kind refusal: generation wraps it as a generation
+        // error, and the on-the-fly lane, which builds a query's closures at
+        // evaluation, surfaces it as a typed evaluation error (not a bare
+        // invalid-argument error).
+        Err(RusticolError::evaluation(format!(
             "dirac-weyl-closure: {context} would close a Dirac (chirality-0) \
              current of particle {} on a Weyl (chirality {}) current of \
              particle {}; a fermion line that joins massive and massless \
@@ -16905,5 +16909,87 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod dirac_weyl_guard_tests {
+    use super::super::template::{CurrentStateRow, ParticleStatistics};
+    use super::DiracWeylClosureGuard;
+    use crate::RusticolErrorKind;
+
+    fn state(
+        id: u32,
+        particle_id: i32,
+        statistics: ParticleStatistics,
+        chirality: i32,
+    ) -> CurrentStateRow {
+        CurrentStateRow {
+            id,
+            template_string_id: 0,
+            particle_id,
+            anti_particle_id: -particle_id,
+            species_string_id: 0,
+            orientation: 0,
+            statistics: statistics as u8,
+            color_representation: 3,
+            basis_string_id: 0,
+            tensor_ordering_sequence_id: 0,
+            dimension: 4,
+            chirality,
+            lc_color_shape_string_id: 0,
+            auxiliary_kind_string_id: 0,
+            mass_parameter_id: 0,
+            width_parameter_id: 0,
+            semantic_digest_id: 0,
+        }
+    }
+
+    /// States: 0 a Dirac b, 1 a Weyl b~, 2 a Dirac b~, 3 a Weyl b, 4 a
+    /// boson. Closure rows join (0, 2) (Dirac with Dirac) and (3, 1) (Weyl
+    /// with Weyl), so the particle pair (5, -5) is closable.
+    fn states() -> Vec<CurrentStateRow> {
+        vec![
+            state(0, 5, ParticleStatistics::Fermion, 0),
+            state(1, -5, ParticleStatistics::Fermion, 1),
+            state(2, -5, ParticleStatistics::Fermion, 0),
+            state(3, 5, ParticleStatistics::Fermion, -1),
+            state(4, 24, ParticleStatistics::Boson, 0),
+        ]
+    }
+
+    #[test]
+    fn a_dirac_current_against_a_weyl_state_of_a_closable_pair_is_an_evaluation_refusal() {
+        let states = states();
+        let guard =
+            DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1)]).expect("guard");
+        for (anchor, complement) in [(1, 0), (0, 1)] {
+            let error = guard
+                .check(&states, anchor, complement, "LC sector 7")
+                .expect_err("a Dirac-Weyl pair no closure joins must be refused");
+            assert_eq!(error.kind(), RusticolErrorKind::Evaluation);
+            let message = error.to_string();
+            assert!(message.starts_with("dirac-weyl-closure: LC sector 7 would close a Dirac"));
+            assert!(message.contains("particle 5 on a Weyl (chirality 1) current of particle -5"));
+        }
+    }
+
+    #[test]
+    fn the_guard_passes_equal_chiralities_bosons_unclosable_pairs_and_unknown_states() {
+        let states = states();
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1), (4, 9)])
+            .expect("guard");
+        // Two Dirac or two Weyl states; a boson; a pair no closure row joins.
+        for (anchor, complement) in [(0, 2), (3, 1), (4, 0), (0, 4)] {
+            guard
+                .check(&states, anchor, complement, "test")
+                .expect("passes");
+        }
+        let unclosable = DiracWeylClosureGuard::from_state_pairs(&states, [(4, 4)]).expect("guard");
+        unclosable
+            .check(&states, 1, 0, "test")
+            .expect("no closable fermion pair");
+        // A state the table does not describe is left to the builder.
+        guard.check(&states, 1, 99, "test").expect("unknown state");
     }
 }

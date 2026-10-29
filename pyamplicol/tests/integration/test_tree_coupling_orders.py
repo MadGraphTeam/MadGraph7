@@ -57,7 +57,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import Generator, ModelSource, Runtime, TreeOrderEvaluation
-from pyamplicol.api.errors import CompatibilityError, GenerationError
+from pyamplicol.api.errors import CompatibilityError, EvaluationError, GenerationError
 from pyamplicol.artifacts.process_groups import (
     initial_process_groups,
     write_process_groups,
@@ -698,19 +698,21 @@ def test_on_the_fly_lane_refuses_dirac_weyl_closures(
     """The on-the-fly lane closed its selected LC flows on the same
     template closures and dropped the same channels (b b~ > w+ w-: 24.0
     against MadGraph's 0.060 at the first point); it refuses them too, where
-    it builds a query's closures (at evaluation, per query)."""
+    it builds a query's closures: at evaluation, per query, with the public
+    typed evaluation error."""
 
     model = sm_model if restriction == "default" else sm_no_b_mass_model
     path = REFERENCE if restriction == "default" else NO_B_MASS_REFERENCE
     points = _reference(process, path)["points"]
+    runtime = _runtime(
+        model, process, tmp_path / "artifact", accuracy="lc",
+        execution_mode="on-the-fly",
+    )  # fmt: skip
     with pytest.raises(
-        (GenerationError, ValueError),
-        match=r"dirac-weyl-closure: .* would close a Dirac",
+        EvaluationError,
+        match=r"dirac-weyl-closure: the LC query .* would close a Dirac",
     ):
-        _runtime(
-            model, process, tmp_path / "artifact", accuracy="lc",
-            execution_mode="on-the-fly",
-        ).evaluate(points)  # fmt: skip
+        runtime.evaluate(points)
 
 
 def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
