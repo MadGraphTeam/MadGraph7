@@ -156,14 +156,6 @@ NATIVE_EXPORT_REFUSALS = (
         "takes it, ct_recursion._RealArguments) with the first model that "
         "needs it",
     ),
-    NativeExportRefusal(
-        "external-photon-alpha0",
-        "an electroweak request with on-shell external photons (their alpha(0) "
-        "convention: the coupling scale and the charge-conversion term)",
-        "WP3.2 EWI-N (ew-native)",
-        "the alpha(0) scale and the conversion term as parameter-program "
-        "outputs of the native point inputs",
-    ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
 
@@ -383,6 +375,8 @@ def _output_label(key: Any, models: tuple[Any, Any] = (None, None)) -> str:
         return f"Born coupling {rest[0]}, N_c grade {rest[1]}"
     if kind == "derived-mass" and len(rest) == 1:
         return f"mass {rest[0]}"
+    if kind == "photon-ratio" and len(rest) == 1:
+        return f"external-photon scale alpha(0)/alpha (1/alpha(0) = {rest[0]})"
     if kind == "constant" and len(rest) == 2:
         return f"kernel constant {_constant_text(*rest)}"[:200]
     if kind == "positive" and len(rest) == 2:
@@ -1728,6 +1722,47 @@ def _parameter_program(
             raise NativeExportUnsupported(
                 "mass-parameter", f"the loop mass {mass.mass!r} is no model parameter"
             )
+    # On-shell external photons of an electroweak request couple with
+    # alpha(0) (WP3.2 EWI-6b, ``LoopSlice.external_photons``): the output
+    # alpha(0) / alpha, with alpha the photon couplings' (``poles.qed_coupling``,
+    # as ``_PointEvaluation._qed_alpha`` evaluates it) and 1/alpha(0) the
+    # model's adjustable parameter (an input; added when the trees do not
+    # read it). The native trees scale every source of those legs by its
+    # square root (``loop_v2::trees``, ``ParameterFile::photons``), so every
+    # output takes (alpha(0) / alpha)^n, as the Python lane's scaled average
+    # gives it; the conversion term is a field insertion of the photon legs
+    # (``assemble._alpha0_field_rules``), exported as every field coupling.
+    photons = getattr(slice_, "external_photons", None)
+    photon_record = None
+    if photons is not None:
+        from .ew_policy import is_photon
+        from .poles import qed_coupling
+
+        compiled = slice_.compiled
+        by_name = {record.name: record for record in compiled.ir.parameters}
+        fixed_values = slice_.request.fixed_parameters
+        coupling = qed_coupling(
+            compiled, lambda record: is_photon(record, by_name, fixed_values)
+        )
+        if coupling is None:
+            # The generation refuses such a request (``ew_policy``).
+            raise ValueError("on-shell external photons without a QED coupling")
+        for name in (photons.alpha0_inverse, *(name for _s, name in coupling[1])):
+            if name not in index:
+                index[name] = len(names)
+                names.append(name)
+                defaults.append(
+                    _fraction_text(Fraction(str(compiled.parameter_defaults[name][0])))
+                )
+                symbol = symbols.qualified(f"pyamplicol_v2_parameters::e{len(inputs)}")
+                inputs.append(symbol)
+                symbol_of[name] = symbol
+        ratio = output(
+            ("photon-ratio", photons.alpha0_inverse),
+            lambda: 1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {})),
+        )
+        positive.append(ratio)
+        photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
@@ -1789,6 +1824,9 @@ def _parameter_program(
         # Written only when present: an older native refuses the record
         # (unknown field) instead of reading the legs as massless.
         record["derived_masses"] = derived_masses
+    if photon_record is not None:
+        # Likewise: an older native would leave the photons at alpha.
+        record["photons"] = photon_record
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():
         keys[index] = key

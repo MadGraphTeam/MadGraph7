@@ -456,6 +456,17 @@ struct ParameterFile {
     /// the analysis: its batches are then checked per point.
     #[serde(default)]
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// The on-shell external photons of an electroweak request (WP3.2
+    /// EWI-6b, the alpha(0) convention): the output index of
+    /// alpha(0) / alpha (real and positive, also in `positive`) and the
+    /// photons' 1-based leg labels. Every source of those legs, spin and
+    /// loop-side sources included, takes sqrt(alpha(0) / alpha) in the
+    /// trees and the counterterm program, so the Born, the loops, the
+    /// counterterm kets and the field insertions carry (alpha(0) / alpha)^n
+    /// and the average stays the slice's. Written only when present: an
+    /// older native refuses the record (unknown field).
+    #[serde(default)]
+    photons: Option<(usize, Vec<usize>)>,
 }
 
 #[derive(Deserialize)]
@@ -735,6 +746,8 @@ struct Parameters {
     plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// `ParameterFile::photons`.
+    photons: Option<(usize, Vec<usize>)>,
 }
 
 impl Parameters {
@@ -944,6 +957,9 @@ pub struct TreeBatch<T> {
     pub counterterm_couplings: Vec<Vec<Complex<T>>>,
     /// Per point the counterterm program's model parameter values.
     pub counterterm_model: Vec<Vec<T>>,
+    /// Per point the source scale sqrt(alpha(0) / alpha) of the on-shell
+    /// external photons (`ParameterFile::photons`; empty without them).
+    pub photon_scales: Vec<T>,
 }
 
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
@@ -1487,6 +1503,9 @@ fn load_parameters(
             && file.scale_outputs.as_ref().is_none_or(|dependent| {
                 dependent.iter().all(|(o, _)| output(*o))
                     && (file.scale.is_some() || dependent.is_empty())
+            })
+            && file.photons.as_ref().is_none_or(|(o, legs)| {
+                output(*o) && file.positive.contains(o) && !legs.is_empty()
             }),
         "parameter program index",
     )?;
@@ -1531,6 +1550,7 @@ fn load_parameters(
         plan_masses,
         scale: file.scale,
         scale_outputs: file.scale_outputs,
+        photons: file.photons,
     })
 }
 
@@ -1908,6 +1928,21 @@ impl TreeProgram {
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
         )?;
+        let sources = SchemaSources::from_value(&file.source_fill)?;
+        if let Some((_, legs)) = &parameters.photons {
+            // Each photon a leg with sources in the trees and, with one, the
+            // counterterm program.
+            require(
+                legs.iter().all(|&leg| {
+                    (1..=file.legs).contains(&leg)
+                        && !sources.leg_slots(leg).is_empty()
+                        && counterterm_trees
+                            .as_ref()
+                            .is_none_or(|ct| !ct.sources.leg_slots(leg).is_empty())
+                }),
+                "a photon leg without sources",
+            )?;
+        }
         require(
             file.block_rows.len() == plan.block_rows.len(),
             "block rows differ from the plan's",
@@ -2044,7 +2079,7 @@ impl TreeProgram {
             model_offset: file.model_offset,
             model_count: file.model_count,
             momentum_slots: file.momentum_slots,
-            sources: SchemaSources::from_value(&file.source_fill)?,
+            sources,
             interactions,
             block_rows: file.block_rows,
             block_row_terms: file.block_row_terms,
@@ -2265,6 +2300,10 @@ impl TreeProgram {
         };
         let model = values_of(&program.model);
         let counterterm_model = values_of(&program.counterterm_model);
+        // Real and positive (`positive`, checked above).
+        let photon_scales = program.photons.as_ref().map_or_else(Vec::new, |(o, _)| {
+            rows.iter().map(|row| row[*o].re.clone().sqrt()).collect()
+        });
         let masses: BTreeMap<i32, Rational> = program
             .masses
             .iter()
@@ -2322,6 +2361,7 @@ impl TreeProgram {
                 couplings,
                 counterterm_couplings,
                 counterterm_model,
+                photon_scales,
             },
             constants,
             masses: plan_masses,
@@ -2775,6 +2815,9 @@ impl TreeProgram {
             None => None,
         };
         for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
+            self.scale_photons(states, layout.size, &self.sources, batch)?;
+        }
+        for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
             run_interactions(
                 &self.interactions,
                 layout,
@@ -2818,6 +2861,7 @@ impl TreeProgram {
                         zero,
                     )?;
                 }
+                self.scale_photons(&mut ct_states, ct.layout.size, &ct.sources, batch)?;
                 run_interactions(
                     &ct.interactions,
                     ct.layout,
@@ -3110,6 +3154,51 @@ impl TreeProgram {
             }
         }
         Ok(states)
+    }
+
+    /// Multiply every source of the on-shell external photons
+    /// (`ParameterFile::photons`) by its point's sqrt(alpha(0) / alpha),
+    /// after the spin and loop-side sources replaced theirs: one interaction
+    /// program's states, `sources` its source fill. Every amplitude is
+    /// linear in each leg's source, so each output takes
+    /// (alpha(0) / alpha)^n, as the Python lane's scaled average
+    /// (`assemble._PointEvaluation.average`) gives it.
+    fn scale_photons<T: TreeCarrier>(
+        &self,
+        states: &mut [Complex<T>],
+        size: usize,
+        sources: &SchemaSources,
+        batch: &TreeBatch<T>,
+    ) -> RusticolResult<()> {
+        let Some((_, legs)) = &self.parameters.photons else {
+            return Ok(());
+        };
+        if size == 0 {
+            return Ok(());
+        }
+        require(
+            batch.photon_scales.len() * size == states.len(),
+            "a photon source scale per point",
+        )?;
+        let slots: Vec<(usize, usize)> = legs
+            .iter()
+            .flat_map(|&leg| sources.leg_slots(leg))
+            .collect();
+        require(
+            slots.iter().all(|&(start, stop)| start <= stop && stop <= size),
+            "a photon source slot outside the state",
+        )?;
+        for (state, scale) in states.chunks_exact_mut(size).zip(&batch.photon_scales) {
+            for &(start, stop) in &slots {
+                for value in &mut state[start..stop] {
+                    *value = Complex::new(
+                        value.re.clone() * scale.clone(),
+                        value.im.clone() * scale.clone(),
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Write each point's spin-source vectors (times each slot's crossing

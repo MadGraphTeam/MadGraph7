@@ -397,7 +397,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 [loop.model]
 loop_coupling_orders = ["QED"]
 uv_complete = true

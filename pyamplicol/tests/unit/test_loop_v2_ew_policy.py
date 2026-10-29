@@ -160,20 +160,21 @@ def test_external_photons_without_the_convention_are_refused_before_the_trees(
 
 
 @pytest.mark.loop_physics
-def test_stored_external_photon_requests_are_refused_before_the_trees(
+def test_stored_external_photon_requests_reach_their_trees(
     gmu_a0, loop_native, monkeypatch
 ):
     """u u~ > a g [QCD QED] on the G_mu UFO under restriction a0: a stored
-    (plan v4) process's native point inputs do not form the alpha(0) scale
-    and conversion term (WP3.2 EWI-N), so its generation is refused with the
-    listed key ``external-photon-alpha0`` as soon as the convention is known
-    (``LoopSlice.generate(native_inputs=True)``), before any tree, not after
-    a full slice build; the slice of the Python inputs, which apply the
-    convention, still reaches its trees."""
+    (plan v4) process's native point inputs take the alpha(0) convention
+    (WP3.2 EWI-N: the photons' sources scaled by sqrt(alpha(0)/alpha), the
+    conversion a field insertion), so its generation is no longer refused
+    before the trees (the former listed key ``external-photon-alpha0``):
+    it reaches them, as the slice of the Python inputs does. The native
+    values are checked in ``test_loop_v2_ew_native.py``."""
 
-    from pyamplicol.api.errors import GenerationError
     from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
 
+    assert "external-photon-alpha0" not in {r.key for r in NATIVE_EXPORT_REFUSALS}
     monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
     process, born = PHOTON_JET
     request = SliceRequest(
@@ -184,14 +185,8 @@ def test_stored_external_photon_requests_are_refused_before_the_trees(
         fixed_parameters=ZERO_WIDTHS,
         **GMU,
     )
-    with pytest.raises(GenerationError) as refused:
+    with pytest.raises(AssertionError, match="before the trees"):
         generate_process(gmu_a0, request, loop_native)
-    message = str(refused.value)
-    assert "its native point inputs cannot be exported natively" in message
-    assert (
-        "(external-photon-alpha0: 'u u~ > a g': the on-shell external photons "
-        "(legs [3]) take the alpha(0) convention" in message
-    )
     with pytest.raises(AssertionError, match="before the trees"):
         LoopSlice.generate(gmu_a0, request, loop_native)
 

@@ -19,8 +19,9 @@ never served as a silently wrong value, and the rule is structural:
 * G2-M4 interim (``native_trees.NATIVE_EXPORT_REFUSALS`` key
   ``plane-mismatch``): the SymJIT plane check's disagreement is a listed
   refusal naming the kernel or the parameter-program output.
-* G2-m4 (``external-photon-alpha0``): ``test_loop_v2_ew_policy.py`` (the
-  alpha(0) model); the export's own refusal is checked here.
+* G2-m4 (the former ``external-photon-alpha0``): resolved by WP3.2 EWI-N,
+  the native point inputs take the alpha(0) convention of on-shell external
+  photons (``test_loop_v2_ew_native.py``, ``test_loop_v2_ew_policy.py``).
 * G2-m1 (``fermion-line-representation``): a toy leptoquark UFO (loop_sm with
   one triplet scalar and its u e vertex, ``loop_v2_ufo_variants``) is refused
   before any tree is built, naming the vertex, whichever DAG lane is on; with
@@ -164,32 +165,13 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         f"{NC_EXACT_REFUSAL}: 'u u~ > u u~ g': detail. Rule: LC and NLC project"
     )
     assert 'Instead: full colour (color.accuracy = "full")' in message
-    assert {"plane-mismatch", "external-photon-alpha0"} <= {
-        refusal.key for refusal in NATIVE_EXPORT_REFUSALS
-    }
-    for key in ("plane-mismatch", "external-photon-alpha0"):
-        assert NativeExportUnsupported(key, "x").feature == key
-
-
-@pytest.mark.loop_fast
-def test_export_refuses_external_photons_with_the_listed_key():
-    """The export's own refusal (the generation refuses a stored process
-    earlier, ``test_loop_v2_ew_policy.py``): a listed feature, no bare
-    NotImplementedError."""
-
-    from types import SimpleNamespace
-
-    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
-    from pyamplicol.loops.v2.plan_export import export_plan
-
-    slice_ = SimpleNamespace(
-        blocks=SimpleNamespace(blocks=()),
-        request=SimpleNamespace(accuracy="full", process="u u~ > a g"),
-        external_photons=object(),
-    )
-    with pytest.raises(NativeExportUnsupported) as refused:
-        export_plan(slice_, forward=False, trees=True)
-    assert refused.value.feature == "external-photon-alpha0"
+    keys = {refusal.key for refusal in NATIVE_EXPORT_REFUSALS}
+    assert "plane-mismatch" in keys
+    # On-shell external photons take native inputs (WP3.2 EWI-N).
+    assert "external-photon-alpha0" not in keys
+    assert NativeExportUnsupported("plane-mismatch", "x").feature == "plane-mismatch"
+    with pytest.raises(ValueError, match="unknown native export refusal"):
+        NativeExportUnsupported("external-photon-alpha0", "x")
 
 
 @pytest.mark.loop_fast
