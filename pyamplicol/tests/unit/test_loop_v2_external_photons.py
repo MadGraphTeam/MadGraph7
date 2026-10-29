@@ -278,6 +278,13 @@ def test_alpha0_native_inputs_equal_madloop_and_the_python_inputs(
                         component,
                         sector,
                     )
+    # Without 1/alpha(0) the native binder refuses the point, naming it.
+    with pytest.raises(ValueError, match=r"set the model's 1/alpha\(0\) parameter"):
+        native.evaluate(
+            [reference["points"][0]],
+            [str(Fraction(reference["mu_r"][0]) ** 2)],
+            parameters={**reference["parameters"], "aEW0M1": "0"},
+        )
 
 
 @pytest.mark.loop_nightly
