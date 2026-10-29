@@ -5,7 +5,7 @@ import torch
 
 import madspace as ms
 from madspace.torch import FunctionModule
-from madspace_testing import DEVICE, new_context
+from madspace_testing import DEVICE, default_context, new_context
 
 # a local generator, so that the global RNG state seen by other tests is unchanged
 GEN = torch.Generator().manual_seed(1234)
@@ -57,7 +57,7 @@ def test_activation(name, precision):
         ms.NamedTypes([("in", io_type)]), ms.NamedTypes([("out", io_type)])
     )
     fb.output(0, getattr(fb, name)(fb.input(0)))
-    module = FunctionModule(fb.function())
+    module = FunctionModule(fb.function(), default_context())
 
     x = (
         3 * _randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN)
@@ -88,7 +88,7 @@ def test_matmul(precision):
         ms.NamedTypes([("y", batch_type(ms_dtype, [DIMS_OUT]))]),
     )
     fb.output(0, fb.matmul(fb.input(0), fb.input(1), fb.input(2)))
-    module = FunctionModule(fb.function())
+    module = FunctionModule(fb.function(), default_context())
 
     x = _randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN, requires_grad=True)
     # single inputs are passed without batch dimension
@@ -120,7 +120,7 @@ def test_convert_roundtrip():
     single = fb.convert_float32(fb.input(0))
     fb.output(0, single)
     fb.output(1, fb.convert_float64(fb.relu(single)))
-    module = FunctionModule(fb.function())
+    module = FunctionModule(fb.function(), default_context())
 
     x = _randn((N, 3), dtype=torch.float64, generator=GEN, requires_grad=True)
     single_out, out = module(x)
@@ -139,7 +139,7 @@ def test_literal_converted_for_float32():
     )
     # float64 literals are converted when the instruction dispatches to float32
     fb.output(0, fb.matmul(fb.input(0), ms.Value([2.0], [1, 1]), ms.Value([1.0])))
-    module = FunctionModule(fb.function())
+    module = FunctionModule(fb.function(), default_context())
     x = _randn((N, 1), dtype=torch.float32, generator=GEN)
     torch.testing.assert_close(module(x), 2 * x + 1)
 
@@ -208,7 +208,7 @@ def test_structural_ops_backward():
     c = fb.cat([a, b])
     combined, counts = fb.batch_cat([c, c])
     fb.output(0, fb.cat(fb.batch_split(combined, counts)))
-    module = FunctionModule(fb.function())
+    module = FunctionModule(fb.function(), default_context())
 
     x = _randn((N, 3), dtype=torch.float32, generator=GEN, requires_grad=True)
     out = module(x)
