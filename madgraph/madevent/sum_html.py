@@ -33,6 +33,46 @@ else:
     import madgraph.various.misc as misc
     from madgraph import MadGraph5Error
 
+# The first ten entries follow the units-digit histogram written by MadLoop.
+# Keep the backend identifiers shared by the XML and NLO log readers.
+MADLOOP_UNIT_BACKENDS = (
+    ('unidentified', 'Not identified (CTModeRun != -1)'),
+    ('CutTools_DP', 'CutTools (double precision)'),
+    ('PJFry', 'PJFry++'),
+    ('IREGI', 'IREGI'),
+    ('Golem', 'Golem95'),
+    ('Samurai', 'Samurai'),
+    ('Ninja', 'Ninja (double precision)'),
+    ('COLLIER', 'COLLIER'),
+    ('Ninja_QP', 'Ninja (quadruple precision)'),
+    ('CutTools_QP', 'CutTools (quadruple precision)'),
+)
+MADLOOP_BACKEND_LABELS = dict(MADLOOP_UNIT_BACKENDS + (
+    ('NinjaRS_DP', 'NinjaRS (double precision)'),
+    ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
+))
+
+
+def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0):
+    """Decode a legacy units histogram and its optional contextual counters.
+
+    All units slots are occupied. To preserve the public three-digit return
+    codes, NinjaRS uses (hundreds, units) = (2, 8) for DP and (3, 2) for QP.
+    Producers count these calls in both the units histogram and dedicated
+    counters. Split those aliases here, once, for both statistics formats.
+    Missing dedicated counters mean an old file with only legacy backends.
+    The input histogram is never modified; decoding can be repeated safely.
+    """
+    usage = {backend: unit_counts[unit]
+             for unit, (backend, _) in enumerate(MADLOOP_UNIT_BACKENDS)}
+    for backend, alias, count in (
+            ('NinjaRS_DP', 'Ninja_QP', ninjars_dp),
+            ('NinjaRS_QP', 'PJFry', ninjars_qp)):
+        usage[backend] = count
+        usage[alias] -= count
+    return usage
+
+
 class RunStatistics(dict):
     """ A class to store statistics about a MadEvent run. """
     
@@ -57,6 +97,8 @@ class RunStatistics(dict):
           'Samurai_usage'      : 0,
           'Ninja_usage'        : 0,
           'Ninja_QP_usage'     : 0,
+          'NinjaRS_DP_usage'   : 0,
+          'NinjaRS_QP_usage'   : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -114,15 +156,15 @@ class RunStatistics(dict):
         
         u_return_code = xml_node.getElementsByTagName('u_return_code')
         u_codes = [int(_) for _ in getData(u_return_code[0]).split(',')]
-        self['CutTools_DP_usage'] = u_codes[1]
-        self['PJFry_usage']       = u_codes[2]
-        self['IREGI_usage']       = u_codes[3]
-        self['Golem_usage']       = u_codes[4]
-        self['Samurai_usage']     = u_codes[5]
-        self['Ninja_usage']       = u_codes[6]
-        self['COLLIER_usage']     = u_codes[7]        
-        self['Ninja_QP_usage']    = u_codes[8]
-        self['CutTools_QP_usage'] = u_codes[9]
+        ninjars_usage = {}
+        for precision in ('DP', 'QP'):
+            nodes = xml_node.getElementsByTagName(
+                'ninjars_%s_usage' % precision.lower())
+            ninjars_usage[precision] = int(getData(nodes[0])) if nodes else 0
+        self.update((backend + '_usage', count) for backend, count in
+                    decode_madloop_backend_usage(
+                        u_codes, ninjars_usage['DP'], ninjars_usage['QP']).items()
+                    if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
         self['DP_usage']          = t_codes[1]
@@ -181,7 +223,9 @@ class RunStatistics(dict):
           ('Samurai',float(self['Samurai_usage'])/self['n_madloop_calls']),
           ('COLLIER',float(self['COLLIER_usage'])/self['n_madloop_calls']),          
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
-          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls'])]
+          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 

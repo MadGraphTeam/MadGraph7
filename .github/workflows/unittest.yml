@@ -55,6 +55,15 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
 
+      - name: "MadLoop NinjaRS interfaces, defaults, and reporting"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            command -v gfortran
+            python3 -m unittest discover -s tests/unit_tests/loop -p 'test_ninjars*.py'
+            python3 -m unittest discover -s tests/unit_tests/various -p 'test_ninjars*.py'
+            python3 -m unittest tests.unit_tests.loop.test_loop_poles tests.unit_tests.interface.test_madevent_loop_warnings
+
       # ---- unittest_0 ----
       - name: "unittest_0"
         if: ${{ !cancelled() }}

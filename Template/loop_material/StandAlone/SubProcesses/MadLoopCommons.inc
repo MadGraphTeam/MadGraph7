@@ -270,7 +270,7 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++.
+C         Stable with PJFry++ (H=2), or NinjaRS in quadruple precision (H=3).
 C     U == 3
 C         Stable with IREGI.
 C     U == 4
@@ -282,7 +282,7 @@ C         Stable with Ninja in double precision.
 C     U == 7
 C         Stable with COLLIER.
 C     U == 8
-C         Stable with Ninja in quadruple precision.
+C         Stable with Ninja in quadruple precision (H=3), or NinjaRS in double precision (H=2).
 C     U == 9
 C         Stable with CutTools in quadruple precision.
 C
@@ -315,14 +315,17 @@ C
          ELSEIF(MLRed.EQ.6)THEN
             SET_RET_CODE_U=8
             RETURN
-		 ELSE
-            STOP 'Only CutTools and Ninja can use quardruple precision'
+         ELSEIF(MLRed.EQ.8)THEN
+            SET_RET_CODE_U=2
+            RETURN
+         ELSE
+            STOP 'Only CutTools, Ninja and NinjaRS can use quadruple precision'
          ENDIF
       ENDIF
-      IF(MLRed.GE.1.AND.MLRed.LE.7)THEN
+      IF(MLRed.GE.1.AND.MLRed.LE.8)THEN
          SET_RET_CODE_U=MLRed
       ELSE
-         STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja and COLLIER are available'
+         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 8'
       ENDIF
       END
 
@@ -370,8 +373,11 @@ C Ninja
       ELSEIF(LIBNUM.EQ.7)THEN
 C Collier 
          CALL DETECT_COLLIER(NLOOPLINE,RANK,complex_mass,LPASS)
+      ELSEIF(LIBNUM.EQ.8)THEN
+C NinjaRS
+         CALL DETECT_NINJARS(NLOOPLINE,RANK,complex_mass,LPASS)
       ELSE
-         STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja and COLLIER are available'
+         STOP 'Unknown MadLoop reduction library; supported IDs are 1 through 8'
       ENDIF
       RETURN
       END
@@ -477,6 +483,15 @@ C     It can easily be increased if necessary.
 	    LPASS=.FALSE.
       endif
       RETURN
+      END
+
+      SUBROUTINE DETECT_NINJARS(NLOOPLINE,RANK,complex_mass,LPASS)
+C NinjaRS tensor reduction supports rank at most n+2 in both precisions.
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,RANK
+      LOGICAL complex_mass,LPASS
+      LPASS=NLOOPLINE.GE.1.AND.RANK.GE.0.AND.
+     &      RANK.LE.NLOOPLINE+2
       END
 
 ## if(collier_available){

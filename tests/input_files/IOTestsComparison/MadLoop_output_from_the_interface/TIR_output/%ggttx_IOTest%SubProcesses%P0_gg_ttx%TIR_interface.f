@@ -52,6 +52,10 @@ C     This variable will be used to detect changes in the TIR library
 C      used so as to force the reset of the TIR filter.
       INTEGER LAST_LIB_USED
       DATA LAST_LIB_USED/-1/
+      INTEGER LAST_POLE_MODE
+      LOGICAL LAST_UV_POLES,LAST_IR_POLES,UV_POLES,IR_POLES
+      DATA LAST_POLE_MODE/-2/
+      DATA LAST_UV_POLES,LAST_IR_POLES/.TRUE.,.TRUE./
 
       COMPLEX*16 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
      $ ,TIRCOEFSERRORS(0:LOOPMAXCOEFS-1,3)
@@ -83,8 +87,38 @@ C     ----------
 C     BEGIN CODE
 C     ----------
 
+C     Reject unavailable OPP backends which reach the TIR fallback.
+C      Check before
+C     consulting the cache so an unsupported ID can never reuse old
+C      coefficients.
+      SELECT CASE(MLREDUCTIONLIB(I_LIB))
+      CASE(2,3,4,7)
+        CONTINUE
+      CASE DEFAULT
+        IF(MLREDUCTIONLIB(I_LIB).EQ.8) THEN
+          WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in'
+     $     //' this generated process.'
+          WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate'
+     $     //' and rebuild this process.'
+        ELSE
+          WRITE(*,*) 'ERROR:: Unsupported TIR reduction library:'
+     $     ,MLREDUCTIONLIB(I_LIB)
+          WRITE(*,*) 'Select an available MLReductionLib and'
+     $     //' regenerate and rebuild this process.'
+        ENDIF
+        STOP 1
+      END SELECT
+
 C     Initialize for the very first time ML is called LAST_ILIB with
 C      the first ILIB used.
+      CALL ML_LOOP_POLE_FLAGS(UV_POLES,IR_POLES)
+      IF(LAST_POLE_MODE.NE.LOOPPOLEMODE.OR.(LAST_UV_POLES.NEQV.UV_POLES)
+     $ .OR.(LAST_IR_POLES.NEQV.IR_POLES)) THEN
+        IF(LAST_POLE_MODE.NE.-2) CALL ML5_0_CLEAR_TIR_CACHE()
+        LAST_POLE_MODE=LOOPPOLEMODE
+        LAST_UV_POLES=UV_POLES
+        LAST_IR_POLES=IR_POLES
+      ENDIF
       IF(LAST_LIB_USED.EQ.-1) THEN
         LAST_LIB_USED = MLREDUCTIONLIB(LIBINDEX)
       ELSE
@@ -374,9 +408,10 @@ C
 C     CONSTANTS
 C     
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
+      PARAMETER (NLOOPLIB=8)
       INTEGER QP_NLOOPLIB
       PARAMETER (QP_NLOOPLIB=2)
+
       INTEGER NLOOPGROUPS
       PARAMETER (NLOOPGROUPS=28)
 C     

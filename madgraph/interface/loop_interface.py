@@ -555,7 +555,10 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         opt = self.options
                 
         # Check if first time:
-        if not force and ((opt['ninja'] is None) or (os.path.isfile(pjoin(MG5DIR, opt['ninja'],'libninja.a')))): 
+        ninjars_ready = isinstance(opt.get('ninjars'), str) and os.path.isfile(
+            pjoin(MG5DIR, opt['ninjars'], 'libninjars.a'))
+        if not force and ((opt['ninja'] is None) or ninjars_ready or
+                os.path.isfile(pjoin(MG5DIR, opt['ninja'], 'libninja.a'))):
             return
 
         # do not trigger the question for tests
@@ -982,7 +985,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
     
     local_installer = ['ninja', 'collier']
     required = ['cuttools', 'iregi']
-    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem']
+    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem', 'ninjars']
     bypassed = ['pjfry']
 
     @property
@@ -1002,6 +1005,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
         
         self.code = {'ninja': 'install',
                      'collier': 'install',
+                     'ninjars': 'off',
                      'golem': 'off',
                      'cuttools': 'required',
                      'iregi': 'required'}
@@ -1031,6 +1035,8 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                 self.code['golem'] =  pjoin(install_dir2, 'golem95')
             if os.path.exists(pjoin(install_dir1, 'ninja')):
                 self.code['ninja'] =  pjoin(install_dir2, 'ninja','lib')
+            if os.path.isfile(pjoin(install_dir1, 'ninjars', 'lib', 'libninjars.a')):
+                self.code['ninjars'] = pjoin(install_dir1, 'ninjars', 'lib')
         
         # 1. create the question
         question, allowed_answer = self.create_question(first=True)
@@ -1052,6 +1058,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
         descript =  {'cuttools': ['cuttools','(OPP)','[0711.3596]'],
                      'iregi': ['iregi','(TIR)','[1405.0301]'],
                      'ninja': ['ninja','(OPP)','[1403.1229]'],
+                     'ninjars': ['ninjars','(OPP)','[NinjaRS]'],
                      'golem': ['golem','(TIR)','[0807.0605]'],
                      'collier': ['collier','(TIR)','[1604.06792]']} 
 
@@ -1169,6 +1176,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
 
 
     do_ninja = lambda self,line : self.apply_name('ninja', line)
+    do_ninjars = lambda self,line : self.apply_name('ninjars', line)
     do_collier = lambda self,line : self.apply_name('collier', line)
     do_golem = lambda self,line : self.apply_name('golem', line)
     do_cuttools = lambda self,line : self.apply_name('cuttools', line)
@@ -1189,6 +1197,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
             return self.list_completion(text, ['install', 'noinstall', 'local'], line)
     
     complete_ninja = complete_prog 
+    complete_ninjars = complete_prog
     complete_collier = complete_prog
     complete_golem = complete_prog
     complete_cuttools = complete_prog

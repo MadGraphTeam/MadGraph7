@@ -1,0 +1,59 @@
+{
+  "amplitude_calls": 0,
+  "artifact_acquisition_20261029": {
+    "binary_artifacts": 8,
+    "binary_bytes": 3513980,
+    "byte_identical_pdf": true,
+    "command": "python -B doc/benchmarkfolder/fetch_artifacts.py",
+    "current_manifest_sha256": "694f53830829c679a02bfb6ab7c489858153a96fd4aaf7eafe1457da79f2d62d",
+    "native_reads": 0,
+    "observed_utc": "2026-10-29T20:35:49.978632+00:00",
+    "offline_reproduced_pdf_sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443",
+    "revision": "cc6f6fe6dd344a0a767dcfe52341c147e39a193a",
+    "scope": "Optional binary inputs removed from new source checkouts; original offline reproduction command and PDF/source/scientific values unchanged.",
+    "verification": "Fresh download from immutable GitHub commit into an isolated report copy; unchanged reproduction script using Typst 0.15.1 (9dfd3a08).",
+    "verified_input_files": 37
+  },
+  "byte_identical_pdf": true,
+  "command": [
+    "python",
+    "-B",
+    "doc/benchmarkfolder/final-report-v1/reproduce.py",
+    "--output",
+    "reproduced.pdf"
+  ],
+  "creation_timestamp": 1792627200,
+  "fonts": "Bundled unmodified Libertinus7.051/OFL1.1; system and embedded fonts disabled",
+  "gzip_decoded_materialization_sha256": "8a1da525d23d21bd19b5c47b96aa1be479aa412bc13f3e0aebaf485dd55ac334",
+  "isolated_reproduced_pdf_sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443",
+  "isolated_tree_files": 37,
+  "main_pdf_sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443",
+  "main_typst_sha256": "c92260703b39819d8566d55d1f8b37c8c76f56fa542e067ab75016a14669f490",
+  "manifest_sha256": "70e31a6b28f2ca1c9d6f510ab5a375e750a253f68b4fd1cec721747c74bcc56c",
+  "native_reads": 0,
+  "observed_utc": "2026-10-22T18:28:42.647221+00:00",
+  "pages": 15,
+  "physics_compiler_calls": 0,
+  "relocation": {
+    "archive_authority_git_objects_verified": 29,
+    "archive_preparation_metadata_git_objects_verified": 24,
+    "archive_revision": "19d67c8605337c176680878a521b3a014176a7fb",
+    "changed_pdf_text_pages": [
+      15
+    ],
+    "new_report_root": "doc/benchmarkfolder",
+    "old_report_root": "docs/benchmarkfolder",
+    "original_pdf_sha256": "076b136ae99083f8111e7d35489d45b7b00ad2383b44e3177b30c14c31ad3869",
+    "prior_reproduction_url": "https://github.com/MadGraphTeam/MadGraph7/blob/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/final-report-v1/reproduction.json",
+    "scientific_data_and_figure_bytes_unchanged": true
+  },
+  "report_data_sha256": "bc42cc02076418eeba4b188de167575196f86139bc9c8b463349d2e766011e9c",
+  "reproduced_pdf_sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443",
+  "schema": "final-benchmark-offline-reproduction-v1",
+  "scope": "Report relocation and document reproduction only; no new scientific measurement, statistical inference, native custody verification or physics compilation",
+  "source_date_epoch": 1792627200,
+  "standalone_svg_byte_identity_claimed": false,
+  "typst_version": "typst 0.15.1 (9dfd3a08)",
+  "verified_input_files": 36,
+  "visual_review": "Changed page15 inspected: reproduction/archive wording is readable, no clipping or overlap; text on pages1\u201314 is unchanged from the approved prior report."
+}

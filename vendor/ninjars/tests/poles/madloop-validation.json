@@ -1,0 +1,304 @@
+{
+  "schema": "madloop-bare-uv-ir-validation-v1",
+  "scope": "Bare loop contribution only; UFO UV and R2 counterterms removed in disposable generated validation copies.",
+  "source_base_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
+  "passed": true,
+  "tolerance": "abs(a-b) <= 1e-7*max(abs(a),abs(b)) + 1e-10*S; S is the largest Born/Laurent magnitude for the same process point across compared modes and tools.",
+  "points_per_process": 3,
+  "helicity_policy": "Full helicity and color sums",
+  "core_masses": "Real masses, all widths set to zero in retained parameter cards",
+  "configuration_count": 74,
+  "point_evaluations": 222,
+  "result_rows_including_total_and_split_order": 444,
+  "comparison_checks": 187,
+  "worst_normalized_error": 8.375047153834681e-05,
+  "loop_induced_additivity_checked": false,
+  "loop_induced_comparison": "Each selected squared loop amplitude is compared directly with COLLIER; no general additivity of squared UV/IR amplitudes is asserted.",
+  "pole_modes": {
+    "-1": "legacy (filter seeding only)",
+    "0": "both",
+    "1": "UV",
+    "2": "IR",
+    "3": "none"
+  },
+  "cases": [
+    {
+      "case": "qcd-z",
+      "process": "u u~ > z [virt=QCD]",
+      "model": "loop_sm",
+      "points": "points/qcd-1.dat",
+      "points_sha256": "53591173c9e24c846c5594434484f32b1f6fb117dcc4e2f509156b9349275f5c",
+      "parameter_card": "cards/qcd-z.dat",
+      "parameter_card_sha256": "49f08ecba557b9ed0e6760813b7eac089319264252f840fdd0a485d685f60a7d",
+      "collier_CTModeRun": [
+        1
+      ],
+      "ninjars_CTModeRun": [
+        -1,
+        1,
+        2,
+        4,
+        5
+      ],
+      "pole_modes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "generated_bare_patch": [
+        {
+          "path": "loop_matrix.f",
+          "original_sha256": "de647f1de1d5bc407d0ad2617ebb19da47cd24a06944e9c172cac633c163605b",
+          "bare_sha256": "740454f0f35baf95ce3f63c4aefa2986126af5942efea1ad116074e45265c008"
+        },
+        {
+          "path": "mp_compute_loop_coefs.f",
+          "original_sha256": "4892330f3322cde75680e46dc66a97890e5a9cab46c4658bd85f52cf655c63cd",
+          "bare_sha256": "ee3ebc4634b587ba416d89d658b0904118ade184ae404da94e6763c636bb8afc"
+        }
+      ],
+      "compiled_driver_sha256": "33e07ad3a9bc23ac1f9d8c04f588c398c366af80977f8ba21d274ae2b6a16f6c"
+    },
+    {
+      "case": "qcd-tt",
+      "process": "g g > t t~ [virt=QCD]",
+      "model": "loop_sm",
+      "points": "points/qcd-2.dat",
+      "points_sha256": "5622dfd2708e21acf243197ae26156185ee3404f51c2a0e9583f88c0a54de4bf",
+      "parameter_card": "cards/qcd-tt.dat",
+      "parameter_card_sha256": "49f08ecba557b9ed0e6760813b7eac089319264252f840fdd0a485d685f60a7d",
+      "collier_CTModeRun": [
+        1
+      ],
+      "ninjars_CTModeRun": [
+        -1,
+        1,
+        2,
+        4,
+        5
+      ],
+      "pole_modes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "generated_bare_patch": [
+        {
+          "path": "loop_matrix.f",
+          "original_sha256": "4bcb87f4e89e4b0d4188adfbebe91798d4a099f789f2b85d7966d6206645cb5d",
+          "bare_sha256": "3b416eac3a5296d1c9e200f9d8478f906071a42d23bcd338a6e8d640cf464c92"
+        },
+        {
+          "path": "mp_compute_loop_coefs.f",
+          "original_sha256": "b6f3cbcd902b3b5ee167eb01ee95fa6d6fab30ba6ace4dece0d70513be90659b",
+          "bare_sha256": "528abc3a8a7e13d4a566b91a8bb20ff7fbe5973fa895bb1ee76e021532083f02"
+        }
+      ],
+      "compiled_driver_sha256": "a6cab82adcfab402b522726f7b0298a3944eb914a92f7778a112b0d28ac54378"
+    },
+    {
+      "case": "ew-mumu",
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "points": "points/ew-2.dat",
+      "points_sha256": "027faad8e4b32ba0113a1cbb43cbbe3efd1bdc7385bc91b14371e2a48637c44b",
+      "parameter_card": "cards/ew-mumu.dat",
+      "parameter_card_sha256": "f1832ee506b45441279a4076cb274ba37899541f8bd7ec0d3494cfb9c24aa9d5",
+      "collier_CTModeRun": [
+        1
+      ],
+      "ninjars_CTModeRun": [
+        1,
+        4
+      ],
+      "pole_modes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "generated_bare_patch": [
+        {
+          "path": "loop_matrix.f",
+          "original_sha256": "50ffd7bd313842514eceb33ea3cfa49ec5a70a735edda4bb508380cc95da57b5",
+          "bare_sha256": "ad04f8d5cff82814fcee3dd05c7a0a864e2fed1b0268a3ea88f8935ce4bc3500"
+        },
+        {
+          "path": "mp_compute_loop_coefs.f",
+          "original_sha256": "b86e5f23ade56534c6126394b25916160c5853f37d5913ca8d2eb88e8f19fc4b",
+          "bare_sha256": "9c6e42dc1f91cfe246a09d3af56b97f24e7839365b4f3b812746f48b8bc21aa0"
+        }
+      ],
+      "compiled_driver_sha256": "9bd58cff0ff7ed7c4f4bdb631fe76717c8e175dbbab43bc0bdb433e1c6345e52"
+    },
+    {
+      "case": "li-h",
+      "process": "g g > h [sqrvirt=QCD]",
+      "model": "loop_sm",
+      "points": "points/control-gg-h.dat",
+      "points_sha256": "a15a02856f75e085f051335cd00d35fa8aa69d19c96bf8c8535ebefcf35330c7",
+      "parameter_card": "cards/li-h.dat",
+      "parameter_card_sha256": "49f08ecba557b9ed0e6760813b7eac089319264252f840fdd0a485d685f60a7d",
+      "collier_CTModeRun": [
+        1
+      ],
+      "ninjars_CTModeRun": [
+        1,
+        4
+      ],
+      "pole_modes": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "generated_bare_patch": [
+        {
+          "path": "loop_matrix.f",
+          "original_sha256": "180d611d1c277766ded79121d37cd3e86d4a1de2054874f80d99dc97a56390e8",
+          "bare_sha256": "c8ed46db87c93964819fc89103f32b70971e795377f764ede19cd128e1db3c92"
+        },
+        {
+          "path": "mp_compute_loop_coefs.f",
+          "original_sha256": "fdc2eb1c9590dbb7534cfb1a7b98c1348457889dfb6a95d28db4712af8f071bf",
+          "bare_sha256": "d2185aedd173867f36978ca0ff3a6bdee15d4a7b8e93dae62fc21f78379c1e6f"
+        }
+      ],
+      "compiled_driver_sha256": "a3837b26811f3169fc37ca24d59f5062557b8036c6ab16334ab09940fe4d1023"
+    }
+  ],
+  "status_rows": {
+    "110": 252,
+    "120": 144,
+    "218": 48
+  },
+  "status_meanings": {
+    "110": "Fixed DP mode; no stability acceptance requested",
+    "120": "Forced higher-precision mode; no stability acceptance requested",
+    "218": "Stable NinjaRS DP under normal automatic stability checking"
+  },
+  "cache_filter_controls": {
+    "case": "qcd-tt",
+    "normal_runtime_backends": [
+      7,
+      8
+    ],
+    "mode_sequence": [
+      0,
+      1,
+      2,
+      3,
+      0,
+      2,
+      1,
+      0
+    ],
+    "switch_series": 3,
+    "switch_rows": 144,
+    "switch_status_rows": {
+      "110": 144
+    },
+    "legacy_filter_seed_mode": -1,
+    "filter_reuse_mode": 1,
+    "filtered_configurations": 2,
+    "method": "Seed saved filters in legacy combined mode, cycle the same warm context through all explicit modes, then reuse the saved combined filters in a fresh UV-only run."
+  },
+  "bare_patch_definition": {
+    "loop_matrix.f": "Immediately after UVCT_REQ_SO_DONE=.TRUE., set AMPL(:,1:NCTAMPS)=0 before interference/squaring.",
+    "mp_compute_loop_coefs.f": "Immediately after MP_UVCT_REQ_SO_DONE=.TRUE., set AMPL(:,1:NCTAMPS)=0 and DP_AMPL(:,1:NCTAMPS)=0 before interference/squaring.",
+    "production_source_changed_for_test": false,
+    "numerator_changed_for_test": false
+  },
+  "models": {
+    "loop_sm": {
+      "aggregate_algorithm": "SHA256 over sorted top-level Python filename, NUL byte and exact file bytes",
+      "top_level_python_sha256": "e2bf6c1b6b678301ff10457f505335f0b13023ddf090e296eb50d105fc30110a",
+      "files": {
+        "CT_couplings.py": "ec0ab5fab1d693e246284c1d82d9ef5219b274dedb909bdd3f6187cbc1ed7b02",
+        "CT_parameters.py": "fe89b26fcc375dbffc40003d7e064b2e66316d8d4daa897cd7a9c0ae386cfb3d",
+        "CT_vertices.py": "6f125c6cffdd94491fb6167411b23700468663d46c60cee90cdb675ad5659b0f",
+        "__init__.py": "f313e3030c3b3a5d8da2db3ed1b8ad487ce45dfb21810b15a1f717b9a4147d4b",
+        "coupling_orders.py": "c75540ae451aaca4c8f497aed727a252a2960c65c9d6174e94039af8a0615ae0",
+        "couplings.py": "a91df246f6a68325ead56ec30d49c0586fb9b39451ae62a5c527896acb45014f",
+        "function_library.py": "4f61390f3cd3ba3baa6b37a908f0f3129c457bca2d4e2b2fa8806c3ac31f9ea3",
+        "lorentz.py": "2552626d868a558a321c84fbafd14b43dafd2f4bbd45cf04a7693cb1caac3dc1",
+        "object_library.py": "83eadcfc5e57b633e78cfd8023d1b594d383344d0badbc8c2d07d3a05f7e65ee",
+        "parameters.py": "5de44653a32f4c213b6fc0696f3585f36bc34830e64d713c7e268814c847b58f",
+        "particles.py": "ce9d3cf9e7bc05dff7d247acc858e6f5eea982c5e8cfb702821b1dab317ed0b0",
+        "vertices.py": "89a4311b8305295e3019e1570c57519c2614b784b1f9ee9637a54ee9d2f07b82",
+        "write_param_card.py": "14dc8cc41f72666cfe28e63b9c26292315b2ecae76e4f31652ee665b663469f9"
+      },
+      "source": "models/loop_sm in the recorded MadGraph source base revision"
+    },
+    "loop_qcd_qed_sm_Gmu": {
+      "aggregate_algorithm": "SHA256 over sorted top-level Python filename, NUL byte and exact file bytes",
+      "top_level_python_sha256": "5dd9a66ef0b501f643251a65d9fa21a8be744b04959e1fcecd13eea51476a0e1",
+      "files": {
+        "._object_library.py": "e372c03cd0386f25cb181b0e08064bfee36b06798c0c4f94158f26929f04531d",
+        "CT_couplings.py": "652875148e2442c47d65d7b65295463e95f2d809bfbc02f0b4678d1efa96941f",
+        "CT_parameters.py": "275cd4426af5b7b0fe51b34fece99427d9ad02b9916aa8e7c3e80652b8feb18e",
+        "CT_vertices.py": "e2db355896f0eb04583664fb1ca3524cfac005e1cf60f2daed656f04ae6de1fc",
+        "__init__.py": "b525fab28896c3b483d5019ad6ecee22b361c23425e85bb010f0e4186088818e",
+        "coupling_orders.py": "d691ddb0315c70991cc248c5f6eb32572326f06fd9583556234944acde36c5d1",
+        "couplings.py": "a650df30e63c2295bd1c50c375b4f3a2c4b6f223662b85307d8cb4760b39d72d",
+        "function_library.py": "386190df018e0ee351a4a973b7f0bf1b285a63e4bdbac51fa615581e86fc70d1",
+        "lorentz.py": "128bc035e18636ba7984e3dd2460393f2cf40dc64f252ca496a08a40c679e0cc",
+        "object_library.py": "af45adfc62c07fc059866598f7b9f0ce840ac4785ce114e5315514ef0b4e9d1b",
+        "parameters.py": "02e551e6243ceef645178b67582a8799b4de9854abc9feba920528fe581f2cb2",
+        "particles.py": "1e9377aede7df810eae946c66ea09f131b1d88209393c0b97ab2ed141c99f17f",
+        "vertices.py": "179bcea617b52ecef42fcb869d305060e34e57c6a965518cbabdcd89988791df",
+        "write_param_card.py": "38ef99ae7eba1def565daebe0ec601d0f54c26368fced01718d50a83d195b3f2"
+      },
+      "original_source_url": "http://madgraph.phys.ucl.ac.be/Downloads/models/loop_qcd_qed_sm_Gmu.tgz",
+      "exact_used_source_archive": "https://github.com/MadGraphTeam/MadGraph7/raw/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/policy-v2/ew-model-source-final-v1/loop_qcd_qed_sm_Gmu-actual-source.tar.gz",
+      "archive_sha256": "495514a1f52f4d3b7445cbaac87dfe87d07d628a01680a3bf0457408b13fb7dc",
+      "note": "Exact previously retained converted UFO source, not a newly downloaded or unmodified upstream archive."
+    }
+  },
+  "reference": {
+    "collier_version": "1.2.9",
+    "COLLIER_mode": 1,
+    "library_sha256": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127"
+  },
+  "ninjars_candidate": {
+    "abi_version": 4,
+    "library_sha256": "43ed42c237412a81838a6c4c0b4f89015a0785b4f331bdb2fbf01020124c67c7",
+    "configuration_sha256": "45b48d5991cef9b669c2942abb9020a864f462103c4943cb7e307235f84ba25c",
+    "upstream_pins": {
+      "ninjars": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "ninjars-symbolica": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "oneloop": "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
+    }
+  },
+  "input_and_harness_sha256": {
+    "bare_driver.f": "5412bd1e19ae0744e856cd88b39071f2ef0b937f8b4ba4e3d4c426af26b4eb24",
+    "madloop_validation.py": "a409f9229dc3a739251b9645a6b461157cd896c9a3bfe25a24d90399270ae11d",
+    "compare_madloop.py": "42a7218d1cf3bdae0f25f8a5f6bbc6371f11579ca7ec93dde77807a5f42eee1b"
+  },
+  "raw_receipt_sha256": {
+    "process_comparison.json": "f5145c4e4029724fde9bfc936c89654202d95731a0b8872adf2ee8cf0188d116",
+    "tensor-summary.json": "0c833553435e39c7358e9453636c120aa4a66dc300f2828b69d82c9e953b8472",
+    "combined-baseline-comparison.json": "ed4dcbc6c214a63ae54a5d2b830f937b6fd8cbda9aae885a73a255d948054ac4"
+  },
+  "portable_path_reproduction": {
+    "passed": true,
+    "scope": "Fresh CLI generation and compilation of all four processes through the retained portable campaign after the upstream dependency update.",
+    "configurations": 74,
+    "result_rows": 444,
+    "runtime_switch_rows": 144,
+    "values_and_statuses_exactly_equal_to_pre_upstream_campaign": true
+  },
+  "validation_revision_note": "Upstream migration applied to this source revision; exact compiled bridge and generation-source hashes are recorded in upstream-migration-validation.json.",
+  "recorded_evaluation_count_note": "Count refers to unique recorded configurations; warmup and repeat switch calls are additional.",
+  "historical_portable_path_smoke": {
+    "source_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
+    "case": "qcd-z",
+    "configurations": 12,
+    "rows": 72,
+    "passed": true,
+    "scope": "Earlier one-process portability smoke; superseded for current-library qualification by the full fresh campaign."
+  },
+  "migration_receipt": "upstream-migration-validation.json"
+}

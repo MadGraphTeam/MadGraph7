@@ -222,12 +222,16 @@ class UFOParserTest(unittest.TestCase):
         tests = [('1j', 'CMPLX(0.000000e+00_16, 1.000000e+00_16 ,KIND=16)'),
                  ('3+3j', '3.000000e+00_16+CMPLX(0.000000e+00_16, 3.000000e+00_16 ,KIND=16)'),
                  ('re1j', 'mp__re1j'),
-                 ('re(x)', 'real(mp__x)'),
-                 ('x.real', 'real(mp__x)'),
-                 ('(cmath.log(x)/x).real', 'real(log(mp__x)/mp__x)'),
-                 ('3*x.real', '3.000000e+00_16*real(mp__x)'),
-                 ('x*y.real', 'mp__x*real(mp__y)'),
-                  ('(x*y.real)', '(mp__x*real(mp__y))'),
+                 ('re(x)', 'real(mp__x,KIND=16)'),
+                 ('x.real', 'real(mp__x,KIND=16)'),
+                 ('(cmath.log(x)/x).real', 'real(log(mp__x)/mp__x,KIND=16)'),
+                 ('3*x.real', '3.000000e+00_16*real(mp__x,KIND=16)'),
+                 ('x*y.real', 'mp__x*real(mp__y,KIND=16)'),
+                  ('(x*y.real)', '(mp__x*real(mp__y,KIND=16))'),
+                 ('tan(x)', 'tan(real(mp__x,KIND=16))'),
+                 ('cmath.tan(x)', 'tan(real(mp__x,KIND=16))'),
+                 ('atan(x)', 'atan(real(mp__x,KIND=16))'),
+                 ('cmath.atan(x)', 'atan(real(mp__x,KIND=16))'),
 
                  ]
         

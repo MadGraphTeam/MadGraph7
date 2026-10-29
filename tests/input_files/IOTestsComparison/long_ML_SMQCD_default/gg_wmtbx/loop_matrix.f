@@ -440,6 +440,15 @@ C        Samurai could follow.
           STOP 1
         ENDIF
       ENDIF
+C     The non-optimized output uses CutTools regardless of the
+C      requested chain.
+      IF(LOOPPOLEMODE.GT.0) THEN
+        WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires optimized MadLoop'
+     $   //' output with NinjaRS or COLLIER.'
+        WRITE(*,*) 'Regenerate with loop_optimized_output enabled and'
+     $   //' MLReductionLib=8 or 7.'
+        STOP 1
+      ENDIF
       IF (LOCAL_ML_INIT) THEN
 C       Setup the file paths
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)

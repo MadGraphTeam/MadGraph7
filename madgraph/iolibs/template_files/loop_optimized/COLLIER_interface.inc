@@ -44,6 +44,10 @@ C
       INTEGER CURR_RANK, SGN
       INTEGER CURR_INDEX
       INTEGER CURR_MAXCOEF
+      INTEGER LAST_POLE_MODE
+      LOGICAL COMPUTE_UV,COMPUTE_IR,LAST_UV,LAST_IR
+      DATA LAST_POLE_MODE/-2/
+      DATA LAST_UV,LAST_IR/.TRUE.,.TRUE./
       %(real_dp_format)s RBUFF(0:3)
 
       INTEGER COEFMAP_ZERO(0:LOOPMAXCOEFS-1)
@@ -127,6 +131,29 @@ C     Initialize COLLIER if needed
         CALL cite('Denner:2016kdg','one-loop reduction with COLLIER')
       ENDIF
 
+C     Pole selection is part of the tensor-cache key.  Preserve the legacy
+C     booleans, so returning to mode -1 restores the caller's old choices.
+      CALL ML_LOOP_POLE_FLAGS(COMPUTE_UV,COMPUTE_IR)
+      IF(LAST_POLE_MODE.NE.LoopPoleMode.OR.(LAST_UV.NEQV.COMPUTE_UV).OR.(LAST_IR.NEQV.COMPUTE_IR)) THEN
+        IF(LAST_POLE_MODE.NE.-2) THEN
+          CALL %(proc_prefix)sCLEAR_COLLIER_CACHE()
+          IF(COLLIERGlobalCache.NE.0) THEN
+            IF(COLLIERGlobalCache.EQ.-1) THEN
+              CALL INITCACHESYSTEM_CLL(N_CACHES*NPROCS,MAXNEXTERNAL)
+            ELSE
+              CALL INITCACHESYSTEM_CLL(N_CACHES*NPROCS,COLLIERGlobalCache)
+            ENDIF
+            CALL SwitchOffCacheSystem_cll()
+            NCALLS_IN_CACHE=-1
+            NCOLLIERCALLS=0
+            IF(COLLIER_CACHE_ACTIVE.EQ.1) CALL SwitchOnCache_cll((unique_id-1)*N_CACHES+1)
+          ENDIF
+        ENDIF
+        LAST_POLE_MODE=LoopPoleMode
+        LAST_UV=COMPUTE_UV
+        LAST_IR=COMPUTE_IR
+      ENDIF
+
 C     Initialize the event if it is the first time collier is called on this PS point
       IF(MUST_INIT_EVENT) THEN
         MUST_INIT_EVENT = .False.
@@ -163,11 +190,11 @@ C             No need to check the other caches since we already had to reset he
           ENDDO
           CALL InitEvent_cll((UNIQUE_ID-1)*N_CACHES+1)
           NCOLLIERCALLS(1) = 0        
-          IF(COLLIERComputeUVpoles.and.COLLIERUseCacheForPoles) THEN
+          IF(COMPUTE_UV.and.COLLIERUseCacheForPoles) THEN
             CALL InitEvent_cll((UNIQUE_ID-1)*N_CACHES+2)
             NCOLLIERCALLS(2) = 0
           ENDIF
-          IF(COLLIERComputeIRpoles.and.COLLIERUseCacheForPoles) THEN
+          IF(COMPUTE_IR.and.COLLIERUseCacheForPoles) THEN
             CALL InitEvent_cll((UNIQUE_ID-1)*N_CACHES+3)
             NCOLLIERCALLS(3) = 0
             CALL InitEvent_cll((UNIQUE_ID-1)*N_CACHES+4)
@@ -299,7 +326,7 @@ C     We can now call COLLIER
       ENDIF
 
 C     Now compute the UV poles if asked for
-      IF (COLLIERComputeUVpoles) THEN
+      IF (COMPUTE_UV) THEN
         IF(COLLIER_CACHE_ACTIVE.eq.1) THEN
           CALL SwitchOffCache_cll((unique_id-1)*N_CACHES+1)
           IF(COLLIERUseCacheForPoles) THEN
@@ -325,7 +352,7 @@ C     Now compute the UV poles if asked for
       ENDIF
 
 C     Now compute the IR poles if asked for
-      IF (COLLIERComputeIRpoles) THEN
+      IF (COMPUTE_IR) THEN
         IF(COLLIER_CACHE_ACTIVE.eq.1) THEN
           CALL SwitchOffCache_cll((unique_id-1)*N_CACHES+1)
           IF(COLLIERUseCacheForPoles) THEN
@@ -376,12 +403,12 @@ C       Because we must set q -> -q, we apply a minus sign to coefs of odd rank
           SGN = 1
         ENDIF
         TIRCOEFS(I,1) = SGN*TNten(C0,C1,C2,C3)
-        IF (COLLIERComputeUVpoles) THEN
+        IF (COMPUTE_UV) THEN
           TIRCOEFS(I,2) = SGN*( TNten_UV(C0,C1,C2,C3)-TNten(C0,C1,C2,C3) )
         ELSE
           TIRCOEFS(I,2) = DCMPLX(0.0d0,0.0d0)
         ENDIF
-        IF (COLLIERComputeIRpoles) THEN
+        IF (COMPUTE_IR) THEN
           TIRCOEFS(I,2) = TIRCOEFS(I,2) + SGN*( TNten_IR1(C0,C1,C2,C3)-TNten(C0,C1,C2,C3) )
           TIRCOEFS(I,3) = SGN*( TNten_IR2(C0,C1,C2,C3)-TNten(C0,C1,C2,C3) )
         ELSE

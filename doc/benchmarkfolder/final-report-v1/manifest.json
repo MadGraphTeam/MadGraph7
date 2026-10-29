@@ -1,0 +1,168 @@
+{
+  "excluded_redundant_materialization": "cli-report.json is preserved as deterministic cli-report.json.gz with exact decoded hash in provenance; the gzip and seven font binaries are acquired from immutable commit cc6f6fe6dd344a0a767dcfe52341c147e39a193a into ignored local paths using fetch_artifacts.py.",
+  "expected_pdf": {
+    "bytes": 346438,
+    "path": "benchmark.pdf",
+    "sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2245,
+      "sha256": "3b39bbcfb8e4fd8914535f8d932b459e8501f7caad485bb8f42bc350ee6a0309"
+    },
+    "benchmark.typ": {
+      "bytes": 23441,
+      "sha256": "c92260703b39819d8566d55d1f8b37c8c76f56fa542e067ab75016a14669f490"
+    },
+    "fetch_artifacts.py": {
+      "bytes": 3323,
+      "sha256": "791f951413c8a895e4ddb3b6e6032c5c2a2ed9425b2e8755be391b196b3cf038"
+    },
+    "final-report-v1/README.md": {
+      "bytes": 7033,
+      "sha256": "8fcd5039f6d146809a88d1df7b57fa3340edca99430c4baa26bce9155c5d8259"
+    },
+    "final-report-v1/cli-report.json.gz": {
+      "bytes": 1351700,
+      "sha256": "8234d9968f652eff6bb9c9dcffc41d967cffb9ec585477ce1ace05e23a948857"
+    },
+    "final-report-v1/compile-environment.json": {
+      "bytes": 235,
+      "sha256": "6b6fc4cfff84db6fe8eeb661df3fbd45da22abaae08df70a6d1b5ab2cb64f39d"
+    },
+    "final-report-v1/expected-cli-pins.json": {
+      "bytes": 267,
+      "sha256": "e9ccc784d5beeb0ea526ece124fe9f72f6a147b247fce8785dbde2339738a7c1"
+    },
+    "final-report-v1/fonts/LibertinusMath-Regular.otf": {
+      "bytes": 588848,
+      "sha256": "ded714b0d3808af527438ed7a85f16933133f66a12104c4a83db4cc248888011"
+    },
+    "final-report-v1/fonts/LibertinusMono-Regular.otf": {
+      "bytes": 59264,
+      "sha256": "c1872d14ecedecc5fbf069ebd778a242c5f20f2687c5443f3409ff0a3b945d0d"
+    },
+    "final-report-v1/fonts/LibertinusSerif-Bold.otf": {
+      "bytes": 293908,
+      "sha256": "0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64"
+    },
+    "final-report-v1/fonts/LibertinusSerif-BoldItalic.otf": {
+      "bytes": 259176,
+      "sha256": "47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce"
+    },
+    "final-report-v1/fonts/LibertinusSerif-Italic.otf": {
+      "bytes": 332312,
+      "sha256": "9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24"
+    },
+    "final-report-v1/fonts/LibertinusSerif-Regular.otf": {
+      "bytes": 337132,
+      "sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733"
+    },
+    "final-report-v1/fonts/LibertinusSerif-Semibold.otf": {
+      "bytes": 291640,
+      "sha256": "a4b3f28e85881db34695c1f005e4c79233a6caf3a2bd286c9b418c025fb99308"
+    },
+    "final-report-v1/fonts/OFL.txt": {
+      "bytes": 4426,
+      "sha256": "9aeecc8107c489ec1ec0068b0313e531a760edf3493705b32ab8ab8215a8794e"
+    },
+    "final-report-v1/formatter-source.py": {
+      "bytes": 5393,
+      "sha256": "f15e07d1092648fd3d40f06c8c0c2469132b904d74e23d722edfae588497b8ad"
+    },
+    "final-report-v1/historical-optimization-facts.json": {
+      "bytes": 27806,
+      "sha256": "58c066c29841acba15da4ccfaaa7cc830c01136fbb47f0c997f4520de209ea38"
+    },
+    "final-report-v1/measurements.csv": {
+      "bytes": 19049,
+      "sha256": "6f38a85e220728d07e176dd25e02385adcc93af956203f4a386a21ae664454d6"
+    },
+    "final-report-v1/plot.py": {
+      "bytes": 3751,
+      "sha256": "9e70db18efeace27059e72bd18a192fc651bed5af4e65c8a5c3c6675cc49d0a4"
+    },
+    "final-report-v1/preparation-costs.csv": {
+      "bytes": 28083,
+      "sha256": "ca7901b27d6a51f4ecf1bcabb023ff92313300724a3b23a3464473b594bbf34b"
+    },
+    "final-report-v1/provenance.json": {
+      "bytes": 24048,
+      "sha256": "f003ca27f0a58de1704662abc5806ef21eb7e85301fdefee6ab9acf84172a303"
+    },
+    "final-report-v1/report-data.json": {
+      "bytes": 288111,
+      "sha256": "bc42cc02076418eeba4b188de167575196f86139bc9c8b463349d2e766011e9c"
+    },
+    "final-report-v1/reproduce.py": {
+      "bytes": 2402,
+      "sha256": "d47adcb9306964c788bd63515a756f0844de2c3503003bf4ba00f104c44ae5ea"
+    },
+    "final-report-v1/stability/combined-loop-induced.svg": {
+      "bytes": 79241,
+      "sha256": "83751162b57f04707aa3b0bf965ca37865d9aee38302afe313983b937a5da369"
+    },
+    "final-report-v1/stability/combined-on-shell.svg": {
+      "bytes": 70298,
+      "sha256": "865e148f64e246115cadc8f48d7e056b34a5764fd52cf4efd15b4e6bb5b6d506"
+    },
+    "final-report-v1/stability/combined-three-particle.svg": {
+      "bytes": 83380,
+      "sha256": "dc7ee9c7983ddd35f95c356dc1983fd4f3a616597f0fc93650d359c83144f902"
+    },
+    "final-report-v1/stability/combined-two-particle.svg": {
+      "bytes": 75197,
+      "sha256": "bdf406ef339dfdffbd3c1a47b3f585c4c9c6a0166fce4cc9b22f0b4552657382"
+    },
+    "final-report-v1/stability/direction-loop-induced.svg": {
+      "bytes": 76397,
+      "sha256": "b69447d7fc57e11e80db18c5ad4d072f88cbebd9987ed0453102bee12449db38"
+    },
+    "final-report-v1/stability/direction-on-shell.svg": {
+      "bytes": 65884,
+      "sha256": "3091ca65c8155237898c318580ce2066995b54bac34ed37ffaa27d9bc227b6ce"
+    },
+    "final-report-v1/stability/direction-three-particle.svg": {
+      "bytes": 82105,
+      "sha256": "f89f4321768e79caef179ab79e2ec742a0ed459db52d48e4d9c616d0147bff03"
+    },
+    "final-report-v1/stability/direction-two-particle.svg": {
+      "bytes": 68752,
+      "sha256": "83007d873524765ae8c8d4a4c93b33e6545be247a884e756ae0d784a81fcfdf5"
+    },
+    "final-report-v1/stability/lorentz-loop-induced.svg": {
+      "bytes": 75393,
+      "sha256": "82c60ca00af45bc8f9a48dfc6f299a15aba8c442468ceb0b9751b90460871470"
+    },
+    "final-report-v1/stability/lorentz-on-shell.svg": {
+      "bytes": 61080,
+      "sha256": "b77944f57d0a1184d3054708e16f63cf773f2327f264da320a1eeb3ae9fec70d"
+    },
+    "final-report-v1/stability/lorentz-three-particle.svg": {
+      "bytes": 80779,
+      "sha256": "c91c65a26599c03574f20d958af5d4e98457189b68299f89ac9a9b5ae5a467ac"
+    },
+    "final-report-v1/stability/lorentz-two-particle.svg": {
+      "bytes": 67728,
+      "sha256": "7a09948ca2127df20fddad9f3029296d0ff3ed669fc2f3c68cb4166db1746580"
+    },
+    "final-report-v1/style.typ": {
+      "bytes": 2733,
+      "sha256": "6940ffd9613dde9c4f9554255a418024b99d04dfef383818d4c4f8ee368bbf4c"
+    },
+    "final-report-v1/timing.svg": {
+      "bytes": 136922,
+      "sha256": "9d313f9efddc72320179532e268d91f564a41fd41260f57e9ec25e04550004ff"
+    }
+  },
+  "schema": "final-actual-benchmark-document-v1",
+  "scientific_archive": {
+    "historical_partial_report_url": "https://github.com/MadGraphTeam/MadGraph7/tree/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/historical/20261021-partial",
+    "revision": "19d67c8605337c176680878a521b3a014176a7fb",
+    "scope": "Archived raw scientific evidence and readers; separate from the finite local offline document inputs.",
+    "tree_url": "https://github.com/MadGraphTeam/MadGraph7/tree/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder"
+  },
+  "scope": "Exact finite offline document closure; no native verification, amplitude evaluation or new statistical inference",
+  "source_date_epoch": 1792627200,
+  "typst_version": "typst 0.15.1 (9dfd3a08)"
+}
