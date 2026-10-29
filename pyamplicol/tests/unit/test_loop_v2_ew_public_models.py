@@ -657,6 +657,7 @@ def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
     import json
 
     from pyamplicol import Runtime
+    from pyamplicol.loops.orders import canonical_order
     from pyamplicol.models.loading import compile_model_source
 
     name, restriction, expression, corrections, extra, fixture = PUBLIC_ROUTE[case]
@@ -706,13 +707,29 @@ def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
     points = [[[float(x) for x in p] for p in point] for point in reference["points"]]
     scales = [float(mu) ** 2 for mu in reference["mu_r"]]
     result = runs["public"].evaluate(points, mu_r2=scales)
+    # The fixture's squared orders: the Born squared, and the interference of
+    # the Born with the loop amplitude of the fixture's orders.
+    born_amplitude, loop_amplitude = (
+        reference["born_orders"],
+        reference["loop_orders"],
+    )
+    born_order = canonical_order(
+        tuple((name, 2 * power) for name, power in born_amplitude.items())
+    )
+    sector_order = canonical_order(
+        tuple(
+            (name, born_amplitude.get(name, 0) + loop_amplitude.get(name, 0))
+            for name in sorted({*born_amplitude, *loop_amplitude})
+        )
+    )
+    (b,) = [i for i, order in enumerate(result.born_orders) if order == born_order]
+    (v,) = [
+        i for i, sector in enumerate(result.sectors) if sector.order == sector_order
+    ]
     for k, row in enumerate(reference["rows"]):
         madloop = row["providers"]["madloop"]
-        born = sum(complex(value).real for value in result.born_values[k])
-        laurent = [
-            sum(complex(sector[i]).real for sector in result.values[k])
-            for i in range(3)
-        ]
+        born = complex(result.born_values[k][b]).real
+        laurent = [complex(result.values[k][v][i]).real for i in range(3)]
         floor = abs(born) * alpha / (2 * 3.141592653589793)
         for key, ours, scale in (
             ("born", born, 0.0),
