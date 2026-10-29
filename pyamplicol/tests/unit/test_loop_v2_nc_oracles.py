@@ -52,6 +52,7 @@ each row's ids here.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
@@ -325,14 +326,22 @@ def test_ward_identity_at_other_nc_needs_the_declared_r2(
     identities (the R2 then misses the bare violation: 1.7e-4)."""
 
     spec = _spec("u u~ > g g g", {"QCD": 3, "QED": 0}, _point([0] * 5))
-    good = _ward(loop_sm_compiled_model, spec, ("2",), tmp_path)["2"]
+    # The check and its control run concurrently (one process each).
+    with ThreadPoolExecutor(2) as pool:
+        good, bad = (
+            future.result()["2"]
+            for future in [
+                pool.submit(_ward, loop_sm_compiled_model, spec, ("2",), tmp_path),
+                pool.submit(
+                    _ward,
+                    loop_sm_compiled_model,
+                    {**spec, "identities": {"Ncol": "3"}},
+                    ("2",),
+                    tmp_path / "control",
+                ),
+            ]
+        )
     assert good["passed"] is True, good["rows"]
-    bad = _ward(
-        loop_sm_compiled_model,
-        {**spec, "identities": {"Ncol": "3"}},
-        ("2",),
-        tmp_path / "control",
-    )["2"]
     assert bad["passed"] is False
     assert max(max(row["virtual"]) for row in bad["rows"]) > 1e-6
 
