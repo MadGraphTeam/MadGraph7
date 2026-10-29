@@ -18,7 +18,10 @@ A row's variants (``<id>@<name>``: a runtime parameter change on the same
 generation) are ids of their own; a non-gating variant (a diagnostic twin)
 is listed in the manifest and left to the campaign CLI. Rows on the
 native-input route (heavy 2->4/2->5 gluon rows) record rule 4 as not formed
-(no native Catani prediction, WP3.1 I5c).
+(no native Catani prediction, WP3.1 I5c), as do M01's public-route variants
+(the subprocesses of the public route's multiparticle artifact; their
+tools-route twins hold rule 4). M01 is composite: its variants, its
+expansion and MQ-MODEL's bitwise test (manifest ``delegated``) make it up.
 """
 
 from __future__ import annotations

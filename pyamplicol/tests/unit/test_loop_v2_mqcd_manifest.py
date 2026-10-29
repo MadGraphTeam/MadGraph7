@@ -143,10 +143,17 @@ def test_rows_are_well_formed(manifest, rows):
         if row.status == "pending":
             assert row.pending["waits_for"] in mqcd.UNBLOCKERS, name
             assert row.pending["reason"], name
+        elif row.status == "composite":
+            # Made of its gating variants, checks and delegated columns.
+            assert row.pending is None and row.reference is None, name
+            assert row.delegated, name
+            assert any(o.base == name and o.gating for o in rows.values()), name
         else:
             assert row.pending is None and row.reference is not None, name
             assert row.reference["format"] in mqcd.REFERENCE_FORMATS, name
         assert row.inputs in ("python", "native"), name
+        assert row.route in mqcd.ROUTES, name
+        assert row.route == "tools" or row.subprocess, name
         # A checked per-helicity extra has MadLoop's per-helicity rows (the
         # row's reference or MQ-REF's per-helicity run of the row).
         if row.status == "active" and "hel" in set(row.extras) - set(
@@ -156,7 +163,9 @@ def test_rows_are_well_formed(manifest, rows):
             assert found["rows"] and found["rows"][0], name
         # The native-input route forms no Catani prediction: such a row says
         # so (rule 4 recorded as not formed).
-        assert row.catani == ("none" if row.inputs == "native" else "python"), name
+        # The public route forms none either (its tools-route twin does).
+        tools = row.inputs == "python" and row.route == "tools"
+        assert row.catani == ("python" if tools else "none"), name
         if row.base is not None:
             base = rows[row.base]
             # A variant is another reference on the base request, or the
@@ -262,7 +271,9 @@ def test_listings_name_real_points_and_coefficients(rows):
 
 def test_pending_rows_and_extras_name_their_package(rows):
     pending = {
-        name: row.pending["waits_for"] for name, row in rows.items() if not row.active
+        name: row.pending["waits_for"]
+        for name, row in rows.items()
+        if row.status == "pending"
     }
     waiting = {
         (name, extra): reason
@@ -282,10 +293,17 @@ def test_rule7_is_mq_nc_s_column_or_waits_for_it(manifest, rows):
     nc = {name: row for name, row in rows.items() if "nc" in row.extras}
     smoke = manifest["smokes"]["lc_every_restriction"]
     assert len(nc) == 13 and all(row.base is None for row in nc.values())
+    others = [
+        node
+        for row in rows.values()
+        for name, ids in row.delegated.items()
+        if name != "nc"
+        for node in ids
+    ]
     if not any(row.nc_column for row in nc.values()):
         assert all(r.extras_pending["nc"].startswith("MQ-NC") for r in nc.values())
         assert smoke == "MQ-NC"
-        assert mqcd.delegated_ids(manifest) == []
+        assert mqcd.delegated_ids(manifest) == others
         return
     import importlib
 
@@ -301,7 +319,9 @@ def test_rule7_is_mq_nc_s_column_or_waits_for_it(manifest, rows):
     # The sweep's list: each id once, the smoke last.
     ids = mqcd.delegated_ids(manifest)
     assert len(ids) == len(set(ids)) and ids[-1] == smoke["test"]
-    assert set(ids[:-1]) == {node for row in nc.values() for node in row.nc_column}
+    assert set(ids[:-1]) == {
+        node for row in nc.values() for node in row.nc_column
+    } | set(others)
 
 
 # ------------------------------------------------------------ the helpers
@@ -714,11 +734,11 @@ def _nc_manifest(manifest, columns, path, waiting=()):
                 unit["pending"] = {"waits_for": "MQ-5F", "reason": "test"}
         if "nc" not in entry["extras"]:
             continue
-        entry.pop("nc_column", None)
+        (entry.get("delegated") or {}).pop("nc", None)
         pending = entry.setdefault("extras_pending", {})
         pending.pop("nc", None)
         if entry["id"] in columns:
-            entry["nc_column"] = list(columns[entry["id"]])
+            entry.setdefault("delegated", {})["nc"] = list(columns[entry["id"]])
         else:
             pending["nc"] = "MQ-NC (rule 7)"
     path.write_text(json.dumps(data))
@@ -859,6 +879,102 @@ def test_report_data_reads_the_nc_column_from_junit(tmp_path, monkeypatch, manif
     # Without the JUnit XML the nc column is not run, and so is its row.
     built = builder.build([results], {}, None)
     assert {row["id"]: row["status"] for row in built["rows"]}["A12"] == "not-run"
+
+
+def test_m01_is_composite_of_both_routes_and_mq_model_s_bitwise_test(rows):
+    """PLAN §4.2 M01: no evaluation of its own; each MadLoop P reference
+    against the subprocess's own generation (tools route, with Catani) and
+    against the public route's multiparticle artifact (same points and
+    reference), and MQ-MODEL's test that each subprocess of that artifact is
+    bitwise its own generation, by an id that exists."""
+
+    m01 = rows["M01"]
+    assert m01.status == "composite" and not m01.active
+    parts = {name: row for name, row in rows.items() if row.base == "M01"}
+    assert set(parts) == {"M01@P0", "M01@P2", "M01@public-P0", "M01@public-P2"}
+    for name in ("P0", "P2"):
+        tools, public = parts[f"M01@{name}"], parts[f"M01@public-{name}"]
+        assert tools.route == "tools" and public.route == "public"
+        assert tools.catani == "python" and public.catani == "none"
+        assert public.reference == tools.reference and public.points == tools.points
+        assert public.process == tools.process and public.subprocess
+        assert public.gating and public.active
+    assert set(mqcd.nightly_ids()) >= set(parts) and "M01" not in mqcd.nightly_ids()
+    (node,) = m01.delegated["bitwise"]
+    path, function = node.split("::")
+    assert f"def {function}(" in (mqcd.ROOT / path).read_text()
+
+
+def test_public_route_values_become_absolute_estimates():
+    """A public ``VirtualEvaluation`` point: Born and Laurent coefficients
+    per sector key, the per-point relative estimate made absolute on the
+    single sector (an infinite relative estimate of an exact zero takes the
+    sector's relative bound times its largest coefficient)."""
+
+    from types import SimpleNamespace
+
+    laurent = SimpleNamespace(finite=2.0, single_pole=-0.5, double_pole=0.0)
+    estimate = SimpleNamespace(
+        relative=1e-12, finite=1e-13, single_pole=4e-13, double_pole=math.inf
+    )
+    result = SimpleNamespace(
+        born_orders=((("QCD", 4), ("QED", 0)),),
+        born_values=((1.5,),),
+        sectors=(SimpleNamespace(order=(("QCD", 6),)),),
+        values=((laurent,),),
+        stability=(estimate,),
+    )
+    point = mqcd.public_evaluated(result, 0, "double", 0.0)
+    assert point.born == {(("QCD", 4),): Decimal("1.5")}
+    assert point.virtual == {(("QCD", 6),): (Decimal(2), Decimal("-0.5"), Decimal(0))}
+    (budget,) = point.estimate.values()
+    assert budget == pytest.approx((2e-13, 2e-13, 2e-12), rel=1e-12)
+    assert point.catani is None
+    result.stability = None
+    assert mqcd.public_evaluated(result, 0, "double", 0.0).estimate is None
+
+
+def test_report_data_builds_the_composite_row_from_its_parts(
+    tmp_path, monkeypatch, manifest
+):
+    """build_mqcd.py: M01 passes when its four variants, its expansion check
+    and MQ-MODEL's bitwise test passed; a failed bitwise test fails it, a
+    missing expansion record leaves it not-run."""
+
+    builder = _report_builder()
+    path = _nc_manifest(manifest, {}, tmp_path / "manifest.json")
+    monkeypatch.setattr(builder, "MANIFEST", path)
+    results = tmp_path / "results"
+    results.mkdir()
+    for name in ("M01@P0", "M01@P2", "M01@public-P0", "M01@public-P2"):
+        record = {"row": name, "tier": "nightly", "passed": True, "checks": 1,
+                  "failures": 0, "check_records": []}  # fmt: skip
+        (results / f"{name}.nightly.json").write_text(json.dumps(record))
+    (node,) = mqcd.rows()["M01"].delegated["bitwise"]
+    path, function = node.split("::")
+    module = path.removesuffix(".py").replace("/", ".")
+    junit = tmp_path / "bitwise.xml"
+
+    def write_junit(body):
+        junit.write_text(
+            f'<testsuites><testsuite><testcase classname="{module}" '
+            f'name="{function}">{body}</testcase></testsuite></testsuites>'
+        )
+
+    write_junit("")
+
+    def m01():
+        built = builder.build([results], {}, None, [junit])
+        return next(r for r in built["rows"] if r["id"] == "M01")
+
+    assert m01()["status"] == "not-run"  # no expansion record
+    expansion = {"row": "expansion:M01", "tier": "nightly", "passed": True,
+                 "checks": 1, "failures": 0, "check_records": []}  # fmt: skip
+    (results / "expansion:M01.nightly.json").write_text(json.dumps(expansion))
+    assert m01()["status"] == "pass"
+    assert m01()["delegated"]["bitwise"]["status"] == "pass"
+    write_junit("<failure message='x'/>")
+    assert m01()["status"] == "fail"
 
 
 def test_restricted_ufo_variants_wait_for_mq5f(rows):

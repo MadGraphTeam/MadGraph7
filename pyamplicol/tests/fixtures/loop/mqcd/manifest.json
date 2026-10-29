@@ -195,10 +195,11 @@
     "job": 1,
     "seconds": 1199,
     "rows": [
+     "A13",
+     "A13@sectors",
      "B05",
      "B05@sectors",
-     "B06",
-     "D24"
+     "D02"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
    },
@@ -221,14 +222,14 @@
    },
    {
     "job": 4,
-    "seconds": 1185,
+    "seconds": 1193,
     "rows": [
-     "A13",
-     "A13@sectors",
      "A14",
      "B07",
+     "C03",
      "C06",
-     "D02",
+     "D06",
+     "D06@madloop",
      "E06",
      "E06@sectors"
     ],
@@ -236,7 +237,7 @@
    },
    {
     "job": 5,
-    "seconds": 1199,
+    "seconds": 1197,
     "rows": [
      "A09",
      "A09@collinear",
@@ -253,24 +254,23 @@
      "B03",
      "C01",
      "C01@params",
-     "D01",
-     "D06",
-     "D06@madloop",
      "D07",
      "D07@sectors",
      "D08",
      "D08@sectors",
-     "D16",
+     "D15",
      "E01",
      "H01",
      "M01@P0",
-     "M01@P2"
+     "M01@P2",
+     "M01@public-P0",
+     "M01@public-P2"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_5.py"
    },
    {
     "job": 6,
-    "seconds": 1195,
+    "seconds": 1197,
     "rows": [
      "A01",
      "A01@sectors",
@@ -289,9 +289,9 @@
      "A26",
      "B02",
      "B02@madloop",
+     "B06",
      "B08",
      "C02",
-     "C03",
      "C04",
      "C05",
      "C07",
@@ -304,9 +304,8 @@
      "D11",
      "D12",
      "D13",
-     "D15",
+     "D16",
      "D17",
-     "D18",
      "D19",
      "D20",
      "D23",
@@ -326,12 +325,15 @@
    },
    {
     "job": 7,
-    "seconds": 70,
+    "seconds": 132,
     "rows": [
      "A04",
      "A12",
      "A12@sectors",
+     "D01",
+     "D18",
      "D21",
+     "D24",
      "E05"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_7.py"
@@ -6669,7 +6671,7 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "nightly",
-   "status": "pending",
+   "status": "composite",
    "reference_legend": "N multi-P ~1-2 min",
    "reference": null,
    "points": {
@@ -6698,10 +6700,6 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-MODEL",
-    "reason": "the public route's multiparticle artifact (each subprocess = its single-process generation, bitwise) waits for the public route on loop_sm; the expansion against MadLoop's P directories and every P reference (variants M01@P0, M01@P2) run now"
-   },
    "variants": [
     {
      "name": "P0",
@@ -6709,7 +6707,7 @@
      "tier": "nightly",
      "subprocess": true,
      "process": "u u~ > t t~",
-     "notes": "MadLoop SubProcesses/P0_uux_ttx of p p > t t~",
+     "notes": "MadLoop SubProcesses/P0_uux_ttx of p p > t t~ (its single-process generation, tools route)",
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P0_uux_ttx.json",
@@ -6727,12 +6725,37 @@
      }
     },
     {
+     "name": "public-P0",
+     "gating": true,
+     "tier": "nightly",
+     "subprocess": true,
+     "process": "u u~ > t t~",
+     "notes": "MadLoop SubProcesses/P0_uux_ttx: the subprocess u u~ > t t~ of the public route's multiparticle artifact of p p > t t~ (model.source = loop_sm)",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P0_uux_ttx.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "route": "public",
+     "catani": "none"
+    },
+    {
      "name": "P2",
      "gating": true,
      "tier": "nightly",
      "subprocess": true,
      "process": "g g > t t~",
-     "notes": "MadLoop SubProcesses/P2_gg_ttx of p p > t t~",
+     "notes": "MadLoop SubProcesses/P2_gg_ttx of p p > t t~ (its single-process generation, tools route)",
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P2_gg_ttx.json",
@@ -6748,6 +6771,31 @@
        3
       ]
      }
+    },
+    {
+     "name": "public-P2",
+     "gating": true,
+     "tier": "nightly",
+     "subprocess": true,
+     "process": "g g > t t~",
+     "notes": "MadLoop SubProcesses/P2_gg_ttx: the subprocess g g > t t~ of the public route's multiparticle artifact of p p > t t~ (model.source = loop_sm)",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/pp_ttx_P2_gg_ttx.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "route": "public",
+     "catani": "none"
     }
    ],
    "madloop_subprocesses": {
@@ -6760,6 +6808,11 @@
     ],
     "P2_gg_ttx": [
      "g g > t t~"
+    ]
+   },
+   "delegated": {
+    "bitwise": [
+     "tests/unit/test_loop_v2_stock_loop_sm.py::test_multiparticle_subprocesses_are_madloops_and_their_own_generations"
     ]
    }
   },
