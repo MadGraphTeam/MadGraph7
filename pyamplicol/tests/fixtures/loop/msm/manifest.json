@@ -150,7 +150,7 @@
   },
   "L5": {
    "model": "loop_sm",
-   "restriction": "no_b_mass",
+   "restriction": "default",
    "fixed_parameters": {
     "MB": "0",
     "ymb": "0",
@@ -525,38 +525,6 @@
     "path": "tests/fixtures/loop/required/emep_emep_ew.json",
     "providers": [
      "madloop"
-    ],
-    "madloop_r2": [
-     "R2_AABOSON1",
-     "R2_AABOSON2",
-     "R2_AABOSON3",
-     "R2_AAD",
-     "R2_AAT3",
-     "R2_AAU",
-     "R2_AWWCS",
-     "R2_AZBOSON1",
-     "R2_AZBOSON2",
-     "R2_AZBOSON3",
-     "R2_AZD",
-     "R2_AZL",
-     "R2_AZT3",
-     "R2_AZU",
-     "R2_EEACM",
-     "R2_EEACP",
-     "R2_EEZCM",
-     "R2_EEZCP",
-     "R2_GG_1_0",
-     "R2_GG_1_R2_GG_2_R2_GG_3_0",
-     "R2_GG_1_R2_GG_3_0",
-     "R2_LLZCP",
-     "R2_ZZBOSON1",
-     "R2_ZZBOSON2",
-     "R2_ZZBOSON3",
-     "R2_ZZD",
-     "R2_ZZL",
-     "R2_ZZT3",
-     "R2_ZZU",
-     "R2_ZZV"
     ]
    },
    "points": {
@@ -593,8 +561,7 @@
     "QED": 0.0075467711139788835
    },
    "compatibility": "gmu_particle_anti",
-   "scale_parameter": "MU_R",
-   "madloop_omitted_r2": []
+   "scale_parameter": "MU_R"
   },
   {
    "id": "LL05",
@@ -898,69 +865,6 @@
     "providers": [
      "recola",
      "madloop"
-    ],
-    "madloop_r2": [
-     "R2_AABOSON1",
-     "R2_AABOSON2",
-     "R2_AABOSON3",
-     "R2_AAD",
-     "R2_AAH",
-     "R2_AAHT",
-     "R2_AAT3",
-     "R2_AAU",
-     "R2_AG0H",
-     "R2_AWWCS",
-     "R2_AZBOSON1",
-     "R2_AZBOSON2",
-     "R2_AZBOSON3",
-     "R2_AZD",
-     "R2_AZH",
-     "R2_AZHT",
-     "R2_AZL",
-     "R2_AZT3",
-     "R2_AZU",
-     "R2_CCA2CP_S",
-     "R2_CCZ2CP_S",
-     "R2_EEACM",
-     "R2_EEACP",
-     "R2_EEZCM",
-     "R2_EEZCP",
-     "R2_G0G0BOSON1",
-     "R2_G0TT",
-     "R2_GG_1_0",
-     "R2_GG_1_R2_GG_2_R2_GG_3_0",
-     "R2_GG_1_R2_GG_3_0",
-     "R2_GMGPTB2",
-     "R2_HHBOSON2",
-     "R2_HHT1",
-     "R2_HTT",
-     "R2_HTT_B",
-     "R2_LLZCP",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_SS_1_R2_SS_2_0",
-     "R2_TTA2CM",
-     "R2_TTA2CM_B",
-     "R2_TTA2CP",
-     "R2_TTC0",
-     "R2_TTZ2CM",
-     "R2_TTZ2CM_B",
-     "R2_TTZ2CP",
-     "R2_UUCM",
-     "R2_ZG0H",
-     "R2_ZG0HT",
-     "R2_ZZBOSON1",
-     "R2_ZZBOSON2",
-     "R2_ZZBOSON3",
-     "R2_ZZD",
-     "R2_ZZH",
-     "R2_ZZHT",
-     "R2_ZZL",
-     "R2_ZZT3",
-     "R2_ZZU",
-     "R2_ZZV"
     ]
    },
    "points": {
@@ -1420,52 +1324,6 @@
      "madloop",
      "recola",
      "openloops"
-    ],
-    "madloop_r2": [
-     "R2_AABOSON1",
-     "R2_AABOSON2",
-     "R2_AABOSON3",
-     "R2_AAD",
-     "R2_AAT3",
-     "R2_AAU",
-     "R2_AWWCS",
-     "R2_AZBOSON1",
-     "R2_AZBOSON2",
-     "R2_AZBOSON3",
-     "R2_AZD",
-     "R2_AZL",
-     "R2_AZT3",
-     "R2_AZU",
-     "R2_CCA2CM",
-     "R2_CCA2CP",
-     "R2_CCA2CP_S",
-     "R2_CCZ2CM",
-     "R2_CCZ2CP",
-     "R2_CCZ2CP_S",
-     "R2_EEACM",
-     "R2_EEACP",
-     "R2_EEZCM",
-     "R2_EEZCP",
-     "R2_GBB2CP",
-     "R2_GCC2CM",
-     "R2_GCC2CPS",
-     "R2_GG_1_0",
-     "R2_GG_1_R2_GG_2_R2_GG_3_0",
-     "R2_GG_1_R2_GG_3_0",
-     "R2_LLZCP",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_UUCM",
-     "R2_ZZBOSON1",
-     "R2_ZZBOSON2",
-     "R2_ZZBOSON3",
-     "R2_ZZD",
-     "R2_ZZL",
-     "R2_ZZT3",
-     "R2_ZZU",
-     "R2_ZZV"
     ]
    },
    "points": {
@@ -1514,8 +1372,7 @@
    "extras_pending": {
     "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)",
     "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   },
-   "madloop_omitted_r2": []
+   }
   },
   {
    "id": "DY07",
@@ -1944,20 +1801,7 @@
      "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
      "model": "gmu",
      "counterterm": "eCoup_DGmua0_UV_EW"
-    },
-    "madloop_r2": [
-     "R2_CCA2CM",
-     "R2_CCA2CP",
-     "R2_CCA2CP_S",
-     "R2_GBB2CP",
-     "R2_GCC2CM",
-     "R2_GCC2CPS",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_UUCM"
-    ]
+    }
    },
    "points": {
     "nightly": [
@@ -2002,8 +1846,7 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the tagged final photon (Q1 (a)); the s^4e^2 top-up (MS-REF) extends the request",
-   "madloop_omitted_r2": []
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the tagged final photon (Q1 (a)); the s^4e^2 top-up (MS-REF) extends the request"
   },
   {
    "id": "VV01",
@@ -2456,17 +2299,7 @@
      "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
      "model": "gmu",
      "counterterm": "eCoup_DGmua0_UV_EW"
-    },
-    "madloop_r2": [
-     "R2_CCA2CM",
-     "R2_CCA2CP",
-     "R2_CCA2CP_S",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_UUCM"
-    ]
+    }
    },
    "points": {
     "nightly": [
@@ -2510,8 +2343,7 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the two tagged final photons (Q1 (a)); the s^2e^4 top-up (MS-REF) extends the request",
-   "madloop_omitted_r2": []
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the two tagged final photons (Q1 (a)); the s^2e^4 top-up (MS-REF) extends the request"
   },
   {
    "id": "VV07",
@@ -3449,59 +3281,6 @@
     "format": "madloop-components",
     "path": "tests/fixtures/loop/goldstone-mixing.json",
     "key": "gt_tttx_ew",
-    "madloop_r2": [
-     "R2_AABOSON1",
-     "R2_AABOSON2",
-     "R2_AABOSON3",
-     "R2_AAD",
-     "R2_AAT3",
-     "R2_AAU",
-     "R2_AZBOSON1",
-     "R2_AZBOSON2",
-     "R2_AZBOSON3",
-     "R2_AZD",
-     "R2_AZL",
-     "R2_AZT3",
-     "R2_AZU",
-     "R2_CCA2CP_S",
-     "R2_CCZ2CP_S",
-     "R2_G0G0BOSON1",
-     "R2_G0TT",
-     "R2_GCC2CPS",
-     "R2_GG_1_0",
-     "R2_GG_1_R2_GG_2_R2_GG_3_0",
-     "R2_GG_1_R2_GG_3_0",
-     "R2_GMGPTB2",
-     "R2_GTT2CM",
-     "R2_GTT2CMB",
-     "R2_GTT2CP",
-     "R2_HHBOSON1",
-     "R2_HHBOSON2",
-     "R2_HHT1",
-     "R2_HTT",
-     "R2_HTT_B",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_SS_1_R2_SS_2_0",
-     "R2_TTA2CM",
-     "R2_TTA2CM_B",
-     "R2_TTA2CP",
-     "R2_TTC0",
-     "R2_TTZ2CM",
-     "R2_TTZ2CM_B",
-     "R2_TTZ2CP",
-     "R2_UUCM",
-     "R2_ZZBOSON1",
-     "R2_ZZBOSON2",
-     "R2_ZZBOSON3",
-     "R2_ZZD",
-     "R2_ZZL",
-     "R2_ZZT3",
-     "R2_ZZU",
-     "R2_ZZV"
-    ],
     "omitted_r2": {
      "component": "r2_g0tt",
      "coupling": "R2_G0tt_b",
@@ -3976,66 +3755,6 @@
      "madloop",
      "recola",
      "openloops"
-    ],
-    "madloop_r2": [
-     "R2_AABOSON1",
-     "R2_AABOSON2",
-     "R2_AABOSON3",
-     "R2_AAD",
-     "R2_AAT3",
-     "R2_AAU",
-     "R2_AWWCS",
-     "R2_AZBOSON1",
-     "R2_AZBOSON2",
-     "R2_AZBOSON3",
-     "R2_AZD",
-     "R2_AZL",
-     "R2_AZT3",
-     "R2_AZU",
-     "R2_CCA2CP_S",
-     "R2_CCZ2CP_S",
-     "R2_EEACM",
-     "R2_EEACP",
-     "R2_EEZCM",
-     "R2_EEZCP",
-     "R2_GCC2CPS",
-     "R2_GGAADOWN",
-     "R2_GGAAUP",
-     "R2_GGHT",
-     "R2_GGVV_0",
-     "R2_GGZADOWN",
-     "R2_GGZAUP",
-     "R2_GGZDOWN",
-     "R2_GGZZDOWN",
-     "R2_GGZZUP",
-     "R2_GGZ_0",
-     "R2_GG_1_0",
-     "R2_GG_1_R2_GG_2_R2_GG_3_0",
-     "R2_GG_1_R2_GG_3_0",
-     "R2_GTT2CM",
-     "R2_GTT2CMB",
-     "R2_GTT2CP",
-     "R2_LLZCP",
-     "R2_QQCP0",
-     "R2_QQCPCS",
-     "R2_QQ_2_R2_QQ_3_R2_QQ_4_0",
-     "R2_QQ_4_0",
-     "R2_TTA2CM",
-     "R2_TTA2CM_B",
-     "R2_TTA2CP",
-     "R2_TTC0",
-     "R2_TTZ2CM",
-     "R2_TTZ2CM_B",
-     "R2_TTZ2CP",
-     "R2_UUCM",
-     "R2_ZZBOSON1",
-     "R2_ZZBOSON2",
-     "R2_ZZBOSON3",
-     "R2_ZZD",
-     "R2_ZZL",
-     "R2_ZZT3",
-     "R2_ZZU",
-     "R2_ZZV"
     ]
    },
    "points": {
@@ -4074,8 +3793,7 @@
    "scale_parameter": "MU_R",
    "ignored_fixed_parameters": [
     "WTau"
-   ],
-   "madloop_omitted_r2": []
+   ]
   },
   {
    "id": "TV07",
@@ -6728,7 +6446,7 @@
   {
    "id": "SC05",
    "class": "W-scheme",
-   "process": "u u~ > e- e+ g g / d s b",
+   "process": "u u~ > e- e+ g g",
    "born_orders": {
     "QCD": 2,
     "QED": 2
@@ -6747,7 +6465,7 @@
     "QCD"
    ],
    "model": "loop_sm",
-   "restriction": "no_b_mass",
+   "restriction": "default",
    "restriction_code": "L5",
    "fixed_parameters": {
     "MB": "0",

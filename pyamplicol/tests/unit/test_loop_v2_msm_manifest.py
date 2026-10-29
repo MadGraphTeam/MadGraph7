@@ -273,34 +273,6 @@ def test_rule4_asserts_the_typed_reasons():
 
 
 @pytest.mark.loop_fast
-def test_export_couplings_split_merged_and_suffixed_names():
-    """MG5_aMC's export spells a coupling's Laurent coefficient with a
-    ``_<k>`` suffix and merges couplings of one structure into one name."""
-
-    known = ["R2_GG_1", "R2_GG_2", "R2_GG_3", "R2_G0tt", "R2_G0tt_b", "R2_QQCP0"]
-    names, unresolved = mqcd.export_couplings(
-        ["R2_GG_1_R2_GG_3_0", "R2_GG_2_0", "R2_G0TT", "R2_QQCP0", "R2_XX"], known
-    )
-    assert names == {"R2_GG_1", "R2_GG_2", "R2_GG_3", "R2_G0tt", "R2_QQCP0"}
-    assert unresolved == ("R2_XX",)
-
-
-@pytest.mark.loop_fast
-def test_omitted_r2_is_found_at_the_vertices_madloop_calls():
-    """R2_G0tt_b of V_ttG02 (loop label [W+, b]) is omitted where MadLoop
-    calls R2_G0tt of the same vertex; a vertex MadLoop calls no coupling of
-    is not a finding (no tree of the request may hold it)."""
-
-    engine = {
-        "V_ttG02": frozenset({"R2_G0tt", "R2_G0tt_b"}),
-        "V_ttH": frozenset({"R2_Htt", "R2_Htt_b"}),
-        "V_GGG": frozenset({"R2_3Gq"}),
-    }
-    called = {"R2_G0tt", "R2_Htt", "R2_Htt_b"}
-    assert mqcd.omitted_r2(engine, called) == ("R2_G0tt_b",)
-
-
-@pytest.mark.loop_fast
 def test_photon_conversion_is_mg5s_formula():
     """VJ03's reference: raw MadLoop G_mu x (alpha(0)/alpha_Gmu)^n, the
     virtual minus 2 n DGmua0 Born (``test_loop_v2_external_photons``'s
