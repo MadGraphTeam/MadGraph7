@@ -192,6 +192,8 @@ def test_selection_records_catalogue_resolution_and_refusals():
             )
         with pytest.raises(CompatibilityError, match="leading colour"):
             lc.require_leading_colour(accuracy, ["h:-1,-1,+1,+1"], None)
+    with pytest.raises(CompatibilityError, match=r"at next-to-leading colour.*without"):
+        lc.require_leading_colour("nlc", None, ["1"], resolved=True)
     lc.require_leading_colour("full", None, None)
     rows = (((0, -1), (1, 1)), ((0, 1), (1, -1)))
     flows = (
@@ -1273,6 +1275,25 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
             DOUBLE,
             born=_values(total, index)[0],
         )
+    # evaluate_resolved takes the same selectors: the selected rows and the
+    # selected flows' basis elements, each entry as without them.
+    subset = inclusive.evaluate_resolved(
+        pts, mu_r2=scales, helicities=[rows[1]], color_flows=[flow.id]
+    )
+    assert subset.helicity_ids == (f"h{k}",)
+    assert subset.virtual_color_ids == (f"basis-{b}",)
+    column = resolved.virtual_color_ids.index(f"basis-{b}")
+    for index in range(len(pts)):
+        assert subset.values[index][0][0][0] == resolved.values[index][0][k][column]
+        assert (
+            subset.born_values[index][0][0][0]
+            == resolved.born_values[index][0][k][column]
+        )
+    halves = inclusive.evaluate_resolved(pts, mu_r2=scales, helicities=rows)
+    assert halves.helicity_ids == tuple(
+        f"h{i}" for i, h in enumerate(inclusive.physics.helicities) if h.id in rows
+    )
+    assert halves.virtual_color_ids == resolved.virtual_color_ids
     inclusive.evaluate(pts, mu_r2=scales, color_flows=[flow.id])
     observables = inclusive._backend._observable_runtime()
 

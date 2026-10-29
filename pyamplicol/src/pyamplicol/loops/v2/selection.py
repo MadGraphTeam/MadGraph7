@@ -498,18 +498,31 @@ class Catalogue:
         return self.flows[ordinal - 1]
 
 
+_ACCURACY_NAMES = {"nlc": "next-to-leading", "full": "full"}
+
+
 def require_leading_colour(
-    accuracy: str, helicities: Iterable[str] | None, color_flows: Iterable[str] | None
+    accuracy: str,
+    helicities: Iterable[str] | None,
+    color_flows: Iterable[str] | None,
+    *,
+    resolved: bool = False,
 ) -> None:
     """Helicity and colour-flow selection exists at leading colour only: NLC
-    and full colour keep their API (every helicity and colour contracted)."""
+    and full colour keep their API (every helicity and colour contracted;
+    ``evaluate_resolved`` without selectors per helicity)."""
 
     if (helicities or color_flows) and accuracy != "lc":
+        instead = (
+            "evaluate_resolved without selectors returns every helicity row"
+            if resolved
+            else "use evaluate_resolved for per-helicity outputs"
+        )
         raise CompatibilityError(
             "v2 virtual runtimes evaluate every helicity and colour at "
-            f"{accuracy} colour; helicity and colour-flow selection is "
-            "available at leading colour (color.accuracy='lc'); use "
-            "evaluate_resolved for per-helicity outputs"
+            f"{_ACCURACY_NAMES.get(accuracy, accuracy)} colour; helicity and "
+            "colour-flow selection is available at leading colour "
+            f"(color.accuracy='lc'); {instead}"
         )
 
 

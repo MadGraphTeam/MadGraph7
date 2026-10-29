@@ -1572,6 +1572,13 @@ class V2ObservablesRuntime:
             **options,
         )["born"]
 
+    def _refuse_member_selection(self) -> None:
+        if self._member is not None:
+            raise CompatibilityError(
+                "helicity and colour-flow selection of a flavour member is not "
+                "available; select on its representative process"
+            )
+
     def _evaluate_selected(
         self,
         momenta: Momenta,
@@ -1593,11 +1600,7 @@ class V2ObservablesRuntime:
         lc.require_leading_colour(
             observables.slice.request.accuracy, helicities, color_flows
         )
-        if self._member is not None:
-            raise CompatibilityError(
-                "helicity and colour-flow selection of a flavour member is not "
-                "available; select on its representative process"
-            )
+        self._refuse_member_selection()
         rows, basis = self.selection_catalogue().resolve(helicities, color_flows)
         column = lc.column(rows, basis)
         arithmetic, carrier = self._precision(arithmetic, precision)
@@ -1758,11 +1761,17 @@ class V2ObservablesRuntime:
         precision: int | None = None,
         arithmetic: str | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
-        """Per Born helicity row and Born basis element (design §8.5)."""
+        """Per Born helicity row and Born basis element (design §8.5); at
+        leading colour ``helicities`` and ``color_flows`` (the tree engine's
+        IDs and ordinals, as in ``evaluate``) keep the selected rows and the
+        basis elements of the selected flows, each entry as without them."""
 
         from pyamplicol.loops.strategy import R2Selection
+        from pyamplicol.loops.v2 import selection as lc
 
         selection, checks = v2_options(on_failure=on_failure, **options)
         with_poles = computes_poles(selection)
@@ -1779,6 +1788,17 @@ class V2ObservablesRuntime:
         components: tuple[Any, ...] = (
             observables.components if accuracy == "lc" else (None,)
         )
+        helicity_ids = tuple(f"h{i}" for i in range(len(rows)))
+        if helicities or color_flows:
+            lc.require_leading_colour(accuracy, helicities, color_flows, resolved=True)
+            self._refuse_member_selection()
+            kept, basis = self.selection_catalogue().resolve(helicities, color_flows)
+            if kept is not None:
+                chosen = [k for k, row in enumerate(rows) if row in kept]
+                rows = tuple(rows[k] for k in chosen)
+                helicity_ids = tuple(helicity_ids[k] for k in chosen)
+            if basis is not None:
+                components = tuple(b for b in components if b in basis)
         with self._lock:
             parameters = dict(self._parameters)
         settings = {
@@ -1913,7 +1933,7 @@ class V2ObservablesRuntime:
             sectors=self._sectors,
             diagnostics=tuple(diagnostics),
             r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
-            helicity_ids=tuple(f"h{i}" for i in range(len(rows))),
+            helicity_ids=helicity_ids,
             born_color_ids=ids,
             virtual_color_ids=ids,
             color_accuracy=observables.slice.request.accuracy,
