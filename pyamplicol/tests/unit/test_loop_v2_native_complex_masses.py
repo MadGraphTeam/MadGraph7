@@ -31,15 +31,17 @@ loops on the continued model for the Ward identity:
   (double-double and binary64; gauge invariance of the complex-mass loops,
   not a test of their mass value);
 * CM10 (``u d~ > w+ b b~ QCD=0`` [QCD] on loop_sm under the complex-mass
-  scheme with the top width, the continued fixture) equals MadLoop CMS with
-  native inputs (``test_cms_top_width_equals_madloop``).
+  scheme with the top width, MS-CMS's ``model_cms.complex_mass_model``)
+  equals MadLoop CMS with native inputs.
 """
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 
@@ -281,3 +283,92 @@ def test_gluon_ward_identity_with_a_complex_top_pole_mass(slices):
     for carrier in ("double", "double-double"):
         check = ward.ward_check(executor, point, SCALE, carrier)
         assert check["passed"] is True, (carrier, check["rows"])
+
+
+# ------------------------------------------------------------ MadLoop CMS rows
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/loop/required/msm"
+
+
+def _madloop_rows(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def _laurent_errors(result, row, coupling: float) -> list[float]:
+    """Born and the virtual's (finite, 1/eps, 1/eps^2) against a MadLoop row
+    in the campaign metric: relative, a Laurent coefficient against
+    max(|its value|, |Born| coupling / 2 pi)."""
+
+    mine = [float(x) for x in result.totals[:4]]
+    theirs = [row["born"], row["finite"], row["single_pole"], row["double_pole"]]
+    flux = abs(theirs[0]) * coupling / (2 * math.pi)
+    return [
+        abs(a - b) / max(abs(b), flux if k else 0.0)
+        for k, (a, b) in enumerate(zip(mine, theirs, strict=True))
+    ]
+
+
+def test_cms_top_width_equals_madloop(loop_sm_ufo, loop_native, tmp_path):
+    """CM10: u d~ > w+ b b~ QCD=0 [QCD] on loop_sm (no_b_mass) under the
+    complex-mass scheme with the top width (``model_cms.complex_mass_model``,
+    the port of MG5_aMC's transform; the resonant top in the Born, complex
+    top loops and counterterms) with native inputs equals MadLoop CMS in
+    quadruple precision (``required/msm/udx_wpbbx_cms.json``) at its four
+    points: double-double to 1e-12 (measured 7e-14), binary64 to 1e-8
+    (measured 3.4e-10)."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    reference = _madloop_rows("udx_wpbbx_cms")
+    compiled = compile_model_source(
+        loop_sm_ufo, restriction=reference["restriction"], cache_dir=tmp_path
+    )
+    compiled = replace(
+        compiled,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            compiled.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    fixed = reference["fixed_parameters"]
+    model, scheme = complex_mass_model(
+        compiled,
+        fixed_parameters={k: v for k, v in fixed.items() if k.startswith("W")},
+        cache_dir=tmp_path,
+    )
+    assert dict(scheme.masses) == {"MT": "CMASS_MT"}
+    fixed = {k: v for k, v in fixed.items() if k in model.parameter_defaults}
+    slice_ = LoopSlice.generate(
+        model,
+        SliceRequest(
+            "u d~ > w+ b b~",
+            reference["born_orders"],
+            reference["loop_orders"],
+            fixed_parameters=fixed,
+        ),
+        loop_native,
+    )
+    executor = NativeExecutor(slice_, inputs="native")
+    record = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in record["plan_masses"])
+    parameters = {
+        k: v
+        for k, v in reference["parameters"].items()
+        if k in model.parameter_defaults and k not in fixed
+    }
+    scales = [str(Fraction(mu) ** 2) for mu in reference["mu_r"]]
+    for precision, tolerance in (
+        (Precision.double_double(), 1e-12),
+        (Precision.double(), 1e-8),
+    ):
+        results = executor.evaluate(
+            reference["points"], scales, parameters=parameters, precision=precision
+        )
+        for k, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
+            errors = _laurent_errors(result, row, float(parameters["aS"]))
+            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)

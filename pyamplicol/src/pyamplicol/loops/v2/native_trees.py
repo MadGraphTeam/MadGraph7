@@ -1770,6 +1770,7 @@ def _parameter_program(
                 symbol = symbols.qualified(f"pyamplicol_v2_parameters::e{len(inputs)}")
                 inputs.append(symbol)
                 symbol_of[name] = symbol
+
         def photon_ratio() -> Any:
             value = 1 / (
                 symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {})

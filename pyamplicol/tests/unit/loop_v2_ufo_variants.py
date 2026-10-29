@@ -52,18 +52,16 @@ def complex_mass_ufo(
     text = path.read_text()
     assert f"name = '{alias}'" not in text, alias
     path.write_text(
-        text
-        + f"\n{alias} = Parameter(name = '{alias}',\n"
+        text + f"\n{alias} = Parameter(name = '{alias}',\n"
         "                 nature = 'internal',\n"
         "                 type = 'complex',\n"
-        f"                 value = 'cmath.sqrt({mass}**2 - complex(0,1)*{mass}*{width})',\n"
+        "                 value = "
+        f"'cmath.sqrt({mass}**2 - complex(0,1)*{mass}*{width})',\n"
         f"                 texname = '{alias}')\n"
     )
     path = destination / "particles.py"
     text = path.read_text()
-    match = re.search(
-        rf"^{particle} = Particle\((?:.*\n)*?.*\)\n", text, re.MULTILINE
-    )
+    match = re.search(rf"^{particle} = Particle\((?:.*\n)*?.*\)\n", text, re.MULTILINE)
     assert match is not None, particle
     block = match.group(0)
     edited = block.replace(f"mass = Param.{mass},", f"mass = Param.{alias},").replace(
@@ -97,7 +95,8 @@ def _continue_mass(destination: Path, particle: str, mass: str, alias: str) -> N
         return match.group(1) + word.sub(alias, match.group(2)) + match.group(3)
 
     quoted = re.compile(r"""(')([^']*)(')""")
-    for name in ("parameters.py", "couplings.py", "CT_parameters.py", "CT_couplings.py"):
+    files = ("parameters.py", "couplings.py", "CT_parameters.py", "CT_couplings.py")
+    for name in files:
         path = destination / name
         if not path.exists():
             continue
