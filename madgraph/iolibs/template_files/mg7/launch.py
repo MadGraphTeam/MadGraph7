@@ -3978,16 +3978,16 @@ def build_selector_cmd(mother=None):
                                     len(run_card["histograms"]))
                                 self.modified_card.add("run")
                             else:
-                                logger.warning(
+                                self.invalid_set(
                                     "no run_card_default.toml to restore the "
                                     "histograms from")
                             return
-                        logger.warning(
+                        self.invalid_set(
                             "'set histograms %s': only OFF (remove them all) "
                             "and default (put the generated ones back) are "
                             "understood; edit the [histograms] section of "
-                            "Cards/run_card.toml for anything else",
-                            rest or "(no value)")
+                            "Cards/run_card.toml for anything else"
+                            % (rest or "(no value)"))
                         return
                     if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
                         ecm = run_card.set_collider(nlow, rest, masses)
@@ -4000,8 +4000,31 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # the generic editor would say "Ambiguous key 'pdf'"
+                    # without naming the per-beam entries
+                    if nlow == "pdf" and rest:
+                        self.invalid_set("Ambiguous key 'pdf' — use beam.pdf (both beams), "
+                                         "beam.pdf1, beam.pdf2 or systematics.pdf")
+                        return
+                    # custom function parameters are not run_card keys, so the
+                    # generic editor rejects them
+                    if rest and nlow.startswith("custom_functions.") and nlow.count(".") == 2:
+                        try:
+                            run_card.set(nlow, run_card.evaluate(rest, masses), user=True)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (name, rest, error))
+                            return
+                        logger.info("modify parameter %s of the run_card.toml to %s", nlow, rest)
+                        self.modified_card.add("run")
+                        return
+
                     if rest and run_card.is_cut_name(name):
-                        cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
+                        try:
+                            cut, bound, val = run_card.set_cut(
+                                name, run_card.evaluate(rest, masses))
+                        except _banner_mod.InvalidRunCard as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (name, rest, error))
+                            return
                         logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
                         self.modified_card.add("run")
                         return
@@ -4012,15 +4035,15 @@ def build_selector_cmd(mother=None):
                     # same "no cut" sentinels (minimum <= 0, maximum < 0).
                     if rest and nlow in run_card._LO_CUT_MAP:
                         if rest.lower().startswith("scan"):
-                            logger.warning("ignoring 'set %s %s': the [cuts] entries of "
-                                           "the mg7 run_card.toml cannot be scanned",
-                                           nlow, rest)
+                            self.invalid_set("invalid 'set %s %s': the [cuts] entries of "
+                                             "the mg7 run_card.toml cannot be scanned"
+                                             % (nlow, rest))
                             return
                         try:
                             cut, bound, val = run_card.set_lo_cut(
                                 nlow, run_card.evaluate(rest, masses))
                         except _banner_mod.InvalidCmd:
-                            logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
+                            self.invalid_set("invalid 'set %s %s': not a number" % (nlow, rest))
                             return
                         if val is None:
                             logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
@@ -4041,7 +4064,7 @@ def build_selector_cmd(mother=None):
                         try:
                             done = run_card.set_lo_param(nlow, rest, masses)
                         except _banner_mod.InvalidCmd as error:
-                            logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
                             return
                         if done is not None:
                             changes, warnings = done
@@ -4074,7 +4097,7 @@ def build_selector_cmd(mother=None):
                         except (TypeError, ValueError):
                             value = None
                         if value is None:
-                            logger.warning("ignoring 'set iseed %s': not an integer", rest)
+                            self.invalid_set("invalid 'set iseed %s': not an integer" % rest)
                             return
                         seed = -1 if value == 0 else value
                         run_card.set('run.seed', seed, user=True)
@@ -4090,7 +4113,12 @@ def build_selector_cmd(mother=None):
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:
-                            logger.warning("ignoring 'set %s %s': %s", name, rest, error)
+                            text = "'set %s %s': %s" % (name, rest, error)
+                            # an unknown lhaid is reported, not rejected, in every mode
+                            if nlow == "lhaid" and isinstance(error, _banner_mod.UnknownPDFSet):
+                                logger.warning("ignoring " + text)
+                            else:
+                                self.invalid_set("invalid " + text)
                             return
                         logger.info("set %s %s: %s", nlow, rest, done)
                         self.modified_card.add("run")

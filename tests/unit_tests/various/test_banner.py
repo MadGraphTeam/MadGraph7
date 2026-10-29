@@ -1682,6 +1682,25 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertTrue(rc.is_cut_name('cuts.jet-pt.max'))
         self.assertFalse(rc.is_cut_name('generation.events'))
 
+    def test_set_cut_rejects_an_unknown_bound(self):
+        """a typo in the bound used to create a cut named 'jet-pt.mni'"""
+        rc = bannermod.RunCardMG7()
+        before = dict(rc['cuts'])
+        self.assertRaises(bannermod.InvalidRunCard, rc.set_cut, 'jet-pt.mni', 20)
+        self.assertRaises(bannermod.InvalidRunCard, rc.set_cut, 'cuts.jet-pt.minimum', 20)
+        self.assertEqual(dict(rc['cuts']), before)
+        rc.set_cut('jet-pt', 25)      # no bound: the minimum
+        self.assertEqual(rc['cuts']['jet-pt']['min'], 25.0)
+
+    def test_set_ambiguous_key_honours_raiseerror(self):
+        """a bare key present in several sections is an error when asked for"""
+        rc = bannermod.RunCardMG7()
+        rc.set('enable', True, user=True)          # warning only
+        self.assertRaises(bannermod.InvalidCardEdition, rc.set, 'enable', True,
+                          user=True, raiseerror=True)
+        self.assertRaises(bannermod.InvalidCardEdition, rc.set, 'pdf', 'NNPDF',
+                          user=True, raiseerror=True)
+
     def test_set_lo_cut(self):
         """madevent cut names land in [cuts] as from_LO maps them, the "no
         cut" sentinels removing the bound; [histograms] is left alone"""
@@ -1759,7 +1778,10 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['phasespace.sde_strategy'], 'denominators')
         rc.set_lo_param('sde_strategy', '1')
         self.assertEqual(rc['phasespace.sde_strategy'], 'diagrams')
-        self.assertEqual(len(rc.set_lo_param('sde_strategy', '3')[1]), 1)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'sde_strategy', '3')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param,
+                          'dynamical_scale_choice', '99')
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
         self.assertIsNone(rc.set_lo_param('sde_strategy', 'denominators'))
         rc.set_lo_param('maxjetflavor', '5')
         self.assertEqual(sorted(rc['multiparticles']['jet']),

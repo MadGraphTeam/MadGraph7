@@ -468,6 +468,31 @@ class TestEditCardCmd(unittest.TestCase):
         self.cmd.do_set('wt default')
         self.assertEqual(param['decay'].get((6,)).value, wt)
 
+    def test_invalid_set_warns_interactively(self):
+        """an invalid set command leaves the cards alone without raising"""
+        param = self.cmd.param_card
+        mass = param['mass'].get((6,)).value
+        for line in ('foo_bar 3', 'mt abc', 'param_card mass 999 10',
+                     'run_card ptj', 'mass all abc', ''):
+            self.cmd.do_set(line)
+        self.assertEqual(param['mass'].get((6,)).value, mass)
+
+    def test_invalid_set_is_an_error_in_scripted_runs(self):
+        """a launch script must stop on a set command it cannot apply"""
+        self.cmd.mother_interface.inputfile = iter([])
+        param = self.cmd.param_card
+        mass = param['mass'].get((6,)).value
+        for line in ('foo_bar 3', 'mt abc', 'param_card mass 999 10',
+                     'run_card ptj', 'mass all abc', 'width 6 auto --foo=1',
+                     'madweight_card', 'events'):
+            self.assertRaises(madgraph.InvalidCmd, self.cmd.do_set, line)
+        self.assertEqual(param['mass'].get((6,)).value, mass)
+        # valid commands are unaffected
+        self.cmd.do_set('ptj 50')
+        self.assertEqual(self.cmd.run_card['ptj'], 50)
+        self.cmd.do_set('mt 180')
+        self.assertEqual(param['mass'].get((6,)).value, 180)
+
     def test_modif_run_card(self):
         """ """
 
