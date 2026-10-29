@@ -567,10 +567,19 @@ mu_r2 = "1000000"
 poles = "none"                 # finite part only; poles are absent (null)
 
 [evaluation.stability_checks]
-rotations = ["z:3/5:4/5"]      # exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
-# rotation_count = 2           # alternative: that many default rotations
+rotation_count = 1             # that many default (generic-axis) rotations
+# rotations = ["x:3/5:4/5"]    # alternative: exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
 reduction_direction = true     # re-reduce every loop numerator, reversed frame
+rescaled = true                # ... at rescaled inputs: master integrals evaluated again
 ```
+
+This is the recommended configuration (Python `VirtualStabilityChecks(1, True,
+rescaled=True)`). Avoid a rotation about the beam axis (`"z:..."` for beams
+along z): it leaves both incoming momenta and every energy and p_z bitwise
+unchanged, and has under-reported a binary64 double pole 23-fold
+(`u u~ > u u~ e+ e-`); only the rescaled check sees the master integrals' own
+rounding (`g g > b b~ h` with a massive b: up to 96-fold below the error
+without it).
 
 Each check re-evaluates or re-reduces every point; the result then carries one
 `stability` estimate per point (relative accuracy of the whole virtual, of the
@@ -581,8 +590,8 @@ legacy engine. `poles` is a pole selection (`PoleSelection` in Python):
 `"all"` (the default), `"none"`, `"uv"` or `"ir"`; the finite part is the same
 under every selection, and `"none"` saves the pole work. The CLI spells these
 `--loop-engine v2`, `--poles {all,none,uv,ir}`,
-`--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
-`--stability-reduction-direction`.
+`--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT`,
+`--stability-reduction-direction` and `--stability-rescaled`.
 
 **Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be
@@ -622,8 +631,8 @@ massless value). Such a loop is as accurate as binary64's master integrals at
 its arguments, and the rotation and reduction-direction checks reuse those
 masters, so they do not see that error (`u u~ > t t~` with a 1e-6 GeV top:
 2.5e-6 off with estimates of 4e-15); only the rescaled reduction check, which
-recomputes the masters (Python `StabilityChecks(reduction_direction=True,
-rescaled=True)`), does. Use that check for light loops, and `double-double`
+recomputes the masters (`rescaled = true`; Python
+`VirtualStabilityChecks(..., reduction_direction=True, rescaled=True)`), does. Use that check for light loops, and `double-double`
 where binary64 fails.
 
 **Units and the beam axis in binary64.** One absolute constant of the fast

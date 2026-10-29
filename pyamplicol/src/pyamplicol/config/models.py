@@ -1100,6 +1100,9 @@ class EvaluationStabilityChecksConfig:
     rotations: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     rotation_count: int = field(default=0, metadata=_setting("int"))
     reduction_direction: bool = field(default=False, metadata=_setting("bool"))
+    # The reduction-direction check at rescaled inputs (master integrals
+    # evaluated again); requires reduction_direction.
+    rescaled: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1110,10 +1113,11 @@ class EvaluationStabilityChecksConfig:
         _integer(
             self.rotation_count, "evaluation.stability_checks.rotation_count", minimum=0
         )
-        if type(self.reduction_direction) is not bool:
-            raise ConfigurationError(
-                "evaluation.stability_checks.reduction_direction must be a boolean"
-            )
+        for name in ("reduction_direction", "rescaled"):
+            if type(getattr(self, name)) is not bool:
+                raise ConfigurationError(
+                    f"evaluation.stability_checks.{name} must be a boolean"
+                )
         self.to_checks()
 
     def to_checks(self) -> VirtualStabilityChecks | None:
@@ -1126,7 +1130,9 @@ class EvaluationStabilityChecksConfig:
             )
         try:
             checks = VirtualStabilityChecks(
-                self.rotations or self.rotation_count, self.reduction_direction
+                self.rotations or self.rotation_count,
+                self.reduction_direction,
+                self.rescaled,
             )
         except (TypeError, ValueError, ZeroDivisionError) as error:
             raise ConfigurationError(f"evaluation.stability_checks: {error}") from error
