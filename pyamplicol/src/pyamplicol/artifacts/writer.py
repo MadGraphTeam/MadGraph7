@@ -17,6 +17,8 @@ from typing import BinaryIO, Literal
 from .manifest import (
     ARTIFACT_IDENTITY_EXTENSION,
     MANIFEST_NAME,
+    PAYLOAD_CONTAINER_PATH,
+    PAYLOAD_CONTAINER_ROLE,
     PayloadRecord,
     artifact_identity_extension,
     canonical_manifest_bytes,
@@ -32,8 +34,6 @@ from .security import (
 )
 from .transaction import ArtifactTransaction, ArtifactWriteMode
 
-PAYLOAD_CONTAINER_PATH = "payloads.pacbin"
-PAYLOAD_CONTAINER_ROLE = "payload-container"
 # packable payloads are appended here while staging, then moved into the container
 _PAYLOAD_SPOOL_NAME = ".payloads.spool"
 
