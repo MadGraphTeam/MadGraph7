@@ -2243,7 +2243,7 @@ class LoopSlice:
             external_photons=photons,
         )
         if born_terms is not inclusive_born:
-            slice_._refuse_subleading_flows(inclusive_born)
+            slice_._refuse_inexact_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
@@ -2792,17 +2792,22 @@ class LoopSlice:
 
     def _flow_degrees(
         self, born_terms: Mapping[Orders, tuple[Any, ...]]
-    ) -> dict[tuple[Any, Orders], int]:
-        """The leading N_c degree of each colour flow's own squared Born
-        (``selection._item_flow`` keys) per squared Born order, for the Born
-        terms ``born_terms`` (e.g. the unrestricted ones of a colour-flow
+    ) -> dict[tuple[Any, Any, Orders], int]:
+        """The leading N_c degree of the squared Born's term between two
+        colour flows ``x`` and ``y`` (``selection._item_flow`` keys) per
+        squared Born order ``s``, keyed ``(x, y, s)``, for the Born terms
+        ``born_terms`` (e.g. the unrestricted ones of a colour-flow
         selection): the slice's grading of the Born (``_born_grades``: an
         item's N_c power plus its coupling's grades, so the N_c grade split
         of identical-flavour lines is included) and the exact overlaps of the
-        flow's tensors. Structural, as ``degrees``; at leading colour a
-        squared order's degree is a flow's own, since a cross term of two
-        flows has at most the mean of their degrees (Cauchy-Schwarz on the
-        colour inner product, at every N_c)."""
+        flows' tensors. Structural, as ``degrees``. Within one Born order the
+        cross term of two distinct flows closes fewer index loops than a
+        flow's own term, so it is below the mean of their own degrees, hence
+        below the leading degree, and only a flow's own term (``x == y``) is
+        graded there; between two Born orders (QCD and electroweak Born
+        amplitudes) a cross term can be leading (u u~ > d d~: the QCD flow
+        (2,4,3,1) with the photon's (2,1,3,4) at QCD^2 QED^2), so every pair
+        of flows is graded there."""
 
         from .fields import field_definitions
         from .selection import _item_flow
@@ -2819,79 +2824,103 @@ class LoopSlice:
                 sorted(missing), field_definitions(self.fields)
             )
             layout = {**layout, **extra}
-        keys: dict[Any, dict[Orders, set[tuple[Any, int]]]] = defaultdict(
+        keys: dict[Orders, dict[Any, set[tuple[Any, int]]]] = defaultdict(
             lambda: defaultdict(set)
         )
         for order, terms in born_terms.items():
             for term in terms:
                 grades = {g for g, _c in layout.get((term.entry.coupling.name, 0), ())}
                 for item in term.colour.terms:
-                    keys[_item_flow(item)][order].update(
+                    keys[order][_item_flow(item)].update(
                         (item.tensor, item.nc_power + g) for g in grades
                     )
-        out: dict[tuple[Any, Orders], int] = {}
-        for flow, by_order in keys.items():
-            for a, b in product(by_order, repeat=2):
-                key = (flow, add_orders(a, b))
-                for left, p in by_order[a]:
-                    for right, q in by_order[b]:
-                        for power, value in self.overlaps(left, right).items():
-                            if value:
-                                out[key] = max(
-                                    out.get(key, power + p + q), power + p + q
-                                )
+        out: dict[tuple[Any, Any, Orders], int] = {}
+        for a, b in product(keys, repeat=2):
+            squared = add_orders(a, b)
+            for x, left_keys in keys[a].items():
+                for y, right_keys in keys[b].items():
+                    if x != y and a == b:
+                        continue
+                    for left, p in left_keys:
+                        for right, q in right_keys:
+                            for power, value in self.overlaps(left, right).items():
+                                if value:
+                                    key = (x, y, squared)
+                                    degree = power + p + q
+                                    out[key] = max(out.get(key, degree), degree)
         return out
 
-    def _refuse_subleading_flows(
+    def _refuse_inexact_flows(
         self, inclusive: Mapping[Orders, tuple[Any, ...]]
     ) -> None:
-        """A colour-flow selection (``selection.restrict_born_terms``) keeps
-        the process's leading colour: in every squared Born order its flows
-        reach, one of them must reach the leading degree of the unrestricted
-        Born ``inclusive`` (``_flow_degrees``). Its other flows then
-        contribute exact zeros (the projection keeps the process's degree P,
-        as an evaluation-time selection of them is exactly zero); on their
-        own they would set a lower degree and return a subleading value, so
-        such a selection is refused (``subleading-colour-flows``)."""
+        """A colour-flow selection (``selection.restrict_born_terms``) is the
+        evaluation-time selection of its flows only if, at every squared Born
+        order of the unrestricted Born ``inclusive`` (``_flow_degrees``):
+
+        * no selected flow's term with an unselected flow reaches the leading
+          degree there (the restricted Born drops it; possible between two
+          Born orders only): refused, ``interfering-colour-flows``;
+        * the selected flows' terms reach the leading degree there, or none
+          is nonzero (an exact zero there): else they would set a lower
+          degree and return a subleading value, so a selection below the
+          process's leading colour wherever it reaches it is refused,
+          ``subleading-colour-flows``. Next to a leading flow a subleading
+          one contributes exact zeros (the projection keeps the process's
+          degree P, as an evaluation-time selection of it is exactly
+          zero)."""
 
         from .colour import outer_flow
         from .refusals import LoopRequestUnsupported
-        from .selection import _item_flow
+        from .selection import _item_flow, leading_colour_plan, plan_flows
 
         degrees = self._flow_degrees(inclusive)
-        top: dict[Orders, int] = {}
-        for (_flow, squared), degree in degrees.items():
-            top[squared] = max(top.get(squared, degree), degree)
         kept = {
             _item_flow(item)
             for terms in self.born_terms.values()
             for term in terms
             for item in term.colour.terms
         }
+        top: dict[Orders, int] = {}
         reached: dict[Orders, int] = {}
-        for (flow, squared), degree in degrees.items():
-            if flow in kept:
+        for (x, y, squared), degree in degrees.items():
+            top[squared] = max(top.get(squared, degree), degree)
+            if x in kept and y in kept:
                 reached[squared] = max(reached.get(squared, degree), degree)
+        selected = [list(w) for w in self.request.selection.flows]
         below = [s for s, degree in sorted(reached.items()) if degree < top[s]]
-        if reached and not below:
-            return
-        representations = {leg.label: leg.representation for leg in self.closure.legs}
-        words = {
-            outer_flow(word, representations): list(word)
-            for word in self.request.selection.flows
+        if below or not reached:
+            orders = below or sorted(top)
+            raise LoopRequestUnsupported(
+                "subleading-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} are below the process's leading colour at "
+                f"the squared Born orders {[dict(s) for s in orders]}, and no "
+                "selected flow reaches it there",
+            )
+        crossing = {
+            (squared, y if x in kept else x)
+            for (x, y, squared), degree in degrees.items()
+            if (x in kept) != (y in kept) and degree >= top[squared]
         }
-        orders = below or sorted(top)
-        flows = sorted(
-            words[flow]
-            for flow in kept
-            if all(degrees.get((flow, s), top[s] - 1) < top[s] for s in orders)
-        )
-        raise LoopRequestUnsupported(
-            "subleading-colour-flows",
-            f"{self.request.process!r}: the selected colour flows {flows} are "
-            "below the process's leading colour at the squared Born orders "
-            f"{[dict(s) for s in orders]}, and no selected flow reaches it there",
-        )
+        if crossing:
+            # The unselected flows by their tree words (a piece of no planar
+            # flow by its strings and traces).
+            representations = {
+                leg.label: leg.representation for leg in self.closure.legs
+            }
+            plan = leading_colour_plan(self.compiled, self.request.process)
+            words = {
+                outer_flow(flow.word, representations): list(flow.word)
+                for flow in plan_flows(plan, ())
+            }
+            named = sorted((s, str(words.get(f, f))) for s, f in crossing)
+            raise LoopRequestUnsupported(
+                "interfering-colour-flows",
+                f"{self.request.process!r}: the selected colour flows "
+                f"{sorted(selected)} interfere at the leading N_c power with the "
+                "unselected flows "
+                + ", ".join(f"{flow} at {dict(s)}" for s, flow in named),
+            )
 
     def degrees(
         self,

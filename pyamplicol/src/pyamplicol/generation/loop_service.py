@@ -1221,7 +1221,8 @@ def _v2_selection(backend, compiled, process: str, label: str):
     they keep every helicity and colour flow.
 
     ``selected_source_helicities`` fixes leg helicities (labels as the tree
-    engine's). The colour selectors pick sectors of the tree engine's
+    engine's; an unknown leg or a helicity the leg does not have is refused
+    here, so in the dry run too). The colour selectors pick sectors of the tree engine's
     leading-colour plan (``reference_color_order`` first, at most
     ``max_color_sectors``, then ``selected_color_sector_ids`` by id), each a
     flow and, for a folded trace, its reflection (the tree engine's physical
@@ -1235,6 +1236,10 @@ def _v2_selection(backend, compiled, process: str, label: str):
 
     chosen = backend._process_selection
     helicities = tuple(sorted((chosen.selected_source_helicities or {}).items()))
+    try:
+        lc.require_leg_helicities(compiled, process, helicities)
+    except ValueError as error:
+        raise GenerationError(f"process {label}: {error}") from error
     order = (
         tuple(int(x) for x in chosen.reference_color_order)
         if chosen.reference_color_order

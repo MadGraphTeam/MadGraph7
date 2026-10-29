@@ -26,7 +26,13 @@ tree-engine flow below it (u u~ > d d~ g's flows joining each quark to its
 own antiquark) has a vanishing leading-colour Born and virtual: its
 selection is zero at evaluation; at generation it contributes exact zeros
 next to a leading flow, and a selection without one is refused
-(``subleading-colour-flows``). The selected
+(``subleading-colour-flows``). Between two Born orders (QCD and electroweak
+Born amplitudes) a flow can interfere with another at the leading power
+(u u~ > d d~: the QCD flow (2,4,3,1) with the photon's (2,1,3,4) at
+QCD^2 QED^2): the evaluation-time selection keeps that term (its bra is the
+flow, its ket the whole Born); a generation-time selection restricts the
+Born itself, so one that would drop it is refused
+(``interfering-colour-flows``). The selected
 output is the observable column of those rows and basis elements
 (``observables.Column``): its seeds and its Born, counterterm and field bras
 keep them only, so a complete set of selections sums to the inclusive value.
@@ -136,15 +142,17 @@ def restrict_born_terms(
     flows only (``Selection.flows``, tree words; ``colour.outer_flow`` keys):
     the Born basis (``assemble._born_tensors``) is then those flows' tensors.
 
-    At leading colour this is the selection's bra: distinct flows do not
-    interfere at the leading power, nor does a flow with a Born tensor of no
-    flow (U(1) and Fierz pieces), so the Born of the kept terms is the
-    selected flows' and the seeds, counterterm and field bras keep them only.
-    A selected flow without a Born tensor is refused. A selection whose
-    flows are all below the process's leading colour where they reach it
-    is refused once the slice grades its Born
-    (``LoopSlice._refuse_subleading_flows``); next to a leading flow such a
-    flow's contributions are exact zeros."""
+    At leading colour this is the selection's bra: within one Born order
+    distinct flows do not interfere at the leading power, nor does a flow
+    with a Born tensor of no flow (U(1) and Fierz pieces), so the Born of the
+    kept terms is the selected flows' and the seeds, counterterm and field
+    bras keep them only. A selected flow without a Born tensor is refused.
+    Once the slice grades its Born (``LoopSlice._refuse_inexact_flows``) a
+    selection is refused whose flows are all below the process's leading
+    colour where they reach it (next to a leading flow such a flow's
+    contributions are exact zeros), or one of whose flows interferes at the
+    leading power with an unselected flow (possible between two Born orders,
+    e.g. QCD and photon Born amplitudes)."""
 
     from dataclasses import replace
 
@@ -215,6 +223,44 @@ def restrict_rows(blocks: Any, helicities: Sequence[tuple[int, int]]) -> Any:
                 f"(its helicities: {sorted(available[label])})"
             )
     return replace(blocks, blocks=tuple(kept))
+
+
+def require_leg_helicities(
+    compiled: Any, process: str, helicities: Sequence[tuple[int, int]]
+) -> None:
+    """The selected leg helicities (``Selection.helicities``) name legs of
+    ``process`` and helicities they have, the tree engine's source states
+    (crossed for an incoming leg, as ``generation.eager_columnar`` lists
+    them): checked before any generation (the dry run), as
+    ``restrict_rows`` checks the generated rows."""
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    if not helicities:
+        return
+    ir = build_model_process_ir(process, compiled.ir, color_accuracy="lc")
+    model = CompiledUFOModel(compiled)
+    available: dict[int, set[int]] = {}
+    for leg in ir.legs:
+        if leg.outgoing_pdg is None:
+            continue
+        source = model._source_ir(int(leg.outgoing_pdg))
+        available[int(leg.label)] = {
+            int((source.crossing.apply(state) if leg.is_initial else state).helicity)
+            for state in source.states
+        }
+    fixed = dict(helicities)
+    if unknown := sorted(set(fixed) - set(available)):
+        raise ValueError(
+            f"selected helicities name legs {unknown} the process does not have"
+        )
+    for label, h in sorted(fixed.items()):
+        if h not in available[label]:
+            raise ValueError(
+                f"selected helicity {h} is unavailable for external leg {label} "
+                f"(its helicities: {sorted(available[label])})"
+            )
 
 
 def _item_flow(item: Any) -> Any:
@@ -520,9 +566,6 @@ class SelectionCache:
 
     def items(self) -> tuple[tuple[Any, Any], ...]:
         return tuple(self._entries.items())
-
-    def clear(self) -> None:
-        self._entries.clear()
 
     def __len__(self) -> int:
         return len(self._entries)

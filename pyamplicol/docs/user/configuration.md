@@ -727,7 +727,13 @@ each quark to its own antiquark, has no leading-colour Born or virtual. Its
 selection is zero at evaluation. At generation it contributes exact zeros
 next to a leading flow (`max_color_sectors = 3` on u u~ > d d~ g keeps two
 such flows and a leading one), and a selection without a leading flow is
-refused (`subleading-colour-flows`). Identical-flavour quark lines (u u~ >
+refused (`subleading-colour-flows`). With several Born orders (QCD and
+electroweak Born amplitudes, e.g. u u~ > d d~ with photon exchange) a flow
+can interfere at the leading power with another flow between the two orders
+(there QCD^2 QED^2): its evaluation-time selection keeps that term, and a
+generation-time selection that would drop it is refused
+(`interfering-colour-flows`); select the interfering flows together, or
+select at evaluation. Identical-flavour quark lines (u u~ >
 u u~ g) take every selection. A member of an exact flavour group
 (`process.flavor_blind`) lists no flows and takes no evaluation-time
 selection (`CompatibilityError`): select on its representative process,

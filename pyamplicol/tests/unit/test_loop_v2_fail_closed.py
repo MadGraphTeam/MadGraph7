@@ -148,10 +148,11 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "multi-fermion-contact",
         # MQ-FFT's forced seed FFT guard (``test_loop_v2_seed_fft.py``).
         "forced-seed-fft-unserved",
-        # MQ-SELECT's correlated-selection and subleading-flow guards
+        # MQ-SELECT's correlated-selection, subleading- and interfering-flow guards
         # (``test_loop_v2_selection.py``).
         "selected-correlators",
         "subleading-colour-flows",
+        "interfering-colour-flows",
         # MQ-NC's declared-N_c guard (``test_loop_v2_nc_declaration.py``).
         "colour-declaration-coverage",
     ]

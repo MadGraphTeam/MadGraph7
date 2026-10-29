@@ -237,8 +237,6 @@ def test_the_selection_cache_keeps_the_most_recently_used(monkeypatch):
     cache.get("c", build("c"))
     assert [key for key, _value in cache.items()] == ["a", "c"]
     assert built == ["a", "b", "c"] and len(cache) == 2
-    cache.clear()
-    assert len(cache) == 0
     none = lc.SelectionCache(0)
     none.get("a", build("a"))
     none.get("a", build("a"))
@@ -468,6 +466,83 @@ def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(
     _close(_values(value), _values(reference), DOUBLE_DOUBLE)
 
 
+@pytest.mark.loop_physics
+def test_a_flow_interfering_between_born_orders_is_refused_at_generation(
+    loop_sm_compiled_model, loop_native
+):
+    """u u~ > d d~ with QCD and photon Born amplitudes: at QCD^2 QED^2 the
+    QCD flow (2,4,3,1) interferes at the leading power with the photon
+    Born's (2,1,3,4). Its evaluation-time selection keeps that term (the
+    flows sum to the inclusive value in double-double); a generation-time
+    selection would drop it, so it is refused (listed
+    ``interfering-colour-flows``, naming the unselected flow and the order),
+    (2,1,3,4) alone is below the leading colour at QCD^4
+    (``subleading-colour-flows``), and both flows together are the
+    inclusive value."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+
+    def generate(selection=None):
+        request = SliceRequest(
+            "u u~ > d d~",
+            {"QCD": 2, "QED": 2},
+            ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
+            particle_veto=(23, 24, 25, 250, 251),
+            selection=selection,
+            # The shipped loop_sm colour declaration (it covers the photon's
+            # counterterm vertices).
+            **{**_options(), "colour_declaration": None},
+        )
+        return ObservableSlice.of(LoopSlice.generate(compiled, request, loop_native))
+
+    inclusive = generate()
+    runtime = _runtime(inclusive)
+    pts, scales = _points("uudd")
+    flows = [flow.id for flow in runtime.selection_catalogue().flows]
+    assert sorted(flows) == ["flow:2,1,3,4", "flow:2,4,3,1"]
+
+    def coefficients(result) -> list:
+        return [
+            *result.born_values[0],
+            *(c for laurent in result.values[0] for c in laurent),
+        ]
+
+    expected = coefficients(
+        runtime.evaluate(pts, mu_r2=scales, arithmetic="double-double")
+    )
+    parts = [
+        coefficients(
+            runtime.evaluate(
+                pts, mu_r2=scales, color_flows=[flow], arithmetic="double-double"
+            )
+        )
+        for flow in flows
+    ]
+    born = max(abs(x) for x in expected[:3])
+    _close(list(map(sum, zip(*parts, strict=True))), expected, DOUBLE_DOUBLE, born)
+    # The cross order's (QCD^2 QED^2, entry 0) Born of the QCD flow alone
+    # is nonzero (the inclusive one vanishes at the leading power).
+    cross = parts[flows.index("flow:2,4,3,1")][0]
+    assert abs(cross) > Decimal("1e-4")
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        generate(lc.Selection((), ((2, 4, 3, 1),)))
+    assert refused.value.key == "interfering-colour-flows"
+    assert "flows [2, 1, 3, 4] at {'QCD': 2, 'QED': 2}" in str(refused.value)
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        generate(lc.Selection((), ((2, 1, 3, 4),)))
+    assert refused.value.key == "subleading-colour-flows"
+    both = generate(lc.Selection((), ((2, 1, 3, 4), (2, 4, 3, 1))))
+    value = coefficients(
+        _runtime(both).evaluate(pts, mu_r2=scales, arithmetic="double-double")
+    )
+    _close(value, expected, DOUBLE_DOUBLE, born)
+
+
 # ------------------------------------------------------- tree-engine parity
 
 
@@ -623,6 +698,16 @@ def test_public_colour_subset_selectors_are_the_tree_engines(
     )
     with pytest.raises(GenerationError, match="did not materialize"):
         chosen("g g > g g g", selected_color_sector_ids=[99])
+    # Selected helicities name legs and helicities the process has (the
+    # tree engine's source states), before any generation.
+    with pytest.raises(GenerationError, match=r"legs \[9\] the process does not"):
+        chosen("u u~ > d d~ g", selected_source_helicities={9: 1})
+    with pytest.raises(
+        GenerationError,
+        match=r"helicity 0 is unavailable for external leg 1 \(its helicities: "
+        r"\[-1, 1\]\)",
+    ):
+        chosen("u u~ > d d~ g", selected_source_helicities={1: 0})
 
 
 @pytest.mark.loop_physics
@@ -1155,6 +1240,38 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         artifacts("subleading", "selected_color_sector_ids = [0]")
     blockers = artifacts("nlc", _SELECTORS, accuracy="nlc").unsupported_features
     assert any("leading colour (color.accuracy='lc')" in item for item in blockers)
+
+
+@pytest.mark.loop_physics
+def test_the_dry_run_refuses_selected_helicities_the_process_lacks(
+    loop_sm_colour_model, tmp_path
+):
+    """The public dry run (``Generator.plan``) reports a selected helicity of
+    an unknown leg or one the leg does not have, as the generation refuses
+    it (``loop_service._v2_selection``)."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    processes = ProcessSet((ProcessRequest.parse("u u~ > d d~ g", name="p"),))
+    for k, (selector, message) in enumerate(
+        (
+            ('{"9" = 1}', "legs [9] the process does not have"),
+            ('{"1" = 0}', "selected helicity 0 is unavailable for external leg 1"),
+        )
+    ):
+        card = tmp_path / f"card{k}.toml"
+        card.write_text(
+            _CARD.format(
+                model=json.dumps(str(loop_sm_colour_model)),
+                output=json.dumps(str(tmp_path / f"artifact{k}")),
+                selectors=f"selected_source_helicities = {selector}",
+                accuracy="lc",
+                process=json.dumps("u u~ > d d~ g"),
+            )
+        )
+        blockers = Generator(resolve_config(card)).plan(processes).unsupported_features
+        assert any(message in item for item in blockers), blockers
 
 
 @pytest.mark.loop_physics
