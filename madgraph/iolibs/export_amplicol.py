@@ -61,6 +61,9 @@ clean:
 WORKER = pjoin(os.path.dirname(os.path.abspath(__file__)), 'amplicol_worker.py')
 # printed by Symbolica when another process holds its per-user thread
 SYMBOLICA_BUSY = 'Cannot start another restricted Symbolica thread'
+# seconds between the attempts while Symbolica is busy, and before giving up
+SYMBOLICA_RETRY = 10
+SYMBOLICA_MAX_WAIT = 3600
 
 
 # rusticol-config of the pyamplicol in pyamplicol/install, for the makefiles
@@ -96,18 +99,11 @@ def run_worker(job):
     """Run amplicol_worker on a job, waiting while Symbolica is busy elsewhere."""
     env = dict(os.environ, SYMBOLICA_HIDE_BANNER='1',
                PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
+    start = time.monotonic()
     waiting = False
     while True:
-        worker = subprocess.Popen([sys.executable, WORKER, job], env=env,
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                  text=True)
-        busy = False
-        for line in worker.stdout:
-            if SYMBOLICA_BUSY in line:
-                busy = True
-            elif not line.startswith(('\u250c', '\u2502', '\u2514', '\u251c')):
-                sys.stdout.write(line)
-        if worker.wait() == 0:
+        returncode, busy = run_worker_once(job, env)
+        if returncode == 0:
             return
         if not busy:
             raise madgraph.InvalidCmd('pyamplicol failed to generate the [amplicol] '
@@ -116,10 +112,40 @@ def run_worker(job):
             raise madgraph.InvalidCmd(
                 'Symbolica is imported in this MadGraph process, so the pyamplicol '
                 'worker cannot start: do not import pyamplicol or symbolica here')
+        if time.monotonic() - start > SYMBOLICA_MAX_WAIT:
+            raise madgraph.InvalidCmd(
+                'Symbolica has been used by another process for %d minutes: only one '
+                'pyamplicol process may run per user, stop the other one and output '
+                'again' % (SYMBOLICA_MAX_WAIT // 60))
         if not waiting:
             logger.info('Symbolica is used by another process: waiting for it')
             waiting = True
-        time.sleep(10)
+        time.sleep(SYMBOLICA_RETRY)
+
+
+def run_worker_once(job, env):
+    """The exit code of one worker run, and whether Symbolica was busy. The
+    worker never outlives this call, so it cannot keep holding Symbolica's lock."""
+    worker = subprocess.Popen([sys.executable, WORKER, job], env=env,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True)
+    busy = False
+    try:
+        for line in worker.stdout:
+            if SYMBOLICA_BUSY in line:
+                busy = True
+            elif not line.startswith(('\u250c', '\u2502', '\u2514', '\u251c')):
+                sys.stdout.write(line)
+        return worker.wait(), busy
+    finally:
+        if worker.poll() is None:
+            worker.terminate()
+            try:
+                worker.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                worker.kill()
+                worker.wait()
+        worker.stdout.close()
 
 
 def load_metadata(artifact):
