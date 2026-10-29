@@ -79,12 +79,19 @@ MG5_aMC syntax inside a process expression is refused with the key
 | --- | --- |
 | 4FS with tops (massive b) | `restriction = "no_widths"` (all widths zero, MB = ymb = 4.7) |
 | 5FS (massless b) | `restriction = "no_b_mass"` with `[loop.preparation] fixed_parameters = { WT = "0" }` whenever a top propagates in a tree current |
-| 5FS with a b and a t on one fermion line (`u d~ > t b~`, `u b > d t`, `g b > t w-`, `b b~ > w+ w-`) | the default restriction with `[loop.preparation] fixed_parameters = { MB = "0", ymb = "0", WT = "0" }`: the same parameter values as `no_b_mass`, which refuses these requests with `dirac-weyl-closure` for now |
+| 5FS with a b and a t on one fermion line (`g b > t w-`, `b b~ > w+ w-`, `u b > d t`, `t t~ > b b~`) | `restriction = "no_b_mass"` with `fixed_parameters = { WT = "0" }` as above, or the default restriction with `{ MB = "0", ymb = "0", WT = "0" }`: the same parameter values and the same virtual (binary64 to 1e-13) |
 | massive charm | `restriction = "c_mass"` |
 | non-diagonal CKM | `restriction = "zeromass_ckm"` or `"ckm"` |
 
 loop_sm's other restrictions (`default`, `no_masses`, `no_tau_mass`,
-`lepton_masses`) load the same way. The one-loop engine is real on-shell: a
+`lepton_masses`) load the same way. A W line that joins a massive and a
+massless quark (the top and a massless b at `no_b_mass`, a massive and a
+massless quark through the CKM matrix at `zeromass_ckm`, `ckm` and `c_mass`)
+generates at one loop: the Born closes at a vertex. Tree-level requests
+refuse such a line with `dirac-weyl-closure` (tree lanes install no
+Dirac-Weyl closure contraction); keep the light quark massive there, with
+its mass fixed to zero in the default restriction. The one-loop engine is
+real on-shell: a
 coloured particle with a width in a tree current (the top at every shipped
 restriction but `no_widths`) is refused with `coloured-width`, whose message
 names both recipes; widths come with the complex-mass scheme.
@@ -102,7 +109,6 @@ starts with a listed key and names the remedy; `pyamplicol generate
 | `madloop-syntax` | MG5_aMC syntax in the process expression |
 | `loop-induced` | no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, ...) |
 | `coloured-width` | a coloured particle with a nonzero width in a tree current |
-| `dirac-weyl-closure` | a fermion line joining massive and massless fermions through a chiral vertex whose massive current closes on a massless one (`b b~ > w+ w-` with a massless b) |
 | `lorentz-slot-arity` | a vertex tensor whose slots do not match its particles (other than the repaired constant scalar ones) |
 | `majorana-fermion`, `multi-fermion-contact` | Majorana fermions; vertices with more than two fermions |
 
