@@ -817,6 +817,7 @@ def test_declared_correlators_with_a_selection_are_refused(
 # whose first point is taken, and the (helicity rows, flows) counts.
 STORED_ROWS = {
     "u u~ > g g g g": ("uux_uuxuux", (64, 24)),
+    "u u~ > d d~ g g": ("uux_uuxuux", (64, 12)),
     "g g > g g g g": ("uux_uuxuux", (64, 120)),
     "u u~ > g g g g g": ("uux_ggggg", (128, 120)),
 }
