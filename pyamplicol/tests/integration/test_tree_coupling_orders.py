@@ -133,14 +133,13 @@ def _runtime(
     execution_mode: str = "recurrence",
     lc_flow_layout: str = "topology-replay",
     limits: dict[str, int] = ORDER_LIMITS,
+    policy: str = "explicit",
 ) -> Runtime:
     config = RunConfig(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy=accuracy, lc_flow_layout=lc_flow_layout),
-        process=ProcessConfig(
-            coupling_order_policy="explicit", max_coupling_orders=limits
-        ),
+        process=ProcessConfig(coupling_order_policy=policy, max_coupling_orders=limits),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
@@ -649,9 +648,10 @@ def test_recurrence_lane_refuses_the_massive_exchange_with_a_massless_b(
     sm_no_b_mass_model: ModelSource, tmp_path: Path, process: str
 ) -> None:
     """The massive fermion's exchange with a massless b (the top t channel,
-    the W exchange of t t~ > b b~, off-shell top pairs): refused."""
+    the W exchange of t t~ > b b~, off-shell top pairs): refused. (The
+    MadGraph references, ``NO_B_MASS_REFERENCE``, stay for a Dirac-Weyl
+    closure contraction.)"""
 
-    assert _reference(process, NO_B_MASS_REFERENCE)["points"]
     with pytest.raises(GenerationError, match=_RECURRENCE_DIRAC_WEYL_CLOSURE):
         _runtime(sm_no_b_mass_model, process, tmp_path / "artifact")
 
@@ -683,6 +683,7 @@ def test_recurrence_lane_refuses_the_radiative_dirac_weyl_class(
         _runtime(model, process, tmp_path / "artifact")
 
 
+@pytest.mark.parametrize("policy", ["explicit", "minimal"])
 @pytest.mark.parametrize(
     ("restriction", "process"),
     [
@@ -696,25 +697,51 @@ def test_on_the_fly_lane_refuses_dirac_weyl_closures(
     tmp_path: Path,
     restriction: str,
     process: str,
+    policy: str,
 ) -> None:
     """The on-the-fly lane closed its selected LC flows on the same
     template closures and dropped the same channels (b b~ > w+ w-: 24.0
     against MadGraph's 0.060 at the first point); it refuses them too, where
     it builds a query's closures: at evaluation, per query, with the public
-    typed evaluation error."""
+    typed evaluation error. Under the minimal coupling-order policy the
+    channel's orders are those of the other channels (QED 2), so the limits
+    hold and the query refuses."""
 
     model = sm_model if restriction == "default" else sm_no_b_mass_model
     path = REFERENCE if restriction == "default" else NO_B_MASS_REFERENCE
     points = _reference(process, path)["points"]
     runtime = _runtime(
         model, process, tmp_path / "artifact", accuracy="lc",
-        execution_mode="on-the-fly",
+        execution_mode="on-the-fly", policy=policy,
     )  # fmt: skip
     with pytest.raises(
         EvaluationError,
         match=r"dirac-weyl-closure: the LC query .* would close a Dirac",
     ):
         runtime.evaluate(points)
+
+
+def test_on_the_fly_minimal_policy_refuses_a_process_of_dirac_weyl_closures_only(
+    sm_no_b_mass_model: ModelSource, tmp_path: Path
+) -> None:
+    """g b > t w- with a massless b: every closure at the lane's anchor (the
+    b) meets a Dirac complement, so the minimal coupling-order policy finds
+    no viable order but the Dirac-Weyl pair's and refuses at the first
+    query instead of falling back to the explicit limits."""
+
+    (point,) = _reference("b u > d t", NO_B_MASS_REFERENCE)["points"][:1]
+    top = math.sqrt(point[3][0] ** 2 - sum(x * x for x in point[3][1:]))
+    (point,) = _reference("b b~ > w+ w-", NO_B_MASS_REFERENCE)["points"][:1]
+    w = math.sqrt(point[2][0] ** 2 - sum(x * x for x in point[2][1:]))
+    runtime = _runtime(
+        sm_no_b_mass_model, "g b > t w-", tmp_path / "artifact", accuracy="lc",
+        execution_mode="on-the-fly", policy="minimal",
+    )  # fmt: skip
+    with pytest.raises(
+        EvaluationError,
+        match=r"dirac-weyl-closure: the coupling-order policy's closure would",
+    ):
+        runtime.evaluate([_on_shell_two_to_two((0.0, 0.0, top, w), 0.3)])
 
 
 def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
@@ -745,22 +772,30 @@ def _on_shell_two_to_two(masses: tuple[float, ...], cosine: float) -> list:
         ("ta- ve > vt e-", (1.777, 0.0, 0.0, 0.0)),
     ],
 )
-def test_recurrence_lane_builds_a_massive_line_closing_on_no_weyl_sink(
+def test_tree_lanes_build_a_massive_line_closing_on_no_weyl_sink(
     sm_model: ModelSource, tmp_path: Path, process: str, masses: tuple
 ) -> None:
     """The guard's control: a W turning an external tau into a v_tau puts a
-    massive fermion on the v_tau line, but the recurrence closes at a tau, so
-    no Dirac current meets a Weyl sink; it builds and equals the eager lane."""
+    massive fermion on the v_tau line, but the recurrence and the on-the-fly
+    lane close at a tau, so no Dirac current meets a Weyl sink; both build
+    and equal the eager lane. The on-the-fly lane runs the default minimal
+    coupling-order policy, whose pass also meets the v_tau singleton against
+    a Dirac complement (a pair no query closes on, with the orders of the
+    other closures)."""
 
     points = [_on_shell_two_to_two(masses, cosine) for cosine in (0.3, -0.7)]
-    recurrence = _runtime(sm_model, process, tmp_path / "recurrence")
     eager = _runtime(sm_model, process, tmp_path / "eager", execution_mode="eager")
-    for mine, theirs in zip(
-        recurrence.evaluate(points), eager.evaluate(points), strict=True
-    ):
-        mine, theirs = complex(mine), complex(theirs)
-        assert theirs.real > 0.0 and mine.imag == 0.0
-        assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
+    expected = [complex(value) for value in eager.evaluate(points)]
+    recurrence = _runtime(sm_model, process, tmp_path / "recurrence")
+    on_the_fly = _runtime(
+        sm_model, process, tmp_path / "on-the-fly", accuracy="lc",
+        execution_mode="on-the-fly", policy="minimal",
+    )  # fmt: skip
+    for runtime in (recurrence, on_the_fly):
+        for mine, theirs in zip(runtime.evaluate(points), expected, strict=True):
+            mine = complex(mine)
+            assert theirs.real > 0.0 and mine.imag == 0.0
+            assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
