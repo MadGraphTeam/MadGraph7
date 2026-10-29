@@ -142,5 +142,61 @@ class GridpackFirstPassTest(unittest.TestCase):
         self.assertIsNone(groups[2].first_pass_max_overweight_truncation)
 
 
+class FakeApi:
+    def __init__(self, device):
+        self.device = device
+
+    def device_type(self):
+        return self.device
+
+
+class FakeContext:
+    def __init__(self, device='cpu'):
+        self.device = device
+        self.loaded = []
+
+    def load_matrix_element(self, path, param_card, parameters):
+        self.loaded.append((path, param_card, parameters))
+        return FakeApi(self.device)
+
+
+class SurrogateLibraryTest(unittest.TestCase):
+    """A .so [surrogate]: path substitution, missing files, device and the
+    run-time parameters of the madmatrix libraries."""
+
+    def setUp(self):
+        self.loader = _template_module('custom_function_loader')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, 'sur_{subprocess}_{device}.so')
+        open(self.path.format(subprocess='P1_x', device='cpp512y'), 'w').close()
+
+    def load(self, contexts, devices=('cpu',), exports=True, subprocess='P1_x'):
+        with mock.patch.object(self.loader, '_exports', lambda path, name: exports):
+            return self.loader.load_surrogate(
+                None, contexts, ['cpp512y'] * len(contexts), list(devices),
+                self.path, subprocess, [[1, 2]], 'card.dat', {'bwcutoff': 15},
+            )
+
+    def test_parameters_are_passed(self):
+        context = FakeContext()
+        self.load([context])
+        library = self.path.format(subprocess='P1_x', device='cpp512y')
+        self.assertEqual(context.loaded, [(library, 'card.dat', {'bwcutoff': 15.0})])
+
+    def test_no_parameters_without_set_parameter(self):
+        context = FakeContext()
+        self.load([context], exports=False)
+        self.assertEqual(context.loaded[0][2], {})
+
+    def test_missing_library(self):
+        with self.assertRaisesRegex(RuntimeError, 'sur_P2_y_cpp512y.so not found'):
+            self.load([FakeContext()], subprocess='P2_y')
+
+    def test_wrong_device(self):
+        with self.assertRaisesRegex(RuntimeError, 'built for cpu, but the run uses cuda'):
+            self.load([FakeContext('cpu')], devices=('cuda',))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -431,6 +431,7 @@ class MadgraphSubprocess:
             name,
             pdg_ids,
             settings["param_card"],
+            me_parameters(self.process.run_card),
         )
         if len({api.index() for api in apis}) != 1:
             raise RuntimeError("surrogate loaded at different indices")

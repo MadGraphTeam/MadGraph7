@@ -385,17 +385,19 @@ The surrogate does not return channel weights, so it needs ``sde_strategy =
 ``function`` (``""``)
     The surrogate. An empty string disables it.
 
-    - A ``.so`` library implementing the UMAMI interface with the inputs of the madmatrix
-      libraries (momenta, :math:`\alpha_s`, flavor index and the random numbers). It is
-      loaded once per subprocess: ``{subprocess}`` and ``{device}`` in the path are replaced
-      by the subprocess name (e.g. ``P1_gg_ttx``) and the device, like in
-      ``lib/libmadmatrix_{subprocess}_{device}.so``.
+    - A ``.so`` library implementing the UMAMI interface. It gets the momenta,
+      :math:`\alpha_s` and the flavor index of the madmatrix libraries as inputs, and
+      returns the matrix element. It is loaded once per subprocess: ``{subprocess}`` and
+      ``{device}`` in the path are replaced by the subprocess name (e.g. ``P1_gg_ttx``)
+      and the device, like in ``lib/libmadmatrix_{subprocess}_{device}.so``. It has to
+      be built for the device of the run. If it implements ``umami_set_parameter``, it
+      gets the run-time parameters of the madmatrix libraries, such as ``bwcutoff``.
     - A Python file defining ``custom_surrogate(momenta, pdg_ids, alpha_s)``, which returns
       :math:`|M|^2` for a batch of events. ``momenta`` has the shape ``(batch, n, 4)``,
       ``pdg_ids`` the shape ``(batch, n)`` and identifies subprocess and flavor, and
       ``alpha_s`` the shape ``(batch,)``. ``FRAMEWORK = "torch"`` passes torch tensors,
       which also run on GPUs, otherwise numpy arrays are passed. See
-      :doc:`custom_functions`.
+      :ref:`custom-function-surrogate`.
 
 ``mode`` (``"unweight"``)
     ``"unweight"`` unweights the events a second time with respect to the ratio of the full

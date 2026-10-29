@@ -155,25 +155,53 @@ def load_custom_function(ms, contexts, device_types, kind, path, parameters=None
     ]
 
 
+def _exports(path, symbol):
+    """Whether the shared library at ``path`` exports ``symbol``."""
+    import ctypes
+
+    return hasattr(ctypes.CDLL(os.path.abspath(path)), symbol)
+
+
 def load_surrogate(
-    ms, contexts, backends, device_types, path, subprocess, pdg_ids, param_card
+    ms, contexts, backends, device_types, path, subprocess, pdg_ids, param_card,
+    parameters=None,
 ):
     """Load the [surrogate] function for one subprocess into each context, and
     return the ``MatrixElementApi`` of each context.
 
-    A .so path is a UMAMI library with the inputs of the madmatrix libraries,
-    where ``{subprocess}`` and ``{device}`` are replaced, initialized with
-    ``param_card``. A .py file defines
-    ``custom_surrogate(momenta, pdg_ids, alpha_s)``, which returns |M|^2;
-    ``pdg_ids[flavor_index]`` are the PDG ids of the subprocess for each
+    A .so path is a UMAMI library with the momenta, alpha_s and flavor index as
+    inputs, where ``{subprocess}`` and ``{device}`` are replaced, initialized
+    with ``param_card``. It gets the run-time ``parameters`` ({name: value}) of
+    the madmatrix libraries if it implements umami_set_parameter. A .py file
+    defines ``custom_surrogate(momenta, pdg_ids, alpha_s)``, which returns
+    |M|^2; ``pdg_ids[flavor_index]`` are the PDG ids of the subprocess for each
     flavor index of its matrix element."""
     if path.endswith(".so"):
-        return [
-            context.load_matrix_element(
-                path.format(subprocess=subprocess, device=backend), param_card
-            )
-            for context, backend in zip(contexts, backends)
-        ]
+        apis = []
+        for context, backend, device in zip(contexts, backends, device_types):
+            library = path.format(subprocess=subprocess, device=backend)
+            if not os.path.isfile(library):
+                raise RuntimeError(f"[surrogate] function = {path!r}: {library} not found")
+            library_parameters = {}
+            if parameters and _exports(library, "umami_set_parameter"):
+                library_parameters = {str(k): float(v) for k, v in parameters.items()}
+            try:
+                api = context.load_matrix_element(library, param_card, library_parameters)
+            except RuntimeError as error:
+                if "could not set parameter" not in str(error):
+                    raise
+                raise RuntimeError(
+                    f"[surrogate] function = {path!r}: {error}. The surrogate gets the "
+                    f"run-time parameters of the madmatrix libraries "
+                    f"({', '.join(library_parameters)}) and has to accept them."
+                ) from error
+            if api.device_type() != device:
+                raise RuntimeError(
+                    f"[surrogate] function = {path!r}: {library} was built for "
+                    f"{api.device_type()}, but the run uses {device}"
+                )
+            apis.append(api)
+        return apis
     if not path.endswith(".py"):
         raise RuntimeError(
             f"[surrogate] function = {path!r}: expected a .so library or a .py file"
