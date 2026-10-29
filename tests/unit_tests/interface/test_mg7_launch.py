@@ -1277,6 +1277,7 @@ class TestForceLHEOutput(unittest.TestCase):
     the LHE format only when something that reads LHE will run."""
 
     def setUp(self):
+        import madgraph
         from madgraph.mg7 import launch
         from madgraph.various.banner import RunCardMG7
         self.launch = launch
@@ -1284,8 +1285,9 @@ class TestForceLHEOutput(unittest.TestCase):
         self.cwd = os.getcwd()
         os.chdir(self.tmpdir.name)
         os.mkdir('Cards')
-        template = os.path.join(os.path.dirname(launch.__file__),
-                                'run_card.toml')
+        template = os.path.join(madgraph.MG5DIR, 'madgraph', 'iolibs',
+                                'template_files', 'mg7', 'run_card.toml')
+        self.assertTrue(os.path.isfile(template), template)
         RunCardMG7().write(self.card, template=template)
 
     def tearDown(self):
