@@ -8340,9 +8340,11 @@ class RunCardMG7(RunCard):
     # multiplicities, madevent's
     default_mlm_xqcut = 30.0
 
-    def create_default_for_process(self, proc_characteristic, history, proc_def):
+    def create_default_for_process(self, proc_characteristic, history, proc_def,
+                                   amplicol=False):
         """Adjust default values depending on the process, then read the
-        site/user default file (``input/default_run_card_mg7.toml``)."""
+        site/user default file (``input/default_run_card_mg7.toml``).
+        ``amplicol``: the output has [amplicol] processes, which MLM does not support."""
 
         # collect the initial-state (beam) particle ids
         beam_id = set()
@@ -8390,7 +8392,7 @@ class RunCardMG7(RunCard):
         # drjl = 0). The shower then does the jet matching (is_mlm_merged), and
         # auto_ptj_mjj ties the jet cuts to xqcut.
         if beam_id & hadronic and not self['beam']['leptonic'] and \
-                mlm_matching_needed(proc_def):
+                not amplicol and mlm_matching_needed(proc_def):
             self['beam']['dynamical_scale_choice'] = 'mlm'
             self['phasespace']['xqcut'] = self.default_mlm_xqcut
             cuts = self.dynamic_sections['cuts']

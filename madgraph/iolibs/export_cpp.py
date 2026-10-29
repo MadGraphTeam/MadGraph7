@@ -3629,12 +3629,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
                              for me in matrix_elements['matrix_elements']]
         except (KeyError, TypeError):
             processes = None
-        if self.amplicol_processes():
+        amplicol = bool(self.amplicol_processes())
+        if amplicol:
             processes = (processes or []) + [self.amplicol_processes()]
 
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes)
+                                                history, processes,
+                                                amplicol=amplicol)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives
