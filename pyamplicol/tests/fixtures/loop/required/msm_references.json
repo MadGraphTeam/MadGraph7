@@ -6744,10 +6744,68 @@
    "existing_references": [
     {
      "fixture": "required/ttx_ttx_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      216,
+      216,
+      216
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 6.079941561954554e-14
+      },
+      {
+       "QCD^2=0,QED^2=6": 3.3581015046464763e-15
+      },
+      {
+       "QCD^2=0,QED^2=6": 2.780653254651591e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/ttx_ttx_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
    "primary_provider": "recola"
   },
   {
@@ -7953,10 +8011,68 @@
    "existing_references": [
     {
      "fixture": "required/udx_tbx_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      216,
+      217,
+      216
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 1.4721147591290607e-12
+      },
+      {
+       "QCD^2=0,QED^2=6": 8.280099727436707e-14
+      },
+      {
+       "QCD^2=0,QED^2=6": 2.144099254902128e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "required/udx_tbx_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ]
   },
   {
    "row": "ST03",
@@ -14623,10 +14739,68 @@
    "existing_references": [
     {
      "fixture": "required/ttx_zh_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      217,
+      216,
+      217
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 1.0622028811368822e-13
+      },
+      {
+       "QCD^2=0,QED^2=6": 4.310971654533489e-12
+      },
+      {
+       "QCD^2=0,QED^2=6": 8.571535875578706e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/ttx_zh_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
    "primary_provider": "recola"
   }
  ]
