@@ -436,3 +436,9 @@ class AmplicolSubprocess(MadgraphSubprocess):
             max_overweight_truncation=gen_args["max_overweight_truncation"],
             freeze_max_weight_after=gen_args["freeze_max_weight_after"],
         )]
+
+    def first_pass_settings(self) -> dict | None:
+        amplicol = self.process.run_card["amplicol"]
+        if self.ratio_matrix_element is None or amplicol["mode"] != "unweight":
+            return None
+        return amplicol

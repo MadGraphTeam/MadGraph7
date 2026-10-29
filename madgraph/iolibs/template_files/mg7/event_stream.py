@@ -190,8 +190,9 @@ class EventStream:
         load_context_data([self._context], [backend], madspace_data)
         channel_generators = load_channels([self._context], config)
         # the maxima of all passes are fixed, so their settings do not matter
-        groups, _ = load_weighting_groups(
-            gen_args["max_overweight_truncation"], gen_args["freeze_max_weight_after"]
+        groups = load_weighting_groups(
+            gen_args["max_overweight_truncation"], gen_args["freeze_max_weight_after"],
+            gen_args["max_overweight_truncation"], gen_args["freeze_max_weight_after"],
         )
         self._stream = ms.EventStream(
             self._context, channel_generators, self.seed, load_lhe_completer(), config,

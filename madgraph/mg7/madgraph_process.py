@@ -417,8 +417,19 @@ class MadgraphProcess:
         groups = []
         for subproc, channel_indices in zip(self.subprocesses, subprocess_channels):
             steps = subproc.weighting_steps()
-            if channel_indices and steps:
-                groups.append(ms.WeightingGroup(channel_indices, steps))
+            if not (channel_indices and steps):
+                continue
+            group = ms.WeightingGroup(channel_indices, steps)
+            # [generation] sets the last unweighting, the first_pass_ ones the earlier
+            first_pass = subproc.first_pass_settings()
+            if first_pass is not None:
+                group.first_pass_max_overweight_truncation = (
+                    first_pass["first_pass_max_overweight_truncation"]
+                )
+                group.first_pass_freeze_max_weight_after = (
+                    first_pass["first_pass_freeze_max_weight_after"]
+                )
+            groups.append(group)
         return groups
 
     @staticmethod
@@ -1319,24 +1330,6 @@ class MadgraphProcess:
         cfg.vegas_damping = vegas_args["damping"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
-        first_pass = None
-        if self.surrogate is not None and self.surrogate["mode"] == "unweight":
-            first_pass = self.surrogate
-        amplicol = self.run_card["amplicol"]
-        if (
-            first_pass is None and amplicol["mode"] == "unweight"
-            and amplicol["color_accuracy"] != "lc"
-            and any(is_amplicol(meta) for meta in self.subprocess_data)
-        ):
-            first_pass = amplicol
-        if first_pass is not None:
-            # [generation] applies to the second pass, which gives the events
-            cfg.max_overweight_truncation = (
-                first_pass["first_pass_max_overweight_truncation"]
-            )
-            cfg.freeze_max_weight_after = (
-                first_pass["first_pass_freeze_max_weight_after"]
-            )
         cfg.start_batch_size = vegas_args["start_batch_size"]
         cfg.max_batch_size = vegas_args["max_batch_size"]
         cfg.survey_min_iters = gen_args["survey_min_iters"]

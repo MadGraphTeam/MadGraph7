@@ -222,15 +222,12 @@ def main() -> None:
     # set up generator configuration
     config = ms.GeneratorConfig()
     config.target_count = args.events
-    groups, first_pass = load_weighting_groups(
-        args.max_overweight_truncation, args.freeze_max_weight_after
+    groups = load_weighting_groups(
+        args.max_overweight_truncation, args.freeze_max_weight_after,
+        args.first_pass_max_overweight_truncation, args.first_pass_freeze_max_weight_after,
     )
-    if first_pass:
-        config.max_overweight_truncation = args.first_pass_max_overweight_truncation
-        config.freeze_max_weight_after = args.first_pass_freeze_max_weight_after
-    else:
-        config.max_overweight_truncation = args.max_overweight_truncation
-        config.freeze_max_weight_after = args.freeze_max_weight_after
+    config.max_overweight_truncation = args.max_overweight_truncation
+    config.freeze_max_weight_after = args.freeze_max_weight_after
     config.cpu_batch_size = args.cpu_batch_size
     config.gpu_batch_size = args.gpu_batch_size
     config.verbosity = resolve_verbosity(args.verbosity)

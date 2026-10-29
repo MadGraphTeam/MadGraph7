@@ -452,6 +452,13 @@ class MadgraphSubprocess:
             freeze_max_weight_after=gen_args["freeze_max_weight_after"],
         )]
 
+    def first_pass_settings(self) -> dict | None:
+        """The run card section with the first_pass_ unweighting settings, if
+        the events are unweighted again after the first unweighting."""
+        if not self.surrogates or self.process.surrogate["mode"] != "unweight":
+            return None
+        return self.process.surrogate
+
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the
         integrand, in the order of its flavor index."""

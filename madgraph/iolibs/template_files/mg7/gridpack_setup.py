@@ -139,19 +139,30 @@ def load_channels(contexts, config, file_dir=None):
     ]
 
 
-def load_weighting_groups(max_overweight_truncation, freeze_max_weight_after):
+def load_weighting_groups(
+    max_overweight_truncation, freeze_max_weight_after,
+    first_pass_max_overweight_truncation, first_pass_freeze_max_weight_after,
+):
     """The re- and unweighting steps after the first unweighting stored in
-    data/groups.json, with the unweighting settings of the final pass, and
-    whether a step unweights: the first unweighting is then a first pass."""
+    data/groups.json, with the unweighting settings of the final pass. The
+    first unweighting of a group with an unweighting step is a first pass."""
     with open(gridpack_path("data", "groups.json")) as f:
         groups = json.load(f)
-    unweights = False
     for group in groups:
+        unweights = False
         for step in group["steps"]:
             step["max_overweight_truncation"] = max_overweight_truncation
             step["freeze_max_weight_after"] = freeze_max_weight_after
             unweights |= step["mode"] == "unweight"
-    return ms.weighting_groups_from_json(json.dumps(groups)), unweights
+        # the card replaces the stored values, which older gridpacks lack
+        group.pop("first_pass_max_overweight_truncation", None)
+        group.pop("first_pass_freeze_max_weight_after", None)
+        if unweights:
+            group["first_pass_max_overweight_truncation"] = (
+                first_pass_max_overweight_truncation
+            )
+            group["first_pass_freeze_max_weight_after"] = first_pass_freeze_max_weight_after
+    return ms.weighting_groups_from_json(json.dumps(groups))
 
 
 def load_lhe_completer():

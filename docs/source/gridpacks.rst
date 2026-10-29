@@ -175,7 +175,8 @@ directory. Both are reset to ``""`` when the gridpack is created.
 
 With ``[amplicol]`` processes unweighted to full colour, ``max_overweight_truncation`` and
 ``freeze_max_weight_after`` set the second pass, which gives the events, and the
-``first_pass_`` options the leading-colour unweighting, as in the main run. The colour
+``first_pass_`` options the leading-colour unweighting of these processes, as in the main
+run. The other processes are unweighted once, as set by ``[generation]``. The colour
 accuracy and the mode are fixed when the gridpack is created. The pyamplicol artifacts
 the libraries read are copied to ``SubProcesses/``, and ``include_source = true`` is not
 supported for these processes.

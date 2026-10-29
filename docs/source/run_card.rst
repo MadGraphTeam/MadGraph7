@@ -403,10 +403,11 @@ The surrogate does not return channel weights, so it needs ``sde_strategy =
     overweights. ``"reweight"`` keeps the ratio in the event weights.
 
 ``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
-    ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the unweighting with
-    the surrogate, in unweight mode. The ones of ``[generation]`` are used for the second
-    pass, which gives the final events. In reweight mode, ``[generation]`` sets the
-    unweighting with the surrogate.
+    ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the first
+    unweighting, with the surrogate, in unweight mode. The ones of ``[generation]`` set
+    the second unweighting with the full matrix element, which gives the final events,
+    and the unweighting of the subprocesses without a surrogate. In reweight mode, the
+    events are unweighted once, with the surrogate, as set by ``[generation]``.
 
 ``param_card`` (``""``)
     The param card a ``.so`` surrogate is initialized with. An empty string uses
