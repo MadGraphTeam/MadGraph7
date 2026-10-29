@@ -535,7 +535,8 @@ def export_trees(
             start, dimension = slot(block, entry)
             starts.append(start)
             dimensions.add(dimension)
-        if not dimensions and slice_.request.selection is not None:
+        selection = slice_.request.selection
+        if not dimensions and selection is not None and selection.helicities:
             unread.add(id(block))
             return None
         if len(dimensions) != 1:
