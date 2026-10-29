@@ -1770,12 +1770,20 @@ def _parameter_program(
                 symbol = symbols.qualified(f"pyamplicol_v2_parameters::e{len(inputs)}")
                 inputs.append(symbol)
                 symbol_of[name] = symbol
-        ratio = output(
-            ("photon-ratio", photons.alpha0_inverse),
-            lambda: (
-                1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {}))
-            ),
-        )
+        def photon_ratio() -> Any:
+            value = 1 / (
+                symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {})
+            )
+            if value.contains(Expression.I):
+                # A complex-mass scheme's alpha (complex pole masses, real
+                # by construction, e.g. the G_mu UFO's Gfbar, up to the
+                # carrier's rounding): its real part, as MG5_aMC assigns the
+                # tagged photons' rescaling to a double-precision function
+                # (``rescale_alpha_tagged.inc``).
+                value = plans[0].program.library.predicates["real_part"](value)
+            return value
+
+        ratio = output(("photon-ratio", photons.alpha0_inverse), photon_ratio)
         positive.append(ratio)
         photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
     # The helpers in the order of their names, not the library's (which
