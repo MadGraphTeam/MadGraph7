@@ -1535,7 +1535,8 @@ _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
 _UNLABELLED = (
     "LoopRequestUnsupported",
     r"veto-unlabelled-counterterms: .* particle_veto removes the species "
-    r"\[23, 24, 25, 250, 251\]",
+    # The Z and W ghosts go with them (``ew_policy.gauge_closed_veto``).
+    r"\[23, 24, 25, 250, 251, 9000002, 9000003, 9000004\]",
 )
 # Electroweak requests need every propagating width fixed to zero outside
 # the complex-mass scheme (``ew_policy``, the user's decision [U8]).

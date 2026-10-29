@@ -1593,7 +1593,11 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
         _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
     assert refused.value.key == "veto-unlabelled-counterterms"
     message = str(refused.value)
-    assert "removes the species [23, 24, 25, 250, 251]" in message
+    # The Z and W ghosts go with them (``ew_policy.gauge_closed_veto``).
+    assert (
+        "removes the species [23, 24, 25, 250, 251, 9000002, 9000003, 9000004]"
+        in message
+    )
     assert "V_UV" in message and "loop_particles = []" in message
     request = SliceRequest(
         "u u~ > d d~",
@@ -1669,7 +1673,10 @@ def test_public_generation_cli_and_dry_run_refuse_photon_only_mumu(
     compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
     veto = 'particle_veto = ["Z", "W+", "H", "G0", "G+"]'
     key = "veto-unlabelled-counterterms"
-    removed = "particle_veto removes the species [23, 24, 25, 250, 251]"
+    removed = (
+        "particle_veto removes the species "
+        "[23, 24, 25, 250, 251, 9000002, 9000003, 9000004]"
+    )
     processes = ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="eemm"),))
 
     def card(name, veto):
