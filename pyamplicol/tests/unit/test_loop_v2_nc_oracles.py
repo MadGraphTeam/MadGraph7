@@ -43,7 +43,10 @@ declaration (m-qcd PLAN §3.2 MQ-NC):
   .py::test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14``.
 
 Each N runs in its own process (``loop_nc_scan``, Python tree lanes), with
-its own ``PYAMPLICOL_CACHE_DIR``.
+its own ``PYAMPLICOL_CACHE_DIR``. The other half of the campaign's rule 7
+(LC and NLC equal the kept N_c powers of the scan, and Catani at N on every
+nc row) is ``test_loop_v2_nc_projection.py``, whose ``NC_COLUMN`` lists
+each row's ids here.
 """
 
 from __future__ import annotations
