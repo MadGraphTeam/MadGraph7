@@ -1304,7 +1304,8 @@ class V2VirtualRuntime:
                     "scale_input": "explicit positive mu_r2, scalar or per point",
                     "stability_checks": (
                         "rotations (count or exact rotations) and the "
-                        "reduction-direction check; none by default"
+                        "reduction-direction check, optionally rescaled; none "
+                        "by default"
                     ),
                     "rescue_available": False,
                     "accuracy_established": False,
