@@ -86,7 +86,15 @@ def test_public_preflight_defers_projected_history_proof_to_actual_owner(accurac
     backend = SimpleNamespace(
         _run_config=SimpleNamespace(
             color=SimpleNamespace(accuracy=accuracy, contraction="direct")
-        )
+        ),
+        # Inclusive helicity and colour selectors (``_check_correlators``
+        # refuses correlators with a leading-colour v2 selection).
+        _process_selection=SimpleNamespace(
+            max_color_sectors=None,
+            reference_color_order=None,
+            selected_color_sector_ids=None,
+            selected_source_helicities=None,
+        ),
     )
     _check_correlators(backend, CorrelatorConfig(spin_correlations=((3,), (3, 4))))
     _check_correlators(
