@@ -30,7 +30,7 @@ import madgraph.various.misc as misc
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 
 class TestParamWritting(unittest.TestCase):
-    """Test that MG5 succesfully write a param_card."""
+    """Test that MG5 successfully writes a param_card."""
     
     def setUp(self):
         """ prepare a model and the ParamCardWriter"""
@@ -110,7 +110,7 @@ class TestParamWritting(unittest.TestCase):
                '%s != %s' % ([p.name for p in start], [p.name for p in result]))
         
     def test_write_block(self):
-        """Check that the writting of a block works"""
+        """Check that the writing of a block works"""
         
         self.writter.write_block('DECAY')
         self.assertNotIn('Block', self.content.getvalue())
@@ -118,7 +118,7 @@ class TestParamWritting(unittest.TestCase):
         self.assertIn('Block mass', self.content.getvalue())
         
     def test_write_param(self):
-        """Check that the writting of a parameter works"""
+        """Check that the writing of a parameter works"""
         
         param = base_objects.ParamCardVariable('p8', 0.54 + 0j, 'first', [2,4])
         
@@ -150,7 +150,7 @@ class TestParamWritting(unittest.TestCase):
         self.content.seek(0)
                 
     def test_write_qnumber(self):
-        """ check if we can writte qnumber """
+        """ check if we can write qnumber """
         
         particleList = base_objects.ParticleList()
         particle = base_objects.Particle()
@@ -189,7 +189,7 @@ class TestParamWritting(unittest.TestCase):
  
         
 class TestParamWrittingWithRestrict(unittest.TestCase):
-    """Test that MG5 succesfully write a param_card."""
+    """Test that MG5 successfully writes a param_card."""
     
     def setUp(self):
         """ prepare a model and the ParamCardWriter"""
@@ -265,7 +265,7 @@ Block mass
 ## Those values should be edited following the 
 ## analytical expression. MG5 ignores those values 
 ## but they are important for interfacing the output of MG5
-## to external program such as Pythia.
+## to external programs such as Pythia.
   1 0.000000e+00 # d : 0.0 
   2 0.000000e+00 # u : 0.0 
   3 0.000000e+00 # s : 0.0 
@@ -306,7 +306,7 @@ DECAY  25 2.441404e+00 # WH
 ## Those values should be edited following the 
 ## analytical expression. MG5 ignores those values 
 ## but they are important for interfacing the output of MG5
-## to external program such as Pythia.
+## to external programs such as Pythia.
 DECAY  1 0.000000e+00 # d : 0.0 
 DECAY  2 0.000000e+00 # u : 0.0 
 DECAY  3 0.000000e+00 # s : 0.0 

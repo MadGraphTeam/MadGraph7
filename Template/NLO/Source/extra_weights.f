@@ -27,7 +27,7 @@ c switch for running muR-dependent factor runfac=1(running)/0(fixed)
 c WARNING: If you set runfac=1 to include a muR-dependent factor
 c          make sure you modified the function rwgt_muR_dep_fac in
 c	   reweight_xsec.f and compute_cpower in fks_singular.f
-c          appropiately to include all muR dependent overall factors
+c          appropriately to include all muR dependent overall factors
 c          (except for alpha_s) in the calculation. This procedure 
 c          will be incorrect, if you miss one of the muR dependent
 c          factors or if there is a not factorizing muR dependent term.

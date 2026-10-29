@@ -21,12 +21,33 @@ Tensor load_tensor(TarReader& tar, const std::string& name);
 void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
 struct FieldLayout {
-    static constexpr const char* i32 = "<i4";
-    static constexpr const char* f64 = "<f8";
+    enum Type { i32, f64 };
 
     std::string name;
-    const char* type;
+    Type type;
     int group;
+
+    /// Size of a field of the given type in bytes.
+    static constexpr std::size_t size(Type type) {
+        switch (type) {
+        case i32:
+            return 4;
+        case f64:
+            return 8;
+        }
+        throw std::logic_error("unknown field type");
+    }
+
+    /// numpy type string of a field of the given type.
+    static constexpr const char* dtype(Type type) {
+        switch (type) {
+        case i32:
+            return "<i4";
+        case f64:
+            return "<f8";
+        }
+        throw std::logic_error("unknown field type");
+    }
 };
 
 template <typename T>
@@ -296,14 +317,7 @@ public:
                 size = 0;
                 std::size_t group_index = 0;
                 for (auto& field : layout) {
-                    std::size_t field_size;
-                    if (field.type == FieldLayout::i32) {
-                        field_size = 4;
-                    } else if (field.type == FieldLayout::f64) {
-                        field_size = 8;
-                    } else {
-                        std::logic_error("unknown type");
-                    }
+                    std::size_t field_size = FieldLayout::size(field.type);
                     if (field.group > group_index) {
                         offsets.resize(field.group);
                         offsets.back() = size;

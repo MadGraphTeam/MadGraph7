@@ -434,7 +434,7 @@ KERNELSPEC Pair<FourMom<T>, FourMom<T>> boost_two_body(
 template <typename T>
 KERNELSPEC void boost_beam(
     FIn<T, 2> q,
-    FIn<T, 1> masses,
+    FSIn<T, 1> masses,
     FVal<T> x1,
     FVal<T> x2,
     FVal<T> sign,
@@ -605,14 +605,14 @@ KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> phi_m1_m2_from_p1com(
 
 template <typename T>
 KERNELSPEC void kernel_boost_beam(
-    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+    FIn<T, 2> p1, FSIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
 ) {
     boost_beam<T>(p1, masses, x1, x2, 1.0, p_out);
 }
 
 template <typename T>
 KERNELSPEC void kernel_boost_beam_inverse(
-    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+    FIn<T, 2> p1, FSIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
 ) {
     boost_beam<T>(p1, masses, x1, x2, -1.0, p_out);
 }
@@ -634,7 +634,7 @@ template <typename T>
 KERNELSPEC void kernel_r_to_x1x2(
     FIn<T, 0> r,
     FIn<T, 0> s_hat,
-    FIn<T, 0> s_lab,
+    FSIn<T, 0> s_lab,
     FOut<T, 0> x1,
     FOut<T, 0> x2,
     FOut<T, 0> det
@@ -647,7 +647,7 @@ KERNELSPEC void kernel_r_to_x1x2(
 
 template <typename T>
 KERNELSPEC void kernel_x1x2_to_r(
-    FIn<T, 0> x1, FIn<T, 0> x2, FIn<T, 0> s_lab, FOut<T, 0> r, FOut<T, 0> det
+    FIn<T, 0> x1, FIn<T, 0> x2, FSIn<T, 0> s_lab, FOut<T, 0> r, FOut<T, 0> det
 ) {
     auto tau = x1 * x2;
     auto log_tau = log(tau);
@@ -664,8 +664,8 @@ template <typename T>
 KERNELSPEC void kernel_r_to_x1x2_window(
     FIn<T, 0> r,
     FIn<T, 0> s_hat,
-    FIn<T, 0> s_lab,
-    FIn<T, 0> y_max,
+    FSIn<T, 0> s_lab,
+    FSIn<T, 0> y_max,
     FOut<T, 0> x1,
     FOut<T, 0> x2,
     FOut<T, 0> det
@@ -683,8 +683,8 @@ template <typename T>
 KERNELSPEC void kernel_x1x2_to_r_window(
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> s_lab,
-    FIn<T, 0> y_max,
+    FSIn<T, 0> s_lab,
+    FSIn<T, 0> y_max,
     FOut<T, 0> r,
     FOut<T, 0> det
 ) {
@@ -704,7 +704,7 @@ KERNELSPEC void kernel_diff_cross_section(
     FIn<T, 0> pdf1,
     FIn<T, 0> pdf2,
     FIn<T, 0> matrix_element,
-    FIn<T, 0> e_cm2,
+    FSIn<T, 0> e_cm2,
     FOut<T, 0> result
 ) {
     result = INV_GEV2_TO_PB * matrix_element * pdf1 * pdf2 /
@@ -781,6 +781,10 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin(
     FVal<T> etmin_1,
     FVal<T> etmin_2
 ) {
+    // squared masses recomputed from momenta (inverse direction) can be slightly
+    // negative; clamp them so that the square roots below cannot give NaN
+    m1_2 = max(m1_2, 0.);
+    m2_2 = max(m2_2, 0.);
     auto pt_tot2 = p_tot[1] * p_tot[1] + p_tot[2] * p_tot[2];
     auto s = lsquare<T>(p_tot);
     auto piir0 = sqrt(max(s, 0.) + pt_tot2);
@@ -893,9 +897,9 @@ KERNELSPEC void kernel_t_rapidity_clamp(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t_min_out,
     FOut<T, 0> t_max_out
 ) {
@@ -963,9 +967,9 @@ KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
     FIn<T, 0> etmin_2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t1_min_out,
     FOut<T, 0> t1_max_out
 ) {
@@ -1049,9 +1053,9 @@ KERNELSPEC void kernel_t2_rapidity_clamp_doublet(
     FIn<T, 0> t1_abs,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t2_min_out,
     FOut<T, 0> t2_max_out
 ) {
@@ -1131,7 +1135,7 @@ KERNELSPEC void kernel_t_inv_value_and_min_max_cut(
 
 template <typename T>
 KERNELSPEC void kernel_invariants_from_momenta(
-    FIn<T, 2> p_ext, FIn<T, 2> factors, FOut<T, 1> invariants
+    FIn<T, 2> p_ext, FSIn<T, 2> factors, FOut<T, 1> invariants
 ) {
     for (std::size_t i = 0; i < invariants.size(); ++i) {
         auto factors_i = factors[i];
@@ -1289,7 +1293,7 @@ kernel_mirror_momenta(FIn<T, 2> p_ext, IIn<T, 0> mirror, FOut<T, 2> p_out) {
 
 template <typename T>
 KERNELSPEC void
-kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0> x2) {
+kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FSIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0> x2) {
     x1 = 2. * p_ext[0][0] / e_cm;
     x2 = 2. * p_ext[1][0] / e_cm;
 }
@@ -1301,7 +1305,7 @@ kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0
 // definition as madevent's boost_to_frame (Template/LO/SubProcesses/genps.f).
 template <typename T>
 KERNELSPEC void
-kernel_boost_to_frame(FIn<T, 2> p_ext, IIn<T, 1> frame_mask, FOut<T, 2> p_out) {
+kernel_boost_to_frame(FIn<T, 2> p_ext, ISIn<T, 1> frame_mask, FOut<T, 2> p_out) {
     FourMom<T> p_boost{0., 0., 0., 0.};
     std::size_t selected_count = 0, selected_index = 0;
     for (std::size_t i = 0; i < p_ext.size(); ++i) {

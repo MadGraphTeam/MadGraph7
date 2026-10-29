@@ -5,62 +5,56 @@
 #include "madspace/driver/thread_pool.hpp"
 #include "simd.hpp"
 
+#include <array>
+#include <tuple>
+#include <utility>
+
 namespace madspace {
 namespace cpu {
 
+// View onto a tensor for the vectorized kernels. The simd_vec_size lanes of a
+// vector are consecutive batch entries, so they are always contiguous in memory
+// (batch stride one) and are read and written with plain vector loads and stores.
+// Moving to the next vector advances the data pointer by vec_step elements:
+// simd_vec_size for batched tensors, zero for literals that are stored padded to
+// simd_vec_size identical lanes. Tensors that do not have this layout are handled
+// by the scalar kernels instead (see tensor_foreach_impl).
 template <class V, ScalarType T, int _dim, bool is_batch>
 class VectorizedTensorView {
 public:
     using VType = V;
     using DType = T;
     static const int dim = _dim;
+    static constexpr bool is_single = false;
 
-    VectorizedTensorView(const TensorView<T, _dim>& view) :
+    VectorizedTensorView(const TensorView<T, _dim>& view, std::size_t vec_step) :
         _data(view.data()),
         _stride(view.stride()),
         _shape(view.shape()),
-        _batch_stride(view.stride()[0]) {}
+        _vec_step(vec_step) {}
 
     VectorizedTensorView(
-        T* data, std::size_t* stride, std::size_t* shape, std::size_t batch_stride
+        T* data, std::size_t* stride, std::size_t* shape, std::size_t vec_step
     ) :
-        _data(data), _stride(stride), _shape(shape), _batch_stride(batch_stride) {}
+        _data(data), _stride(stride), _shape(shape), _vec_step(vec_step) {}
 
     VectorizedTensorView(V& value) :
         _data(reinterpret_cast<T*>(&value)),
         _stride(nullptr),
         _shape(nullptr),
-        _batch_stride(0) {}
+        _vec_step(0) {}
 
     const VectorizedTensorView<V, T, _dim - 1, false>
     operator[](std::size_t index) const
         requires(_dim != 0)
     {
-        if constexpr (is_batch) {
-            return {
-                &_data[index * _stride[0] * simd_vec_size],
-                &_stride[1],
-                &_shape[1],
-                _batch_stride
-            };
-        } else {
-            return {&_data[index * _stride[0]], &_stride[1], &_shape[1], _batch_stride};
-        }
+        return {&_data[offset(index)], &_stride[1], &_shape[1], _vec_step};
     }
 
     VectorizedTensorView<V, T, _dim - 1, false> operator[](std::size_t index)
         requires(_dim != 0)
     {
-        if constexpr (is_batch) {
-            return {
-                &_data[index * _stride[0] * simd_vec_size],
-                &_stride[1],
-                &_shape[1],
-                _batch_stride
-            };
-        } else {
-            return {&_data[index * _stride[0]], &_stride[1], &_shape[1], _batch_stride};
-        }
+        return {&_data[offset(index)], &_stride[1], &_shape[1], _vec_step};
     }
 
     template <typename... I>
@@ -68,16 +62,11 @@ public:
     get(std::size_t first_index, I... index) const
         requires(_dim >= sizeof...(I) + 1)
     {
-        T* ptr = _data;
-        if constexpr (is_batch) {
-            ptr = &ptr[first_index * _stride[0] * simd_vec_size];
-        } else {
-            ptr = &ptr[first_index * _stride[0]];
-        }
+        T* ptr = &_data[offset(first_index)];
         int i = 1;
         ((ptr = &ptr[index * _stride[i++]]), ...);
         return {
-            ptr, &_stride[sizeof...(I) + 1], &_shape[sizeof...(I) + 1], _batch_stride
+            ptr, &_stride[sizeof...(I) + 1], &_shape[sizeof...(I) + 1], _vec_step
         };
     }
 
@@ -86,37 +75,32 @@ public:
     get(std::size_t first_index, I... index)
         requires(_dim >= sizeof...(I) + 1)
     {
-        T* ptr = _data;
-        if constexpr (is_batch) {
-            ptr = &ptr[first_index * _stride[0] * simd_vec_size];
-        } else {
-            ptr = &ptr[first_index * _stride[0]];
-        }
+        T* ptr = &_data[offset(first_index)];
         int i = 1;
         ((ptr = &ptr[index * _stride[i++]]), ...);
         return {
-            ptr, &_stride[sizeof...(I) + 1], &_shape[sizeof...(I) + 1], _batch_stride
+            ptr, &_stride[sizeof...(I) + 1], &_shape[sizeof...(I) + 1], _vec_step
         };
     }
 
     operator V() const
         requires(_dim == 0)
     {
-        return vload(_data, _batch_stride);
+        return vload(_data);
     }
 
     V operator=(V value)
         requires(_dim == 0)
     {
-        vstore(_data, _batch_stride, value);
+        vstore(_data, value);
         return value;
     }
 
     V operator+=(V value)
         requires(_dim == 0)
     {
-        V new_value = vload(_data, _batch_stride) + value;
-        vstore(_data, _batch_stride, new_value);
+        V new_value = vload(_data) + value;
+        vstore(_data, new_value);
         return new_value;
     }
 
@@ -135,22 +119,107 @@ public:
     V gather(IVec indices) const
         requires(_dim == 1)
     {
-        return vgather(_data, _batch_stride, _stride[0], indices);
+        return vgather(_data, 1, _stride[0], indices);
     }
 
     template <typename IVec>
     void scatter_add(IVec indices, V values)
         requires(_dim == 1)
     {
-        V old_values = vgather(_data, _batch_stride, _stride[0], indices);
-        vscatter(_data, _batch_stride, _stride[0], indices, old_values + values);
+        V old_values = vgather(_data, 1, _stride[0], indices);
+        vscatter(_data, 1, _stride[0], indices, old_values + values);
     }
 
 private:
+    std::size_t offset(std::size_t index) const {
+        if constexpr (is_batch) {
+            return index * _vec_step;
+        } else {
+            return index * _stride[0];
+        }
+    }
+
     T* _data;
     std::size_t* _stride;
     std::size_t* _shape;
-    std::size_t _batch_stride;
+    std::size_t _vec_step;
+};
+
+// View onto an input marked as single in the instruction set, i.e. without a
+// batch dimension. The batch index is ignored, and every lane gets the same
+// value through a broadcast load.
+template <class V, ScalarType T, int _dim, bool is_batch>
+class SingleVectorizedTensorView {
+public:
+    using VType = V;
+    using DType = T;
+    static const int dim = _dim;
+    static constexpr bool is_single = true;
+
+    SingleVectorizedTensorView(const TensorView<T, _dim>& view) :
+        _data(view.data()), _stride(view.stride()), _shape(view.shape()) {}
+
+    SingleVectorizedTensorView(T* data, std::size_t* stride, std::size_t* shape) :
+        _data(data), _stride(stride), _shape(shape) {}
+
+    const SingleVectorizedTensorView<V, T, _dim - 1, false>
+    operator[](std::size_t index) const
+        requires(_dim != 0)
+    {
+        return {&_data[offset(index)], &_stride[1], &_shape[1]};
+    }
+
+    template <typename... I>
+    const SingleVectorizedTensorView<V, T, _dim - sizeof...(I) - 1, false>
+    get(std::size_t first_index, I... index) const
+        requires(_dim >= sizeof...(I) + 1)
+    {
+        T* ptr = &_data[offset(first_index)];
+        int i = 1;
+        ((ptr = &ptr[index * _stride[i++]]), ...);
+        return {ptr, &_stride[sizeof...(I) + 1], &_shape[sizeof...(I) + 1]};
+    }
+
+    operator V() const
+        requires(_dim == 0)
+    {
+        return vload_broadcast(_data);
+    }
+
+    // the value as a plain scalar, e.g. for loop bounds or indices
+    T value() const
+        requires(_dim == 0)
+    {
+        return *_data;
+    }
+
+    std::size_t size(std::size_t index = 0) const { return _shape[index]; }
+
+    template <typename IVec>
+    V gather(IVec indices) const
+        requires(_dim == 1)
+    {
+        return vgather(_data, 0, _stride[0], indices);
+    }
+
+private:
+    std::size_t offset(std::size_t index) const {
+        if constexpr (is_batch) {
+            return 0;
+        } else {
+            return index * _stride[0];
+        }
+    }
+
+    T* _data;
+    std::size_t* _stride;
+    std::size_t* _shape;
+};
+
+// whether a kernel parameter type is a view onto a single (non-batched) input
+template <typename T>
+inline constexpr bool is_single_param = requires {
+    requires std::remove_cvref_t<T>::is_single;
 };
 
 template <typename T>
@@ -207,25 +276,57 @@ struct get_views {
 };
 
 // return the tuple of VectorizedTensorViews where the type is extracted
-// from the signature of F
+// from the signature of F. vec_steps holds the step between vectors for every
+// argument (simd_vec_size, or zero for padded literals)
 template <typename F, int dims>
 struct get_vectorized_views;
 template <typename... TParam, int dims>
 struct get_vectorized_views<void (*)(TParam...), dims> {
     template <typename... TArg>
-    auto operator()(TArg&... args) {
-        return std::make_tuple([&]() {
-            if constexpr (TArg::is_scalar_view) {
-                return ScalarView(TParam(0.0));
-            } else {
-                return VectorizedTensorView<
-                    typename TParam::VType,
-                    typename TParam::DType,
-                    TParam::dim + dims,
-                    true>(args);
-            }
-        }()...);
+    auto operator()(
+        const std::array<std::size_t, sizeof...(TArg)>& vec_steps, TArg&... args
+    ) {
+        return make(vec_steps, std::index_sequence_for<TArg...>(), args...);
     }
+
+private:
+    template <typename... TArg, std::size_t... I>
+    auto make(
+        const std::array<std::size_t, sizeof...(TArg)>& vec_steps,
+        std::index_sequence<I...>,
+        TArg&... args
+    ) {
+        return std::make_tuple(make_view<TParam>(vec_steps[I], args)...);
+    }
+
+    template <typename P, typename TArg>
+    static auto make_view(std::size_t vec_step, TArg& arg) {
+        if constexpr (TArg::is_scalar_view) {
+            return ScalarView(P(typename TArg::DType(arg)));
+        } else if constexpr (is_single_param<P>) {
+            return SingleVectorizedTensorView<
+                typename P::VType,
+                typename P::DType,
+                P::dim + dims,
+                true>(arg);
+        } else {
+            return VectorizedTensorView<
+                typename P::VType,
+                typename P::DType,
+                P::dim + dims,
+                true>(arg, vec_step);
+        }
+    }
+};
+
+// whether each parameter of F is a single (non-batched) input
+template <typename F>
+struct single_params;
+template <typename... TParam>
+struct single_params<void (*)(TParam...)> {
+    static constexpr std::array<bool, sizeof...(TParam)> value{
+        is_single_param<TParam>...
+    };
 };
 
 template <typename F>
@@ -313,9 +414,12 @@ inline void tensor_foreach_impl(
     // (the whole batch handled sequentially by one thread). Broadcast *inputs* are
     // only ever read, never written, in both forward and backward -- concurrent
     // reads of the same memory are safe, so they don't need this.
+    // SIMD lanes would also write to the same memory, so use the scalar kernel.
+    bool broadcast_output = false;
     for (const Tensor* out : outputs) {
         if (out->size(0) != batch_size) {
             single_job = true;
+            broadcast_output = true;
         }
     }
 
@@ -331,25 +435,69 @@ inline void tensor_foreach_impl(
         )
     );
 
+    // The vectorized kernel loads and stores the lanes of a vector with plain
+    // contiguous memory accesses. It is only used if every batched argument has
+    // batch stride one (or is a literal padded to simd_vec_size lanes); single
+    // inputs are read with broadcast loads and can have any layout. Otherwise
+    // the whole batch is handled by the scalar kernel.
+    constexpr std::size_t n_args = n_in + n_out + sizeof...(S);
+    std::array<std::size_t, n_args> vec_steps{};
+    bool vectorize = !broadcast_output;
+    if constexpr (!std::is_same_v<decltype(scalar_func), decltype(vector_func)>) {
+        using Single = single_params<decltype(vector_func)>;
+        [&]<std::size_t... I>(std::index_sequence<I...>) {
+            (
+                [&] {
+                    using View = std::tuple_element_t<
+                        I,
+                        std::remove_reference_t<decltype(flat_views)>>;
+                    if constexpr (!ScalarType<View> && !Single::value[I]) {
+                        auto& view = std::get<I>(flat_views);
+                        if (view.shape[0] == batch_size && view.stride[0] == 1) {
+                            vec_steps[I] = simd_vec_size;
+                        } else if (view.simd_padded) {
+                            vec_steps[I] = 0;
+                        } else {
+                            vectorize = false;
+                        }
+                    }
+                }(),
+                ...
+            );
+        }(std::make_index_sequence<n_args>());
+    }
+
     device.foreach (
         batch_size,
-        [flat_views, scalar_args...](std::size_t count, std::size_t offset) mutable {
+        [flat_views,
+         vectorize,
+         vec_steps,
+         scalar_args...](std::size_t count, std::size_t offset) mutable {
             auto views = std::apply(get_views(), flat_views);
             std::size_t scalar_offset = offset;
             if constexpr (!std::
                               is_same_v<decltype(scalar_func), decltype(vector_func)>) {
-                auto vectorized_views = std::apply(
-                    get_vectorized_views<decltype(vector_func), dims>(), views
-                );
-                std::size_t vec_count = count / simd_vec_size;
-                std::size_t vec_offset = offset / simd_vec_size;
-                std::apply(
-                    [vec_count, vec_offset](auto&&... args) {
-                        nested_for<vector_func, dims>(vec_count, vec_offset, args...);
-                    },
-                    vectorized_views
-                );
-                scalar_offset += vec_count * simd_vec_size;
+                if (vectorize) {
+                    auto vectorized_views = std::apply(
+                        [&vec_steps](auto&... args) {
+                            return get_vectorized_views<decltype(vector_func), dims>()(
+                                vec_steps, args...
+                            );
+                        },
+                        views
+                    );
+                    std::size_t vec_count = count / simd_vec_size;
+                    std::size_t vec_offset = offset / simd_vec_size;
+                    std::apply(
+                        [vec_count, vec_offset](auto&&... args) {
+                            nested_for<vector_func, dims>(
+                                vec_count, vec_offset, args...
+                            );
+                        },
+                        vectorized_views
+                    );
+                    scalar_offset += vec_count * simd_vec_size;
+                }
             }
             std::size_t scalar_count = offset + count - scalar_offset;
             std::apply(
