@@ -261,20 +261,9 @@ def test_active_references_agree_with_their_rows(manifest, rows):
 
 def test_listings_name_real_points_and_coefficients(rows):
     for name, row in rows.items():
-        for entry in (
-            *row.binary64_out_of_scope,
-            *row.reference_outliers,
-        ):
+        for entry in row.reference_outliers:
             assert entry["point"] in {i for p in row.points.values() for i in p}, name
             assert entry["coefficient"] in mqcd.COEFFICIENTS, name
-        for entry in row.binary64_out_of_scope:
-            # Listed with E and its true error (PLAN §1.4 rule 2); a limit
-            # point's Born (no estimate) only on a special-point variant.
-            if entry["coefficient"] == "born":
-                assert row.base is not None and entry["E"] is None, name
-            else:
-                assert entry["E"] > mqcd.O1_CAP, name
-            assert entry["true_error"] >= 0, name
         for entry in row.vanishing:
             # A Laurent coefficient, or a colour-forbidden Born sector.
             assert entry["coefficient"] in mqcd.COEFFICIENTS, name
@@ -540,21 +529,48 @@ def test_rule2_bands_and_rule3_bracketing():
     # The estimate under-reports tenfold: rule 3 fails.
     found = checks(_row(), 5e-11, 4e-12)
     assert not found["2", "finite"].passed and not found["3", "finite"].passed
-    # E > 1e-9: outside the scope, which the manifest must list.
+    # E > 1e-9: outside the scope, reported (E, true error), not asserted;
+    # rule 3 still holds it.
     found = checks(_row(), 1e-8, 2e-9)
-    assert not found["2", "finite"].asserted and not found["2", "finite"].passed
-    listed = _row(
-        binary64_out_of_scope=[
-            {"point": 0, "sector": "QCD^8", "coefficient": "finite", "E": 2e-9,
-             "true_error": 1e-8}
-        ]
-    )  # fmt: skip
-    found = checks(listed, 1e-8, 2e-9)
     assert found["2", "finite"].passed and not found["2", "finite"].asserted
+    assert found["2", "finite"].bound == pytest.approx(2e-9, rel=1e-6)
     assert found["3", "finite"].passed
-    # A listing for an in-scope coefficient is stale.
-    found = checks(listed, 1e-13, 1e-13)
-    assert not found["2", "finite"].passed
+    found = checks(_row(), 1e-7, 2e-9)
+    assert not found["3", "finite"].passed
+
+
+def test_relaxed_tolerances_apply_to_their_rule_only():
+    """The user's ruling of 2026-10-29 ~10:20: a check failing below ~1e-5
+    gets its row's tolerance relaxed (``relaxed``: rule -> tolerance); the
+    bands stay where they are tighter than the relaxed value only above it,
+    and nothing else changes."""
+
+    dd = _point("double-double", 2.0, (1.0, -3.0, 0.5))
+    b64 = _point("double", 2.0, (1.0 + 2e-10, -3.0, 0.5), (3e-11, 0.0, 0.0))
+    reference = _reference({"m": (2, 1, -3, 0.5)})
+
+    def rule2(row):
+        (check,) = [
+            c
+            for c in mqcd.rule2_and_3(row, reference, 0, b64, dd)
+            if c.rule == "2" and c.coefficient == "finite"
+        ]
+        return check
+
+    assert not rule2(_row()).passed  # 2e-10 > E = 3e-11
+    relaxed = rule2(_row(relaxed={"2": 1e-8}))
+    assert relaxed.passed and relaxed.bound == 1e-8
+    assert rule2(_row(relaxed={"6": 1e-8})).bound == pytest.approx(3e-11)
+
+
+def test_relaxed_tolerances_stay_below_the_attention_threshold(rows):
+    """Every relaxed tolerance of the manifest is at most ~1e-5 (the user's
+    ruling) and names a rule the helper relaxes."""
+
+    for name, row in rows.items():
+        for rule, tolerance in row.relaxed.items():
+            assert rule in ("2", "6"), name
+            assert 0 < tolerance <= mqcd.ATTENTION, name
 
 
 def test_rule4_holds_the_poles_and_the_sector_sets():
@@ -578,20 +594,19 @@ def test_rule4_holds_the_poles_and_the_sector_sets():
     assert all(c.passed for c in mqcd.rule4(unpredicted, 0, none))
 
 
-def test_rule4_flags_a_stale_out_of_scope_listing():
-    """A binary64 pole inside the O1 scope that the manifest lists as out of
-    scope fails rule 4 as a stale listing (as rule 2 does)."""
+def test_rule4_reports_binary64_poles_outside_the_scope():
+    """Rule 4 in binary64: the bands of rule 2; a pole outside the O1 scope
+    is reported, not asserted."""
 
     catani = {SECTOR: (Decimal("-3.0"), Decimal("0.5"))}
     b64 = _point("double", 2.0, (1.0, -3.0, 0.5), (1e-13,) * 3, catani)
-    listed = _row(
-        binary64_out_of_scope=[
-            {"point": 0, "sector": "QCD^8", "coefficient": "single_pole"}
-        ]
-    )
-    assert all(c.passed for c in mqcd.rule4(_row(), 0, b64))
-    (stale,) = [c for c in mqcd.rule4(listed, 0, b64) if not c.passed]
-    assert stale.coefficient == "single_pole" and "stale" in stale.note
+    assert all(c.passed and c.asserted for c in mqcd.rule4(_row(), 0, b64))
+    off = {SECTOR: (Decimal("-3.0000001"), Decimal("0.5"))}
+    wide = _point("double", 2.0, (1.0, -3.0, 0.5), (1e-13, 3e-8, 1e-13), off)
+    (single,) = [
+        c for c in mqcd.rule4(_row(), 0, wide) if c.coefficient == "single_pole"
+    ]
+    assert single.passed and not single.asserted
 
 
 def test_massless_catani_operator():
@@ -1253,8 +1268,8 @@ def test_ward_rule_reads_the_ward_criterion():
         in_scope=True,
     )
     assert not mqcd.rule_ward(_row(), 0, "double", {"rows": [failing]})[1].passed
-    # Outside the binary64 scope (E_k > 1e-9 of the scale): listed, not
-    # asserted, still bracketed tenfold; unlisted it fails.
+    # Outside the binary64 scope (E_k > 1e-9 of the scale): not asserted,
+    # still bracketed tenfold.
     outside = entry(
         [1e-9, 0.0, 0.0],
         passed=False,
@@ -1263,20 +1278,10 @@ def test_ward_rule_reads_the_ward_criterion():
         estimate=[3e-8, 0, 0],
         in_scope=False,
     )
-    listing = [{"point": 0, "leg": 1, "factor": [1, 0], "E": 3e-8}]
-    listed = mqcd.rule_ward(
-        _row(ward_out_of_scope=listing), 0, "double", {"rows": [outside]}
-    )[1]
-    assert listed.passed and not listed.asserted
-    assert not mqcd.rule_ward(_row(), 0, "double", {"rows": [outside]})[1].passed
+    reported = mqcd.rule_ward(_row(), 0, "double", {"rows": [outside]})[1]
+    assert reported.passed and not reported.asserted
     unbracketed = {**outside, "estimate_over": [11.0, 0, 0]}
-    assert not mqcd.rule_ward(
-        _row(ward_out_of_scope=listing), 0, "double", {"rows": [unbracketed]}
-    )[1].passed
-    # A listing of an evaluation within the scope is stale.
-    assert not mqcd.rule_ward(
-        _row(ward_out_of_scope=listing), 0, "double", {"rows": [b64]}
-    )[1].passed
+    assert not mqcd.rule_ward(_row(), 0, "double", {"rows": [unbracketed]})[1].passed
     # No reduction-direction estimate: no binary64 criterion, a failure.
     assert not mqcd.rule_ward(
         _row(), 0, "double", {"rows": [entry([0, 0, 0], passed=None)]}
@@ -1292,9 +1297,4 @@ def test_ward_extras_are_checked_on_their_rows(rows):
     for name in ward_rows:
         assert "ward" not in rows[name].extras_pending, name
     assert rows["A14"].ward_legs == (1,)
-    for name, row in rows.items():
-        for listing in row.ward_out_of_scope:
-            assert name in ward_rows and listing["E"] > 1e-9, name
-            legs = row.ward_legs or ()
-            assert not legs or listing["leg"] in legs, name
     assert all(rows[n].ward_legs is None for n in ward_rows - {"A14"})

@@ -421,7 +421,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -449,7 +448,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ],
@@ -516,7 +514,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -610,7 +607,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -677,7 +673,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -744,7 +739,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -824,7 +818,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -848,7 +841,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -913,7 +905,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -982,7 +973,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1057,7 +1047,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1070,36 +1059,9 @@
      "notes": "S2: a soft gluon (E_g / sqrt(s) = 1e-3, 1e-5), MadLoop in quadruple precision",
      "extras": [],
      "extras_pending": {},
-     "binary64_out_of_scope": [
-      {
-       "point": 1,
-       "sector": "QCD^6",
-       "coefficient": "born",
-       "E": null,
-       "true_error": 1.16e-11
-      },
-      {
-       "point": 1,
-       "sector": "QCD^8",
-       "coefficient": "finite",
-       "E": 2.35e-06,
-       "true_error": 6.33e-07
-      },
-      {
-       "point": 1,
-       "sector": "QCD^8",
-       "coefficient": "single_pole",
-       "E": 4.44e-06,
-       "true_error": 7.35e-07
-      },
-      {
-       "point": 1,
-       "sector": "QCD^8",
-       "coefficient": "double_pole",
-       "E": 8e-07,
-       "true_error": 2.31e-07
-      }
-     ],
+     "relaxed": {
+      "2": 1e-09
+     },
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/uux_ggg_soft.json",
@@ -1224,7 +1186,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1248,7 +1209,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ],
@@ -1334,7 +1294,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1358,7 +1317,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ],
@@ -1429,22 +1387,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 1,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 2.1e-06,
-     "true_error": 1.47e-08
-    },
-    {
-     "point": 1,
-     "sector": "QCD^10",
-     "coefficient": "single_pole",
-     "E": 1.06e-06,
-     "true_error": 3.42e-08
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1517,7 +1459,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1592,78 +1533,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 0,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 3.2e-08,
-     "true_error": 1.05e-08
-    },
-    {
-     "point": 0,
-     "sector": "QCD^10",
-     "coefficient": "single_pole",
-     "E": 2.85e-09,
-     "true_error": 3.11e-10
-    },
-    {
-     "point": 0,
-     "sector": "QCD^10",
-     "coefficient": "double_pole",
-     "E": 2.49e-09,
-     "true_error": 5.44e-10
-    },
-    {
-     "point": 1,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 2.76e-09,
-     "true_error": 5.51e-10
-    },
-    {
-     "point": 2,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 1.25e-07,
-     "true_error": 5.55e-08
-    },
-    {
-     "point": 2,
-     "sector": "QCD^10",
-     "coefficient": "single_pole",
-     "E": 1.96e-08,
-     "true_error": 2.23e-09
-    },
-    {
-     "point": 2,
-     "sector": "QCD^10",
-     "coefficient": "double_pole",
-     "E": 6.52e-09,
-     "true_error": 4.16e-10
-    },
-    {
-     "point": 3,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 1.08e-07,
-     "true_error": 4.52e-08
-    },
-    {
-     "point": 3,
-     "sector": "QCD^10",
-     "coefficient": "single_pole",
-     "E": 6.51e-09,
-     "true_error": 1.01e-09
-    },
-    {
-     "point": 3,
-     "sector": "QCD^10",
-     "coefficient": "double_pole",
-     "E": 2.49e-09,
-     "true_error": 5.44e-10
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-10,
@@ -1747,7 +1616,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1771,7 +1639,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -1852,7 +1719,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1876,7 +1742,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -1959,15 +1824,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 2,
-     "sector": "QCD^10",
-     "coefficient": "finite",
-     "E": 1.56e-09,
-     "true_error": 1.16e-11
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -1991,7 +1847,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ],
@@ -2059,7 +1914,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -2124,7 +1978,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-10,
@@ -2195,36 +2048,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 0,
-     "sector": "QCD^12",
-     "coefficient": "finite",
-     "E": 1.77e-08,
-     "true_error": 3.4e-11
-    },
-    {
-     "point": 0,
-     "sector": "QCD^12",
-     "coefficient": "single_pole",
-     "E": 6.93e-09,
-     "true_error": 1.15e-10
-    },
-    {
-     "point": 1,
-     "sector": "QCD^12",
-     "coefficient": "finite",
-     "E": 1.11e-07,
-     "true_error": 1.06e-09
-    },
-    {
-     "point": 1,
-     "sector": "QCD^12",
-     "coefficient": "single_pole",
-     "E": 7.75e-08,
-     "true_error": 7.36e-10
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -2294,7 +2117,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -2359,7 +2181,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -2448,7 +2269,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -2460,36 +2280,6 @@
      "notes": "S1: top-pair threshold points (beta = 1e-1, 1e-2, 1e-3), MadLoop in quadruple precision",
      "extras": [],
      "extras_pending": {},
-     "binary64_out_of_scope": [
-      {
-       "point": 1,
-       "sector": "QCD^6",
-       "coefficient": "single_pole",
-       "E": 2.22e-09,
-       "true_error": 7.96e-13
-      },
-      {
-       "point": 2,
-       "sector": "QCD^6",
-       "coefficient": "finite",
-       "E": 9.72e-07,
-       "true_error": 1.74e-07
-      },
-      {
-       "point": 2,
-       "sector": "QCD^6",
-       "coefficient": "single_pole",
-       "E": 2e-05,
-       "true_error": 1.14e-09
-      },
-      {
-       "point": 2,
-       "sector": "QCD^6",
-       "coefficient": "double_pole",
-       "E": 2.92e-08,
-       "true_error": 5.36e-10
-      }
-     ],
      "reference": {
       "format": "required",
       "path": "tests/fixtures/loop/required/mqcd/gg_ttx_threshold.json",
@@ -2547,7 +2337,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ],
@@ -2613,7 +2402,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -2706,82 +2494,9 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 0,
-     "sector": "QCD^8",
-     "coefficient": "finite",
-     "E": 1.44e-08,
-     "true_error": 1.06e-09
-    },
-    {
-     "point": 0,
-     "sector": "QCD^8",
-     "coefficient": "single_pole",
-     "E": 2.61e-08,
-     "true_error": 6.75e-10
-    },
-    {
-     "point": 0,
-     "sector": "QCD^8",
-     "coefficient": "double_pole",
-     "E": 1.46e-08,
-     "true_error": 1.18e-09
-    },
-    {
-     "point": 1,
-     "sector": "QCD^8",
-     "coefficient": "single_pole",
-     "E": 1.23e-09,
-     "true_error": 1.04e-10
-    },
-    {
-     "point": 3,
-     "sector": "QCD^8",
-     "coefficient": "finite",
-     "E": 1.97e-08,
-     "true_error": 7.69e-10
-    },
-    {
-     "point": 3,
-     "sector": "QCD^8",
-     "coefficient": "single_pole",
-     "E": 2e-07,
-     "true_error": 1.17e-08
-    },
-    {
-     "point": 3,
-     "sector": "QCD^8",
-     "coefficient": "double_pole",
-     "E": 1.46e-08,
-     "true_error": 1.18e-09
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "ward_out_of_scope": [
-    {
-     "point": 0,
-     "leg": 5,
-     "factor": [
-      1,
-      0
-     ],
-     "E": 3.54e-08,
-     "true_error": 1.24e-09
-    },
-    {
-     "point": 0,
-     "leg": 5,
-     "factor": [
-      0,
-      1
-     ],
-     "E": 3.54e-08,
-     "true_error": 3.26e-09
-    }
-   ],
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -2861,7 +2576,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -2885,7 +2599,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -2951,7 +2664,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3017,7 +2729,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3079,7 +2790,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3150,7 +2860,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -3180,6 +2889,9 @@
      }
     }
    ],
+   "relaxed": {
+    "6": 1e-30
+   },
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -3243,7 +2955,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3305,7 +3016,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [
     {
@@ -3372,7 +3082,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -3459,10 +3168,12 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12
+   "reference_tolerance": 1e-12,
+   "relaxed": {
+    "2": 1e-08
+   }
   },
   {
    "id": "C06",
@@ -3521,7 +3232,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3583,7 +3293,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3645,7 +3354,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3708,7 +3416,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -3782,7 +3489,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -3849,7 +3555,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3921,7 +3626,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -3990,7 +3694,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4096,7 +3799,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4120,7 +3822,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -4201,7 +3902,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4225,7 +3925,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -4303,7 +4002,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4327,7 +4025,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -4407,7 +4104,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4431,7 +4127,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -4496,7 +4191,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -4561,7 +4255,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -4626,7 +4319,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -4691,15 +4383,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 3,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "finite",
-     "E": 1.74e-09,
-     "true_error": 1.6e-12
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -4764,50 +4447,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 0,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "finite",
-     "E": 9.91e-09,
-     "true_error": 3.06e-11
-    },
-    {
-     "point": 0,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "single_pole",
-     "E": 7.97e-09,
-     "true_error": 8.7e-13
-    },
-    {
-     "point": 0,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "double_pole",
-     "E": 2.49e-09,
-     "true_error": 5.21e-13
-    },
-    {
-     "point": 3,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "finite",
-     "E": 1.72e-08,
-     "true_error": 2.97e-11
-    },
-    {
-     "point": 3,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "single_pole",
-     "E": 4.43e-09,
-     "true_error": 3.12e-13
-    },
-    {
-     "point": 3,
-     "sector": "QCD^2 QED^4",
-     "coefficient": "double_pole",
-     "E": 2.49e-09,
-     "true_error": 5.21e-13
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -4872,7 +4511,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -4979,7 +4617,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5044,7 +4681,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5109,7 +4745,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5174,7 +4809,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [
     {
@@ -5247,7 +4881,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5311,7 +4944,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5380,7 +5012,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -5470,7 +5101,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5535,7 +5165,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5605,7 +5234,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -5673,7 +5301,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5741,7 +5368,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [
     {
@@ -5830,15 +5456,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [
-    {
-     "point": 2,
-     "sector": "QCD^8 QED^4",
-     "coefficient": "finite",
-     "E": 5.69e-08,
-     "true_error": 5.71e-09
-    }
-   ],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -5862,7 +5479,6 @@
        3
       ]
      },
-     "binary64_out_of_scope": [],
      "reference_outliers": []
     }
    ]
@@ -5931,7 +5547,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6041,7 +5656,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6150,7 +5764,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6221,7 +5834,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6353,7 +5965,6 @@
      "QED": 4
     }
    ],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6436,7 +6047,6 @@
      "QED": 4
     }
    ],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [
     {
@@ -6513,7 +6123,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6588,7 +6197,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6663,7 +6271,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6727,7 +6334,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
@@ -6903,7 +6509,6 @@
     }
    ],
    "unpredicted_sectors": [],
-   "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
