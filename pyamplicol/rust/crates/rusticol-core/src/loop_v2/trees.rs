@@ -2249,6 +2249,16 @@ impl TreeProgram {
             Ok(first)
         };
         for row in &rows {
+            if let Some((o, _)) = &program.photons {
+                // Its square root scales the photons' sources (`scale_photons`).
+                let value = &row[*o];
+                require(
+                    value.im == *zero && value.re > *zero && value.re.is_finite(),
+                    "the on-shell external photons' alpha(0)/alpha is not real, \
+                     finite and positive: set the model's 1/alpha(0) parameter \
+                     (aEW0M1 of MG5_aMC's G_mu loop models, e.g. 137.035999)",
+                )?;
+            }
             for &o in &program.positive {
                 let value = &row[o];
                 require(

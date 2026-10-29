@@ -160,6 +160,7 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         plan_masses: vec![None, Some(MassSource::Output(4))],
         scale: Some(0),
         scale_outputs,
+        photons: None,
     };
     let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
         Some(
