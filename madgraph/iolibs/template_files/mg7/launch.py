@@ -308,6 +308,11 @@ class HistItem:
 
 
 class MadgraphProcess:
+    # write each event's squared matrix element into the events (the
+    # "matrix_element" column of events.npy), for MadtRex to normalise its
+    # reweighting with instead of evaluating it again; set before survey()
+    store_matrix_elements = False
+
     def __init__(self, extra_make_args=(), split_flavors=False):
         # appended to the make command that builds the matrix elements
         self.extra_make_args = list(extra_make_args)
@@ -2009,13 +2014,18 @@ class MadgraphProcess:
         self.build_systematics()
         self.save_gridpack()
 
-    def generate_events(self) -> None:
+    def generate_events(self, output_format=None) -> None:
+        """Generate the events and write them in output_format, by default the
+        run_card's. run_single() passes "lhe_npy" when MadtRex reweights an
+        "lhe" run: the LHE file is then made from the reweighted npy events
+        (see lhe_via_binary())."""
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
         start_time = get_start_time()
         self.event_generator.generate()
-        output_format = self.run_card["run"]["output_format"]
+        if output_format is None:
+            output_format = self.run_card["run"]["output_format"]
         systematics = self.build_systematics()
         histograms = self.build_event_histograms()
         if output_format == "compact_npy":
@@ -3796,6 +3806,7 @@ class MadgraphSubprocess:
                     pdf2=pdf_arg,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
+                    matrix_element_output=self.process.store_matrix_elements,
                 )
             )
         partial_weights = self.process.systematics_enabled()
@@ -5347,6 +5358,33 @@ def write_reweighting_record(run_path, decision, card_path, events=None) -> str:
     return path
 
 
+def drop_stored_matrix_elements(events_path) -> None:
+    """Removes the "matrix_element" column (MadgraphProcess.
+    store_matrix_elements) from the npy events at events_path, if they have
+    one: it is only there for MadtRex's normalisation, not part of the
+    run's output."""
+    import numpy as np
+    from numpy.lib import format as npy_format
+
+    if not events_path.endswith(".npy") or not os.path.isfile(events_path):
+        return
+    events = np.load(events_path, mmap_mode="r", max_header_size=1 << 30)
+    if "matrix_element" not in (events.dtype.names or ()):
+        return
+    names = [name for name in events.dtype.names if name != "matrix_element"]
+    descr = [(name, events.dtype.fields[name][0]) for name in names]
+    tmp = events_path + ".tmp"
+    out = npy_format.open_memmap(tmp, mode="w+", dtype=np.dtype(descr), shape=events.shape)
+    chunk = 100000
+    for start in range(0, len(events), chunk):
+        stop = min(start + chunk, len(events))
+        for name in names:
+            out[name][start:stop] = events[name][start:stop]
+    out.flush()
+    del out, events
+    os.replace(tmp, events_path)
+
+
 def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=None):
     """Reweight the events of process with card_path, once, by the backend
     of decision (prepare_reweighting()), or of select_backend(requested)
@@ -5375,13 +5413,20 @@ def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=N
                 "matrix element library")
         from madgraph.iolibs.template_files.mg7.madtrex import (
             run_reweighting as madtrex_reweighting)
-        with tempfile.TemporaryDirectory() as tmp:
-            card = os.path.join(tmp, "reweight_card.dat")
-            with open(card_path) as f, open(card, "w") as out:
-                out.write(rb.strip_backend_line(f.read()))
-            madtrex_reweighting(card, events_path=process.events_path,
-                                card_kind=decision.card_kind,
-                                process_directory=os.getcwd())
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                card = os.path.join(tmp, "reweight_card.dat")
+                with open(card_path) as f, open(card, "w") as out:
+                    out.write(rb.strip_backend_line(f.read()))
+                # the stored matrix elements leave events.npy with the
+                # reweighting's last weight merge
+                madtrex_reweighting(card, events_path=process.events_path,
+                                    card_kind=decision.card_kind,
+                                    process_directory=os.getcwd(),
+                                    drop_stored_matrix_elements=True)
+        finally:
+            # and here only when that merge did not happen (a failure)
+            drop_stored_matrix_elements(process.events_path)
         tool_copy = os.path.join(run_dir, "unweighted_events.lhe.gz")
         if not process.events_path.endswith(".npy") and os.path.exists(tool_copy):
             from madgraph.iolibs.template_files.mg7.run_interface import sync_lhe_copy
@@ -5415,6 +5460,60 @@ def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=N
     return decision
 
 
+def lhe_via_binary(process, reweight) -> bool:
+    """Whether an output_format = "lhe" run that MadtRex reweights is
+    generated as npy ("lhe_npy") and turned into the LHE file it asked for
+    only after the reweighting (deliver_lhe_from_binary()): MadtRex reads
+    and extends the npy events much faster than an LHE file, which it would
+    decompress, parse and rewrite in full. Not when an LHE-only step runs
+    before the reweighting: the run_card [postprocessing] time_of_flight or
+    legacy systematics (see run_lhe_postprocessing())."""
+    if getattr(reweight, "backend", None) != "madtrex":
+        return False
+    if process.gridpack_run_mode != "regular":
+        return False
+    if process.run_card["run"]["output_format"] != "lhe":
+        return False
+    cfg = process.run_card["postprocessing"]
+    try:
+        if float(cfg.get("time_of_flight", -1.0)) >= 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    if cfg.get("systematics") and not process.run_card["systematics"]["enable"]:
+        return False
+    return True
+
+
+def deliver_lhe_from_binary(process) -> None:
+    """The LHE file of a run lhe_via_binary() generated as npy: npy_to_lhe
+    writes Events/<run>/events.lhe.gz from events.npy and header.lhe, with
+    their weights (the systematics', MadtRex's), and it replaces them as the
+    run's event file (process.events_path, and reweighting.json's events).
+    When the conversion fails the npy events are kept, and reported."""
+    log = logging.getLogger("madevent")
+    npy_path = process.events_path
+    process.lhe_from_binary = False
+    try:
+        lhe_path = npy_to_lhe.convert(npy_path)
+    except Exception as error:
+        _report_failure(log, "npy->LHE conversion", error, process.run_path)
+        log.warning("the events of %s are kept as %s", os.path.basename(process.run_path),
+                    npy_path)
+        return
+    os.remove(npy_path)
+    os.remove(os.path.join(process.run_path, npy_to_lhe.HEADER_FILE))
+    process.events_path = lhe_path
+    record = os.path.join(process.run_path, "reweighting.json")
+    if os.path.isfile(record):
+        with open(record) as f:
+            content = json.load(f)
+        if content.get("events") == npy_path:
+            content["events"] = lhe_path
+            with open(record, "w") as f:
+                json.dump(content, f, indent=1)
+
+
 def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result).
     reweight is the reweight_backend.Decision of prepare_reweighting(), or
@@ -5422,9 +5521,15 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     (systematics) and before the post-processing tools."""
     compute_auto_widths()
     process = MadgraphProcess()
+    process.store_matrix_elements = getattr(reweight, "backend", None) == "madtrex"
     process.survey()
     process.train_madnis()
-    process.generate_events()
+    process.lhe_from_binary = lhe_via_binary(process, reweight)
+    if process.lhe_from_binary:
+        logging.getLogger("madevent").info(
+            "MadtRex reweights this run: the events are written as npy, and as "
+            "the requested LHE file once reweighted")
+    process.generate_events("lhe_npy" if process.lhe_from_binary else None)
     if process.gridpack_run_mode != "regular":
         return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
@@ -5444,6 +5549,10 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
                 "reweight them once the problem is fixed: 'launch %s -i' in "
                 "MadGraph, then 'reweight %s'", os.path.basename(process.run_path),
                 os.getcwd(), os.path.basename(process.run_path))
+    # the LHE file of an "lhe" run MadtRex reweighted as npy, with the
+    # reweighting weights, or without them when the reweighting failed
+    if process.lhe_from_binary:
+        deliver_lhe_from_binary(process)
     # run the post-processing tools (Pythia8/Delphes/MadSpin/analysis)
     # selected in the merged question above on the generated events.
     if switch:

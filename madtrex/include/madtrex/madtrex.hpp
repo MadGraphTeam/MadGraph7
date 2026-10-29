@@ -335,6 +335,41 @@ using namespace madspace;
         // input_keys_for().
         Driver& set_helicity_reweighting(bool helicity_reweighting);
         bool helicity_reweighting() const;
+        // The process directory (and param_card, default its Cards/
+        // param_card.dat) whose matrix elements subprocesses loaded from
+        // here on are normalised against, instead of their own: the
+        // original process of a "change model" reweighting, whose events
+        // were generated with it. The weights are then the new model's
+        // matrix element over the original one, MadGraph's reweighting
+        // convention. Every subprocess loaded must have an identical
+        // counterpart there (same legs, flavor channels and helicity
+        // table), or load_process() throws; its library is the one
+        // normaliser_fptype_priority() resolves, and it is evaluated the
+        // same way as the reweighted one (both at the event's helicity, or
+        // both helicity-summed). Empty (the default): the loaded process
+        // directory's own.
+        Driver& set_normaliser_process_directory(
+            const std::string& process_directory, const std::string& param_card = ""
+        );
+        const std::string& normaliser_process_directory() const;
+        // The param_card the normaliser is loaded with: the one the events
+        // were generated with, when the param_card the reweighted matrix
+        // elements start from (load_process()'s) is another one. Empty (the
+        // default): with a normaliser process directory, its Cards/
+        // param_card.dat, else load_process()'s param_card. Also set by
+        // set_normaliser_process_directory().
+        Driver& set_normaliser_param_card(const std::string& param_card);
+        const std::string& normaliser_param_card() const;
+
+        // Whether subprocesses loaded from here on normalise against the
+        // squared matrix elements the events were generated with, when the
+        // event file stores them (the "matrix_element" column of a madspace
+        // binary event file) and they are the quantity the normaliser
+        // computes, instead of evaluating the normaliser again (see
+        // TupperWare::set_stored_normalisation()). True by default; turn it
+        // off to always evaluate the normaliser.
+        Driver& set_use_stored_normalisation(bool use_stored_normalisation);
+        bool use_stored_normalisation() const;
         // Former names of set_helicity_reweighting()/helicity_reweighting().
         Driver& set_use_helicity(bool use_helicity);
         bool use_helicity() const;
@@ -359,6 +394,14 @@ using namespace madspace;
         // ReloadSpec.
         Driver& set_max_batch(std::size_t max_batch);
         std::size_t max_batch() const;
+
+        // Worker threads and the minimum events per batch when splitting
+        // the sample across them: see WareHouse::set_threads()/
+        // set_min_batch()/batch_size_for(). Applied by load_events().
+        Driver& set_threads(std::size_t threads);
+        std::size_t threads() const;
+        Driver& set_min_batch(std::size_t min_batch);
+        std::size_t min_batch() const;
 
         // Passed straight through to WareHouse::set_max_deferred_iterations()
         // (see its own doc comment): caps how many outer reweighting
@@ -500,7 +543,10 @@ using namespace madspace;
         const std::vector<SubProcessSpec>& specs() const;
 
     private:
+        madspace::ContextPtr reload_context();
+
         madspace::ContextPtr _context;
+        madspace::ContextPtr _reload_context;
         std::vector<std::string> _device_priority = {"cpp512z", "cpp512y", "cppavx2", "cppsse4", "cppnone"};
         std::vector<std::string> _fptype_priority = {"m", "d", "f"};
         // Unset (see set_normaliser_fptype_priority()'s own doc comment) by
@@ -516,6 +562,9 @@ using namespace madspace;
         ParamHandler _param_handler;
         bool _binary_output = false;
         bool _helicity_reweighting = true;
+        bool _use_stored_normalisation = true;
+        std::string _normaliser_process_directory;
+        std::string _normaliser_param_card;
         bool _streaming = false;
         std::size_t _stream_batch_size = 10000;
     };

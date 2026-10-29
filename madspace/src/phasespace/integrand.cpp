@@ -230,6 +230,9 @@ Integrand::Integrand(
                         ret_types.push_back(name, batch_float_array(2));
                     }
                 }
+                if (diff_xs_first.matrix_element_output()) {
+                    ret_types.push_back("matrix_element", batch_float);
+                }
                 // before "random": the outputs after it feed the discrete histograms
                 if (custom_bias) {
                     ret_types.push_back("bias", batch_float);
@@ -1405,6 +1408,11 @@ NamedVector<Value> Integrand::build_common_part(
             for (int k = 0; k < _mlm_history_qcd_power; ++k) {
                 factor = fb.mul(factor, alpha_ratio);
             }
+            if (_diff_xs.at(0).matrix_element_output()) {
+                // the stored squared matrix element is at the event's alpha_s
+                // too, without the beam densities
+                dxs_vec.back() = fb.mul(dxs_vec.back(), factor);
+            }
             for (std::size_t i = 0; i < 2; ++i) {
                 if (_diff_xs.at(0).has_pdf(i)) {
                     // a first density of exactly zero gave a zero weight, which
@@ -1658,6 +1666,11 @@ NamedVector<Value> Integrand::build_common_part(
                 scatter_or_drop(
                     fb.full({0., batch_size_val, vertex_count}), alphas_scales_acc
                 )
+            );
+        }
+        if (_diff_xs.at(0).matrix_element_output()) {
+            outputs.push_back(
+                "matrix_element", scatter_or_drop(zeros_float, dxs_vec.back())
             );
         }
         if (bias_acc) {

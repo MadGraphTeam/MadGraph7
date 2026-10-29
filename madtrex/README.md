@@ -137,6 +137,18 @@ itself and replaced atomically (gzipped again if it was).
   the LHE file it makes.
 - The madevent tools' copy of the events (`unweighted_events.lhe.gz`, which
   MadSpin and the shower read) is kept identical to the run's event file.
+- An `output_format = "lhe"` run that MadtRex reweights (also when `auto`
+  chooses it, and when a shower or MadSpin switched the run to `lhe`) is
+  generated as `lhe_npy`: MadtRex reads and extends `events.npy` much faster
+  than it parses and rewrites an LHE file. Once reweighted, `npy_to_lhe`
+  writes the requested `events.lhe.gz` from it, with every weight (the
+  systematics', MadtRex's), and `events.npy`/`header.lhe` are removed; the
+  user gets the same LHE file as before, in the format of an LHE run that is
+  not reweighted. When the reweighting fails, the LHE file is still written,
+  without its weights (and the failure reported, as for any run). A run
+  with an LHE-only step before the reweighting (`[postprocessing]`
+  `time_of_flight`, or the legacy `systematics`) is generated as LHE, as
+  before.
 - `reweighting.json` records the file's path (`events`).
 
 The standalone driver does the same unless `--output PATH` asks for the
@@ -158,7 +170,7 @@ The card vocabulary:
 | `change model NAME`, `change process DEF` | both (MadtRex needs both) |
 | `launch [--rwgt_name=NAME]`, `set BLOCK ID VALUE`, `set NAME VALUE`, `scan:[...]` | both |
 | `change mode pdf`, then `set PDF_SET\|BEAM1_PDF_SET\|BEAM2_PDF_SET\|MUF\|MUR\|MUF_FACTOR\|MUR_FACTOR` | MadtRex |
-| `change fptype`, `change verbose\|max_batch\|max_deferred_iterations\|streaming\|stream_batch_size`, `change alpha_s_power\|scale_variation_output` | MadtRex |
+| `change fptype`, `change verbose\|max_batch\|max_deferred_iterations\|streaming\|stream_batch_size`, `change nb_core\|min_batch` (see "Threads"), `change alpha_s_power\|scale_variation_output` | MadtRex |
 | `change mode NLO\|NLO_tree\|LO+NLO`, `change output`, `rwgt_dir`, `tree_path`, `virtual_path`, `systematics`, `multicore`, `boost`, `change process ... --add`, a param_card path, density-matrix options, plugins | classic |
 
 A card section starts with `change mode LO` or `change mode pdf`; lines before
@@ -168,6 +180,43 @@ parameter|pdf`, `set VERBOSE`, ...) are still accepted, with a deprecation
 warning. The standalone driver (`bin/reweight`) is MadtRex only: it accepts
 `change backend madtrex|auto` and stops on a card for the classic module,
 which needs MadGraph.
+
+## Threads
+
+MadtRex reweights on as many threads as the event generation uses: the
+`[run] cpu_thread_pool_size` of the run card (all available cores for -1,
+the default). The events are classified into their subprocesses in parallel,
+and each batch of events (one per subprocess, or a part of one) is
+reweighted on its own thread, the normalisation as well as each launch.
+
+A sample dominated by one subprocess would keep a single thread busy, so a
+subprocess is split into batches when it is large: with `N` events and `T`
+threads, every subprocess with more than `max(min_batch, N / T)` events is cut
+into batches of that size. A small sample, or a small subprocess, is not
+spread over all threads: below `min_batch` events (1000 by default) a batch
+costs more to set up -- its own matrix element instance, loaded from the
+library and the param_card, its own sorting -- than another thread saves,
+and a sample of fewer than `2 * min_batch` events is not split at all.
+
+Both are reweight-card options of the LO part, before the first `launch`:
+
+```
+change nb_core 4        # threads (auto: as the generation, the default)
+change min_batch 5000   # fewest events per batch when splitting
+```
+
+An explicit `change max_batch N` splits at N events instead, and `change
+nb_core 1` runs on one thread. From Python, `Driver.set_threads()`/
+`set_min_batch()` (or the `WareHouse` ones, and `WareHouse.batch_size_for()`
+for the resulting batch size); PDF reweighting (`PdfDriver`) runs as one
+batch.
+
+A batch split off a subprocess evaluates its own instance of the matrix
+element library. MadMatrix libraries keep the model parameters in one
+singleton per process directory (in the common library), which loading an
+instance resets to the param_card: MadtRex therefore loads them one at a
+time, while no matrix element is evaluated, and sets the parameters of the
+current launch on them again.
 
 ## Helicity reweighting
 

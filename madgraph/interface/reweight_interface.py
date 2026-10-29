@@ -80,7 +80,8 @@ DENSITY_CHANGE_OPTIONS = frozenset([
 # (MG7 outputs) understands; an error here rather than a discarded line.
 MADTREX_ONLY_CHANGE_OPTIONS = frozenset([
     'fptype', 'verbose', 'max_batch', 'max_deferred_iterations', 'streaming',
-    'stream_batch_size', 'alpha_s_power', 'scale_variation_output'])
+    'stream_batch_size', 'nb_core', 'min_batch', 'alpha_s_power',
+    'scale_variation_output'])
 
 
 class ReweightInterface(extended_cmd.Cmd):

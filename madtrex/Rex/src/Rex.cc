@@ -5270,11 +5270,41 @@ namespace REX
         {
             this->set_sorter();
         }
-        this->process_order.clear();
-        this->process_order.reserve(this->events.size());
-        for (auto ev : this->events)
+        this->process_order.assign(this->events.size(), npos);
+        // The first event on this thread, so that a classifier initialising
+        // itself lazily does so once, then the rest in chunks across
+        // sort_threads threads
+        this->process_order[0] = this->event_hash(*this->events[0]);
+        size_t n_rest = this->events.size() - 1;
+        size_t n_threads = std::max<size_t>(1, std::min(this->sort_threads, n_rest / sort_chunk));
+        if (n_threads <= 1)
         {
-            this->process_order.push_back(this->event_hash(*ev));
+            for (size_t ind = 1; ind < this->events.size(); ++ind)
+                this->process_order[ind] = this->event_hash(*this->events[ind]);
+        }
+        else
+        {
+            std::vector<std::thread> workers;
+            std::vector<std::exception_ptr> errors(n_threads);
+            size_t per_thread = (n_rest + n_threads - 1) / n_threads;
+            for (size_t t = 0; t < n_threads; ++t)
+            {
+                size_t begin = 1 + t * per_thread;
+                size_t end = std::min(this->events.size(), begin + per_thread);
+                workers.emplace_back([this, begin, end, &errors, t]
+                                     {
+                    try {
+                        for (size_t ind = begin; ind < end; ++ind)
+                            this->process_order[ind] = this->event_hash(*this->events[ind]);
+                    } catch (...) {
+                        errors[t] = std::current_exception();
+                    } });
+            }
+            for (auto &worker : workers)
+                worker.join();
+            for (auto &error : errors)
+                if (error)
+                    std::rethrow_exception(error);
         }
         if (this->process_order.size() != this->events.size())
         {

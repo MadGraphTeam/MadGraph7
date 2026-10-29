@@ -139,7 +139,9 @@ def _madtrex_card_vocabulary():
     from madgraph.iolibs.template_files.mg7 import pdf_reweight_card as pdf
     old_driver = set(param.DRIVER_OPTION_NAMES) - {'helicity_reweighting', 'use_helicity'}
     change = {'fptype'} | old_driver | set(pdf.CARD_OPTION_NAMES)
-    set_names = (set(pdf.PDF_SET_NAMES) | set(pdf.SCALE_NAMES) | change
+    # the threading options never had a "set" spelling
+    set_names = (set(pdf.PDF_SET_NAMES) | set(pdf.SCALE_NAMES)
+                 | (change - param.THREAD_OPTION_NAMES)
                  | {'helicity_reweighting', 'use_helicity'})
     pdf_only = set(pdf.PDF_SET_NAMES) | set(pdf.SCALE_NAMES) | {'alpha_s_power',
                                                                  'scale_variation_output'}

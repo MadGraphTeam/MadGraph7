@@ -39,6 +39,12 @@ namespace madtrex {
 // specify. This has no effect on reweighting itself: procReweightor::
 // evaluate() only ever reads per-event data (momenta, pdg, status, flavor_/
 // helicity_ indices, alphaS), never initNode fields.
+//
+// When the file has a "matrix_element" column (the generation-time squared
+// matrix elements madspace stores on request, EventRecord::f_matrix_element),
+// each event's value is kept as extra[stored_matrix_element_key], for
+// TupperWare::set_stored_normalisation(). open_lhe_source_binary() does the
+// same; open_lhe_sink_binary() does not write it back out.
 std::shared_ptr<REX::lhe> load_lhe_binary(
     const std::string& path, const madspace::LHEMeta& meta = {}
 );

@@ -59,7 +59,10 @@ launch
 #        stops on events without helicity information when True.
 # change mode LO : parameter (matrix-element) reweighting, the default
 # change model NAME / change process DEF : reweight with another model
-#        (MadtRex needs both lines)
+#        (MadtRex needs both lines). The weights are the new model's matrix
+#        element over the original one the events were generated with;
+#        MadtRex requires the regenerated subprocesses to match the original
+#        ones (same particles, flavours and helicities).
 #
 # MadtRex only:
 # change mode pdf : the lines that follow are PDF/scale reweighting:

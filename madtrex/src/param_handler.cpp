@@ -57,7 +57,7 @@ bool ParamHandler::apply_launch(std::size_t idx) {
     for (auto& [api, values] : _nominal) {
         std::lock_guard<std::mutex> guard(detail::api_call_mutex(*api));
         for (auto& [location, nominal] : values) {
-            api->set_parameter(location, nominal.first, nominal.second);
+            detail::set_api_parameter(*api, location, nominal.first, nominal.second);
         }
     }
 
@@ -68,7 +68,7 @@ bool ParamHandler::apply_launch(std::size_t idx) {
             if (cache.find(location) == cache.end()) {
                 cache[location] = api->get_parameter(location);
             }
-            api->set_parameter(location, value, 0.0);
+            detail::set_api_parameter(*api, location, value, 0.0);
         }
     };
     for (auto& [block_name, block] : _card_iter.cards[idx].blocks) {

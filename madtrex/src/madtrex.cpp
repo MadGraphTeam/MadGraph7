@@ -279,6 +279,38 @@ std::vector<UmamiInputKey> input_keys_for(const SubProcessSpec& spec, bool helic
     return keys;
 }
 
+// The subprocess of the original process directory (normaliser_directory,
+// parsed into candidates) that spec, from a process regenerated in another
+// model, is normalised against: the one describing exactly the same matrix
+// element call -- the same incoming and outgoing legs in the same order,
+// the same flavor channels (UMAMI flavor index, PDG ids in leg order,
+// mirroring) and the same helicity table -- so that an event's flavor and
+// helicity indices mean the same in both libraries. Throws if there is none.
+const SubProcessSpec& matching_normaliser_spec(
+    const SubProcessSpec& spec,
+    const std::vector<SubProcessSpec>& candidates,
+    const std::string& normaliser_directory
+) {
+    auto same_flavors = [](const SubProcessSpec& a, const SubProcessSpec& b) {
+        return std::equal(a.flavors.begin(), a.flavors.end(), b.flavors.begin(), b.flavors.end(),
+                          [](const FlavorChannel& x, const FlavorChannel& y) {
+                              return x.index == y.index && x.pdgs == y.pdgs && x.mirrored == y.mirrored;
+                          });
+    };
+    for (const auto& candidate : candidates) {
+        if (candidate.incoming == spec.incoming && candidate.outgoing == spec.outgoing &&
+            same_flavors(candidate, spec) && candidate.helicities == spec.helicities) {
+            return candidate;
+        }
+    }
+    throw std::runtime_error(std::format(
+        "Driver::load_process: subprocess {} has no identical counterpart (same legs, "
+        "flavor channels and helicities) in {}, so the matrix element its events were "
+        "generated with is not known exactly",
+        spec.me_path_template, normaliser_directory
+    ));
+}
+
 } // namespace
 
 std::vector<SubProcessSpec> parse_subprocesses_json(const std::string& subprocesses_json_path) {
@@ -602,6 +634,32 @@ Driver& Driver::set_helicity_reweighting(bool helicity_reweighting) {
 
 bool Driver::helicity_reweighting() const { return _helicity_reweighting; }
 
+Driver& Driver::set_normaliser_process_directory(
+    const std::string& process_directory, const std::string& param_card
+) {
+    _normaliser_process_directory = process_directory;
+    _normaliser_param_card = param_card;
+    return *this;
+}
+
+const std::string& Driver::normaliser_process_directory() const {
+    return _normaliser_process_directory;
+}
+
+Driver& Driver::set_normaliser_param_card(const std::string& param_card) {
+    _normaliser_param_card = param_card;
+    return *this;
+}
+
+const std::string& Driver::normaliser_param_card() const { return _normaliser_param_card; }
+
+Driver& Driver::set_use_stored_normalisation(bool use_stored_normalisation) {
+    _use_stored_normalisation = use_stored_normalisation;
+    return *this;
+}
+
+bool Driver::use_stored_normalisation() const { return _use_stored_normalisation; }
+
 Driver& Driver::set_use_helicity(bool use_helicity) { return set_helicity_reweighting(use_helicity); }
 
 bool Driver::use_helicity() const { return _helicity_reweighting; }
@@ -623,6 +681,20 @@ Driver& Driver::set_max_batch(std::size_t max_batch) {
 }
 
 std::size_t Driver::max_batch() const { return _warehouse.max_batch(); }
+
+Driver& Driver::set_threads(std::size_t threads) {
+    _warehouse.set_threads(threads);
+    return *this;
+}
+
+std::size_t Driver::threads() const { return _warehouse.threads(); }
+
+Driver& Driver::set_min_batch(std::size_t min_batch) {
+    _warehouse.set_min_batch(min_batch);
+    return *this;
+}
+
+std::size_t Driver::min_batch() const { return _warehouse.min_batch(); }
 
 Driver& Driver::set_max_deferred_iterations(std::size_t max_deferred_iterations) {
     _warehouse.set_max_deferred_iterations(max_deferred_iterations);
@@ -656,6 +728,24 @@ Driver& Driver::load_process(
     }
 
     auto specs = parse_subprocesses_json(subprocesses_json_path);
+    // The normaliser is the matrix element the events were generated with:
+    // this process directory's own, unless set_normaliser_process_directory()
+    // names the original one (a "change model" reweighting), whose
+    // subprocesses must then be the same ones (see matching_normaliser_spec()).
+    fs::path normaliser_directory = process_directory;
+    std::string normaliser_param_card = resolved_param_card;
+    std::vector<SubProcessSpec> normaliser_specs;
+    if (!_normaliser_process_directory.empty()) {
+        normaliser_directory = _normaliser_process_directory;
+        normaliser_param_card = _normaliser_param_card.empty()
+            ? (normaliser_directory / "Cards" / "param_card.dat").string()
+            : _normaliser_param_card;
+        normaliser_specs = parse_subprocesses_json(
+            (normaliser_directory / "SubProcesses" / "subprocesses.json").string()
+        );
+    } else if (!_normaliser_param_card.empty()) {
+        normaliser_param_card = _normaliser_param_card;
+    }
     // See set_normaliser_fptype_priority()'s own doc comment: only load a
     // genuinely separate normaliser api when it would actually resolve to a
     // *different* library than the reweight-target api -- when they're
@@ -663,42 +753,74 @@ Driver& Driver::load_process(
     // happens to match), sharing one api for both roles is both correct and
     // cheaper (skips a redundant library load/context registration).
     const auto& normaliser_priority = normaliser_fptype_priority();
-    bool separate_normaliser = normaliser_priority != _fptype_priority;
+    bool separate_normaliser = normaliser_priority != _fptype_priority ||
+                               !_normaliser_process_directory.empty() ||
+                               normaliser_param_card != resolved_param_card;
     for (auto& spec : specs) {
         std::string me_path = resolve_me_path(
             process_directory.string(), spec.me_path_template, _device_priority, _fptype_priority
         );
         const auto& api = _context->load_matrix_element(me_path, resolved_param_card);
+        detail::forget_api_parameters(api);
+        const SubProcessSpec& normaliser_spec = _normaliser_process_directory.empty()
+            ? spec
+            : matching_normaliser_spec(spec, normaliser_specs, normaliser_directory.string());
+        // Normaliser must reflect the sample's ORIGINAL configuration
+        // (see set_normaliser_fptype_priority()), so when separate it gets
+        // its own, independently-loaded api -- a different compiled library
+        // (different fptype, or the original process directory's) --
+        // rather than reusing the reweight-target api above. Deliberately
+        // NOT passed to add_api(): it must never be touched by
+        // ParamHandler's per-launch apply_launch() overrides, always
+        // reflecting the untouched baseline every launch is reweighted
+        // relative to.
+        std::string normaliser_me_path;
+        const madspace::MatrixElementApi* normaliser_api = &api;
+        if (separate_normaliser) {
+            normaliser_me_path = resolve_me_path(
+                normaliser_directory.string(), normaliser_spec.me_path_template,
+                _device_priority, normaliser_priority
+            );
+            normaliser_api =
+                &_context->load_matrix_element(normaliser_me_path, normaliser_param_card);
+            detail::forget_api_parameters(*normaliser_api);
+        }
         auto checker = make_event_checker(spec);
         // Helicity reweighting for this subprocess needs both a library that
-        // accepts UMAMI_IN_HELICITY_INDEX (default_input_keys() warns and sums
-        // otherwise) and a helicity map from the events' SPINUP values onto
-        // the library's helicity enumeration (helicity_map_problem()).
+        // accepts UMAMI_IN_HELICITY_INDEX and a helicity map from the events'
+        // SPINUP values onto the library's helicity enumeration
+        // (helicity_map_problem()) -- for the reweighted matrix element and
+        // the normaliser alike, which are always evaluated the same way:
+        // both at the event's helicity, or both summed over helicities.
         bool helicity_reweighting = _helicity_reweighting;
-        if (helicity_reweighting && accepts_helicity_index(api)) {
-            std::string problem = helicity_map_problem(spec, api);
+        for (const auto* lib : {&api, normaliser_api}) {
+            if (!helicity_reweighting) break;
+            std::string problem = accepts_helicity_index(*lib)
+                ? helicity_map_problem(spec, *lib)
+                : "it does not support per-event helicities (UMAMI_IN_HELICITY_INDEX)";
             if (!problem.empty()) {
                 detail::warn_once(
-                    "no-helicity-map:" + api.file_name(),
+                    "no-helicity-map:" + lib->file_name(),
                     std::format(
                         "helicity reweighting is on, but the events of {} cannot be "
                         "mapped onto its helicities ({}); using helicity-summed matrix "
                         "elements for it",
-                        api.file_name(), problem
+                        lib->file_name(), problem
                     )
                 );
                 helicity_reweighting = false;
             }
         }
-        std::vector<UmamiInputKey> input_keys;
-        std::vector<UmamiOutputKey> output_keys;
-        try {
-            input_keys = default_input_keys(api, helicity_reweighting);
-            output_keys = default_output_keys(api);
-        } catch (const std::runtime_error&) {
-            input_keys = input_keys_for(spec, helicity_reweighting);
-            output_keys = {UMAMI_OUT_MATRIX_ELEMENT};
-        }
+        auto keys_for = [&](const madspace::MatrixElementApi& lib, const SubProcessSpec& lib_spec) {
+            std::pair<std::vector<UmamiInputKey>, std::vector<UmamiOutputKey>> keys;
+            try {
+                keys = {default_input_keys(lib, helicity_reweighting), default_output_keys(lib)};
+            } catch (const std::runtime_error&) {
+                keys = {input_keys_for(lib_spec, helicity_reweighting), {UMAMI_OUT_MATRIX_ELEMENT}};
+            }
+            return keys;
+        };
+        auto [input_keys, output_keys] = keys_for(api, spec);
         // Same (context, me_path, resolved_param_card) that api was just
         // loaded from, so TupperWare::build() can reload an independent
         // instance per max_batch overflow batch instead of every batch
@@ -706,11 +828,14 @@ Driver& Driver::load_process(
         // for that (see WareHouse::set_max_batch()/TupperWare::build());
         // registering this unconditionally here costs nothing when it's
         // not.
-        ReloadSpec reload{_context, me_path, resolved_param_card};
+        ReloadSpec reload{reload_context(), me_path, resolved_param_card};
 
         auto& tw = _warehouse.add_process()
             .add_api(api, input_keys, output_keys, reload)
             .set_event_checker(std::move(checker));
+        if (_use_stored_normalisation) {
+            tw.set_stored_normalisation(stored_matrix_element_key);
+        }
         // Beam-swapped events of mirrored flavor channels go back into the
         // matrix element's leg order (see IncomingSwapped).
         if (std::any_of(spec.flavors.begin(), spec.flavors.end(), [](auto& fc) { return fc.mirrored; })) {
@@ -721,32 +846,20 @@ Driver& Driver::load_process(
         }
 
         if (separate_normaliser) {
-            // Normaliser must reflect the sample's ORIGINAL configuration
-            // (see set_normaliser_fptype_priority()), so it gets its own,
-            // independently-loaded api -- a different compiled library
-            // (different fptype), same UFO model/param_card -- rather than
-            // reusing the reweight-target api above. Deliberately NOT also
-            // passed to add_api(): it must never be touched by
-            // ParamHandler's per-launch apply_launch() overrides, always
-            // reflecting the untouched baseline every launch is reweighted
-            // relative to (exactly how a plain physics-parameter reweight's
-            // normaliser already stays untouched, just now also true across
-            // an fptype change).
-            std::string normaliser_me_path = resolve_me_path(
-                process_directory.string(), spec.me_path_template, _device_priority, normaliser_priority
-            );
-            const auto& normaliser_api = _context->load_matrix_element(normaliser_me_path, resolved_param_card);
-            std::vector<UmamiInputKey> normaliser_input_keys;
-            std::vector<UmamiOutputKey> normaliser_output_keys;
-            try {
-                normaliser_input_keys = default_input_keys(normaliser_api, helicity_reweighting);
-                normaliser_output_keys = default_output_keys(normaliser_api);
-            } catch (const std::runtime_error&) {
-                normaliser_input_keys = input_keys_for(spec, helicity_reweighting);
-                normaliser_output_keys = {UMAMI_OUT_MATRIX_ELEMENT};
+            auto [normaliser_input_keys, normaliser_output_keys] =
+                keys_for(*normaliser_api, normaliser_spec);
+            auto has_helicity = [](const std::vector<UmamiInputKey>& keys) {
+                return std::find(keys.begin(), keys.end(), UMAMI_IN_HELICITY_INDEX) != keys.end();
+            };
+            if (has_helicity(normaliser_input_keys) != has_helicity(input_keys)) {
+                throw std::runtime_error(std::format(
+                    "Driver::load_process: {} and its normaliser {} would not be evaluated "
+                    "with the same helicity treatment",
+                    api.file_name(), normaliser_api->file_name()
+                ));
             }
-            ReloadSpec normaliser_reload{_context, normaliser_me_path, resolved_param_card};
-            tw.set_normaliser(normaliser_api, normaliser_input_keys, normaliser_output_keys, normaliser_reload);
+            ReloadSpec normaliser_reload{reload_context(), normaliser_me_path, normaliser_param_card};
+            tw.set_normaliser(*normaliser_api, normaliser_input_keys, normaliser_output_keys, normaliser_reload);
         } else {
             // Explicit normaliser, using the same resolved keys as
             // add_api(): procReweightor::initialise() can only fall back to
@@ -823,6 +936,11 @@ Driver& Driver::write_weights(const std::string& path) {
     if (_binary_output) {
         save_weights_binary(built, path);
     } else {
+        // the stored matrix elements of binary input are MadtRex's own, not
+        // part of the events (REX::event::print() writes every extra)
+        for (auto& event : built.events) {
+            if (event) event->extra.erase(stored_matrix_element_key);
+        }
         REX::write_lhef(built, path, true);
     }
     return *this;
@@ -890,6 +1008,17 @@ Driver& Driver::reweight(
 }
 
 madspace::ContextPtr Driver::context() const { return _context; }
+
+madspace::ContextPtr Driver::reload_context() {
+    // The instances reloaded per batch (ReloadSpec) are only evaluated from
+    // REX's worker threads, ie through process instance 0: a context of one
+    // thread initializes just that one per reload, rather than one per
+    // thread of _context
+    if (!_reload_context) {
+        _reload_context = std::make_shared<madspace::Context>(_context->device(), 1);
+    }
+    return _reload_context;
+}
 
 WareHouse& Driver::warehouse() { return _warehouse; }
 

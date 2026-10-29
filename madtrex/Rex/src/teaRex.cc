@@ -1069,8 +1069,10 @@ namespace REX::tea
         this->set_sorter(eventSorter(std::move(preds)));
         this->sorted_events.clear();
         this->processes.clear();
-        this->sort_events();
-        this->events_to_processes(); // also (re)populates process_group, 1:1 with processes
+        // classify the events on as many threads as the reweighting uses
+        unsigned hc = std::thread::hardware_concurrency();
+        this->sort_threads = this->pool_threads ? this->pool_threads : std::max(hc, 1u);
+        this->events_to_processes(); // sorts the events; also (re)populates process_group, 1:1 with processes
 
         const size_t R = this->reweightors.size();
         if (this->processes.size() != this->process_group.size())
@@ -1173,8 +1175,7 @@ namespace REX::tea
         this->set_sorter(eventSorter(std::move(preds)));
         this->sorted_events.clear();
         this->processes.clear();
-        this->sort_events();
-        this->events_to_processes(); // also (re)populates process_group, 1:1 with processes
+        this->events_to_processes(); // sorts the events; also (re)populates process_group, 1:1 with processes
 
         const size_t R = base.size();
         if (this->processes.size() != this->process_group.size())
@@ -1239,8 +1240,18 @@ namespace REX::tea
         if (this->reweightors.size() != this->processes.size())
             throw std::runtime_error("initialise_reweightors: reweightors/processes size mismatch");
 
+        // The normalisations, one task per batch on the worker pool, as the
+        // reweighting iterations (run_iteration())
+        setup_pool();
+        pool->begin_batch();
         for (size_t i = 0; i < this->reweightors.size(); ++i)
-            this->reweightors[i]->initialise(this->processes[i]);
+        {
+            pool->enqueue([this, i]
+                          {
+                    if (pool->cancel_requested()) return;
+                    this->reweightors[i]->initialise(this->processes[i]); });
+        }
+        pool->wait_batch();
     }
 
     void reweightor::finalise_reweighting()

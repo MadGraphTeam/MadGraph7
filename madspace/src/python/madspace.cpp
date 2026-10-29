@@ -2377,6 +2377,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
                 bool,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -2387,6 +2388,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdf2") = std::monostate{},
             py::arg("input_momentum_fraction") = true,
             py::arg("decay") = false,
+            py::arg("matrix_element_output") = false,
             pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
         .def(
@@ -2409,6 +2411,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "running_coupling",
             &DifferentialCrossSection::running_coupling,
             pydoc::doc("DifferentialCrossSection::running_coupling")
+        )
+        .def(
+            "matrix_element_output",
+            &DifferentialCrossSection::matrix_element_output,
+            pydoc::doc("DifferentialCrossSection::matrix_element_output")
         );
 
     py::classh<Unweighter, FunctionGenerator>(m, "Unweighter", pydoc::doc("Unweighter"))

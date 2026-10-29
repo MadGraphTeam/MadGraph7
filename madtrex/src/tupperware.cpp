@@ -4,10 +4,13 @@
 #include <any>
 #include <format>
 #include <iostream>
+#include <map>
 #include <mutex>
+#include <shared_mutex>
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 
 namespace madtrex {
@@ -33,6 +36,72 @@ void warn_once(const std::string& key, const std::string& message) {
     if (seen.insert(key).second) {
         std::cerr << "MadtRex warning: " << message << std::endl;
     }
+}
+
+namespace {
+
+// Keyed by MatrixElementApi::file_name(), the library: the values set on it
+// (see parameters_lock() in tupperware.hpp for why they are kept).
+struct LibraryParameters {
+    std::map<std::string, std::pair<double, double>> values;
+};
+
+std::mutex parameters_mutex;
+std::unordered_map<std::string, LibraryParameters> parameters_registry;
+
+LibraryParameters library_parameters(const std::string& library) {
+    std::lock_guard<std::mutex> lock(parameters_mutex);
+    auto found = parameters_registry.find(library);
+    return found == parameters_registry.end() ? LibraryParameters{} : found->second;
+}
+
+void apply_parameters(const madspace::MatrixElementApi& target, const LibraryParameters& parameters) {
+    for (auto& [location, value] : parameters.values) {
+        target.set_parameter(location, value.first, value.second);
+    }
+}
+
+} // namespace
+
+std::shared_mutex& parameters_lock() {
+    static std::shared_mutex mutex;
+    return mutex;
+}
+
+void set_api_parameter(
+    const madspace::MatrixElementApi& api, const std::string& location, double real, double imag
+) {
+    api.set_parameter(location, real, imag);
+    std::lock_guard<std::mutex> lock(parameters_mutex);
+    auto& entry = parameters_registry[api.file_name()];
+    entry.values[location] = {real, imag};
+}
+
+void forget_api_parameters(const madspace::MatrixElementApi& api) {
+    std::lock_guard<std::mutex> lock(parameters_mutex);
+    parameters_registry.erase(api.file_name());
+}
+
+const madspace::MatrixElementApi&
+reload_matrix_element(const ReloadSpec& reload, REX::process& proc) {
+    std::string key = std::format(
+        "madtrex::reload::{}::{}::{}", static_cast<const void*>(reload.context.get()),
+        reload.me_path, reload.param_card
+    );
+    if (proc.has_device_data(key)) {
+        return *std::any_cast<const madspace::MatrixElementApi*>(proc.get_device_data(key).tag);
+    }
+    const madspace::MatrixElementApi* api;
+    {
+        // no evaluation runs while the parameters are reset to the
+        // param_card and set back (and a madspace::Context is not safe to
+        // load into concurrently)
+        std::unique_lock<std::shared_mutex> exclusive(parameters_lock());
+        api = &reload.context->load_matrix_element(reload.me_path, reload.param_card);
+        apply_parameters(*api, library_parameters(api->file_name()));
+    }
+    proc.set_device_data(key, nullptr, 0, std::any(api));
+    return *api;
 }
 
 } // namespace detail
@@ -310,8 +379,7 @@ std::shared_ptr<std::vector<double>> evaluate(
     const MatrixElementApi* resolved = cache.active_api;
     bool new_process = cache.proc_id != &proc || cache.count != count;
     if (!resolved || new_process) {
-        resolved = reload ? &reload->context->load_matrix_element(reload->me_path, reload->param_card)
-                           : &api;
+        resolved = reload ? &detail::reload_matrix_element(*reload, proc) : &api;
     }
     const MatrixElementApi& active_api = *resolved;
 
@@ -434,6 +502,7 @@ std::shared_ptr<std::vector<double>> evaluate(
     }
 
     {
+        std::shared_lock<std::shared_mutex> parameters(detail::parameters_lock());
         std::lock_guard<std::mutex> guard(detail::api_call_mutex(active_api));
         active_api.call(
             active_api.process_instance(),
@@ -566,9 +635,7 @@ REX::tea::weight_puller deferred_evaluate(
         cache = std::make_shared<DeferredDeviceCache>();
         cache->count = count;
         cache->n_iterations = n_iterations;
-        cache->active_api = reload
-            ? &reload->context->load_matrix_element(reload->me_path, reload->param_card)
-            : &api;
+        cache->active_api = reload ? &detail::reload_matrix_element(*reload, proc) : &api;
         const MatrixElementApi& active_api = *cache->active_api;
         madspace::DevicePtr device = active_api.device();
 
@@ -698,6 +765,7 @@ REX::tea::weight_puller deferred_evaluate(
     }
 
     {
+        std::shared_lock<std::shared_mutex> parameters(detail::parameters_lock());
         std::lock_guard<std::mutex> guard(detail::api_call_mutex(active_api));
         active_api.call(
             active_api.process_instance(),
@@ -763,6 +831,29 @@ REX::tea::weight_puller deferred_evaluate(
             }
         }
         return result;
+    };
+}
+
+// The normaliser of TupperWare::set_stored_normalisation(): each event's
+// stored matrix element, process.extra[key], or evaluate's result for any
+// process with an event that has none (another source, a file without them).
+REX::tea::weightor stored_normaliser(std::string key, REX::tea::weightor evaluate) {
+    return [key = std::move(key), evaluate = std::move(evaluate)](REX::process& proc) {
+        auto it = proc.extra.find(key);
+        if (it != proc.extra.end() && it->second.size() == proc.weight_.size()) {
+            auto stored = std::make_shared<std::vector<double>>();
+            stored->reserve(it->second.size());
+            for (const auto& value : it->second) {
+                const double* me = std::any_cast<double>(&value);
+                if (me == nullptr) {
+                    stored = nullptr;
+                    break;
+                }
+                stored->push_back(*me);
+            }
+            if (stored) return stored;
+        }
+        return evaluate(proc);
     };
 }
 
@@ -1108,6 +1199,13 @@ TupperWare& TupperWare::set_api(
     return add_api(std::move(apis), std::move(input_keys_list), std::move(output_keys_list));
 }
 
+TupperWare& TupperWare::set_stored_normalisation(std::string key) {
+    _stored_normalisation = std::move(key);
+    return *this;
+}
+
+const std::string& TupperWare::stored_normalisation() const { return _stored_normalisation; }
+
 TupperWare& TupperWare::set_normaliser(const madspace::MatrixElementApi& api) {
     return set_normaliser(api, {}, {});
 }
@@ -1273,7 +1371,13 @@ std::shared_ptr<REX::tea::procReweightor> TupperWare::build(
         auto norm_weightor = reload
             ? make_weightor(*_normaliser, input_keys, output_keys, result_keys_for(), *reload, _incoming_swapped)
             : make_weightor(*_normaliser, input_keys, output_keys, result_keys_for(), _incoming_swapped);
-        proc_rwgt->set_normaliser(*norm_weightor);
+        bool helicity_summed = std::find(input_keys.begin(), input_keys.end(),
+                                         UMAMI_IN_HELICITY_INDEX) == input_keys.end();
+        if (!_stored_normalisation.empty() && helicity_summed) {
+            proc_rwgt->set_normaliser(stored_normaliser(_stored_normalisation, *norm_weightor));
+        } else {
+            proc_rwgt->set_normaliser(*norm_weightor);
+        }
     }
 
     proc_rwgt->max_deferred_iterations = max_deferred_iterations;
@@ -1325,6 +1429,34 @@ WareHouse& WareHouse::set_max_batch(std::size_t max_batch) {
 
 std::size_t WareHouse::max_batch() const { return _max_batch; }
 
+WareHouse& WareHouse::set_threads(std::size_t threads) {
+    _threads = threads;
+    return *this;
+}
+
+std::size_t WareHouse::threads() const { return _threads; }
+
+WareHouse& WareHouse::set_min_batch(std::size_t min_batch) {
+    _min_batch = min_batch;
+    return *this;
+}
+
+std::size_t WareHouse::min_batch() const { return _min_batch; }
+
+std::size_t WareHouse::batch_size_for(std::size_t n_events) const {
+    if (_max_batch != REX::npos) {
+        return _max_batch;
+    }
+    if (_min_batch == REX::npos || _min_batch == 0) {
+        return REX::npos;
+    }
+    std::size_t threads = _threads ? _threads : std::thread::hardware_concurrency();
+    if (threads <= 1 || n_events < 2 * _min_batch) {
+        return REX::npos;
+    }
+    return std::max(_min_batch, (n_events + threads - 1) / threads);
+}
+
 WareHouse& WareHouse::set_max_deferred_iterations(std::size_t max_deferred_iterations) {
     _max_deferred_iterations = max_deferred_iterations;
     return *this;
@@ -1370,17 +1502,20 @@ REX::tea::reweightor& WareHouse::build(REX::lhe&& mother) {
     // that here so a deferred/cuda-hip api's device output buffer is sized
     // for the same number of calls it will actually receive.
     std::size_t n_iterations = _iterators.empty() ? 1 : _iterators.size();
-    mother.max_batch = _max_batch;
+    // An explicit max_batch, or the split across threads of set_min_batch()
+    // (a streaming lhe has no events yet: its batches are its own)
+    mother.max_batch = batch_size_for(mother.events.size());
     // Once max_batch is actually set, every registered api with a
     // ReloadSpec reloads its own instance per batch instead of every
     // overflow clone sharing (and serializing calls through) the one
     // instance it was registered with; see TupperWare::build().
-    bool reload_per_batch = _max_batch != REX::npos;
+    bool reload_per_batch = mother.max_batch != REX::npos;
     auto proc_rwgts = build_proc_reweightors(
         _processes, n_iterations, reload_per_batch, _max_deferred_iterations
     );
     _reweightor =
         std::make_unique<REX::tea::reweightor>(std::move(mother), std::move(proc_rwgts));
+    _reweightor->pool_threads = _threads;
     if (!_iterators.empty()) {
         _reweightor->set_iterators(_iterators);
     }

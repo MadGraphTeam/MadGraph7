@@ -334,14 +334,10 @@ def _fill_run_card(card: dict) -> dict:
 _RUN_CARD_BLOCK_RE = re.compile(r"<MG7RunCard>(.*?)</MG7RunCard>", re.S)
 
 
-def _read_events_run_card(events_path: str) -> dict | None:
-    """The run_card.toml the events of events_path were generated with --
-    the <MG7RunCard> block launch.py (and a gridpack) write into the LHE
-    header: header.lhe next to an events.npy, else the LHE file's own
-    header -- parsed as _read_run_card() does, or None when there is none.
-    This, not the process directory's current Cards/run_card.toml (which
-    may have been edited since, e.g. for another run), is what the sample
-    was made with."""
+def _read_events_header_block(events_path: str, block_re: re.Pattern) -> str | None:
+    """The content of the first block_re match in the LHE header of the
+    events of events_path -- header.lhe next to an events.npy, else the LHE
+    file's own header -- CDATA-unwrapped or unescaped, or None."""
     if events_path.endswith(".npy"):
         header_path = os.path.join(os.path.dirname(events_path), "header.lhe")
     else:
@@ -358,19 +354,192 @@ def _read_events_run_card(events_path: str) -> dict | None:
                 lines.append(line)
     except OSError:
         return None
-    match = _RUN_CARD_BLOCK_RE.search("".join(lines))
+    match = block_re.search("".join(lines))
     if not match:
         return None
     content = match.group(1).strip()
     if content.startswith("<![CDATA[") and content.endswith("]]>"):
-        content = content[len("<![CDATA["):-len("]]>")]
-    else:
-        import html
-        content = html.unescape(content)
+        return content[len("<![CDATA["):-len("]]>")]
+    import html
+    return html.unescape(content)
+
+
+def _read_events_run_card(events_path: str) -> dict | None:
+    """The run_card.toml the events of events_path were generated with --
+    the <MG7RunCard> block launch.py (and a gridpack) write into the LHE
+    header (see _read_events_header_block()) -- parsed as _read_run_card()
+    does, or None when there is none. This, not the process directory's
+    current Cards/run_card.toml (which may have been edited since, e.g. for
+    another run), is what the sample was made with."""
+    content = _read_events_header_block(events_path, _RUN_CARD_BLOCK_RE)
+    if content is None:
+        return None
     try:
         return _fill_run_card(tomllib.loads(content))
     except tomllib.TOMLDecodeError:
         return None
+
+
+_SLHA_BLOCK_RE = re.compile(r"<slha>(.*?)</slha>", re.S)
+
+
+def _read_events_param_card(events_path: str) -> str | None:
+    """The param_card the events of events_path were generated with: the
+    <slha> block of their LHE header (see _read_events_header_block()), as
+    launch.py's write_lhe_header() and madevent write it -- with the widths
+    "auto" resolved to the values the generation used. None without one."""
+    content = _read_events_header_block(events_path, _SLHA_BLOCK_RE)
+    if content is None or not content.strip():
+        return None
+    return content.strip() + "\n"
+
+
+def _param_card_values(text: str) -> dict[tuple, float | None]:
+    """The numbers of an SLHA param_card, keyed (block, ids...): "DECAY pid
+    width" as ("decay", pid). Comments, case and formatting do not matter;
+    branching ratios are left out (the matrix elements do not depend on
+    them), a value that is no number ("auto") is None."""
+    values: dict[tuple, float | None] = {}
+    block = None
+    for raw in text.splitlines():
+        words = raw.split("#", 1)[0].split()
+        if not words:
+            continue
+        head = words[0].lower()
+        if head == "block":
+            block = words[1].lower() if len(words) > 1 else None
+            continue
+        if head == "decay":
+            block = None
+            try:
+                key = ("decay", int(words[1]))
+            except (IndexError, ValueError):
+                continue
+            try:
+                values[key] = float(words[2])
+            except (IndexError, ValueError):
+                values[key] = None
+            continue
+        if block is None:
+            continue
+        try:
+            ids = tuple(int(word) for word in words[:-1])
+        except ValueError:
+            continue
+        try:
+            values[(block,) + ids] = float(words[-1])
+        except ValueError:
+            values[(block,) + ids] = None
+    return values
+
+
+def _param_card_differences(generation_text: str, other_text: str,
+                            rel_tol: float = 1e-6) -> list[str]:
+    """The parameters other_text gives another value than generation_text
+    (numerically, to rel_tol; a value that is no number, eg an "auto"
+    width, is not compared), as "BLOCK IDS: generation -> other"."""
+    import math
+    generation, other = _param_card_values(generation_text), _param_card_values(other_text)
+    differences = []
+    for key in sorted(set(generation) | set(other), key=str):
+        a, b = generation.get(key, "missing"), other.get(key, "missing")
+        if a is None or b is None:
+            continue
+        if isinstance(a, float) and isinstance(b, float) and math.isclose(a, b, rel_tol=rel_tol, abs_tol=0.0):
+            continue
+        name = " ".join(str(part) for part in key)
+        differences.append(f"{name}: {a} -> {b}")
+    return differences
+
+
+def _generation_param_card(process_directory: str, events_path: str, param_card: str,
+                           card_dir: str) -> str:
+    """The param_card to normalise the events of events_path with: the one
+    they were generated with, from their LHE header, written into card_dir;
+    a warning lists the parameters in which param_card (default
+    process_directory/Cards/param_card.dat) differs from it. Without one in
+    the header, param_card, with a warning that the normalisation then
+    cannot be checked against the generation."""
+    current = param_card or os.path.join(process_directory, "Cards", "param_card.dat")
+    text = _read_events_param_card(events_path)
+    if text is None:
+        logger.warning(
+            "MadtRex: the events of %s carry no param_card (no <slha> block in their "
+            "header): they are normalised with %s, which cannot be checked against the "
+            "one they were generated with", events_path, current)
+        return current
+    path = os.path.join(card_dir, "generation_param_card.dat")
+    with open(path, "w") as f:
+        f.write(text)
+    if os.path.isfile(current):
+        with open(current) as f:
+            differences = _param_card_differences(text, f.read())
+        if differences:
+            shown = differences[:10] + ([f"... {len(differences) - 10} more"]
+                                        if len(differences) > 10 else [])
+            logger.warning(
+                "MadtRex: %s differs from the param_card the events of %s were generated "
+                "with (%s); the reweighting starts from the latter, as the events were "
+                "generated, not from %s", current, events_path, "; ".join(shown), current)
+    return path
+
+
+def _check_stored_matrix_elements(events_path: str, init_meta, process_directory: str,
+                                  param_card: str, devices: list[str], fptype: str,
+                                  sample: int = 32, rel_tol: float = 1e-6,
+                                  card_label: str = "") -> None:
+    """Re-evaluates the original matrix element (helicity-summed, with
+    param_card, at fptype) for a sample of the events of events_path whose
+    generation-time matrix elements are stored (STORED_MATRIX_ELEMENT_COLUMN)
+    and warns if they differ by more than rel_tol: the stored ones are then
+    not those of this process directory's libraries and card. A launch
+    changing nothing normalised by the stored ones gives the ratio of the
+    two as its weight over the event weight. rel_tol leaves room for an MLM
+    run's stored matrix elements, which are the first evaluation rescaled to
+    the event's alpha_s rather than evaluated again (about 1e-7 apart at the
+    mixed fptype)."""
+    import numpy as np
+    if not events_path.endswith(".npy"):
+        return
+    events = np.load(events_path, mmap_mode="r", max_header_size=1 << 30)
+    if STORED_MATRIX_ELEMENT_COLUMN not in (events.dtype.names or ()) or len(events) == 0:
+        return
+    picked = np.unique(np.linspace(0, len(events) - 1, min(sample, len(events))).astype(int))
+    with tempfile.TemporaryDirectory() as tmp:
+        sample_path = os.path.join(tmp, "events.npy")
+        np.save(sample_path, np.ascontiguousarray(events[picked]))
+        card = os.path.join(tmp, "check.rwgt")
+        with open(card, "w") as f:
+            f.write("launch --rwgt_name=check\n")
+        try:
+            driver = mtx.Driver()
+            driver.set_helicity_reweighting(False)
+            driver.set_device_priority(devices)
+            driver.set_fptype_priority([fptype])
+            driver.load_process_directory(process_directory, param_card)
+            driver.load_param_reweighting(card)
+            if init_meta is not None:
+                driver.load_events(sample_path, init_meta)
+            else:
+                driver.load_events(sample_path)
+            driver.warehouse().get().run()
+            driver.write_weights(os.path.join(tmp, "check"))
+            weights = np.load(os.path.join(tmp, "check_check.npy"))["weight"]
+        except Exception as error:  # a check only: the reweighting itself reports
+            logger.warning("MadtRex: could not check the stored matrix elements of %s "
+                           "against %s: %s", events_path, process_directory, error)
+            return
+    original = np.asarray(events["weight"][picked])
+    nonzero = original != 0
+    deviation = np.abs(weights[nonzero] / original[nonzero] - 1)
+    if deviation.size and deviation.max() > rel_tol:
+        logger.warning(
+            "MadtRex: the matrix elements stored with %s differ from the ones the "
+            "libraries of %s give with %s (up to %.3g relative, %d of %d sampled events "
+            "beyond %g): helicity-summed launches are normalised with the stored ones, "
+            "the others with re-evaluated ones", events_path, process_directory,
+            card_label or param_card, deviation.max(), int(np.sum(deviation > rel_tol)),
+            deviation.size, rel_tol)
 
 
 def _generation_run_card(process_directory: str, events_path: str | None,
@@ -388,6 +557,27 @@ def _generation_run_card(process_directory: str, events_path: str | None,
         except tomllib.TOMLDecodeError:
             pass
     return None, ""
+
+
+def reweighting_threads(process_directory: str, events_path: str | None = None) -> int:
+    """The worker threads MadtRex reweights with unless the card says
+    otherwise ("change nb_core"): as many as the event generation uses, the
+    [run] cpu_thread_pool_size of the process directory's run card (else of
+    the run card in the header of events_path), all available cores when it
+    is -1 or 0 (as launch.py and madspace resolve it) or cannot be read."""
+    card, _ = _generation_run_card(process_directory, None, _run_card_path(process_directory))
+    if card is None and events_path is not None:
+        card = _read_events_run_card(events_path)
+    try:
+        threads = int(card["run"].get("cpu_thread_pool_size", -1)) if card else -1
+    except (TypeError, ValueError):
+        threads = -1
+    if threads > 0:
+        return threads
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
 
 
 def resolve_auto_backend(build_path: str) -> str:
@@ -514,6 +704,37 @@ def _read_run_fptype(process_directory: str, events_path: str | None = None) -> 
     return _PRECISION_2_FPTYPE.get(precision, precision)
 
 
+def _read_libtag(directory: str) -> str:
+    """The madmatrix LIBTAG directory's libraries are built with: "" but for
+    a process MadtRex regenerated in another model (mg7/madtrex.py's
+    regenerate_process_in_model() records it in its marker file)."""
+    marker = os.path.join(directory, ".madtrex_source.json")
+    if not os.path.isfile(marker):
+        return ""
+    with open(marker) as f:
+        return json.load(f).get("libtag", "")
+
+
+def _check_distinct_libraries(directory: str, original_directory: str) -> None:
+    """Raises unless no madmatrix library of directory (a process
+    regenerated in another model) has the name of one of
+    original_directory's: the dynamic loader identifies a library by its
+    name, so one of the same name, loaded next to the original's for the
+    normalisation, would silently be the original's (its parameters and
+    all). See LIBTAG in madmatrix.mk."""
+    def names(d):
+        lib = os.path.join(d, "lib")
+        return {n for n in (os.listdir(lib) if os.path.isdir(lib) else [])
+                if n.startswith("libmadmatrix") and n.endswith(".so")}
+    shared = names(directory) & names(original_directory)
+    if shared:
+        raise RuntimeError(
+            f"the matrix element libraries of {directory} have the names of the original "
+            f"process's ({', '.join(sorted(shared))}), so they cannot be loaded next to them "
+            f"for the normalisation: remove {directory} to have it regenerated"
+        )
+
+
 def _compile_subprocesses(directory: str, devices: list[str], fptype: str) -> None:
     """Compiles whichever subprocesses under
     directory/SubProcesses/subprocesses.json aren't already compiled for
@@ -561,11 +782,12 @@ def _compile_subprocesses(directory: str, devices: list[str], fptype: str) -> No
             # directory/src/ common-library build (fixed to do so under
             # USEBUILDDIR=1 too -- it used to only clean src/ that way for
             # the non-USEBUILDDIR path), so this one call covers both.
-            _make(
-                ["clean", f"BACKEND={device}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
-                cwd=source_path,
-            )
-            _make([f"BACKEND={device}", f"FPTYPE={fptype}", "USEBUILDDIR=1"], cwd=source_path)
+            variables = [f"BACKEND={device}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            libtag = _read_libtag(directory)
+            if libtag:
+                variables.append(f"LIBTAG={libtag}")
+            _make(["clean"] + variables, cwd=source_path)
+            _make(variables, cwd=source_path)
 
 
 def _sanitize_dirname(name: str) -> str:
@@ -590,17 +812,18 @@ def _npy_weight_column(weight_id: str) -> str:
 
 
 def _merge_npy_weights(events_path: str, prefix: str, weight_ids: list[str],
-                       weight_contexts: list[str]) -> None:
+                       weight_contexts: list[str], drop_columns=()) -> None:
     """Adds the weight files "<prefix>_<id>.npy" of the new weight_ids to
     events_path as "rwgt_<id>" columns, after its existing rwgt_ columns
     (the systematics' rwgt_<n>, a previous reweighting's), and lists them
     in a weight group of the header.lhe next to it, which npy_to_lhe and the
-    MadtRex readers take the weight names from. The files are removed."""
+    MadtRex readers take the weight names from. The files are removed. The
+    drop_columns of events_path are left out of the rewritten file."""
     import numpy as np
     from numpy.lib import format as npy_format
 
     events = np.load(events_path, mmap_mode="r", max_header_size=1 << 30)
-    names = list(events.dtype.names)
+    names = [name for name in events.dtype.names if name not in drop_columns]
     columns = {}
     for weight_id in weight_ids:
         column = _npy_weight_column(weight_id)
@@ -654,7 +877,13 @@ def _merge_npy_weights(events_path: str, prefix: str, weight_ids: list[str],
         os.replace(header + ".tmp", header)
 
 
-def write_weights_in_place(driver, result, source_path: str, events_path: str) -> str:
+# the generation-time matrix elements MadGraph stores in events.npy for
+# MadtRex's normalisation (launch.py's MadgraphProcess.store_matrix_elements)
+STORED_MATRIX_ELEMENT_COLUMN = "matrix_element"
+
+
+def write_weights_in_place(driver, result, source_path: str, events_path: str,
+                           drop_stored_matrix_elements: bool = False) -> str:
     """Writes the weights driver (a Driver or PdfDriver, whose reweighted
     sample is result) computed into the event file they were computed for,
     and returns its path: source_path, the run's event file, as the other
@@ -664,7 +893,9 @@ def write_weights_in_place(driver, result, source_path: str, events_path: str) -
     decompressed copy events_path read from removed; an npy file gets the
     new weights as rwgt_<id> columns (see _merge_npy_weights()). Either
     way the existing weights (systematics, earlier reweightings) are kept,
-    and the new ones follow them."""
+    and the new ones follow them. drop_stored_matrix_elements removes the
+    stored matrix elements (STORED_MATRIX_ELEMENT_COLUMN) from an npy file in
+    the same rewrite: for the last reweighting pass over it."""
     run_dir = os.path.dirname(os.path.abspath(source_path))
     if source_path.endswith(".npy"):
         prefix = os.path.join(run_dir, ".madtrex_weights")
@@ -676,7 +907,9 @@ def write_weights_in_place(driver, result, source_path: str, events_path: str) -
         for weight_id in ids:
             if weight_id in existing and os.path.isfile(f"{prefix}_{weight_id}.npy"):
                 os.remove(f"{prefix}_{weight_id}.npy")
-        _merge_npy_weights(source_path, prefix, [i for i, _ in new], [c for _, c in new])
+        _merge_npy_weights(source_path, prefix, [i for i, _ in new], [c for _, c in new],
+                           drop_columns=(STORED_MATRIX_ELEMENT_COLUMN,)
+                           if drop_stored_matrix_elements else ())
         return source_path
     tmp = os.path.join(run_dir, ".madtrex_reweighted.lhe")
     driver.write_weights(tmp)
@@ -706,6 +939,7 @@ def run_parameter_reweighting(
     param_card: str = "",
     regenerate: Regenerator | None = None,
     helicity_reweighting: bool | None = None,
+    drop_stored_matrix_elements: bool = False,
 ) -> dict[tuple[str | None, str], mtx.Driver]:
     """Runs MadtRex reweighting end to end against an existing MadGraph7 run.
 
@@ -746,7 +980,33 @@ def run_parameter_reweighting(
 
     Returns a dict of the Driver built for each group, keyed by its
     (model, fptype) (model is None for the original-model group), so
-    callers can inspect driver.warehouse().get() afterwards."""
+    callers can inspect driver.warehouse().get() afterwards.
+
+    drop_stored_matrix_elements: the last group writing its weights into an
+    npy events_path in place also removes the stored matrix elements from
+    it (see write_weights_in_place()).
+
+    Every launch is normalised by the matrix element the events were
+    generated with: the original process directory's, with the param_card
+    of the events' own header (see _generation_param_card(); a warning
+    lists how process_directory's Cards/param_card.dat differs from it,
+    another one says when the header has none), at the sample's fptype.
+    The original model's launches start from that same card, unless
+    param_card names another one. When the events store their matrix
+    elements, a sample of them is first compared with re-evaluated ones
+    (see _check_stored_matrix_elements())."""
+    with tempfile.TemporaryDirectory() as card_dir:
+        return _run_parameter_reweighting(
+            rwgt_path, events_path, output_path, process_directory, param_card,
+            regenerate, helicity_reweighting, drop_stored_matrix_elements, card_dir)
+
+
+def _run_parameter_reweighting(
+    rwgt_path, events_path, output_path, process_directory, param_card,
+    regenerate, helicity_reweighting, drop_stored_matrix_elements, card_dir,
+):
+    """run_parameter_reweighting(), writing the generation's param_card
+    into card_dir."""
     if events_path is None:
         events_path = find_run_events(
             find_latest_run_dir(os.path.join(process_directory, "Events"))
@@ -770,6 +1030,12 @@ def run_parameter_reweighting(
     # original configuration, never against whichever fptype it targets.
     original_fptype = (_read_run_fptype(process_directory, source_path)
                        or param_rwgt_card.DEFAULT_FPTYPE)
+    # The param_card the events were generated with (from their header), not
+    # whatever Cards/param_card.dat is now: the normaliser of every group,
+    # and where the original model's launches start from unless param_card
+    # names another one.
+    generation_card = _generation_param_card(process_directory, source_path, param_card,
+                                             card_dir)
     groups = [
         group for group in param_rwgt_card.group_by_fptype(parsed, default_fptype=original_fptype)
         if group.launches
@@ -779,13 +1045,19 @@ def run_parameter_reweighting(
     multi = len(groups) > 1
 
     devices = _read_devices(process_directory)
+    threads = reweighting_threads(process_directory, source_path)
+    _compile_subprocesses(process_directory, devices, original_fptype)
+    _check_stored_matrix_elements(
+        events_path, init_meta, process_directory, generation_card, devices, original_fptype,
+        card_label=("the param_card they were generated with"
+                    if generation_card.startswith(card_dir) else ""))
     drivers: dict[tuple[str | None, str], mtx.Driver] = {}
-    for group in groups:
+    for group_index, group in enumerate(groups):
         model_tag = _sanitize_dirname(group.model_spec) if group.model_spec is not None else "original"
         tag = f"{model_tag}_{group.fptype}" if multi else None
 
         if group.model_spec is None:
-            load_directory, group_param_card = process_directory, param_card
+            load_directory, group_param_card = process_directory, param_card or generation_card
         else:
             if regenerate is None:
                 raise RuntimeError(
@@ -810,12 +1082,13 @@ def run_parameter_reweighting(
         _compile_subprocesses(load_directory, devices, group.fptype)
         # The normaliser needs original_fptype's own compiled library too,
         # whenever it differs from the target fptype just compiled above
-        # (see the driver.set_normaliser_fptype_priority() call below) --
-        # only for group.model_spec is None, since that's the only case
-        # normaliser_fptype_priority is actually set to something other than
-        # group.fptype; a "change model" group's normaliser still shares its
-        # own (regenerated) target-fptype library, unchanged.
-        if group.model_spec is None and original_fptype != group.fptype:
+        # (see the driver.set_normaliser_fptype_priority() call below). A
+        # "change model" group is normalised against the original process
+        # directory's own matrix elements, at original_fptype, like every
+        # other group (see Driver.set_normaliser_process_directory()).
+        if group.model_spec is not None:
+            _compile_subprocesses(process_directory, devices, original_fptype)
+        elif original_fptype != group.fptype:
             _compile_subprocesses(load_directory, devices, original_fptype)
 
         if in_place:
@@ -840,22 +1113,37 @@ def run_parameter_reweighting(
                 events_path, group.model_spec or "<original>", group.fptype, rwgt_path,
             )
             driver = mtx.Driver()
+            # threads and batch splitting by default as the generation, then
+            # whatever the card sets
+            driver.set_threads(threads)
+            driver.set_min_batch(param_rwgt_card.DEFAULT_MIN_BATCH)
             driver_options.apply(driver)
+            logger.info(
+                "MadtRex: %d thread(s), subprocesses split into batches of at least "
+                "%d events", driver.threads(), driver.min_batch())
             if helicity_reweighting is not None:
                 driver.set_helicity_reweighting(helicity_reweighting)
             driver.set_device_priority(devices)
             driver.set_fptype_priority([group.fptype])
-            if group.model_spec is None:
-                # Reweighting the original UFO model, possibly to a
-                # different fptype: the normaliser must always reflect the
-                # sample's own actual generation-time fptype
-                # (original_fptype), never group.fptype -- see
-                # Driver.set_normaliser_fptype_priority()'s own doc comment.
-                # A no-op (normaliser_priority == fptype_priority, one api
-                # shared for both roles) whenever the card doesn't actually
-                # change fptype, since group.fptype then also resolves to
-                # original_fptype (see group_by_fptype()'s default_fptype).
-                driver.set_normaliser_fptype_priority([original_fptype])
+            # The normaliser is always the matrix element the events were
+            # generated with: the original process directory's, with its
+            # param_card, at the sample's own generation-time fptype
+            # (original_fptype), never group.fptype -- see
+            # Driver.set_normaliser_fptype_priority()'s own doc comment. A
+            # no-op for the original model (normaliser_priority ==
+            # fptype_priority, one api shared for both roles) whenever the
+            # card doesn't actually change fptype, since group.fptype then
+            # also resolves to original_fptype (see group_by_fptype()'s
+            # default_fptype). A "change model" group's weights are the
+            # other model's matrix element over that original one
+            # (MadGraph's reweighting convention), never over the other
+            # model's own.
+            driver.set_normaliser_fptype_priority([original_fptype])
+            if group.model_spec is not None:
+                _check_distinct_libraries(load_directory, process_directory)
+                driver.set_normaliser_process_directory(process_directory, generation_card)
+            else:
+                driver.set_normaliser_param_card(generation_card)
             driver.load_process_directory(load_directory, group_param_card)
             driver.load_param_reweighting(resolved_rwgt_path)
             if init_meta is not None:
@@ -865,7 +1153,9 @@ def run_parameter_reweighting(
             driver.warehouse().get().run()
             if in_place:
                 group_output_path = write_weights_in_place(
-                    driver, driver.warehouse().get(), source_path, events_path)
+                    driver, driver.warehouse().get(), source_path, events_path,
+                    drop_stored_matrix_elements=(drop_stored_matrix_elements
+                                                 and group_index == len(groups) - 1))
             else:
                 driver.write_weights(group_output_path)
         finally:
@@ -881,6 +1171,7 @@ def run_pdf_reweighting(
     events_path: str | None = None,
     output_path: str | None = None,
     process_directory: str = ".",
+    drop_stored_matrix_elements: bool = False,
 ) -> mtx.PdfDriver:
     """Runs MadtRex PDF-only reweighting end to end against an existing
     MadGraph7 run, via PdfDriver -- entirely independent of run_parameter_reweighting()
@@ -1010,7 +1301,9 @@ def run_pdf_reweighting(
         driver.load_events(events_path)
     driver.get().run()
     if output_path is None:
-        output_path = write_weights_in_place(driver, driver.get(), source_path, events_path)
+        output_path = write_weights_in_place(
+            driver, driver.get(), source_path, events_path,
+            drop_stored_matrix_elements=drop_stored_matrix_elements)
     else:
         driver.write_weights(output_path)
     logger.info("MadtRex: wrote %s", output_path)
@@ -1056,6 +1349,7 @@ def run_generic_reweighting(
     param_card: str = "",
     regenerate: Regenerator | None = None,
     helicity_reweighting: bool | None = None,
+    drop_stored_matrix_elements: bool = False,
 ) -> dict[str, object]:
     """Runs MadtRex's generic reweight card end to end: splits rwgt_path
     (see generic_reweight_card.py) into its "parameter"/"pdf" sections --
@@ -1118,6 +1412,8 @@ def run_generic_reweighting(
                 param_card=param_card,
                 regenerate=regenerate,
                 helicity_reweighting=helicity_reweighting,
+                drop_stored_matrix_elements=(drop_stored_matrix_elements
+                                             and "pdf" not in sections),
             )
         if "pdf" in sections:
             pdf_path = os.path.join(tmp_dir, "pdf.rwgt")
@@ -1131,6 +1427,7 @@ def run_generic_reweighting(
                 events_path=events_path,
                 output_path=pdf_output_path,
                 process_directory=process_directory,
+                drop_stored_matrix_elements=drop_stored_matrix_elements,
             )
 
     param_drivers, pdf_driver = result["parameter"], result["pdf"]
@@ -1160,6 +1457,7 @@ def run_reweighting(
     param_card: str = "",
     regenerate: Regenerator | None = None,
     helicity_reweighting: bool | None = None,
+    drop_stored_matrix_elements: bool = False,
 ):
     """Runs the reweight card rwgt_path with the runner its card_kind needs:
     "param" -> run_parameter_reweighting(), "pdf" -> run_pdf_reweighting(),
@@ -1176,7 +1474,8 @@ def run_reweighting(
             f"{list(generic_rwgt_card.CARD_KINDS)}"
         )
     common = dict(events_path=events_path, output_path=output_path,
-                  process_directory=process_directory)
+                  process_directory=process_directory,
+                  drop_stored_matrix_elements=drop_stored_matrix_elements)
     if card_kind == "pdf":
         return run_pdf_reweighting(rwgt_path, **common)
     runner = run_parameter_reweighting if card_kind == "param" else run_generic_reweighting

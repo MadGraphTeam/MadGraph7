@@ -19,7 +19,11 @@ before handing a card to that low-level parser:
   again explicitly whenever the model changes. Launches are grouped by their
   (model, process) target regardless of how they're interleaved in the card,
   so "change model" may appear more than once (switching back and forth, or
-  requesting several distinct alternate models) without duplicating work;
+  requesting several distinct alternate models) without duplicating work.
+  Such launches are still normalised against the *original* model's matrix
+  element (the one the events were generated with): their weights are the
+  new model's |M|^2 over the original |M|^2 (see Driver.
+  set_normaliser_process_directory() in madtrex.hpp);
 - "change fptype <value>" lines (formerly "set FPTYPE <value>", still
   accepted with a deprecation warning), requesting the launch they belong to be
   evaluated against a differently-precision-compiled matrix element library
@@ -101,16 +105,39 @@ DEFAULT_FPTYPE = "m"
 # Recognized "change <NAME> <value>" preamble Driver options (see
 # DriverOptions) besides the shared "change helicity", lowercase, matched
 # case-insensitively against the card. MadtRex-only, as is "change fptype".
+# The threading ones (THREAD_OPTION_NAMES) are newer than the "set" spellings
+# and have none:
+# - "change nb_core <N|auto>": MadtRex's worker threads. auto (the default)
+#   uses as many as the event generation: the [run] cpu_thread_pool_size of
+#   the run card the sample was generated with, all available cores when it
+#   is -1 (see madtrex_driver.reweighting_threads());
+# - "change min_batch <N>": the fewest events per batch when the sample is
+#   split into batches across the threads (DEFAULT_MIN_BATCH by default; see
+#   Driver.set_min_batch()). A subprocess with more events than
+#   max(min_batch, events / threads) is split into batches of that size, so a
+#   sample dominated by one subprocess still keeps every thread busy, while a
+#   small one is not spread so thinly that a batch costs more to set up (its
+#   own matrix element instance, its own sorting) than it saves. An explicit
+#   "change max_batch" takes precedence.
+THREAD_OPTION_NAMES = frozenset({"nb_core", "min_batch"})
 DRIVER_OPTION_NAMES = frozenset({
     "verbose", "max_batch", "max_deferred_iterations", "streaming", "stream_batch_size",
-})
+}) | THREAD_OPTION_NAMES
 # "change" options only MadtRex understands.
 MADTREX_CHANGE_OPTIONS = DRIVER_OPTION_NAMES | {"fptype"}
 # Former "set <NAME> <value>" spellings -> the "change" option they now are.
 DEPRECATED_SET_NAMES = {
     "helicity_reweighting": "helicity", "use_helicity": "helicity", "fptype": "fptype",
-    **{name: name for name in DRIVER_OPTION_NAMES},
+    **{name: name for name in DRIVER_OPTION_NAMES - THREAD_OPTION_NAMES},
 }
+# The default of "change min_batch". Splitting a batch off costs a few
+# milliseconds (a matrix element instance reloaded from its library and
+# param_card, about 2.5 ms for p p > t t~ j j on a laptop, and the batch's
+# own setup), which a batch of 1000 events amortises even for a simple
+# process (2 -> 2 at its own helicity: about a microsecond per event and
+# launch); below that, threads gain little over running the subprocesses as
+# they are.
+DEFAULT_MIN_BATCH = 1000
 # PDF-reweighting names (pdf_reweight_card.py), errors in a parameter card.
 _PDF_NAMES = frozenset({
     "pdf_set", "beam1_pdf_set", "beam2_pdf_set", "muf", "mur", "muf_factor",
@@ -182,6 +209,10 @@ class DriverOptions:
     # semantics, which ignores its own batch_size argument when disabling).
     streaming: bool | None = None
     stream_batch_size: int | None = None
+    # None: the generation's thread count / DEFAULT_MIN_BATCH (set by
+    # madtrex_driver before apply())
+    nb_core: int | None = None
+    min_batch: int | None = None
 
     def apply(self, driver) -> None:
         """Applies whichever fields aren't None to driver (a
@@ -197,6 +228,10 @@ class DriverOptions:
             driver.set_max_batch(self.max_batch)
         if self.max_deferred_iterations is not None:
             driver.set_max_deferred_iterations(self.max_deferred_iterations)
+        if self.nb_core is not None:
+            driver.set_threads(self.nb_core)
+        if self.min_batch is not None:
+            driver.set_min_batch(self.min_batch)
         streaming = self.streaming
         if streaming is None and self.stream_batch_size is not None:
             streaming = True  # a batch size with no explicit STREAMING line still means "on"
@@ -288,6 +323,8 @@ def _set_option(
         driver_options.helicity_reweighting = _parse_bool(name, value)
     elif name in ("verbose", "streaming"):
         setattr(driver_options, name, _parse_bool(name, value))
+    elif name == "nb_core" and value.strip().lower() == "auto":
+        driver_options.nb_core = None
     else:
         setattr(driver_options, name, _parse_optional_size(name, value))
     return baseline_fptype

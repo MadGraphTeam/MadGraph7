@@ -57,6 +57,7 @@
 #include <cassert>
 #include <variant>
 #include <atomic>
+#include <thread>
 
 // Define pi
 constexpr double pi = 3.141592653589793;
@@ -3001,6 +3002,14 @@ namespace REX
         // NOTE: BATCH_SIZE HAS TO DO WITH STREAMING, MAX_BATCH HAS TO DO WITH PROCESS SPLITTING,
         // THEY HAVE NO RELATION TO EACH OTHER
         std::size_t max_batch = npos;
+
+        // Threads sort_events() classifies the events with (each a chunk of at
+        // least sort_chunk events); 1, the default, classifies them in order on
+        // the calling thread. The sorter's classifiers must then be safe to
+        // call concurrently on different events, as eventBelongs' are (they
+        // only write to the event they classify).
+        std::size_t sort_threads = 1;
+        static constexpr std::size_t sort_chunk = 4096;
 
         eventSorter sorter;
         event_hash_fn event_hash = nullptr; // hash function for events (ie sorter)

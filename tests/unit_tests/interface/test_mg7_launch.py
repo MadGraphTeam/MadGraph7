@@ -1211,6 +1211,97 @@ class MG7ReweightingTest(unittest.TestCase):
                 '-f --reweight=%s --reweight-backend=classic' % card)
         self.assertEqual(seen, [({'reweight': 'ON'}, 'classic')])
 
+    def run_card(self, output_format='lhe', time_of_flight=-1.0, legacy=False,
+                 native=True):
+        return {'run': {'output_format': output_format},
+                'postprocessing': {'time_of_flight': time_of_flight,
+                                   'systematics': legacy},
+                'systematics': {'enable': native}}
+
+    def test_madtrex_lhe_run_is_generated_as_npy(self):
+        """An "lhe" run MadtRex reweights is generated as npy, unless an
+        LHE-only step runs before the reweighting."""
+        from madgraph.various import reweight_backend as rb
+        madtrex, classic = rb.Decision('madtrex', 'param'), rb.Decision('classic', 'param')
+        process = mock.Mock(gridpack_run_mode='regular', run_card=self.run_card())
+        via_binary = self.launch.lhe_via_binary
+        self.assertTrue(via_binary(process, madtrex))
+        self.assertFalse(via_binary(process, classic))
+        self.assertFalse(via_binary(process, None))
+        for card in (self.run_card('lhe_npy'), self.run_card('compact_npy'),
+                     self.run_card(time_of_flight=1.0),
+                     self.run_card(legacy=True, native=False)):
+            process.run_card = card
+            self.assertFalse(via_binary(process, madtrex), card)
+        # the legacy systematics.py only runs without madspace's systematics
+        process.run_card = self.run_card(legacy=True, native=True)
+        self.assertTrue(via_binary(process, madtrex))
+        process.run_card, process.gridpack_run_mode = self.run_card(), 'minimal'
+        self.assertFalse(via_binary(process, madtrex))
+
+    def run_single_as_npy(self, reweighting):
+        """run_single() of an "lhe" run MadtRex reweights, with the
+        generation, the reweighting (reweighting(process)) and the npy->LHE
+        conversion faked; returns (process, calls)."""
+        from madgraph.various import reweight_backend as rb
+        from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+        run_path = os.path.abspath(os.path.join('Events', 'run_01'))
+        os.makedirs(run_path)
+        calls = []
+        process = mock.Mock(gridpack_run_mode='regular', run_card=self.run_card(),
+                            run_path=run_path)
+
+        def generate_events(output_format=None):
+            calls.append(('generate', output_format))
+            process.events_path = os.path.join(run_path, 'events.npy')
+            for name in ('events.npy', 'header.lhe'):
+                open(os.path.join(run_path, name), 'w').close()
+        process.generate_events = generate_events
+
+        def convert(path):
+            calls.append(('convert', os.path.basename(path)))
+            lhe = os.path.join(run_path, 'events.lhe.gz')
+            open(lhe, 'w').close()
+            return lhe
+
+        def run_reweighting(p, card, decision):
+            calls.append(('reweight', p.events_path))
+            reweighting(p)
+        launch = self.launch
+        with mock.patch.object(launch, 'compute_auto_widths'), \
+                mock.patch.object(launch, 'MadgraphProcess', lambda: process), \
+                mock.patch.object(launch, 'run_lhe_postprocessing'), \
+                mock.patch.object(launch, 'run_reweighting', run_reweighting), \
+                mock.patch.object(npy_to_lhe, 'convert', convert):
+            launch.run_single(None, rb.Decision('madtrex', 'param'))
+        return process, calls
+
+    def test_madtrex_writes_the_requested_lhe(self):
+        def reweighting(process):
+            with open(os.path.join(process.run_path, 'reweighting.json'), 'w') as f:
+                json.dump({'events': process.events_path}, f)
+        process, calls = self.run_single_as_npy(reweighting)
+        npy = os.path.join(process.run_path, 'events.npy')
+        self.assertEqual(calls, [('generate', 'lhe_npy'), ('reweight', npy),
+                                 ('convert', 'events.npy')])
+        self.assertEqual(sorted(os.listdir(process.run_path)),
+                         ['events.lhe.gz', 'reweighting.json'])
+        lhe = os.path.join(process.run_path, 'events.lhe.gz')
+        self.assertEqual(process.events_path, lhe)
+        with open(os.path.join(process.run_path, 'reweighting.json')) as f:
+            self.assertEqual(json.load(f)['events'], lhe)
+
+    def test_failed_madtrex_still_writes_the_requested_lhe(self):
+        def reweighting(process):
+            raise RuntimeError('madtrex failed')
+        with self.assertLogs('madevent', 'WARNING') as logs:
+            process, calls = self.run_single_as_npy(reweighting)
+        self.assertEqual([c[0] for c in calls], ['generate', 'reweight', 'convert'])
+        self.assertTrue(any('reweighting failed: madtrex failed' in line
+                            for line in logs.output))
+        self.assertIn('events.lhe.gz', os.listdir(process.run_path))
+        self.assertNotIn('events.npy', os.listdir(process.run_path))
+
     def test_the_decision_is_logged_and_recorded(self):
         from madgraph.various import reweight_backend as rb
         card = self.write_card("change backend auto\n" + self.CARD)
@@ -1226,7 +1317,8 @@ class MG7ReweightingTest(unittest.TestCase):
         Process.run_path = run_path
         seen = {}
 
-        def fake_madtrex(card, events_path, card_kind, process_directory):
+        def fake_madtrex(card, events_path, card_kind, process_directory,
+                         drop_stored_matrix_elements=False):
             with open(card) as f:
                 seen['card'] = f.read()
             seen['kind'] = card_kind
@@ -1263,7 +1355,8 @@ class MG7ReweightingTest(unittest.TestCase):
             run_card = {'run': {'output_format': 'lhe'}}
         Process.run_path = run_path
 
-        def fake_madtrex(card, events_path, card_kind, process_directory):
+        def fake_madtrex(card, events_path, card_kind, process_directory,
+                         drop_stored_matrix_elements=False):
             with gzip.open(events_path, 'wt') as f:
                 f.write('reweighted\n')
         from madgraph.iolibs.template_files.mg7 import madtrex

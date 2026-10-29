@@ -85,9 +85,10 @@ PDF_OPTION_NAMES = PDF_SET_NAMES | SCALE_NAMES | CARD_OPTION_NAMES
 # Parameter-reweighting "change" options and former "set" names: errors here.
 _PARAMETER_CHANGE_OPTIONS = frozenset({
     "helicity", "model", "process", "fptype", "max_batch", "max_deferred_iterations",
-    "streaming", "stream_batch_size",
+    "streaming", "stream_batch_size", "nb_core", "min_batch",
 })
-_PARAMETER_SET_NAMES = frozenset({"helicity_reweighting", "use_helicity"}) | _PARAMETER_CHANGE_OPTIONS
+_PARAMETER_SET_NAMES = frozenset({"helicity_reweighting", "use_helicity"}) | (
+    _PARAMETER_CHANGE_OPTIONS - {"nb_core", "min_batch"})
 
 _LAUNCH_RE = re.compile(r"^\s*launch\b(?P<rest>.*)$", re.I)
 _NAME_RE = re.compile(r"rwgt_name\s*=\s*(?P<name>\S+)", re.I)

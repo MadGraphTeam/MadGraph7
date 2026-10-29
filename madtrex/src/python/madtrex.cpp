@@ -281,6 +281,13 @@ PYBIND11_MODULE(_madtrex_py, m) {
             py::return_value_policy::reference_internal
         )
         .def("helicity_reweighting", &TupperWare::helicity_reweighting)
+        .def(
+            "set_stored_normalisation",
+            &TupperWare::set_stored_normalisation,
+            py::arg("key"),
+            py::return_value_policy::reference_internal
+        )
+        .def("stored_normalisation", &TupperWare::stored_normalisation)
         .def("set_use_helicity", &TupperWare::set_use_helicity, py::arg("use_helicity"), py::return_value_policy::reference_internal)
         .def(
             "set_event_checker",
@@ -350,6 +357,11 @@ PYBIND11_MODULE(_madtrex_py, m) {
         .def("launch_names", &WareHouse::launch_names)
         .def("set_max_batch", &WareHouse::set_max_batch, py::arg("max_batch"), py::return_value_policy::reference_internal)
         .def("max_batch", &WareHouse::max_batch)
+        .def("set_threads", &WareHouse::set_threads, py::arg("threads"), py::return_value_policy::reference_internal)
+        .def("threads", &WareHouse::threads)
+        .def("set_min_batch", &WareHouse::set_min_batch, py::arg("min_batch"), py::return_value_policy::reference_internal)
+        .def("min_batch", &WareHouse::min_batch)
+        .def("batch_size_for", &WareHouse::batch_size_for, py::arg("n_events"))
         .def(
             "set_max_deferred_iterations",
             &WareHouse::set_max_deferred_iterations,
@@ -531,6 +543,28 @@ PYBIND11_MODULE(_madtrex_py, m) {
         )
         .def("helicity_reweighting", &Driver::helicity_reweighting)
         .def(
+            "set_normaliser_process_directory",
+            &Driver::set_normaliser_process_directory,
+            py::arg("process_directory"),
+            py::arg("param_card") = "",
+            py::return_value_policy::reference_internal
+        )
+        .def("normaliser_process_directory", &Driver::normaliser_process_directory)
+        .def(
+            "set_normaliser_param_card",
+            &Driver::set_normaliser_param_card,
+            py::arg("param_card"),
+            py::return_value_policy::reference_internal
+        )
+        .def("normaliser_param_card", &Driver::normaliser_param_card)
+        .def(
+            "set_use_stored_normalisation",
+            &Driver::set_use_stored_normalisation,
+            py::arg("use_stored_normalisation"),
+            py::return_value_policy::reference_internal
+        )
+        .def("use_stored_normalisation", &Driver::use_stored_normalisation)
+        .def(
             "set_use_helicity",
             &Driver::set_use_helicity,
             py::arg("use_helicity"),
@@ -551,6 +585,20 @@ PYBIND11_MODULE(_madtrex_py, m) {
             py::return_value_policy::reference_internal
         )
         .def("max_batch", &Driver::max_batch)
+        .def(
+            "set_threads",
+            &Driver::set_threads,
+            py::arg("threads"),
+            py::return_value_policy::reference_internal
+        )
+        .def("threads", &Driver::threads)
+        .def(
+            "set_min_batch",
+            &Driver::set_min_batch,
+            py::arg("min_batch"),
+            py::return_value_policy::reference_internal
+        )
+        .def("min_batch", &Driver::min_batch)
         .def(
             "set_max_deferred_iterations",
             &Driver::set_max_deferred_iterations,

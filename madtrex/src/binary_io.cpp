@@ -1,5 +1,6 @@
 #include "madtrex/binary_io.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <stdexcept>
 
@@ -40,11 +41,9 @@ DataLayout lhe_event_layout() {
 // compute correct byte offsets for everything that comes after them in the
 // same record (in particular every particle's own data) -- so this peeks
 // the file's own header first and builds a layout that actually matches,
-// rather than assuming systematics was off. Deliberately does not also
-// auto-detect ParticleRecord::f_clustering (cluster_scale) or
-// EventRecord::f_partial_weights beyond checking their presence
-// generically below -- neither is known to arise from anything
-// load_lhe_binary()'s callers (Driver/PdfDriver) currently produce.
+// rather than assuming systematics was off. An MLM run's events also
+// carry each particle's cluster_scale (ParticleRecord::f_clustering), which
+// the reader skips over the same way.
 DataLayout detect_lhe_event_layout(const std::string& path) {
     auto names = madspace::peek_npy_field_names(path);
     auto has = [&](const std::string& name) {
@@ -69,7 +68,14 @@ DataLayout detect_lhe_event_layout(const std::string& path) {
     if (has("bias")) {
         event_layout.push_back({"bias", madspace::FieldLayout::f64, 8});
     }
-    return DataLayout(event_layout, ParticleRecord::layout(ParticleRecord::f_lhe_particle));
+    // the generation-time matrix element madspace stores on request, for
+    // stored_matrix_element_key
+    if (has("matrix_element")) {
+        event_layout.push_back({"matrix_element", madspace::FieldLayout::f64, 9});
+    }
+    int particle_flags = ParticleRecord::f_lhe_particle;
+    if (has("part1_cluster_scale")) particle_flags |= ParticleRecord::f_clustering;
+    return DataLayout(event_layout, ParticleRecord::layout(particle_flags));
 }
 
 // Extracts event index i out of buffer (laid out with EventRecord::
@@ -115,12 +121,21 @@ LHEEvent extract_lhe_event(EventBuffer& buffer, std::size_t i, std::size_t max_p
     return evt;
 }
 
+bool has_matrix_element(const DataLayout& layout) {
+    const auto& fields = layout.event_layout();
+    return std::any_of(fields.begin(), fields.end(), [](const auto& field) {
+        return field.name == "matrix_element";
+    });
+}
+
 // Reads every event out of an already-open, load-mode EventFile. Uses
 // file.layout() (whatever it was actually opened with -- see
 // detect_lhe_event_layout()) rather than assuming a fixed one, so this
 // works regardless of which optional extra fields that layout does or
 // doesn't include.
-std::vector<LHEEvent> read_binary_events(EventFile& file) {
+// The file's stored matrix elements, if it has them, go to
+// matrix_elements, one per event.
+std::vector<LHEEvent> read_binary_events(EventFile& file, std::vector<double>& matrix_elements) {
     // Named local: EventBuffer stores its DataLayout by reference, so the
     // layout must outlive every buffer built from it -- file.layout()
     // lives exactly as long as file does, which already outlives this
@@ -131,11 +146,14 @@ std::vector<LHEEvent> read_binary_events(EventFile& file) {
 
     std::vector<LHEEvent> events;
     events.reserve(file.event_count());
+    bool has_me = has_matrix_element(layout);
+    matrix_elements.clear();
 
     constexpr std::size_t chunk = 4096;
     while (file.read(buffer, chunk)) {
         for (std::size_t i = 0; i < buffer.event_count(); ++i) {
             events.push_back(extract_lhe_event(buffer, i, max_particles));
+            if (has_me) matrix_elements.push_back(buffer.event(i).matrix_element());
         }
     }
     return events;
@@ -242,13 +260,19 @@ std::string sanitize_token(const std::string& raw) {
 } // namespace
 
 std::shared_ptr<REX::lhe> load_lhe_binary(EventFile& file, const LHEMeta& meta) {
-    auto raw_events = read_binary_events(file);
+    std::vector<double> matrix_elements;
+    auto raw_events = read_binary_events(file, matrix_elements);
 
     REX::lheReader<LHEMeta, LHEEvent> reader;
     reader.set_init_translator(lhe_meta_to_init);
     reader.set_event_translator(lhe_event_to_event);
 
     auto result = reader.read(meta, raw_events);
+    if (!matrix_elements.empty() && matrix_elements.size() == result.events.size()) {
+        for (std::size_t i = 0; i < result.events.size(); ++i) {
+            result.events[i]->extra[stored_matrix_element_key] = matrix_elements[i];
+        }
+    }
     return std::make_shared<REX::lhe>(std::move(result));
 }
 
@@ -266,9 +290,11 @@ REX::eventSource open_lhe_source_binary(const std::string& path, const LHEMeta& 
     struct State {
         EventFile file;
         std::size_t max_particles;
+        bool has_me;
         explicit State(const std::string& p) :
             file(p, detect_lhe_event_layout(p), 0, EventFile::load),
-            max_particles(file.particle_count()) {}
+            max_particles(file.particle_count()),
+            has_me(has_matrix_element(file.layout())) {}
     };
     auto state = std::make_shared<State>(path);
 
@@ -285,6 +311,10 @@ REX::eventSource open_lhe_source_binary(const std::string& path, const LHEMeta& 
             result.push_back(
                 lhe_event_to_event(extract_lhe_event(buffer, i, state->max_particles))
             );
+            if (state->has_me) {
+                result.back()->extra[stored_matrix_element_key] =
+                    static_cast<double>(buffer.event(i).matrix_element());
+            }
         }
         return result;
     };

@@ -66,7 +66,12 @@ def regenerate_process_in_model(
     rw_subdir's full path, ready to pass to Driver.load_process_directory()."""
     rw_dir = os.path.join(process_directory, rw_subdir)
     marker_path = os.path.join(rw_dir, ".madtrex_source.json")
-    marker = {"model": model_spec, "process": process_definition}
+    # The libraries are built with a LIBTAG of their own (see madmatrix.mk):
+    # they are loaded next to the original process's, for the
+    # normalisation, and the dynamic loader would take one of the same name
+    # (the same model's common library, say) for the original's.
+    libtag = "_madtrex_" + _driver._sanitize_dirname(rw_subdir)
+    marker = {"model": model_spec, "process": process_definition, "libtag": libtag}
     if os.path.isfile(marker_path):
         with open(marker_path) as f:
             if json.load(f) == marker:
@@ -101,10 +106,21 @@ def regenerate_process_in_model(
     finally:
         os.remove(cmdfile)
 
-    _driver._compile_subprocesses(rw_dir, _driver._read_devices(process_directory), fptype)
-
+    # the libraries' names with the LIBTAG, for whoever loads them
+    json_path = os.path.join(rw_dir, "SubProcesses", "subprocesses.json")
+    with open(json_path) as f:
+        subprocesses = json.load(f)
+    for entry in subprocesses:
+        directory, name = os.path.split(entry["me_path"])
+        if not name.startswith("libmadmatrix_"):
+            raise RuntimeError(f"unexpected matrix element library name {entry['me_path']!r}")
+        entry["me_path"] = os.path.join(directory, "libmadmatrix" + libtag + name[len("libmadmatrix"):])
+    with open(json_path, "w") as f:
+        json.dump(subprocesses, f)
+    # written before compiling: _compile_subprocesses() reads the LIBTAG from it
     with open(marker_path, "w") as f:
         json.dump(marker, f)
+    _driver._compile_subprocesses(rw_dir, _driver._read_devices(process_directory), fptype)
     return rw_dir
 
 

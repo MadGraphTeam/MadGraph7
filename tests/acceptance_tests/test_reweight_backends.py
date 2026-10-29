@@ -162,6 +162,8 @@ class ReweightBackendsAgreeTest(unittest.TestCase):
         events = np.load(os.path.join(run, 'events.npy'), mmap_mode='r')
         names = [n for n in events.dtype.names if n.startswith('rwgt_')]
         self.assertEqual(names, ['rwgt_%d' % i for i in range(1, 110)] + ['rwgt_mt175'])
+        # MadtRex's stored generation-time matrix elements are not in the output
+        self.assertNotIn('matrix_element', events.dtype.names)
         self.assertFalse(any(n.startswith('.madtrex') for n in os.listdir(run)))
         lhe = self.run_checked([sys.executable, '-c', textwrap.dedent(f"""
             import sys
@@ -174,6 +176,209 @@ class ReweightBackendsAgreeTest(unittest.TestCase):
         for (_, weights), value in zip(converted, events['rwgt_mt175']):
             self.assertEqual(list(weights)[-1], 'mt175')
             self.assertAlmostEqual(weights['mt175'], value, delta=1e-6 * abs(value))
+
+    def test_madtrex_lhe_run_is_reweighted_as_npy(self):
+        """An LHE run MadtRex reweights is generated as npy, reweighted, and
+        written as the LHE file it asked for -- also without the weights,
+        when the reweighting fails."""
+        proc = self.make_process('LHE', 'lhe')
+        card = os.path.join(proc, 'Cards', 'reweight_card.dat')
+        result = self.run_checked([sys.executable, 'bin/generate_events', '-f',
+                                   '--reweight=%s' % card, '--reweight-backend=madtrex'],
+                                  cwd=proc)
+        self.assertIn('the events are written as npy', result.stdout)
+        run = os.path.join(proc, 'Events', 'run_01')
+        self.assertIn('events.lhe.gz', os.listdir(run))
+        self.assertNotIn('events.npy', os.listdir(run))
+        self.assertNotIn('header.lhe', os.listdir(run))
+        with open(os.path.join(run, 'reweighting.json')) as f:
+            self.assertEqual(json.load(f)['events'], os.path.join(run, 'events.lhe.gz'))
+        events = self.weights(os.path.join(run, 'events.lhe.gz'))
+        self.assertEqual(len(events), 500)
+        for _, weights in events:
+            self.assertEqual(list(weights), [str(i) for i in range(1, 110)] + ['mt175'])
+        total = sum(w for w, _ in events)
+        self.assertNotAlmostEqual(sum(r['mt175'] for _, r in events), total,
+                                  delta=1e-3 * abs(total))
+
+        bad = os.path.join(self.tmp, 'bad_card.dat')
+        with open(bad, 'w') as f:
+            f.write("launch --rwgt_name=bad\nset MASS 99999 175\n")
+        result = self.run_checked([sys.executable, 'bin/generate_events', '-f',
+                                   '--reweight=%s' % bad, '--reweight-backend=madtrex'],
+                                  cwd=proc)
+        self.assertIn('reweighting failed', result.stdout + result.stderr)
+        run = os.path.join(proc, 'Events', 'run_02')
+        self.assertNotIn('events.npy', os.listdir(run))
+        events = self.weights(os.path.join(run, 'events.lhe.gz'))
+        self.assertEqual(len(events), 500)
+        self.assertEqual(list(events[0][1]), [str(i) for i in range(1, 110)])
+
+
+    def test_madtrex_change_model_divides_by_the_original_matrix_element(self):
+        """A "change model" launch is normalised by the matrix element the
+        events were generated with: to the same model, it reproduces the
+        event weights (no parameter change) and the original model's own
+        reweighting (MT 175). The generation stores its matrix elements for
+        the first, helicity-summed reweighting; the later passes, on the
+        events without them, evaluate the original matrix element (summed
+        and at the event's helicity) and agree."""
+        import numpy as np
+        proc = self.make_process('CM', 'lhe_npy')
+        change = 'change model sm\nchange process u u~ > t t~\n'
+        card = os.path.join(proc, 'Cards', 'reweight_card.dat')
+        with open(card, 'w') as f:
+            f.write('change helicity False\nlaunch --rwgt_name=mt175\nset MT 175\n' + change +
+                    'launch --rwgt_name=same\nlaunch --rwgt_name=cm175\nset MT 175\n')
+        self.run_checked([sys.executable, 'bin/generate_events', '-f',
+                          '--reweight=%s' % card, '--reweight-backend=madtrex'], cwd=proc)
+        events_path = os.path.join(proc, 'Events', 'run_01', 'events.npy')
+        for helicity, suffix in (('False', 'eval'), ('True', 'hel')):
+            again = os.path.join(self.tmp, 'again_%s.dat' % suffix)
+            with open(again, 'w') as f:
+                f.write('change helicity %s\nlaunch --rwgt_name=mt175%s\nset MT 175\n%s'
+                        'launch --rwgt_name=same%s\nlaunch --rwgt_name=cm175%s\nset MT 175\n'
+                        % (helicity, suffix, change, suffix, suffix))
+            self.run_checked([sys.executable, '-c', textwrap.dedent(f"""
+                import sys
+                sys.path.insert(0, {str(MG_ROOT)!r})
+                from madgraph.iolibs.template_files.mg7 import bootstrap
+                bootstrap.ensure_madspace(interactive=False)
+                from madgraph.iolibs.template_files.mg7 import madtrex
+                madtrex.run_parameter_reweighting({again!r}, events_path={events_path!r},
+                                                  process_directory={proc!r})
+            """)], cwd=proc)
+        events = np.load(events_path)
+        self.assertNotIn('matrix_element', events.dtype.names)
+        weight = events['weight']
+
+        def close(a, b):
+            np.testing.assert_allclose(a, b, rtol=1e-12, atol=0)
+        for suffix in ('', 'eval', 'hel'):
+            close(events['rwgt_same' + suffix], weight)
+            close(events['rwgt_cm175' + suffix], events['rwgt_mt175' + suffix])
+        # stored and evaluated normalisation (both helicity-summed) agree
+        close(events['rwgt_mt175eval'], events['rwgt_mt175'])
+        close(events['rwgt_cm175eval'], events['rwgt_cm175'])
+        # and MT 175 does change the weights
+        self.assertGreater(np.max(np.abs(events['rwgt_mt175'] / weight - 1)), 1e-3)
+
+    def test_madtrex_normalises_with_the_generation_param_card(self):
+        """MadtRex reweights from the param_card in the events' header (the
+        one they were generated with), whatever Cards/param_card.dat says
+        by then, and warns about the difference; events without one in
+        their header are normalised with Cards/param_card.dat, with a
+        warning that this cannot be checked."""
+        import numpy as np
+        import re
+        proc = self.make_process('PC', 'lhe_npy')
+        self.run_checked([sys.executable, 'bin/generate_events', '-f'], cwd=proc)
+        run = os.path.join(proc, 'Events', 'run_01')
+        card = os.path.join(self.tmp, 'mt175.dat')
+        with open(card, 'w') as f:
+            f.write(CARD)
+        copies = {}
+        for name, header in (('as_generated', True), ('edited', True), ('no_header', False)):
+            copy = os.path.join(self.tmp, name)
+            os.makedirs(copy)
+            shutil.copy(os.path.join(run, 'events.npy'), copy)
+            if header:
+                shutil.copy(os.path.join(run, 'header.lhe'), copy)
+            copies[name] = os.path.join(copy, 'events.npy')
+
+        def reweight(events):
+            return self.run_checked([sys.executable, '-c', textwrap.dedent(f"""
+                import logging, sys
+                sys.path.insert(0, {str(MG_ROOT)!r})
+                logging.basicConfig(level=logging.WARNING)
+                from madgraph.iolibs.template_files.mg7 import bootstrap
+                bootstrap.ensure_madspace(interactive=False)
+                from madgraph.iolibs.template_files.mg7 import madtrex
+                madtrex.run_parameter_reweighting({card!r}, events_path={events!r},
+                                                  process_directory={proc!r})
+            """)], cwd=proc).stderr
+
+        log = reweight(copies['as_generated'])
+        self.assertNotIn('differs from the param_card', log)
+        param_card = os.path.join(proc, 'Cards', 'param_card.dat')
+        with open(param_card) as f:
+            text = f.read()
+        edited, count = re.subn(r'(?m)^(\s*6\s+)\S+(\s*#\s*MT\b)', r'\g<1>1.800000e+02\2', text)
+        self.assertEqual(count, 1)
+        with open(param_card, 'w') as f:
+            f.write(edited)
+        log = reweight(copies['edited'])
+        self.assertIn('differs from the param_card', log)
+        self.assertIn('mass 6: 173.0 -> 180.0', log)
+        log = reweight(copies['no_header'])
+        self.assertIn('carry no param_card', log)
+
+        weights = {name: np.load(path)['rwgt_mt175'] for name, path in copies.items()}
+        np.testing.assert_allclose(weights['edited'], weights['as_generated'], rtol=1e-12, atol=0)
+        # without the header, normalised with the edited card: MT 180 -> 175
+        self.assertGreater(np.max(np.abs(weights['no_header'] / weights['as_generated'] - 1)), 1e-3)
+
+    def test_madtrex_later_group_is_normalised_at_the_generation_parameters(self):
+        """A group after a launch that changed parameters (here an fptype
+        group, whose normaliser is the first group's library) is normalised
+        at the generation's parameters, also when the sample is split into
+        batches that reload the libraries."""
+        import numpy as np
+        proc = self.make_process('GROUPS', 'lhe_npy')
+        self.run_checked([sys.executable, 'bin/generate_events', '-f'], cwd=proc)
+        events_path = os.path.join(proc, 'Events', 'run_01', 'events.npy')
+        card = os.path.join(self.tmp, 'groups.dat')
+        with open(card, 'w') as f:
+            f.write("change nb_core 4\nchange min_batch 100\n"
+                    "launch --rwgt_name=mt175\nset MT 175\n"
+                    "launch --rwgt_name=same_d\nchange fptype d\n")
+        self.run_checked([sys.executable, '-c', textwrap.dedent(f"""
+            import sys
+            sys.path.insert(0, {str(MG_ROOT)!r})
+            from madgraph.iolibs.template_files.mg7 import bootstrap
+            bootstrap.ensure_madspace(interactive=False)
+            from madgraph.iolibs.template_files.mg7 import madtrex
+            madtrex.run_parameter_reweighting({card!r}, events_path={events_path!r},
+                                              process_directory={proc!r})
+        """)], cwd=proc)
+        events = np.load(events_path)
+        self.assertGreater(np.max(np.abs(events['rwgt_mt175'] / events['weight'] - 1)), 1e-3)
+        np.testing.assert_allclose(events['rwgt_same_d'], events['weight'], rtol=1e-5, atol=0)
+
+
+    def test_madtrex_reweights_mlm_events_with_their_stored_matrix_elements(self):
+        """An MLM run's npy events (with per-particle cluster scales) are
+        read by MadtRex, and their stored matrix elements are at the
+        event's own alpha_s: a no-op helicity-summed launch gives the event
+        weight back."""
+        import numpy as np
+        proc = os.path.join(self.tmp, 'MLM')
+        script = os.path.join(self.tmp, 'MLM.mg5')
+        with open(script, 'w') as f:
+            f.write('import model sm\ngenerate g g > t t~ g\noutput mg7 %s -f\n' % proc)
+        self.run_checked([sys.executable, str(MG_ROOT / 'bin' / 'madgraph'), script])
+        run_card = os.path.join(proc, 'Cards', 'run_card.toml')
+        with open(run_card) as f:
+            text = f.read()
+        for old, new in (('events = 100000', 'events = 2000'),
+                         ('dynamical_scale_choice = "half_transverse_mass"',
+                          'dynamical_scale_choice = "mlm"'),
+                         ('xqcut = 0.0', 'xqcut = 20.0'),
+                         ('[beam]\n', '[beam]\nclustering_history = "diagram"\n')):
+            self.assertIn(old, text)
+            text = text.replace(old, new, 1)
+        with open(run_card, 'w') as f:
+            f.write(text)
+        card = os.path.join(self.tmp, 'mlm.dat')
+        with open(card, 'w') as f:
+            f.write("change helicity False\nlaunch --rwgt_name=same\n")
+        result = self.run_checked([sys.executable, 'bin/generate_events', '-f',
+                                   '--reweight=%s' % card, '--reweight-backend=madtrex'],
+                                  cwd=proc)
+        self.assertNotIn('differ from the ones', result.stdout + result.stderr)
+        events = np.load(os.path.join(proc, 'Events', 'run_01', 'events.npy'))
+        self.assertIn('part1_cluster_scale', events.dtype.names)
+        np.testing.assert_allclose(events['rwgt_same'], events['weight'], rtol=1e-5, atol=0)
 
 
 if __name__ == '__main__':

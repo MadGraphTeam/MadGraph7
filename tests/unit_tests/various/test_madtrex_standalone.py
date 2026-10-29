@@ -83,6 +83,26 @@ class MadtrexStandaloneTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.split(), ["d", "X", "['cpu']"])
 
+    def test_reweighting_threads(self):
+        """MadtRex uses as many threads as the generation: the run card's
+        cpu_thread_pool_size, all available cores for -1."""
+        with tempfile.TemporaryDirectory() as proc_dir:
+            os.mkdir(os.path.join(proc_dir, "Cards"))
+            card = os.path.join(proc_dir, "Cards", "run_card.toml")
+            result = []
+            for threads in (3, -1):
+                with open(card, "w") as f:
+                    f.write("[run]\ncpu_thread_pool_size = %d\n" % threads)
+                result.append(self.run_isolated(textwrap.dedent(f"""
+                    import os, runpy
+                    ns = runpy.run_path({str(SCRIPT)!r})
+                    print(ns["reweighting_threads"]({proc_dir!r}) ==
+                          {{3: 3, -1: len(os.sched_getaffinity(0))}}[{threads}])
+                """)))
+        for each in result:
+            self.assertEqual(each.returncode, 0, each.stderr)
+            self.assertEqual(each.stdout.strip(), "True")
+
     def test_generation_run_card_comes_from_the_events(self):
         """The baseline PDF set and the normaliser fptype are those the
         events were generated with (the run card in their LHE header), not
@@ -510,6 +530,36 @@ class ClassicVocabularyTest(unittest.TestCase):
                          (False, 10, True))
         self.assertEqual(card.baseline_fptype, "d")
 
+    def test_thread_options(self):
+        options = self.param.parse_reweight_card(
+            "change nb_core 4\nchange min_batch 500\n" + self.LAUNCH).driver_options
+        self.assertEqual((options.nb_core, options.min_batch), (4, 500))
+        # auto (or 0) and an unset min_batch leave the generation's defaults
+        options = self.param.parse_reweight_card(
+            "change nb_core auto\n" + self.LAUNCH).driver_options
+        self.assertEqual((options.nb_core, options.min_batch), (None, None))
+        self.assertIsNone(self.param.parse_reweight_card(
+            "change nb_core 0\n" + self.LAUNCH).driver_options.nb_core)
+        with self.assertRaisesRegex(ValueError, "nb_core"):
+            self.param.parse_reweight_card("change nb_core many\n" + self.LAUNCH)
+        with self.assertRaisesRegex(ValueError, "preamble"):
+            self.param.parse_reweight_card(self.LAUNCH + "change min_batch 10\n")
+        # no former "set" spelling, and parameter reweighting only
+        self.assertNotIn("nb_core", self.param.DEPRECATED_SET_NAMES)
+        with self.assertRaisesRegex(ValueError, "parameter"):
+            self.pdf.parse_pdf_reweight_card("change nb_core 2\nlaunch\nset PDF_SET X\n")
+
+    def test_thread_options_are_applied(self):
+        calls = []
+
+        class Driver:
+            def __getattr__(self, name):
+                return lambda *args: calls.append((name,) + args)
+
+        self.param.parse_reweight_card(
+            "change nb_core 3\nchange min_batch 50\n" + self.LAUNCH).driver_options.apply(Driver())
+        self.assertEqual(calls, [("set_threads", 3), ("set_min_batch", 50)])
+
     def test_old_spellings_warn(self):
         with self.assertLogs("madgraph7", "WARNING") as logs:
             card = self.param.parse_reweight_card(
@@ -654,6 +704,40 @@ class HelicityReweightingDefaultTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "[True, True, False, False, False]")
+
+
+@unittest.skipUnless(madtrex_is_installed(), "madspace/madtrex are not installed")
+class BatchSplittingTest(unittest.TestCase):
+    """WareHouse.batch_size_for(): the events are split across the threads,
+    in batches of at least min_batch events; an explicit max_batch wins."""
+
+    def test_batch_size_for(self):
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", textwrap.dedent(f"""
+                import sys
+                sys.path[:0] = [{str(MG_ROOT / "madtrex" / "install")!r},
+                                {str(MG_ROOT / "madspace" / "install")!r}]
+                import madtrex
+                house = madtrex.WareHouse()
+                npos = house.batch_size_for(10 ** 6)  # nothing set: no splitting
+                house.set_threads(8)
+                out = [house.batch_size_for(10 ** 6) == npos]
+                house.set_min_batch(1000)
+                out += [house.batch_size_for(n) for n in (80000, 4000, 2000)]
+                out.append(house.batch_size_for(1999) == npos)  # under 2 * min_batch
+                house.set_threads(1)
+                out.append(house.batch_size_for(80000) == npos)  # one thread
+                house.set_threads(8).set_max_batch(300)
+                out.append(house.batch_size_for(80000))
+                d = madtrex.Driver().set_threads(4).set_min_batch(7)
+                out += [d.threads(), d.min_batch()]
+                print(out)
+            """)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(),
+                         "[True, 10000, 1000, 1000, True, True, 300, 4, 7]")
 
 
 if __name__ == "__main__":
