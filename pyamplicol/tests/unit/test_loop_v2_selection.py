@@ -543,6 +543,67 @@ def test_a_flow_interfering_between_born_orders_is_refused_at_generation(
     _close(value, expected, DOUBLE_DOUBLE, born)
 
 
+@pytest.mark.loop_physics
+def test_helicity_selections_keep_split_block_currents(
+    loop_sm_compiled_model, loop_native
+):
+    """u u~ > w+ w- g at leading colour: the u current of legs {1, 3, 4} is
+    two tree blocks of one name and chirality (flavour flows u and u d u,
+    ``test_loop_v2_vv_jet.py``), which the native tree program adds per row
+    (``block_row_terms``). A runtime helicity selection restricts the tree
+    program to what its kept rows read (``loop_v2/trees_rows.rs``), both
+    trees included: the two halves of the Born helicity rows sum to the
+    inclusive value in double-double at the first point of MadLoop's
+    reference (``mqcd/uux_wpwmg_4fs.json``)."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.models.loading import load_compiled_model
+
+    request = SliceRequest(
+        "u u~ > w+ w- g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 3, "QED": 2},
+        fixed_parameters={"WT": "0", "WZ": "0", "WW": "0", "WH": "0"},
+        accuracy="lc",
+    )
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model), request, loop_native
+    )
+    split = [
+        block.key
+        for block in slice_.blocks.blocks
+        if block.key.external_mask == 0b1101 and block.key.chirality == 1
+    ]
+    assert sorted(key.flavour_flow for key in split) == [(-2,), (-2, -1, -2)]
+    runtime = _runtime(ObservableSlice.of(slice_))
+    reference = json.loads((MQCD / "uux_wpwmg_4fs.json").read_text())
+    point = [reference["points"][0]]
+    scale = [str(Fraction(reference["mu_r"][0]) ** 2)]
+    helicities = [lc.helicity_id(row) for row in runtime.selection_catalogue().rows]
+    half = len(helicities) // 2
+
+    def values(**selectors) -> list:
+        result = runtime.evaluate(
+            point, mu_r2=scale, arithmetic="double-double", **selectors
+        )
+        return [
+            *result.born_values[0],
+            *(c for laurent in result.values[0] for c in laurent),
+        ]
+
+    expected = values()
+    parts = [
+        values(helicities=helicities[:half]),
+        values(helicities=helicities[half:]),
+    ]
+    assert all(any(abs(x) > 0 for x in part) for part in parts)
+    born = abs(expected[0])  # one squared Born order
+    _close(list(map(sum, zip(*parts, strict=True))), expected, DOUBLE_DOUBLE, born)
+
+
 # ------------------------------------------------------- tree-engine parity
 
 
