@@ -66,11 +66,13 @@ _LOGGER = logging.getLogger("pyamplicol.generation")
 # The binary64 carrier at a staged-validation miss, under the user's O1 rule
 # of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its
 # own stability estimate, which must not exceed 1e-9 (or the tolerance, where
-# a looser one is configured); its Born to the tolerance. E comes from one
-# exact rotation and the reduction-direction check, the checks the O1 tests
-# use (the reduction direction alone does not see tree-current rounding:
-# 3.1e-13 against a 1.0e-12 error, d d~ > g g T12).
-_BINARY64_CHECK_ROTATIONS = ("z:3/5:4/5",)
+# a looser one is configured); its Born to the tolerance. E comes from the
+# recommended checks (``loops.v2.stability.RECOMMENDED_CHECKS``: one generic
+# exact rotation and the rescaled reduction check), the O1 rule's estimate
+# (the reduction direction alone does not see tree-current rounding: 3.1e-13
+# against a 1.0e-12 error, d d~ > g g T12; a rotation about the beam axis and
+# the cached reduction check missed binary64 errors by 23-96 x, package
+# mq-stab).
 _BINARY64_ESTIMATE_CAP = 1e-9
 
 
@@ -1944,8 +1946,9 @@ def _revalidate_v2_point(
     - native double-double at the same ``tolerance``;
     - the point's binary64 outputs (``binary64``, by label, as validated):
       Borns at ``tolerance``, virtuals at max(``tolerance``, E), E the
-      point's binary64 stability estimate (one exact rotation and the
-      reduction-direction check), refused when absent or above 1e-9 (the
+      point's binary64 stability estimate (the recommended checks: one
+      generic exact rotation and the rescaled reduction check), refused when
+      absent or above 1e-9 (the
       user's O1 rule; above the tolerance where that is looser). A binary64
       virtual off by more than the tolerance is therefore accepted only where
       binary64 itself estimates that it cannot resolve the tolerance.
@@ -1958,6 +1961,7 @@ def _revalidate_v2_point(
     """
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
     try:
         native = _v2_outputs(
@@ -1968,7 +1972,9 @@ def _revalidate_v2_point(
             [point],
             [scale],
             histories,
-            stability_checks=VirtualStabilityChecks(_BINARY64_CHECK_ROTATIONS, True),
+            stability_checks=VirtualStabilityChecks(
+                RECOMMENDED_CHECKS.rotations, True, rescaled=True
+            ),
         )
         references = runner.evaluate(
             point,

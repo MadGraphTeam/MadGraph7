@@ -16,6 +16,7 @@ from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
 
 from .results import _exact_decimal_sum
@@ -139,25 +140,6 @@ class VirtualStabilityPolicy:
             raise TypeError("verify_successful must be a boolean")
 
 
-def _default_rotation(index: int) -> Rotation:
-    """The ``index``-th default rotation check: exact, deterministic, generic.
-
-    Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
-    of a turn, so no two checks share an axis or a rotation angle and none is
-    a symmetry of a typical point. ``Rotation.from_axis_angle`` rounds the
-    quaternion to rationals, which keeps every rotated point exactly on shell.
-    """
-
-    golden = (1 + math.sqrt(5)) / 2
-    z = 1 - (2 * index + 1) / (2 * (index + 2))
-    phi = 2 * math.pi * index / golden
-    radius = math.sqrt(1 - z * z)
-    angle = 2 * math.pi * (((index + 1) / golden) % 1)
-    return Rotation.from_axis_angle(
-        (radius * math.cos(phi), radius * math.sin(phi), z), max(angle, 0.5)
-    )
-
-
 def parse_rotation(specification: str) -> Rotation:
     """One rotation check from text.
 
@@ -189,14 +171,19 @@ class VirtualStabilityChecks:
     rotation (exact ``Rotation`` records, specification text for
     :func:`parse_rotation`, or a count of default rotations); the
     reduction-direction check reduces every loop numerator a second time in a
-    reversed frame, reusing its coefficients and the cached master integrals.
-    Both combine. Without a check no estimate is returned. Escalating the
-    arithmetic is the caller's decision.
+    reversed frame, reusing its coefficients and the cached master integrals;
+    with ``rescaled`` that re-reduction runs at rescaled inputs, so the master
+    integrals are evaluated again and their own rounding is measured too
+    (requires ``reduction_direction``). They combine. Without a check no
+    estimate is returned. Escalating the arithmetic is the caller's decision.
+    ``VirtualStabilityChecks(1, True, rescaled=True)`` is the recommended
+    configuration (``loops.v2.stability.RECOMMENDED_CHECKS``).
     """
 
     # Normalised to exact ``Rotation`` records by ``__post_init__``.
     rotations: tuple[Rotation | str, ...] | int = ()
     reduction_direction: bool = False
+    rescaled: bool = False
 
     def __post_init__(self) -> None:
         given = self.rotations
@@ -214,10 +201,14 @@ class VirtualStabilityChecks:
             )
         if type(self.reduction_direction) is not bool:
             raise TypeError("reduction_direction must be a boolean")
+        if type(self.rescaled) is not bool:
+            raise TypeError("rescaled must be a boolean")
         object.__setattr__(
             self,
             "rotations",
-            StabilityChecks(rotations, self.reduction_direction).rotations,
+            StabilityChecks(
+                rotations, self.reduction_direction, self.rescaled
+            ).rotations,
         )
 
     @property
@@ -226,7 +217,9 @@ class VirtualStabilityChecks:
 
     def to_checks(self) -> StabilityChecks:
         return StabilityChecks(
-            cast(tuple[Rotation, ...], self.rotations), self.reduction_direction
+            cast(tuple[Rotation, ...], self.rotations),
+            self.reduction_direction,
+            self.rescaled,
         )
 
 
@@ -239,7 +232,8 @@ class VirtualStabilityEstimate:
     bound each coefficient's error relative to the coefficient itself (the
     poles are ``None`` in finite-only evaluations; ``inf`` marks an error
     estimate on an exact zero). ``checks`` names every check that ran with
-    its own relative budget (``rotation-<k>``, ``reduction-direction``).
+    its own relative budget (``rotation-<k>``, ``reduction-direction`` or
+    ``reduction-rescaled``).
     """
 
     relative: float
