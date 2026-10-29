@@ -249,6 +249,10 @@ void EventGenerator::run_generate(GenerateMode mode) {
         }
 
         update_integral_fractions();
+        // only with the steps drained, they are not in the commit order of the jobs
+        for (auto& channel : _channels) {
+            channel->apply_step_truncation_budgets();
+        }
         update_counts();
 
         if (_status.done) {

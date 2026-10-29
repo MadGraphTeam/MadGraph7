@@ -234,6 +234,10 @@ public:
     void add_invalid_step_values(std::size_t count) {
         _status.count_invalid_step_values += count;
     }
+    /// Apply the truncation budget of the current target count to the maxima
+    /// of the steps, which are updated with the target count of each job. Like
+    /// @ref set_target_count for the first maximum.
+    void apply_step_truncation_budgets();
     /// Count `count` events accepted by step `step`, which passed the earlier
     /// unweightings with the maxima `max_weight` (first step) and
     /// `max_weights` (the steps before).

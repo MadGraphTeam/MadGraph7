@@ -79,12 +79,18 @@ def generate(
     step_channel=-1,
     step_kwargs=None,
     config_kwargs=None,
+    survey=True,
 ):
     """Survey and generate, returns the status, the combined events and the
-    channels. step_me and step_outputs can be lists, one entry per step."""
+    channels. step_me and step_outputs can be lists, one entry per step, and
+    integrand_me one entry per channel."""
     os.makedirs(run_dir, exist_ok=True)
     context, alphas_file = make_context(run_dir, threads)
-    me0 = python_matrix_element(context, integrand_me, integrand_outputs)
+    if not isinstance(integrand_me, list):
+        integrand_me = [integrand_me] * len(pt_mins)
+    me0s = [
+        python_matrix_element(context, me, integrand_outputs) for me in integrand_me
+    ]
     if not isinstance(step_me, list):
         step_me = [step_me] * len(step_modes)
         step_outputs = [step_outputs] * len(step_modes)
@@ -108,7 +114,7 @@ def generate(
             name=str(i),
             histograms=None,
         )
-        for i, pt_min in enumerate(pt_mins)
+        for i, (pt_min, me0) in enumerate(zip(pt_mins, me0s))
     ]
     steps = [
         ms.WeightingStep(
@@ -123,7 +129,8 @@ def generate(
     generator = ms.EventGenerator(
         [context], channels, seed=seed, config=config, groups=groups
     )
-    generator.survey()
+    if survey:
+        generator.survey()
     generator.generate()
     output_file = os.path.join(run_dir, "combined.npy")
     generator.combine_to_compact_npy(output_file)
@@ -238,6 +245,38 @@ def test_reproducible_step_freeze(tmp_path):
         ]
         assert np.array_equal(events_a, events_b)
         assert status_a.mean == status_b.mean
+
+
+def test_step_budget_of_smaller_target(tmp_path):
+    """A smaller target applies its truncation budget to the step maxima too,
+    and rescales the unweighted count accordingly. EventGenerator does this at
+    the end of each round, as generate() starts with a generous target."""
+    small = lambda momenta: surrogate_me(momenta) * (momenta[:, 3, 1] > 300.0)
+    _, _, channels = generate(
+        str(tmp_path),
+        [surrogate_me, small],
+        ["unweight"],
+        step_me=heavy_tailed_me,
+        pt_mins=(20.0, 20.0),
+        grouped=(0, 1),
+        target_count=20000,
+        survey=False,
+        step_kwargs={"freeze_max_weight_after": 10**6},
+    )
+    channel = channels[1]
+    target = channel.status().count_target
+    assert target < 5000
+    # the budget of the final target is already applied
+    max_weight, count = channel.step_max_weight(1), channel.status().count_unweighted
+    channel.apply_step_truncation_budgets()
+    assert channel.step_max_weight(1) == max_weight
+    channel.set_target_count(target // 20)
+    channel.apply_step_truncation_budgets()
+    new_max_weight = channel.step_max_weight(1)
+    assert new_max_weight > max_weight
+    assert channel.status().count_unweighted == pytest.approx(
+        count * max_weight / new_max_weight, rel=1e-12
+    )
 
 
 def broken_me(momenta, invalid=(np.nan, np.inf)):

@@ -3516,6 +3516,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("ChannelEventGenerator::step_max_weight")
         )
         .def(
+            "set_target_count",
+            &ChannelEventGenerator::set_target_count,
+            py::arg("target_count"),
+            pydoc::doc("ChannelEventGenerator::set_target_count")
+        )
+        .def(
+            "apply_step_truncation_budgets",
+            &ChannelEventGenerator::apply_step_truncation_budgets,
+            pydoc::doc("ChannelEventGenerator::apply_step_truncation_budgets")
+        )
+        .def(
             "set_fixed_step_max_weight",
             &ChannelEventGenerator::set_fixed_step_max_weight,
             py::arg("step"),

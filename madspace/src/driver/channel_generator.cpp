@@ -1259,6 +1259,17 @@ void ChannelEventGenerator::update_step_max_weight(
     }
 }
 
+void ChannelEventGenerator::apply_step_truncation_budgets() {
+    for (std::size_t step = 1;
+         auto [state, settings] : zip(_step_states, _step_settings)) {
+        if (settings.unweight && !state.max_weight_fixed && state.max_weight != 0 &&
+            state.freeze_count <= settings.freeze_max_weight_after) {
+            apply_step_truncation_budget(step, _status.count_target);
+        }
+        ++step;
+    }
+}
+
 void ChannelEventGenerator::apply_step_truncation_budget(
     std::size_t step, std::size_t count_target
 ) {
