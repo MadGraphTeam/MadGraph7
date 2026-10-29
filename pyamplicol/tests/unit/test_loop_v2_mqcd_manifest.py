@@ -24,12 +24,14 @@ from tools.loop_benchmark import mqcd
 
 pytestmark = pytest.mark.loop_fast
 
-# PLAN §4.2, verbatim row ids per block (§4.3: 76 core rows).
+# PLAN §4.2, verbatim row ids per block (§4.3: 76 core rows), plus the VV +
+# jet rows D28 and D29 (mq-ewjoin, slice-status DECISIONS 2026-10-29 ~11:00):
+# 78 rows.
 PLAN_ROWS = {
     "A": "01 02 03 04 05 06 07 08 09 12 13 14 15 18 19 20 21 22 23 24 25 26",
     "B": "01 02 03 05 06 07 08",
     "C": "01 02 03 04 05 06 07 08 09",
-    "D": "01 02 05 06 07 08 09 10 11 12 13 15 16 17 18 19 20 21 23 24 25 26 27",
+    "D": "01 02 05 06 07 08 09 10 11 12 13 15 16 17 18 19 20 21 23 24 25 26 27 28 29",
     "E": "01 02 05 06",
     "F": "01 02 03 04",
     "G": "01 02",
@@ -64,6 +66,7 @@ FEATURES = {
     "massive:top", "four-tops", "massive:b", "massive:c", "massive:leptons",
     "yukawa:b", "yukawa:top", "scheme:4FS", "veto:top",
     "ew:dilepton", "ew:dilepton+jets", "ew:W-leptons", "ew:onshell-V+jet", "ew:VV",
+    "ew:VV+jet",
     "ew:radiation-zero", "ew:VH", "ew:VBF-H", "ew:lepton-initiated-jets",
     "ew:W-exchange", "widths:colourless",
     "ttX", "singletop:s", "singletop:t", "singletop:tW", "singletop:4FS-t",
@@ -99,7 +102,7 @@ def test_rows_are_the_plan_rows(rows):
     expected = {
         f"{block}{number}" for block, ids in PLAN_ROWS.items() for number in ids.split()
     }
-    assert len(expected) == 76
+    assert len(expected) == 78
     core = {name: row for name, row in rows.items() if row.base is None}
     assert set(core) == expected
     assert {name for name, row in core.items() if row.tier == "default"} == DEFAULT_TIER
@@ -472,19 +475,25 @@ def test_rule1_holds_each_row_to_its_stated_tolerance():
 def test_rule1_tolerance_is_relaxed_only_where_the_providers_need_it(rows):
     """1e-12, relaxed to 1e-10 only on the 2->4+ rows whose providers' own
     precision needs it (A18, A23; the user's ruling ~01:12 "if need be"),
-    never above the ceiling; a variant keeps its base row's."""
+    or, under the user's ruling ~10:20, to at most ATTENTION on a row whose
+    provider misses by less (D28: MadLoop's finite part at point 1); never
+    above the ceiling; a variant keeps its base row's."""
 
-    relaxed = set()
+    relaxed, attention = set(), set()
     for name, row in rows.items():
         final = len(row.process.split(">")[1].split())
         assert row.reference_tolerance <= mqcd.REFERENCE_TOLERANCE_CEILING
-        if row.reference_tolerance != mqcd.REFERENCE_TOLERANCE:
+        if (row.base or name) in {"D28"}:
+            assert row.reference_tolerance <= mqcd.ATTENTION, name
+            attention.add(row.base or name)
+        elif row.reference_tolerance != mqcd.REFERENCE_TOLERANCE:
             assert final >= 4, name
             assert row.reference_tolerance == mqcd.REFERENCE_TOLERANCE_HIGH, name
             relaxed.add(row.base or name)
         if row.base and not row.subprocess:
             assert row.reference_tolerance == rows[row.base].reference_tolerance
     assert relaxed == {"A18", "A23"}
+    assert attention == {"D28"}
 
 
 def test_rule1_checks_a_vanishing_coefficient_absolutely():
@@ -904,7 +913,7 @@ def test_report_data_counts_variants_smokes_and_findings(
     assert rows["A06"]["status"] == "not-run"
     assert rows["C09"]["status"] == "pending"
     assert data["smokes_and_expansions"]["smoke:no_masses"]["passed"]
-    assert len(data["rows"]) == 76
+    assert len(data["rows"]) == 78
     assert sum(data["counts"].values()) == len(data["rows"])
     table = builder.markdown(data)
     line = next(x for x in table.splitlines() if x.startswith("| A09"))
@@ -1289,11 +1298,11 @@ def test_ward_rule_reads_the_ward_criterion():
 
 
 def test_ward_extras_are_checked_on_their_rows(rows):
-    """PLAN §4.2's ward column (A08, A14, B03, C01, D05, E01, F04): checked
-    by the harness, A14 on one leg."""
+    """PLAN §4.2's ward column (A08, A14, B03, C01, D05, E01, F04) and the
+    VV + jet rows D28, D29: checked by the harness, A14 on one leg."""
 
     ward_rows = {name for name, row in rows.items() if "ward" in row.extras}
-    assert ward_rows == {"A08", "A14", "B03", "C01", "D05", "E01", "F04"}
+    assert ward_rows == {"A08", "A14", "B03", "C01", "D05", "D28", "D29", "E01", "F04"}
     for name in ward_rows:
         assert "ward" not in rows[name].extras_pending, name
     assert rows["A14"].ward_legs == (1,)

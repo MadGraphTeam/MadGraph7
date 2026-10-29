@@ -1004,6 +1004,38 @@
    "existing_fixtures": []
   },
   {
+   "row": "D28",
+   "class": "Q-EWBorn",
+   "process": "u u~ > w+ w- g (4F)",
+   "restriction_code": "4F",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "uux_wpwmg_4fs"
+   ],
+   "existing_fixtures": [],
+   "note": "VV + jet (mq-ewjoin: the loop vertex attaches the sum of a field current's flavour-flow trees)"
+  },
+  {
+   "row": "D29",
+   "class": "Q-EWBorn",
+   "process": "b b~ > w+ w- g",
+   "restriction_code": "5F*",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "bbx_wpwmg"
+   ],
+   "existing_fixtures": [],
+   "note": "MQ-5F; VV + jet with a massive t-channel line (mq-ewjoin)"
+  },
+  {
    "row": "E01",
    "class": "Q-ttX",
    "process": "g g > t t~ h",
@@ -1968,6 +2000,24 @@
    "export": "runs/mqcd/gu_epved/madloop-export",
    "points": {
     "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_wpwmg_4fs",
+   "process": "uux_wpwmg_4fs",
+   "export": "runs/mqcd/uux_wpwmg_4fs/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "bbx_wpwmg",
+   "process": "bbx_wpwmg",
+   "export": "runs/mqcd/bbx_wpwmg/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
    }
   },
   {
