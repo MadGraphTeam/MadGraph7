@@ -13,10 +13,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from pyamplicol.api.virtual_results import (
-        VirtualStabilityChecks,
-        VirtualStabilityPolicy,
-    )
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
@@ -25,6 +22,16 @@ if TYPE_CHECKING:
 
 from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
+
+# The precision-rescue policy left with the legacy engine (refused by name in
+# EvaluationStabilityConfig, which keeps only its defaults).
+EVALUATION_STABILITY_REMOVED = (
+    "evaluation.stability (the precision-rescue policy: higher carriers, "
+    "tolerances, verify_successful) was removed with the legacy one-loop "
+    f"engine: {LEGACY_LOOP_ENGINE_REMOVED}; v2 loop runtimes return stability "
+    "estimates (evaluation.stability_checks) and leave precision escalation to "
+    "the caller; delete the setting"
+)
 
 
 class Action(StrEnum):
@@ -1031,6 +1038,15 @@ class EvaluatorConfig:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationStabilityConfig:
+    """The removed precision-rescue policy: only its defaults are accepted.
+
+    The rescue (``higher`` carriers, tolerances, ``verify_successful``) was
+    served only by the removed legacy one-loop engine; v2 loop runtimes return
+    stability estimates (``evaluation.stability_checks``) and leave precision
+    escalation to the caller. The section stays so that stored configurations
+    with its defaults still resolve; any other value is refused with the reason.
+    """
+
     higher: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     relative_tolerance: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
@@ -1046,54 +1062,13 @@ class EvaluationStabilityConfig:
             "higher",
             _tuple_of_strings(self.higher, "evaluation.stability.higher"),
         )
-        self.to_policy()
-
-    def to_policy(self) -> VirtualStabilityPolicy | None:
-        """Translate configuration text to the existing virtual policy contract."""
-        prefix = "evaluation.stability"
-        if type(self.verify_successful) is not bool:
-            raise ConfigurationError(f"{prefix}.verify_successful must be a boolean")
-        if not self.higher:
-            if (
-                self.relative_tolerance is not None
-                or self.absolute_tolerance is not None
-                or self.verify_successful
-            ):
-                raise ConfigurationError(f"{prefix} options require higher levels")
-            return None
-        if self.relative_tolerance is None or self.absolute_tolerance is None:
-            raise ConfigurationError(
-                f"{prefix} requires both relative_tolerance and absolute_tolerance"
-            )
-        from pyamplicol.api.virtual_results import (
-            VirtualArithmeticSpec,
-            VirtualStabilityPolicy,
-        )
-
-        levels = []
-        try:
-            for token in self.higher:
-                if token in ("double", "double-double"):
-                    levels.append(
-                        VirtualArithmeticSpec(
-                            "double" if token == "double" else "double-double"
-                        )
-                    )
-                elif re.fullmatch(r"arbitrary:[0-9]+", token):
-                    levels.append(VirtualArithmeticSpec("arbitrary", int(token[10:])))
-                else:
-                    raise ValueError(
-                        f"invalid higher carrier {token!r}; use double, double-double "
-                        "or arbitrary:<positive decimal digits>"
-                    )
-            return VirtualStabilityPolicy(
-                tuple(levels),
-                self.relative_tolerance,
-                self.absolute_tolerance,
-                self.verify_successful,
-            )
-        except (TypeError, ValueError, DecimalException) as error:
-            raise ConfigurationError(f"{prefix}: {error}") from error
+        if (
+            self.higher
+            or self.relative_tolerance is not None
+            or self.absolute_tolerance is not None
+            or self.verify_successful is not False
+        ):
+            raise ConfigurationError(EVALUATION_STABILITY_REMOVED)
 
 
 @dataclass(frozen=True, slots=True)

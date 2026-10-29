@@ -732,7 +732,6 @@ def test_seven_gluon_seed_tables_within_five_minutes(
     _assert_fft_equals_direct(table, fourier, _born_rows(table, 2), "full", loop_native)
 
 
-
 # The legacy engine's per-diagram colour oracle (its FeynKit diagrams' colour
 # tensors against the seed predictions) was removed with that engine (user
 # ruling 2026-10-28, M-QCD Q3); the seed colour weights stay checked against
@@ -822,9 +821,14 @@ def test_born_sectors_close_block_words_in_their_orientation(
 
 
 @pytest.mark.loop_physics
-def test_leading_colour_degrees_equal_legacy_projection(
+def test_leading_colour_degrees_equal_frozen_legacy_degrees(
     v2_slice, loop_native, loop_reference
 ):
+    """LC degrees against the frozen legacy capture, the structural projector
+    and the face rule. The former live comparison of the LC seeds with the
+    legacy LC family numerators went with the legacy engine; the per-family O2
+    against the frozen legacy numerators (``test_loop_v2_slice.py::
+    test_family_numerators_equal_o2``) and the NJet N_c scans cover it."""
     from symbolica import E, Expression, S
 
     from pyamplicol.loops.color_projection import prepare_color_projection

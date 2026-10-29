@@ -448,33 +448,23 @@ high-precision values are decimal strings. Neither format silently sums orders
 or divides by the Born result. A successful lane can still report
 `accuracy_established: false`.
 
-For configured numerical verification and rescue, name each higher carrier and
-both exact agreement tolerances:
-
-```console
-pyamplicol evaluate artifacts/virtual --momenta points.json --mu-r2 1000000 \
-  --arithmetic double --stability-higher arbitrary:60 \
-  --stability-higher arbitrary:80 --stability-relative-tolerance 1e-8 \
-  --stability-absolute-tolerance 1e-20 --on-failure return --json
-```
-
-The policy applies before model parameter binding, so a numerical source-binding
-failure can also be rescued. Higher levels are ordered explicit `double`,
-`double-double` or `arbitrary:DIGITS` specifications; the native runtime checks
-that actual precision increases from the requested carrier. Rescue requires two
-successful complete results and agreement after conversion to the requested
-output arithmetic. Add `--verify-successful` to also check initially successful
-points; `--no-verify-successful` overrides that setting in a card. No policy is
-enabled by default, and incomplete policy settings are errors.
+The precision-rescue options (`--stability-higher`,
+`--stability-relative-tolerance`, `--stability-absolute-tolerance`,
+`--verify-successful`, card section `[evaluation.stability]`) were removed with
+the legacy loop engine, the only one that served them; naming one is refused
+with the reason. v2 evaluations return stability estimates
+(`--stability-rotations`, `--stability-reduction-direction`,
+`--stability-rescaled`) and leave escalating `--arithmetic` to the caller.
 
 `--on-failure raise` is the default. `--on-failure return` preserves successful
-points and returns an unavailable whole-point row for each unrecovered numerical
-failure: `null` in JSON, with its failure and verification diagnostics. An actual
-zero remains a numerical zero. Malformed inputs and unsupported capabilities
-remain errors. Both inclusive and `--resolved` evaluation use these options;
-resolved axes follow the artifact's retained layout. The policy and failure
-options require virtual evaluation and are rejected on other commands, including
-`profile`; configuration inspection can still display them.
+points and returns an unavailable whole-point row for each numerical failure:
+`null` in JSON, with its failure diagnostics. An actual zero remains a
+numerical zero. Malformed inputs (a non-positive `--mu-r2`, or one at which a
+counterterm coupling is not finite in the chosen arithmetic) and unsupported
+capabilities remain errors for the whole call. Both inclusive and `--resolved`
+evaluation use this option; resolved axes follow the artifact's retained
+layout. It requires virtual evaluation and is rejected on other commands,
+including `profile`; configuration inspection can still display it.
 
 Only strategies and observables present in the artifact may be selected.
 

@@ -329,18 +329,17 @@ momenta = "data/pp_zjj_momenta.json"
 poles = "all"
 
 [evaluation.stability]
-# evaluation.stability.higher: Optional virtual evaluate rescue carriers, in
-# order. An empty list enables no rescue. Explicit carriers: double,
-# double-double, arbitrary:DIGITS. Native precision must increase; there is no
-# implicit DoubleFloat selection by digit count. Default empty.
+# The precision-rescue policy was removed with the legacy loop engine: only
+# these defaults are accepted (stored configurations carry them); any other
+# value is refused with the reason. v2 virtuals return estimates
+# ([evaluation.stability_checks]) and leave escalating the arithmetic to you.
+# evaluation.stability.higher: Removed; default empty.
 higher = []
-# Both exact quoted tolerances are required with nonempty higher levels.
-# evaluation.stability.relative_tolerance: Exact relative tolerance text.
+# evaluation.stability.relative_tolerance: Removed; unset.
 # relative_tolerance = "1e-8"
-# evaluation.stability.absolute_tolerance: Exact absolute tolerance text.
+# evaluation.stability.absolute_tolerance: Removed; unset.
 # absolute_tolerance = "1e-20"
-# evaluation.stability.verify_successful: Also verify initially successful
-# points with the higher carriers. Default false.
+# evaluation.stability.verify_successful: Removed; default false.
 verify_successful = false
 
 [evaluation.stability_checks]
