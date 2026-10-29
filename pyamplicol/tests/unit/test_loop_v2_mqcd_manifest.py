@@ -692,13 +692,21 @@ def test_ckm_relation_rule():
     assert [(c.coefficient, c.rule) for c in failed] == [("finite", "ckm")]
 
 
-def _nc_manifest(manifest, columns, path):
+def _nc_manifest(manifest, columns, path, waiting=()):
     """A copy of the manifest at ``path`` whose nc rows in ``columns`` list
-    those rule 7 ids and whose other nc rows wait for MQ-NC (so the report
-    tests do not depend on whether MQ-NC has landed)."""
+    those rule 7 ids, whose other nc rows wait for MQ-NC, and whose rows or
+    variants in ``waiting`` wait for MQ-5F (so the report tests do not
+    depend on whether MQ-NC or MQ-5F has landed)."""
 
     data = json.loads(json.dumps(manifest))
     for entry in data["rows"]:
+        units = [(entry["id"], entry)] + [
+            (f"{entry['id']}@{v['name']}", v) for v in entry.get("variants", ())
+        ]
+        for name, unit in units:
+            if name in waiting:
+                unit["status"] = "pending"
+                unit["pending"] = {"waits_for": "MQ-5F", "reason": "test"}
         if "nc" not in entry["extras"]:
             continue
         entry.pop("nc_column", None)
@@ -731,7 +739,8 @@ def test_report_data_counts_variants_smokes_and_findings(
     their rows in the per-row table."""
 
     builder = _report_builder()
-    path = _nc_manifest(manifest, {}, tmp_path / "manifest.json")
+    waiting = ("C09", "D17@5F")
+    path = _nc_manifest(manifest, {}, tmp_path / "manifest.json", waiting)
     monkeypatch.setattr(builder, "MANIFEST", path)
     tmp_path = tmp_path / "results"
     tmp_path.mkdir()

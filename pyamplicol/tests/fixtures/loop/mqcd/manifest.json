@@ -4855,6 +4855,10 @@
      "restriction": "no_b_mass",
      "restriction_code": "5F",
      "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
       "WT": "0",
       "WW": "0",
       "WZ": "0",
@@ -5908,6 +5912,10 @@
      "restriction": "no_b_mass",
      "restriction_code": "5F",
      "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
       "WT": "0",
       "WW": "0",
       "WZ": "0",
@@ -6014,6 +6022,10 @@
      "restriction": "no_b_mass",
      "restriction_code": "5F",
      "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
       "WT": "0",
       "WW": "0",
       "WZ": "0",
@@ -6190,6 +6202,10 @@
      "restriction": "no_b_mass",
      "restriction_code": "5F",
      "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
       "WT": "0",
       "WW": "0",
       "WZ": "0",
