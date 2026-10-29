@@ -1096,11 +1096,13 @@ def v2_options(
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
-        # ``evaluate`` takes them at leading colour (``loops.v2.selection``)
-        # and removes them before this check.
+        # ``evaluate`` and ``evaluate_resolved`` take them at leading colour
+        # (``loops.v2.selection``) and remove them before this check; the
+        # correlated evaluations reach it.
         raise CompatibilityError(
-            "v2 virtual runtimes evaluate every helicity and colour; use "
-            "evaluate_resolved for per-helicity and per-colour outputs"
+            "v2 correlated virtual evaluations take no helicity or colour-flow "
+            "selection, as in the tree engine; select with evaluate or "
+            "evaluate_resolved at leading colour (color.accuracy='lc')"
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:

@@ -158,6 +158,7 @@ def test_selection_records_catalogue_resolution_and_refusals():
 
     from pyamplicol.loops.v2.artifact import request_from_record, request_record
     from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.runtime.virtual import v2_options
 
     selection = lc.Selection(((5, 1), (1, -1)), ((2, 4, 3, 5, 1),))
     assert selection.helicities == ((1, -1), (5, 1))
@@ -195,6 +196,9 @@ def test_selection_records_catalogue_resolution_and_refusals():
     with pytest.raises(CompatibilityError, match=r"at next-to-leading colour.*without"):
         lc.require_leading_colour("nlc", None, ["1"], resolved=True)
     lc.require_leading_colour("full", None, None)
+    # What evaluate / evaluate_resolved do not take (the correlated ones).
+    with pytest.raises(CompatibilityError, match=r"correlated.*evaluate_resolved"):
+        v2_options(helicities=["h:-1,-1,+1,+1"])
     rows = (((0, -1), (1, 1)), ((0, 1), (1, -1)))
     flows = (
         lc.Flow("flow:2,1", (2, 1), 1, 0),
