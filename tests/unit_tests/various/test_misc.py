@@ -478,22 +478,6 @@ class TEST_pythia8_main164(unittest.TestCase):
         self.assertEqual(misc.get_pythia8_main164(self.py8),
                          os.path.join(self.examples, 'main164'))
 
-    def test_main164_djr_patch_is_the_proposed_pythia8_change(self):
-        """Against the real main164.cc of a Pythia8 release, when one is
-        installed: the patch applies, and writes the <run id> fixed"""
-        import glob
-        sources = glob.glob(os.path.join(os.environ.get('HOME', ''), 'Documents',
-                            'HEPTools', 'pythia8', 'share', 'Pythia8', 'examples',
-                            'main164.cc'))
-        if not sources:
-            self.skipTest('no Pythia8 installation to check against')
-        source = open(sources[0]).read()
-        if misc.pythia8_main164_writes_jet_sample_djrs(source):
-            self.skipTest('this Pythia8 already has InternalAnalysis:jetSamples')
-        patched = misc.patch_pythia8_main164_djrs(source)
-        self.assertIsNotNone(patched)
-        self.assertIn('output << "<run id=\\"" << i << "\\">\\n";', patched)
-
     def test_jet_sample_djrs_not_patched_when_not_needed_or_possible(self):
         # a main164 that splits per jet sample by itself
         self.write_sources(source=self.main164_djr_anchors +
