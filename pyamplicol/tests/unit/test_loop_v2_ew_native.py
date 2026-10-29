@@ -29,8 +29,10 @@ and stays the listed refusal ``plane-mismatch``.
 
 Nightly: g g > t t~ EW and e- e+ > mu- mu+ (G_mu UFO) and u u~ > d d~ with
 QED corrections (loop_qcd_qed_sm) export native point inputs, which equal
-the Python inputs, and an electroweak artifact generated through the public
-API stores them (``point_inputs`` "native-v2") and relocates bitwise.
+the Python inputs, and electroweak artifacts generated through the public
+API (u u~ > d d~ and u u~ > a g, whose on-shell photon couples with alpha(0))
+store them (``point_inputs`` "native-v2") and relocate bitwise. The photons'
+native values: ``test_loop_v2_external_photons.py``.
 """
 
 from __future__ import annotations
@@ -387,9 +389,9 @@ def test_electroweak_native_inputs_equal_the_python_inputs(ew_slices, name):
 _EW_CARD = """
 action = "generate"
 [model]
-source = {model}
+source = {model}{restriction}
 [process]
-entries = [{{expression = "u u~ > d d~", name = "uudd"}}]
+entries = [{{expression = "{expression}", name = "{name}"}}]
 loop_coupling_orders = ["QED"]
 coupling_order_policy = "minimal"
 [color]
@@ -410,7 +412,7 @@ mass_scheme = "real-on-shell"
 finite_restoration = "source-UFO-local-rules"
 model_convention = "loop_qcd_qed_sm lhv=1 supplied QED rules"
 [loop.preparation]
-fixed_parameters = {{WT = "0", WW = "0", WZ = "0", WH = "0"}}
+fixed_parameters = {{{fixed}}}
 compatibility = "gmu_particle_anti"
 [generation]
 output = {output}
@@ -420,31 +422,52 @@ post_build_validation = false
 """
 
 
+def _fixed_text(fixed) -> str:
+    return ", ".join(f'{name} = "{value}"' for name, value in fixed.items())
+
+
 @pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    ("name", "expression", "model", "restriction", "fixed"),
+    [
+        ("uudd", "u u~ > d d~", "loop_qcd_qed_sm_ufo", None, ZERO_WIDTHS),
+        ("uuxag", "u u~ > a g", "loop_gmu_ufo", "a0", G_MU_FIXED),
+    ],
+)
 def test_electroweak_artifact_stores_native_inputs_and_relocates_bitwise(
-    loop_qcd_qed_sm_ufo, loop_native, tmp_path
+    request, loop_native, tmp_path, name, expression, model, restriction, fixed
 ):
-    """u u~ > d d~ with QED corrections (Z, W, H, Goldstones and ghosts in
-    the loops) through the public API: the stored process declares native
-    point inputs ("native-v2", never a regeneration at load), and the
-    artifact-portability check passes: no host strings, storage-v4 plane
-    applications only, and bitwise-identical binary64 results at a relocated
-    copy evaluated without a licence."""
+    """QED corrections through the public API: u u~ > d d~ on
+    loop_qcd_qed_sm (Z, W, H, Goldstones and ghosts in the loops) and
+    u u~ > a g on the G_mu UFO under restriction a0 (its on-shell photon
+    with alpha(0), 1/alpha(0) a runtime parameter). The stored process
+    declares native point inputs ("native-v2", never a regeneration at load),
+    and the artifact-portability check passes: no host strings, storage-v4
+    plane applications only, and bitwise-identical binary64 results at a
+    relocated copy evaluated without a licence."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
     from tools import loop_artifact_portability as portability
 
+    source = request.getfixturevalue(model)
     output = tmp_path / "artifact"
     card = tmp_path / "card.toml"
     card.write_text(
         _EW_CARD.format(
-            model=json.dumps(str(loop_qcd_qed_sm_ufo)), output=json.dumps(str(output))
+            model=json.dumps(str(source)),
+            restriction=""
+            if restriction is None
+            else f'\nrestriction = "{restriction}"',
+            expression=expression,
+            name=name,
+            fixed=_fixed_text(fixed),
+            output=json.dumps(str(output)),
         )
     )
     Generator(resolve_config(card)).generate(
-        ProcessSet((ProcessRequest.parse("u u~ > d d~", name="uudd"),)), output
+        ProcessSet((ProcessRequest.parse(expression, name=name),)), output
     )
     declared = [
         json.loads(path.read_text())["point_inputs"]
@@ -452,7 +475,7 @@ def test_electroweak_artifact_stores_native_inputs_and_relocates_bitwise(
     ]
     assert declared == [LOOP_V2_NATIVE_POINT_INPUTS], declared
     verdict = portability.check(
-        output, "uudd", tmp_path / "check", count=2, licence=False
+        output, name, tmp_path / "check", count=2, licence=False
     )
     scan = verdict["scan"]
     assert scan["clean"], scan["findings"]

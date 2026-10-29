@@ -904,13 +904,13 @@ names the rule, for example:
   corrections.
 
 A process whose programs cannot be stored natively is refused with the
-feature's key (see the stored programs below), for example on-shell external
-photons with electroweak corrections ("external-photon-alpha0", refused as
-soon as the photons' alpha(0) convention is known; QCD corrections to such
-processes are available) and a program whose binary64 SymJIT application
-disagrees with its exact evaluator at the generation's check ("plane-mismatch",
-naming the output: a model coupling by its UFO coupling and vertex, a
-counterterm coupling with its epsilon power, or a kernel). The check compares
+feature's key (see the stored programs below), for example a program whose
+binary64 SymJIT application disagrees with its exact evaluator at the
+generation's check ("plane-mismatch", naming the output: a model coupling by
+its UFO coupling and vertex, a counterterm coupling with its epsilon power, or
+a kernel). On-shell external photons with electroweak corrections couple with
+alpha(0) and are stored natively, with 1/alpha(0) (`aEW0M1` of MG5_aMC's G_mu
+loop models under `restrict_a0`) a runtime parameter. The check compares
 at complex points off the real axis and at the request's parameter values,
 so it depends neither on the parameters' names nor on their order; it
 refuses a branch cut taken on different sides at those values, or a branch

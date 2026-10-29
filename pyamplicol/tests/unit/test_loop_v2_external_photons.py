@@ -10,7 +10,10 @@ the virtual of the electromagnetic correction gains -2 n DGmua0 Born, with
 DGmua0 = delta Z_e^Gmu - delta Z_e^alpha(0) the UFO's eCoup_DGmua0_UV_EW. The
 engine takes r into every output's normalisation
 (``_PointEvaluation.average``) and the conversion as an external-field
-factor of each photon leg (``assemble._alpha0_field_rules``).
+factor of each photon leg (``assemble._alpha0_field_rules``). The native
+point inputs (WP3.2 EWI-N) take r in the photons' sources instead: each
+source of a photon leg times sqrt(alpha(0)/alpha), a parameter-program
+output, so the average stays the slice's.
 
 References (``tests/fixtures/loop/required/uux_ag_ew.json``,
 ``uux_aa_ew.json``; [U6](c), MadLoop standalone on loop_qcd_qed_sm_Gmu,
@@ -193,6 +196,88 @@ def test_alpha0_virtual_equals_madloop_with_mg5_conversion(
                 counterterms.coefficients[index]
             )
             assert abs(total) <= 1e-10 * max(abs(float(bare.coefficients[1])), 1e-300)
+
+
+def _madloop_alpha0(row, photons):
+    """MadLoop's G_mu Born and virtual of a reference row converted to
+    alpha(0) (MG5_aMC's formula, MadLoop's DGmua0): Born, finite part, single
+    and double pole."""
+
+    pole, finite = _conversion()
+    r = (1 / float(ALPHA0_INVERSE) / float(Fraction(ALPHA_GMU))) ** photons
+    madloop = row["providers"]["madloop"]
+    born = madloop["born"]
+    return [
+        r * born,
+        r * (madloop["finite"] - 2 * photons * finite * born),
+        r * (madloop["single_pole"] - 2 * photons * pole * born),
+        r * madloop["double_pole"],
+    ]
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(("name", "photons"), [("uux_ag_ew", 1), ("uux_aa_ew", 2)])
+def test_alpha0_native_inputs_equal_madloop_and_the_python_inputs(
+    photon_slices, name, photons
+):
+    """WP3.2 EWI-N: the native point inputs take the convention. The tree
+    program scales every source of the photon legs by sqrt(alpha(0)/alpha),
+    in the trees and the counterterm program (``loop_v2::trees``), from the
+    parameter program's output alpha(0)/alpha (``native_trees``' ``photons``
+    record, on the inputs 1/alpha(0) and the photon coupling's), and the
+    conversion is a field insertion of the photon legs. At every reference
+    point Born and the virtual's three Laurent coefficients equal MadLoop's
+    converted values to 1e-12 (the fixtures' metric), and Born and every
+    component equal the Python inputs' on the same exported plan within
+    1e-12 of the sector's virtual (binary64; measured 1.1e-15 and 3.4e-15).
+    Shares the generation with the test above (module fixture)."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    reference, slice_ = photon_slices(name)
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    record = native.exported.trees.program["parameters"]
+    ratio, legs = record["photons"]
+    assert legs == list(slice_.external_photons.legs) and ratio in record["positive"]
+    assert "aEW0M1" in record["names"]
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    parameters = {**reference["parameters"], "aEW0M1": ALPHA0_INVERSE}
+    alpha = float(Fraction(ALPHA_GMU))
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        want = _madloop_alpha0(row, photons)
+        scale = str(Fraction(mu) ** 2)
+        (mine,) = native.evaluate([point], [scale], parameters=parameters)
+        (theirs,) = python.evaluate([point], [scale], parameters=parameters)
+        got = [float(x) for x in mine.totals[:4]]
+        floor = abs(want[0]) * alpha / (2 * math.pi)
+        for k, (value, expected) in enumerate(zip(got, want, strict=True)):
+            error = abs(value - expected) / max(
+                abs(value), abs(expected), floor if k else 0
+            )
+            assert error <= TOLERANCE, (k, value, expected, error)
+        assert mine.born.keys() == theirs.born.keys() and theirs.born
+        for order, value in theirs.born.items():
+            assert abs(float(mine.born[order]) - float(value)) <= TOLERANCE * abs(
+                float(value)
+            )
+        assert mine.components.keys() == theirs.components.keys()
+        for component, sectors in theirs.components.items():
+            for sector, laurent in sectors.items():
+                size = max(
+                    abs(float(x))
+                    for x in theirs.components["virtual"][sector].coefficients
+                )
+                for x, y in zip(
+                    mine.components[component][sector].coefficients,
+                    laurent.coefficients,
+                    strict=True,
+                ):
+                    assert abs(float(x) - float(y)) <= TOLERANCE * size, (
+                        component,
+                        sector,
+                    )
 
 
 @pytest.mark.loop_nightly

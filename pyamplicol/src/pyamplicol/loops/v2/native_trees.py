@@ -1759,7 +1759,9 @@ def _parameter_program(
                 symbol_of[name] = symbol
         ratio = output(
             ("photon-ratio", photons.alpha0_inverse),
-            lambda: 1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {})),
+            lambda: (
+                1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {}))
+            ),
         )
         positive.append(ratio)
         photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
