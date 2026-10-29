@@ -267,7 +267,9 @@ def test_virtual_full_physics_summary_retains_saved_history_labels():
 
 
 def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
     from pyamplicol.generation.loop_service import _check_correlators, _feature_blockers
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
     requests = ProcessSet((ProcessRequest.parse("g g > g g"),))
     for contraction in ("auto", "symmetric-group-fft"):
@@ -275,9 +277,21 @@ def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
             loop_config(color={"accuracy": "full", "contraction": contraction}), None
         )
         assert not _feature_blockers(backend, requests)
-        if contraction == "symmetric-group-fft":
-            with pytest.raises(GenerationError, match="certified ordinary/resolved"):
-                _check_correlators(backend, CorrelatorConfig())
+        # No declared observable: the forced seed FFT serves the inclusive
+        # virtual; a declared one is v2's listed refusal, before preparation.
+        _check_correlators(backend, CorrelatorConfig())
+        for declared in (
+            CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
+            CorrelatorConfig(spin_correlations=((1,),)),
+            CorrelatorConfig.all_color(through_order=1),
+        ):
+            if contraction == "symmetric-group-fft":
+                with pytest.raises(GenerationError) as refused:
+                    _check_correlators(backend, declared)
+                assert isinstance(refused.value, LoopRequestUnsupported)
+                assert refused.value.key == "forced-seed-fft-unserved"
+            else:
+                _check_correlators(backend, declared)
     backend = GenerationBackend(
         loop_config(
             color={"accuracy": "full", "contraction": "auto", "fft_basis": "trace"}
@@ -285,8 +299,32 @@ def test_loop_fft_policy_admits_only_actual_basis_and_ordinary_banks():
         None,
     )
     assert any(
-        "trace-basis conversion" in x for x in _feature_blockers(backend, requests)
+        "color.fft_basis = 'trace' is unavailable" in x
+        for x in _feature_blockers(backend, requests)
     )
+
+
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_public_preflight_defers_projected_history_proof_to_actual_owner(accuracy):
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.generation.loop_service import _check_correlators
+
+    backend = SimpleNamespace(
+        _run_config=SimpleNamespace(
+            color=SimpleNamespace(accuracy=accuracy, contraction="direct")
+        )
+    )
+    _check_correlators(backend, CorrelatorConfig(spin_correlations=((3,), (3, 4))))
+    _check_correlators(
+        backend, CorrelatorConfig(color_correlations=(ColorCorrelator("identity"),))
+    )
+    _check_correlators(
+        backend,
+        CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
+    )
+    _check_correlators(backend, CorrelatorConfig(all_color_through_order=1))
+    with pytest.raises(TypeError, match="CorrelatorConfig"):
+        _check_correlators(backend, object())
 
 
 # ------------------------------------------------- staged v2 re-validation

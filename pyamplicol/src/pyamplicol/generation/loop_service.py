@@ -65,8 +65,9 @@ def _feature_blockers(backend, processes):
     reasons = []
     if run.resolved_color.contraction != "direct" and run.color.fft_basis != "adjoint":
         reasons.append(
-            "loop FFT currently certifies the actual tensor columns under adjoint-port "
-            "actions; the requested trace-basis conversion is unavailable"
+            "the one-loop seed FFT (design §7.3) acts on the external adjoint "
+            "labels; color.fft_basis = 'trace' is unavailable for one-loop "
+            "requests (use 'adjoint')"
         )
     selection = backend._process_selection
     if any(
@@ -343,11 +344,18 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
-    if backend._run_config.color.contraction == "symmetric-group-fft":
-        raise GenerationError(
-            "forced rectangular FFT requires certified ordinary/resolved banks; "
-            "inserted colour/spin source banks currently use exact direct contraction"
-        )
+    declared = bool(
+        correlators.color_correlations
+        or correlators.spin_correlations
+        or correlators.all_color_through_order is not None
+    )
+    if declared and backend._run_config.color.contraction == "symmetric-group-fft":
+        # v2's own refusal, raised before the model is prepared: the forced
+        # seed FFT serves the inclusive virtual only (design §7.3).
+        from pyamplicol.loops.v2.observables import FORCED_FFT_OBSERVABLES
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported("forced-seed-fft-unserved", FORCED_FFT_OBSERVABLES)
 
 
 def _flavor_grouping_outcome(backend, correlators, *, reused=False):

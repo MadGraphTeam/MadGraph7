@@ -207,3 +207,62 @@ def test_ordinary_correspondence_rejects_wrong_ports_scalar_or_missing_provenanc
             hep.Model.from_json(json.dumps(payload)),
             ordinary_basis_representatives=[good],
         )
+
+
+def test_one_source_vertex_splits_all_actual_alias_orders_and_loop_groups(hep):
+    from pyamplicol.loops.graphs import _rule_orders
+
+    native = hep.Model.qcd_qed()
+    module = ModuleType("mixed_ct_order_fixture")
+    module.all_particles = [
+        SimpleNamespace(**p) for p in json.loads(native.to_json())["particles"]
+    ]
+    species = {p.pdg_code: p for p in module.all_particles}
+    module.all_lorentz = [
+        SimpleNamespace(name=f"L{i}", spins=[2, 2, 3], structure="Gamma(3,1,2)")
+        for i in range(2)
+    ]
+    module.all_couplings = [
+        SimpleNamespace(name=f"C{i}", value={0: "1"}, order=order)
+        for i, order in enumerate(
+            (
+                {"QCD": 2, "QED": 1},
+                {"QED": 3},
+                {"QCD": 2, "QED": 1},
+            )
+        )
+    ]
+    module.all_vertices = []
+    module.all_CTvertices = [
+        SimpleNamespace(
+            name="mixed",
+            particles=[species[-2], species[2], species[22]],
+            type="R2",
+            color=["Identity(1,2)"],
+            lorentz=module.all_lorentz,
+            couplings={
+                (0, 0, 0): module.all_couplings[0],
+                (0, 1, 0): module.all_couplings[1],
+                (0, 0, 1): module.all_couplings[2],
+            },
+            loop_particles=[[[species[2], species[21]]], [[species[2], species[22]]]],
+        )
+    ]
+    source = build_loop_model(capture_raw_loop_model(module))
+    prepared = prepare_counterterm_model(source, native)
+    actual = _rule_orders(prepared.native)
+    assert len(prepared.rules) == 3
+    assert {
+        (rule.entries[0].loop_group_index, rule.order)
+        for rule in prepared.rules.values()
+    } == {
+        (0, (("QCD", 2), ("QED", 1))),
+        (0, (("QED", 3),)),
+        (1, (("QCD", 2), ("QED", 1))),
+    }
+    for rule in prepared.rules.values():
+        assert {entry.order for _, entry in rule.couplings} == {rule.order}
+        assert (
+            tuple(value for value in actual[rule.name] if value[0] != prepared.tag)
+            == rule.order
+        )
