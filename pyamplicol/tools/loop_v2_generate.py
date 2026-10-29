@@ -187,18 +187,22 @@ class _Timers:
             setattr(owner, name, self.wrap(attribute, target))
 
 
-def _request(args) -> Any:
+def _request(args, compiled: Any) -> Any:
     from pyamplicol.loops.v2.assemble import SliceRequest
 
     born = {k: int(v) for k, v in (p.split("=") for p in args.born.split(","))}
     loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
     options: dict[str, Any] = {}
     if args.accuracy != "fc":
-        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+        from pyamplicol.models.loop_color_declaration import (
+            resolve_loop_color_declaration,
+        )
 
-        declaration = ROOT / "examples/loop/source_colour/loop_sm_qcd_subset.json"
-        options["colour_declaration"] = LoopColorDeclaration.from_dict(
-            json.loads(declaration.read_text())
+        # The model's declaration: for loop_sm the shipped one (MQ-NC), which
+        # covers every counterterm vertex (the example QCD subset does not
+        # cover the closed quark loops with electroweak legs).
+        options["colour_declaration"] = resolve_loop_color_declaration(
+            compiled.raw_loop_model
         )
         options["accuracy"] = args.accuracy
     return SliceRequest(
@@ -252,7 +256,7 @@ def measure(args) -> dict[str, Any]:
     timers.install()
     compiled = _compiled_model(args.model)
     native = load_loop_native()
-    request = _request(args)
+    request = _request(args, compiled)
     start = time.perf_counter()
     slice_ = timers.wrap("LoopSlice.generate", LoopSlice.generate)(
         compiled, request, native
@@ -565,7 +569,7 @@ def poles(args) -> dict[str, Any]:
     timers = _Timers()
     timers.install()
     compiled = _compiled_model(args.model)
-    request = _request(args)
+    request = _request(args, compiled)
     record: dict[str, Any] = {
         "process": args.process,
         "born": args.born,

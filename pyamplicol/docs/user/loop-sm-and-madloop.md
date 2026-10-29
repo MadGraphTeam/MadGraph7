@@ -42,8 +42,16 @@ No `[loop.model]` section and no colour setting are needed:
   run shows the declaration used (`estimated_coverage.model_declaration`).
 - **Colour.** A one-loop request without `color.accuracy` is full colour, as
   MadLoop. Leading and next-to-leading colour are opt-in
-  (`color.accuracy = "lc"` or `"nlc"`) and need the model's formal-N_c colour
-  declaration; tree requests keep the leading-colour default.
+  (`color.accuracy = "lc"` or `"nlc"`). They need the formal-N_c colour
+  declaration of the counterterms, which pyAmpliCol ships for loop_sm: the
+  N_c dependence of every counterterm vertex and external-field factor
+  (C_A, C_F, T_F, N_col), keyed per vertex by structure, so the shipped
+  copy, MG5_aMC's directory and every restriction of either take it with no
+  setting. It is tied to loop_sm's shipped scheme: a `[loop.model]` stating
+  another scheme, or another model, needs its own declaration. A model's own
+  declaration wins; a request reaching a vertex no
+  declaration covers is refused (`colour-declaration-coverage`). Tree
+  requests keep the leading-colour default.
 - **Source repair.** loop_sm declares its four-G0 vertex `V_1001` with the
   three-slot constant tensor `SSS1`; the same constant with four slots,
   `SSSS1`, is in the model. Model preparation moves such references by

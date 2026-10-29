@@ -96,13 +96,14 @@ PROCESSES = {
 @pytest.fixture(scope="module")
 def slices(loop_sm_compiled_model, loop_native):
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-    from tools.loop_reference import legacy_capture
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
 
     compiled = load_compiled_model(loop_sm_compiled_model)
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
+    # The shipped loop_sm declaration (MQ-NC): the electroweak controls reach
+    # closed-quark-loop R2 (g g g A) the example QCD subset does not cover.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     built: dict[tuple[str, str], LoopSlice] = {}
 
     def build(name: str, accuracy: str = "full") -> LoopSlice:

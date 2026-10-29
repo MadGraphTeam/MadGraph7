@@ -112,16 +112,18 @@ def _furry_zeros(generate):
 def generate(compiled: Any, native: Any, key: str, accuracy: str) -> Any:
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-    from tools.loop_reference import legacy_capture
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
 
     process, born, ignored = PROCESSES[key]
     loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
     declaration = None
     if accuracy != "full":
-        declaration = LoopColorDeclaration.from_dict(
-            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-        )
+        # The model's declaration: for loop_sm the shipped one (MQ-NC); the
+        # example QCD subset does not cover the g g g A R2 the photon rows
+        # reach.
+        declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     request = SliceRequest(
         process,
         born,

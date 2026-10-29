@@ -48,11 +48,14 @@ REQUIRED = Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "required
 LAURENT = ("finite", "single_pole", "double_pole")
 TOLERANCE = 1e-12
 # ``name -> points`` of the provider comparison; the 2->4 requests are nightly.
+# u u~ > d d~ s s~, u u~ > u u~ d d~ and u u~ > u u~ u u~ are the M-QCD
+# campaign's rows A19, A20 and A21 (``test_loop_v2_mqcd_nightly``: the same
+# double-double comparison with MadLoop's quadruple precision within 1e-12
+# per sector and coefficient and the poles against Catani within 1e-24, plus
+# binary64 under the O1 rule and the estimates' tenfold bracketing; PLAN
+# §3.2 MQ-VALIDATE item 3).
 CASES = {
     "uux_uuxg": (0,),
-    "uux_ddxssx": (0, 1, 2),
-    "uux_uuxddx": (0, 1, 2),
-    "uux_uuxuux": (0, 1, 2),
     "uux_uuxepem": (0, 1, 2),
 }
 PHYSICS = frozenset({"uux_uuxg"})
@@ -279,12 +282,15 @@ def _projection_request(compiled, name: str, accuracy: str, carrier: str):
     scale and parameters."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+    )
     from tools.loop_reference import exact_points, legacy_capture
 
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
+    # The shipped loop_sm declaration (MQ-NC): u u~ > u u~ e+ e- reaches the
+    # closed-quark-loop R2 of g g Z, which the example QCD subset
+    # (``legacy_capture.COLOUR_DECLARATION``) does not cover.
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     colour = {
         "accuracy": accuracy,
         "colour_declaration": declaration,
