@@ -1372,7 +1372,6 @@
    ],
    "notes": "the s^2e^6 sector of the existing reference; the s^4e^4 top-up (MS-REF) extends the request to both sectors",
    "extras_pending": {
-    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)",
     "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
    }
   },
@@ -2942,7 +2941,6 @@
    "scale_parameter": "MU_R",
    "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture",
    "extras_pending": {
-    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)",
     "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
    }
   },
@@ -3956,10 +3954,7 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "notes": "the required 2->5 target (EWI-9): the joint request's s^6e^6 sector against gg_ttxemepg_ew, its s^8e^4 sector (variant @qcd) against gg_ttxemepg_qcd at loop_sm's derived MW",
-   "extras_pending": {
-    "joint": "MS-VALIDATE (joint = the separate requests per sector: next increment)"
-   }
+   "notes": "the required 2->5 target (EWI-9): the joint request's s^6e^6 sector against gg_ttxemepg_ew, its s^8e^4 sector (variant @qcd) against gg_ttxemepg_qcd at loop_sm's derived MW"
   },
   {
    "id": "ST01",
