@@ -2857,6 +2857,16 @@ Total ≈ 270 agent-days [I].
   - *Depends:* WP2.x, WP3.1, assessment WP08.
   - *Accept:* gate R3 for QCD.
   - *Size:* L (12).
+  - *Status (2026-10-29, M-QCD milestone, pushed as `82e271b6`):* R3 for QCD recorded at the pin `e18a024b`, with the
+    deferrals of the user's Q3 ruling (2026-10-28):
+    - required set: every G1 process is checked against at least two providers (MadLoop, OpenLoops, Recola;
+      u u~ > g g g g against OpenLoops and Recola), at the G1 accuracy check (binary64 where E <= 1e-9,
+      double-double elsewhere) and at campaign rule 1; g g > g g g g g against NJet alone (ADDENDUM F);
+    - O9 at every point of every campaign row (rule 4); A24's rule 4 is not formed (its poles equal NJet's);
+    - re-test rates from the O15 calibration (§10.4); campaign rule 3 holds at every point; no further calibration;
+    - rescue rates: not applicable, the rescue options were removed with the legacy engine;
+    - the §5.8 speed gate at B = 128 (G1, all nine gated processes pass); provider protocol-mode columns deferred to
+      M-FINAL. FC is the default; LC and NLC come from the shipped N_c declaration; O10 is MQ-WARD.
 - **WP3.4 Required set, EW.**
   - *Goal:* gg→tt̄e⁻e⁺g (EW) and the EW controls.
   - *Depends:* WP3.2 including gate E0.
