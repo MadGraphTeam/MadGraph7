@@ -2097,6 +2097,14 @@ class PY8Card(ConfigFile):
         # Visible parameters
         # ==================
         self.add_param("Main:numberOfEvents", 0)
+        # main164's own analysis: the differential jet rates log10 d_{n,n+1}
+        # of the showered events, written to InternalAnalysis:output (the
+        # djrs.dat the DJR plots are made from). Switched on by MadGraph7 for
+        # an MLM sample.
+        self.add_param("Main:InternalAnalysis", False, hidden=True,
+                                                 always_write_to_card=False)
+        self.add_param("InternalAnalysis:output", './djrs.dat', hidden=True,
+                                                 always_write_to_card=False)
         # for MLM merging
         # -1.0 means that it will be set automatically by MadGraph7
         self.add_param("JetMatching:qCut", -1.0, always_write_to_card=False)
@@ -2568,9 +2576,6 @@ class PY8Card(ConfigFile):
                 # special case for HepMC needs two flags
                 if 'HepMC:output' == param_entry:
                     output.write(' %s=%s\n'%('Main:HepMC', 'on'))
-                    if 'Main:InternalAnalysis'.lower() in self.user_set and \
-                        self['Main:InternalAnalysis'].lower() == 'on':
-                        output.write('InternalAnalysis:output = ./djrs.dat\n')
 
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
@@ -4467,6 +4472,38 @@ def get_model_flavour_scheme(proc_def):
     return None
 
 
+def mlm_matching_needed(proc_def):
+    """Whether the generated processes call for MLM merging: they come in more
+    than one multiplicity, and the highest one only adds jets (light quarks,
+    b quarks, gluons) to the lowest one. madevent then turns on ickkw = 1 with
+    xqcut = 30, MadGraph7 its "mlm" scale choice with the same xqcut."""
+    try:
+        multiplicities = [len(proc[0]['legs']) for proc in proc_def]
+    except (TypeError, KeyError, IndexError):
+        return False
+    if not multiplicities:
+        return False
+    min_particle, max_particle = min(multiplicities), max(multiplicities)
+    if min_particle == max_particle:
+        return False
+    # take one of the processes with min_particle
+    for procmin in proc_def:
+        if len(procmin[0]['legs']) == min_particle:
+            idsmin = [l['id'] for l in procmin[0]['legs']]
+            break
+    for procmax in proc_def:
+        if len(procmax[0]['legs']) != max_particle:
+            continue
+        idsmax = [l['id'] for l in procmax[0]['legs']]
+        for i in idsmin:
+            if i in idsmax:
+                idsmax.remove(i)
+        if all(j in [1,-1,2,-2,3,-3,4,-4,5,-5,21,81,-81] for j in idsmax):
+            # all are jets => matching is ON
+            return True
+    return False
+
+
 class RunCardLO(RunCard):
     """an object to handle in a nice way the run_card information"""
     
@@ -5264,48 +5301,17 @@ class RunCardLO(RunCard):
             
             
         # Check if need matching
-        min_particle = 99
-        max_particle = 0
-        for proc in proc_def:
-            min_particle = min(len(proc[0]['legs']), min_particle)
-            max_particle = max(len(proc[0]['legs']), max_particle)
-        if min_particle != max_particle:
-            #take one of the process with min_particle
-            for procmin in proc_def:
-                if len(procmin[0]['legs']) != min_particle:
-                    continue
-                else:
-                    idsmin = [l['id'] for l in procmin[0]['legs']]
-                    break
-            matching = False
-            for procmax in proc_def:
-                if len(procmax[0]['legs']) != max_particle:
-                    continue
-                idsmax =  [l['id'] for l in procmax[0]['legs']]
-                for i in idsmin:
-                    if i not in idsmax:
-                        continue
-                    else:
-                        idsmax.remove(i)
-                for j in idsmax:
-                    if j not in [1,-1,2,-2,3,-3,4,-4,5,-5,21,81,-81]:
-                        break
-                else:
-                    # all are jet => matching is ON
-                    matching=True
-                    break 
-            
-            if matching:
-                self['ickkw'] = 1
-                self['xqcut'] = 30
-                #self['use_syst'] = False 
-                self['drjj'] = 0
-                self['drjl'] = 0
-                self['sys_alpsfact'] = "0.5 1 2"
-                self['systematics_arguments'].append('--alps=0.5,1,2')
-                self.display_block.append('mlm')
-                self.display_block.append('ckkw')
-                self['dynamical_scale_choice'] = -1
+        if mlm_matching_needed(proc_def):
+            self['ickkw'] = 1
+            self['xqcut'] = 30
+            #self['use_syst'] = False 
+            self['drjj'] = 0
+            self['drjl'] = 0
+            self['sys_alpsfact'] = "0.5 1 2"
+            self['systematics_arguments'].append('--alps=0.5,1,2')
+            self.display_block.append('mlm')
+            self.display_block.append('ckkw')
+            self['dynamical_scale_choice'] = -1
                 
                 
         # For interference module, the systematics are wrong.
@@ -8299,6 +8305,10 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # process dependent defaults (mirrors RunCardLO.create_default_for_process)
     # ------------------------------------------------------------------
+    # merging cut set up for a process generated with several jet
+    # multiplicities, madevent's
+    default_mlm_xqcut = 30.0
+
     def create_default_for_process(self, proc_characteristic, history, proc_def):
         """Adjust default values depending on the process, then read the
         site/user default file (``input/default_run_card_mg7.toml``)."""
@@ -8343,6 +8353,21 @@ class RunCardMG7(RunCard):
             for key in ('beam.pdf1', 'beam.pdf2'):
                 if key not in self.user_set:
                     self[key] = self.photon_pdf
+
+        # More than one multiplicity, the higher ones only adding jets: an MLM
+        # merged sample, as madevent sets it up (ickkw = 1, xqcut = 30, drjj =
+        # drjl = 0). The shower then does the jet matching (is_mlm_merged), and
+        # auto_ptj_mjj ties the jet cuts to xqcut.
+        if beam_id & hadronic and not self['beam']['leptonic'] and \
+                mlm_matching_needed(proc_def):
+            self['beam']['dynamical_scale_choice'] = 'mlm'
+            self['phasespace']['xqcut'] = self.default_mlm_xqcut
+            cuts = self.dynamic_sections['cuts']
+            for key in ('jet-delta_r', 'jet-lepton-delta_r'):
+                if isinstance(cuts.get(key), dict):
+                    cuts[key].pop('min', None)
+                    if not cuts[key]:
+                        del cuts[key]
 
         # 1 -> N decay: no cuts at all. A partial width is an inclusive
         # quantity, so any kinematic cut biases it low (the collider defaults

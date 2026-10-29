@@ -4662,6 +4662,13 @@ already exists and is not a fifo file."""%fifo_path)
                 logger.info("No user-defined value for Pythia8 parameter "+
             "'JetMatching:nJetMax'. Setting it automatically to %d."%nJetMax)
                 PY8_Card.MadGraphSet('JetMatching:nJetMax',nJetMax, force=True)
+            # the differential jet rates of the showered events, from which
+            # the DJR plots of the run are made (create_plot)
+            if 'main:internalanalysis' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('Main:InternalAnalysis', True)
+            if PY8_Card['Main:InternalAnalysis'] and \
+                    'internalanalysis:output' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:output', './djrs.dat')
             # cite the shower-kt MLM scheme only when it is actually enabled
             if common_run.citation is not None and \
                PY8_Card['JetMatching:doShowerKt'.lower()]:
@@ -4999,6 +5006,23 @@ You can follow PY8 run with the following command (in a separate terminal):
                     raise self.InvalidCmd('Pythia8 shower interrupted with return'+\
                         ' code %d.\n'%ret_code+\
                         'You can find more information in this log file:\n%s'%pythia_log)
+                # main164's differential jet rates (an MLM sample), in mb: to
+                # the <tag>_djrs.dat in pb that the DJR plots are made from
+                djr_file = pjoin(self.me_dir,'Events',self.run_name,'djrs.dat')
+                if os.path.isfile(djr_file):
+                    try:
+                        djr_HwU = histograms.HwUList.from_pythia8_main164(
+                                                          djr_file, scale=1e9)
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        djr_HwU = None
+                    if djr_HwU is not None:
+                        djr_HwU.output(pjoin(self.me_dir,'Events',self.run_name,'djrs'),
+                                                                     format='HwU')
+                        shutil.move(pjoin(self.me_dir,'Events',self.run_name,'djrs.HwU'),
+                            pjoin(self.me_dir,'Events',self.run_name,'%s_djrs.dat'%tag))
+                        os.remove(djr_file)
             else:
                 if self.run_card['event_norm']=='sum':
                     logger.error("")
@@ -5200,9 +5224,28 @@ tar -czf split_$1.tar.gz split_$1
                 # djr plots
                 djr_HwU = None
                 n_added = 0
-                for split_dir in split_dirs:
+                for i_split, split_dir in enumerate(split_dirs):
                     djr_file = pjoin(split_dir,'djrs.dat')
                     if not os.path.isfile(djr_file):
+                        continue
+                    # Pythia8's main164 writes its own, simpler histfile (see
+                    # HwUList.from_pythia8_main164): only the summed
+                    # histograms, without the per-sample cross sections, in mb
+                    # and normalised to the full cross section in each job
+                    try:
+                        new_djr_HwU = histograms.HwUList.from_pythia8_main164(
+                            djr_file, scale=1e9 * partition_for_PY8[i_split]
+                                                    / float(sum(partition_for_PY8)))
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        continue
+                    if new_djr_HwU is not None:
+                        if djr_HwU is None:
+                            djr_HwU = new_djr_HwU
+                        else:
+                            for i, hist in enumerate(djr_HwU):
+                                djr_HwU[i] = hist + new_djr_HwU[i]
                         continue
                     xsecs = self.extract_cross_sections_from_DJR(djr_file)
                     if len(xsecs)>0:

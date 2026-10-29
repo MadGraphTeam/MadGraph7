@@ -882,3 +882,61 @@ class TestHistogramRegressions(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('are not compatible and cannot be combined',
                           result.stdout+result.stderr)
+
+
+class TestPythia8Main164DJRs(unittest.TestCase):
+    """The differential jet rates Pythia8's main164 writes with
+    Main:InternalAnalysis = on, which the DJR plots of an MLM run are made
+    from."""
+
+    MAIN164 = """<histfile>
+<run id="0"">
+<histogram name="log10d01" unit="[]" weight="all">
+  0.0000e+00  1.0000e-06
+  1.0000e+00  2.0000e-06
+  2.0000e+00  0.0000e+00
+</histogram>
+<histogram name="log10d12" unit="[]" weight="all">
+  0.0000e+00  3.0000e-06
+  1.0000e+00  0.0000e+00
+  2.0000e+00  4.0000e-06
+</histogram>
+</run>
+</histfile>
+"""
+
+    def write(self, text):
+        import tempfile
+        handle, path = tempfile.mkstemp(suffix='.dat')
+        with os.fdopen(handle, 'w') as stream:
+            stream.write(text)
+        self.addCleanup(os.remove, path)
+        return path
+
+    def test_reads_the_main164_histfile(self):
+        """main164 writes <run id="0""> (one quote too many), which no XML
+        parser takes; the bins are read with their edges and scaled"""
+        histos = histograms.HwUList.from_pythia8_main164(
+            self.write(self.MAIN164), scale=1e9)
+        self.assertEqual([h.title for h in histos], ['log10d01 []', 'log10d12 []'])
+        bins = histos[0].bins
+        self.assertEqual([b.boundaries for b in bins],
+                         [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)])
+        self.assertEqual([b.wgts['central'] for b in bins], [1000.0, 2000.0, 0.0])
+        self.assertTrue(all(b.wgts['stat_error'] == 0.0 for b in bins))
+        # and it writes out as a HwU file the plots can be made from
+        out = self.write('')
+        histos.output(out[:-len('.dat')], format='HwU')
+        self.addCleanup(os.remove, out[:-len('.dat')] + '.HwU')
+        reread = histograms.HwUList(out[:-len('.dat')] + '.HwU')
+        self.assertEqual(len(reread), 2)
+
+    def test_the_former_interface_format_is_left_to_its_reader(self):
+        old = self.write('<histfile>\n<run id="0" header="xmin;xmax;central">\n'
+                         '<jethistograms njet="0">\n</jethistograms>\n'
+                         '</run>\n</histfile>\n')
+        self.assertIsNone(histograms.HwUList.from_pythia8_main164(old))
+
+    def test_a_file_without_histograms(self):
+        self.assertIsNone(histograms.HwUList.from_pythia8_main164(
+            self.write('<histfile>\n</histfile>\n')))
