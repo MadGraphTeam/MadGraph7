@@ -297,7 +297,8 @@ def test_external_photon_ward_identity(gmu_a0, loop_native):
     1e-11 of the physical scale plus 1e-12 of the run's lanes' absolute sum
     (measured 2.1e-12 of the physical scale; the alpha(0) field term 6e-17),
     while a literal complex vector (non-gauge control) gives every part at
-    least 1e-2 of it. Nightly: generation about 7 min."""
+    least 1e-2 of it; the same with native point inputs, whose control
+    equals the Python lane's. Nightly: generation about 2-7 min."""
 
     import argparse
 
@@ -326,10 +327,8 @@ def test_external_photon_ward_identity(gmu_a0, loop_native):
     ]
     average = float(observables.slice.normalisation.average)
     parts = ("virtual", "bare", "r2", "uv_local", FIELD_COMPONENT)
-    for factor in ((1, 0), (0, 1)):
-        (run,) = observables.evaluate(
-            point, scale, ward=(3, factor), parameters=parameters
-        ).values()
+
+    def vanishes(run, factor):
         lanes = [
             2
             / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * average)
@@ -341,6 +340,12 @@ def test_external_photon_ward_identity(gmu_a0, loop_native):
                 for k, value in enumerate(laurent.coefficients):
                     bound = 1e-11 * size[k] + 1e-12 * lanes[k]
                     assert abs(complex(value)) <= bound, (factor, part, sector, k)
+
+    for factor in ((1, 0), (0, 1)):
+        (run,) = observables.evaluate(
+            point, scale, ward=(3, factor), parameters=parameters
+        ).values()
+        vanishes(run, factor)
     vector = (("0.1", "0.2"), ("0.8", "-0.3"), ("0.4", "1"), ("-0.6", "0.5"))
     (control,) = observables.evaluate(
         point, scale, ward=(3, vector), parameters=parameters
@@ -352,3 +357,27 @@ def test_external_photon_ward_identity(gmu_a0, loop_native):
             for k, value in enumerate(laurent.coefficients)
         )
         assert largest > 1e-2, (part, largest)
+    # The native inputs (WP3.2 EWI-N): the photon's loop-side vector takes
+    # the photons' source scale sqrt(alpha(0)/alpha) as its physical source
+    # does, so the native Ward run vanishes within the same bound (measured
+    # 8.3e-12 of the physical scale) and the control equals the Python
+    # lane's (measured 5.4e-15 of it).
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    native = NativeExecutor(observables.slice, forward=False, inputs="native")
+    for factor in ((1, 0), (0, 1)):
+        (run,) = native.evaluate(
+            [point], [scale], ward=(3, factor), parameters=parameters
+        )
+        vanishes(run, factor)
+    (mine,) = native.evaluate([point], [scale], ward=(3, vector), parameters=parameters)
+    for part in parts:
+        for sector, laurent in control.components[part].items():
+            for k, (x, y) in enumerate(
+                zip(
+                    mine.components[part][sector].coefficients,
+                    laurent.coefficients,
+                    strict=True,
+                )
+            ):
+                assert abs(complex(x) - complex(y)) <= 1e-12 * size[k], (part, k)
