@@ -1173,7 +1173,9 @@ def test_top_pair_and_leptons_equal_three_providers(
     G+- H loops on the top line, which the colour-singlet segments' reading
     sign fixes (O(1) in the finite part without it). Evaluated by the native
     executor in double-double: binary64 loses 2e-10 of the finite part to
-    cancellations at point 0. Generation about 10 min, 8 GB."""
+    cancellations at point 0; the native point inputs equal the Python
+    inputs there (WP3.2 EWI-7's ladder rung with EWI-N's inputs). Generation
+    about 10 min, 8 GB."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
@@ -1218,6 +1220,33 @@ def test_top_pair_and_leptons_equal_three_providers(
                 error = _metric(value, values[key], floor)
                 worst[provider] = max(worst[provider], error)
                 assert error <= tolerance, (provider, key, value, values[key])
+    # The native point inputs (WP3.2 EWI-N) equal the Python inputs on the
+    # same plan at point 0, in double-double (binary64 loses 2e-10 there).
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    (mine,), (theirs,) = (
+        lane.evaluate(
+            [reference["points"][0]],
+            [str(Fraction(reference["mu_r"][0]) ** 2)],
+            parameters=dict(reference["parameters"]),
+            precision=Precision.double_double(),
+        )
+        for lane in (native, python)
+    )
+    deviation = 0.0
+    for component, sectors in theirs.components.items():
+        for sector, laurent in sectors.items():
+            size = max(
+                abs(float(x)) for x in theirs.components["virtual"][sector].coefficients
+            )
+            for x, y in zip(
+                mine.components[component][sector].coefficients,
+                laurent.coefficients,
+                strict=True,
+            ):
+                deviation = max(deviation, abs(float(x) - float(y)) / size)
+    assert deviation <= 1e-12, deviation
+    worst["native - python inputs"] = deviation
     print({provider: f"{error:.1e}" for provider, error in worst.items()})
 
 

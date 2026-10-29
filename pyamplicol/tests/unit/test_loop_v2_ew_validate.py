@@ -220,8 +220,9 @@ def test_electroweak_ladder_equals_three_providers(name, loop_gmu_ufo, loop_nati
     OpenLoops at all three fixture points: Born and every Laurent
     coefficient of the full NLO EW virtual (QCD and QED corrections, the
     mixed QCD-EW loops of the selected orders included) through the native
-    executor in binary64, and the poles of every sector against Catani.
-    g g > t t~: about 3 min, 5 GB; u u~ > e- e+ g: about 5 min, 8 GB (a
+    executor in binary64, and the poles of every sector against Catani;
+    the native point inputs (WP3.2 EWI-N) equal the Python inputs at point
+    0. g g > t t~: about 4 min, 5 GB; u u~ > e- e+ g: about 6 min, 8 GB (a
     colour-singlet lepton line through the boxes, the Z on quark loops)."""
 
     compiled = _gmu(loop_gmu_ufo)
@@ -238,7 +239,13 @@ def test_electroweak_ladder_equals_three_providers(name, loop_gmu_ufo, loop_nati
             worst[provider] = max(worst.get(provider, 0.0), error)
         catani = max(catani, _assert_catani(result))
     assert set(worst) == {"madloop", "recola", "openloops"}
-    print(name, {k: f"{v:.1e}" for k, v in worst.items()}, f"catani {catani:.1e}")
+    native = _assert_native_inputs(slice_, reference)
+    print(
+        name,
+        {k: f"{v:.1e}" for k, v in worst.items()},
+        f"catani {catani:.1e}",
+        f"native - python inputs {native:.1e}",
+    )
 
 
 # --------------------------------------------------------- joint selection
