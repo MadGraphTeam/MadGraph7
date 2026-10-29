@@ -194,10 +194,11 @@ def test_selection_records_catalogue_resolution_and_refusals():
     lc.require_leading_colour("full", None, None)
     rows = (((0, -1), (1, 1)), ((0, 1), (1, -1)))
     flows = (
-        lc.Flow("flow:2,1", (2, 1), 1, True, "flow:2,1", 0),
-        lc.Flow("flow:1,2", (1, 2), None, True, "flow:1,2", 1),
-        lc.Flow("flow:3,4", (3, 4), 0, True, "flow:3,4", 2),
+        lc.Flow("flow:2,1", (2, 1), 1, 0),
+        lc.Flow("flow:1,2", (1, 2), None, 1),
+        lc.Flow("flow:3,4", (3, 4), 0, 2),
     )
+    assert lc.Flow.from_record(json.loads(json.dumps(flows[1].record()))) == flows[1]
     catalogue = lc.Catalogue(rows, flows)
     assert lc.helicity_id(rows[0]) == "h:-1,+1"
     assert catalogue.resolve(["h:+1,-1"], ["1", "flow:3,4"]) == (
@@ -213,6 +214,42 @@ def test_selection_records_catalogue_resolution_and_refusals():
         catalogue.resolve(None, ["flow:9"])
     with pytest.raises(EvaluationError, match="no Born amplitude"):
         catalogue.resolve(None, ["flow:1,2"])
+
+
+@pytest.mark.loop_fast
+def test_the_selection_cache_keeps_the_most_recently_used(monkeypatch):
+    """Evaluation-time selections are kept least-recently-used first out:
+    a hit forms nothing, the oldest entry is dropped beyond the size, size 0
+    keeps none; ``$PYAMPLICOL_LOOP_SELECTION_CACHE`` sets the default count
+    and refuses anything but an integer >= 0."""
+
+    built = []
+
+    def build(key):
+        return lambda: built.append(key) or [key]
+
+    cache = lc.SelectionCache(2)
+    first = cache.get("a", build("a"))
+    assert cache.get("a", build("a")) is first and built == ["a"]
+    cache.get("b", build("b"))
+    cache.get("a", build("a"))  # "b" is now the least recently used
+    cache.get("c", build("c"))
+    assert [key for key, _value in cache.items()] == ["a", "c"]
+    assert built == ["a", "b", "c"] and len(cache) == 2
+    cache.clear()
+    assert len(cache) == 0
+    none = lc.SelectionCache(0)
+    none.get("a", build("a"))
+    none.get("a", build("a"))
+    assert len(none) == 0 and built[-2:] == ["a", "a"]
+    monkeypatch.delenv(lc.SELECTION_CACHE_ENVIRONMENT, raising=False)
+    assert lc.SelectionCache().size == lc.SELECTION_CACHE_DEFAULT
+    monkeypatch.setenv(lc.SELECTION_CACHE_ENVIRONMENT, " 3 ")
+    assert lc.SelectionCache().size == 3
+    for text in ("-1", "x", "2.5"):
+        monkeypatch.setenv(lc.SELECTION_CACHE_ENVIRONMENT, text)
+        with pytest.raises(EvaluationError, match="integer >= 0"):
+            lc.SelectionCache()
 
 
 # ------------------------------------------------------------------ identities
@@ -339,15 +376,20 @@ def test_runtime_selections_partition_the_inclusive_value_nightly(
     [
         ("u u~ > d d~ g", "uux_ddxg", (2, 4, 3, 5, 1), ((1, -1), (5, 1))),
         ("g g > g g g", "uux_ggg", (1, 2, 4, 5, 3), ()),
+        # Identical-flavour quark lines: Born roots of mixed N_c grades,
+        # graded by the slice's own grade split.
+        ("u u~ > u u~ g", "uux_uuxg", (2, 4, 3, 5, 1), ()),
     ],
 )
 def test_generation_selection_prunes_and_equals_the_runtime_selection(
     generate, process, points, flow, helicities
 ):
-    """A generation-time selection keeps fewer skeletons (and Born rows) and
-    equals the runtime selection of the inclusive slice, Python and native,
-    binary64 and (natively) double-double. g g > g g g holds the ring-aware
-    pruning (per-reading liveness lost 40 % of the double pole)."""
+    """A generation-time selection keeps fewer skeletons (and Born rows),
+    keeps the process's leading N_c degrees and equals the runtime selection
+    of the inclusive slice, Python and native, binary64 and (natively)
+    double-double. g g > g g g holds the ring-aware pruning (per-reading
+    liveness lost 40 % of the double pole); u u~ > u u~ g identical-flavour
+    lines (its 60 of 196 skeletons)."""
 
     from pyamplicol.loops.v2 import reference_executor as rx
 
@@ -357,6 +399,7 @@ def test_generation_selection_prunes_and_equals_the_runtime_selection(
         rx.reading_skeletons(inclusive.slice.plan)
     )
     assert len(chosen.slice.basis) == 1
+    assert chosen.slice.degrees() == inclusive.slice.degrees()
     fixed = dict(helicities)
     rows = [
         r
@@ -381,18 +424,45 @@ def test_generation_selection_prunes_and_equals_the_runtime_selection(
 
 
 @pytest.mark.loop_physics
-def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(generate):
+def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(
+    generate, loop_sm_compiled_model
+):
     """u u~ > d d~ g's tree flows joining each quark to its own antiquark are
     below the squared matrix element's leading power: zero when selected at
-    evaluation, refused when selected at generation."""
+    evaluation; at generation refused on their own (listed
+    ``subleading-colour-flows``), exact zeros next to a leading flow (the
+    tree engine's ``max_color_sectors = 3``: two such flows and a leading
+    one), whose selection equals the runtime selection of the three flows
+    in double-double."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loading import load_compiled_model
 
     observables = generate("u u~ > d d~ g")
     runtime = _runtime(observables)
     pts, scales = _points("uux_ddxg")
     value = runtime.evaluate(pts, mu_r2=scales, color_flows=["flow:2,1,3,5,4"])
     assert _values(value) == [0.0, 0.0, 0.0, 0.0]
-    with pytest.raises(ValueError, match="below the process's leading colour"):
+    with pytest.raises(LoopRequestUnsupported) as refused:
         generate("u u~ > d d~ g", lc.Selection((), ((2, 1, 3, 5, 4),)))
+    assert refused.value.key == "subleading-colour-flows"
+    assert "[[2, 1, 3, 5, 4]]" in str(refused.value)
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    capped = _chosen(compiled, "u u~ > d d~ g", max_color_sectors=3)
+    assert capped.flows == ((2, 1, 3, 5, 4), (2, 4, 3, 5, 1), (2, 5, 1, 3, 4))
+    mixed = generate("u u~ > d d~ g", capped)
+    assert mixed.slice.degrees() == observables.slice.degrees()
+    chosen = _runtime(mixed)
+    flows = [flow.id for flow in chosen.selection_catalogue().flows]
+    assert flows == ["flow:2,1,3,5,4", "flow:2,4,3,5,1", "flow:2,5,1,3,4"]
+    for flow in ("flow:2,1,3,5,4", "flow:2,5,1,3,4"):
+        value = chosen.evaluate(pts, mu_r2=scales, color_flows=[flow])
+        assert _values(value) == [0.0, 0.0, 0.0, 0.0]
+    reference = runtime.evaluate(
+        pts, mu_r2=scales, color_flows=flows, arithmetic="double-double"
+    )
+    value = chosen.evaluate(pts, mu_r2=scales, arithmetic="double-double")
+    _close(_values(value), _values(reference), DOUBLE_DOUBLE)
 
 
 # ------------------------------------------------------- tree-engine parity
@@ -709,7 +779,8 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
         [{"color_flows": flows[k::3]} for k in range(3)],
         [{"helicities": helicities[:half]}, {"helicities": helicities[half:]}],
     )
-    checks = VirtualStabilityChecks(("z:3/5:4/5",), True)
+    # The recommended checks (``loops.v2.stability.RECOMMENDED_CHECKS``).
+    checks = VirtualStabilityChecks(1, True, rescaled=True)
     for arithmetic in ("double", "double-double"):
 
         def values(arithmetic=arithmetic, **selectors):
@@ -997,7 +1068,7 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         pts,
         mu_r2=scales,
         color_flows=["flow:2,4,3,5,1"],
-        stability_checks=VirtualStabilityChecks(("z:3/5:4/5",), True),
+        stability_checks=VirtualStabilityChecks(1, True, rescaled=True),
     )
     assert checked.stability is not None and checked.stability[0].relative < 1e-9
     # A stored selection is one column set formed from the stored resolved
@@ -1023,22 +1094,26 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
             born=_values(total, index)[0],
         )
     inclusive.evaluate(pts, mu_r2=scales, color_flows=[flow.id])
-    stored = inclusive._backend._observable_runtime()._observables
-    (flow_set,) = (
-        found
-        for key, found in stored._sets.items()
-        if key[:2] == ("selection", lc.column(None, frozenset({b})).key)
-    )
+    observables = inclusive._backend._observable_runtime()
+
+    def formed(key):
+        """The stored column set the runtime keeps for a selection."""
+
+        (found,) = (
+            value.columns
+            for (_kind, column), value in observables._selections.items()
+            if column.key == key
+        )
+        return found
+
+    flow_set = formed(lc.column(None, frozenset({b})).key)
     kept = flow_set.families[0]
     assert kept is not None and len(kept) < int(flow_set.meta["families"])
     # Its (row, flow) set's plan keeps the rows that row reaches (the native
     # live-row pruning, ``plan/live.rs``): a fraction of the flow's dressing
     # work, on the same families.
-    catalogue = inclusive._backend._observable_runtime().selection_catalogue()
-    key = lc.column(*catalogue.resolve([rows[1]], [flow.id])).key
-    (row_set,) = (
-        found for k, found in stored._sets.items() if k[:2] == ("selection", key)
-    )
+    catalogue = observables.selection_catalogue()
+    row_set = formed(lc.column(*catalogue.resolve([rows[1]], [flow.id])).key)
     assert row_set.families == flow_set.families
     work = "dressing work (modelled complex MAC per lane)"
     one_row, every_row = (
@@ -1078,7 +1153,44 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         "flows": [[2, 4, 3, 5, 1]],
         "helicities": [[1, -1], [5, 1]],
     }
-    with pytest.raises(GenerationError, match="below the process's leading colour"):
+    with pytest.raises(GenerationError, match="subleading-colour-flows"):
         artifacts("subleading", "selected_color_sector_ids = [0]")
     blockers = artifacts("nlc", _SELECTORS, accuracy="nlc").unsupported_features
     assert any("leading colour (color.accuracy='lc')" in item for item in blockers)
+
+
+@pytest.mark.loop_physics
+def test_evaluation_time_selections_are_kept_most_recently_used(
+    artifacts, monkeypatch
+):
+    """A loaded artifact keeps the formed column sets of its most recently
+    used evaluation-time selections only (``$PYAMPLICOL_LOOP_SELECTION_CACHE
+    = 2`` here): a third distinct selection releases the least recently used
+    one's set and native executors, a re-formed selection returns bitwise
+    its first value, and ``Runtime.clear`` releases every set."""
+
+    import gc
+    import weakref
+
+    from pyamplicol import Runtime
+
+    monkeypatch.setenv(lc.SELECTION_CACHE_ENVIRONMENT, "2")
+    runtime = Runtime.load(
+        artifacts("inclusive", ""), process="p", model_parameters=PARAMETERS
+    )
+    pts, scales = _points("uux_ddxg")
+    flows = [a.id for a in runtime.physics.born_anchored_color_components]
+    first = _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[flows[2]]))
+    observables = runtime._backend._observable_runtime()
+    (entry,) = observables._selections.items()
+    released = weakref.ref(entry[1].columns)
+    del entry
+    for flow in (flows[3], flows[0]):
+        runtime.evaluate(pts, mu_r2=scales, color_flows=[flow])
+    assert len(observables._selections) == 2
+    gc.collect()
+    assert released() is None
+    again = _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[flows[2]]))
+    assert again == first and first[0] != 0
+    runtime.clear()
+    assert observables._selections is None

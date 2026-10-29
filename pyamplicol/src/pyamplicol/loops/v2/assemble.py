@@ -2127,18 +2127,15 @@ class LoopSlice:
                 f"the Born root closure at leg 1 has no terms at the Born "
                 f"orders {sorted(missing)} of the tree program"
             )
+        inclusive_born = born_terms
         if request.selection is not None and request.selection.flows is not None:
             # A leading-colour selection keeps its flows' Born tensors only
             # (``selection.restrict_born_terms``): the basis, the seed table,
             # the colour pruning and the Born and counterterm bras follow.
-            from .colour import leading_born_flows
             from .selection import restrict_born_terms
 
             born_terms = restrict_born_terms(
-                born_terms,
-                closure.legs,
-                request.selection.flows,
-                leading_born_flows(blocks.born_dag),
+                born_terms, closure.legs, request.selection.flows
             )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
@@ -2201,6 +2198,8 @@ class LoopSlice:
             cancelled_cells=cancelled,
             external_photons=photons,
         )
+        if born_terms is not inclusive_born:
+            slice_._refuse_subleading_flows(inclusive_born)
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
@@ -2344,9 +2343,7 @@ class LoopSlice:
             )
 
     def _prune_colour(
-        self,
-        observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = (),
-        basis: frozenset[int] | None = None,
+        self, observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = ()
     ) -> None:
         """LC and NLC: drop, before any numerics, every skeleton whose seed
         cells all lie below the N_c powers the projection keeps (design §7.5,
@@ -2358,10 +2355,9 @@ class LoopSlice:
 
         accuracy = self.request.accuracy
         selection = self.request.selection
-        if basis is None and selection is not None and selection.flows is not None:
-            # A colour-flow selection's Born basis is its flows' tensors
-            # (``selection.restrict_born_terms``): pruned ring-aware below.
-            basis = frozenset(range(len(self.basis)))
+        # A colour-flow selection's Born basis is its flows' tensors
+        # (``selection.restrict_born_terms``): pruned ring-aware below.
+        ring_aware = selection is not None and selection.flows is not None
         grades = self._born_grades()
         criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
@@ -2376,7 +2372,7 @@ class LoopSlice:
                     for a, loop in sector_pairs
                     if loop == order
                     for b, born_orders in enumerate(self.basis.orders)
-                    if a in born_orders and (basis is None or b in basis)
+                    if a in born_orders
                     for power, value in table.cells[c][b].items()
                     for grade in grades.get((b, a), ())
                 )
@@ -2388,11 +2384,11 @@ class LoopSlice:
             )
 
         keep = own
-        if basis is not None:
-            # Basis elements ``basis`` only (a colour-flow selection): a
-            # skeleton is kept when its ring (``SkeletonView`` readings,
-            # rotations and the reflection) is live in the plan's reading of
-            # that ring, whose seed it dresses, or in its own.
+        if ring_aware:
+            # The selected flows' basis elements only: a skeleton is kept
+            # when its ring (``SkeletonView`` readings, rotations and the
+            # reflection) is live in the plan's reading of that ring, whose
+            # seed it dresses, or in its own.
             view = SkeletonView(self.loop_catalogue, self.colour)
             rings: dict[Any, bool] = {}
             for reading in rx.reading_skeletons(self.plan):
@@ -2749,6 +2745,107 @@ class LoopSlice:
                     out[b, order].update(item.nc_power + g for g in couplings)
         self._cache["born-grades"] = out
         return out
+
+    def _flow_degrees(
+        self, born_terms: Mapping[Orders, tuple[Any, ...]]
+    ) -> dict[tuple[Any, Orders], int]:
+        """The leading N_c degree of each colour flow's own squared Born
+        (``selection._item_flow`` keys) per squared Born order, for the Born
+        terms ``born_terms`` (e.g. the unrestricted ones of a colour-flow
+        selection): the slice's grading of the Born (``_born_grades``: an
+        item's N_c power plus its coupling's grades, so the N_c grade split
+        of identical-flavour lines is included) and the exact overlaps of the
+        flow's tensors. Structural, as ``degrees``; at leading colour a
+        squared order's degree is a flow's own, since a cross term of two
+        flows has at most the mean of their degrees (Cauchy-Schwarz on the
+        colour inner product, at every N_c)."""
+
+        from .fields import field_definitions
+        from .selection import _item_flow
+
+        _plan, layout = self._scalar_plan(LAURENT_POWERS)
+        missing = {
+            (term.entry.coupling.name, 0)
+            for terms in born_terms.values()
+            for term in terms
+        } - set(layout)
+        if missing:
+            # Couplings only the unselected flows' Born terms bind.
+            _part, extra = self._scalar_part(
+                sorted(missing), field_definitions(self.fields)
+            )
+            layout = {**layout, **extra}
+        keys: dict[Any, dict[Orders, set[tuple[Any, int]]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        for order, terms in born_terms.items():
+            for term in terms:
+                grades = {g for g, _c in layout.get((term.entry.coupling.name, 0), ())}
+                for item in term.colour.terms:
+                    keys[_item_flow(item)][order].update(
+                        (item.tensor, item.nc_power + g) for g in grades
+                    )
+        out: dict[tuple[Any, Orders], int] = {}
+        for flow, by_order in keys.items():
+            for a, b in product(by_order, repeat=2):
+                key = (flow, add_orders(a, b))
+                for left, p in by_order[a]:
+                    for right, q in by_order[b]:
+                        for power, value in self.overlaps(left, right).items():
+                            if value:
+                                out[key] = max(out.get(key, power + p + q), power + p + q)
+        return out
+
+    def _refuse_subleading_flows(
+        self, inclusive: Mapping[Orders, tuple[Any, ...]]
+    ) -> None:
+        """A colour-flow selection (``selection.restrict_born_terms``) keeps
+        the process's leading colour: in every squared Born order its flows
+        reach, one of them must reach the leading degree of the unrestricted
+        Born ``inclusive`` (``_flow_degrees``). Its other flows then
+        contribute exact zeros (the projection keeps the process's degree P,
+        as an evaluation-time selection of them is exactly zero); on their
+        own they would set a lower degree and return a subleading value, so
+        such a selection is refused (``subleading-colour-flows``)."""
+
+        from .colour import outer_flow
+        from .refusals import LoopRequestUnsupported
+        from .selection import _item_flow
+
+        degrees = self._flow_degrees(inclusive)
+        top: dict[Orders, int] = {}
+        for (_flow, squared), degree in degrees.items():
+            top[squared] = max(top.get(squared, degree), degree)
+        kept = {
+            _item_flow(item)
+            for terms in self.born_terms.values()
+            for term in terms
+            for item in term.colour.terms
+        }
+        reached: dict[Orders, int] = {}
+        for (flow, squared), degree in degrees.items():
+            if flow in kept:
+                reached[squared] = max(reached.get(squared, degree), degree)
+        below = [s for s, degree in sorted(reached.items()) if degree < top[s]]
+        if reached and not below:
+            return
+        representations = {leg.label: leg.representation for leg in self.closure.legs}
+        words = {
+            outer_flow(word, representations): list(word)
+            for word in self.request.selection.flows
+        }
+        orders = below or sorted(top)
+        flows = sorted(
+            words[flow]
+            for flow in kept
+            if all(degrees.get((flow, s), top[s] - 1) < top[s] for s in orders)
+        )
+        raise LoopRequestUnsupported(
+            "subleading-colour-flows",
+            f"{self.request.process!r}: the selected colour flows {flows} are "
+            "below the process's leading colour at the squared Born orders "
+            f"{[dict(s) for s in orders]}, and no selected flow reaches it there",
+        )
 
     def degrees(
         self,

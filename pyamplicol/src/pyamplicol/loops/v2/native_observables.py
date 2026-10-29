@@ -825,12 +825,11 @@ class StoredObservableSlice:
             # A leading-colour selection (``selection.column``): one column
             # set formed from the stored resolved set's records
             # (``selection_parts``), dressed and reduced once per sector.
-            key = (kind, value.key, id(member), tuple(sorted(options.items())))
-            found = self._sets.get(key)
-            if found is None:
-                found = self._sets[key] = StoredColumns(
-                    self, "resolved", member=member, selection=value, **options
-                )
+            # Not kept here: the runtime keeps its most recently used
+            # selections (``selection.SelectionCache``).
+            found = StoredColumns(
+                self, "resolved", member=member, selection=value, **options
+            )
             grouped = len(found.plan.columns) > 1
             return _Selection(found, None, group=value.key if grouped else None)
         if kind not in KINDS:

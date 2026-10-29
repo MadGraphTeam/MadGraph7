@@ -109,6 +109,13 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   public route by the selectors set (``loop_service._check_correlators``),
   in ``ObservableSlice.of`` by a selection that keeps fewer helicities or
   flows (``Selection.restricts``).
+* ``subleading-colour-flows`` (MQ-SELECT): a generation-time colour-flow
+  selection none of whose flows reaches the process's leading N_c degree in
+  a squared Born order they reach (``LoopSlice._refuse_subleading_flows``,
+  from the slice's own grading of the unrestricted Born, identical-flavour
+  grade splits included): its leading-colour value there is zero, while the
+  restricted Born alone would set a lower degree. Next to a leading flow
+  such a flow contributes exact zeros and is kept.
 """
 
 from __future__ import annotations
@@ -296,6 +303,24 @@ LOOP_ADMISSION_REFUSALS = (
         "and the selection in an artifact of its own",
         "MQ-SELECT (a guard)",
         "none (the tree engine's rule)",
+    ),
+    LoopAdmissionRefusal(
+        "subleading-colour-flows",
+        "a leading-colour colour-flow selection at generation (the public "
+        "route's selected_color_sector_ids or a truncating max_color_sectors; "
+        "SliceRequest.selection) none of whose flows reaches the leading N_c "
+        "power of the squared Born at a squared Born order the flows reach "
+        "(e.g. u u~ > d d~ g's tree flows joining each quark to its own "
+        "antiquark)",
+        "the loop's leading colour is the leading N_c power of the squared "
+        "matrix element: there such a selection's leading-colour Born and "
+        "virtual are zero, while its restricted Born alone would set a lower "
+        "power and return a subleading value",
+        "select at least one flow of the process's leading colour with it "
+        "(the others then contribute exact zeros), or select the flows at "
+        "evaluation (Runtime.evaluate(..., color_flows=...): exactly zero)",
+        "MQ-SELECT (a guard)",
+        "none (the leading-colour rule)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}

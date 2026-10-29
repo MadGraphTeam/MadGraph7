@@ -75,6 +75,15 @@ _LOGGER = logging.getLogger("pyamplicol.generation")
 # mq-stab).
 _BINARY64_ESTIMATE_CAP = 1e-9
 
+# The tree engine's ``[process]`` helicity and colour selectors, which
+# leading-colour v2 requests take (``_v2_selection``).
+_SELECTORS = (
+    "max_color_sectors",
+    "reference_color_order",
+    "selected_color_sector_ids",
+    "selected_source_helicities",
+)
+
 
 def _feature_blockers(backend, processes):
     run = backend._run_config
@@ -87,12 +96,7 @@ def _feature_blockers(backend, processes):
     selection = backend._process_selection
     if not _v2_leading_colour(run) and any(
         getattr(selection, name) is not None
-        for name in (
-            "max_color_sectors",
-            "reference_color_order",
-            "selected_color_sector_ids",
-            "selected_source_helicities",
-        )
+        for name in _SELECTORS
     ):
         # Leading-colour v2 requests take them (``_v2_selection``).
         reasons.append(
@@ -470,12 +474,7 @@ def _check_correlators(backend, correlators):
     selection = backend._process_selection
     partial = tuple(
         name
-        for name in (
-            "max_color_sectors",
-            "reference_color_order",
-            "selected_color_sector_ids",
-            "selected_source_helicities",
-        )
+        for name in _SELECTORS
         if getattr(selection, name) is not None
     )
     declared = bool(

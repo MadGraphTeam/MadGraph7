@@ -23,17 +23,29 @@ flow (``colour.sector_flow``); Born basis elements of no leading-colour flow
 (U(1) and Fierz pieces) have no leading-colour contribution. The loop's
 leading colour is the leading N_c power of the squared matrix element: a
 tree-engine flow below it (u u~ > d d~ g's flows joining each quark to its
-own antiquark) has a vanishing leading-colour Born and virtual, so its
-selection is zero at evaluation and refused at generation. The selected
+own antiquark) has a vanishing leading-colour Born and virtual: its
+selection is zero at evaluation; at generation it contributes exact zeros
+next to a leading flow, and a selection without one is refused
+(``subleading-colour-flows``). The selected
 output is the observable column of those rows and basis elements
 (``observables.Column``): its seeds and its Born, counterterm and field bras
 keep them only, so a complete set of selections sums to the inclusive value.
 Next-to-leading and full colour expose no selection.
+
+A runtime forms and compiles each distinct evaluation-time selection's
+column set on first use and keeps the ``SELECTION_CACHE_DEFAULT`` most
+recently used (``SelectionCache``; ``$PYAMPLICOL_LOOP_SELECTION_CACHE``
+sets the count, 0 keeps none): a kept selection holds its native plan and
+executors (u u~ > g g g g at leading colour: about 66 MB and 0.9 s of setup
+per (helicity, flow) pair), so sampling many distinct selections stays
+bounded in memory.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import os
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -118,7 +130,6 @@ def restrict_born_terms(
     born_terms: Mapping[Any, tuple[Any, ...]],
     legs: Sequence[Any],
     flows: Sequence[Sequence[int]],
-    leading: Iterable[Any] | None = None,
 ) -> dict[Any, tuple[Any, ...]]:
     """The Born closure's terms with the colour components of the selected
     flows only (``Selection.flows``, tree words; ``colour.outer_flow`` keys):
@@ -128,10 +139,11 @@ def restrict_born_terms(
     interfere at the leading power, nor does a flow with a Born tensor of no
     flow (U(1) and Fierz pieces), so the Born of the kept terms is the
     selected flows' and the seeds, counterterm and field bras keep them only.
-    A selected flow without a Born tensor is refused, as is one that is not
-    a leading Born flow (``leading``, ``colour.leading_born_flows``): its
-    leading-colour value vanishes, and on its own its Born would set a lower
-    leading power than the process's."""
+    A selected flow without a Born tensor is refused. A selection whose
+    flows are all below the process's leading colour where they reach it
+    is refused once the slice grades its Born
+    (``LoopSlice._refuse_subleading_flows``); next to a leading flow such a
+    flow's contributions are exact zeros."""
 
     from dataclasses import replace
 
@@ -143,12 +155,6 @@ def restrict_born_terms(
         key = outer_flow(word, representations)
         if key is None:
             raise ValueError(f"colour flow {list(word)} has no planar reading")
-        if leading is not None and key not in set(leading):
-            raise ValueError(
-                f"colour flow {list(word)} is below the process's leading colour "
-                "(its leading-colour Born and virtual vanish); select a leading "
-                "flow"
-            )
         wanted[key] = tuple(word)
     out: dict[Any, tuple[Any, ...]] = {}
     seen = set()
@@ -227,14 +233,13 @@ def _item_flow(item: Any) -> Any:
 class Flow:
     """One leading-colour flow: its tree-engine ID and word, its Born basis
     element (``None``: no Born tensor of that flow, so it contributes
-    nothing), whether the tree engine computes it (a folded reflection is
-    served by its sector's ``representative``) and its plan sector id."""
+    nothing) and its plan sector id (a folded trace's reflection has its
+    sector's: the loop computes both flows, the tree engine serves the
+    reflection by its sector's)."""
 
     id: str
     word: tuple[int, ...]
     basis: int | None
-    computed: bool
-    representative: str
     sector: int
 
     def record(self) -> dict[str, Any]:
@@ -242,8 +247,6 @@ class Flow:
             "id": self.id,
             "word": list(self.word),
             "basis": self.basis,
-            "computed": self.computed,
-            "representative": self.representative,
             "sector": self.sector,
         }
 
@@ -253,8 +256,6 @@ class Flow:
             str(record["id"]),
             tuple(int(x) for x in record["word"]),
             None if record["basis"] is None else int(record["basis"]),
-            bool(record["computed"]),
-            str(record["representative"]),
             int(record["sector"]),
         )
 
@@ -324,14 +325,7 @@ def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
         identifier = flow_id(word)
         found.setdefault(
             identifier,
-            Flow(
-                identifier,
-                word,
-                elements.get(sector_flow(sector)),
-                True,
-                identifier,
-                int(sector.id),
-            ),
+            Flow(identifier, word, elements.get(sector_flow(sector)), int(sector.id)),
         )
         if not (
             plan.trace_reflections_folded
@@ -346,7 +340,7 @@ def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
         key = ((), (_canonical_rotation(reflected),))
         found.setdefault(
             other,
-            Flow(other, reflected, elements.get(key), True, other, int(sector.id)),
+            Flow(other, reflected, elements.get(key), int(sector.id)),
         )
     return tuple(found.values())
 
@@ -473,6 +467,64 @@ def require_leading_colour(
 
 
 SELECTION = "selection"
+
+# Distinct evaluation-time selections a runtime keeps formed and compiled
+# (``SelectionCache``), unless ``$PYAMPLICOL_LOOP_SELECTION_CACHE`` sets
+# another count.
+SELECTION_CACHE_DEFAULT = 8
+SELECTION_CACHE_ENVIRONMENT = "PYAMPLICOL_LOOP_SELECTION_CACHE"
+
+
+def selection_cache_size() -> int:
+    """The count of ``SelectionCache`` entries:
+    ``$PYAMPLICOL_LOOP_SELECTION_CACHE`` (an integer >= 0; 0 keeps none) or
+    ``SELECTION_CACHE_DEFAULT``."""
+
+    text = os.environ.get(SELECTION_CACHE_ENVIRONMENT, "").strip()
+    if not text:
+        return SELECTION_CACHE_DEFAULT
+    try:
+        size = int(text, 10)
+    except ValueError:
+        size = -1
+    if size < 0:
+        raise EvaluationError(
+            f"{SELECTION_CACHE_ENVIRONMENT} must be an integer >= 0 (the count "
+            f"of evaluation-time selections a runtime keeps), not {text!r}"
+        )
+    return size
+
+
+class SelectionCache:
+    """The column runners of a runtime's evaluation-time selections, formed
+    on first use: the ``size`` most recently used are kept
+    (``selection_cache_size``), the least recently used dropped first, so
+    their native plans and executors are released (module docstring)."""
+
+    def __init__(self, size: int | None = None) -> None:
+        self.size = selection_cache_size() if size is None else int(size)
+        self._entries: OrderedDict[Any, Any] = OrderedDict()
+
+    def get(self, key: Any, build: Callable[[], Any]) -> Any:
+        found = self._entries.get(key)
+        if found is not None:
+            self._entries.move_to_end(key)
+            return found
+        found = build()
+        if self.size > 0:
+            self._entries[key] = found
+            while len(self._entries) > self.size:
+                self._entries.popitem(last=False)
+        return found
+
+    def items(self) -> tuple[tuple[Any, Any], ...]:
+        return tuple(self._entries.items())
+
+    def clear(self) -> None:
+        self._entries.clear()
+
+    def __len__(self) -> int:
+        return len(self._entries)
 
 
 def column(rows: frozenset | None, basis: frozenset | None) -> Any:

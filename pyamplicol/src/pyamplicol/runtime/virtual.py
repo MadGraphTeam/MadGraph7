@@ -1173,6 +1173,9 @@ class V2ObservablesRuntime:
             if value is not None
         }
         self._native: dict[tuple[Any, ...], Any] = {}
+        # Evaluation-time leading-colour selections: the most recently used
+        # only (``loops.v2.selection.SelectionCache``).
+        self._selections: Any = None
         self._parameters = {
             name: real
             for name, (real, _imaginary) in (
@@ -1220,6 +1223,7 @@ class V2ObservablesRuntime:
         with self._lock:
             self._spin_vectors = {}
             self._native = {}
+            self._selections = None
 
     # -- executors --------------------------------------------------------------
 
@@ -1235,11 +1239,17 @@ class V2ObservablesRuntime:
     def _native_columns(self, key: tuple[Any, ...]) -> Any:
         """The native executor of one output column set (built once):
         ``("correlated", histories)``, ``("resolved", resolution)`` or
-        ``("selection", column)`` (a leading-colour selection)."""
+        ``("selection", column)`` (a leading-colour selection, kept while it
+        is among the most recently used, ``selection.SelectionCache``)."""
 
+        from pyamplicol.loops.v2 import selection as lc
         from pyamplicol.loops.v2.observables import NativeObservables
 
         with self._lock:
+            if key[0] == lc.SELECTION:
+                if self._selections is None:
+                    self._selections = lc.SelectionCache()
+                return self._selections.get(key, lambda: self._selection_columns(key))
             found = self._native.get(key)
             if found is None:
                 kind, value = key
@@ -1253,14 +1263,26 @@ class V2ObservablesRuntime:
                     found = NativeObservables.correlated(
                         self._observables, value, **options
                     )
-                elif kind == "selection":
-                    found = NativeObservables(self._observables, [value], **options)
                 else:
                     found = NativeObservables.resolved(
                         self._observables, value, **options
                     )
                 self._native[key] = found
             return found
+
+    def _selection_columns(self, key: tuple[Any, ...]) -> Any:
+        """A leading-colour selection's native runner: a loaded process's
+        column set formed from its stored records, or a slice's one-column
+        executor."""
+
+        from pyamplicol.loops.v2.observables import NativeObservables
+
+        _kind, column = key
+        options = {"member": self._member, **self._native_options}
+        stored = getattr(self._observables, "native_columns", None)
+        if stored is not None:
+            return stored(*key, **options)
+        return NativeObservables(self._observables, [column], **options)
 
     def _run(
         self,
