@@ -810,12 +810,18 @@ def test_tree_lanes_build_a_massive_line_closing_on_no_weyl_sink(
             assert abs(mine.real - theirs.real) <= 1e-12 * theirs.real
 
 
-@pytest.mark.parametrize("policy", ["explicit", "minimal"])
 @pytest.mark.parametrize(
-    ("process", "limits"),
+    ("process", "limits", "policy"),
     [
-        ("t t~ > b b~", {"QCD": 2, "QED": 0}),
-        ("g g > t t~ b b~", {"QCD": 4, "QED": 0}),
+        *(
+            (process, limits, policy)
+            for process, limits in (
+                ("t t~ > b b~", {"QCD": 2, "QED": 0}),
+                ("g g > t t~ b b~", {"QCD": 4, "QED": 0}),
+            )
+            for policy in ("explicit", "minimal")
+        ),
+        ("t t~ > b b~", ORDER_LIMITS, "minimal"),
     ],
 )
 def test_recurrence_lane_builds_a_massless_b_where_the_orders_keep_the_w_off(
@@ -828,7 +834,10 @@ def test_recurrence_lane_builds_a_massless_b_where_the_orders_keep_the_w_off(
     """The guard is order-aware: with a massless b and QED 0 no W joins the
     b and the top, so no Dirac b current is reached within the limits and the
     recurrence builds, equal to the eager lane at full colour (the
-    structural-demand pass alone, which carries no orders, refused these)."""
+    structural-demand pass alone, which carries no orders, refused these).
+    The minimal policy without low limits resolves t t~ > b b~ to QED 0 as
+    well (the W exchange is refused only where the limits admit it,
+    ``test_recurrence_lane_refuses_the_massive_exchange_with_a_massless_b``)."""
 
     eager = _runtime(
         sm_no_b_mass_model, process, tmp_path / "eager", execution_mode="eager",
