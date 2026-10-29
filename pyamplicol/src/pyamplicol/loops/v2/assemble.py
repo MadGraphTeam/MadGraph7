@@ -2837,17 +2837,15 @@ class LoopSlice:
         out: dict[tuple[Any, Any, Orders], int] = {}
         for a, b in product(keys, repeat=2):
             squared = add_orders(a, b)
-            for x, left_keys in keys[a].items():
-                for y, right_keys in keys[b].items():
-                    if x != y and a == b:
-                        continue
-                    for left, p in left_keys:
-                        for right, q in right_keys:
-                            for power, value in self.overlaps(left, right).items():
-                                if value:
-                                    key = (x, y, squared)
-                                    degree = power + p + q
-                                    out[key] = max(out.get(key, degree), degree)
+            pairs = ((x, x) for x in keys[a]) if a == b else product(keys[a], keys[b])
+            for x, y in pairs:
+                for left, p in keys[a][x]:
+                    for right, q in keys[b][y]:
+                        for power, value in self.overlaps(left, right).items():
+                            if value:
+                                key = (x, y, squared)
+                                degree = power + p + q
+                                out[key] = max(out.get(key, degree), degree)
         return out
 
     def _refuse_inexact_flows(
