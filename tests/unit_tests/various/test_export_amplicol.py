@@ -100,5 +100,38 @@ class TestCheckPyamplicol(unittest.TestCase):
         self.assertIn('generated with pyamplicol 0.0.0', result.stderr)
 
 
+class FakeModel(dict):
+    """The attributes of a restricted MG model that model_job reads."""
+
+    def __init__(self, path, name):
+        super().__init__(name=name, version_tag=path + '##0')
+
+    def get(self, key):
+        import madgraph.core.base_objects as base_objects
+        if key in ('modelpath', 'restrict_name'):
+            return base_objects.Model.get(self, key)
+        return self[key]
+
+
+class TestModelJob(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.path = os.path.join(self.tmp, 'my-model_UFO')
+        os.mkdir(self.path)
+
+    def restriction(self, name):
+        job = export_amplicol.model_job(FakeModel(self.path, name),
+                                        os.path.join(self.tmp, 'cache'))
+        return job['restriction']
+
+    def test_restrictions_of_a_model_name_with_dashes(self):
+        self.assertEqual(self.restriction('my-model_UFO'), 'default')
+        self.assertEqual(self.restriction('my-model_UFO-full'), 'none')
+        self.assertEqual(self.restriction('my-model_UFO-no_b-mass'),
+                         os.path.join(self.path, 'restrict_no_b-mass.dat'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -255,14 +255,15 @@ def model_job(model, cache_path):
     """The UFO model of the output with its restriction, compiled for
     pyamplicol once per output."""
     path = model.get('modelpath')
-    reference = os.path.basename(model.get('modelpath+restriction'))
-    restriction = 'default'
-    if '-' in reference:
-        suffix = reference.split('-', 1)[1]
-        if suffix == 'full':
-            restriction = 'none'
-        else:
-            restriction = pjoin(path, 'restrict_%s.dat' % suffix)
+    reference = model.get('name')
+    # the suffix after the UFO directory name, which may itself contain '-'
+    suffix = model.get('restrict_name')
+    if not suffix:
+        restriction = 'default'
+    elif suffix == 'full':
+        restriction = 'none'
+    else:
+        restriction = pjoin(path, 'restrict_%s.dat' % suffix)
     if not os.path.exists(cache_path):
         logger.info('Compiling the model %s for AmpliCol' % reference)
     return {'path': path, 'restriction': restriction, 'cache': cache_path}
