@@ -50,6 +50,7 @@ tier: A12 and D05. The others are nightly: 50-90 s per 2->2/2->3 row, and
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 from fractions import Fraction
 
@@ -451,8 +452,9 @@ def test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan(
     found = rule_seven(
         loop_sm_compiled_model, compiled, loop_native, row_spec(row), tmp_path
     )
-    errors = found["errors"]
-    assert all(e <= TOLERANCE for e in errors.values()), (
-        row,
-        {k: float(v) for k, v in errors.items()},
+    errors = {k: float(v) for k, v in found["errors"].items()}
+    # The measured errors, one JSON line (shown with -s or -rP).
+    print(
+        json.dumps({"row": row, "top": found["top"], "span": found["span"], **errors})
     )
+    assert all(e <= TOLERANCE for e in found["errors"].values()), (row, errors)
