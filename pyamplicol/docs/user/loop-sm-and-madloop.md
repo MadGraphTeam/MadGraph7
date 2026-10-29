@@ -66,7 +66,7 @@ compares it with MadLoop.
 | `QED=2` (Born order) | `process.max_coupling_orders = { QED = 2 }`; with `coupling_order_policy = "minimal"` the minimal Born orders are found |
 | `QCD^2==4` (squared order) | every squared-order sector is a separate partial result: read it out (`result.for_order(...)`) |
 | `/ z` | `generation.particle_veto = ["Z"]` (internal lines, loops and counterterms) |
-| `p p > t t~` with a multiparticle label | the same expression: one artifact entry per subprocess |
+| `p p > t t~` with a multiparticle label | the same expression: one artifact entry per subprocess (`p` and `j` are the model's massless quarks and gluon, so the b is in them on `no_b_mass`), each equal to its own single-process generation; load one with `Runtime.load(artifact, process="g g > t t~")` (the stable ID or the expression; the artifact records loop_sm's own spelling, `G G > t t~`, and any letter case selects it) |
 | `$ x`, `$$ x`, decay chains `a > b c, b > d e`, `@N` | not served |
 | `[noborn=QCD]` (loop-induced), `t > b w+` (decays) | not served (see the refusals below) |
 
