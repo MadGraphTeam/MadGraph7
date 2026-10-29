@@ -162,16 +162,21 @@ def test_rows_are_well_formed(manifest, rows):
             found = mqcd.helicity_reference(row)
             assert found["rows"] and found["rows"][0], name
         # Rule 4's prediction: the Python-input executor's; on the native-
-        # input route (no executor prediction, WP3.1 I5c) the tree engine's;
+        # input route (no executor prediction, WP3.1 I5c) the tree engine's
+        # committed correlations, or none without them (status "partial");
         # none on the public route (its tools-route twin holds rule 4).
-        expected = (
-            "none"
-            if row.route == "public"
-            else "tree"
-            if row.inputs == "native"
-            else "python"
-        )
-        assert row.catani == expected, name
+        if row.route == "public":
+            assert row.catani == "none", name
+        elif row.inputs == "native":
+            assert row.catani in ("tree", "none"), name
+            assert (row.catani == "tree") == (row.tree_correlations is not None)
+        else:
+            assert row.catani == "python", name
+        if row.tree_correlations is not None:
+            data = json.loads((mqcd.ROOT / row.tree_correlations).read_text())
+            assert data["row"] == (row.base or name) and data["process"] == row.process
+            indices = {e["index"] for e in data["points"]}
+            assert {i for p in row.points.values() for i in p} <= indices, name
         if row.base is not None:
             base = rows[row.base]
             # A variant is another reference on the base request, or the

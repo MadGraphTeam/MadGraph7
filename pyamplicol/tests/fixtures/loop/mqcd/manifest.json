@@ -1452,7 +1452,7 @@
     1
    ],
    "inputs": "native",
-   "catani": "tree"
+   "catani": "none"
   },
   {
    "id": "A15",
@@ -1522,6 +1522,7 @@
    "reference_tolerance": 1e-12,
    "inputs": "native",
    "catani": "tree",
+   "tree_correlations": "tests/fixtures/loop/mqcd/references/tree-correlations-A15.json",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -2119,7 +2120,7 @@
    "vanishing": [],
    "reference_tolerance": 1e-10,
    "inputs": "native",
-   "catani": "tree"
+   "catani": "none"
   },
   {
    "id": "A24",
@@ -2221,7 +2222,7 @@
     6
    ],
    "inputs": "native",
-   "catani": "tree"
+   "catani": "none"
   },
   {
    "id": "A25",
@@ -3763,7 +3764,8 @@
     ]
    },
    "extras": [
-    "ap"
+    "ap",
+    "ff"
    ],
    "features": [
     "initial:qqbar",
@@ -5698,7 +5700,9 @@
      2
     ]
    },
-   "extras": [],
+   "extras": [
+    "ap"
+   ],
    "features": [
     "initial:leptons",
     "2->3",
@@ -6300,7 +6304,8 @@
     ]
    },
    "extras": [
-    "uv"
+    "uv",
+    "ap"
    ],
    "features": [
     "initial:qqbar",
@@ -6468,7 +6473,8 @@
     ]
    },
    "extras": [
-    "uv"
+    "uv",
+    "ap"
    ],
    "features": [
     "initial:qqbar",

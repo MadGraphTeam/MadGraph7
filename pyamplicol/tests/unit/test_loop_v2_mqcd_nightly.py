@@ -7,8 +7,11 @@ acceptance rules 1-4 of PLAN §1.4 (``tools/loop_benchmark/mqcd.py``), plus
 the extras the harness checks: ``hel`` (per-helicity double-double against
 MadLoop's SLOOPMATRIXHEL rows within 1e-12), ``uv`` (rule 5, the bare loop's
 UV poles against the counterterms and the Feynman-gauge field factors with
-n_f from the request) and ``ap`` (rule 6, 40 digits against double-double and
-against 60 digits) and ``sp`` (the special-point variants). The tier is split
+n_f from the request), ``ap`` (rule 6, 40 digits against double-double and
+against 60 digits), ``ward`` (O10, ``ward.ward_check`` on the row's Ward
+slice), ``ff`` (D01's analytic quark form factor), ``sp`` (the special-point
+variants) and the H rows' exact CKM relation (manifest ``ckm_relation``,
+against the diagonal twin within 1e-24). The tier is split
 into file jobs (manifest ``nightly_jobs``, rows packed by measured cost into
 jobs within PLAN §3.2's 30 minutes): this module is job 1 plus the smokes
 and the M01 expansion, test_loop_v2_mqcd_nightly_<job>.py the others; one
@@ -17,11 +20,14 @@ package each waits for.
 A row's variants (``<id>@<name>``: a runtime parameter change on the same
 generation) are ids of their own; a non-gating variant (a diagnostic twin)
 is listed in the manifest and left to the campaign CLI. Rows on the
-native-input route (heavy 2->4/2->5 gluon rows) record rule 4 as not formed
-(no native Catani prediction, WP3.1 I5c), as do M01's public-route variants
-(the subprocesses of the public route's multiparticle artifact; their
-tools-route twins hold rule 4). M01 is composite: its variants, its
-expansion and MQ-MODEL's bitwise test (manifest ``delegated``) make it up.
+native-input route (heavy 2->4/2->5 rows; no native Catani prediction, WP3.1
+I5c) take rule 4's "tree" prediction from the tree engine's committed
+colour correlations (manifest ``tree_correlations``; checked here against
+the executor's Catani on rows of the same colour structures) or record it
+as not formed without them (status "partial"), as M01's public-route
+variants do (their tools-route twins hold rule 4). M01 is composite: its
+variants, its expansion and MQ-MODEL's bitwise test (manifest
+``delegated``) make it up.
 """
 
 from __future__ import annotations
@@ -50,6 +56,18 @@ def test_restriction_smoke_equals_its_base_row(campaign, restriction):
     mqcd.write_result(mqcd.RowReport(f"smoke:{restriction}", TIER, (), checks, {}))
     failures = [c for c in checks if not c.passed]
     assert not failures, failures
+
+
+@pytest.mark.loop_nightly
+def test_tree_catani_is_the_executor_s(campaign):
+    """Rule 4's "tree" prediction of the native-input rows (the harness's
+    massless Catani operator on the tree engine's colour-correlated Born)
+    equals the Python-input executor's Catani on rows of the same colour
+    structures (g g > g g, u u~ > g g g) within 1e-30, its Born ours."""
+
+    checks = mqcd.tree_oracle(campaign)
+    mqcd.write_result(mqcd.RowReport("oracle:tree-catani", TIER, (), checks, {}))
+    assert checks and all(c.passed for c in checks), checks
 
 
 MULTIPARTICLE = sorted(
