@@ -461,3 +461,265 @@ post_build_validation = false
             (value,) = runtime.evaluate([momenta])
             born = reference["born"]
             assert abs(complex(value).real - born) <= 1e-13 * abs(born), (row, value)
+
+
+# ------------------------------------------------------------ public route
+
+ZERO_WIDTHS = {"WT": "0", "WZ": "0", "WW": "0", "WH": "0"}
+# The declaration the electroweak tests state in their cards (the tools
+# view); the public route states none.
+_DECLARED = """
+[loop.model]
+loop_coupling_orders = {corrections}
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO on-shell electroweak"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_qcd_qed_sm lhv=1 supplied QED rules"
+"""
+
+
+def _ew_card(source, output, expression, corrections, *, restriction, fixed, view):
+    """A one-loop card on ``source``: the public route (``view`` False: no
+    ``[loop.model]``, no compatibility profile, no colour setting) or the
+    tools view (the explicit declaration and ``gmu_particle_anti``)."""
+
+    import json
+
+    parameters = ", ".join(f"{name} = {json.dumps(v)}" for name, v in fixed.items())
+    restricted = (
+        "" if restriction is None else f"restriction = {json.dumps(restriction)}"
+    )
+    declared = _DECLARED.format(corrections=json.dumps(corrections)) if view else ""
+    compatibility = 'compatibility = "gmu_particle_anti"' if view else ""
+    return f"""
+action = "generate"
+[model]
+source = {json.dumps(str(source))}
+{restricted}
+[process]
+entries = [{{expression = {json.dumps(expression)}, name = "p"}}]
+loop_coupling_orders = {json.dumps(corrections)}
+coupling_order_policy = "minimal"
+[loop]
+r2_strategy = "model"
+{declared}
+[loop.preparation]
+fixed_parameters = {{{parameters}}}
+{compatibility}
+[generation]
+output = {json.dumps(str(output))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+
+
+def _generator(text: str, path: Path):
+    from pyamplicol.api import Generator
+    from pyamplicol.config import resolve_config
+
+    path.write_text(text)
+    return Generator(resolve_config(path))
+
+
+def _processes(expression: str):
+    from pyamplicol.api import ProcessRequest, ProcessSet
+
+    return ProcessSet((ProcessRequest.parse(expression, name="p"),))
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "restriction", "expression"),
+    [
+        ("loop_qcd_qed_sm", None, "u u~ > d d~"),
+        ("loop_qcd_qed_sm_Gmu", "a0", "u u~ > a g"),
+    ],
+)
+def test_public_route_dry_run_takes_the_shipped_profile(
+    tmp_path, name, restriction, expression
+):
+    """``model.source = <name>`` with no ``[loop.model]`` and no
+    compatibility profile: the dry run admits a joint QCD+QED request with
+    the shipped profile's declaration and the repair recorded."""
+
+    from pyamplicol.api.requests import ModelSource
+    from pyamplicol.loops.shipped_profiles import shipped_loop_profile
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    ModelSource.from_path(name, restriction=restriction or "default").compile()
+    plan = _generator(
+        _ew_card(
+            name,
+            tmp_path / "out",
+            expression,
+            ["QCD", "QED"],
+            restriction=restriction,
+            fixed=ZERO_WIDTHS,
+            view=False,
+        ),
+        tmp_path / "card.toml",
+    ).plan(_processes(expression))
+    assert plan.unsupported_features == ()
+    profile = shipped_loop_profile(load_raw_loop_model(_shipped(name)))
+    coverage = plan.estimated_coverage
+    assert coverage["model_declaration"] == profile.declaration.to_dict()
+    (record,) = coverage["processes"]
+    assert record["color_accuracy"] == "full"
+    assert not (tmp_path / "out").exists()
+
+
+def _masses(model, expression: str) -> tuple[list[float], list[float]]:
+    from pyamplicol.processes.model import ModelParticleCatalog
+
+    catalog = ModelParticleCatalog(
+        model.ir.name, model.ir.particles, model.ir.parameters
+    )
+    values = {record.name: record.value for record in model.ir.parameters}
+
+    def mass(token: str) -> float:
+        name = catalog.resolve(token).mass
+        return 0.0 if name.casefold() == "zero" else float(values[name][0])
+
+    initial, final = expression.split(">")
+    return [mass(t) for t in initial.split()], [mass(t) for t in final.split()]
+
+
+def _point(masses_in, masses_out, seed, sqrt_s=1000.0):
+    import math
+
+    from pyamplicol.generation.phase_space import massive_rambo_final_state
+
+    m1, m2 = masses_in
+    p = math.sqrt((sqrt_s**2 - (m1 + m2) ** 2) * (sqrt_s**2 - (m1 - m2) ** 2)) / (
+        2 * sqrt_s
+    )
+    incoming = [
+        [math.sqrt(p * p + m1 * m1), 0.0, 0.0, p],
+        [math.sqrt(p * p + m2 * m2), 0.0, 0.0, -p],
+    ]
+    final = massive_rambo_final_state(
+        len(masses_out), sqrt_s=sqrt_s, masses=masses_out, seed=seed
+    )
+    return incoming + [list(map(float, momentum)) for momentum in final]
+
+
+def _values(result):
+    return [
+        (
+            [complex(value) for value in born],
+            [[None if c is None else complex(c) for c in laurent] for laurent in point],
+        )
+        for born, point in zip(result.born_values, result.values, strict=True)
+    ]
+
+
+# The MS-MODEL acceptance list (m-sm PLAN §3.2): (shipped model,
+# restriction, process, corrections, extra fixed parameters, the required
+# fixture the public route is also checked against).
+PUBLIC_ROUTE = {
+    "ee_mumu": ("loop_qcd_qed_sm_Gmu", None, "e- e+ > m- m+", ["QED"], {}, None),
+    "uu_ee": ("loop_qcd_qed_sm_Gmu", None, "u u~ > e- e+", ["QCD", "QED"], {}, None),
+    "uu_dd": ("loop_qcd_qed_sm", None, "u u~ > d d~", ["QCD", "QED"], {}, None),
+    "gg_tt": (
+        "loop_qcd_qed_sm_Gmu",
+        None,
+        "g g > t t~",
+        ["QCD", "QED"],
+        {"MT": "173", "ymt": "173"},
+        "gg_ttx_ew",
+    ),
+    "ud_wg": ("loop_qcd_qed_sm_Gmu", None, "u d~ > w+ g", ["QCD", "QED"], {}, None),
+    "uu_zz": ("loop_qcd_qed_sm_Gmu", None, "u u~ > z z", ["QED"], {}, None),
+    "uu_ag": ("loop_qcd_qed_sm_Gmu", "a0", "u u~ > a g", ["QCD", "QED"], {}, None),
+}
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("case", sorted(PUBLIC_ROUTE))
+def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
+    request, loop_native, tmp_path, case
+):
+    """The public route (``model.source = <name>``: the shipped UFO, its
+    shipped profile, the automatic Goldstone-flag repair, no ``tools/``
+    import) generates each request; its binary64 Born and virtual at two
+    points are bitwise those of the tools view (the reference UFO with the
+    explicit declaration and ``compatibility = "gmu_particle_anti"``). With a
+    required fixture, the public route also equals MadLoop at the fixture's
+    points (its metric: relative, Laurent floor |Born| alpha/2pi; 1e-8)."""
+
+    import json
+
+    from pyamplicol import Runtime
+    from pyamplicol.models.loading import compile_model_source
+
+    name, restriction, expression, corrections, extra, fixture = PUBLIC_ROUTE[case]
+    fixed = {**ZERO_WIDTHS, **extra}
+    view_source = request.getfixturevalue(EW_MODELS[name])
+    runs = {}
+    for route, source, view in (
+        ("public", name, False),
+        ("view", view_source, True),
+    ):
+        output = tmp_path / route
+        _generator(
+            _ew_card(
+                source,
+                output,
+                expression,
+                corrections,
+                restriction=restriction,
+                fixed=fixed,
+                view=view,
+            ),
+            tmp_path / f"{route}.toml",
+        ).generate(_processes(expression), output)
+        runs[route] = Runtime.load(output, process="p")
+    compiled = compile_model_source(
+        _shipped(name), restriction=restriction or "default"
+    )
+    masses_in, masses_out = _masses(compiled, expression)
+    points = [_point(masses_in, masses_out, seed) for seed in (11, 12)]
+    values = {
+        route: _values(runtime.evaluate(points, mu_r2=[8315.0] * len(points)))
+        for route, runtime in runs.items()
+    }
+    for born, laurent in values["public"]:
+        assert all(value != 0 for value in born)
+        assert all(sector[0] != 0 for sector in laurent)
+    assert values["public"] == values["view"]
+    if fixture is None:
+        return
+    reference = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / f"fixtures/loop/required/{fixture}.json"
+        ).read_text()
+    )
+    alpha = float(reference["derived_parameters"]["alpha"])
+    points = [[[float(x) for x in p] for p in point] for point in reference["points"]]
+    scales = [float(mu) ** 2 for mu in reference["mu_r"]]
+    result = runs["public"].evaluate(points, mu_r2=scales)
+    for k, row in enumerate(reference["rows"]):
+        madloop = row["providers"]["madloop"]
+        born = sum(complex(value).real for value in result.born_values[k])
+        laurent = [
+            sum(complex(sector[i]).real for sector in result.values[k])
+            for i in range(3)
+        ]
+        floor = abs(born) * alpha / (2 * 3.141592653589793)
+        for key, ours, scale in (
+            ("born", born, 0.0),
+            ("finite", laurent[0], floor),
+            ("single_pole", laurent[1], floor),
+            ("double_pole", laurent[2], floor),
+        ):
+            theirs = madloop[key]
+            error = abs(ours - theirs) / max(abs(ours), abs(theirs), scale)
+            assert error <= 1e-8, (fixture, k, key, ours, theirs)
