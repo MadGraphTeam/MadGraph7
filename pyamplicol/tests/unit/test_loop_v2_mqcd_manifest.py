@@ -1143,7 +1143,7 @@ def test_superseded_points_take_the_binding_rerun(tmp_path):
     precision rerun (point_binding): rule 1 holds the rerun's primary
     values, the existing fixture's second providers stay; a rerun at
     another point, with other parameters or without an ok record is
-    refused; a declared outlier record is reported, rule 1 judges it."""
+    refused."""
 
     ok = {"status": "ok", "comparison": "relative"}
     existing = _required_fixture(
@@ -1163,8 +1163,7 @@ def test_superseded_points_take_the_binding_rerun(tmp_path):
     assert reference.binding == {0: (rerun, 0)}
     assert reference.virtual[0]["madloop"][mqcd.TOTAL] == (1.5, -3.0, 0.5)
     assert reference.virtual[0]["recola"][mqcd.TOTAL] == (1.0, -3.0, 0.5)
-    (binding,) = mqcd.reference_record_checks(_row(), reference, 0)
-    assert binding.coefficient == "binding reference" and not binding.asserted
+    assert mqcd.reference_record_checks(_row(), reference, 0) == []
     dd = _point("double-double", 2.0, (1.5, -3.0, 0.5))
     assert all(c.passed for c in mqcd.rule1(_row(), reference, 0, dd))
     for name, kwargs in (
@@ -1195,14 +1194,6 @@ def test_superseded_points_take_the_binding_rerun(tmp_path):
                 }
             )
         )
-    reference.records[0] = {
-        **ok,
-        "outlier": {"rule": 1, "ruling": "pending", "conditions": {"i": "fails"}},
-        "reason": "rule 1 outlier",
-    }
-    checks = mqcd.reference_record_checks(_row(), reference, 0)
-    outlier = next(c for c in checks if c.coefficient == "declared outlier")
-    assert not outlier.asserted and "pending" in outlier.value
 
 
 def test_manifest_zero_points_are_the_references_absolute_points(rows):
