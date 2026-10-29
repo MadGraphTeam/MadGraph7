@@ -411,7 +411,9 @@ def _detect_model_source_payload(
     text = str(source)
     if text.lower() in BUILTIN_SM_ALIASES:
         return "built-in-sm", "built-in-sm", None
-    path = Path(text).expanduser().resolve()
+    from .._internal.packaged_models import resolve_model_path
+
+    path = resolve_model_path(text)
     if path.is_dir():
         if not (path / "__init__.py").is_file():
             raise ValueError(f"UFO model directory has no __init__.py: {path}")

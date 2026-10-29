@@ -29,6 +29,7 @@ from .ir import (
     SourceOrientation,
     WavefunctionFamily,
 )
+from .refusals import ProcessRequestUnsupported, refuse_decay
 
 GOLDSTONE_FLAG_SPELLINGS = ("GoldstoneBoson", "goldstoneboson", "goldstone")
 
@@ -242,6 +243,7 @@ def expand_model_processes(
             raise ValueError("invalid collision format; expected 'initial > final'")
         initial_slots = _expanded_slots(initial_text, aliases, catalog)
         final_slots = _expanded_slots(final_text, aliases, catalog)
+        refuse_decay(process, len(initial_slots))
         if len(initial_slots) != 2:
             raise ValueError(
                 "pyAmpliCol processes require exactly two initial particles"
@@ -300,6 +302,7 @@ def build_model_process_ir(
         raise ValueError("invalid collision format; expected 'initial > final'")
     initial = tuple(catalog.resolve(token) for token in initial_text.split())
     final = tuple(catalog.resolve(token) for token in final_text.split())
+    refuse_decay(process, len(initial))
     if len(initial) != 2 or not final:
         raise ValueError(
             "process must have exactly two initial and at least one final particle"
@@ -354,6 +357,21 @@ def _expanded_slots(
     aliases: Mapping[str, Sequence[str]],
     catalog: ModelParticleCatalog,
 ) -> list[tuple[str, ...]]:
+    for bracket in re.findall(r"\[([^\]]*)\]", text):
+        # Model processes have no anonymous brackets; one of non-particles
+        # is MG5_aMC NLO syntax ('[QCD]').
+        unresolved = []
+        for item in bracket.split():
+            try:
+                catalog.resolve(item)
+            except ValueError:
+                unresolved.append(item)
+        if unresolved:
+            raise ProcessRequestUnsupported(
+                "madloop-syntax",
+                f"the bracket [{bracket.strip()}] holds no particles of "
+                f"{catalog.model_name} ('[QCD]' style NLO syntax)",
+            )
     slots: list[tuple[str, ...]] = []
     for token in text.split():
         count, name = _repetition(token)

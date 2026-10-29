@@ -167,6 +167,12 @@ backend = "jit"
 > UFO modules are Python code and execute during loading. Only load a UFO model
 > from a source you trust. Serialize it for portable or automated workflows.
 
+The UFO models shipped with pyAmpliCol (`sm`, `scalars`, `scalar_gravity`, and
+MG5_aMC 3.7.0's one-loop model `loop_sm` with all its restrictions) are
+selected by their bare name, `source = "loop_sm"`, when no file or directory of
+that name exists next to the card (an existing path always wins). See
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md) for one-loop requests on it.
+
 In a TOML card, `restriction` is normally a loader name such as `default`,
 `no_widths`, or `none`. With the typed Python API, an explicit restriction file
 may be supplied. Relative typed-API restriction paths are resolved from the
@@ -200,7 +206,11 @@ must also provide compatible UV/R2 rules, and its scheme, remaining restrictions
 and correction orders must be declared. The complete real-mass control inputs
 are recorded in `tools/loop_reference/real_mass_ew_quarks.json`. Compatibility
 profiles validate the actual source declarations and retain repair diagnostics;
-a model name does not select or certify one automatically.
+a model name does not select or certify one automatically. One structural
+repair needs no profile: a vertex referencing a constant scalar tensor with
+fewer slots than particles (loop_sm's four-G0 vertex with `SSS1`) is moved to
+the model's unique same-valued tensor of the right slots, recorded as
+`pyamplicol_source_repairs`.
 
 Fixed values use decimal strings or `["real", "imaginary"]` string pairs, so
 inputs are preserved exactly. They are structural model restrictions rather
