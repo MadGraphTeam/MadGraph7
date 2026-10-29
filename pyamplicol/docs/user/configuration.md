@@ -701,10 +701,13 @@ helicity and one flow, binary64: u u~ > g g g about 0.7 ms per point at
 evaluation and 0.6 ms at generation, against 2.0 ms inclusive at leading
 colour; u u~ > g g g g 4.0 ms and 2.9 ms, against 30 ms). The first call of
 each distinct evaluation-time selection also forms and compiles its column
-set once, which the runtime keeps for later calls (u u~ > g g g g: about
-1 s for a new (helicity, flow) pair); sampling many distinct selections one
-event at a time therefore pays that setup per selection. A generation-time
-selection has no such setup.
+set once (u u~ > g g g g: about 1 s and 66 MB for a new (helicity, flow)
+pair). The runtime keeps the 8 most recently used selections for later
+calls; the environment variable `PYAMPLICOL_LOOP_SELECTION_CACHE` sets
+another count (0 keeps none), and `Runtime.clear()` releases them. Sampling
+many distinct selections one event at a time therefore pays that setup per
+selection, with bounded memory. A generation-time selection has no such
+setup.
 
 ```toml
 [process]
@@ -719,9 +722,16 @@ engine = "v2"
 The loop's leading colour is the leading N_c power of the squared matrix
 element. A tree flow below it, such as a flow of u u~ > d d~ g that joins
 each quark to its own antiquark, has no leading-colour Born or virtual. Its
-selection is zero at evaluation and refused at generation. Next-to-leading
-and full colour expose no selection: they evaluate every helicity and colour,
-and their API and plans are unchanged.
+selection is zero at evaluation. At generation it contributes exact zeros
+next to a leading flow (`max_color_sectors = 3` on u u~ > d d~ g keeps two
+such flows and a leading one), and a selection without a leading flow is
+refused (`subleading-colour-flows`). Identical-flavour quark lines (u u~ >
+u u~ g) take every selection. A member of an exact flavour group
+(`process.flavor_blind`) lists no flows and takes no evaluation-time
+selection (`CompatibilityError`): select on its representative process,
+which evaluates the member. Next-to-leading and full colour expose no
+selection: they evaluate every helicity and colour, and their API and plans
+are unchanged.
 
 #### Ultraviolet and infrared poles
 

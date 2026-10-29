@@ -755,8 +755,9 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
     the inclusive value at the first point of MadLoop's committed reference,
     per coefficient: in double-double to 1e-24 of each evaluation; in binary64 under
     the O1 rule (m-qcd PLAN §1.4 rule 2) with the per-coefficient stability
-    estimates E (one exact rotation and the reduction direction, each at
-    most 1e-9) propagated: |sum - inclusive| <= sum over the evaluations of
+    estimates E (the recommended checks, ``stability.RECOMMENDED_CHECKS``:
+    one generic exact rotation and the rescaled reduction direction; each E
+    at most 1e-9) propagated: |sum - inclusive| <= sum over the evaluations of
     max(1e-12, E) |value| (the Born to 1e-12)."""
 
     from fractions import Fraction
