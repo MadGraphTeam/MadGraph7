@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     )
     from pyamplicol.models.loop_preparation import LoopPreparation
 
+from .._internal.versions import LEGACY_LOOP_ENGINE_REMOVED
 from .errors import ConfigurationError
 
 
@@ -1524,6 +1525,16 @@ class LoopConfig:
     alpha_s_parameter: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
     )
+
+    def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
+        # The removed engine switch is refused with its reason, as in TOML,
+        # overrides and the CLI (``config.resolver``).
+        if "engine" in kwargs:
+            raise ConfigurationError(
+                "configuration field 'loop.engine' was removed: "
+                f"{LEGACY_LOOP_ENGINE_REMOVED}; delete the setting"
+            )
+        return object.__new__(cls)
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, LoopModelConfig):

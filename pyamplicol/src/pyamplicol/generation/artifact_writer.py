@@ -19,6 +19,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
+from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import (
     ArtifactBuilder,
@@ -986,7 +987,7 @@ def write_schema_v3_artifact(
     if existing is not None:
         existing_capabilities = set(existing.runtime["required_runtime_capabilities"])
         if RETIRED_LOOP_RUNTIME_CAPABILITY in existing_capabilities:
-            raise ValueError(LEGACY_LOOP_ARTIFACT_REMOVED)
+            raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
         existing_loop = LOOP_V2_RUNTIME_CAPABILITY in existing_capabilities
         if has_loop != existing_loop:
             raise ValueError(
@@ -5336,7 +5337,7 @@ def _required_runtime_capabilities(
         }
     )
     if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
-        raise ValueError(LEGACY_LOOP_ARTIFACT_REMOVED)
+        raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
     if unknown:
         raise ValueError(
             "unsupported evaluator runtime capabilities: " + ", ".join(sorted(unknown))

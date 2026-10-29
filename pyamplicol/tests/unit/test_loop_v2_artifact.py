@@ -1487,6 +1487,13 @@ def test_legacy_loop_artifacts_are_refused_with_the_reason(saved_loop_fixture):
     ):
         with pytest.raises(CompatibilityError, match=reason):
             load()
+    # The artifact writer's own capability check (behind the manifest reader).
+    from pyamplicol.generation.artifact_writer import _required_runtime_capabilities
+
+    with pytest.raises(CompatibilityError, match=reason):
+        _required_runtime_capabilities(
+            {"required_runtime_capabilities": ["rusticol.loop-runtime.v3"]}
+        )
 
 
 @pytest.mark.loop_physics

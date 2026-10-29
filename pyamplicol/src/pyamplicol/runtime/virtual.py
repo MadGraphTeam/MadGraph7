@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from threading import RLock
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal, cast
 
 from pyamplicol.api.errors import (
     ArtifactError,
@@ -25,8 +25,6 @@ from pyamplicol.api.virtual_results import (
     POLE_ORIGINS,
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
-    VirtualArithmeticSpec,
-    VirtualColorContraction,
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
@@ -35,8 +33,6 @@ from pyamplicol.api.virtual_results import (
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
     VirtualStabilityPolicy,
-    VirtualVerificationAttempt,
-    VirtualVerificationDiagnostic,
     computes_poles,
     pole_selection,
     splits_poles,
@@ -53,44 +49,6 @@ from pyamplicol.runtime.correlated_exact import (
     _copy_spin_vectors,
     _prepare_spin_vectors,
 )
-
-
-def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagnostic:
-    return VirtualVerificationDiagnostic(
-        point_id=value["point_id"],
-        status=value["status"],
-        accuracy_established=value["accuracy_established"],
-        agreeing_bits=tuple(value["agreeing_bits"]) if value["agreeing_bits"] else None,
-        attempts=tuple(
-            VirtualVerificationAttempt(
-                VirtualArithmeticSpec(**attempt["arithmetic"]),
-                attempt["precision_bits"],
-                attempt["numerical_success"],
-                attempt["compared_precision_bits"],
-                attempt["agreement"],
-                attempt["conversion_agreement"],
-                tuple(VirtualFailureDiagnostic(**item) for item in attempt["failures"]),
-                VirtualColorContraction(**attempt["color_contraction"]),
-            )
-            for attempt in value["attempts"]
-        ),
-        detail=value["detail"],
-    )
-
-
-def _stability_input(
-    policy: VirtualStabilityPolicy | None,
-) -> tuple[list[tuple[str, int | None]], str, str, bool] | None:
-    if policy is None:
-        return None
-    if not isinstance(policy, VirtualStabilityPolicy):
-        raise TypeError("stability requires a VirtualStabilityPolicy")
-    return (
-        [(item.arithmetic, item.precision) for item in policy.higher],
-        policy.relative_tolerance,
-        policy.absolute_tolerance,
-        policy.verify_successful,
-    )
 
 
 def _number(value: object, description: str) -> str:
@@ -228,19 +186,6 @@ def _rows(
     return tuple(
         tuple(values[start : start + width]) for start in range(0, len(values), width)
     )
-
-
-_PointValue = TypeVar("_PointValue")
-
-
-def _scatter_points(
-    values: tuple[_PointValue, ...], point_ids: tuple[int, ...], count: int
-) -> tuple[_PointValue | None, ...]:
-    """Assemble output positions; numerical execution remains one native batch."""
-    result: list[_PointValue | None] = [None] * count
-    for point, value in zip(point_ids, values, strict=True):
-        result[point] = value
-    return tuple(result)
 
 
 _NO_RESCUE = (
@@ -820,7 +765,6 @@ class V2ObservablesRuntime:
         **options: Any,
     ) -> ResolvedVirtualEvaluation:
         """Per Born helicity row and Born basis element (design §8.5)."""
-
 
         selection, checks = v2_options(on_failure=on_failure, **options)
         with_poles = computes_poles(selection)

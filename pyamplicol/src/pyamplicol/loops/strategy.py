@@ -7,8 +7,6 @@ from dataclasses import dataclass
 
 from pyamplicol.config import R2Strategy
 
-_ARITHMETICS = frozenset({"double", "double-double", "arbitrary"})
-
 
 @dataclass(frozen=True, slots=True)
 class R2Selection:

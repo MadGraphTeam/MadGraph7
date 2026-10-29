@@ -58,6 +58,16 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
     assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
     assert FIELD_REGISTRY["loop.preparation"].nullable
+
+
+def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
+    for value in ("legacy", "v2"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was removed",
+        ):
+            LoopConfig(engine=value)
+    assert LoopConfig(r2_strategy="model").r2_strategy is R2Strategy.MODEL
     assert (
         FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
     )
