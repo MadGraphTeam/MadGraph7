@@ -1145,31 +1145,40 @@ pyo3::create_exception!(
     PlaneMismatchError,
     pyo3::exceptions::PyValueError,
     "A plane application that disagrees with its exact evaluator at the plane \
-     check's probes (`compile_v2_plane`). Its arguments are the message, the \
-     output index, the probe row and whether the imaginary part disagrees."
+     check's probes, or whose real-axis value no real point certifies \
+     (`compile_v2_plane`). Its arguments are the message, the output index, \
+     the probe row (None without a real point), whether the imaginary part \
+     disagrees (None without a real point) and whether the row is one of the \
+     caller's real points."
 );
 
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), checked
 /// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
-/// application_checked`): `(application, inputs, outputs)`. A disagreement
-/// raises `PlaneMismatchError(message, output, row, imaginary)`, a
-/// `ValueError` (`native_trees._plane_applications` refuses the program
-/// naming the output); any other failure a plain `ValueError`.
+/// application_checked`) off the real axis and at `real_points` (rows of real
+/// input values at which the program runs): `(application, inputs,
+/// outputs)`. A disagreement, or an output whose real-axis value needs a real
+/// point when none is given, raises `PlaneMismatchError(message, output, row,
+/// imaginary, real_axis)`, a `ValueError` (`native_trees._plane_applications`
+/// refuses the program naming the output); any other failure a plain
+/// `ValueError`.
 #[pyfunction]
-#[pyo3(signature = (state, optimization_level=2, compress=false))]
+#[pyo3(signature = (state, optimization_level=2, compress=false, real_points=None))]
 fn compile_v2_plane<'py>(
     py: Python<'py>,
     state: &[u8],
     optimization_level: u8,
     compress: bool,
+    real_points: Option<Vec<Vec<f64>>>,
 ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let real_points = real_points.unwrap_or_default();
     let checked = py
         .detach(|| {
             rusticol_core::loop_v2::trees::compile_plane_application_checked(
                 state,
                 optimization_level,
                 compress,
+                &real_points,
             )
         })
         .map_err(error)?;
@@ -1177,12 +1186,25 @@ fn compile_v2_plane<'py>(
         Ok((plane, inputs, outputs)) => {
             Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
         }
-        Err(mismatch) => Err(PlaneMismatchError::new_err((
-            format!("loop v2 trees: {mismatch}"),
-            mismatch.output,
-            mismatch.row,
-            mismatch.imaginary,
-        ))),
+        Err(mismatch) => {
+            use rusticol_core::loop_v2::trees::PlaneProbe;
+            let (row, imaginary, real_axis) = match &mismatch.probe {
+                PlaneProbe::Row {
+                    row,
+                    imaginary,
+                    real_axis,
+                    ..
+                } => (Some(*row), Some(*imaginary), *real_axis),
+                PlaneProbe::NoRealPoint => (None, None, true),
+            };
+            Err(PlaneMismatchError::new_err((
+                format!("loop v2 trees: {mismatch}"),
+                mismatch.output,
+                row,
+                imaginary,
+                real_axis,
+            )))
+        }
     }
 }
 

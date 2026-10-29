@@ -138,8 +138,11 @@ def test_nested_helper_bodies_inline_in_both_exporters() -> None:
     python_application = _rusticol._compile_symjit_plane_application_v2(
         program, 2, 2, 2, False
     )
+    # The helpers select on a predicate: the plane check certifies their
+    # real-axis branches at real points of the program (the real rows).
+    real = [[z.real for z in row] for row in rows if not any(z.imag for z in row)]
     rust_application, inputs, outputs = load_loop_native().compile_v2_plane(
-        bytes(evaluator.save()), 2, False
+        bytes(evaluator.save()), 2, False, real
     )
     assert (inputs, outputs) == (2, 2)
     for application in (python_application, bytes(rust_application)):

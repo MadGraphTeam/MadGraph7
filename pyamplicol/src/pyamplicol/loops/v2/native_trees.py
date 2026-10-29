@@ -144,20 +144,17 @@ NATIVE_EXPORT_REFUSALS = (
         "plane-mismatch",
         "a tree-program kernel or parameter-program output whose binary64 "
         "SymJIT plane application disagrees with its exact evaluator at the "
-        "plane check's probes (e.g. a square-root argument on its branch cut "
-        "there, which SymJIT and Symbolica sign differently)",
+        "plane check's rows (complex rows off the real axis: a translation "
+        "error; the parameter program's request values: a branch side that "
+        "SymJIT and Symbolica take differently there, e.g. a negated real "
+        "under a square root, -0 against +0), or that reads a branch-cut or "
+        "discontinuous function of its inputs in a program without a real "
+        "point to certify it at",
         "WP3.2 EWI-N (ew-native)",
-        "a plane check that does not depend on the model's parameter "
-        "declaration order or names (slice-status DECISIONS 2026-10-26 ~21:10 "
-        "item 6, user-confirmed 2026-10-27 ~19:20)",
-    ),
-    NativeExportRefusal(
-        "external-photon-alpha0",
-        "an electroweak request with on-shell external photons (their alpha(0) "
-        "convention: the coupling scale and the charge-conversion term)",
-        "WP3.2 EWI-N (ew-native)",
-        "the alpha(0) scale and the conversion term as parameter-program "
-        "outputs of the native point inputs",
+        "a request whose values put such an argument on its cut: the argument "
+        "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
+        "takes it, ct_recursion._RealArguments) with the first model that "
+        "needs it",
     ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
@@ -237,29 +234,40 @@ _PLANES_KEPT = 4096
 
 
 def _plane_applications(
-    states: Sequence[bytes], where: Callable[[int, int], str] | None = None
+    states: Sequence[bytes],
+    where: Callable[[int, int], str] | None = None,
+    real_points: Mapping[int, Sequence[Sequence[float]]] | None = None,
 ) -> tuple[bytes, ...]:
     """The binary64 SymJIT plane application of each saved exact evaluator
     (storage-v4 IR; the native ``compile_v2_plane`` checks it against the
-    evaluator). A disagreement is the listed refusal ``plane-mismatch``
-    naming the output: ``where(state index, output index)`` describes it
-    (``_PlaneOutputs.where`` for a tree program's states; by default the
-    indices)."""
+    evaluator off the real axis, which certifies the translation whatever
+    the inputs' order and names, and at the state's ``real_points``, rows of
+    the real inputs it runs at, which certify its real-axis evaluation
+    there: the parameter program's are the request's parameter values,
+    ``_request_points``). A disagreement, or an output reading a branch-cut or
+    discontinuous function of its inputs in a state without real points, is
+    the listed refusal ``plane-mismatch`` naming the output: ``where(state
+    index, output index)`` describes it (``_PlaneOutputs.where`` for a tree
+    program's states; by default the indices)."""
 
     from pyamplicol.loops.native import load_loop_native
 
     native = load_loop_native()
+    points = real_points or {}
     out = []
     for index, state in enumerate(states):
-        key = hashlib.sha256(state).digest()
+        rows = [[float(x) for x in row] for row in points.get(index, ())]
+        digest = hashlib.sha256(state)
+        digest.update(json.dumps([[x.hex() for x in row] for row in rows]).encode())
+        key = digest.digest()
         plane = _PLANES.get(key)
         if plane is None:
             try:
                 compiled, _inputs, _outputs = native.compile_v2_plane(
-                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
+                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False, rows or None
                 )
             except native.PlaneMismatchError as error:
-                message, output, _row, _imaginary = error.args
+                message, output, *_probe = error.args
                 described = (
                     where(index, output)
                     if where is not None
@@ -275,6 +283,26 @@ def _plane_applications(
             _PLANES.move_to_end(key)
         out.append(plane)
     return tuple(out)
+
+
+def _request_points(
+    slice_: Any, parameters: Mapping[str, Any]
+) -> list[tuple[float, ...]]:
+    """The parameter program's real points (the plane check's real-axis
+    rows): one, its inputs at the request's parameter values in binary64,
+    each external parameter's value fixed at generation
+    (``LoopSlice.fixed_parameters``), else its default (the batch's values
+    without a caller's, ``batch_parameters``)."""
+
+    fixed = slice_.fixed_parameters
+    return [
+        tuple(
+            float(Fraction(fixed.get(name, default)))
+            for name, default in zip(
+                parameters["names"], parameters["defaults"], strict=True
+            )
+        )
+    ]
 
 
 @dataclass(frozen=True)
@@ -347,6 +375,8 @@ def _output_label(key: Any, models: tuple[Any, Any] = (None, None)) -> str:
         return f"Born coupling {rest[0]}, N_c grade {rest[1]}"
     if kind == "derived-mass" and len(rest) == 1:
         return f"mass {rest[0]}"
+    if kind == "photon-ratio" and len(rest) == 1:
+        return f"external-photon scale alpha(0)/alpha (1/alpha(0) = {rest[0]})"
     if kind == "constant" and len(rest) == 2:
         return f"kernel constant {_constant_text(*rest)}"[:200]
     if kind == "positive" and len(rest) == 2:
@@ -795,6 +825,7 @@ def export_trees(
                 parameter_outputs,
                 (trees.compiled, None if ct is None else ct.rows.compiled),
             ).where,
+            {len(kernels): _request_points(slice_, parameters)},
         ),
         () if counterterms is None else counterterms.tensors,
     )
@@ -1461,12 +1492,44 @@ def _parameter_program(
             replacements.append(Replacement(symbol, symbol_of[name]))
         plan_inputs.append(replacements)
 
-    def column_value(column: int, diagnostic: bool = False) -> Any:
-        """A scalar-plan column (or its diagnostic) on the program's inputs."""
+    # The counterterm and field couplings take MadLoop's side of every branch
+    # cut whose argument is manifestly real and not manifestly non-negative,
+    # as the counterterm lowering does (``ct_recursion._RealArguments``, here
+    # ``signed``): such an argument is exactly on the cut at real masses
+    # (the Z's (MZ^2 (MZ^2 - 4 MW^2))^(1/2) of the G_mu UFO's B0 helpers), and
+    # its zero imaginary part is the sign of a negated real's, -0 in the
+    # binary64 plane application and +0 in Symbolica's evaluator (the plane
+    # check's real point, ``_request_points``). The projection keeps every
+    # value; the arguments that are not manifestly real keep their form.
+    sides: dict[int, Any] = {}
+
+    def madloop_side(p: int, value: Any) -> Any:
+        found = sides.get(p)
+        if found is None:
+            from .ct_recursion import _RealArguments
+
+            plan = plans[p]
+            reals = {
+                symbol
+                for symbol, kind in zip(
+                    plan.input_symbols, plan.external_types, strict=True
+                )
+                if kind == "real"
+            }
+            found = sides[p] = _RealArguments(reals, plan.program.library, signed=True)
+        return found(value)
+
+    def column_value(
+        column: int, diagnostic: bool = False, counterterm: bool = False
+    ) -> Any:
+        """A scalar-plan column (or its diagnostic) on the program's inputs;
+        a counterterm or field coupling's on MadLoop's side of its cuts."""
 
         p, local = located[column]
         expression = plans[p].expressions[local]
         value = expression.diagnostic if diagnostic else expression.value
+        if counterterm:
+            value = madloop_side(p, value)
         return value.replace_multiple(plan_inputs[p])
 
     coupling_outputs = []
@@ -1494,10 +1557,12 @@ def _parameter_program(
             finite.append(
                 output(
                     ("diagnostic", name, power, grade),
-                    lambda column=column: column_value(column, diagnostic=True),
+                    lambda column=column: column_value(
+                        column, diagnostic=True, counterterm=True
+                    ),
                 )
             )
-        return column_value(column)
+        return column_value(column, counterterm=True)
 
     every_input = [item for replacements in plan_inputs for item in replacements]
     for slot in counterterm_couplings:
@@ -1657,6 +1722,49 @@ def _parameter_program(
             raise NativeExportUnsupported(
                 "mass-parameter", f"the loop mass {mass.mass!r} is no model parameter"
             )
+    # On-shell external photons of an electroweak request couple with
+    # alpha(0) (WP3.2 EWI-6b, ``LoopSlice.external_photons``): the output
+    # alpha(0) / alpha, with alpha the photon couplings' (``poles.qed_coupling``,
+    # as ``_PointEvaluation._qed_alpha`` evaluates it) and 1/alpha(0) the
+    # model's adjustable parameter (an input; added when the trees do not
+    # read it). The native trees scale every source of those legs by its
+    # square root (``loop_v2::trees``, ``ParameterFile::photons``), so every
+    # output takes (alpha(0) / alpha)^n, as the Python lane's scaled average
+    # gives it; the conversion term is a field insertion of the photon legs
+    # (``assemble._alpha0_field_rules``), exported as every field coupling.
+    photons = getattr(slice_, "external_photons", None)
+    photon_record = None
+    if photons is not None:
+        from .ew_policy import is_photon
+        from .poles import qed_coupling
+
+        compiled = slice_.compiled
+        by_name = {record.name: record for record in compiled.ir.parameters}
+        fixed_values = slice_.request.fixed_parameters
+        coupling = qed_coupling(
+            compiled, lambda record: is_photon(record, by_name, fixed_values)
+        )
+        if coupling is None:
+            # The generation refuses such a request (``ew_policy``).
+            raise ValueError("on-shell external photons without a QED coupling")
+        for name in (photons.alpha0_inverse, *(name for _s, name in coupling[1])):
+            if name not in index:
+                index[name] = len(names)
+                names.append(name)
+                defaults.append(
+                    _fraction_text(Fraction(str(compiled.parameter_defaults[name][0])))
+                )
+                symbol = symbols.qualified(f"pyamplicol_v2_parameters::e{len(inputs)}")
+                inputs.append(symbol)
+                symbol_of[name] = symbol
+        ratio = output(
+            ("photon-ratio", photons.alpha0_inverse),
+            lambda: (
+                1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {}))
+            ),
+        )
+        positive.append(ratio)
+        photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
@@ -1718,6 +1826,9 @@ def _parameter_program(
         # Written only when present: an older native refuses the record
         # (unknown field) instead of reading the legs as massless.
         record["derived_masses"] = derived_masses
+    if photon_record is not None:
+        # Likewise: an older native would leave the photons at alpha.
+        record["photons"] = photon_record
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():
         keys[index] = key

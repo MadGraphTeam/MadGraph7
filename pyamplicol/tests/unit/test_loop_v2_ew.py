@@ -1854,8 +1854,9 @@ def test_electroweak_ladder_reaches_its_blocker(
     ladder_models, loop_native, model, process, born, loop, blocker, options
 ):
     """Each rung stops at its named blocker, never in the CT lowering
-    (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates and
-    is a plain test. Its ``poles="uv"`` check is the pole split's identity
+    (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates,
+    exports its native point inputs (EWI-N) and is a plain test. Its
+    ``poles="uv"`` check is the pole split's identity
     (``poles.split_sector`` takes the field factors' UV part as the
     remainder, so bare + uv = 0 always): the uv mode exercised, never
     evidence of UV renormalisation (coordinator DECISIONS 2026-10-28 ~05:20
@@ -1899,3 +1900,9 @@ def test_electroweak_ladder_reaches_its_blocker(
                 assert abs(total) <= 1e-10 * max(
                     abs(float(bare.coefficients[index])), 1e-300
                 ), (sector, index, bare, counterterms)
+    # A lifted rung stores native point inputs (WP3.2 EWI-N, review M8): its
+    # export refuses none of ``native_trees.NATIVE_EXPORT_REFUSALS``, so the
+    # generation of its artifact is never refused for them.
+    from pyamplicol.loops.v2.plan_export import export_plan
+
+    export_plan(slice_, forward=False, trees=True, born_squared=True)

@@ -904,16 +904,17 @@ names the rule, for example:
   corrections.
 
 A process whose programs cannot be stored natively is refused with the
-feature's key (see the stored programs below), for example on-shell external
-photons with electroweak corrections ("external-photon-alpha0", refused as
-soon as the photons' alpha(0) convention is known; QCD corrections to such
-processes are available) and a program whose binary64 SymJIT application
-disagrees with its exact evaluator at the generation's check ("plane-mismatch",
-naming the output: a model coupling by its UFO coupling and vertex, a
-counterterm coupling with its epsilon power, or a kernel; seen for a
-square-root argument on its branch cut, e.g. `g g > t t~` with QCD and QED
-corrections on `loop_qcd_qed_sm_Gmu`, refused at its `UV_GTTLEW`
-counterterm, and loop_sm with `MW` made a card input).
+feature's key (see the stored programs below), for example a program whose
+binary64 SymJIT application disagrees with its exact evaluator at the
+generation's check ("plane-mismatch", naming the output: a model coupling by
+its UFO coupling and vertex, a counterterm coupling with its epsilon power, or
+a kernel). On-shell external photons with electroweak corrections couple with
+alpha(0) and are stored natively, with 1/alpha(0) (`aEW0M1` of MG5_aMC's G_mu
+loop models under `restrict_a0`) a runtime parameter. The check compares
+at complex points off the real axis and at the request's parameter values,
+so it depends neither on the parameters' names nor on their order; it
+refuses a branch cut taken on different sides at those values, or a branch
+cut of a program's inputs that no real point certifies.
 
 A `particle_veto` drops every counterterm whose declared loop particles include
 a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for

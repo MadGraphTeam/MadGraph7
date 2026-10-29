@@ -1879,19 +1879,6 @@ class LoopSlice:
             photons = ew_policy.external_photon_scheme(
                 compiled, request, process, fixed, structure.perturbative_species_orders
             )
-            if photons is not None and native_inputs:
-                from .native_trees import NativeExportUnsupported
-
-                # The native inputs form the Born and the counterterm and
-                # field components with the loops' coupling throughout
-                # (``plan_export.export_plan``): refused before any tree.
-                raise NativeExportUnsupported(
-                    "external-photon-alpha0",
-                    f"{request.process!r}: the on-shell external photons (legs "
-                    f"{list(photons.legs)}) take the alpha(0) convention, whose "
-                    "scale and conversion term the native point inputs do not "
-                    "form",
-                )
             # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
             # loop lines and counterterms of a request with electroweak loop
             # species take 't Hooft-Feynman gauge with explicit Goldstones
@@ -4398,6 +4385,13 @@ class _NativePoint(_PointEvaluation):
         self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
+
+    def _scaled_average(self) -> Any:
+        # The native trees take the alpha(0) of on-shell external photons in
+        # the photons' sources (``native_trees._parameter_program``'s
+        # ``photons``): every output the executor forms already carries
+        # (alpha(0) / alpha)^n, so the divisor is the slice's average.
+        return self.slice.normalisation.average
 
     def _stable_coloured_legs(self) -> bool:
         # Catani's prediction is not formed natively (WP3.1 I5c).

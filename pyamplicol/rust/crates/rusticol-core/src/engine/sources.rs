@@ -885,6 +885,21 @@ impl SchemaSources {
             .collect()
     }
 
+    /// The value slots (component start, stop) of every source of the
+    /// 1-based leg `leg` (each of its helicities), in fill order.
+    pub(crate) fn leg_slots(&self, leg: usize) -> Vec<(usize, usize)> {
+        self.sources
+            .iter()
+            .filter(|source| source.leg_label == leg)
+            .map(|source| {
+                (
+                    source.value_slot.component_start,
+                    source.value_slot.component_stop,
+                )
+            })
+            .collect()
+    }
+
     /// The squared mass of each of `legs` legs' external states, in leg
     /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
     /// the particle's PDG code, else its antiparticle's, absent = massless.
