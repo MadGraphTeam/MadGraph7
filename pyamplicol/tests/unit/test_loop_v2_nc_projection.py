@@ -2,12 +2,12 @@
 """The campaign's ``nc`` column: m-qcd PLAN §1.4 rule 7 (MQ-NC).
 
 Rule 7 asks two things of every ``nc`` row: the formal projection equals the
-N_c scan within 1e-24 in double-double, and the MQ-NC independent oracles
-hold at their tolerances. ``NC_COLUMN`` names, per row, the test ids that
-make up its column: this file's projection ids and the row's oracle ids in
-``test_loop_v2_nc_oracles`` (NJet's NJetNc, Catani and Ward at N_c != 3)
-and ``test_loop_v2_colour`` / ``test_loop_v2_observables_nightly`` (BDK
-O14).
+N_c scan in double-double within max(1e-24, 10 E_DD) per coefficient, and
+the MQ-NC independent oracles hold at their tolerances. ``NC_COLUMN``
+names, per row, the test ids that make up its column: this file's
+projection ids and the row's oracle ids in ``test_loop_v2_nc_oracles``
+(NJet's NJetNc, Catani and Ward at N_c != 3) and ``test_loop_v2_colour`` /
+``test_loop_v2_observables_nightly`` (BDK O14).
 
 The formal projection is the engine's LC and NLC: ``accuracy="lc"`` and
 ``"nlc"`` with the shipped loop_sm colour declaration (resolved from the
@@ -64,15 +64,15 @@ Within 1e-24:
   the counterterm and field parts): LC = c_P 3^P, NLC = sum over
   p = P-2 .. P of c_p 3^p and FC = FC(3), the projection identity itself;
 * in double-double, the same for the Born and the virtual, the plan's
-  wording of rule 7. At an ill-conditioned point double-double's own
-  accuracy is coarser than 1e-24; such a point is listed in ``DD_LISTED``
-  with its measured error and estimate, and there each double-double
-  coefficient beyond 1e-24 must lie within 10 E_DD (E_DD: one exact rotation
-  z, 3/5, 4/5 plus the reduction direction, the O1 configuration; rule 3's
-  bracket, rules 4 and 6's band) while the identity holds on MPFR. An
-  unlisted point beyond 1e-24 fails. Whether rule 7's double-double part
-  takes rules 4/6's band max(1e-24, 10 E_DD) instead of the list is routed
-  to the coordinator.
+  wording of rule 7, in rules 4 and 6's band (coordinator ruling 2026-10-29
+  ~10:15): rel <= max(1e-24, 10 E_DD) per coefficient, E_DD the
+  double-double stability estimate of that coefficient with the O1 rule's
+  checks (``stability.RECOMMENDED_CHECKS``: one generic exact rotation and
+  the rescaled reduction check) relative to the same denominator as the
+  deviation (A for a value held absolutely). The Born carries no estimate
+  and is held within 1e-24. MPFR already proves the identity exact, so a
+  double-double miss within 10 E_DD is double-double's own conditioning (A18:
+  the full-colour finite part, about 7e-24 at points 2 and 3).
 
 The scan's integer N other than 3 also give the poles of the renormalised
 virtual at N, compared with Catani's operator at N (C_A = N, C_F = (N^2-1)
@@ -118,16 +118,6 @@ DEFAULT_ROWS = frozenset({"A12", "D05"})
 DEFAULT_POINTS = (0, 1)
 # Point 3 of every campaign fixture is point 0 at mu_R / 2.
 ALL_POINTS = (0, 1, 2, 3)
-
-# Points where double-double's own accuracy is coarser than 1e-24 (module
-# docstring): (row, point) -> the measured error and estimate. A18 (g g >
-# u u~ u u~): the full-colour virtual's finite part; LC and NLC hold 1e-24
-# there, and native MPFR holds every identity within 1e-45.
-DD_LISTED: dict[tuple[str, int], str] = {
-    ("A18", 0): "FC virtual finite 1.9e-24, E_DD 7.1e-24",
-    ("A18", 2): "FC virtual finite 7.2e-24, E_DD 9.2e-24",
-    ("A18", 3): "FC virtual finite 7.2e-24, E_DD 2.6e-23",
-}
 
 # The rows' nc columns (rule 7): this file's projection ids, then the
 # independent oracles' ids.
@@ -234,7 +224,6 @@ TOLERANCE = Fraction(1, 10**24)
 VANISHING = Fraction(1, 10**28)
 BRACKET = 10
 CATANI_NC = frozenset({"2", "4", "8", "16", "32"})
-CHECK_ROTATION = ("z", "3/5", "4/5")
 # alpha_s / 2 pi of F_s (a scale only: 30 digits of pi suffice).
 _PI = Fraction(Decimal("3.14159265358979323846264338328"))
 
@@ -326,13 +315,20 @@ def absolute_scale(entries: dict, key, alpha_s: Fraction) -> Fraction:
     return (borns.get(_born_order(key[1])) or total) * flux
 
 
-def deviation(got: Fraction, want: Fraction, scale: Fraction) -> Fraction:
-    """rel(got, want), or |got - want| / A where ``want`` vanishes
-    identically (|want| <= 1e-28 A): within 1e-24 passes either way."""
+def denominator(got: Fraction, want: Fraction, scale: Fraction) -> Fraction:
+    """max(|got|, |want|), or A where ``want`` vanishes identically (|want|
+    <= 1e-28 A)."""
 
     if abs(want) <= VANISHING * scale:
-        return abs(got - want) / scale if scale else abs(got - want)
-    return abs(got - want) / max(abs(got), abs(want))
+        return scale or Fraction(1)
+    return max(abs(got), abs(want))
+
+
+def deviation(got: Fraction, want: Fraction, scale: Fraction) -> Fraction:
+    """rel(got, want), or |got - want| / A where ``want`` vanishes
+    identically: within 1e-24 passes either way."""
+
+    return abs(got - want) / denominator(got, want, scale)
 
 
 def _solve(matrix, rhs):
@@ -352,18 +348,18 @@ def _solve(matrix, rhs):
     return [rows[r][size] / rows[r][r] for r in range(size)]
 
 
-def native_projections(compiled, native, spec, indices) -> dict:
+def native_projections(compiled, native, spec) -> dict:
     """The formal projections of ``spec`` at its points: accuracy -> (slice,
-    {carrier: [entries per point]}) for LC, NLC and FC with the model's
-    shipped colour declaration on the production native path (native point
-    inputs, default seed contraction), in double-double and in MPFR at
-    ``AP_DIGITS``; for the points ``indices`` (positions in ``spec``'s
-    points) also double-double with the O1 stability checks (carrier
-    ``"dd-estimate"``: entries and, per virtual key, E_DD relative)."""
+    {carrier: [per point]}) for LC, NLC and FC with the model's shipped
+    colour declaration on the production native path (native point inputs,
+    default seed contraction): ``"dd"``, the double-double entries evaluated
+    with the O1 rule's checks (``RECOMMENDED_CHECKS``), ``"e-dd"`` their
+    absolute estimates per virtual key, and ``"mpfr"``, the entries in MPFR
+    at ``AP_DIGITS``."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
-    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
     from pyamplicol.models.loop_color_declaration import (
         resolve_loop_color_declaration,
         source_loop_color_declaration,
@@ -376,7 +372,6 @@ def native_projections(compiled, native, spec, indices) -> dict:
     assert declaration is not None
     points = [point for point, _scale in spec["points"]]
     scales = [scale for _point, scale in spec["points"]]
-    checks = StabilityChecks((Rotation.about(*CHECK_ROTATION),), True)
     out = {}
     for accuracy in ("lc", "nlc", "full"):
         slice_ = LoopSlice.generate(
@@ -389,45 +384,34 @@ def native_projections(compiled, native, spec, indices) -> dict:
             inputs="native",
         )
 
-        def run(selected, precision, stability=None, executor=executor):
+        def run(precision, stability=None, executor=executor):
             return executor.evaluate(
-                [points[i] for i in selected],
-                [scales[i] for i in selected],
+                points,
+                scales,
                 parameters=spec["parameters"],
                 precision=precision,
                 stability=stability,
             )
 
-        every = range(len(points))
+        estimated = run(Precision.double_double(), RECOMMENDED_CHECKS)
         found = {
-            "dd": [_result_entries(r) for r in run(every, Precision.double_double())],
-            "mpfr": [
-                _result_entries(r) for r in run(every, Precision.arbitrary(AP_DIGITS))
-            ],
+            "dd": [_result_entries(r) for r in estimated],
+            "e-dd": [_absolute_estimates(r) for r in estimated],
+            "mpfr": [_result_entries(r) for r in run(Precision.arbitrary(AP_DIGITS))],
         }
-        if indices:
-            estimated = run(indices, Precision.double_double(), checks)
-            found["dd-estimate"] = {
-                i: (_result_entries(r), _relative_estimates(r))
-                for i, r in zip(indices, estimated, strict=True)
-            }
         out[accuracy] = (slice_, found)
     return out
 
 
-def _relative_estimates(result) -> dict:
-    """("virtual", sector, k) -> E_DD relative to the coefficient."""
+def _absolute_estimates(result) -> dict:
+    """("virtual", sector, k) -> the absolute double-double estimate E of
+    the coefficient."""
 
-    out = {}
-    for sector, budget in result.stability.absolute.items():
-        laurent = result.components["virtual"][sector].coefficients
-        coefficients = budget.coefficients
-        for k, (e, value) in enumerate(
-            zip(coefficients, laurent[: len(coefficients)], strict=True)
-        ):
-            size = abs(_exact(value))
-            out["virtual", repr(sector), k] = abs(_exact(e)) / size if size else None
-    return out
+    return {
+        ("virtual", repr(sector), k): abs(_exact(e))
+        for sector, budget in result.stability.absolute.items()
+        for k, e in enumerate(budget.coefficients)
+    }
 
 
 def sector_degrees(slice_) -> dict:
@@ -513,9 +497,9 @@ def power_errors(coefficients: dict, degrees: dict, at_three: dict, alpha_s):
 
 
 def carrier_errors(expected: dict, mine: dict, at_three: dict, alpha_s, keys=None):
-    """accuracy -> [(deviation, key)] of ``mine`` (accuracy -> entries)
-    against the scan's projections, over ``keys`` (a predicate; all keys by
-    default)."""
+    """accuracy -> [(deviation, key, its denominator)] of ``mine`` (accuracy
+    -> entries) against the scan's projections, over ``keys`` (a predicate;
+    all keys by default)."""
 
     out = {}
     for accuracy, values in expected.items():
@@ -524,9 +508,33 @@ def carrier_errors(expected: dict, mine: dict, at_three: dict, alpha_s, keys=Non
             if keys is not None and not keys(key):
                 continue
             scale = absolute_scale(at_three, key, alpha_s)
-            got = mine[accuracy].get(key, 0)
-            rows.append((deviation(got, values.get(key, 0), scale), key))
+            got, want = mine[accuracy].get(key, 0), values.get(key, 0)
+            size = denominator(got, want, scale)
+            rows.append((abs(got - want) / size, key, size))
         out[accuracy] = rows
+    return out
+
+
+def dd_beyond(rows, estimates: dict) -> list[dict]:
+    """The double-double coefficients of ``rows`` (``carrier_errors``) beyond
+    1e-24, each with E_DD (its absolute estimate over the deviation's
+    denominator; None for the Born) and whether it lies in rules 4 and 6's
+    band max(1e-24, 10 E_DD)."""
+
+    out = []
+    for error, key, size in rows:
+        if error <= TOLERANCE:
+            continue
+        estimate = estimates.get(key)
+        e_dd = None if estimate is None else estimate / size
+        out.append(
+            {
+                "key": list(key),
+                "error": float(error),
+                "e_dd": None if e_dd is None else float(e_dd),
+                "within": e_dd is not None and error <= BRACKET * e_dd,
+            }
+        )
     return out
 
 
@@ -571,19 +579,16 @@ def _born_or_virtual(key) -> bool:
     return key[0] in ("born", "virtual")
 
 
-def rule_seven(model, compiled, native, row: str, indices, cache, listed=None):
+def rule_seven(model, compiled, native, row: str, indices, cache):
     """Rule 7's projection part and the scan's Catani poles of a campaign
     row at its points ``indices``: per point the largest deviation of every
-    check (``TOLERANCE`` to pass) and, at the ``listed`` points (default
-    ``DD_LISTED``), the double-double coefficients beyond 1e-24 with their
-    E_DD."""
+    check (``TOLERANCE`` to pass; double-double in its band instead) and the
+    double-double coefficients beyond 1e-24 with their E_DD."""
 
-    listed = DD_LISTED if listed is None else listed
     indices = tuple(indices)
     spec = row_spec(row, indices)
     alpha_s = _exact(spec["parameters"]["aS"])
-    estimated = [j for j, i in enumerate(indices) if (row, i) in listed]
-    found = native_projections(compiled, native, spec, estimated)
+    found = native_projections(compiled, native, spec)
     lc = found["lc"][0]
     degrees = sector_degrees(lc)
     assert degrees == sector_degrees(found["nlc"][0])
@@ -613,32 +618,18 @@ def rule_seven(model, compiled, native, row: str, indices, cache, listed=None):
             alpha_s,
             _born_or_virtual,
         )
-        for accuracy in expected:
-            errors[f"mpfr-{accuracy}"] = max(e for e, _key in mpfr[accuracy])
-            errors[f"dd-{accuracy}"] = max(e for e, _key in dd[accuracy])
         beyond = []
-        if j in estimated:
-            for accuracy in expected:
-                entries, estimates = found[accuracy][1]["dd-estimate"][j]
-                assert entries == found[accuracy][1]["dd"][j], (row, index)
-                beyond += [
-                    {
-                        "accuracy": accuracy,
-                        "key": list(key),
-                        "error": float(e),
-                        "e_dd": None
-                        if estimates.get(key) is None
-                        else float(estimates[key]),
-                        "bracketed": estimates.get(key) is not None
-                        and e <= BRACKET * estimates[key],
-                    }
-                    for e, key in dd[accuracy]
-                    if e > TOLERANCE
-                ]
+        for accuracy in expected:
+            errors[f"mpfr-{accuracy}"] = max(e for e, *_rest in mpfr[accuracy])
+            errors[f"dd-{accuracy}"] = max(e for e, *_rest in dd[accuracy])
+            estimates = found[accuracy][1]["e-dd"][j]
+            beyond += [
+                {"accuracy": accuracy, **entry}
+                for entry in dd_beyond(dd[accuracy], estimates)
+            ]
         report["points"].append(
             {
                 "index": index,
-                "listed": (row, index) in listed,
                 "errors": errors,
                 "dd_beyond": beyond,
                 "vanishing_gap": vanishing_gap(expected, at_three, alpha_s),
@@ -655,18 +646,16 @@ def verdict(report: dict) -> list[str]:
     for point in report["points"]:
         index = point["index"]
         for name, error in point["errors"].items():
-            if error <= TOLERANCE:
-                continue
-            if name.startswith("dd-") and point["listed"]:
+            # Double-double is held in its band, coefficient by coefficient.
+            if error <= TOLERANCE or name.startswith("dd-"):
                 continue
             failures.append(f"point {index}: {name} {float(error):.3g}")
-        if point["listed"]:
-            failures += [
-                f"point {index}: dd {b['accuracy']} {b['key']} {b['error']:.3g} "
-                f"beyond 10 E_DD = {b['e_dd']}"
-                for b in point["dd_beyond"]
-                if not b["bracketed"]
-            ]
+        failures += [
+            f"point {index}: dd {b['accuracy']} {b['key']} {b['error']:.3g} "
+            f"beyond max(1e-24, 10 E_DD), E_DD = {b['e_dd']}"
+            for b in point["dd_beyond"]
+            if not b["within"]
+        ]
     return failures
 
 
@@ -676,10 +665,7 @@ def _printable(report: dict) -> str:
             **{k: report[k] for k in ("row", "top", "span")},
             "points": [
                 {
-                    **{
-                        k: p[k]
-                        for k in ("index", "listed", "dd_beyond", "vanishing_gap")
-                    },
+                    **{k: p[k] for k in ("index", "dd_beyond", "vanishing_gap")},
                     **{k: float(v) for k, v in p["errors"].items()},
                 }
                 for p in report["points"]
@@ -724,8 +710,6 @@ def test_nc_column_names_the_plan_rows_and_existing_oracles():
         assert len(data["points"]) == len(ALL_POINTS), row
         (p0, mu0), (p3, mu3) = data["points"][0], data["points"][3]
         assert p3 == p0 and _exact(mu3) * 4 == _exact(mu0), row
-    for row, index in DD_LISTED:
-        assert row in NC_ROWS and index in ALL_POINTS, (row, index)
 
 
 def _run(model, native, tmp_path, row, indices):
@@ -758,7 +742,7 @@ def test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan(
     rows: points 0 and 1; nightly rows: all four): LC, NLC and FC on native
     MPFR and in double-double against the exact N_c fit of the scan, the
     fit's own checks, the leading degrees, and Catani at N, each per
-    coefficient within 1e-24."""
+    coefficient within 1e-24 (double-double within max(1e-24, 10 E_DD))."""
 
     indices = DEFAULT_POINTS if row in DEFAULT_ROWS else ALL_POINTS
     _run(loop_sm_compiled_model, loop_native, tmp_path, row, indices)
