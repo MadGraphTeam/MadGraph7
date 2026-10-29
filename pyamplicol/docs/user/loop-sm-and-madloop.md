@@ -47,7 +47,9 @@ No `[loop.model]` section and no colour setting are needed:
   N_c dependence of every counterterm vertex and external-field factor
   (C_A, C_F, T_F, N_col), keyed per vertex by structure, so the shipped
   copy, MG5_aMC's directory and every restriction of either take it with no
-  setting. A model's own declaration wins; a request reaching a vertex no
+  setting. It is tied to loop_sm's shipped scheme: a `[loop.model]` stating
+  another scheme, or another model, needs its own declaration. A model's own
+  declaration wins; a request reaching a vertex no
   declaration covers is refused (`colour-declaration-coverage`). Tree
   requests keep the leading-colour default.
 - **Source repair.** loop_sm declares its four-G0 vertex `V_1001` with the

@@ -29,7 +29,8 @@ it within 7e-53 at N = 2 and 1/2 on A08, A12, A13 and B03's point 0
 (``test_native_dressing_of_the_scan_equals_the_python_path``), but carries a
 precision-independent error at B03's point 1 (the bare loop 4e-25 off
 Catani at 60, 80 and 100 digits alike, where the native carriers equal
-Catani to 1e-65; routed). Full colour has no grade split, so the scan does
+Catani to 1e-65; below the user's ~1e-5 threshold, a HANDOFF §9 note only).
+Full colour has no grade split, so the scan does
 not rest on the grade bookkeeping that LC and NLC use. FC(N) = sum_p c_p
 N^p, with the external colour average of N_c = 3 at every N. The window p =
 P_top - span .. P_top (P_top the request's largest leading degree, span
