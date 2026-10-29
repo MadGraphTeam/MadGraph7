@@ -38,7 +38,10 @@ def test_helper_bodies_inline_and_evaluate_as_symbolica_does() -> None:
     helper = symbols.qualified("pyamplicol_symjit_helper_test::helper")
     body = choose(equal(a, b), a, 3 * b) + choose(truth(less(a, b)), b * b, a)
     evaluator = Expression.evaluator_multiple(
-        [helper(x, y) + 2 * helper(y, y), _primitive("real_part")(x) * helper(x, x + y)],
+        [
+            helper(x, y) + 2 * helper(y, y),
+            _primitive("real_part")(x) * helper(x, x + y),
+        ],
         [x, y],
         functions=[FunctionDefinition(helper, [a, b], body, inlining="never")],
         jit_compile=False,

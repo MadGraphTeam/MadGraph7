@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Explicit bundle colour input binds exact shared source values and constraints."""
 
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -186,3 +187,151 @@ def test_effective_scheme_must_match_explicit_colour_scheme(source):
         prepare_declared_source_color(
             model, data, scheme=replace(data.scheme, dimensional_regularization="FDH")
         )
+
+
+def source_declaration(prepared):
+    """Explicit SU(N_c) source continuation of every kernel but the four-gluon R2
+    (from the removed test_loop_source_color_physical.py)."""
+    from symbolica import E, S
+
+    from pyamplicol.loops.source_color import SourceColorContinuation
+    from pyamplicol.loops.wavefunction import prepare_external_field_rules
+    from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+    nc = S("source_dy_control::Nc")
+    # Explicit test model input: standard SUN tensors plus CA/CF/TF/Ncol.
+    # Fixed-SU3 four-gluon R2 has deliberately NOT been admitted. This fixture
+    # does not certify all entries of loop_sm or a public model-name domain.
+    keys = frozenset(
+        entry.key
+        for entry in prepared.model.kernels
+        if not (
+            entry.kind == "R2"
+            and len(entry.particle_ids) == 4
+            and all(
+                prepared.model.raw.collections["particles"][i]["fields"]["spin"] == 3
+                and prepared.model.raw.collections["particles"][i]["fields"]["color"]
+                == 8
+                for i in entry.particle_ids
+            )
+        )
+    )
+    return SourceColorContinuation(
+        prepared.model,
+        nc,
+        {"Ncol": nc, "CA": nc, "CF": (nc**2 - 1) / (2 * nc), "TF": E("1/2")},
+        keys,
+        frozenset(
+            (rule.particle_id, rule.correction, rule.loop_group_index)
+            for rule in prepare_external_field_rules(prepared.model)
+        ),
+        LoopSchemeDeclaration(
+            "HV",
+            "physical-four-dimensional",
+            "source-4d",
+            "source-QCD",
+            "real",
+            "source-local-rules",
+            "explicit test source continuation",
+        ),
+    )
+
+
+def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip(loop_sm_ufo):
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
+        with_loop_color_declaration,
+    )
+    from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+    path = str(loop_sm_ufo)
+    raw = load_raw_loop_model(path)
+    options = dict(
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    original = prepare_loop_request_model(raw, **options)
+    base = source_declaration(original)
+    recipes = []
+    for rule in original.counterterms.rules.values():
+        first = rule.entries[0]
+        fields = [
+            original.model.raw.collections["particles"][i]["fields"]
+            for i in first.particle_ids
+        ]
+        if (
+            rule.kind != "R2"
+            or len(fields) != 4
+            or any((field["spin"], field["color"]) != (3, 8) for field in fields)
+        ):
+            continue
+        gauge = all(
+            alternative == (first.particle_ids[0],)
+            for alternative in first.loop_particles
+        )
+        recipes.append(
+            WholeRuleColorRecipe(
+                first.collection,
+                first.vertex_id,
+                first.loop_group_index,
+                first.order,
+                "G",
+                "gauge" if gauge else "fundamental-dirac",
+            )
+        )
+    assert len(recipes) == 2
+    data = LoopColorDeclaration(
+        scheme=base.scheme,
+        formal_symbol="Nc",
+        parameter_identities={
+            "Ncol": "Nc",
+            "CA": "Nc",
+            "CF": "(Nc**2-1)/(2*Nc)",
+            "TF": "1/2",
+        },
+        kernel_keys=tuple(base.kernel_keys),
+        field_keys=tuple(base.field_keys),
+        scheme_parameter_values={"lhv": "1"},
+        whole_rules=tuple(recipes),
+    )
+    restored = RawLoopModel.from_dict(
+        json.loads(json.dumps(with_loop_color_declaration(raw, data).to_dict()))
+    )
+    declared_data = resolve_loop_color_declaration(restored)
+    actual = prepare_loop_request_model(restored, **options)
+    continued, owned = prepare_declared_source_color(
+        actual, declared_data, scheme=data.scheme
+    )
+    assert continued is not actual
+    assert continued.model is actual.model
+    assert (
+        continued.counterterms.source_entries_complete
+        == actual.counterterms.source_entries_complete
+    )
+    assert len(owned.whole_rule_continuations) == 2
+    assert (
+        sum(len(item.source_entries) for item in owned.whole_rule_continuations) == 57
+    )
+    for item in owned.whole_rule_continuations:
+        assert item.key in {recipe.key for recipe in recipes}
+        assert all(
+            any(entry is candidate for candidate in actual.model.kernels)
+            for entry in item.source_entries
+        )
+        assert not any(
+            entry is candidate
+            for entry in item.source_entries
+            for candidate in original.model.kernels
+        )
+        assert item.loop_particles is item.source_entries[0].loop_particles
+    for rule in continued.counterterms.rules.values():
+        if rule.whole_rule_continuation is not None:
+            assert rule.entries == rule.whole_rule_continuation.source_entries
+            assert rule.active_coupling_symbols == rule.native_coupling_symbols
+    # A syntactically valid recipe with the wrong source coupling fails the
+    # complete independent Nc=3 tensor check; metadata presence is insufficient.
+    wrong = replace(data, whole_rules=(replace(recipes[0], gauge_coupling="2*G"),))
+    with pytest.raises(ValueError, match="whole source tensor differs"):
+        prepare_declared_source_color(actual, wrong, scheme=data.scheme)

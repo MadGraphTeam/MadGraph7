@@ -11,7 +11,7 @@ from pyamplicol.loops.model_expressions import parse_exact_ufo
 from pyamplicol.loops.wavefunction import (
     prepare_external_field_rules,
 )
-from pyamplicol.models.loop_import import capture_raw_loop_model
+from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
 from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
 pytestmark = pytest.mark.loop_fast
@@ -89,3 +89,18 @@ def test_rounded_or_nonexpression_particle_field_values_fail(hep, bad):
     module, _ = _source(hep, values={(1, 0, 0): {0: bad}})
     with pytest.raises(ValueError, match="exact expression"):
         prepare_external_field_rules(build_loop_model(capture_raw_loop_model(module)))
+
+
+def test_real_top_field_rule_has_the_model_half_z(loop_sm_ufo, hep):
+    """The live half of the former two-copy test (its legacy CT matching went
+    with the legacy engine): loop_sm's top field rule, exact Laurent terms."""
+    source = build_loop_model(load_raw_loop_model(str(loop_sm_ufo)))
+    rules = prepare_external_field_rules(source)
+    top = next(rule for rule in rules if rule.pdg == 6)
+    assert top.alternatives == ((6, 21),)
+    assert top.coefficient.coefficient(-1) == parse_exact_ufo(
+        "cond(MT,0,-G**2*3*CF/(32*cmath.pi**2))"
+    )
+    assert top.coefficient.coefficient(0) == parse_exact_ufo(
+        "cond(MT,0,-G**2*CF*(4-3*reglog(MT**2/MU_R**2))/(32*cmath.pi**2))"
+    )
