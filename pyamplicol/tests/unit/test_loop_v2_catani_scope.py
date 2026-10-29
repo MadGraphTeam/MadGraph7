@@ -11,7 +11,13 @@ batch 2; ``loops.v2.poles``, ``loops.v2.ew_policy``, ``assemble._ir_poles``).
 * A sector is predicted only where the requested corrections complete its
   loops (``poles.predicted_sectors``): the mixed QCD x EW sectors of a
   QCD-only request are not (slice-status DECISIONS 2026-10-25 ~13:30, routed
-  from ew-lines: their prediction was 2 % off the virtual's single pole).
+  from ew-lines: their prediction was 2 % off the virtual's single pole);
+  nor is a sector whose Born trees join the charged legs in different ways
+  through lines no requested correction circulates (``poles.
+  separated_exchange``, mq-ewjoin: MQ-VALIDATE finding F1, u d > u d h at
+  QCD = 0, whose single pole equals MadLoop's but misses Catani's by 0.1).
+  Every unpredicted sector has a typed reason (``poles.sector_predictions``,
+  ``LoopSlice.unpredicted_sectors``).
 """
 
 from __future__ import annotations
@@ -25,7 +31,12 @@ import pytest
 from pyamplicol.loops.v2.ew_policy import CorrectionOrders, correction_orders
 from pyamplicol.loops.v2.families import add_orders
 from pyamplicol.loops.v2.poles import (
+    SEPARATED_EXCHANGE,
+    UNCOMPUTED_BORN_PAIR,
+    UNCORRECTED_EXCHANGE,
     predicted_sectors,
+    sector_predictions,
+    separated_exchange,
     strong_beta0,
     strong_gamma,
 )
@@ -240,6 +251,90 @@ def test_absent_trees_keep_their_sectors_predicted():
         _orders(QCD=6),
         _orders(QCD=4, QED=2),
     }
+
+
+@pytest.mark.loop_fast
+def test_separated_exchanges_need_one_partition_or_one_abelian_component():
+    """``poles.separated_exchange``: a non-abelian operator matches the
+    computed loops when every Born tree joins the charged legs into the
+    same components (the cross-component correlators vanish), an abelian
+    one only with a single component per tree."""
+
+    z = frozenset({frozenset({1, 3}), frozenset({2, 4})})
+    w = frozenset({frozenset({1, 4}), frozenset({2, 3})})
+    joined = frozenset({frozenset({1, 2, 3, 4})})
+    assert not separated_exchange([z, z], abelian=False)
+    assert not separated_exchange([joined], abelian=False)
+    assert separated_exchange([z, w], abelian=False)
+    assert not separated_exchange([joined], abelian=True)
+    assert separated_exchange([z], abelian=True)
+
+
+@pytest.mark.loop_fast
+def test_every_unpredicted_sector_has_a_typed_reason():
+    """``poles.sector_predictions``: None for a predicted sector, else why:
+    an uncorrected exchange, an uncomputed Born pair or a separated
+    exchange (asked only of the dressed Born amplitude orders)."""
+
+    born = [_orders(QED=3)]
+    sectors = _sectors(born, [_orders(QCD=2, QED=3)])
+    sector = _orders(QCD=2, QED=6)
+    asked = []
+
+    def separated(name, orders):
+        asked.append((name, orders))
+        return True
+
+    absent = {_orders(QCD=2, QED=1): False}
+    assert sector_predictions(sectors, born, ["QCD"], absent.get) == {sector: None}
+    assert sector_predictions(sectors, born, ["QCD"], absent.get, separated) == {
+        sector: SEPARATED_EXCHANGE
+    }
+    assert asked == [("QCD", frozenset(born))]
+    assert sector_predictions(sectors, born, ["QCD"], lambda order: True) == {
+        sector: UNCORRECTED_EXCHANGE
+    }
+    born = [_orders(QCD=2), _orders(QED=2)]
+    sectors = _sectors(born, [_orders(QCD=4), _orders(QCD=2, QED=2)])
+    found = sector_predictions(sectors, born, ["QCD", "QED"], lambda order: None)
+    assert found[_orders(QCD=2, QED=4)] == UNCOMPUTED_BORN_PAIR
+
+
+@pytest.mark.loop_physics
+def test_quark_lines_joined_by_two_weak_exchanges_have_no_prediction(
+    loop_sm_compiled_model, loop_native
+):
+    """u d > u d h at QCD = 0 (VBF, m-qcd row D19): its Born trees exchange a
+    Z (u -> u, d -> d) or a W (u -> d, d -> u) between the quark lines, and
+    a QCD request leaves out the gluon exchanges between the lines (their
+    loops carry the Z or W), whose interference Catani's operator sums: its
+    sector is not predicted (separated-exchange). With one exchange only
+    (u c > u c h: the Z; u b > d t: the W) every tree joins the legs alike
+    and the cross-line correlators vanish: predicted. Structural, from the
+    Born DAG (``assemble._born_partitions``); generation only."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    fixed = {"WT": "0", "WZ": "0", "WW": "0", "WH": "0"}
+    expected = {
+        "u d > u d h": ((0, 3), SEPARATED_EXCHANGE),
+        "u c > u c h": ((0, 3), None),
+        "u b > d t": ((0, 2), None),
+    }
+    for process, ((qcd, qed), reason) in expected.items():
+        request = SliceRequest(
+            process,
+            {"QCD": qcd, "QED": qed},
+            {"QCD": qcd + 2, "QED": qed},
+            fixed_parameters=fixed,
+        )
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        sector = _orders(QCD=2 * qcd + 2, QED=2 * qed)
+        assert [found for found, _pairs in slice_.sectors] == [sector], process
+        unpredicted = {sector: reason} if reason else {}
+        assert slice_.unpredicted_sectors() == unpredicted, process
 
 
 @pytest.fixture(scope="module")

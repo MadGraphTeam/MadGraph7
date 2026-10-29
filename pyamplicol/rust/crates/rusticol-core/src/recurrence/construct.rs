@@ -1963,6 +1963,23 @@ impl PreparedTransitionCatalog {
         &self.structural_transitions
     }
 
+    /// The structural transitions with their local coupling orders (one row
+    /// per distinct pair), for the order-aware Dirac-Weyl guard.
+    fn structural_transitions_with_orders(
+        &self,
+    ) -> RusticolResult<BTreeSet<(StructuralTransition, Box<[u32]>)>> {
+        self.rows_by_state_pair
+            .values()
+            .flatten()
+            .map(|prepared| {
+                Ok((
+                    prepared.structural_transition()?,
+                    prepared.local_coupling_orders.clone(),
+                ))
+            })
+            .collect()
+    }
+
     fn decoded_transition_count(&self) -> usize {
         self.decoded_transition_count
     }
@@ -4367,6 +4384,281 @@ impl StructuralFeasibilityIndex {
     }
 }
 
+/// Fail-closed guard for the Dirac-Weyl closure class (m-qcd MQ-5F; HANDOFF
+/// §9.1). A fermion current whose line passed a massive fermion is a Dirac
+/// (chirality-0) current, while a massless external fermion is a Weyl
+/// (chirality +-1) source. Where a chiral vertex takes a line between massive
+/// and massless fermions (a massless b and the top through a W), the
+/// complement of a Weyl closure anchor can be a Dirac current of a particle
+/// pair that closes in other chirality states. Templates carry no Dirac-Weyl
+/// closure, so that complement would close on nothing and its diagrams (the
+/// top t channel of b b~ > w+ w-) would be dropped without an error: the
+/// recurrence (here, in its structural-demand pass, at each LC sector's
+/// closure anchor, for a complement reached within the request's
+/// coupling-order limits, `StructuralOrderReachability`) and the on-the-fly
+/// lane (at a query's anchor, on its order-filtered currents,
+/// `on_the_fly::sweep::build_selected_closures`; the minimal coupling-order
+/// policy, `on_the_fly::coupling_policy`, where such a pair's orders would
+/// change its limits) refuse the request instead, with the listed key
+/// `dirac-weyl-closure`.
+#[derive(Debug)]
+pub(crate) struct DiracWeylClosureGuard {
+    /// Ordered (particle, particle) pairs of fermion current states that
+    /// some closure row joins.
+    closable: BTreeSet<(i32, i32)>,
+}
+
+impl DiracWeylClosureGuard {
+    /// The guard of the closures joining the current-state pairs `pairs`.
+    pub(crate) fn from_state_pairs(
+        states: &[super::template::CurrentStateRow],
+        pairs: impl IntoIterator<Item = (u32, u32)>,
+    ) -> Self {
+        let mut closable = BTreeSet::new();
+        for (left, right) in pairs {
+            let (Some(left), Some(right)) = (Self::state(states, left), Self::state(states, right))
+            else {
+                continue;
+            };
+            if Self::fermion(left) && Self::fermion(right) {
+                closable.insert((left.particle_id, right.particle_id));
+                closable.insert((right.particle_id, left.particle_id));
+            }
+        }
+        Self { closable }
+    }
+
+    fn of_template(
+        template: &OwnedRecurrenceTemplateInput,
+        catalog: &TemplateCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let mut pairs = Vec::with_capacity(template.closures.len());
+        for closure in &template.closures {
+            let states = catalog.u32_sequence(
+                closure.input_state_sequence_id,
+                "Dirac-Weyl guard closure input states",
+            )?;
+            let [left, right] = states else {
+                return Err(invalid(
+                    "direct recurrence requires binary prepared closures",
+                ));
+            };
+            pairs.push((*left, *right));
+        }
+        Ok(Self::from_state_pairs(&template.current_states, pairs))
+    }
+
+    /// The state row of a template id; `None` for a state the template's
+    /// current-state table does not describe (structural test fixtures),
+    /// which the guard cannot classify and leaves to the builder's own
+    /// integrity checks.
+    fn state(
+        states: &[super::template::CurrentStateRow],
+        state_template_id: u32,
+    ) -> Option<&super::template::CurrentStateRow> {
+        states.get(state_template_id as usize)
+    }
+
+    fn fermion(state: &super::template::CurrentStateRow) -> bool {
+        state.statistics == ParticleStatistics::Fermion as u8
+    }
+
+    /// The anchor and complement states, when they are a Dirac and a Weyl
+    /// state of a closable fermion pair (in either order).
+    fn dirac_weyl_pair<'a>(
+        &self,
+        states: &'a [super::template::CurrentStateRow],
+        anchor_state: u32,
+        complement_state: u32,
+    ) -> Option<[&'a super::template::CurrentStateRow; 2]> {
+        let anchor = Self::state(states, anchor_state)?;
+        let complement = Self::state(states, complement_state)?;
+        (Self::fermion(anchor)
+            && Self::fermion(complement)
+            && (anchor.chirality == 0) != (complement.chirality == 0)
+            && self
+                .closable
+                .contains(&(anchor.particle_id, complement.particle_id)))
+        .then_some([anchor, complement])
+    }
+
+    /// Whether two current states that no closure row joins are a Dirac and
+    /// a Weyl state of a closable fermion pair (in either order).
+    pub(crate) fn joins(
+        &self,
+        states: &[super::template::CurrentStateRow],
+        left_state: u32,
+        right_state: u32,
+    ) -> bool {
+        self.dirac_weyl_pair(states, left_state, right_state)
+            .is_some()
+    }
+
+    /// Refuses a closure anchor and complement state that no closure row
+    /// joins, when they are a Dirac and a Weyl state of a closable fermion
+    /// pair; `context` names the closure (its LC sector or query).
+    pub(crate) fn check(
+        &self,
+        states: &[super::template::CurrentStateRow],
+        anchor_state: u32,
+        complement_state: u32,
+        context: impl std::fmt::Display,
+    ) -> RusticolResult<()> {
+        let Some([anchor, complement]) =
+            self.dirac_weyl_pair(states, anchor_state, complement_state)
+        else {
+            return Ok(());
+        };
+        let (dirac, weyl) = if anchor.chirality == 0 {
+            (anchor, complement)
+        } else {
+            (complement, anchor)
+        };
+        // An evaluation-kind refusal: generation wraps it as a generation
+        // error, and the on-the-fly lane, which builds a query's closures at
+        // evaluation, surfaces it as a typed evaluation error (not a bare
+        // invalid-argument error).
+        Err(RusticolError::evaluation(format!(
+            "dirac-weyl-closure: {context} would close a Dirac (chirality-0) \
+             current of particle {} on a Weyl (chirality {}) current of \
+             particle {}; a fermion line that joins massive and massless \
+             fermions through a chiral vertex (a massive internal or external \
+             fermion on a line with a massless sink) has no Dirac-Weyl closure \
+             contraction in the tree recurrence, which would drop that line's \
+             diagrams. Keep the light fermion massive in the tree model (the \
+             default restriction with its mass fixed to zero) or use the loop \
+             engine, whose Born closes at a vertex",
+            dirac.particle_id, weyl.chirality, weyl.particle_id,
+        )))
+    }
+}
+
+/// Order-aware structural reachability for the Dirac-Weyl guard (MQ-5F).
+/// The structural-feasibility index carries no coupling orders, so a Dirac
+/// complement it reaches through a chiral vertex may need orders the
+/// request's limits exclude (a W in a QCD-only g g > t t~ b b~). The guard
+/// refuses only a complement state that some structural derivation reaches
+/// within the limits, under the builder's own rule (sources carry zero
+/// orders; `combined_coupling_orders` bounds every internal current). Per
+/// (support, state) it keeps the minimal order vectors within the limits;
+/// it is built and filled only for a complement the guard would otherwise
+/// refuse, so requests without such a complement do no extra work.
+#[derive(Debug)]
+struct StructuralOrderReachability<'a> {
+    feasibility: &'a StructuralFeasibilityIndex,
+    rules_by_result: BTreeMap<StructuralState, Vec<([StructuralState; 2], Box<[u32]>)>>,
+    limits: &'a [Option<u32>],
+    minimal_orders: BTreeMap<(TransientSupportKey, StructuralState), Vec<Box<[u32]>>>,
+}
+
+impl<'a> StructuralOrderReachability<'a> {
+    fn new(
+        feasibility: &'a StructuralFeasibilityIndex,
+        transitions: impl IntoIterator<Item = (StructuralTransition, Box<[u32]>)>,
+        limits: &'a [Option<u32>],
+    ) -> Self {
+        let mut rules_by_result =
+            BTreeMap::<StructuralState, Vec<([StructuralState; 2], Box<[u32]>)>>::new();
+        for (transition, local_orders) in transitions {
+            rules_by_result
+                .entry(transition.result)
+                .or_default()
+                .push((transition.parents, local_orders));
+        }
+        Self {
+            feasibility,
+            rules_by_result,
+            limits,
+            minimal_orders: BTreeMap::new(),
+        }
+    }
+
+    /// Whether some structural derivation of `state` on `support` has
+    /// coupling orders within the limits.
+    fn reaches_within_limits(
+        &mut self,
+        support: &TransientSupportKey,
+        state: StructuralState,
+    ) -> RusticolResult<bool> {
+        Ok(!self.minimal_orders_of(support, state)?.is_empty())
+    }
+
+    fn minimal_orders_of(
+        &mut self,
+        support: &TransientSupportKey,
+        state: StructuralState,
+    ) -> RusticolResult<Vec<Box<[u32]>>> {
+        let key = (support.clone(), state);
+        if let Some(found) = self.minimal_orders.get(&key) {
+            return Ok(found.clone());
+        }
+        let feasibility = self.feasibility;
+        let mut frontier = Vec::<Box<[u32]>>::new();
+        if support.cardinality() == 1 {
+            if feasibility
+                .feasible_states(support)
+                .is_some_and(|states| states.contains(&state))
+            {
+                frontier.push(vec![0; self.limits.len()].into_boxed_slice());
+            }
+        } else {
+            let rules = self
+                .rules_by_result
+                .get(&state)
+                .cloned()
+                .unwrap_or_default();
+            for [left_support, right_support] in feasibility.decompositions(support) {
+                let (Some(left_states), Some(right_states)) = (
+                    feasibility.feasible_states(left_support),
+                    feasibility.feasible_states(right_support),
+                ) else {
+                    continue;
+                };
+                for left in left_states.iter().copied() {
+                    for right in right_states.iter().copied() {
+                        for (parents, local_orders) in &rules {
+                            if !structural_parent_states_match(*parents, [left, right])
+                                && !structural_parent_states_match(*parents, [right, left])
+                            {
+                                continue;
+                            }
+                            let left_orders = self.minimal_orders_of(left_support, left)?;
+                            if left_orders.is_empty() {
+                                continue;
+                            }
+                            let right_orders = self.minimal_orders_of(right_support, right)?;
+                            for left_order in &left_orders {
+                                for right_order in &right_orders {
+                                    if let Some(total) = combined_coupling_orders(
+                                        left_order,
+                                        right_order,
+                                        local_orders,
+                                        self.limits,
+                                    )? {
+                                        insert_minimal_orders(&mut frontier, total);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.minimal_orders.insert(key, frontier.clone());
+        Ok(frontier)
+    }
+}
+
+/// Adds `orders` to a set of componentwise-minimal order vectors.
+fn insert_minimal_orders(frontier: &mut Vec<Box<[u32]>>, orders: Vec<u32>) {
+    let dominates = |low: &[u32], high: &[u32]| low.iter().zip(high).all(|(low, high)| low <= high);
+    if frontier.iter().any(|kept| dominates(kept, &orders)) {
+        return;
+    }
+    frontier.retain(|kept| !dominates(&orders, kept));
+    frontier.push(orders.into_boxed_slice());
+}
+
 #[derive(Debug)]
 struct StructuralDemandIndex {
     demanded: BTreeMap<TransientSupportKey, BTreeSet<StructuralState>>,
@@ -4380,6 +4672,7 @@ impl StructuralDemandIndex {
         prepared_transitions: &PreparedTransitionCatalog,
         feasibility: &StructuralFeasibilityIndex,
         materialized_sectors: &BTreeSet<u32>,
+        coupling_limits: &[Option<u32>],
     ) -> RusticolResult<Self> {
         if process.external_legs.len() != feasibility.source_count {
             return Err(invalid(
@@ -4388,6 +4681,8 @@ impl StructuralDemandIndex {
         }
         let transitions = prepared_transitions.structural_transitions();
         let full_support = TransientSupportKey::full(feasibility.source_count)?;
+        let dirac_weyl = DiracWeylClosureGuard::of_template(template, catalog)?;
+        let mut order_reachability = None::<StructuralOrderReachability<'_>>;
         let mut demanded = BTreeMap::<TransientSupportKey, BTreeSet<StructuralState>>::new();
         for sector_id in materialized_sectors.iter().copied() {
             let sector = process
@@ -4410,6 +4705,7 @@ impl StructuralDemandIndex {
             let mut sector_has_root = false;
             for anchor in anchor_states.iter().copied() {
                 for complement in complement_states.iter().copied() {
+                    let mut state_pair_closes = false;
                     for closure in &template.closures {
                         let closure_states = catalog.u32_sequence(
                             closure.input_state_sequence_id,
@@ -4435,12 +4731,41 @@ impl StructuralDemandIndex {
                         let Some(ordered) = ordered else {
                             continue;
                         };
+                        state_pair_closes = true;
                         if structural_closure_admits(*closure, ordered, template, catalog)? {
                             demanded
                                 .entry(complement_support.clone())
                                 .or_default()
                                 .insert(complement);
                             sector_has_root = true;
+                        }
+                    }
+                    if !state_pair_closes
+                        && dirac_weyl.joins(
+                            &template.current_states,
+                            anchor.state_template_id,
+                            complement.state_template_id,
+                        )
+                    {
+                        let reachability = match order_reachability.as_mut() {
+                            Some(reachability) => reachability,
+                            None => order_reachability.insert(StructuralOrderReachability::new(
+                                feasibility,
+                                prepared_transitions.structural_transitions_with_orders()?,
+                                coupling_limits,
+                            )),
+                        };
+                        // The anchor is a source (zero orders) and the builder
+                        // bounds no closure by the limits, so the dropped
+                        // diagrams are within the limits exactly when the
+                        // complement is.
+                        if reachability.reaches_within_limits(&complement_support, complement)? {
+                            dirac_weyl.check(
+                                &template.current_states,
+                                anchor.state_template_id,
+                                complement.state_template_id,
+                                format_args!("LC sector {sector_id}"),
+                            )?;
                         }
                     }
                 }
@@ -4911,6 +5236,7 @@ fn build_recurrence_program_impl(
             &prepared_transitions,
             &structural_feasibility,
             &construction_sectors,
+            &coupling_limits,
         )?;
         add_optional_elapsed_nanoseconds(
             &mut telemetry.structural_demand_nanoseconds,
@@ -14083,6 +14409,7 @@ mod tests {
                 &prepared,
                 &feasibility,
                 &materialized_sectors,
+                &vec![None; catalog.coupling_names.len()],
             )
             .unwrap();
             assert_eq!(indexed.demanded_rows(), lazy.demanded);
@@ -14511,6 +14838,7 @@ mod tests {
             &prepared_transitions,
             &structural_feasibility,
             &BTreeSet::from([0]),
+            &vec![None; template_catalog.coupling_names.len()],
         )
         .unwrap();
         let stage_diagnostics = build_internal_currents(
@@ -16774,5 +17102,153 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod dirac_weyl_guard_tests {
+    use super::super::template::{CurrentStateRow, ParticleStatistics};
+    use super::DiracWeylClosureGuard;
+    use crate::RusticolErrorKind;
+
+    fn state(
+        id: u32,
+        particle_id: i32,
+        statistics: ParticleStatistics,
+        chirality: i32,
+    ) -> CurrentStateRow {
+        CurrentStateRow {
+            id,
+            template_string_id: 0,
+            particle_id,
+            anti_particle_id: -particle_id,
+            species_string_id: 0,
+            orientation: 0,
+            statistics: statistics as u8,
+            color_representation: 3,
+            basis_string_id: 0,
+            tensor_ordering_sequence_id: 0,
+            dimension: 4,
+            chirality,
+            lc_color_shape_string_id: 0,
+            auxiliary_kind_string_id: 0,
+            mass_parameter_id: 0,
+            width_parameter_id: 0,
+            semantic_digest_id: 0,
+        }
+    }
+
+    /// States: 0 a Dirac b, 1 a Weyl b~, 2 a Dirac b~, 3 a Weyl b, 4 a
+    /// boson. Closure rows join (0, 2) (Dirac with Dirac) and (3, 1) (Weyl
+    /// with Weyl), so the particle pair (5, -5) is closable.
+    fn states() -> Vec<CurrentStateRow> {
+        vec![
+            state(0, 5, ParticleStatistics::Fermion, 0),
+            state(1, -5, ParticleStatistics::Fermion, 1),
+            state(2, -5, ParticleStatistics::Fermion, 0),
+            state(3, 5, ParticleStatistics::Fermion, -1),
+            state(4, 24, ParticleStatistics::Boson, 0),
+        ]
+    }
+
+    #[test]
+    fn a_dirac_current_against_a_weyl_state_of_a_closable_pair_is_an_evaluation_refusal() {
+        let states = states();
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1)]);
+        for (anchor, complement) in [(1, 0), (0, 1)] {
+            assert!(guard.joins(&states, anchor, complement));
+            let error = guard
+                .check(&states, anchor, complement, "LC sector 7")
+                .expect_err("a Dirac-Weyl pair no closure joins must be refused");
+            assert_eq!(error.kind(), RusticolErrorKind::Evaluation);
+            let message = error.to_string();
+            assert!(message.starts_with("dirac-weyl-closure: LC sector 7 would close a Dirac"));
+            assert!(message.contains("particle 5 on a Weyl (chirality 1) current of particle -5"));
+        }
+    }
+
+    #[test]
+    fn the_guard_passes_equal_chiralities_bosons_unclosable_pairs_and_unknown_states() {
+        let states = states();
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1), (4, 9)]);
+        // Two Dirac or two Weyl states; a boson; a pair no closure row joins.
+        for (anchor, complement) in [(0, 2), (3, 1), (4, 0), (0, 4)] {
+            assert!(!guard.joins(&states, anchor, complement));
+            guard
+                .check(&states, anchor, complement, "test")
+                .expect("passes");
+        }
+        let unclosable = DiracWeylClosureGuard::from_state_pairs(&states, [(4, 4)]);
+        assert!(!unclosable.joins(&states, 1, 0));
+        unclosable
+            .check(&states, 1, 0, "test")
+            .expect("no closable fermion pair");
+        // A state the table does not describe is left to the builder.
+        guard.check(&states, 1, 99, "test").expect("unknown state");
+    }
+
+    /// Sources A, B, C on slots 0, 1, 2; A B -> D at orders (0, 1) and
+    /// A B -> F at (1, 0); D C -> E at (1, 0) and F C -> E at (0, 2). E is
+    /// reached at (1, 1) or (1, 2), so only limits admitting (1, 1) reach it.
+    #[test]
+    fn the_order_reachability_keeps_minimal_orders_within_the_limits() {
+        use super::{
+            StructuralFeasibilityIndex, StructuralOrderReachability, StructuralState,
+            StructuralTransition, TransientSupportKey,
+        };
+        use std::collections::{BTreeMap, BTreeSet};
+        let [a, b, c, d, e, f] = [0, 1, 2, 3, 4, 5].map(|id| StructuralState::new(id, 0));
+        let support = |slots: &[u32]| TransientSupportKey::from_source_slots(4, slots).unwrap();
+        let feasibility = StructuralFeasibilityIndex {
+            source_count: 4,
+            feasible: BTreeMap::from([
+                (support(&[0]), BTreeSet::from([a])),
+                (support(&[1]), BTreeSet::from([b])),
+                (support(&[2]), BTreeSet::from([c])),
+                (support(&[0, 1]), BTreeSet::from([d, f])),
+                (support(&[0, 1, 2]), BTreeSet::from([e])),
+            ]),
+            decompositions: BTreeMap::from([
+                (support(&[0, 1]), vec![[support(&[0]), support(&[1])]]),
+                (support(&[0, 1, 2]), vec![[support(&[0, 1]), support(&[2])]]),
+            ]),
+            forward_transition_probe_count: 0,
+        };
+        let rule = |parents: [StructuralState; 2], result, orders: [u32; 2]| {
+            (
+                StructuralTransition { parents, result },
+                orders.to_vec().into_boxed_slice(),
+            )
+        };
+        let rules = [
+            rule([a, b], d, [0, 1]),
+            rule([b, a], f, [1, 0]),
+            rule([d, c], e, [1, 0]),
+            rule([c, f], e, [0, 2]),
+        ];
+        let full = support(&[0, 1, 2]);
+        for (limits, reached) in [
+            ([None, None], true),
+            ([None, Some(1)], true),
+            ([Some(1), Some(1)], true),
+            ([None, Some(0)], false),
+            ([Some(0), None], false),
+        ] {
+            let mut reachability =
+                StructuralOrderReachability::new(&feasibility, rules.clone(), &limits);
+            assert_eq!(
+                reachability.reaches_within_limits(&full, e).unwrap(),
+                reached,
+                "{limits:?}"
+            );
+        }
+        let unlimited = [None, None];
+        let mut reachability = StructuralOrderReachability::new(&feasibility, rules, &unlimited);
+        assert_eq!(
+            reachability.minimal_orders_of(&full, e).unwrap(),
+            vec![vec![1, 1].into_boxed_slice()]
+        );
+        // A state the support does not carry is not reached.
+        assert!(!reachability.reaches_within_limits(&full, d).unwrap());
     }
 }

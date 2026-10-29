@@ -473,14 +473,18 @@ def test_public_route_generates_the_blocked_list_bitwise_equal_to_the_tools_view
 # ---------------------------------------------------------------- refusals
 
 
-def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
+def _plan(model, expression, tmp_path, *, restriction=None, fixed=None):
     _compile(model, restriction)
-    plan = _generator(
+    return _generator(
         _ufo_card(
             model, tmp_path / "plan", expression, restriction=restriction, fixed=fixed
         ),
         tmp_path / "plan.toml",
     ).plan(_processes(expression))
+
+
+def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
+    plan = _plan(model, expression, tmp_path, restriction=restriction, fixed=fixed)
     (blocker,) = plan.unsupported_features
     return blocker, plan
 
@@ -491,12 +495,6 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
     [
         ("loop-induced", "g g > h h", None, None),
         ("coloured-width", "g g > t t~", None, {"WZ": "0"}),
-        (
-            "dirac-weyl-closure",
-            "b b~ > w+ w-",
-            "no_b_mass",
-            {"WT": "0", "WZ": "0", "WW": "0", "WH": "0"},
-        ),
     ],
 )
 def test_loop_sm_refusals_fire_in_the_dry_run(
@@ -524,6 +522,26 @@ def test_loop_sm_refusals_fire_in_the_dry_run(
     if key == "coloured-width":
         assert 'model.restriction = "no_widths"' in blocker
         assert 'WT = "0"' in blocker
+
+
+@pytest.mark.loop_physics
+def test_loop_sm_admits_dirac_weyl_closures_in_the_dry_run(tmp_path):
+    """b b~ > w+ w- on no_b_mass, whose top t channel closes a Dirac current
+    on a massless (Weyl) b: the loop Born admits the class (m-qcd MQ-5F,
+    ``test_loop_v2_dirac_weyl.py``), so the dry run has no blocker, and the
+    tree lanes' key ``dirac-weyl-closure`` is no loop admission refusal."""
+
+    from pyamplicol.loops.v2.refusals import listed_refusal_keys
+
+    plan = _plan(
+        "loop_sm",
+        "b b~ > w+ w-",
+        tmp_path,
+        restriction="no_b_mass",
+        fixed={"WT": "0", "WZ": "0", "WW": "0", "WH": "0"},
+    )
+    assert not plan.unsupported_features, plan.unsupported_features
+    assert "dirac-weyl-closure" not in listed_refusal_keys()
 
 
 MADLOOP_SYNTAX = (
