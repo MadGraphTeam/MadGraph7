@@ -706,6 +706,11 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
     table = builder.markdown(data)
     line = next(x for x in table.splitlines() if x.startswith("| A09"))
     assert "fail" in line and "F9" in line and "soft: r1 p0" in line
+    # Rule 1's tolerance is stated per row (1e-10 from 2->4 up).
+    assert rows["A01"]["reference_tolerance"] == 1e-12
+    assert rows["A18"]["reference_tolerance"] == 1e-10
+    line = next(x for x in table.splitlines() if x.startswith("| A18"))
+    assert "| 1e-10 |" in line
 
 
 def test_reference_records_without_a_reference_skip_rule1_only():
