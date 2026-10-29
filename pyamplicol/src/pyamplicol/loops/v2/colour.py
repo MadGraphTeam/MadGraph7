@@ -709,8 +709,11 @@ class SeedColour:
                 )
                 for p in network
             )
-        # (mask, field, orders) -> block name (``block_name``) -> block (the
-        # blocks of one name differ only by chirality, which colour ignores).
+        # (mask, field, orders) -> block name (``block_name``) -> block. The
+        # blocks of one name differ only by chirality or by the flavour flow
+        # of their trees (one field current the tree engine splits; their
+        # rows add, ``assemble._BlockRows``), which colour ignores: their
+        # colour flows must agree up to the sign their rows carry.
         self._words: dict[tuple[int, str, Orders], dict[BlockName, Block]] = {}
         for block in blocks.blocks:
             key = block.key
@@ -729,9 +732,16 @@ class SeedColour:
                     "grades (generation.dag_grades left it mixed)"
                 )
             field_name = self._fields.incoming(key.particle_id)["name"]
-            self._words.setdefault(
+            first = self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
             ).setdefault(block_name(blocks, block), block)
+            if first is not block and replace(first.colour_flow, sign=1) != replace(
+                block.colour_flow, sign=1
+            ):
+                raise ValueError(
+                    f"blocks {first.id} and {block.id} of word {key.word} and "
+                    "field current differ in colour flow"
+                )
         # The block names of each block current in state order, once.
         self._ordered: dict[tuple[int, str, Orders], tuple[BlockName, ...]] = {}
 
@@ -741,7 +751,19 @@ class SeedColour:
         vertex = position.vertex
         indices = self._indices.get((vertex.rule, add_orders(vertex.orders)))
         if not indices:
-            raise ValueError(f"no colour structure of {vertex.rule} at {vertex.orders}")
+            # The loop catalogue holds a vertex the tree model dropped (one
+            # whose couplings vanish at the restriction is no loop vertex,
+            # ``ct_sites.vanishing_loop_vertices``): refused, listed.
+            from .refusals import LoopRequestUnsupported
+
+            particles = " ".join(self._rules[vertex.rule]["particles"])
+            raise LoopRequestUnsupported(
+                "loop-vertex-outside-tree-model",
+                f"{self.blocks.process.process!r}: the loop vertex {vertex.rule} "
+                f"({particles}) at the coupling orders {dict(vertex.orders)} "
+                "has no term in the request's tree model, and its couplings are "
+                "not shown to vanish at the model's restriction",
+            )
         legs = self._canonical_legs(
             vertex.rule,
             vertex.loop_in,

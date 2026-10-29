@@ -1,5 +1,11 @@
 # Exact loop-model preparation
 
+> Partly historical: the model preparation (`loops.model`, `loops.compiler`
+> `prepare_loop_request_model`) is shared with engine v2; the kernels,
+> recurrence, physical programs and oracles described for the per-diagram
+> legacy one-loop engine were removed on 2026-10-29 (MQ-LEGACY-REMOVE; see
+> `loop_v2/DESIGN.md` §13.3).
+
 `pyamplicol.loops.model.build_loop_model(raw_sidecar)` prepares exact scalar
 definitions and individual tree/UV/R2 colour × Lorentz × loop-group entries.
 It consumes the existing raw UFO sidecar, including its exact-source contract;

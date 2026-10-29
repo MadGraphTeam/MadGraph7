@@ -61,7 +61,7 @@ from .ct_sites import (
     SiteClosure,
     generate_counterterm_sites,
     resolved_internal_parameters,
-    vanishes_identically,
+    restricted_to_zero,
 )
 from .families import (
     LoopOrderSelection,
@@ -579,7 +579,7 @@ class CountertermClosure:
                         # has no copy and contributes nothing (WP3.2 EWI-5);
                         # any other is refused.
                         absent = entries[0].vertex_name not in tree_vertices
-                        if absent and _restricted_to_zero(lowered, entries):
+                        if absent and restricted_to_zero(lowered, entries):
                             continue
                         from .refusals import LoopRequestUnsupported
 
@@ -651,22 +651,6 @@ class CountertermClosure:
                         )
                     )
         return cls(program, closure, tuple(sites), tuple(terms))
-
-
-def _restricted_to_zero(compiled: Any, entries: Sequence[Any]) -> bool:
-    """Whether every coupling of a vertex's loop-model ``entries`` vanishes
-    identically in the model ``compiled`` (its internal parameters resolved
-    to the restriction's external ones, ``ct_sites.vanishes_identically``),
-    so that the restricted tree model holds no term of it; False when that
-    cannot be shown."""
-
-    try:
-        return all(
-            vanishes_identically(compiled, entry.scalar_expression().value)
-            for entry in entries
-        )
-    except ValueError:  # an internal parameter left unresolved
-        return False
 
 
 def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
@@ -995,7 +979,6 @@ def lowered_counterterm_model(
             prepared = prepare_loop_request_model(
                 compiled,
                 fixed_parameters=dict(fixed_parameters),
-                certify_primitives=False,
             )
             continuation = None
             if declaration is not None:
@@ -1055,7 +1038,9 @@ def counterterm_program_blocks(
     (``name, work -> work()``) runs the lowering, the recursion and the
     program's DAG, e.g. to time them (``tools/loop_v2_dag.py``).
     ``u1_grades`` (leading and next-to-leading colour) makes every block of
-    the program exact in N_c (``generation.dag_grades``).
+    the program exact in N_c (``generation.dag_grades``) and refuses a
+    reachable counterterm vertex the ``continuation`` does not cover
+    (``refusals.require_declared_colour_rules``).
 
     A rule the lowering cannot lower is inert when its vertex enters no tree
     of the program (``InsertionReachability``, REQUIREMENTS_ADDENDUM J); the
@@ -1128,6 +1113,28 @@ def counterterm_program_blocks(
                 f"{name} [{fields(name)}] ({reason})"
                 for name, reason in sorted(recursion.residual.items())
             )
+        )
+    if continuation is not None and u1_grades:
+        # LC and NLC (the grade split) grade the CT couplings by the
+        # declaration's N_c continuation: a vertex it does not cover is
+        # refused when a tree of the request can hold it (``refusals``,
+        # listed; MQ-NC). Full colour reads the source couplings at N_c = 3
+        # and needs no coverage.
+        from .refusals import require_declared_colour_rules
+
+        def reachability() -> Callable[[Any], bool]:
+            return InsertionReachability.build(
+                lowered.lowered.tree_model(),
+                ir,
+                recursion.coupling_order_limits(),
+                ignored_particle_ids=vetoed_particle_ids(veto),
+            ).admits
+
+        require_declared_colour_rules(
+            continuation,
+            {name: rules[name] for name in recursion.rules},
+            reachability,
+            process,
         )
     program = run(
         "CT program",

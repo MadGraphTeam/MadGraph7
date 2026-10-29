@@ -45,8 +45,6 @@ in the production path (native executor, native inputs):
   (g g > g g: a box of four light lines, D0 not finite), the point fails with
   the master's reason instead of taking the massless integral, and
   DoubleFloat evaluates it (to its own conditioning there, 2.1e-18);
-* the legacy engine (the default ``loop.engine``) routes by the same rule:
-  its binary64 e+ e- > t t~ with MT = 1e-6 equals MPFR;
 * routed lanes use Symbolica in the native code, under pyAmpliCol's package
   key: unlicensed, with the restricted permit held elsewhere, a routed
   binary64 evaluation completes with the key and aborts without it, through
@@ -450,7 +448,7 @@ def test_light_lanes_beyond_the_binary64_masters_fail_closed(executors):
     assert error < LIGHT_BOX_DOUBLE_DOUBLE, error
 
 
-def _light_top_card(model: Path, output: Path, entries, engine: str = "v2") -> str:
+def _light_top_card(model: Path, output: Path, entries) -> str:
     """A public generation card of loop_sm with the light top fixed."""
 
     processes = ", ".join(
@@ -474,7 +472,6 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "{engine}"
 [loop.preparation]
 fixed_parameters = {{{fixed}}}
 [loop.model]
@@ -542,46 +539,6 @@ def test_the_artifact_records_the_light_masses(light_artifact, loop_native):
         "squared_masses": {"MT": "1e-12"},
     }
     assert "binary64_exact_engine" not in filters["epem_uux"]
-
-
-@pytest.mark.loop_physics
-def test_the_legacy_engine_routes_a_light_top(
-    loop_sm_compiled_model, loop_native, tmp_path
-):
-    """The default ``loop.engine``, legacy, routes by the same rule (its
-    binary64 fast plans, ``runtime::PolynomialPlan``): e+ e- > t t~ with
-    MT = 1e-6 fixed agrees in binary64 with MPFR to binary64 accuracy (the
-    snap's massless top lines would have given a double pole, which massive
-    emitters do not have)."""
-
-    import numpy as np
-
-    from pyamplicol import Runtime
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.config import resolve_config
-
-    output = tmp_path / "artifact"
-    card = tmp_path / "card.toml"
-    entries = (("epem_ttx", "e+ e- > t t~"),)
-    card.write_text(
-        _light_top_card(loop_sm_compiled_model, output, entries, engine="legacy")
-    )
-    Generator(resolve_config(card)).generate(
-        ProcessSet((ProcessRequest.parse("e+ e- > t t~", name="epem_ttx"),)), output
-    )
-    runtime = Runtime.load(output, process="epem_ttx", model_parameters={"aS": "0.118"})
-    values = {
-        arithmetic: np.ravel(
-            runtime.evaluate([POINT], mu_r2=[SCALE], **options).values
-        ).astype(complex)
-        for arithmetic, options in (
-            ("double", {"arithmetic": "double"}),
-            ("arbitrary", {"arithmetic": "arbitrary", "precision": 32}),
-        )
-    }
-    reference = values["arbitrary"]
-    error = np.max(np.abs(values["double"] - reference)) / np.max(np.abs(reference))
-    assert error <= BINARY64, error
 
 
 # The portability tool: unlicensed evaluation processes and the user's

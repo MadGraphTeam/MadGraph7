@@ -863,6 +863,28 @@ impl SchemaSources {
         })
     }
 
+    /// The four-component vector sources of the fill: per source its
+    /// 1-based leg label, the start of its value slot and its applied
+    /// crossing phase, the targets of a literal four-vector that replaces
+    /// the leg's wavefunction (the Python lane's
+    /// `native_observables._source_slots`, read from the same records).
+    pub(crate) fn vector_slots(&self) -> Vec<(usize, usize, [f64; 2])> {
+        self.sources
+            .iter()
+            .filter(|source| {
+                source.source_ir.wavefunction_family == GenericWavefunctionFamilyManifest::Vector
+                    && source.value_slot.component_stop == source.value_slot.component_start + 4
+            })
+            .map(|source| {
+                (
+                    source.leg_label,
+                    source.value_slot.component_start,
+                    source.applied_crossing.phase,
+                )
+            })
+            .collect()
+    }
+
     /// The squared mass of each of `legs` legs' external states, in leg
     /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
     /// the particle's PDG code, else its antiparticle's, absent = massless.

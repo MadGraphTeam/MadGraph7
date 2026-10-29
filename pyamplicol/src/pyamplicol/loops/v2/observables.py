@@ -683,6 +683,35 @@ def _sum_results(results: Sequence[PointResult]) -> PointResult:
 # --------------------------------------------------------------------- slice
 
 
+# Observable columns are contracted directly (design §7.3: no correlated or
+# resolved seed FFT): a request that requires the FFT serves its inclusive
+# virtual only (declared observables are refused at generation, the stored
+# correlated and resolved outputs at the runtime).
+FORCED_FFT_OBSERVABLES = (
+    "observable columns are contracted directly (design §7.3: no correlated "
+    "or resolved seed FFT); generate the slice with colour contraction 'auto' "
+    "or 'direct'"
+)
+
+
+def _refuse_selected_observables(request: Any, declared: bool) -> None:
+    """Declared observables (colour or spin correlations, the Ward mode) with
+    a leading-colour selection that keeps fewer helicities or flows are
+    refused (``selected-correlators``), as the tree engine's correlated
+    generation refuses its selectors: a spin source on a leg of fixed
+    helicity would ignore the selection."""
+
+    selection = request.selection
+    if declared and selection is not None and selection.restricts:
+        from .refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "selected-correlators",
+            "correlated generation requires complete colour and helicity "
+            f"coverage; the request selects {selection.record()}",
+        )
+
+
 @dataclass
 class ObservableSlice:
     """A generated slice and its declared observables.
@@ -722,6 +751,15 @@ class ObservableSlice:
         native_inputs: bool = False,
     ) -> ObservableSlice:
         correlators = correlators or CorrelatorConfig()
+        _refuse_selected_observables(
+            request,
+            bool(
+                correlators.color_correlations
+                or correlators.spin_correlations
+                or correlators.all_color_through_order is not None
+            )
+            or ward,
+        )
         full = bool(correlators.spin_correlations) or ward
         if full:
             from .catalogue import compile_tree_kernel_variant
@@ -755,12 +793,20 @@ class ObservableSlice:
 
         from pyamplicol.color.correlator_matrices import process_color_legs
 
-        if slice_.request.colour_contraction == "fft":
-            raise ValueError(
-                "observable columns are contracted directly (design §7.3: no "
-                "correlated or resolved seed FFT); generate the slice with "
-                "colour contraction 'auto' or 'direct'"
+        declared = correlators is not None and bool(
+            correlators.color_correlations
+            or correlators.spin_correlations
+            or correlators.all_color_through_order is not None
+        )
+        if slice_.request.colour_contraction == "fft" and (declared or ward):
+            # The inclusive virtual takes the forced seed FFT (the native
+            # executor, MQ-FFT); declared observables could never run.
+            from .refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "forced-seed-fft-unserved", FORCED_FFT_OBSERVABLES
             )
+        _refuse_selected_observables(slice_.request, declared or ward)
         correlators = correlators or CorrelatorConfig()
         correlators = correlators._resolve_color(
             process_color_legs(slice_.blocks.process)
@@ -1906,12 +1952,18 @@ class NativeObservables:
             columns=self.plan.seed_columns,
             merged=merged_graph(observables.slice) if schedule == "M" else None,
         )
+        # Observable columns are contracted directly (``FORCED_FFT_
+        # OBSERVABLES``; their assembly reports "direct"). A request that
+        # requires the FFT refuses them on the public route (the runtime's
+        # observable outputs) and at a declaration (``ObservableSlice.of``);
+        # the generation's validation still runs them as its reference.
         self.executor = NativeExecutor(
             observables.slice,
             exported=exported,
             lanes=lanes,
             threads=threads,
             scaleless=lambda: self._scaleless(lanes, threads),
+            contraction="direct",
         )
 
     def _scaleless(self, lanes: int, threads: int | None) -> NativeExecutor | None:
@@ -1924,7 +1976,11 @@ class NativeObservables:
             return None
         exported = export_plan(plan.slice, forward=False, columns=plan.seed_columns)
         return NativeExecutor(
-            plan.slice, exported=exported, lanes=lanes, threads=threads
+            plan.slice,
+            exported=exported,
+            lanes=lanes,
+            threads=threads,
+            contraction="direct",
         )
 
     @classmethod

@@ -16,7 +16,6 @@ from types import MappingProxyType
 from typing import Any
 
 from .._internal.physics.symbols import symbols as symbol_registry
-from .kernels import require_finite_batch
 from .model_expressions import LaurentExpression
 from .scalar_frontend import ScalarExpression, ScalarProgram, lower_scalar_program
 
@@ -129,7 +128,6 @@ class PreparedScalarBindings:
         precision=None,
         backend=None,
         parameters=None,
-        stability=None,
     ):
         return NativeScalarBindings(
             self,
@@ -137,39 +135,7 @@ class PreparedScalarBindings:
             precision=precision,
             backend=backend,
             parameters=parameters,
-            stability=stability,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedScaleBindings:
-    """One selected-output view of a shared prepared scalar owner."""
-
-    owner: PreparedScalarBindings
-    outputs: tuple[tuple[str, int], ...]
-    scale_parameter: str
-    scale_index: int
-    scale_state: bytes
-    values_state: bytes
-
-    def bind(self, global_state):
-        if not isinstance(global_state, NativeScalarBindings):
-            raise TypeError("scale bindings require a NativeScalarBindings owner")
-        if global_state.prepared is not self.owner:
-            raise ValueError(
-                "scale bindings require the identical prepared scalar owner"
-            )
-        view = NativeScaleBindings.__new__(NativeScaleBindings)
-        view.global_state, view.plan, view.prepared = global_state, None, self
-        view.scale_parameter, view._scale_index = self.scale_parameter, self.scale_index
-        view.backend = global_state.backend
-        view._scale = view.backend.CoefficientEvaluator(
-            self.scale_state, **global_state.options
-        )
-        view._evaluator = view.backend.CoefficientEvaluator(
-            self.values_state, **global_state.options
-        )
-        return view
 
 
 def prepare_scalar_bindings(
@@ -381,15 +347,6 @@ class SourceBindingFailure(ArithmeticError):
         super().__init__(f"{stage}: {detail}")
 
 
-@dataclass(frozen=True, slots=True)
-class _SourceFailure:
-    stage: str
-    detail: str
-
-    def exception(self):
-        return SourceBindingFailure(self.stage, self.detail)
-
-
 def _require_source_finite(values, stage):
     rows = values.nonfinite_rows()
     if rows:
@@ -398,30 +355,13 @@ def _require_source_finite(values, stage):
 
 @dataclass(frozen=True, slots=True)
 class NativeScalarSnapshot:
-    """Exact admitted global state, with either checked buffers or a failure."""
+    """Exact admitted global state with its checked buffers."""
 
-    _arguments: Any = field(repr=False)
-    _values: Any = field(repr=False)
+    arguments: Any = field(repr=False)
+    values: Any = field(repr=False)
     overrides: Mapping[str, tuple[str, str]]
     revision: int
     _owner: object = field(repr=False, compare=False)
-    _failure: _SourceFailure | None = field(default=None, repr=False)
-
-    @property
-    def binding_failure_stage(self):
-        return None if self._failure is None else self._failure.stage
-
-    @property
-    def arguments(self):
-        if self._failure is not None:
-            raise self._failure.exception()
-        return self._arguments
-
-    @property
-    def values(self):
-        if self._failure is not None:
-            raise self._failure.exception()
-        return self._values
 
 
 class NativeScalarBindings:
@@ -442,7 +382,6 @@ class NativeScalarBindings:
         precision=None,
         backend=None,
         parameters=None,
-        stability=None,
     ):
         if backend is None:
             from .native import load_loop_native
@@ -457,10 +396,6 @@ class NativeScalarBindings:
         self.options = MappingProxyType(
             {"arithmetic": arithmetic, "precision": precision}
         )
-        from .stability import validate_source_stability
-
-        validate_source_stability(backend, arithmetic, precision, stability)
-        self.stability = stability
         self._update_lock = Lock()
         self._identity = object()
         self._evaluator = backend.CoefficientEvaluator(
@@ -480,35 +415,13 @@ class NativeScalarBindings:
         self._state = self._realize_snapshot(overrides, 0)
 
     def _realize_snapshot(self, overrides, revision):
-        failure = None
-        try:
-            arguments, values = self._evaluate(overrides)
-        except SourceBindingFailure as error:
-            if self.stability is None:
-                raise
-            for higher in self.stability.higher:
-                try:
-                    NativeScalarBindings(
-                        self.prepared,
-                        backend=self.backend,
-                        parameters=overrides,
-                        arithmetic=higher.arithmetic,
-                        precision=higher.precision,
-                    )
-                except SourceBindingFailure:
-                    continue
-                break
-            else:
-                raise error
-            arguments, values = None, None
-            failure = _SourceFailure(error.stage, error.detail)
+        arguments, values = self._evaluate(overrides)
         return NativeScalarSnapshot(
             arguments,
             values,
             MappingProxyType(dict(overrides)),
             revision,
             self._identity,
-            failure,
         )
 
     def snapshot(self) -> NativeScalarSnapshot:
@@ -621,143 +534,3 @@ class NativeScalarBindings:
             snapshot = self._realize_snapshot(candidate, previous.revision + 1)
             self._state = snapshot
             return snapshot
-
-
-class NativeScaleBindings:
-    """Compiled scale-dependent outputs sharing one global parameter owner.
-
-    Only the selected real external scale is replaced by sqrt(mu_r2). All other
-    inputs come from a single owner snapshot per call. Selected output plans may
-    differ but must share their ScalarProgram, external layout and fixed map.
-    No independent update interface, running coupling or per-point model inputs
-    are introduced. As with native evaluators, calls on one view are serialized.
-    """
-
-    def __init__(
-        self,
-        global_state: NativeScalarBindings,
-        plan: ScalarBindingPlan | None = None,
-        *,
-        scale_parameter="MU_R",
-    ):
-
-        if not isinstance(global_state, NativeScalarBindings):
-            raise TypeError("scale bindings require a NativeScalarBindings owner")
-        owner = global_state.plan
-        if owner is None:
-            raise ValueError("a retained scalar owner requires prepared scale bindings")
-        plan = owner if plan is None else plan
-        if plan.program is not owner.program:
-            raise ValueError("scale plan must share the identical ScalarProgram owner")
-        if (
-            plan.external_names != owner.external_names
-            or plan.external_types != owner.external_types
-            or plan.input_symbols != owner.input_symbols
-            or plan.fixed_parameters != owner.fixed_parameters
-        ):
-            raise ValueError("scale plan external layout or fixed parameters differ")
-        if scale_parameter in owner.fixed_parameters:
-            raise ValueError("scale parameter is fixed during generation")
-        if scale_parameter not in owner.external_names:
-            raise ValueError("scale parameter must be an adjustable external parameter")
-        index = owner.external_names.index(scale_parameter)
-        if owner.external_types[index] != "real":
-            raise ValueError("scale parameter must be real")
-        self.global_state, self.plan = global_state, plan
-        self.scale_parameter, self._scale_index = scale_parameter, index
-        self.backend = global_state.backend
-        library = plan.program.library
-        scale = symbol_registry.qualified("loop_model_scale::mu_r2")
-        scale_outputs = (
-            library.lower(
-                "1 / (1 if s.imag == 0 and s.real > 0 else 0)",
-                locals={"s": scale},
-            ),
-            library.lower("cmath.sqrt(s)", locals={"s": scale}),
-        )
-        self.prepared = PreparedScaleBindings(
-            global_state.prepared,
-            plan.outputs,
-            scale_parameter,
-            index,
-            library.evaluator(scale_outputs, (scale,)).save(),
-            global_state.prepared.values_state
-            if plan is owner
-            else plan.evaluator_bytes(),
-        )
-        self._scale = self.backend.CoefficientEvaluator(
-            self.prepared.scale_state, **global_state.options
-        )
-        self._evaluator = self.backend.CoefficientEvaluator(
-            self.prepared.values_state, **global_state.options
-        )
-
-    def evaluate_native(self, mu_r2, *, snapshot: NativeScalarSnapshot | None = None):
-        """Return checked source values in scale-lane order, entirely natively."""
-        return self._evaluate_native(mu_r2, snapshot=snapshot)
-
-    def evaluate_partial_native(self, mu_r2, *, snapshot=None):
-        """Return sparse source values and original-ID numerical failures.
-
-        Nonfinite scale/active diagnostic lanes are removed before their values
-        can enter the next native evaluator. Metadata errors still raise.
-        """
-        from .numerical_lanes import LaneFailures
-
-        failures = LaneFailures()
-        values = self._evaluate_native(mu_r2, snapshot=snapshot, failures=failures)
-        return values, tuple(failures.entries)
-
-    def _evaluate_native(self, mu_r2, *, snapshot=None, failures=None):
-        snapshot = self.global_state.require_snapshot(
-            self.global_state.snapshot() if snapshot is None else snapshot
-        )
-        if not isinstance(mu_r2, self.backend.NativeBatch):
-            raise TypeError("scales require a NativeBatch")
-        if mu_r2.columns != 1:
-            raise ValueError("scales require one mu_r2 column")
-        original_ids = tuple(mu_r2.row_ids)
-
-        def checked(values, stage):
-            if failures is None:
-                require_finite_batch(values, stage)
-                return values
-            failures.require_finite(values, stage)
-            return values.take_rows(failures.successful_indices(values.row_ids))
-
-        mu_r2 = checked(mu_r2, "renormalization scales")
-        # Evaluating even an empty batch checks both carrier and precision.
-        scales = checked(
-            self._scale.evaluate_batch(mu_r2),
-            "positive real renormalization scales",
-        )
-        if snapshot._failure is not None:
-            if failures is None:
-                raise snapshot._failure.exception()
-            for point in original_ids:
-                failures.record(
-                    point, snapshot._failure.stage, snapshot._failure.detail
-                )
-            return self.backend.NativeBatch.from_decimal(
-                [],
-                0,
-                len(self.prepared.outputs),
-                row_ids=[],
-                **self.global_state.options,
-            )
-        arguments = snapshot.arguments.take_rows(
-            [0] * scales.rows, row_ids=scales.row_ids
-        )
-        columns = [
-            scales.take_columns([2])
-            if index == self._scale_index
-            else arguments.take_columns([index])
-            for index in range(len(self.prepared.owner.external_names))
-        ]
-        computed = checked(
-            self._evaluator.evaluate_batch(
-                self.backend.NativeBatch.concat_columns(columns)
-            ),
-            "scale-dependent scalar values and active diagnostics",
-        )
-        return computed.take_columns(list(range(0, 2 * len(self.prepared.outputs), 2)))

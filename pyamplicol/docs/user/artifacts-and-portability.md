@@ -150,7 +150,7 @@ certification performed during generation.
 | C++ or ASM process artifact | concrete target; CPU features when native specialization is enabled | No; requires exact compatible target/features. |
 | C++ or ASM prepared bundle | target-native | No. |
 | Compiled model IR (`.json`) | architecture-independent | Yes; it contains no executable prepared backend. |
-| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. The SymJIT applications are always compiled at -O2, whatever `evaluator.jit.optimization_level` says. No load or call regenerates anything: the companion of the certified-scaleless families (`"uv"`/`"ir"`), the correlated and resolved columns and exact flavour members are stored too; a process whose programs cannot be stored natively is refused at generation. |
+| Plan v4 virtual (one-loop) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. The SymJIT applications are always compiled at -O2, whatever `evaluator.jit.optimization_level` says. No load or call regenerates anything: the companion of the certified-scaleless families (`"uv"`/`"ir"`), the correlated and resolved columns and exact flavour members are stored too; a process whose programs cannot be stored natively is refused at generation. |
 
 For a portable compiled all-JIT artifact, Rusticol verifies that every
 executable leaf and nested selector path is O1 or O2 SymJIT. Eager and
@@ -189,6 +189,20 @@ A `symjit.toml` in the working directory, or `SYMJIT_TOML`, is read by
 SymJIT 2.27 whenever it loads a complex kernel; if that file is malformed or
 unreadable, loading fails. Keep such files out of the directories that
 evaluate pyAmpliCol artifacts.
+
+### C library of the receiving host
+
+Portable artifacts (the rows of the portability matrix that can move) hold no
+native code, but the receiving host must load pyAmpliCol's native libraries,
+so its glibc must define the symbol versions the installed libraries need. A
+manylinux 2.28 wheel needs glibc 2.28; the release native libraries built from
+a checkout with `tools/developer/build_loop_native.py` need glibc 2.38. A glibc
+that lacks a needed version is refused when the extension loads, with a
+`NativePlatformError` naming the missing versions and the running glibc. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc). The
+target-native libraries of C++ and ASM artifacts are built on the producing
+host and checked by the dynamic loader alone; regenerate such artifacts on the
+destination.
 
 ### Bitwise reproducibility
 

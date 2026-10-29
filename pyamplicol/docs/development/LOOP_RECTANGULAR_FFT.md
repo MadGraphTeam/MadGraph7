@@ -1,5 +1,10 @@
 # Rectangular Born–loop colour contraction
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 Certified ordinary and resolved NLC/full-colour loop artifacts now connect the
 existing symmetric-group transform to the shared dual-Born weight schedule.
 Binary64 uses the certified rectangular transform plus all direct residuals;

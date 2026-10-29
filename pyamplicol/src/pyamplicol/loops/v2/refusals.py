@@ -78,18 +78,90 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   consuming term reaches a loop order (t t~ > z h and t t~ > t t~ with QED
   corrections: the top Yukawa of leg 1); a root vertex the restriction
   removes contributes nothing and passes.
-* ``dirac-weyl-closure`` (WP2.9, routed item (iv)): the tree engine
-  propagates a massless external fermion as a Weyl state and a fermion line
-  that passed a massive fermion through a chiral vertex as a Dirac current;
-  no model contraction closes the two (``generation.dag_ordering.
-  DiracWeylClosureError``), so such a tree program is refused instead of
-  dropping its trees (u d~ > t b~ with a massless b, at the Born closure
-  already).
+* ``loop-vertex-outside-tree-model`` (fail-closed-2, a guard): loop lines
+  read the colour and Lorentz structures of their vertices from the
+  request's tree model (one set of conventions for loops, blocks and the
+  Born). A vertex of the loop model whose couplings at an order vanish
+  identically at the model's restriction (``ct_sites.restricted_to_zero``,
+  decided from the coupling values: e.g. a W vertex of a CKM element that a
+  diagonal-CKM restriction sets to zero, which the tree compiler drops) is
+  no loop vertex there (``ct_sites.vanishing_loop_vertices``,
+  ``families.ModelLoopCatalogue``). Any other loop vertex the tree model does
+  not hold at the order a loop position takes it has no structure to read:
+  the request is refused when a loop position uses it
+  (``colour.SeedColour.states``), naming the vertex and the order.
+* The QCD guards of the public route (m-qcd MQ-MODEL; user rulings
+  2026-10-28 ~15:25): ``loop-induced`` (no Born amplitude within the
+  request's coupling-order limits, ``generation.loop_service._v2_request``),
+  ``coloured-width`` (a coloured particle with a nonzero width in a tree
+  current, ``artifact.require_zero_coloured_widths``), and at model
+  preparation (``loops.covariant_model.build_covariant_structure``)
+  ``lorentz-slot-arity`` (a vertex tensor whose slots do not match its
+  particles once the structural source repair,
+  ``covariant_model.repair_source_declarations``, has moved the constant
+  scalar ones), ``majorana-fermion`` and ``multi-fermion-contact``. Each is
+  decided by structure: widths, spin slots, the self-conjugacy of a
+  fermion, the number of fermions at a vertex. Process-request refusals
+  (1 -> n decays, MG5_aMC syntax) are listed in ``processes.refusals``.
+  A massive (Dirac) current closing on a massless (Weyl) one (a fermion line
+  joining massive and massless fermions through a chiral vertex, e.g.
+  b b~ > w+ w- with a massless b) is no loop refusal since m-qcd MQ-5F: the
+  loop Born DAG records it as a marker root and the Born closes at a vertex
+  (``generation.dag_ordering._direct_contraction_ir`` with ``loop_born``);
+  the tree lanes refuse it (``dag_ordering.DiracWeylClosureUnsupported``,
+  key ``dirac-weyl-closure``).
+* ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
+  "fft"`` requires the certified symmetric-group FFT of the seed contraction
+  (design §7.3). Orbits of the external adjoint labels are found and
+  certified on the exact seed cells (``colour.seed_fourier``: a structural
+  criterion, no process or multiplicity key); a table without a certified
+  pair, a leading-colour request (diagonal, contracted directly) and declared
+  observables (their columns are contracted directly) are refused
+  (``LoopSlice._plan_contraction``, ``ObservableSlice.of``) instead of
+  silently contracting directly. ``"auto"`` serves all of them, reporting the
+  algorithm it ran.
+* ``selected-correlators`` (MQ-SELECT, a guard): declared colour or spin
+  correlations (or the Ward mode) with a leading-colour selection
+  (``selection.Selection``) are refused, as the tree engine's correlated
+  generation refuses its selectors (``generation.correlated``): on the
+  public route by the selectors set (``loop_service._check_correlators``),
+  in ``ObservableSlice.of`` by a selection that keeps fewer helicities or
+  flows (``Selection.restricts``).
+* ``subleading-colour-flows`` (MQ-SELECT): a generation-time colour-flow
+  selection none of whose flows reaches the process's leading N_c degree in
+  a squared Born order they reach (``LoopSlice._refuse_inexact_flows``,
+  from the slice's own grading of the unrestricted Born, identical-flavour
+  grade splits included): its leading-colour value there is zero, while the
+  restricted Born alone would set a lower degree. Next to a leading flow
+  such a flow contributes exact zeros and is kept.
+* ``interfering-colour-flows`` (MQ-SELECT): a generation-time colour-flow
+  selection one of whose flows has a leading-power term with an unselected
+  flow in a squared Born order (``LoopSlice._refuse_inexact_flows``;
+  possible between two Born orders only, e.g. QCD and photon Born
+  amplitudes): the restricted Born would drop that term, while the
+  evaluation-time selection keeps it.
+* ``colour-declaration-coverage`` (MQ-NC): LC and NLC grade the counterterm
+  and external-field couplings by the formal-N_c continuation of the
+  request's colour declaration (design §6.7). A declaration covers the
+  counterterm kernels (``LoopColorDeclaration.kernel_keys``, plus the
+  kernels of its whole-rule recipes) and field factors (``field_keys``) it
+  states; the shipped ones (``models.loop_color_declarations``) cover the
+  vertices whose structural digest they record. A covered vertex's N_c
+  dependence is declared (and proved against the source at N_c = 3); an
+  uncovered one has none, and grading it by the identities alone could
+  read an N_c = 3 number as N_c-independent. So an LC or NLC request is
+  refused when its counterterm program can insert an uncovered vertex (one
+  that a tree of the request can hold: ``ct_closure.InsertionReachability``,
+  as for an unlowerable vertex, REQUIREMENTS_ADDENDUM J; one no tree can
+  hold contributes nothing and is left alone) or an external leg takes an
+  uncovered field factor (``require_declared_colour_rules``,
+  ``require_declared_colour_fields``), naming the vertices and factors.
+  Full colour needs no declaration.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -173,17 +245,157 @@ LOOP_ADMISSION_REFUSALS = (
         "native closure terms",
     ),
     LoopAdmissionRefusal(
-        "dirac-weyl-closure",
-        "a fermion line joining massive and massless fermions through a chiral "
-        "vertex that closes a Dirac current on a massless external fermion "
-        "(e.g. u d~ > t b~ with a massless b)",
-        "the tree engine propagates massless external fermions as Weyl states "
-        "and installs no Dirac-Weyl closure contraction, so the closure would "
-        "drop such trees (generation.dag_ordering)",
-        "a model restriction with a massive b (MG5_aMC's restrict_with_b_mass)",
-        "WP2.9 (Dirac-Weyl closure)",
-        "a Dirac-Weyl closure contraction (the Weyl projection of the Dirac "
-        "current at the massless sink) in the tree engine",
+        "loop-vertex-outside-tree-model",
+        "a loop vertex that the request's restricted tree model does not hold at "
+        "the coupling order a loop of the request takes it, while its couplings "
+        "there are not shown to vanish at the model's restriction",
+        "loop lines read their vertices' colour and Lorentz structures from the "
+        "tree model; a vertex whose couplings vanish identically at the "
+        "restriction leaves the loops (ct_sites.restricted_to_zero), any other "
+        "vertex the tree model drops has no structure to read",
+        "a restriction under which the vertex's couplings vanish exactly, or one "
+        "that keeps the vertex in the tree model; or a particle_veto or "
+        "coupling-order bound that keeps it out of the request's loops",
+        "fail-closed-2 (a guard)",
+        "none (kept as the guard of the restriction rule)",
+    ),
+    LoopAdmissionRefusal(
+        "loop-induced",
+        "a request without a Born amplitude within its coupling-order limits "
+        "(a loop-induced process, MG5_aMC [noborn=QCD]: g g > h h, g g > z z, "
+        "g g > a a, ...)",
+        "v2 virtuals interfere one-loop and Born amplitudes; a loop-squared "
+        "matrix element is not served",
+        "a process with a Born amplitude, or coupling-order limits "
+        "(process.max_coupling_orders) that admit one",
+        "after M-SM (user ruling 2026-10-28 ~15:25 (2))",
+        "loop-squared matrix elements",
+    ),
+    LoopAdmissionRefusal(
+        "coloured-width",
+        "a request whose tree currents propagate a coloured particle with a "
+        "nonzero width (e.g. the top at a restriction with DECAY 6 1.4915)",
+        "v2 virtuals are real on-shell: loop propagators carry no width and the "
+        "model counterterms renormalise the real mass, so a width in the tree "
+        "currents makes the Born, its colour correlations and the virtual "
+        "inconsistent (a resonant coloured particle needs the complex-mass "
+        "scheme)",
+        "a restriction with every width at zero (model.restriction = "
+        '"no_widths", MG5_aMC loop_sm-no_widths), or the width fixed to zero '
+        'in [loop.preparation] fixed_parameters (e.g. WT = "0")',
+        "M-SM (complex-mass scheme; user ruling 2026-10-28 ~15:25 (3))",
+        "widths of coloured particles in the complex-mass scheme",
+    ),
+    LoopAdmissionRefusal(
+        "lorentz-slot-arity",
+        "a vertex that references a Lorentz tensor whose spin slots differ from "
+        "its particles, other than a constant scalar tensor with a unique "
+        "same-valued tensor of the right slots (repaired by the source rule "
+        "covariant_model.repair_source_declarations, e.g. loop_sm's V_1001)",
+        "a tensor whose slots do not match the vertex's particles has no "
+        "meaning on them",
+        "a model whose vertices reference tensors of their own spin slots, or "
+        "coupling-order limits or a particle_veto that keep the vertex out of "
+        "the request",
+        "none (a guard of the source declarations)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "majorana-fermion",
+        "a model with a Majorana (self-conjugate) fermion",
+        "Majorana / fermion-number-violating fermion flow is not implemented",
+        "a model without Majorana fermions",
+        "after M-FINAL",
+        "fermion-number-violating fermion flow",
+    ),
+    LoopAdmissionRefusal(
+        "multi-fermion-contact",
+        "a vertex with more than two fermions (a four-fermion contact "
+        "interaction) that the request can reach",
+        "loop and tree lines carry one fermion line per vertex",
+        "coupling-order limits or a particle_veto that keep the contact vertex "
+        "out of the request",
+        "after M-FINAL",
+        "multi-fermion contact vertices",
+    ),
+    LoopAdmissionRefusal(
+        "forced-seed-fft-unserved",
+        'a forced seed FFT (color.contraction = "symmetric-group-fft", the '
+        "slice's colour_contraction 'fft') that the FFT cannot serve: a seed "
+        "table without a certified symmetric-group orbit pair (e.g. fewer than "
+        "two permutable external gluons), leading colour, or declared colour, "
+        "spin or Ward observables",
+        "a forced FFT requires the FFT and never contracts silently directly; "
+        "the orbits of the external adjoint labels are detected and certified "
+        "structurally on the exact seed cells (colour.seed_fourier), leading "
+        "colour is diagonal and observable columns are contracted directly "
+        "(design §7.3)",
+        'color.contraction = "auto" (the certified pairs by the FFT, the rest '
+        'directly, the algorithm reported) or "direct"',
+        "MQ-FFT (a guard)",
+        "none (kept: a forced FFT is never silently direct)",
+    ),
+    LoopAdmissionRefusal(
+        "selected-correlators",
+        "declared colour or spin correlations (or the Ward mode) with a "
+        "leading-colour helicity or colour-flow selection (the public route's "
+        "process.selected_source_helicities, selected_color_sector_ids, "
+        "max_color_sectors or reference_color_order; SliceRequest.selection)",
+        "correlated generation requires complete colour and helicity coverage, "
+        "as the tree engine's correlated generation: a spin source on a leg "
+        "whose helicity is selected would ignore the selection",
+        "generate the correlations without selectors (an inclusive artifact), "
+        "and the selection in an artifact of its own",
+        "MQ-SELECT (a guard)",
+        "none (the tree engine's rule)",
+    ),
+    LoopAdmissionRefusal(
+        "subleading-colour-flows",
+        "a leading-colour colour-flow selection at generation (the public "
+        "route's selected_color_sector_ids or a truncating max_color_sectors; "
+        "SliceRequest.selection) none of whose flows reaches the leading N_c "
+        "power of the squared Born at a squared Born order the flows reach "
+        "(e.g. u u~ > d d~ g's tree flows joining each quark to its own "
+        "antiquark)",
+        "the loop's leading colour is the leading N_c power of the squared "
+        "matrix element: there such a selection's leading-colour Born and "
+        "virtual are zero, while its restricted Born alone would set a lower "
+        "power and return a subleading value",
+        "select at least one flow of the process's leading colour with it "
+        "(the others then contribute exact zeros), or select the flows at "
+        "evaluation (Runtime.evaluate(..., color_flows=...): exactly zero)",
+        "MQ-SELECT (a guard)",
+        "none (the leading-colour rule)",
+    ),
+    LoopAdmissionRefusal(
+        "interfering-colour-flows",
+        "a leading-colour colour-flow selection at generation (the public "
+        "route's selected_color_sector_ids or a truncating max_color_sectors; "
+        "SliceRequest.selection) one of whose flows interferes at the leading "
+        "N_c power of a squared Born order with an unselected flow (several "
+        "Born orders, e.g. u u~ > d d~'s QCD flow (2,4,3,1) with the photon "
+        "Born's (2,1,3,4) at QCD^2 QED^2)",
+        "a generation-time selection restricts the Born itself, so it would "
+        "drop that leading term of the squared Born, which the "
+        "evaluation-time selection of the flow keeps",
+        "select the interfering flows with it, or select the flows at "
+        "evaluation (Runtime.evaluate(..., color_flows=...): exact)",
+        "MQ-SELECT (a guard)",
+        "none (the leading-colour rule)",
+    ),
+    LoopAdmissionRefusal(
+        "colour-declaration-coverage",
+        "a leading- or next-to-leading-colour request whose counterterm program "
+        "can insert a counterterm vertex, or whose external legs take a "
+        "field factor, that its colour declaration does not cover (e.g. a "
+        "vertex whose content differs from the shipped loop_sm data's)",
+        "LC and NLC grade counterterm and field couplings by the declaration's "
+        "formal-N_c continuation (design §6.7); an uncovered coupling has no "
+        "declared N_c dependence",
+        'full colour (color.accuracy = "full"), or a colour declaration that '
+        "covers the vertex (with_loop_color_declaration)",
+        "MQ-NC (a guard)",
+        "none (kept as the guard of declared N_c data)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
@@ -202,6 +414,12 @@ class LoopRequestUnsupported(GenerationError):
             f"{key}: {message}. Rule: {refusal.rule}. Instead: {refusal.remedy}"
         )
         self.key = key
+
+
+class LoopRequestUnsupportedValue(LoopRequestUnsupported, ValueError):
+    """A listed refusal (``LoopRequestUnsupported``) raised where callers
+    handle the untyped ``ValueError`` it replaces (``lorentz-slot-arity`` at
+    model preparation)."""
 
 
 def listed_refusal_keys() -> tuple[str, ...]:
@@ -273,6 +491,82 @@ def require_formal_nc_tables(accuracy: str, tables: Iterable[Any], what: str) ->
             "colour-accuracy-nc-exact",
             f"the {what} of an {accuracy.upper()} request reads seed tables over "
             "tree blocks that mix U(1)-subtraction grades",
+        )
+
+
+# ------------------------------------------------- declared colour coverage
+
+
+def _covered(continuation: Any, rule: Any) -> bool:
+    keys = continuation.kernel_keys
+    return all(entry.key in keys for entry in rule.entries)
+
+
+def _rule_label(name: str, rule: Any) -> str:
+    entry = rule.entries[0]
+    return f"{name} [{' '.join(entry.particle_names)}]"
+
+
+def require_declared_colour_rules(
+    continuation: Any,
+    rules: Mapping[str, Any],
+    reachability: Callable[[], Callable[[Any], bool]] | None,
+    process: str,
+) -> None:
+    """Refuse (``colour-declaration-coverage``) an LC or NLC request
+    (``continuation`` its ``SourceColorContinuation``; None at full colour)
+    whose counterterm ``rules`` (name -> prepared rule) hold a kernel the
+    continuation does not cover and whose vertex can enter a tree of the
+    request: ``reachability`` builds the ``rule -> bool`` test
+    (``ct_closure.InsertionReachability.admits``), only when a rule is
+    uncovered; None means every rule can."""
+
+    if continuation is None:
+        return
+    uncovered = {
+        name: rule for name, rule in rules.items() if not _covered(continuation, rule)
+    }
+    if not uncovered:
+        return
+    admits = None if reachability is None else reachability()
+    reached = sorted(
+        name for name, rule in uncovered.items() if admits is None or admits(rule)
+    )
+    if reached:
+        shown = "; ".join(_rule_label(name, uncovered[name]) for name in reached[:6])
+        more = f"; and {len(reached) - 6} more" if len(reached) > 6 else ""
+        raise LoopRequestUnsupported(
+            "colour-declaration-coverage",
+            f"{process!r}: its colour declaration states no N_c continuation of "
+            f"the counterterm vertices {shown}{more}, which can enter a tree of "
+            "the request",
+        )
+
+
+def require_declared_colour_fields(
+    continuation: Any, insertions: Iterable[Any], process: str
+) -> None:
+    """Refuse (``colour-declaration-coverage``) an LC or NLC request
+    (``continuation`` its ``SourceColorContinuation``; None at full colour)
+    whose external-field ``insertions`` (``wavefunction.ExternalFieldInsertion``)
+    take a field factor the continuation does not cover."""
+
+    if continuation is None:
+        return
+    keys = continuation.field_keys
+    missing = sorted(
+        {
+            (rule.particle_id, rule.correction, rule.loop_group_index)
+            for rule in (insertion.rule for insertion in insertions)
+        }
+        - set(keys)
+    )
+    if missing:
+        raise LoopRequestUnsupported(
+            "colour-declaration-coverage",
+            f"{process!r}: its colour declaration states no N_c continuation of "
+            "the external-field factors (particle record, correction, loop "
+            f"group) {missing}, which its external legs take",
         )
 
 
@@ -481,10 +775,13 @@ __all__ = [
     "LOOP_ADMISSION_REFUSALS",
     "LoopAdmissionRefusal",
     "LoopRequestUnsupported",
+    "LoopRequestUnsupportedValue",
     "listed_refusal_keys",
     "mixed_grade_blocks",
     "representation_changing_vertices",
     "require_colour_preserving_fermion_lines",
+    "require_declared_colour_fields",
+    "require_declared_colour_rules",
     "require_formal_nc_tables",
     "require_labelled_counterterms_for_veto",
     "require_nc_exact",

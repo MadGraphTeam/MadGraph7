@@ -2,6 +2,11 @@
 
 # Public model-rule loop generation
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 `Generator.plan` and `Generator.generate` accept virtual requests through
 `process.loop_coupling_orders`. The same entry points used for tree generation now
 publish source-owned loop PACBIN instructions in the ordinary transactional

@@ -1,5 +1,10 @@
 # Local direct-R2 feasibility boundary
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 `tools/loop_reference/local_r2_oracle.py` is an executable local-kernel oracle.
 It does not enable the public direct-R2 strategy, certify a complete physical
 process, or add loop-induced observables. The bounded physical gluon control

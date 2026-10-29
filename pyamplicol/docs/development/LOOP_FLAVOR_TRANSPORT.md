@@ -2,6 +2,11 @@
 
 # Exact loop flavour and external-port transport
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 `loops.flavor_transport.IdentityFlavorTransport.admit` connects an existing
 `FlavorSymmetry` to two actual `NativeSourceModelProgram` instances. The
 representative and independently generated member must share the exact retained

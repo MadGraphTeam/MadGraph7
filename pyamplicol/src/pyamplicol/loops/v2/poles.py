@@ -354,15 +354,61 @@ def strong_gamma(
 
 # ----------------------------------------------- sectors the operators cover
 
+# Why a sector has no prediction (``sector_predictions``; the reason of every
+# unpredicted sector, ``LoopSlice.unpredicted_sectors``):
+# * a soft exchange of a coupling the request does not correct is IR
+#   divergent (its tree of order L - 2c exists, or may: a QCD correction of
+#   u u~ > d d~ with gluon and photon Borns misses the photon exchanges);
+UNCORRECTED_EXCHANGE = "uncorrected-exchange"
+# * the operator sums a dressed Born interference whose loop order the request
+#   does not compute;
+UNCOMPUTED_BORN_PAIR = "uncomputed-born-pair"
+# * the requested correction's loops leave out soft exchanges between legs
+#   that a line of a species no requested correction circulates separates in
+#   a Born tree (``separated_exchange``): u d > u d h at QCD = 0, the gluon
+#   between the two quark lines of a Z- and a W-exchange tree.
+SEPARATED_EXCHANGE = "separated-exchange"
+UNPREDICTED_REASONS = (UNCORRECTED_EXCHANGE, UNCOMPUTED_BORN_PAIR, SEPARATED_EXCHANGE)
 
-def predicted_sectors(
+# The components of a Born tree (``separated_exchange``): the charged legs
+# that lines of loop species join, one frozenset per component.
+Partition = frozenset[frozenset[int]]
+
+
+def separated_exchange(partitions: Iterable[Partition], *, abelian: bool) -> bool:
+    """Whether a correction's computed loops miss soft exchanges its Catani
+    operator assumes, for Born trees with the given ``partitions``.
+
+    A loop of a soft exchange between charged legs j and k runs through the
+    tree's lines between them, so the request computes it only where lines
+    of species that a requested correction circulates join j and k
+    (``LoopEligibility``'s species condition): within one component of the
+    tree. The operator sums every pair. A non-abelian charge is conserved
+    within each component and the colour tensor of a component is invariant,
+    so <B|T_j.T_k|D> vanishes for j and k in two components of a tree D
+    whenever every tree of the Born B has D's partition: the operator is
+    then the computed loops' (u b > d t, the W joining two quark lines).
+    With several partitions the cross terms do not vanish (u d > u d h at
+    QCD = 0: Z and W exchange; u b > d t g: the gluon on either line). An
+    abelian correlator Q_j Q_k <B|D> does not vanish across components, so
+    an abelian operator needs one component per tree."""
+
+    found = set(partitions)
+    if abelian:
+        return any(len(partition) > 1 for partition in found)
+    return len(found) > 1
+
+
+def sector_predictions(
     sectors: Sequence[tuple[Orders, Iterable[tuple[Orders, Orders]]]],
     born_orders: Iterable[Orders],
     corrections: Iterable[str],
     tree_exists: Callable[[Orders], bool | None],
-) -> frozenset[Orders]:
-    """The sectors whose IR poles the requested corrections' operators
-    predict (``sectors``: (sector, its (Born order, loop order) pairs) of the
+    separated: Callable[[str, frozenset[Orders]], bool] | None = None,
+) -> dict[Orders, str | None]:
+    """Per sector of the slice, None where the requested corrections'
+    operators predict its IR poles, else the reason (``UNPREDICTED_REASONS``)
+    (``sectors``: (sector, its (Born order, loop order) pairs) of the
     slice; ``born_orders`` the Born amplitude orders of its tree program).
 
     The poles of a complete one-loop amplitude of order L are
@@ -378,22 +424,25 @@ def predicted_sectors(
     * c is not requested and the tree of order L - 2c provably does not
       exist (the loop misses no IR-divergent c-exchange);
 
-    and if every Born interference a requested correction dresses in the
+    if every Born interference a requested correction dresses in the
     sector (A0_a A0_b with a + b + 2c = sector) pairs with a requested loop
-    order a + 2c (the operator sums over all of them). ``tree_exists(a)``
-    answers for an order a that is not a Born amplitude order: False when
-    the process provably has no tree of order a, True when it has one, None
-    when unknown (no prediction). A mixed QCD x EW sector of a QCD-only
-    request (u u~ > d d~ with gluon and photon Borns) is therefore not
-    predicted: its order-g^2 e^2 loops miss the photon exchanges that the
-    QCD Born's QED poles need."""
+    order a + 2c (the operator sums over all of them); and if no requested
+    correction's loops leave out an exchange its operator sums over the
+    Born amplitudes it dresses there (``separated(c, orders)``,
+    ``separated_exchange``). ``tree_exists(a)`` answers for an order a that
+    is not a Born amplitude order: False when the process provably has no
+    tree of order a, True when it has one, None when unknown (no
+    prediction). A mixed QCD x EW sector of a QCD-only request (u u~ > d d~
+    with gluon and photon Borns) is therefore not predicted: its order-g^2
+    e^2 loops miss the photon exchanges that the QCD Born's QED poles
+    need."""
 
     born = frozenset(born_orders)
     corrections = frozenset(corrections)
     loops = frozenset(loop for _sector, pairs in sectors for _born, loop in pairs)
-    out = set()
+    out: dict[Orders, str | None] = {}
     for sector, pairs in sectors:
-        complete = True
+        reason = None
         for _born, loop in pairs:
             for name, power in loop:
                 if power < 2:
@@ -405,20 +454,52 @@ def predicted_sectors(
                 else:
                     complete = exists is False
                 if not complete:
+                    reason = UNCORRECTED_EXCHANGE
                     break
-            if not complete:
+            if reason is not None:
                 break
-        if complete:
-            complete = all(
+        if reason is None:
+            dressed = {
+                name: frozenset(
+                    order
+                    for a in born
+                    for b in born
+                    if add_orders(a, b, ((name, 2),)) == sector
+                    for order in (a, b)
+                )
+                for name in sorted(corrections)
+            }
+            if not all(
                 add_orders(a, ((name, 2),)) in loops
-                for name in corrections
-                for a in born
-                for b in born
-                if add_orders(a, b, ((name, 2),)) == sector
-            )
-        if complete:
-            out.add(sector)
-    return frozenset(out)
+                for name, orders in dressed.items()
+                for a in orders
+            ):
+                reason = UNCOMPUTED_BORN_PAIR
+            elif separated is not None and any(
+                orders and separated(name, orders) for name, orders in dressed.items()
+            ):
+                reason = SEPARATED_EXCHANGE
+        out[sector] = reason
+    return out
+
+
+def predicted_sectors(
+    sectors: Sequence[tuple[Orders, Iterable[tuple[Orders, Orders]]]],
+    born_orders: Iterable[Orders],
+    corrections: Iterable[str],
+    tree_exists: Callable[[Orders], bool | None],
+    separated: Callable[[str, frozenset[Orders]], bool] | None = None,
+) -> frozenset[Orders]:
+    """The sectors whose IR poles the requested corrections' operators
+    predict (``sector_predictions`` without a reason)."""
+
+    return frozenset(
+        sector
+        for sector, reason in sector_predictions(
+            sectors, born_orders, corrections, tree_exists, separated
+        ).items()
+        if reason is None
+    )
 
 
 # ------------------------------------------------------------------ QED Catani
@@ -680,6 +761,11 @@ __all__ = [
     "EXTERNAL_PHOTON_CONVENTIONS",
     "LOCAL_UV",
     "ORIGINS",
+    "SEPARATED_EXCHANGE",
+    "UNCOMPUTED_BORN_PAIR",
+    "UNCORRECTED_EXCHANGE",
+    "UNPREDICTED_REASONS",
+    "Partition",
     "catani_poles",
     "colour_casimir",
     "coupling_value",
@@ -693,9 +779,11 @@ __all__ = [
     "qed_coupling",
     "qed_gamma",
     "reducer_poles",
+    "sector_predictions",
     "sector_sum",
     "select_lane",
     "select_sector",
+    "separated_exchange",
     "split_sector",
     "splits",
     "strong_beta0",

@@ -27,7 +27,6 @@ from pyamplicol.config import (
 )
 from pyamplicol.reporting import CallbackProgressSink
 
-from .test_cli_stability import POLICY_FLAGS
 from .test_cli_virtual import _result
 
 
@@ -135,7 +134,7 @@ def test_grouped_cli_calls_one_public_batch_and_preserves_tree_arithmetic(
             "0.118000000000000000000000000001"
         )
         if virtual:
-            assert options["stability"].higher and options["arithmetic"] == arithmetic
+            assert "stability" not in options and options["arithmetic"] == arithmetic
         else:
             assert set(options) == {"process", "model_parameters"}
         return Loaded()
@@ -157,7 +156,7 @@ def test_grouped_cli_calls_one_public_batch_and_preserves_tree_arithmetic(
     if arithmetic is not None:
         flags += ["--arithmetic", arithmetic]
     if virtual:
-        flags += ["--mu-r2", "1000000", "--on-failure", "return", *POLICY_FLAGS]
+        flags += ["--mu-r2", "1000000", "--on-failure", "return"]
     config = parse_cli(flags).resolve().effective
     DefaultCliServices().evaluate(config, CallbackProgressSink(lambda _: None))
     assert [call[0] for call in calls] == ["load", "evaluate"]
@@ -180,7 +179,7 @@ def test_grouped_cli_calls_one_public_batch_and_preserves_tree_arithmetic(
         ("--mu-r2", "1"),
         ("--r2-strategy", "model"),
         ("--on-failure", "return"),
-        POLICY_FLAGS,
+        ("--poles", "none"),
     ],
 )
 def test_tree_grouped_rejects_virtual_options_before_loading(

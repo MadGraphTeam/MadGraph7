@@ -17,6 +17,8 @@ from typing import Any, Literal, cast
 
 from pyamplicol._internal.versions import (
     KNOWN_EVALUATOR_RUNTIME_CAPABILITIES,
+    LEGACY_LOOP_ARTIFACT_REMOVED,
+    RETIRED_LOOP_RUNTIME_CAPABILITY,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
@@ -179,6 +181,8 @@ def _runtime_capabilities(value: object, context: str) -> tuple[str, ...]:
     if result != tuple(sorted(result)):
         raise ArtifactError(f"{context} must be sorted")
     unknown = set(result) - KNOWN_EVALUATOR_RUNTIME_CAPABILITIES
+    if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
+        raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
     if unknown:
         raise ArtifactError(
             f"{context} contains unsupported capabilities: "

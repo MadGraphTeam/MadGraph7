@@ -4,13 +4,12 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, localcontext
+from decimal import Decimal
 
 import pytest
 
 from pyamplicol.loops.scalar_bindings import (
     NativeScalarBindings,
-    NativeScaleBindings,
     prepare_scalar_bindings,
 )
 from pyamplicol.loops.source_color import prepare_source_color_scalars
@@ -349,112 +348,6 @@ def test_exact_grades_keep_laurent_axes_and_owning_program(source):
             assert plan.nc not in scalar.value.get_all_symbols()
             assert plan.coefficients.outputs[columns[output]][1] == outputs[output][1]
     assert source.record("parameters", "CF")["fields"]["value"]["expression"] == "4/3"
-
-
-@pytest.mark.parametrize(
-    "arithmetic,precision,tolerance,bit",
-    [
-        ("double", None, "2e-14", 0),
-        ("double-double", None, "3e-29", 70),
-        ("arbitrary", 90, "1e-80", 240),
-    ],
-)
-def test_native_grades_retain_exact_updates_scales_and_saved_views(
-    loop_native, source, arithmetic, precision, tolerance, bit
-):
-    backend = loop_native
-    outputs = (("GC", -2), ("GC", -1), ("GC", 0), ("conditional", 0))
-    owner_plan = prepare_scalar_bindings(source, outputs)
-    owner = NativeScalarBindings(owner_plan, arithmetic=arithmetic, precision=precision)
-    plan = prepare(source, outputs, program=owner_plan.program)
-    view = NativeScaleBindings(owner, plan.coefficients)
-    original = NativeScaleBindings(owner)
-    scales = backend.NativeBatch.from_decimal(
-        [("4", "0"), ("9", "0")],
-        2,
-        1,
-        arithmetic=arithmetic,
-        precision=precision,
-        row_ids=[19, 3],
-    )
-    snapshot = owner.snapshot()
-    values = view.evaluate_native(scales)
-    assert values.row_ids == [19, 3]
-    width = len(plan.coefficients.outputs)
-    reference = original.evaluate_native(scales).to_decimal()
-    with localcontext() as ctx:
-        ctx.prec = 110
-        for row in range(2):
-            for output in range(len(outputs)):
-                reconstructed = [
-                    sum(
-                        Decimal(3) ** grade
-                        * Decimal(
-                            values.to_decimal()[row * width + columns[output]][
-                                component
-                            ]
-                        )
-                        for grade, columns in zip(
-                            plan.grades, plan.columns, strict=True
-                        )
-                    )
-                    for component in range(2)
-                ]
-                for actual, target in zip(
-                    reconstructed, reference[row * len(outputs) + output], strict=True
-                ):
-                    assert abs(actual - Decimal(target)) < Decimal(tolerance)
-            # Independent closed expression for the Laurent CT reference.
-            logarithm = Decimal(row + 2).ln()
-            for colours in (2, 3, 5):
-                c = Decimal(colours)
-                cf = (c * c - 1) / (2 * c)
-                expected = (
-                    cf**2,
-                    2 * cf * c * logarithm,
-                    c * c * logarithm**2 + Decimal("0.5"),
-                    cf,
-                )
-                for output, target in enumerate(expected):
-                    actual = sum(
-                        c**grade
-                        * Decimal(values.to_decimal()[row * width + columns[output]][0])
-                        for grade, columns in zip(
-                            plan.grades, plan.columns, strict=True
-                        )
-                    )
-                    assert abs(actual - target) < Decimal(tolerance) * max(
-                        abs(target), 1
-                    )
-        changed_a = Decimal(1) + (Decimal(2) ** -bit if bit else 1)
-        owner.update({"a": str(changed_a)})
-        changed = view.evaluate_native(scales).to_decimal()
-        # The -2 grade of B[-2] is a**2/4. No binary64 ingress.
-        column = plan.columns[plan.grades.index(-2)][0]
-        actual = Decimal(changed[column][0])
-        assert abs(actual - changed_a**2 / 4) < Decimal(tolerance)
-        assert actual != Decimal("0.25")
-    assert (
-        view.evaluate_native(scales, snapshot=snapshot).to_decimal()
-        == values.to_decimal()
-    )
-    saved = view.prepared
-    retained_owner = owner.prepared.bind(
-        arithmetic=arithmetic, precision=precision, parameters=owner.overrides
-    )
-    assert saved.bind(retained_owner).evaluate_native(scales).to_decimal() == changed
-    before = owner.snapshot()
-    with pytest.raises(ArithmeticError, match="active diagnostics"):
-        owner.update({"MU_R": "4"})
-    assert owner.snapshot().revision == before.revision
-    assert owner.values.to_decimal() == before.values.to_decimal()
-    bad = backend.NativeBatch.from_decimal(
-        [("16", "0")], 1, 1, arithmetic=arithmetic, precision=precision, row_ids=[71]
-    )
-    with pytest.raises(ArithmeticError, match="71"):
-        view.evaluate_native(bad)
-    owner.update({"z": "2"})
-    assert view.evaluate_native(bad).row_ids == [71]
 
 
 def test_zero_coefficients_do_not_erase_active_diagnostics(loop_native, source):

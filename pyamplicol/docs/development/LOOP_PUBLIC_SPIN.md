@@ -1,5 +1,10 @@
 # Public virtual spin sources
 
+> Historical: this describes the per-diagram legacy one-loop engine, removed on
+> 2026-10-29 (MQ-LEGACY-REMOVE; v2 is the only one-loop engine, see
+> `loop_v2/DESIGN.md` and §13.3 there). The modules, tools and tests named
+> here may no longer exist.
+
 The existing correlated API accepts declared singleton or joint vector source
 classes for QCD, with complete model-rule R2 and UV. Validated cases include
 photons/gluons and the stable real-mass W± controls described below. Full-colour fixed-Nc

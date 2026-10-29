@@ -87,6 +87,7 @@ from typing import Any, Literal, cast
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
 from pyamplicol.api.results import (
+    BornAnchoredColorComponent,
     ContractedColorComponent,
     ExternalParticle,
     HelicityConfiguration,
@@ -159,6 +160,8 @@ def _encode_field(name: str, value: Any) -> Any:
 
     if name == "colour_declaration":
         return None if value is None else value.to_dict()
+    if name == OPTIONAL_REQUEST_FIELD:
+        return value.record()
     if name == "loop_orders" and not isinstance(value, Mapping):
         return [_orders_record(orders) for orders in value]
     if isinstance(value, Mapping):
@@ -177,6 +180,10 @@ def _decode_field(name: str, value: Any) -> Any:
         from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 
         return None if value is None else LoopColorDeclaration.from_dict(value)
+    if name == OPTIONAL_REQUEST_FIELD:
+        from .selection import Selection
+
+        return Selection.from_record(value)
     if name == "loop_orders" and isinstance(value, list):
         return tuple(dict(orders) for orders in value)
     if isinstance(value, Mapping):
@@ -186,16 +193,25 @@ def _decode_field(name: str, value: Any) -> Any:
     return value
 
 
+# The request field recorded only when set: a leading-colour selection
+# (``selection.Selection``), so requests without one keep their records'
+# bytes.
+OPTIONAL_REQUEST_FIELD = "selection"
+
+
 def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
     """The JSON record of a ``SliceRequest`` (every dataclass field, so a new
-    request field is recorded and restored without an edit here) and its
-    resolved correlator declarations: the artifact's generation recipe."""
+    request field is recorded and restored without an edit here; the
+    selection only when set) and its resolved correlator declarations: the
+    artifact's generation recipe."""
 
     from dataclasses import fields
 
     record: dict[str, object] = {
         item.name: _encode_field(item.name, getattr(request, item.name))
         for item in fields(request)
+        if item.name != OPTIONAL_REQUEST_FIELD
+        or getattr(request, item.name) is not None
     }
     record["correlators"] = None if correlators is None else correlators.to_json_dict()
     return record
@@ -210,6 +226,8 @@ def request_from_record(record: Mapping[str, Any]) -> Any:
     from .assemble import SliceRequest
 
     known = {item.name for item in fields(SliceRequest)}
+    if OPTIONAL_REQUEST_FIELD not in record:
+        known.discard(OPTIONAL_REQUEST_FIELD)
     if set(record) != known | {"correlators"}:
         raise ArtifactError(
             "the loop request record does not match this pyAmpliCol build "
@@ -243,7 +261,8 @@ def born_amplitude_orders(
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
     compiles the Born of a slice (without the vetoed |PDG| codes
-    ``particle_veto``)."""
+    ``particle_veto``; a loop Born DAG, ``loop_born``: a Dirac current
+    closing on a Weyl sink is a root, ``dag_ordering.DIRAC_WEYL_CLOSURE``)."""
 
     from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
@@ -257,6 +276,7 @@ def born_amplitude_orders(
         model=model,
         max_coupling_orders=dict(bounds),
         ignored_particle_ids=vetoed_particle_ids(particle_veto),
+        loop_born=True,
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag
@@ -319,22 +339,19 @@ def require_zero_coloured_widths(
     propagators carry no width); a resonant coloured particle needs the
     complex-mass scheme (WP3.2)."""
 
-    from pyamplicol.api.errors import GenerationError
+    from .refusals import LoopRequestUnsupported
 
     widths = coloured_widths(dags, compiled, fixed_parameters)
     if not widths:
         return
     named = ", ".join(f"{name} ({width})" for name, width in sorted(widths.items()))
     fixed = ", ".join(f'{width} = "0"' for width in sorted(set(widths.values())))
-    raise GenerationError(
+    raise LoopRequestUnsupported(
+        "coloured-width",
         f"{process}: tree currents propagate coloured particles whose width "
-        f"is not fixed to zero: {named}. v2 virtuals are real on-shell (loop "
-        "propagators carry no width and the model counterterms renormalise "
-        "the real mass), so such a width makes the Born, its colour "
-        "correlations and the virtual inconsistent; fix it to zero in "
-        f"[loop.preparation] fixed_parameters ({fixed}), the legacy engine's "
-        "convention, or use loop.engine='legacy'. A resonant coloured "
-        "particle needs the complex-mass scheme, which is not available yet"
+        f"is not fixed to zero: {named}; fix it in [loop.preparation] "
+        f"fixed_parameters ({fixed}) or take a restriction whose widths are "
+        'zero (model.restriction = "no_widths")',
     )
 
 
@@ -963,28 +980,53 @@ def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]
             raise EvaluationError(
                 "this artifact holds several processes; select one with process="
             )
-    normalized = " ".join(process.split())
     for record in records:
         if record["id"] == process:
-            return record, None
-    for record in records:
-        if " ".join(str(record["expression"]).split()) == normalized:
             return record, None
     from pyamplicol.artifacts.process_groups import read_process_groups
 
     groups = read_process_groups(manifest.root)
-    for representative, group in (groups.groups if groups else {}).items():
-        for member in group.members:
-            if member.process_id != representative and (
-                member.process_id == process
-                or " ".join(member.expression.split()) == normalized
-            ):
-                if str(member.basis) != "exact-loop-flavor":
-                    break
-                for record in records:
-                    if record["id"] == representative:
-                        return record, member
+    # The public spelling rule of requests (processes.model.
+    # resolve_model_particle_name): the exact spelling first, then a unique
+    # letter-case-insensitive match, as the tree artifacts' selector compares
+    # lower-cased tokens (rusticol-core normalize_process_expression). The
+    # artifact records the model's spelling (loop_sm's gluon is ``G``), so
+    # ``g g > t t~`` selects ``G G > t t~``.
+    for fold in (False, True):
+        wanted = _selector_text(process, fold=fold)
+        matches = [
+            record
+            for record in records
+            if _selector_text(str(record["expression"]), fold=fold) == wanted
+        ]
+        if fold and len(matches) > 1:
+            choices = ", ".join(sorted(str(record["id"]) for record in matches))
+            raise EvaluationError(
+                f"process expression {process!r} is ambiguous; select one of "
+                f"these stable ids: {choices}"
+            )
+        if matches:
+            return matches[0], None
+        for representative, group in (groups.groups if groups else {}).items():
+            for member in group.members:
+                if member.process_id != representative and (
+                    member.process_id == process
+                    or _selector_text(member.expression, fold=fold) == wanted
+                ):
+                    if str(member.basis) != "exact-loop-flavor":
+                        break
+                    for record in records:
+                        if record["id"] == representative:
+                            return record, member
     raise EvaluationError(f"artifact has no process {process!r}")
+
+
+def _selector_text(expression: str, *, fold: bool) -> str:
+    """A process expression as ``_select`` compares it: whitespace-normalised
+    and, with ``fold``, lower-cased per token."""
+
+    tokens = expression.split()
+    return " ".join(token.lower() for token in tokens) if fold else " ".join(tokens)
 
 
 def _json_payload(manifest: Any, path: str) -> dict[str, Any]:
@@ -1172,7 +1214,11 @@ class V2VirtualRuntime:
         from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
         from .native_observables import StoredObservableSlice
+        from .observables import FORCED_FFT_OBSERVABLES
 
+        if self._execution["request"]["colour_contraction"] == "fft":
+            # The stored observable columns are contracted directly.
+            raise CompatibilityError(FORCED_FFT_OBSERVABLES)
         with self._lock:
             if self._observables is None:
                 correlators = correlators_from_record(self._execution["request"])
@@ -1219,6 +1265,28 @@ class V2VirtualRuntime:
     def physics(self) -> ProcessPhysics:
         accuracy = cast(Literal["lc", "nlc", "full"], self._metadata["color_accuracy"])
         member = self._group_member
+        anchors = (
+            tuple(
+                BornAnchoredColorComponent(
+                    flow.id,
+                    index,
+                    (flow.basis,),
+                    f"leading-colour flow {flow.word} (Born basis element "
+                    f"{flow.basis})",
+                )
+                for index, flow in enumerate(self._flows())
+                if flow.basis is not None
+            )
+            if accuracy == "lc" and member is None
+            else ()
+        )
+        kind = "born-anchored-interference" if anchors else "contracted-color"
+        # A generation-time selection (the request's ``selection``) keeps
+        # some helicity rows or flows: coverage 'selected', as the tree
+        # engine reports it.
+        chosen = self._execution["request"].get(OPTIONAL_REQUEST_FIELD) or {}
+        helicity_coverage = "selected" if chosen.get("helicities") else "all"
+        color_coverage = "selected" if chosen.get("flows") is not None else "all"
         pdgs = (
             [int(leg["pdg"]) for leg in self._physics["state_legs"]]
             if member is None
@@ -1228,9 +1296,9 @@ class V2VirtualRuntime:
             process_id=self._public_id,
             process=self._expression if member is None else str(member.expression),
             color_accuracy=accuracy,
-            helicity_coverage="all",
-            color_coverage="all",
-            color_kind="contracted-color",
+            helicity_coverage=helicity_coverage,
+            color_coverage=color_coverage,
+            color_kind=kind,
             structural_zero_helicity_count=0,
             external_particles=tuple(
                 ExternalParticle(
@@ -1250,17 +1318,30 @@ class V2VirtualRuntime:
                 for i, h in enumerate(self._physics["helicities"])
             ),
             color_flows=(),
-            contracted_color_components=(
+            contracted_color_components=()
+            if anchors
+            else (
                 ContractedColorComponent(
                     accuracy, 0, f"{accuracy} colour interference"
                 ),
             ),
-            born_anchored_color_components=(),
+            # Leading colour: the flows ``evaluate(color_flows=...)`` selects
+            # (``selection``: tree-engine IDs and order), each anchored to
+            # its Born basis element (``evaluate_resolved``'s ``basis-<i>``).
+            born_anchored_color_components=anchors,
             contribution_kind="virtual",
-            reduction=PhysicsReduction("contracted-color", ()),
+            reduction=PhysicsReduction(kind, ()),
             model_parameters=(),
-            selector_capabilities=(),
+            selector_capabilities=("helicity", "color_flow") if anchors else (),
         )
+
+    def _flows(self) -> tuple[Any, ...]:
+        """The stored leading-colour flows (none below leading colour)."""
+
+        from .selection import Flow
+
+        record = self._native_process.observables.record
+        return tuple(Flow.from_record(flow) for flow in record.get("color_flows", ()))
 
     def inspect(self) -> Mapping[str, object]:
         with self._lock:
@@ -1276,6 +1357,14 @@ class V2VirtualRuntime:
                     "scaleless_plan_sha256": self._admission["scaleless_plan_sha256"],
                     "plan_bytes": self._admission["plan_bytes"],
                     "point_inputs": self._execution["point_inputs"],
+                    # The certified symmetric-group FFT of the stored seeds
+                    # (design §7.3): its orbit pairs, 0 without a record.
+                    "seed_fourier_pairs": sum(
+                        len(job["pairs"])
+                        for job in (
+                            self._native_process.record.get("fourier") or {}
+                        ).get("jobs", ())
+                    ),
                     "native_admission": {
                         key: self._admission[key]
                         for key in ("runtime_capability", "legs", "rows", "columns")
@@ -1290,7 +1379,8 @@ class V2VirtualRuntime:
                     "scale_input": "explicit positive mu_r2, scalar or per point",
                     "stability_checks": (
                         "rotations (count or exact rotations) and the "
-                        "reduction-direction check; none by default"
+                        "reduction-direction check, optionally rescaled; none "
+                        "by default"
                     ),
                     "rescue_available": False,
                     "accuracy_established": False,
@@ -1341,9 +1431,22 @@ class V2VirtualRuntime:
     ) -> VirtualEvaluation:
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
+        if helicities or color_flows:
+            # A leading-colour selection (``selection``): one summed output
+            # of the stored resolved columns.
+            return self._observable_runtime().evaluate(
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                mu_r2=mu_r2,
+                r2_strategy=r2_strategy,
+                stability=stability,
+                poles=poles,
+                stability_checks=stability_checks,
+                on_failure=on_failure,
+                **self._observable_options(precision, arithmetic, {}),
+            )
         selection, checks = v2_options(
-            helicities=helicities,
-            color_flows=color_flows,
             r2_strategy=r2_strategy,
             stability=stability,
             poles=poles,
@@ -1472,14 +1575,7 @@ class V2VirtualRuntime:
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
-        contraction = VirtualColorContraction(
-            cast(
-                Literal["auto", "direct"],
-                self._execution["request"]["colour_contraction"],
-            ),
-            "direct",
-            "native seeds contract the exact colour weights K[c, b] directly",
-        )
+        contraction = self._contraction(results)
         born_values: list[tuple[Any, ...] | None] = []
         values: list[tuple[LaurentCoefficients, ...] | None] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
@@ -1554,6 +1650,36 @@ class V2VirtualRuntime:
             stability=tuple(estimates) if checks.enabled else None,
             pole_parts=tuple(parts) if splits_poles(poles) else None,
         )
+
+    def _contraction(self, results: Sequence[Any]) -> VirtualColorContraction:
+        """The seed contraction a batch ran (design §7.3): the certified
+        symmetric-group orbit pairs of the stored seed Fourier record by the
+        FFT (``PointResult.colour_contraction``), or every weight directly."""
+
+        from .colour import SYMMETRIC_GROUP_FFT
+
+        requested = self._execution["request"]["colour_contraction"]
+        requested = {"fft": SYMMETRIC_GROUP_FFT}.get(requested, requested)
+        algorithm = next(
+            (result.colour_contraction for result in results if result is not None),
+            "direct",
+        )
+        fourier = self._native_process.record.get("fourier")
+        if algorithm == SYMMETRIC_GROUP_FFT and fourier is not None:
+            return VirtualColorContraction(
+                requested,
+                SYMMETRIC_GROUP_FFT,
+                "the certified symmetric-group orbit pairs of the native seeds "
+                "are contracted by the FFT in the carrier, the other colour "
+                "weights K[c, b] directly",
+                regular_kernels=sum(len(job["pairs"]) for job in fourier["jobs"]),
+            )
+        reason = (
+            "native seeds contract the exact colour weights K[c, b] directly"
+            if fourier is None
+            else "the requested contraction is direct"
+        )
+        return VirtualColorContraction(requested, "direct", reason)
 
     def _pole_parts(self, result: Any) -> VirtualPoleParts:
         """Both origins' parts of a split result by component

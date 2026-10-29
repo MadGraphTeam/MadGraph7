@@ -57,6 +57,13 @@ impl ColumnRows {
         })
     }
 
+    /// Whether some column leaves some Born helicity row unseeded.
+    pub fn restricts(&self) -> bool {
+        self.keep
+            .as_ref()
+            .is_some_and(|keep| keep.iter().any(|&kept| !kept))
+    }
+
     /// Whether `column` seeds Born helicity row `row`.
     #[inline]
     pub fn keeps(&self, row: usize, column: usize) -> bool {
@@ -78,12 +85,15 @@ mod tests {
     fn rows_default_to_every_row_and_select_resolved_columns() {
         let all = ColumnRows::new(3, 2, None).unwrap();
         assert!((0..3).all(|row| all.keeps(row, 0) && all.keeps(row, 1)));
+        assert!(!all.restricts());
+        assert!(!ColumnRows::new(3, 1, Some(&[None])).unwrap().restricts());
         let resolved = ColumnRows::new(3, 2, Some(&[None, Some(vec![2])])).unwrap();
         assert!((0..3).all(|row| resolved.keeps(row, 0)));
         assert_eq!(
             (0..3).map(|row| resolved.keeps(row, 1)).collect::<Vec<_>>(),
             [false, false, true]
         );
+        assert!(resolved.restricts());
         assert!(ColumnRows::new(3, 2, Some(&[None])).is_err());
         assert!(ColumnRows::new(3, 1, Some(&[Some(vec![3])])).is_err());
     }

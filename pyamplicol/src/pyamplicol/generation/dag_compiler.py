@@ -225,6 +225,7 @@ class GenericDAGCompiler:
         loop_blocks: bool = False,
         loop_block_reachability: LoopBlockReachability | None = None,
         u1_grades: bool = False,
+        loop_born: bool = False,
     ) -> None:
         """``loop_blocks`` compiles loop-request blocks instead of a tree.
 
@@ -236,6 +237,12 @@ class GenericDAGCompiler:
         tree-only selections do not apply. ``u1_grades`` makes every block
         exact in N_c (``generation.dag_grades.split_u1_grades``), as leading
         and next-to-leading colour need; full colour at N_c = 3 does not.
+
+        ``loop_born`` compiles the Born DAG of a loop request: a Dirac current
+        closing on a Weyl sink is a root with the marker contraction
+        ``dag_ordering.DIRAC_WEYL_CLOSURE`` (``_direct_contraction_ir``)
+        instead of a refusal. No tree evaluator lowers such a root; the loop
+        engine reads the roots' orders, sectors and helicities only.
         """
 
         if loop_blocks:
@@ -263,6 +270,12 @@ class GenericDAGCompiler:
             raise ValueError("loop_block_reachability requires loop_blocks=True")
         elif u1_grades:
             raise ValueError("u1_grades requires loop_blocks=True")
+        if loop_born and (loop_blocks or backward_live_planning):
+            raise ValueError(
+                "loop_born compiles a loop request's Born tree: it excludes "
+                "loop_blocks and backward_live_planning"
+            )
+        self.loop_born = bool(loop_born)
         self.loop_blocks = bool(loop_blocks)
         self.u1_grades = bool(u1_grades)
         self.loop_block_reachability = loop_block_reachability
@@ -2213,7 +2226,9 @@ class GenericDAGCompiler:
             right: CurrentNode,
         ) -> ContractionIR | None:
             if not self.online_evaluation_reuse:
-                return _direct_contraction_ir(self.model, left.index, right.index)
+                return _direct_contraction_ir(
+                    self.model, left.index, right.index, loop_born=self.loop_born
+                )
             key = (
                 left.index.particle_id,
                 right.index.particle_id,
@@ -2225,6 +2240,7 @@ class GenericDAGCompiler:
                     self.model,
                     left.index,
                     right.index,
+                    loop_born=self.loop_born,
                 )
             return eager_direct_contractions[key]
 
@@ -2517,6 +2533,7 @@ def compile_generic_dag(
     online_evaluation_reuse: bool = False,
     backward_live_planning: bool = False,
     progress_callback: DAGProgressCallback | None = None,
+    loop_born: bool = False,
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
@@ -2538,4 +2555,5 @@ def compile_generic_dag(
         online_evaluation_reuse=online_evaluation_reuse,
         backward_live_planning=backward_live_planning,
         progress_callback=progress_callback,
+        loop_born=loop_born,
     ).compile(process)
