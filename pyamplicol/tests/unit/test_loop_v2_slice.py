@@ -299,13 +299,17 @@ def test_uux_emepgg_colour_projections_are_generable(
     (``test_loop_v2_ew_lines``, nightly); a legacy O1 capture is open."""
 
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    from pyamplicol.models.loop_color_declaration import (
+        resolve_loop_color_declaration,
     )
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    # The shipped loop_sm declaration (MQ-NC): the closed quark loops of
+    # g g Z, g g g Z and g g g A reach this request, which the example QCD
+    # subset does not cover (``colour-declaration-coverage``).
+    declaration = resolve_loop_color_declaration(compiled.raw_loop_model)
     LoopSlice.generate(
-        load_compiled_model(loop_sm_compiled_model),
+        compiled,
         SliceRequest(
             "u u~ > e- e+ g g",
             {"QCD": 2, "QED": 2},
