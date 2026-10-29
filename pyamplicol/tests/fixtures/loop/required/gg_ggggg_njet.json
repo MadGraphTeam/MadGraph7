@@ -1304,7 +1304,7 @@
  "providers": {
   "njet_dd_oneloop_R1": {
    "tool": "NJet 3.1.2",
-   "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-oneloop-release",
+   "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-oneloop-release",
    "options": {
     "mode": "direct",
     "amp": "standard",
@@ -1347,11 +1347,11 @@
    "driver_source_sha256": "77724e0a45f0c38fbf16b29770dd404d6482e131ca5ac14dcb87e18fe4f1b172",
    "host": "itphlies",
    "cpu_model": "AMD EPYC 9754 128-Core Processor",
-   "build_info": "date: 2026-10-23T11:06:05Z\nhost: itphlies AMD EPYC 9754 128-Core Processor\nnjet_source: /shared/external/pyLoopAmpliCol/workspace/reference/sources/njet-3.1.2\nqd_source: /shared/external/pyLoopAmpliCol/workspace/reference/sources/qd-2.3.24\ncxx: /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++ g++ (GCC) 15.2.0\ncc: /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc gcc (GCC) 15.2.0\nfc: /nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran GNU Fortran (GCC) 15.2.0\nmake: GNU Make 4.4.1\npkg-config: 0.29.2\njobs: 48\n[11:06:05] qd configure\nqd_configure: /shared/external/pyLoopAmpliCol/workspace/reference/sources/qd-2.3.24/configure --prefix=/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-oneloop-release/qd/prefix --with-pic=yes --enable-shared=yes --enable-static=no --enable-fortran CXX=g++ CC=gcc FC=gfortran CXXFLAGS=-O2 CFLAGS=-O2 FCFLAGS=-O2\n[11:06:16] qd make\n[11:06:23] qd done\n[11:06:23] njet configure\nnjet_configure: /shared/external/pyLoopAmpliCol/workspace/reference/sources/njet-3.1.2/configure --prefix=/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-oneloop-release/njet/prefix --enable-5jet --enable-f128 --disable-dependency-tracking --with-vc=no CXX=g++ CC=gcc FC=gfortran F77=gfortran --with-oneloop\nnjet_makefile: CFLAGS = -g -O2\nnjet_makefile: CXXFLAGS = \nnjet_makefile: FCFLAGS = -g -O2\nnjet_makefile: FFLAGS = -g -O2\nnjet_makefile: NJET_CXXFLAGS = -std=c++17 -O2 -march=native -mtune=native\n[11:06:30] njet make\n[11:11:11] njet done\nBUILD DONE\n"
+   "build_info": "date: 2026-10-23T11:06:05Z\nhost: itphlies AMD EPYC 9754 128-Core Processor\nnjet_source: ${LOOP_REFERENCE_ROOT}/sources/njet-3.1.2\nqd_source: ${LOOP_REFERENCE_ROOT}/sources/qd-2.3.24\ncxx: /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/g++ g++ (GCC) 15.2.0\ncc: /nix/store/788mx070y81zjlg5ipcl0cra3afviw9k-gcc-wrapper-15.2.0/bin/gcc gcc (GCC) 15.2.0\nfc: /nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran GNU Fortran (GCC) 15.2.0\nmake: GNU Make 4.4.1\npkg-config: 0.29.2\njobs: 48\n[11:06:05] qd configure\nqd_configure: ${LOOP_REFERENCE_ROOT}/sources/qd-2.3.24/configure --prefix=${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-oneloop-release/qd/prefix --with-pic=yes --enable-shared=yes --enable-static=no --enable-fortran CXX=g++ CC=gcc FC=gfortran CXXFLAGS=-O2 CFLAGS=-O2 FCFLAGS=-O2\n[11:06:16] qd make\n[11:06:23] qd done\n[11:06:23] njet configure\nnjet_configure: ${LOOP_REFERENCE_ROOT}/sources/njet-3.1.2/configure --prefix=${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-oneloop-release/njet/prefix --enable-5jet --enable-f128 --disable-dependency-tracking --with-vc=no CXX=g++ CC=gcc FC=gfortran F77=gfortran --with-oneloop\nnjet_makefile: CFLAGS = -g -O2\nnjet_makefile: CXXFLAGS = \nnjet_makefile: FCFLAGS = -g -O2\nnjet_makefile: FFLAGS = -g -O2\nnjet_makefile: NJET_CXXFLAGS = -std=c++17 -O2 -march=native -mtune=native\n[11:06:30] njet make\n[11:11:11] njet done\nBUILD DONE\n"
   },
   "njet_double_R1": {
    "tool": "NJet 3.1.2",
-   "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-release",
+   "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-release",
    "options": {
     "mode": "direct",
     "amp": "standard",
@@ -1397,7 +1397,7 @@
   },
   "njet_double_R2": {
    "tool": "NJet 3.1.2",
-   "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-release",
+   "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-release",
    "options": {
     "mode": "direct",
     "amp": "standard",
@@ -1450,8 +1450,8 @@
  },
  "calibration": {
   "gg_gg njet312 dd vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_2g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -1547,8 +1547,8 @@
    ]
   },
   "gg_gg njet312 double vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_2g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -1644,8 +1644,8 @@
    ]
   },
   "gg_gg njet211 dd vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-dd-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-dd-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_2g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -1741,8 +1741,8 @@
    ]
   },
   "gg_gg njet211 double vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-double-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-double-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_2g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -1838,8 +1838,8 @@
    ]
   },
   "gg_gg njet312 double nf0 vs openloops nf0": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-nf0-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-nf0-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf0-gg_2g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -1935,8 +1935,8 @@
    ]
   },
   "gg_gg njet312 dd + top vs openloops nf6": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-plus-top-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf6-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-plus-top-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf6-gg_2g.json",
    "a_tool": "NJet 3.1.2 + T(OpenLoops nf=6 - nf=5)",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2021,8 +2021,8 @@
    ]
   },
   "gg_gg njet312 blha vs direct": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-blha-gg_2g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_2g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-blha-gg_2g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-gg_2g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "NJet 3.1.2",
    "b_provider": null,
@@ -2107,8 +2107,8 @@
    ]
   },
   "gg_gg control njet312 dd R1 vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-R1-gg_2g-control.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g-control.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-R1-gg_2g-control.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_2g-control.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2148,8 +2148,8 @@
    ]
   },
   "gg_gg control openloops nf6 vs madloop": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf6-gg_2g-control.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/madloop-full-gg_2g-control.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf6-gg_2g-control.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/madloop-full-gg_2g-control.json",
    "a_tool": "OpenLoops 2.1.5",
    "b_tool": "MadLoop (gluon-scattering-component-control, full)",
    "b_provider": null,
@@ -2185,8 +2185,8 @@
    ]
   },
   "gg_gg control njet312 dd R1 + top vs madloop": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-R1-plus-top-gg_2g-control.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/madloop-full-gg_2g-control.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-R1-plus-top-gg_2g-control.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/madloop-full-gg_2g-control.json",
    "a_tool": "NJet 3.1.2 + T(OpenLoops nf=6 - nf=5)",
    "b_tool": "MadLoop (gluon-scattering-component-control, full)",
    "b_provider": null,
@@ -2222,8 +2222,8 @@
    ]
   },
   "gg_ggg njet211 double nf0 vs openloops nf0": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-double-nf0-gg_3g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_3g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-double-nf0-gg_3g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf0-gg_3g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2319,8 +2319,8 @@
    ]
   },
   "gg_ggg njet312 double nf0 vs openloops nf0 (NJet 3.1.2 five-gluon defect)": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-nf0-gg_3g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_3g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-nf0-gg_3g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf0-gg_3g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2416,8 +2416,8 @@
    ]
   },
   "gg_ggg njet211 double vs njet211 dd": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-double-gg_3g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-dd-gg_3g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-double-gg_3g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-dd-gg_3g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "NJet 2.1.1",
    "b_provider": null,
@@ -2513,8 +2513,8 @@
    ]
   },
   "gg_gggg njet312 dd vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_4g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2610,8 +2610,8 @@
    ]
   },
   "gg_gggg njet312 double vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_4g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2707,8 +2707,8 @@
    ]
   },
   "gg_gggg njet211 double vs openloops nf5": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/timing/njet211-double-standard-scaling-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/timing/njet211-double-standard-scaling-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf5-gg_4g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2804,8 +2804,8 @@
    ]
   },
   "gg_gggg njet312 double nf0 vs openloops nf0": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-nf0-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-nf0-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf0-gg_4g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2901,8 +2901,8 @@
    ]
   },
   "gg_gggg njet211 double nf0 vs openloops nf0": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-double-nf0-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-double-nf0-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf0-gg_4g.json",
    "a_tool": "NJet 2.1.1",
    "b_tool": "OpenLoops 2.1.5",
    "b_provider": null,
@@ -2998,8 +2998,8 @@
    ]
   },
   "gg_gggg njet312 blha vs direct": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-blha-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-blha-gg_4g.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-double-gg_4g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "NJet 3.1.2",
    "b_provider": null,
@@ -3035,8 +3035,8 @@
    ]
   },
   "gg_gggg njet312 oneloop dd vs qcdloop dd": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312ol-dd-gg_4g-p01.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_4g.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312ol-dd-gg_4g-p01.json",
+   "b": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-gg_4g.json",
    "a_tool": "NJet 3.1.2",
    "b_tool": "NJet 3.1.2",
    "b_provider": null,
@@ -3068,8 +3068,8 @@
    ]
   },
   "gg_gggg openloops nf6 vs fixture recola": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf6-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf6-gg_4g.json",
+   "b": "${PYAMPLICOL_LOOP_WORKSPACE}/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
    "a_tool": "OpenLoops 2.1.5",
    "b_tool": "recola",
    "b_provider": "recola",
@@ -3105,8 +3105,8 @@
    ]
   },
   "gg_gggg openloops nf6 vs fixture openloops": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf6-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/openloops-nf6-gg_4g.json",
+   "b": "${PYAMPLICOL_LOOP_WORKSPACE}/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
    "a_tool": "OpenLoops 2.1.5",
    "b_tool": "openloops",
    "b_provider": "openloops",
@@ -3142,8 +3142,8 @@
    ]
   },
   "gg_gggg njet312 dd + top vs fixture recola": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-plus-top-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-plus-top-gg_4g.json",
+   "b": "${PYAMPLICOL_LOOP_WORKSPACE}/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
    "a_tool": "NJet 3.1.2 + T(OpenLoops nf=6 - nf=5)",
    "b_tool": "recola",
    "b_provider": "recola",
@@ -3179,8 +3179,8 @@
    ]
   },
   "gg_gggg njet312 dd + top vs fixture openloops": {
-   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-plus-top-gg_4g.json",
-   "b": "/shared/external/pyLoopAmpliCol/workspace/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
+   "a": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-plus-top-gg_4g.json",
+   "b": "${PYAMPLICOL_LOOP_WORKSPACE}/worktrees/v2-njet-reference/tests/fixtures/loop/required/gg_gggg.json",
    "a_tool": "NJet 3.1.2 + T(OpenLoops nf=6 - nf=5)",
    "b_tool": "openloops",
    "b_provider": "openloops",
