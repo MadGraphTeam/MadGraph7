@@ -115,9 +115,12 @@ def test_rows_are_well_formed(manifest, rows):
         assert row.tier in mqcd.TIERS and row.status in mqcd.STATUSES, name
         assert row.corrections == ("QCD",), name
         assert set(row.extras) <= set(mqcd.EXTRAS), name
-        # An extra the harness does not check yet names its package.
+        # An extra the harness does not check yet names its package, or
+        # (rule 7's nc) lists the other package's test ids, never both.
         for extra in set(row.extras) - mqcd.IMPLEMENTED_EXTRAS:
-            assert extra in row.extras_pending, (name, extra)
+            delegated = extra in mqcd.DELEGATED_EXTRAS and bool(row.nc_column)
+            assert (extra in row.extras_pending) != delegated, (name, extra)
+        assert not row.nc_column or "nc" in row.extras, name
         assert set(row.extras_pending) <= set(row.extras), name
         # The special points (sp, PLAN §4.1 S1-S4) run as the row's gating
         # variants.
@@ -268,6 +271,32 @@ def test_pending_rows_and_extras_name_their_package(rows):
     }
     assert all(package in mqcd.UNBLOCKERS for package in pending.values())
     assert all(reason.split()[0] in mqcd.UNBLOCKERS for reason in waiting.values())
+
+
+def test_rule7_is_mq_nc_s_column_or_waits_for_it(manifest, rows):
+    """Rule 7 (the nc extra): every nc row waits for MQ-NC, or every nc row
+    lists MQ-NC's test ids, equal to its live ``NC_COLUMN`` (the projection
+    id first), in test files that exist; the LC/NLC smoke on every shipped
+    restriction likewise waits or names MQ-NC's test."""
+
+    nc = {name: row for name, row in rows.items() if "nc" in row.extras}
+    smoke = manifest["smokes"]["lc_every_restriction"]
+    assert len(nc) == 13 and all(row.base is None for row in nc.values())
+    if not any(row.nc_column for row in nc.values()):
+        assert all(r.extras_pending["nc"].startswith("MQ-NC") for r in nc.values())
+        assert smoke == "MQ-NC"
+        return
+    import importlib
+
+    module = importlib.import_module("tests.unit.test_loop_v2_nc_projection")
+    live = {name: tuple(ids) for name, ids in module.NC_COLUMN.items()}
+    assert live == {name: row.nc_column for name, row in nc.items()}
+    for name, row in nc.items():
+        assert "test_loop_v2_nc_projection.py::" in row.nc_column[0], name
+        assert row.nc_column[0].endswith(f"[{name}]"), name
+    for node in {node for row in nc.values() for node in row.nc_column}:
+        assert (mqcd.ROOT / node.split("::")[0]).is_file(), node
+    assert (mqcd.ROOT / smoke["test"].split("::")[0]).is_file()
 
 
 # ------------------------------------------------------------ the helpers
@@ -663,6 +692,26 @@ def test_ckm_relation_rule():
     assert [(c.coefficient, c.rule) for c in failed] == [("finite", "ckm")]
 
 
+def _nc_manifest(manifest, columns, path):
+    """A copy of the manifest at ``path`` whose nc rows in ``columns`` list
+    those rule 7 ids and whose other nc rows wait for MQ-NC (so the report
+    tests do not depend on whether MQ-NC has landed)."""
+
+    data = json.loads(json.dumps(manifest))
+    for entry in data["rows"]:
+        if "nc" not in entry["extras"]:
+            continue
+        entry.pop("nc_column", None)
+        pending = entry.setdefault("extras_pending", {})
+        pending.pop("nc", None)
+        if entry["id"] in columns:
+            entry["nc_column"] = list(columns[entry["id"]])
+        else:
+            pending["nc"] = "MQ-NC (rule 7)"
+    path.write_text(json.dumps(data))
+    return path
+
+
 def _report_builder():
     import importlib.util
 
@@ -673,13 +722,19 @@ def _report_builder():
     return module
 
 
-def test_report_data_counts_variants_smokes_and_findings(tmp_path):
+def test_report_data_counts_variants_smokes_and_findings(
+    tmp_path, monkeypatch, manifest
+):
     """build_mqcd.py: a failing gating variant fails its row, a non-gating
     one does not, smoke and expansion records are kept apart, a row without
     a record is not-run and a pending row stays pending; the findings name
     their rows in the per-row table."""
 
     builder = _report_builder()
+    path = _nc_manifest(manifest, {}, tmp_path / "manifest.json")
+    monkeypatch.setattr(builder, "MANIFEST", path)
+    tmp_path = tmp_path / "results"
+    tmp_path.mkdir()
 
     def record(name, tier, passed):
         check = {"rule": "1", "point": 0, "carrier": "double-double",
@@ -725,6 +780,71 @@ def test_report_data_counts_variants_smokes_and_findings(tmp_path):
     assert {v["id"]: v["status"] for v in d17["variants"]}["D17@5F"] == "pending"
     line = next(x for x in builder.markdown(data).splitlines() if x.startswith("| D17"))
     assert "+5F (waits for MQ-5F)" in line
+
+
+def test_report_data_reads_the_nc_column_from_junit(tmp_path, monkeypatch, manifest):
+    """build_mqcd.py --junit: a row's nc column (rule 7, MQ-NC's test ids)
+    passes when every id passed (an unparametrised id stands for all its
+    parametrisations), fails its row when one failed, and leaves its row
+    not-run when absent; the LC smoke on every restriction likewise."""
+
+    builder = _report_builder()
+    projection = (
+        "tests/unit/test_loop_v2_nc_projection.py::"
+        "test_lc_and_nlc_are_the_kept_powers_of_the_nc_scan"
+    )
+    oracle = "tests/unit/test_loop_v2_nc_oracles.py::test_oracle"
+    smoke = (
+        "tests/unit/test_loop_v2_nc_declaration.py::"
+        "test_lc_and_nlc_smoke_on_every_shipped_restriction"
+    )
+    columns = {name: (f"{projection}[{name}]", oracle) for name in ("A12", "D05")}
+    path = _nc_manifest(manifest, columns, tmp_path / "manifest.json")
+    data = json.loads(path.read_text())
+    data["smokes"]["lc_every_restriction"] = {"test": smoke}
+    path.write_text(json.dumps(data))
+    monkeypatch.setattr(builder, "MANIFEST", path)
+    results = tmp_path / "results"
+    results.mkdir()
+    for name, tier in (("A12", "default"), ("A12@sectors", "nightly"),
+                       ("D05", "default")):  # fmt: skip
+        record = {"row": name, "tier": tier, "passed": True, "checks": 1,
+                  "failures": 0, "check_records": []}  # fmt: skip
+        (results / f"{name}.{tier}.json").write_text(json.dumps(record))
+    cases = [
+        ("test_loop_v2_nc_projection", f"{projection.split('::')[1]}[A12]", ""),
+        ("test_loop_v2_nc_projection", f"{projection.split('::')[1]}[D05]",
+         "<failure message='x'/>"),
+        ("test_loop_v2_nc_oracles", "test_oracle[0]", ""),
+        ("test_loop_v2_nc_oracles", "test_oracle[1]", ""),
+        ("test_loop_v2_nc_declaration", f"{smoke.split('::')[1]}[default]", ""),
+        ("test_loop_v2_nc_declaration", f"{smoke.split('::')[1]}[ckm]", "<skipped/>"),
+    ]  # fmt: skip
+    junit = tmp_path / "nc.xml"
+    junit.write_text(
+        "<testsuites><testsuite>"
+        + "".join(
+            f'<testcase classname="tests.unit.{module}" name="{name}">{body}</testcase>'
+            for module, name, body in cases
+        )
+        + "</testsuite></testsuites>"
+    )
+    built = builder.build([results], {}, None, [junit])
+    by_id = {row["id"]: row for row in built["rows"]}
+    assert by_id["A12"]["nc"]["status"] == "pass"
+    assert by_id["A12"]["status"] == "pass"
+    assert by_id["D05"]["nc"]["tests"][f"{projection}[D05]"] == "failed"
+    assert by_id["D05"]["status"] == "fail"
+    assert by_id["A01"]["nc"] is None  # pending MQ-NC in this manifest
+    assert builder._nc_cell(by_id["A01"]) == "pending"
+    lc = built["smokes_and_expansions"]["lc:every_restriction"]
+    assert lc["status"] == "not-run" and lc["tests"][smoke] == "skipped"
+    table = builder.markdown(built).splitlines()
+    line = next(x for x in table if x.startswith("| D05"))
+    assert "| fail |" in line and "r7 test_lc_and_nlc" in line
+    # Without the JUnit XML the nc column is not run, and so is its row.
+    built = builder.build([results], {}, None)
+    assert {row["id"]: row["status"] for row in built["rows"]}["A12"] == "not-run"
 
 
 def test_restricted_ufo_variants_wait_for_mq5f(rows):
