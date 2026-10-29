@@ -1055,19 +1055,6 @@ def export_plan(
     # N_c-exact tree blocks: the generation refuses others
     # (``LoopSlice.generate``), and no export serves one (``refusals``).
     require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
-    if trees and getattr(slice_, "external_photons", None) is not None:
-        # The native inputs form the Born and the counterterm and field
-        # components with the loops' coupling throughout; the alpha(0) scale
-        # of external photons (WP3.2 EWI-6b, ``_PointEvaluation.average``)
-        # is applied by the Python inputs only (EWI-N). A stored process is
-        # refused earlier (``LoopSlice.generate(native_inputs=True)``).
-        from .native_trees import NativeExportUnsupported
-
-        raise NativeExportUnsupported(
-            "external-photon-alpha0",
-            "native point inputs of a request with on-shell external photons "
-            "(alpha(0) convention, WP3.2 EWI-6b)",
-        )
     kinematics = rx.CatalogueKinematics(
         slice_.catalogue,
         slice_.compiled.ir.vertex_terms,

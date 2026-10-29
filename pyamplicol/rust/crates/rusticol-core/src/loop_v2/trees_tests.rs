@@ -160,6 +160,7 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         plan_masses: vec![None, Some(MassSource::Output(4))],
         scale: Some(0),
         scale_outputs,
+        photons: None,
     };
     let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
         Some(
@@ -237,16 +238,62 @@ fn plane_mismatch_names_the_output_row_and_part() {
         mismatch,
         PlaneMismatch {
             output: 1,
-            row: 1,
-            imaginary: true,
-            plane: 2.0,
-            exact: -2.0
+            probe: PlaneProbe::Row {
+                row: 1,
+                real_axis: false,
+                imaginary: true,
+                plane: 2.0,
+                exact: -2.0
+            }
         }
     );
     let text = mismatch.to_string();
     assert!(
-        text.contains("output 1 (imaginary part, probe row 1"),
+        text.contains("output 1 (imaginary part, complex probe row 1"),
         "{text}"
     );
     assert!(!text.contains("exact evaluator;"), "{text}");
+    // The rounding floor is the output's own scale: a small output's error
+    // is not hidden by a large output (row 0's output 2 at 1e12), while a
+    // part that cancels to rounding against its own size agrees.
+    let mut expected = vec![
+        Complex::new(1e-3, 0.0),
+        Complex::new(2.0, 0.0),
+        Complex::new(1e12, 0.0),
+    ];
+    let mut got = expected.clone();
+    got[0].re = 1.5e-3;
+    let mismatch = first_mismatch(&expected, &got, 3).expect("a mismatch");
+    assert_eq!(mismatch.output, 0);
+    got[0].re = 1e-3;
+    got[1].im = 1e-13;
+    assert_eq!(first_mismatch(&expected, &got, 3), None);
+    expected[1].im = 0.0;
+    got[1].im = 3e-12;
+    assert_eq!(first_mismatch(&expected, &got, 3).map(|m| m.output), Some(1));
+    let text = PlaneMismatch {
+        output: 3,
+        probe: PlaneProbe::NoRealPoint,
+    }
+    .to_string();
+    assert!(text.starts_with("output 3 reads a branch-cut"), "{text}");
+}
+
+#[test]
+fn off_axis_probes_are_distinct_and_off_the_real_axis() {
+    // Two rows of five inputs: every imaginary part at least 0.25 in
+    // magnitude, positive in the first row and negative in the second, every
+    // value distinct, real parts in (0.5, 1.5).
+    let probes = off_axis_probes(5, 2);
+    assert_eq!(probes.len(), 10);
+    for (k, z) in probes.iter().enumerate() {
+        assert!(z.re > 0.5 && z.re < 1.5, "{z:?}");
+        assert!(z.im.abs() >= 0.25 && z.im.abs() <= 0.75, "{z:?}");
+        assert_eq!(z.im > 0.0, k < 5, "{z:?}");
+    }
+    for (i, a) in probes.iter().enumerate() {
+        for b in &probes[i + 1..] {
+            assert!(a.re != b.re && a.im != b.im, "{a:?} {b:?}");
+        }
+    }
 }

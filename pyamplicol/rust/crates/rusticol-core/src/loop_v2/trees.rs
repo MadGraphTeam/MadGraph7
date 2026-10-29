@@ -85,9 +85,13 @@ pub const TREE_SCHEMA: u32 = 4;
 /// input and output counts. The evaluator is the one binary64 would run
 /// without it (its coefficients, registered constants included, cast as
 /// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
-/// storage-v4 IR (`evaluator::symjit_plane`). The plane check's refusal is
-/// a value: `Ok(Err(mismatch))` when the plane application disagrees with
-/// its exact evaluator at the check's probes (the generation refuses the
+/// storage-v4 IR (`evaluator::symjit_plane`). `real_points` are rows of real
+/// input values at which the program runs (the parameter program: the
+/// request's parameter values), the plane check's real-axis rows
+/// ([`verify_plane`]). The plane check's refusal is a value:
+/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
+/// evaluator at the check's probes, or when an output's real-axis value
+/// cannot be certified without a real point (the generation refuses the
 /// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
 /// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
@@ -95,6 +99,7 @@ pub fn compile_plane_application_checked(
     saved: &[u8],
     opt_level: u8,
     compress: bool,
+    real_points: &[Vec<f64>],
 ) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
     let zero = 0.0_f64;
@@ -107,76 +112,164 @@ pub fn compile_plane_application_checked(
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
             &evaluator, opt_level, compress,
         )?;
+    if let Some(point) = real_points.iter().find(|point| point.len() != inputs) {
+        return Err(invalid(format!(
+            "plane check: a real point of {} values for a program of {inputs} inputs",
+            point.len()
+        )));
+    }
+    let sensitive = if real_points.is_empty() {
+        crate::engine::real_axis_sensitive_outputs(&evaluator)?
+    } else {
+        Vec::new()
+    };
+    if let Some(&output) = sensitive.first() {
+        return Ok(Err(PlaneMismatch {
+            output,
+            probe: PlaneProbe::NoRealPoint,
+        }));
+    }
     Ok(
-        match verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))? {
+        match verify_plane(
+            &plane,
+            evaluator.into_batch_evaluator(),
+            (inputs, outputs),
+            real_points,
+        )? {
             Some(mismatch) => Err(mismatch),
             None => Ok((plane, inputs, outputs)),
         },
     )
 }
 
-/// The first disagreement of a plane application with its exact evaluator at
-/// the plane check's probes ([`compile_plane_application_checked`]): the
-/// output index, the probe row, the real or imaginary part, and the two
-/// binary64 values.
+/// What the plane check refuses ([`compile_plane_application_checked`]): the
+/// output and how.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlaneMismatch {
     pub output: usize,
-    pub row: usize,
-    pub imaginary: bool,
-    pub plane: f64,
-    pub exact: f64,
+    pub probe: PlaneProbe,
+}
+
+/// How a plane check refuses an output ([`PlaneMismatch`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum PlaneProbe {
+    /// The plane application and its exact evaluator disagree at a probe row
+    /// (off the real axis, or one of the caller's real points), in the real or
+    /// imaginary part, with the two binary64 values.
+    Row {
+        row: usize,
+        real_axis: bool,
+        imaginary: bool,
+        plane: f64,
+        exact: f64,
+    },
+    /// The output's value at real inputs depends on a branch side or a
+    /// discontinuity (`engine::real_axis_sensitive_outputs`) and the caller
+    /// gave no real point to certify it at.
+    NoRealPoint,
 }
 
 impl std::fmt::Display for PlaneMismatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "the SymJIT plane application disagrees with its exact evaluator at \
-             output {} ({} part, probe row {}: {:e} against {:e})",
-            self.output,
-            if self.imaginary { "imaginary" } else { "real" },
-            self.row,
-            self.plane,
-            self.exact
-        )
+        match &self.probe {
+            PlaneProbe::Row {
+                row,
+                real_axis,
+                imaginary,
+                plane,
+                exact,
+            } => write!(
+                f,
+                "the SymJIT plane application disagrees with its exact evaluator at \
+                 output {} ({} part, {} probe row {row}: {plane:e} against {exact:e})",
+                self.output,
+                if *imaginary { "imaginary" } else { "real" },
+                if *real_axis { "real-axis" } else { "complex" },
+            ),
+            PlaneProbe::NoRealPoint => write!(
+                f,
+                "output {} reads a branch-cut or discontinuous function of the \
+                 inputs, whose side at real inputs only a real point of the \
+                 program can certify, and none was given",
+                self.output
+            ),
+        }
     }
 }
 
 /// The plane check: the first disagreement of a plane application with its
-/// evaluator at two fixed real points (inputs in (0.5, 1.5)), or `None`. A
-/// translation error (a constant or a function read wrongly) changes an
-/// output at O(1), while the two evaluations' rounding differs by orders of
-/// magnitude less (the criterion of the tree engine's exporter,
-/// `symbolica_helpers._verify_symjit_plane_constants`).
+/// evaluator, or `None`. A translation error (a constant or a function read
+/// wrongly) changes an output at O(1), while the two evaluations' rounding
+/// differs by orders of magnitude less (the criterion of the tree engine's
+/// exporter, `symbolica_helpers._verify_symjit_plane_constants`).
+///
+/// Its rows: two complex rows off the real axis (real parts in (0.5, 1.5),
+/// imaginary parts of either sign in 0.25..0.75 in magnitude, a deterministic
+/// low-discrepancy sequence), where no input-dependent argument sits on a
+/// branch cut, so the check certifies the translation whatever the inputs'
+/// order, names and values; then `real_points`, the real inputs at which the
+/// program runs, which certify the real-axis evaluation there (a signed
+/// zero's side of a cut, a predicate's branch). SymJIT gives a negated real
+/// a -0 imaginary part where Symbolica's evaluator gives +0 (`sqrt(-x)` at
+/// x > 0: -i sqrt(x) against +i sqrt(x)), so a real probe placed on a cut
+/// refuses a correct translation; the former real probes, assigned by input
+/// index, made the verdict depend on the parameters' declaration order.
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
     mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
+    real_points: &[Vec<f64>],
 ) -> RusticolResult<Option<PlaneMismatch>> {
-    const ROWS: usize = 2;
+    const OFF_AXIS: usize = 2;
     let (inputs, outputs) = shape;
-    // A low-discrepancy sequence: deterministic, distinct per input.
-    let values: Vec<Complex<f64>> = (0..ROWS * inputs)
+    let rows = OFF_AXIS + real_points.len();
+    let mut values = off_axis_probes(inputs, OFF_AXIS);
+    for point in real_points {
+        values.extend(point.iter().map(|&x| Complex::new(x, 0.0)));
+    }
+    let mut expected = vec![Complex::new(0.0, 0.0); rows * outputs];
+    evaluator
+        .evaluate_batch(&values, &mut expected, rows)
+        .map_err(|e| invalid(format!("plane check: {e}")))?;
+    let got = evaluate_plane_application(plane, shape, &values, rows)?;
+    Ok(first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
+        if let PlaneProbe::Row { row, real_axis, .. } = &mut mismatch.probe {
+            if *row >= OFF_AXIS {
+                *row -= OFF_AXIS;
+                *real_axis = true;
+            }
+        }
+        mismatch
+    }))
+}
+
+/// `rows` rows of `inputs` complex probe values off the real axis: real parts
+/// 0.5 + frac(k / phi) and imaginary parts 0.25 + 0.5 frac(k / rho) (phi the
+/// golden ratio, rho the plastic number: a two-dimensional low-discrepancy
+/// sequence, every value distinct), positive in even rows and negative in
+/// odd rows (both half-planes).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
+    (0..rows * inputs)
         .map(|k| {
+            let n = (k + 1) as f64;
+            let sign = if (k / inputs.max(1)) % 2 == 0 { 1.0 } else { -1.0 };
             Complex::new(
-                0.5 + (0.618_033_988_749_894_8 * (k + 1) as f64).fract(),
-                0.0,
+                0.5 + (0.618_033_988_749_894_8 * n).fract(),
+                sign * (0.25 + 0.5 * (0.754_877_666_246_692_7 * n).fract()),
             )
         })
-        .collect();
-    let mut expected = vec![Complex::new(0.0, 0.0); ROWS * outputs];
-    evaluator
-        .evaluate_batch(&values, &mut expected, ROWS)
-        .map_err(|e| invalid(format!("plane check: {e}")))?;
-    let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
-    Ok(first_mismatch(&expected, &got, outputs))
+        .collect()
 }
 
 /// The first value where `got` (the plane application's rows) and `expected`
 /// (the evaluator's) disagree beyond rounding, row-major over `outputs`
-/// complex outputs per row.
+/// complex outputs per row: a part agrees bitwise, both NaN, within 1e-6 of
+/// itself, or within 1e-12 of its output's scale (the largest finite part of
+/// that output over the rows: a part that cancels to rounding, e.g. the zero
+/// imaginary part of a real coupling, against its output's size, and a small
+/// output not against a large one's).
 #[cfg(any(test, feature = "python-generation-bridge"))]
 fn first_mismatch(
     expected: &[Complex<f64>],
@@ -186,12 +279,18 @@ fn first_mismatch(
     let parts = |values: &[Complex<f64>]| -> Vec<f64> {
         values.iter().flat_map(|z| [z.re, z.im]).collect()
     };
+    let width = outputs.max(1);
+    let mut scales = vec![0.0_f64; width];
+    for (index, z) in expected.iter().enumerate() {
+        for x in [z.re, z.im] {
+            if x.is_finite() {
+                scales[index % width] = scales[index % width].max(x.abs());
+            }
+        }
+    }
     let (expected, got) = (parts(expected), parts(got));
-    let scale = expected
-        .iter()
-        .filter(|x| x.is_finite())
-        .fold(0.0_f64, |m, x| m.max(x.abs()));
     for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
+        let scale = scales[(index / 2) % width];
         let agree = e.to_bits() == g.to_bits()
             || (e.is_nan() && g.is_nan())
             || (e - g).abs() <= 1e-6 * e.abs()
@@ -200,10 +299,13 @@ fn first_mismatch(
             let value = index / 2;
             return Some(PlaneMismatch {
                 output: value % outputs.max(1),
-                row: value / outputs.max(1),
-                imaginary: index % 2 == 1,
-                plane: g,
-                exact: e,
+                probe: PlaneProbe::Row {
+                    row: value / outputs.max(1),
+                    real_axis: false,
+                    imaginary: index % 2 == 1,
+                    plane: g,
+                    exact: e,
+                },
             });
         }
     }
@@ -354,6 +456,17 @@ struct ParameterFile {
     /// the analysis: its batches are then checked per point.
     #[serde(default)]
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// The on-shell external photons of an electroweak request (WP3.2
+    /// EWI-6b, the alpha(0) convention): the output index of
+    /// alpha(0) / alpha (real and positive, also in `positive`) and the
+    /// photons' 1-based leg labels. Every source of those legs, spin and
+    /// loop-side sources included, takes sqrt(alpha(0) / alpha) in the
+    /// trees and the counterterm program, so the Born, the loops, the
+    /// counterterm kets and the field insertions carry (alpha(0) / alpha)^n
+    /// and the average stays the slice's. Written only when present: an
+    /// older native refuses the record (unknown field).
+    #[serde(default)]
+    photons: Option<(usize, Vec<usize>)>,
 }
 
 #[derive(Deserialize)]
@@ -633,6 +746,8 @@ struct Parameters {
     plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// `ParameterFile::photons`.
+    photons: Option<(usize, Vec<usize>)>,
 }
 
 impl Parameters {
@@ -842,6 +957,9 @@ pub struct TreeBatch<T> {
     pub counterterm_couplings: Vec<Vec<Complex<T>>>,
     /// Per point the counterterm program's model parameter values.
     pub counterterm_model: Vec<Vec<T>>,
+    /// Per point the source scale sqrt(alpha(0) / alpha) of the on-shell
+    /// external photons (`ParameterFile::photons`; empty without them).
+    pub photon_scales: Vec<T>,
 }
 
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
@@ -1385,6 +1503,9 @@ fn load_parameters(
             && file.scale_outputs.as_ref().is_none_or(|dependent| {
                 dependent.iter().all(|(o, _)| output(*o))
                     && (file.scale.is_some() || dependent.is_empty())
+            })
+            && file.photons.as_ref().is_none_or(|(o, legs)| {
+                output(*o) && file.positive.contains(o) && !legs.is_empty()
             }),
         "parameter program index",
     )?;
@@ -1429,6 +1550,7 @@ fn load_parameters(
         plan_masses,
         scale: file.scale,
         scale_outputs: file.scale_outputs,
+        photons: file.photons,
     })
 }
 
@@ -1806,6 +1928,21 @@ impl TreeProgram {
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
         )?;
+        let sources = SchemaSources::from_value(&file.source_fill)?;
+        if let Some((_, legs)) = &parameters.photons {
+            // Each photon a leg with sources in the trees and, with one, the
+            // counterterm program.
+            require(
+                legs.iter().all(|&leg| {
+                    (1..=file.legs).contains(&leg)
+                        && !sources.leg_slots(leg).is_empty()
+                        && counterterm_trees
+                            .as_ref()
+                            .is_none_or(|ct| !ct.sources.leg_slots(leg).is_empty())
+                }),
+                "a photon leg without sources",
+            )?;
+        }
         require(
             file.block_rows.len() == plan.block_rows.len(),
             "block rows differ from the plan's",
@@ -1942,7 +2079,7 @@ impl TreeProgram {
             model_offset: file.model_offset,
             model_count: file.model_count,
             momentum_slots: file.momentum_slots,
-            sources: SchemaSources::from_value(&file.source_fill)?,
+            sources,
             interactions,
             block_rows: file.block_rows,
             block_row_terms: file.block_row_terms,
@@ -2112,6 +2249,16 @@ impl TreeProgram {
             Ok(first)
         };
         for row in &rows {
+            if let Some((o, _)) = &program.photons {
+                // Its square root scales the photons' sources (`scale_photons`).
+                let value = &row[*o];
+                require(
+                    value.im == *zero && value.re > *zero && value.re.is_finite(),
+                    "the on-shell external photons' alpha(0)/alpha is not real, \
+                     finite and positive: set the model's 1/alpha(0) parameter \
+                     (aEW0M1 of MG5_aMC's G_mu loop models, e.g. 137.035999)",
+                )?;
+            }
             for &o in &program.positive {
                 let value = &row[o];
                 require(
@@ -2163,6 +2310,10 @@ impl TreeProgram {
         };
         let model = values_of(&program.model);
         let counterterm_model = values_of(&program.counterterm_model);
+        // Real and positive (`positive`, checked above).
+        let photon_scales = program.photons.as_ref().map_or_else(Vec::new, |(o, _)| {
+            rows.iter().map(|row| row[*o].re.clone().sqrt()).collect()
+        });
         let masses: BTreeMap<i32, Rational> = program
             .masses
             .iter()
@@ -2220,6 +2371,7 @@ impl TreeProgram {
                 couplings,
                 counterterm_couplings,
                 counterterm_model,
+                photon_scales,
             },
             constants,
             masses: plan_masses,
@@ -2673,6 +2825,9 @@ impl TreeProgram {
             None => None,
         };
         for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
+            self.scale_photons(states, layout.size, &self.sources, batch)?;
+        }
+        for states in std::iter::once(&mut states).chain(loop_states.as_mut()) {
             run_interactions(
                 &self.interactions,
                 layout,
@@ -2716,6 +2871,7 @@ impl TreeProgram {
                         zero,
                     )?;
                 }
+                self.scale_photons(&mut ct_states, ct.layout.size, &ct.sources, batch)?;
                 run_interactions(
                     &ct.interactions,
                     ct.layout,
@@ -3008,6 +3164,51 @@ impl TreeProgram {
             }
         }
         Ok(states)
+    }
+
+    /// Multiply every source of the on-shell external photons
+    /// (`ParameterFile::photons`) by its point's sqrt(alpha(0) / alpha),
+    /// after the spin and loop-side sources replaced theirs: one interaction
+    /// program's states, `sources` its source fill. Every amplitude is
+    /// linear in each leg's source, so each output takes
+    /// (alpha(0) / alpha)^n, as the Python lane's scaled average
+    /// (`assemble._PointEvaluation.average`) gives it.
+    fn scale_photons<T: TreeCarrier>(
+        &self,
+        states: &mut [Complex<T>],
+        size: usize,
+        sources: &SchemaSources,
+        batch: &TreeBatch<T>,
+    ) -> RusticolResult<()> {
+        let Some((_, legs)) = &self.parameters.photons else {
+            return Ok(());
+        };
+        if size == 0 {
+            return Ok(());
+        }
+        require(
+            batch.photon_scales.len() * size == states.len(),
+            "a photon source scale per point",
+        )?;
+        let slots: Vec<(usize, usize)> = legs
+            .iter()
+            .flat_map(|&leg| sources.leg_slots(leg))
+            .collect();
+        require(
+            slots.iter().all(|&(start, stop)| start <= stop && stop <= size),
+            "a photon source slot outside the state",
+        )?;
+        for (state, scale) in states.chunks_exact_mut(size).zip(&batch.photon_scales) {
+            for &(start, stop) in &slots {
+                for value in &mut state[start..stop] {
+                    *value = Complex::new(
+                        value.re.clone() * scale.clone(),
+                        value.im.clone() * scale.clone(),
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Write each point's spin-source vectors (times each slot's crossing
