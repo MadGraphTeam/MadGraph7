@@ -1468,9 +1468,26 @@ class MadgraphProcess:
             )
         })
         log_path = os.path.join(self.run_path, "compile_amplicol.log")
+        for check in sorted({
+            os.path.join(os.path.dirname(os.path.normpath(path)), "check-pyamplicol")
+            for path in paths
+        }):
+            # older outputs have no check script
+            if os.path.isfile(check):
+                self.check_pyamplicol(check)
         for path in paths:
             logger.info(f"Compiling the AmpliCol matrix elements in {path}, see {log_path}")
             self.make_subprocesses(path, [], 1, log_path)
+
+    @staticmethod
+    def check_pyamplicol(script: str) -> None:
+        """Run SubProcesses/check-pyamplicol, which fails if the installed
+        pyamplicol is not the one the output was made with."""
+        result = subprocess.run([script], capture_output=True, text=True)
+        if result.returncode != 0:
+            message = (result.stderr.strip() or result.stdout.strip()
+                       or f"{script} failed with exit status {result.returncode}")
+            raise RuntimeError(message)
 
     @staticmethod
     def make_subprocesses(

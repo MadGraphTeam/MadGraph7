@@ -198,5 +198,52 @@ class SurrogateLibraryTest(unittest.TestCase):
             self.load([FakeContext('cpu')], devices=('cuda',))
 
 
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class CompileAmplicolTest(unittest.TestCase):
+    """SubProcesses/check-pyamplicol runs before make, and its message is the
+    error of the launch."""
+
+    def setUp(self):
+        from madgraph.mg7 import madgraph_process
+        self.module = madgraph_process
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.subproc = os.path.join(self.tmp.name, 'SubProcesses')
+        os.makedirs(os.path.join(self.subproc, 'P1_gg_ttx'))
+        self.process = object.__new__(madgraph_process.MadgraphProcess)
+        self.process.run_path = self.tmp.name
+        self.process.subprocess_data = [{
+            'backend': 'amplicol',
+            'path': os.path.join(self.subproc, 'P1_gg_ttx'),
+            'me_path': 'missing.so', 'ratio_path': 'missing.so',
+        }]
+
+    def write_check(self, body):
+        path = os.path.join(self.subproc, 'check-pyamplicol')
+        with open(path, 'w') as f:
+            f.write('#!/bin/sh\n' + body)
+        os.chmod(path, 0o755)
+
+    def compile(self):
+        with mock.patch.object(self.module.MadgraphProcess, 'make_subprocesses') as make:
+            self.process.compile_amplicol()
+        return make
+
+    def test_stale_pyamplicol_stops_before_make(self):
+        self.write_check('echo "reinstall pyamplicol 1.2" >&2\nexit 1\n')
+        with mock.patch.object(self.module.MadgraphProcess, 'make_subprocesses') as make:
+            with self.assertRaisesRegex(RuntimeError, 'reinstall pyamplicol 1.2'):
+                self.process.compile_amplicol()
+        make.assert_not_called()
+
+    def test_matching_pyamplicol_compiles(self):
+        self.write_check('exit 0\n')
+        self.compile().assert_called_once()
+
+    def test_older_output_without_check(self):
+        self.compile().assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
