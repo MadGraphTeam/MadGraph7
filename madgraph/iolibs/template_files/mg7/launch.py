@@ -195,6 +195,20 @@ def me_parameters(run_card):
     return parameters
 
 
+def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
+    """Whether an MLM sample's beam densities walk the clustering ladder, the
+    pdf half of madevent's rewgt: under scale_scheme "madevent", and under
+    "clustering_mean" with clustering_mean_pdf_ladder. The Python side of
+    EnergyScale::mlm_pdf_reweighting, which decides the same for the kernel;
+    the systematics then vary the ladder as madevent's do."""
+    beam = run_card["beam"]
+    return bool(
+        mlm_clustering and not is_decay and not leptonic
+        and beam["pdf_reweighting"]
+        and (beam["scale_scheme"] == "madevent"
+             or beam["clustering_mean_pdf_ladder"]))
+
+
 def interference_helicities_summed(run_card):
     """Whether [generation] interference_helicity is "summed".
 
@@ -323,7 +337,20 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
-        if self.run_card["phasespace"]["merge_subprocesses"]:
+        merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+            # A merged subprocess bundles matrix elements whose legs differ -
+            # q q~ > l l g next to q g > l l q - while the MLM clustering is
+            # built once per subprocess from a single assignment of flavours to
+            # legs. It would cluster the gluon-initiated elements as if their
+            # beam were a quark, and pick the history per diagram from the
+            # weights of one element only.
+            logger.warning(
+                "merge_subprocesses is not supported with dynamical_scale_choice "
+                "= mlm; the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses:
             with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
                 self.merged_subprocess_data = json.load(f)
         else:
@@ -510,7 +537,7 @@ class MadgraphProcess:
         self.subprocess_data = kept
 
     def init_backend(self) -> None:
-        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        ms.set_simd_mode(self.run_card["run"]["madspace_cpu_mode"])
 
     def init_event_dir(self) -> None:
         output_dir = self.run_card["gridpack"]["output_dir"]
@@ -682,9 +709,57 @@ class MadgraphProcess:
             name=name,
         )
 
+    def apply_auto_ptj_mjj(self, cuts: dict) -> None:
+        """madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f.
+
+        A merging cut already bounds every matrix-element jet from below, so
+        raising the jet pt and pair-mass cuts to xqcut removes no phase space
+        that survives the merging anyway while making the integration much more
+        efficient. The jet dR cuts go the other way and are dropped:
+        xqcut supersedes them, and a dR cut would carve a hole out of exactly
+        the region the parton shower is supposed to fill, leaving a gap in the
+        jet rates at the merging scale.
+
+        With the option off, madevent still drops the dR cuts, and only zeroes
+        a pt or pair-mass cut that sits above xqcut - it never tightens.
+        """
+        if self.is_decay or self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+            return
+        xqcut = self.run_card["phasespace"]["xqcut"]
+        if xqcut <= 0:
+            return
+        for key in ("jet-delta_r", "jet-lepton-delta_r"):
+            if cuts.get(key, {}).get("min", 0.0) > 0.0:
+                cuts[key]["min"] = 0.0
+        auto = self.run_card["phasespace"]["auto_ptj_mjj"]
+        # Both halves of madevent's rule matter, and for different reasons.
+        #
+        # ptj reaches the phase space only for jets that are leaf children of
+        # the root: a jet inside a composite s-channel node - two jets off one
+        # gluon, say - has its pt_min reset to zero in PhaseSpaceMapping, and
+        # that node's invariant is then sampled from threshold upward knowing
+        # nothing about the cut. mjj is what bounds those nodes, because a
+        # pairwise invariant-mass minimum is carried into the propagator's own
+        # e_min and so into the s_min the sampler uses.
+        #
+        # Leaving mjj out is what makes the highest multiplicity misbehave at a
+        # tight xqcut: almost every point it proposes is vetoed, and the few
+        # survivors sit against a boundary it cannot see.
+        for key in ("jet-pt", "jet-pair_mass"):
+            if auto:
+                cuts.setdefault(key, {})["min"] = xqcut
+            elif cuts.get(key, {}).get("min", 0.0) > xqcut:
+                cuts[key]["min"] = 0.0
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
+        cuts = {
+            key: dict(values)
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        }
+        self.apply_auto_ptj_mjj(cuts)
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -692,8 +767,7 @@ class MadgraphProcess:
                 max=values.get("max", inf),
                 mode=values.get("mode", "all"),
             )
-            for key, values in self.run_card["cuts"].items()
-            if key != "order_by"
+            for key, values in cuts.items()
         ]
 
     # [histograms] key that means "the distribution of the event weight",
@@ -724,28 +798,35 @@ class MadgraphProcess:
         """Make sure the requested LHAPDF set is available, downloading it into
         the first writable PDF directory if needed, and return the (possibly
         updated) LHAPDF resolution. Nothing is downloaded when the set is
-        already present."""
+        already present. LHAPDF itself is not needed: madspace reads the grid
+        files directly, so without a usable lhapdf-config (or when 'lhapdf
+        install' fails) the set is fetched straight from the LHAPDF server."""
         paths = lhapdf_paths()
         if paths.find_set(pdf_set):
-            return paths
-        if not paths.config:
-            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
             return paths
         if not paths.download_path:
             logger.debug("no writable PDF directory: cannot download %s", pdf_set)
             return paths
-        try:
-            from madgraph.interface.common_run_interface import CommonRunCmd
-            os.makedirs(paths.download_path, exist_ok=True)
-            logger.info("PDF set %s not found; downloading into %s",
-                        pdf_set, paths.download_path)
-            CommonRunCmd.install_lhapdf_pdfset_static(
-                paths.config, paths.download_path, pdf_set)
-        except Exception as err:
-            logger.warning("Could not download PDF set %s: %s", pdf_set, err)
-            return paths
+        logger.info("PDF set %s not found; downloading into %s",
+                    pdf_set, paths.download_path)
+        if paths.config:
+            try:
+                from madgraph.interface.common_run_interface import CommonRunCmd
+                os.makedirs(paths.download_path, exist_ok=True)
+                CommonRunCmd.install_lhapdf_pdfset_static(
+                    paths.config, paths.download_path, pdf_set)
+            except Exception as err:
+                logger.debug("lhapdf could not install %s: %s", pdf_set, err)
+        if not os.path.isdir(os.path.join(paths.download_path, pdf_set)):
+            try:
+                misc.download_lhapdf_set(pdf_set, paths.download_path)
+            except Exception as err:
+                logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+                return paths
         global _LHAPDF
         _LHAPDF = paths.with_data_path(paths.download_path)
+        # subprocesses (systematics, MadSpin, reweight) find it here too
+        os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
         return _LHAPDF
 
     def _no_pdf_message(self, pdf_set: str) -> str:
@@ -755,14 +836,21 @@ class MadgraphProcess:
         if self.lhapdf.config:
             found = "using lhapdf-config: %s" % self.lhapdf.config
         else:
-            found = ("no usable lhapdf-config was found, so the set could not "
-                     "be downloaded automatically")
+            found = "no lhapdf-config found (not needed for the download)"
+        if self.lhapdf.download_path:
+            download = ("the download from %s into %s failed (see the "
+                        "warning above)" % (misc.LHAPDF_SETS_URL,
+                                            self.lhapdf.download_path))
+        else:
+            download = "no writable directory to download the set into"
         return (
             "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
+            "  %s\n"
             "Fix this in one of the following ways:\n"
+            "  * check the set name against %s/pdfsets.index and your network\n"
             "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
             "  * point MadGraph at an existing one:\n"
             "        MG7> set lhapdf /path/to/lhapdf-config\n"
@@ -771,7 +859,7 @@ class MadgraphProcess:
             "        lhapdf = /path/to/lhapdf-config\n"
             "    to %s\n"
             "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
-            % (pdf_set, searched, found,
+            % (pdf_set, searched, found, download, misc.LHAPDF_SETS_URL,
                os.path.join("Cards", "me5_configuration.txt"), pdf_set))
 
     def init_beam(self) -> None:
@@ -808,26 +896,54 @@ class MadgraphProcess:
             "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
             "partonic_energy": ms.EnergyScale.partonic_energy,
         }
-        if beam_args["dynamical_scale_choice"] in dynamical_scales:
-            dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+        # "mlm" is not one of the closed-form scale choices: it needs the diagram
+        # topologies of each subprocess, so the EnergyScale is built later, in
+        # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
+        if beam_args["dynamical_scale_choice"] == "mlm":
+            self.mlm_clustering = True
+            self.scale_kwargs = {}
+        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
+            self.mlm_clustering = False
+            self.scale_kwargs = dict(
+                dynamical_scale_type=dynamical_scales[
+                    beam_args["dynamical_scale_choice"]
+                ],
+                ren_scale_fixed=beam_args["fixed_ren_scale"],
+                fact_scale_fixed=beam_args["fixed_fact_scale"],
+                ren_scale=beam_args["ren_scale"],
+                fact_scale1=beam_args["fact_scale1"],
+                fact_scale2=beam_args["fact_scale2"],
+                scale_factor=float(beam_args.get("scale_factor", 1.)),
+            )
         else:
             raise ValueError("Unknown dynamical scale choice")
-        self.scale_kwargs = dict(
-            dynamical_scale_type=dynamical_scale_type,
-            ren_scale_fixed=beam_args["fixed_ren_scale"],
-            fact_scale_fixed=beam_args["fixed_fact_scale"],
-            ren_scale=beam_args["ren_scale"],
-            fact_scale1=beam_args["fact_scale1"],
-            fact_scale2=beam_args["fact_scale2"],
-            scale_factor=float(beam_args.get("scale_factor", 1.)),
-        )
         if self.is_decay and self.custom_functions.pop("scale", None) is not None:
             logger.warning("custom scale ignored: a decay uses the decaying mass")
         if self.is_decay and self.custom_functions.pop("pdf", None) is not None:
             logger.warning("custom pdf ignored: a decay has no parton densities")
+        if self.mlm_clustering and not self.is_decay:
+            # The merging needs the scales of its own clustering history: a
+            # custom scale or a factor on it would move the merging scale away
+            # from the one the shower is matched to.
+            if self.custom_functions.pop("scale", None) is not None:
+                logger.warning(
+                    "custom scale ignored under dynamical_scale_choice = mlm")
+            if float(beam_args.get("scale_factor", 1.)) != 1.:
+                logger.warning(
+                    "scale_factor ignored under dynamical_scale_choice = mlm")
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
-            # it, fixed, whatever the card asks for.
+            # it, fixed, whatever the card asks for. That includes "mlm": a
+            # decay has no beams to cluster into, so there is no merging to do.
+            if self.mlm_clustering:
+                logger.warning(
+                    "dynamical_scale_choice = mlm has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead"
+                )
+                self.mlm_clustering = False
+            self.scale_kwargs.setdefault(
+                "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
+            )
             self.scale_kwargs.update(
                 ren_scale_fixed=True,
                 fact_scale_fixed=True,
@@ -877,6 +993,17 @@ class MadgraphProcess:
             self.pdf_grid = ms.PdfGrid(
                 os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat")
             )
+        # The grid only covers a band in Q. Asking for a density above its
+        # highest Q reads past the end of the interpolation and comes back as a
+        # NaN, so the scale is capped there. A dynamical scale rarely gets near
+        # it, but the madevent MLM scheme, which multiplies four clustering
+        # scales together under a fourth root, can. A custom PDF brings no grid
+        # to read the range from, so it is left uncapped.
+        grids = [grid for grid in (self.pdf_grid, self.pdf_grid2)
+                 if isinstance(grid, ms.PdfGrid)]
+        self.max_scale = min(max(grid.q) for grid in grids) if grids else 0.0
+        # the bottom of the same range, where the densities freeze
+        self.min_pdf_scale = max(min(grid.q) for grid in grids) if grids else 0.0
         for context in self.contexts:
             if not isinstance(self.pdf_grid, ms.CustomPdf):
                 self.pdf_grid.initialize_globals(context)
@@ -1047,6 +1174,21 @@ class MadgraphProcess:
         config = ms.SystematicsConfig()
         config.mur = [float(v) for v in syst["mur"]]
         config.muf = [float(v) for v in syst["muf"]]
+        # the emission scale of the MLM alpha_s vertices, which only an MLM
+        # sample with per-vertex alpha_s has
+        if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["alphas_reweighting"] != "none"):
+            config.alps = [float(v) for v in syst["alps"]]
+        else:
+            config.alps = [1.0]
+        # the pdf reweighting ladder of an MLM sample, varied as madevent's
+        # systematics vary it; a varied scale is kept inside the PDF grid,
+        # where LHAPDF freezes it for madevent
+        config.pdf_ladder = mlm_pdf_ladder(
+            self.run_card, self.mlm_clustering, self.is_decay, self.leptonic)
+        if config.pdf_ladder:
+            config.ladder_min_scale = float(self.min_pdf_scale)
+            config.ladder_max_scale = float(self.max_scale)
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
@@ -1263,7 +1405,8 @@ class MadgraphProcess:
             # values line up across rows, with extra spacing between the two
             return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
 
-        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        scale_count = sum(1 for v in self.systematics.variations
+                          if v.is_scale or v.is_emission)
         member_count = len(self.systematics.members)
         rows = [("Variations per event:",
                  f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
@@ -1273,6 +1416,9 @@ class MadgraphProcess:
         scale = systematics_summary.scale_percentages(summary)
         if scale is not None:
             rows.append(("Scale variation:", format_variation(*scale)))
+        emission = systematics_summary.emission_percentages(summary)
+        if emission is not None:
+            rows.append(("Emission scale variation:", format_variation(*emission)))
         for _entry, up, down in systematics_summary.pdf_percentages(summary):
             rows.append(("PDF variation:", format_variation(up, down)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
@@ -1619,7 +1765,13 @@ class MadgraphProcess:
             # rather than dividing by it: that asks for the smallest networks and
             # leaves MadNIS off, which is what an empty subprocess wants.
             rsd = (variance * count_opt)**0.5 / mean if mean else 0.
-            subproc.set_madnis_auto_settings(rsd)
+            subproc.set_madnis_auto_settings(
+                rsd,
+                min(
+                    (channel.phasespace_mapping.random_dim() for channel in ps.channels),
+                    default=0,
+                ),
+            )
             chan_offset += len(ps.channels)
             if subproc.madnis_settings["enable"]:
                 madnis_enabled = True
@@ -1667,9 +1819,15 @@ class MadgraphProcess:
 
         verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
+        trained_phasespaces = []
         training_args = []
         self.event_generator = None
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            if not subproc.madnis_supported:
+                # no flow for a one-dimensional phase space: keep its VEGAS
+                # channels, and their event generators, from the survey
+                madnis_phasespaces.append(phasespace)
+                continue
             for channel in phasespace.channels:
                 channel.event_generator = None
 
@@ -1703,6 +1861,7 @@ class MadgraphProcess:
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
+            trained_phasespaces.append(phasespace)
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -1735,7 +1894,7 @@ class MadgraphProcess:
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
-            madnis_phasespaces, madnis_training.active_channels()
+            trained_phasespaces, madnis_training.active_channels()
         ):
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
@@ -2742,6 +2901,8 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        # set from the survey by set_madnis_auto_settings
+        self.madnis_supported = True
         self.multi_channel_data = None
 
         self.unmerged_meta = None
@@ -2841,13 +3002,79 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = ms.EnergyScale(
-            particle_count=self.particle_count,
-            custom_scale=self.process.custom_function(
-                "scale", self.particle_count, representative_pids
-            ),
-            **self.process.scale_kwargs
-        )
+        # The scale range exists to keep the densities inside the PDF grid, so
+        # a run without beam densities - a lepton collider or a decay - has
+        # none: a floor there would only throw away events whose scale is
+        # legitimately low, a decay of a particle lighter than min_scale say.
+        if self.process.leptonic:
+            min_scale = max_scale = 0.0
+        else:
+            min_scale = self.process.run_card["beam"]["min_scale"]
+            max_scale = self.process.max_scale
+        if self.process.mlm_clustering:
+            mc_data = self.build_multi_channel_data()
+            all_pids = (clean_pids(self.meta["incoming"])
+                        + clean_pids(self.meta["outgoing"]))
+            self.scale = ms.EnergyScale(
+                ms.MLMClustering(
+                    topologies=[topo[0] for topo in mc_data.topologies],
+                    permutations=mc_data.permutations,
+                    diagram_indices=mc_data.diagram_indices,
+                    cm_energy=self.process.e_cm,
+                    jet_scale_scheme=getattr(
+                        ms.MLMClustering.JetScaleScheme,
+                        self.process.run_card["beam"]["jet_scale_scheme"],
+                    ),
+                    scale_scheme=getattr(
+                        ms.MLMClustering.ScaleScheme,
+                        self.process.run_card["beam"]["scale_scheme"],
+                    ),
+                    pdg_color_types={
+                        int(key): value
+                        for key, value in self.meta["pdg_color_types"].items()
+                    },
+                    xqcut=self.process.run_card["phasespace"]["xqcut"],
+                    bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+                    jet_radius=self.process.run_card["beam"]["jet_radius"],
+                    hadronic=not self.process.leptonic,
+                    external_pdg_ids=all_pids,
+                    max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
+                    parton_line_scheme=getattr(
+                        ms.MLMClustering.PartonLineScheme,
+                        self.process.run_card["beam"]["parton_line_scheme"],
+                    ),
+                    alphas_scheme=getattr(
+                        ms.MLMClustering.AlphasScheme,
+                        self.process.run_card["beam"]["alphas_reweighting"],
+                    ),
+                    pdf_reweighting=self.process.run_card["beam"][
+                        "pdf_reweighting"
+                    ],
+                    clustering_measure=getattr(
+                        ms.MLMClustering.ClusteringMeasure,
+                        self.process.run_card["beam"]["clustering_measure"],
+                    ),
+                    clustering_history=getattr(
+                        ms.MLMClustering.ClusteringHistory,
+                        self.process.run_card["beam"]["clustering_history"],
+                    ),
+                    clustering_mean_pdf_ladder=self.process.run_card["beam"][
+                        "clustering_mean_pdf_ladder"
+                    ],
+                ),
+                min_scale=min_scale,
+                max_scale=max_scale,
+            )
+        else:
+            self.scale = ms.EnergyScale(
+                particle_count=self.particle_count,
+                custom_scale=self.process.custom_function(
+                    "scale", self.particle_count, representative_pids
+                ),
+                min_scale=min_scale,
+                max_scale=max_scale,
+                **self.process.scale_kwargs,
+            )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(all_api_paths)
@@ -3289,7 +3516,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
-    def set_madnis_auto_settings(self, rsd: float):
+    def set_madnis_auto_settings(self, rsd: float, random_dim: int):
+        """Choose the MadNIS settings of this subprocess from the relative
+        spread rsd of the survey. random_dim is the smallest number of random
+        numbers of its channels: a normalizing flow needs at least two, so a
+        one-dimensional phase space (a 2 -> 1 process) never uses MadNIS."""
         madnis_args = self.process.run_card["madnis"]
         n_out = len(self.meta["outgoing"])
         n_events = self.process.run_card["generation"]["events"]
@@ -3322,6 +3553,14 @@ class MadgraphSubprocess:
             run_card_value = madnis_args[key]
             if run_card_value != "auto":
                 self.madnis_settings[key] = run_card_value
+        self.madnis_supported = random_dim >= 2
+        if not self.madnis_supported and self.madnis_settings["enable"]:
+            logger.warning(
+                "MadNIS disabled for subprocess %s: its phase space has %d "
+                "random dimension(s), a normalizing flow needs at least 2",
+                self.subproc_id, random_dim,
+            )
+            self.madnis_settings["enable"] = False
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
@@ -3562,6 +3801,11 @@ class MadgraphSubprocess:
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
+        # With an MLM history picked per diagram, the cross section at the
+        # scales of that history is the first matrix-element evaluation rescaled
+        # by alpha_s and PDF ratios when every diagram has the same power of
+        # alpha_s (-1: mixed powers, evaluate the matrix element again)
+        mlm_history_qcd_power = int(self.meta.get("qcd_power", -1))
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3595,6 +3839,7 @@ class MadgraphSubprocess:
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
+                mlm_history_qcd_power,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
@@ -3681,6 +3926,19 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
         if _LHAPDF.config:
             os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
     return _LHAPDF
+
+
+def lhapdf_index_paths() -> list:
+    """The PDF directories to look an lhaid up in. Without LHAPDF there may be
+    no pdfsets.index anywhere yet, so fetch one into the download directory."""
+
+    paths = lhapdf_paths()
+    data_paths = list(paths.data_paths)
+    if not any(os.path.exists(os.path.join(p, "pdfsets.index")) for p in data_paths) \
+            and paths.download_path \
+            and misc.download_lhapdf_index(paths.download_path):
+        data_paths.append(paths.download_path)
+    return data_paths
 
 
 class MG7Cmd(Cmd):
@@ -4179,7 +4437,7 @@ def build_selector_cmd(mother=None):
                     # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
                     # beam or for both) onto the per-beam [beam] entries
                     if rest and nlow in run_card.lo_beam_params:
-                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        data_paths = lhapdf_index_paths() if nlow == "lhaid" else ()
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:

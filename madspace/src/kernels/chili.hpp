@@ -11,8 +11,8 @@ KERNELSPEC void kernel_chili_forward(
     FIn<T, 1> r,
     FIn<T, 0> e_cm,
     FIn<T, 1> m_out,
-    FIn<T, 1> pt_min,
-    FIn<T, 1> y_max,
+    FSIn<T, 1> pt_min,
+    FSIn<T, 1> y_max,
     FOut<T, 2> p_ext,
     FOut<T, 0> det
 ) {
@@ -21,7 +21,7 @@ KERNELSPEC void kernel_chili_forward(
     FVal<T> det_tmp(1.);
     FVal<T> _e_cm(e_cm);
     auto e_cm2 = _e_cm * _e_cm;
-    auto pt_max = _e_cm / 2; // generally too large, thats why we get x1x2 > 1 and NaNs
+    auto pt_max = _e_cm / 2; // generally too large, that's why we get x1x2 > 1 and NaNs
     auto pt2_max = pt_max * pt_max;
     auto n_out = m_out.size();
     for (std::size_t i = 0; i < n_out - 1; ++i) {
@@ -134,8 +134,8 @@ KERNELSPEC void kernel_chili_inverse(
     FIn<T, 2> p_ext,
     FIn<T, 0> e_cm,
     FIn<T, 1> m_out,
-    FIn<T, 1> pt_min,
-    FIn<T, 1> y_max,
+    FSIn<T, 1> pt_min,
+    FSIn<T, 1> y_max,
     FOut<T, 1> r,
     FOut<T, 0> det
 ) {

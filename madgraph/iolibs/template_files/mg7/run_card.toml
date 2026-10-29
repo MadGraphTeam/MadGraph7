@@ -6,12 +6,12 @@ run_name = %(run.run_name)s
 seed = %(run.seed)s
 # options: cpu, cuda, hip, each optionally with a device index, e.g. "cuda:1"
 device = %(run.device)s
-# SIMD width on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
+# SIMD width of the matrix elements on cpu devices; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = %(run.cpu_mode)s
+# SIMD width of the phase-space sampling on cpu devices; options: auto, scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
+madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
-# -1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2
-simd_vector_size = %(run.simd_vector_size)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 # auto uses pigz for large files when installed; false uses gzip
@@ -68,10 +68,19 @@ fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
 fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
-# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
+# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
 # multiplies the dynamical scale; fixed scales are unaffected
 scale_factor = %(beam.scale_factor)s
+# heaviest quark flavour treated as a jet by the MLM back-clustering
+max_jet_flavor = %(beam.max_jet_flavor)s
+# the other MLM clustering options (scale_scheme, alphas_reweighting,
+# pdf_reweighting, clustering_history, ...) are hidden; one that is set (at the
+# launch prompt, or by adding its line to this section) is kept in this card
+# floor on mu_R and mu_F, since a PDF grid has no densities below it: the
+# scales are raised to it, and under dynamical_scale_choice = "mlm" the event
+# is dropped instead, as madevent does. Ignored without beam PDFs (0 disables it)
+min_scale = %(beam.min_scale)s
 
 [generation]
 events = %(generation.events)s
@@ -91,6 +100,7 @@ interference_helicity = %(generation.interference_helicity)s # options: exact, s
 enable = %(systematics.enable)s
 mur = %(systematics.mur)s # renormalization scale factors
 muf = %(systematics.muf)s # factorization scale factors
+alps = %(systematics.alps)s # MLM emission scale factors (dynamical_scale_choice = "mlm" only)
 together = %(systematics.together)s # true: all mur x muf combinations, false: one at a time
 # alternative dynamical scale choices, as for [beam] dynamical_scale_choice
 dynamical_scale = %(systematics.dynamical_scale)s
@@ -118,7 +128,7 @@ max_batch_size = %(vegas.max_batch_size)s
 
 [phasespace]
 mode = %(phasespace.mode)s # options: auto, multichannel, flat, both
-merge_subprocesses = %(phasespace.merge_subprocesses)s
+merge_subprocesses = %(phasespace.merge_subprocesses)s # ignored under dynamical_scale_choice = "mlm"
 sde_strategy = %(phasespace.sde_strategy)s # options: diagrams, denominators
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
@@ -127,6 +137,14 @@ drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # channel count above whi
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 cut_decays = %(phasespace.cut_decays)s # apply the [cuts] to decay products of on-shell particles
+# minimum kt separation required of a matrix-element jet emission, the
+# counterpart of xqcut in the legacy run_card (0 disables it; only used
+# with dynamical_scale_choice = "mlm")
+xqcut = %(phasespace.xqcut)s
+# tighten ptj and the jet-pair invariant mass to xqcut when it is set, so that
+# the phase space is not sampled where the merging cut would throw it away.
+# madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f
+auto_ptj_mjj = %(phasespace.auto_ptj_mjj)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [custom_functions]

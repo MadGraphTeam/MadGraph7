@@ -34,7 +34,7 @@ C
       PARAMETER (NORMALIZATION = 1.D0/(16.D0*3.14159265358979323846D0**2))
       REAL(KI),DIMENSION(0:3),PARAMETER::NULL_VEC = (/0.0_ki,0.0_ki,0.0_ki,0.0_ki/)
 C     GOLEM_RUN_MODE = 1: Use directly MadLoop tensorial coefficients
-C     GOLEM_RUN_MODE = 2: Reconstruct the tensorial coefficeints directly from 
+C     GOLEM_RUN_MODE = 2: Reconstruct the tensorial coefficients directly from
 C                         numerator using golem internal reconstruction routine
 C     GOLEM_RUN_MODE = 3: Cross-checked reconstructed coefficients against
 C                         MadLoop internal ones.
@@ -136,7 +136,7 @@ C INITIALIZE GOLEM IF NEEDED
 	    CALL cite('Cullen:2011kv','one-loop reduction with Golem95')
       ENDIF
 
-C  No stability test intrisic to Golem95 now
+C  No stability test intrinsic to Golem95 now
       STABLE=.TRUE.
 
 C  This initialization must be done for each reduction because we
@@ -204,7 +204,7 @@ C     Fill in the kinematic s-matrix while taking care of on-shell limits.
 C     Construct the golem internal matrices derived from the kinetic one.
       CALL PREPARESMATRIX()
 
-C     Fill in the golem coefficents and compute the loop
+C     Fill in the golem coefficients and compute the loop
       IF(GOLEM_RUN_MODE.EQ.2)THEN
 	res_golem = evaluate_b(%(proc_prefix)sGOLEM_LOOPNUM,PGOLEM,0,RANK)
       ELSE

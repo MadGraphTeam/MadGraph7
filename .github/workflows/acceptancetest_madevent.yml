@@ -89,6 +89,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_group_subprocess -pA -t0 -l INFO
             ./tests/test_manager.py test_group_subprocess_permuted_scale -pA -t0 -l INFO
+            ./tests/test_manager.py test_mlm_pdfrwt_flavour -pA -t0 -l INFO
 
       # ---- acceptancetest_contur ----
       - name: "acceptancetest_contur: run the test"

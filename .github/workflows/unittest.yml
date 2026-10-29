@@ -618,6 +618,20 @@ jobs:
         uses: ./.github/actions/clean_tmp
 
 
+  unittest_real_channels:
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: test fixed-order real channels and channel sampling
+        run: |
+            cd $GITHUB_WORKSPACE
+            gfortran --version
+            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_mint_channels test_real_channels_auto -t0
+
+
   unittest_write_model:
     # runs alone: excluded from the shared unittest jobs due to side effects
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;

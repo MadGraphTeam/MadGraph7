@@ -70,7 +70,7 @@ namespace madmatrix
   typedef fptype_v fptype2_v;
 #endif
 
-  // type to hold 2x the SIMD lane, operators work on both halfs (autovector) + narrow/widen operators defs
+  // type to hold 2x the SIMD lane, operators work on both halves (autovector) + narrow/widen operators defs
 #ifdef MGONGPU_SIMD_DENOM64
   constexpr int neppVD = neppV / 2;
   static_assert( neppV % 2 == 0, "neppV must be even for SIMD denom64" );
@@ -167,7 +167,7 @@ namespace madmatrix
   };
 
 #ifdef MGONGPU_SIMD_DENOM64
-  // complex type to hold 2x the SIMD lane, operators work on both halfs (autovector) narrow to cxtype
+  // complex type to hold 2x the SIMD lane, operators work on both halves (autovector) narrow to cxtype
   class cxtype_denom_sv
   {
   public:

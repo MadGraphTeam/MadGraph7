@@ -138,7 +138,7 @@ class TestMadEventCmd(unittest.TestCase):
         
     def test_help_category(self):
         """Check that no help category are introduced by mistake.
-           If this test failes, this is due to a un-expected ':' in a command of
+           If this test fails, this is due to a un-expected ':' in a command of
            the cmd interface.
         """
         cmd = mecmd.MadEventCmdShell

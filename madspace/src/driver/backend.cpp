@@ -1,9 +1,11 @@
 #include "madspace/driver/backend.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <dlfcn.h>
 #include <format>
 #include <unordered_map>
+#include <utility>
 
 using namespace madspace;
 
@@ -11,7 +13,9 @@ namespace {
 
 struct LoadedBackend {
     inline static std::string lib_path = "";
-    inline static int vector_size = -1;
+    // resolved SIMD mode requested with set_simd_mode, and the one actually loaded
+    inline static std::string simd_mode = "";
+    inline static std::string loaded_simd_mode = "";
     inline static std::unordered_map<DevicePtr, LoadedBackend*> device_backends;
 
     LoadedBackend(const std::string& file) {
@@ -78,54 +82,69 @@ struct LoadedBackend {
     );
 };
 
+// SIMD modes supported by this build and host, and the one chosen by "auto"
+std::pair<std::vector<std::string>, std::string> simd_mode_support() {
+    std::vector<std::string> supported_modes{"scalar"};
+    std::string auto_mode = "scalar";
+#ifdef SIMD_AVAILABLE
+#if defined(__aarch64__) || defined(_M_ARM64)
+    supported_modes.push_back("simd_128");
+    // auto stays scalar: the vectorized mode is currently slower on ARM
+#elif defined(__x86_64__) || defined(_M_X64)
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+        supported_modes.push_back("simd_256");
+        auto_mode = "simd_256";
+    }
+    if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
+        __builtin_cpu_supports("avx512dq")) {
+        // never chosen by auto: slower than simd_512 in the x86 benchmarks
+        supported_modes.push_back("avx512y");
+    }
+    if (__builtin_cpu_supports("avx512f")) {
+        supported_modes.push_back("simd_512");
+        auto_mode = "simd_512";
+    }
+#endif
+#endif // SIMD_AVAILABLE
+    return {supported_modes, auto_mode};
+}
+
+// SIMD mode that a requested mode ("auto" or an explicit one) resolves to
+std::string resolve_simd_mode(const std::string& mode) {
+    auto [supported_modes, auto_mode] = simd_mode_support();
+    if (mode == "auto") {
+        return auto_mode;
+    }
+    if (std::find(supported_modes.begin(), supported_modes.end(), mode) ==
+        supported_modes.end()) {
+        std::string supported;
+        for (auto& supported_mode : supported_modes) {
+            supported += std::format(" '{}'", supported_mode);
+        }
+        throw std::runtime_error(
+            std::format(
+                "unsupported madspace SIMD mode '{}', supported on this host: "
+                "'auto'{}",
+                mode,
+                supported
+            )
+        );
+    }
+    return mode;
+}
+
 const LoadedBackend& cpu_backend() {
     static LoadedBackend backend = [&] {
-        std::vector<int> supported_vector_sizes{1};
-#ifdef SIMD_AVAILABLE
-#ifdef __APPLE__
-        supported_vector_sizes.push_back(2);
-#else  // __APPLE__
-        if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
-            supported_vector_sizes.push_back(4);
+        std::string mode = LoadedBackend::simd_mode;
+        if (mode.empty()) {
+            char* env_var = std::getenv("MADSPACE_SIMD_MODE");
+            mode = resolve_simd_mode(env_var ? env_var : "auto");
         }
-        if (__builtin_cpu_supports("avx512f")) {
-            supported_vector_sizes.push_back(8);
-        }
-#endif // __APPLE__
-#endif // SIMD_AVAILABLE
-
-        int vector_size = LoadedBackend::vector_size;
-        if (vector_size == -1) {
-            if (char* env_var = std::getenv("SIMD_VECTOR_SIZE")) {
-                vector_size = std::atoi(env_var);
-            } else {
-                vector_size = 0;
-            }
-        }
-        if (vector_size <= 0) {
-#ifdef __APPLE__
-            vector_size = 1;
-#else
-            // vector_size = supported_vector_sizes.back();
-            vector_size = 1;
-#endif
-        } else if (std::find(
-                       supported_vector_sizes.begin(),
-                       supported_vector_sizes.end(),
-                       vector_size
-                   ) == supported_vector_sizes.end()) {
-            throw std::runtime_error("unsupported SIMD vector size");
-        }
-
-        switch (vector_size) {
-        case 2:
-            return LoadedBackend("libmadspace_cpu_neon");
-        case 4:
-            return LoadedBackend("libmadspace_cpu_avx2");
-        case 8:
-            return LoadedBackend("libmadspace_cpu_avx512");
-        default:
+        LoadedBackend::loaded_simd_mode = mode;
+        if (mode == "scalar") {
             return LoadedBackend("libmadspace_cpu");
+        } else {
+            return LoadedBackend(std::format("libmadspace_cpu_{}", mode));
         }
     }();
     return backend;
@@ -188,6 +207,22 @@ void madspace::set_lib_path(const std::string& lib_path) {
     LoadedBackend::lib_path = lib_path;
 }
 
-void madspace::set_simd_vector_size(int vector_size) {
-    LoadedBackend::vector_size = vector_size;
+std::vector<std::string> madspace::supported_simd_modes() {
+    return simd_mode_support().first;
+}
+
+void madspace::set_simd_mode(const std::string& simd_mode) {
+    std::string mode = resolve_simd_mode(simd_mode);
+    const std::string& loaded_mode = LoadedBackend::loaded_simd_mode;
+    if (!loaded_mode.empty() && mode != loaded_mode) {
+        throw std::runtime_error(
+            std::format(
+                "can not switch the madspace SIMD mode to '{}': the CPU backend was "
+                "already loaded with '{}'",
+                mode,
+                loaded_mode
+            )
+        );
+    }
+    LoadedBackend::simd_mode = mode;
 }

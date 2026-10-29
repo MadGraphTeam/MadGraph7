@@ -120,6 +120,9 @@ struct PackedTensorView {
     T* data;
     Sizes stride;
     Sizes shape;
+    /// Whether the data is a literal stored padded to the CPU SIMD vector size
+    /// (see @ref Tensor::is_simd_padded).
+    bool simd_padded = false;
 };
 
 /**
@@ -409,11 +412,14 @@ public:
         }) {
         impl->stream = stream;
         std::size_t stride_prod = 1;
-        bool first = true;
+        bool first = true, contiguous = true;
         impl->contiguous_dims = 0;
         for (auto [size_i, stride_i] : zip(shape, stride)) {
-            if (stride_i == stride_prod) {
+            // only the leading run of contiguous dimensions counts
+            if (contiguous && (stride_i == stride_prod || size_i == 1)) {
                 ++impl->contiguous_dims;
+            } else {
+                contiguous = false;
             }
             if (first && size_i == 1) {
                 impl->stride[0] = 0;
@@ -546,7 +552,7 @@ public:
         T* data = static_cast<T*>(impl->data);
         if (flatten_count <= 1) {
             check_view_dim(dim, impl->shape.size());
-            return {data, impl->stride, impl->shape};
+            return {data, impl->stride, impl->shape, impl->simd_padded};
         }
         if (flatten_count > impl->contiguous_dims) {
             throw std::invalid_argument("can only flatten contiguous dimensions");
@@ -801,6 +807,30 @@ public:
         return impl->ref_count.load() == 1;
     }
 
+    /// Maximum number of stored elements (value elements times lanes) of a
+    /// literal for which @ref simd_padded_literal pads the storage.
+    static constexpr std::size_t max_simd_padded_size = 256;
+
+    /**
+     * Literal constant for the CPU SIMD kernels.
+     *
+     * The tensor has batch size one and batch stride zero like any literal,
+     * but each element is stored `lanes` times in consecutive memory, one
+     * copy per SIMD vector lane, so that the vectorized kernels can read it
+     * with contiguous vector loads. Scalar code sees an ordinary broadcast
+     * tensor. Literals with more than @ref max_simd_padded_size stored
+     * elements, or `lanes` of one, are stored without padding.
+     */
+    static Tensor
+    simd_padded_literal(const LiteralValue& value, std::size_t lanes, DevicePtr device);
+
+    /// Whether this is a literal stored padded to the SIMD vector size, see
+    /// @ref simd_padded_literal. Views and copies of it are not padded.
+    bool is_simd_padded() const {
+        check_impl();
+        return impl->simd_padded;
+    }
+
 private:
     struct TensorImpl {
         DataType dtype;
@@ -816,6 +846,7 @@ private:
         SizeVec batch_sizes;
         bool stream_ordered = false;
         std::optional<std::uintptr_t> stream;
+        bool simd_padded = false;
 
         template <typename D>
         void reset(const D& device) {

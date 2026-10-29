@@ -43,7 +43,7 @@ class NoBornException(Exception): pass
 
 
 class FKSMultiProcess(diagram_generation.MultiProcess): #test written
-    """A multi process class that contains informations on the born processes 
+    """A multi process class that contains information on the born processes
     and the reals.
     """
 
@@ -389,13 +389,13 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             # if [orders] are not specified, then
             # include all particles in the loops
             # i.e. allow all orders to be perturbed
-            # (this is the case for EW corrections, where only squared oders 
+            # (this is the case for EW corrections, where only squared orders
             # are imposed)
             if not self['nlo_mixed_expansion']:
                 myproc['orders'] = loop_orders
             elif not myproc['orders']:
                     myproc['perturbation_couplings'] = myproc['model']['coupling_orders']
-            # take the orders that are actually used bu the matrix element
+            # take the orders that are actually used by the matrix element
             upc = [[l['is_tagged'], l['id'] in [22]] for l in [ll for ll in myproc.get('legs') if not ll['state'] and 'is_tagged'in ll]]
             myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
             # skip virtual amplitudes with both initial particles not being photons for UPC processes
@@ -429,7 +429,7 @@ class FKSRealProcess(object):
     def __init__(self, born_proc, leglist, ij, ij_id, born_pdgs, splitting_type,
                  perturbed_orders = ['QCD'], diagram_filter = False): #test written
         """Initializes the real process based on born_proc and leglist.
-        Stores the fks informations into the list of dictionaries fks_infos
+        Stores the fks information into the list of dictionaries fks_infos
         diagram_filter selects the diagrams of the real amplitude
         """      
         self.diagram_filter = diagram_filter
@@ -655,7 +655,7 @@ class FKSProcess(object):
                     'Not valid type for remove_reals in FKSProcess')
 
         if start_proc:
-            #initilaize with process definition (for test purporses)
+            #initialize with process definition (for test purposes)
             if isinstance(start_proc, MG.Process):
                 pertur = start_proc['perturbation_couplings']
                 if pertur:
@@ -696,7 +696,7 @@ class FKSProcess(object):
             self.ndirs = 0
             # generate reals, when the mode is not LOonly
             # when is LOonly it is supposed to be a 'fake' NLO process
-            # e.g. to be used in merged sampels at high multiplicities
+            # e.g. to be used in merged samples at high multiplicities
             if self.born_amp['process']['NLO_mode'] != 'LOonly':
                 self.find_reals()
 
@@ -759,7 +759,7 @@ class FKSProcess(object):
         extra_cnt_pdgs = []
         for i, real_list in enumerate(self.reals):
             # i is the born leg which splits
-            # keep track of the id of the mother (will be used to constrct the
+            # keep track of the id of the mother (will be used to construct the
             # spin-correlated borns)
             ij_id = leglist[i].get('id')
             ij = leglist[i].get('number')
@@ -942,7 +942,7 @@ class FKSProcess(object):
         # if [orders] are not specified, then
         # include all kind of splittings
         # i.e. allow all orders to be perturbed
-        # (this is the case for EW corrections, where only squared oders 
+        # (this is the case for EW corrections, where only squared orders
         # are imposed)
         if not pert_orders:
             if not self.born_amp['process']['orders']:
@@ -984,7 +984,7 @@ class FKSProcess(object):
                 elif not self.init_lep_split and ninit_lep >= 1 and \
                   (i['state'] or i['id'] not in model.get_lepton_pdgs()):
                     splittings=[]
-                # UPC: 1.) final-state splitting is forbidded if not both initial-state particles are photons
+                # UPC: 1.) final-state splitting is forbidden if not both initial-state particles are photons
                 #      2.) initial-state photons are not allowed to split
                 #      3.) initial-state fermions are not allowed to undergo a QCD splitting
                 elif ninit_tag > 0 and ((i['state'] and ninit_ph < 2) or \

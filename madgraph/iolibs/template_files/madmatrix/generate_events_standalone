@@ -127,7 +127,7 @@ def main():
             out = p.stdout
         except OSError as error:
             if path and not os.path.exists(path):
-                raise OSError("Directory %s doesn't exists. Impossible to run make" % path)
+                raise OSError("Directory %s doesn't exist. Impossible to run make" % path)
             else:
                 error_text = "Impossible to compile %s directory\n" % path
                 error_text += "Trying to launch make command returns:\n"

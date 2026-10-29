@@ -479,7 +479,7 @@ class EventFile(object):
     
     def initialize_unweighting(self, get_wgt, trunc_error):
         """ scan once the file to return 
-            - the list of the hightest weight (of size trunc_error*NB_EVENT
+            - the list of the highest weight (of size trunc_error*NB_EVENT
             - the cross-section by type of process
             - the total number of events in the file
             """
@@ -1661,7 +1661,7 @@ class MultiEventFile(EventFile):
         if not self.banner:
             return
         
-        # compute the cross-section of each splitted channel
+        # compute the cross-section of each split channel
         grouped_cross = {}
         grouped_error = {}
         for i,ff in enumerate(self.files):
@@ -1762,7 +1762,7 @@ class MultiEventFile(EventFile):
     
     def initialize_unweighting(self, getwgt, trunc_error):
         """ scan once the file to return 
-            - the list of the hightest weight (of size trunc_error*NB_EVENT
+            - the list of the highest weight (of size trunc_error*NB_EVENT
             - the cross-section by type of process
             - the total number of events in the files
             In top of that it initialise the information for the next routine
@@ -2931,7 +2931,7 @@ class Event(list):
                                            if not self.reweight_order.append(pid)])
                                       # the if is to create the order file on the flight
             except ValueError as error:
-                raise Exception('Event File has unvalid weight. %s' % error)
+                raise Exception('Event file has an invalid weight. %s' % error)
             self.tag = self.tag[:start] + self.tag[stop+7:]
         return self.reweight_data
     
@@ -3180,7 +3180,7 @@ class Event(list):
         this_particle.status = 2
         this_particle.helicity = 0
         
-        # some usefull information
+        # some useful information
         decay_particle = decay_event[0]
         this_4mom = FourMomentum(this_particle)
         nb_part = len(self) #original number of particle
@@ -3804,7 +3804,7 @@ class Event(list):
         
     def get_tag_and_order(self, merged_particle=None):
         """Return the unique tag identifying the SubProcesses for the generation.
-        Usefull for program like MadSpin and Reweight module.
+        Useful for program like MadSpin and Reweight module.
         merged particle is a dictionary id:merged
         such that if id is in the tag, it will be replace by merged[id]
         """
@@ -4411,7 +4411,7 @@ class Event(list):
         particle correspond to new_mom"""
 
         
-        # some usefull information
+        # some useful information
         decay_particle = subdiag[0]
         orig_mom = FourMomentum(decay_particle) 
         #nb_part = len(self) #original number of particle
@@ -4769,7 +4769,7 @@ class Event(list):
                         raise error
 
             # Now ind should be defined and correspond to the position in the curr_block
-            # compute now the associate postion in the original order
+            # compute now the associate position in the original order
             # first case is the particle was found in the initial state
             if (part.status == -1 and not flip) or (part.status == 1 and flip):
                 position =  ind
@@ -5034,7 +5034,7 @@ class Event(list):
         The two list are consider equivalent if the  total content associated to an identifier
         is the same (up to ordering)
         so (3,4,5) and (4,3,5) are the same for mapping={0:"a",1:"a",2:"b"}
-        since a is assocated to 3,4 in both case (and b to 5 in each case
+        since a is associated to 3,4 in both case (and b to 5 in each case
         but (3,4,5) and (3,5,4) are not the same because b has 5 in one case and 4 in the second
 
         if permutate_two_decay is False, then two permutation are consider equivalent if they differ by a swap of particles having not
@@ -5473,7 +5473,7 @@ class FourMomentum(object):
     
     def boost_to_restframe(self, pboost):
         """apply the boost transformation such that pboost is at rest in the new frame.
-        First apply a rotation to allign the pboost to the z axis and then use
+        First apply a rotation to align the pboost to the z axis and then use
         zboost routine (see above)
         """
         
@@ -6218,7 +6218,7 @@ class NLO_PARTIALWEIGHT(object):
         self.nb_event = 0
         self.nb_wgts = 0
         self.threshold = threshold
-        self.modified = False #set on True if we decide to change internal infor
+        self.modified = False #set on True if we decide to change internal info
                               # that need to be written in the event file.
                               #need to be set manually when this is the case
         if isinstance(input, str):

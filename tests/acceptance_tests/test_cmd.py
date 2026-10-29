@@ -2531,7 +2531,7 @@ class TestCmdShell2(unittest.TestCase,
             self.assertIsNotNone(match)
 
             val1 = float(match.group(1))
-            target =  process[1]  # value to comapre to
+            target =  process[1]  # value to compare to
             passed = abs(val1-target)/(val1+target) < 1e-08
 
             self.assertTrue(passed)
@@ -2746,7 +2746,7 @@ class TestCmdShell2(unittest.TestCase,
 
 
         self.assertEqual(len(sol), 10)
-        # I am not sure why for this case I didn't have to introduce the nomalisation term
+        # I am not sure why for this case I didn't have to introduce the normalisation term
         original_sol = sol =  {(-1, -1, 1, 1): (-5.551115123125783e-17, 0.0), (-1, -1, 1, -1): (0.00926133766116009, 0.0), (-1, 1, 1, 1): (-0.009292545047075378, 0.0), (-1, 1, 1, -1): (0.09884700885130696, 0.0), (-1, -1, -1, -1): (-1.6479873021779667e-17, 0.0), (-1, 1, -1, 1): (5.415404411525035e-07, 0.0), (-1, 1, -1, -1): (-0.012877349160785171, 0.0), (1, 1, 1, 1): (-1.734723475976807e-17, 0.0), (1, 1, 1, -1): (0.012880402732054583, 0.0), (1, 1, -1, -1): (-4.85722573273506e-17, 0.0)}
         for key in original_sol:
             self.assertIn(key, sol)
@@ -3793,7 +3793,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3864,7 +3864,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3947,7 +3947,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3968,7 +3968,7 @@ set helicity_direction [6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4027,7 +4027,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd2.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4052,7 +4052,7 @@ set order_helicities [+1, -1, +1, 0, +1, +1, 0, -1, 0, 0, 0, +1, -1, -1, -1, 0, 
 set axis_referential [-1, -2]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt2.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4129,7 +4129,7 @@ set run_card use_syst False
 """
 
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4151,7 +4151,7 @@ set particle_in_density_matrix [5, -6]
 set boost_choice [5, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4230,7 +4230,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4252,7 +4252,7 @@ set particle_in_density_matrix [24, -6]
 set boost_choice [24, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -4290,7 +4290,7 @@ set boost_choice [24, -6]
 
         rho_instance = dens.DensityMatrixObservables(density_check)
 
-        #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
+        #2) here we check that the smaller eigenvalue of the partially transposed density matrix is computed properly
         flag_ref, eigval_ref = False, [0.0001309474273079456, 0.00023369563417047353, 0.10046843670831423, 0.1278389488146789, 0.25565138370380525, 0.5156765877117229]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
@@ -4320,7 +4320,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
         
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -4349,7 +4349,7 @@ set particle_in_density_matrix [6, -6] rapidity [0, 1]
 set boost_choice [6, -6] pt [0, 0]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()

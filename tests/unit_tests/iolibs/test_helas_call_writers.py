@@ -1063,7 +1063,7 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         
 
 class UFOHELASCALLWriterComplexMass(unittest.TestCase):
-    """testing the writting in case of complex mass scheme"""
+    """testing the writing in case of complex mass scheme"""
 
     @test_aloha.set_global(cms=True) 
     def setUp(self):

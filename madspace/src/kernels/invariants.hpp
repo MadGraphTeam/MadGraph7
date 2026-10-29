@@ -24,8 +24,8 @@ KERNELSPEC void kernel_uniform_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_breit_wigner_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -46,8 +46,8 @@ KERNELSPEC void kernel_breit_wigner_invariant(
 template <typename T>
 KERNELSPEC void kernel_breit_wigner_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -71,9 +71,9 @@ KERNELSPEC void kernel_breit_wigner_invariant_inverse(
 // piling its points up at the pole.
 template <typename T>
 KERNELSPEC void flat_window_segments(
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FVal<T> mass,
+    FVal<T> width,
+    FVal<T> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FVal<T>& m2,
@@ -109,9 +109,9 @@ KERNELSPEC void flat_window_segments(
 template <typename T>
 KERNELSPEC void kernel_flat_window_breit_wigner_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
+    FSIn<T, 0> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -137,9 +137,9 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant(
 template <typename T>
 KERNELSPEC void kernel_flat_window_breit_wigner_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> width,
-    FIn<T, 0> window,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> width,
+    FSIn<T, 0> window,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -165,7 +165,7 @@ KERNELSPEC void kernel_flat_window_breit_wigner_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
+    FSIn<T, 0> mass,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -182,7 +182,7 @@ KERNELSPEC void kernel_stable_invariant(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
+    FSIn<T, 0> mass,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
@@ -201,8 +201,8 @@ KERNELSPEC void kernel_stable_invariant_inverse(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu(
     FIn<T, 0> r,
-    FIn<T, 0> mass,
-    FIn<T, 0> nu,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
@@ -223,8 +223,8 @@ KERNELSPEC void kernel_stable_invariant_nu(
 template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu_inverse(
     FIn<T, 0> s,
-    FIn<T, 0> mass,
-    FIn<T, 0> nu,
+    FSIn<T, 0> mass,
+    FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,

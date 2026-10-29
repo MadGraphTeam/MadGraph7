@@ -23,7 +23,7 @@ class grid_information(object):
 
     def __init__(self, mc_hel):
         # information that we need to get to create a new grid
-        self.oneFail = False # check if one splitted job fails to pass cuts
+        self.oneFail = False # check if one split job fails to pass cuts
         self.mc_hel= mc_hel 
         self.grid_base = collections.defaultdict(int)
         self.original_grid = collections.defaultdict(int) 
@@ -164,7 +164,7 @@ class grid_information(object):
                                                      conservative_factor = 1.0):
         """ Generate the grid for the resubmission """
 
-        Gdirs = [] #build the the list of directory
+        Gdirs = [] #build the list of directory
         for i in range(n_split):
             path = pjoin(Pdir, "G%s_%s" % (G, i+1))
             Gdirs.append(path)
@@ -303,7 +303,7 @@ class grid_information(object):
         #estimate1 = sum([max(R.nunwgt*R.maxwgt/max_wgt, R.nunwgt)  
         #                                     for R in self.results if R.nunwgt])
         
-        # 2. estimate based on the information of the theoretical information
+        # 2. estimate based on the information of theoretical information
         #info = zip(self.th_maxwgt, self.th_nunwgt)
         #estimate2 = sum(max(N, N*W/max_wgt, N) for N,W in info)
         
@@ -736,7 +736,7 @@ class DiscreteSamplerDimension(dict):
   </DiscreteSampler_grid>
 """
         
-        #order the bin from higest contribution to lowest
+        #order the bin from highest contribution to lowest
         bins = [o for o in self.items()]
         bins.sort(key=lambda x: x[1].weight, reverse=True)
             
