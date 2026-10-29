@@ -94,6 +94,19 @@ SUPPORTED_FUNCTION_ARITIES.update(
         "cond": frozenset({3}),
         "if": frozenset({3}),
         "pow": frozenset({2}),
+        # MG5_aMC's NLO UFO scalar helpers next to cond/reglog/reglogp/reglogm
+        # (the NLOCT function library of the QCD+QED loop models): the
+        # complex-mass-scheme selectors recms(cms, z) / crecms(cms, z), the
+        # principal argument arg(z), the principal square root regsqrt(z) and
+        # the branch-continued logarithm grreglog(logswitch, z1, z2). The
+        # QCD+QED loop models declare them and call them in counterterm
+        # expressions only, which the loop counterterm program lowers
+        # (loops.v2.ct_recursion); their tree models never call them.
+        "arg": frozenset({1}),
+        "crecms": frozenset({2}),
+        "grreglog": frozenset({3}),
+        "recms": frozenset({2}),
+        "regsqrt": frozenset({1}),
     }
 )
 SUPPORTED_FUNCTIONS = frozenset(SUPPORTED_FUNCTION_ARITIES)

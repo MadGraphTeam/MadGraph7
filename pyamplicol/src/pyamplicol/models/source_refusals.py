@@ -20,7 +20,7 @@ import builtins
 from dataclasses import dataclass
 from pathlib import Path
 
-from pyamplicol.config.errors import PyAmpliColError
+from pyamplicol.api.errors import ModelError
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,11 @@ MODEL_SOURCE_REFUSALS = (
 _REFUSALS = {refusal.key: refusal for refusal in MODEL_SOURCE_REFUSALS}
 
 
-class ModelSourceUnsupported(PyAmpliColError, ValueError):
+class ModelSourceUnsupported(ModelError, ValueError):
     """A listed model source the product refuses (``MODEL_SOURCE_REFUSALS``);
     ``key`` is its key. The message starts with the key and names the
-    remedy."""
+    remedy. A ``ModelError`` (and a ``ValueError``, as the import errors it
+    replaces)."""
 
     def __init__(self, key: str, message: str) -> None:
         refusal = _REFUSALS.get(key)
@@ -85,22 +86,34 @@ _PYTHON2_BUILTINS = frozenset(
 ) - frozenset(dir(builtins))
 
 
+def python2_source_evidence(source: Path) -> str | None:
+    """The first module of the UFO directory ``source`` that is not Python-3
+    source, as evidence that the UFO is Python 2, or None. Compiles, never
+    imports: the dry run uses it on a source it does not load."""
+
+    if not source.is_dir():
+        return None
+    # The modules an import can load: AppleDouble (``._x.py``) and other
+    # files whose stem is no identifier are not modules.
+    for path in sorted(source.glob("*.py")):
+        if not path.stem.isidentifier():
+            continue
+        try:
+            compile(path.read_bytes(), path.name, "exec", dont_inherit=True)
+        except SyntaxError as syntax:
+            return f"{path.name} is not Python 3 source ({syntax.msg})"
+    return None
+
+
 def python2_evidence(source: Path, error: BaseException) -> str | None:
     """Why the UFO directory ``source``, whose import raised ``error``, is
     Python-2 code, or None when nothing says so: the first of its modules
-    that is not Python-3 source, else ``error`` itself when it names a
-    Python-2-only attribute or builtin."""
+    that is not Python-3 source (``python2_source_evidence``), else ``error``
+    itself when it names a Python-2-only attribute or builtin."""
 
-    if source.is_dir():
-        # The modules an import can load: AppleDouble (``._x.py``) and other
-        # files whose stem is no identifier are not modules.
-        for path in sorted(source.glob("*.py")):
-            if not path.stem.isidentifier():
-                continue
-            try:
-                compile(path.read_bytes(), path.name, "exec", dont_inherit=True)
-            except SyntaxError as syntax:
-                return f"{path.name} is not Python 3 source ({syntax.msg})"
+    evidence = python2_source_evidence(source)
+    if evidence is not None:
+        return evidence
     name = getattr(error, "name", None)
     if (isinstance(error, AttributeError) and name in _PYTHON2_ATTRIBUTES) or (
         isinstance(error, NameError)
@@ -111,6 +124,26 @@ def python2_evidence(source: Path, error: BaseException) -> str | None:
     return None
 
 
+def _refusal(source: Path, evidence: str) -> ModelSourceUnsupported:
+    from pyamplicol._internal.packaged_models import packaged_ufo_models
+
+    shipped = ", ".join(packaged_ufo_models()) or "none"
+    return ModelSourceUnsupported(
+        "ufo-python2",
+        f"the UFO model {source.name!r} is Python 2: {evidence} (UFO models "
+        f"shipped with pyAmpliCol: {shipped})",
+    )
+
+
+def refuse_python2_source(source: Path) -> None:
+    """Raise ``ufo-python2`` when a module of the UFO directory ``source`` is
+    not Python-3 source (``python2_source_evidence``; no import)."""
+
+    evidence = python2_source_evidence(source)
+    if evidence is not None:
+        raise _refusal(source, evidence)
+
+
 def refuse_python2_ufo(source: Path, error: BaseException) -> None:
     """Raise ``ufo-python2`` (from ``error``) when the UFO directory
     ``source``, whose import raised ``error``, is Python-2 code; return
@@ -118,14 +151,7 @@ def refuse_python2_ufo(source: Path, error: BaseException) -> None:
 
     evidence = python2_evidence(source, error)
     if evidence is not None:
-        from pyamplicol._internal.packaged_models import packaged_ufo_models
-
-        shipped = ", ".join(packaged_ufo_models()) or "none"
-        raise ModelSourceUnsupported(
-            "ufo-python2",
-            f"the UFO model {source.name!r} is Python 2: {evidence} (UFO models "
-            f"shipped with pyAmpliCol: {shipped})",
-        ) from error
+        raise _refusal(source, evidence) from error
 
 
 __all__ = [
@@ -134,5 +160,7 @@ __all__ = [
     "ModelSourceUnsupported",
     "listed_model_source_refusal_keys",
     "python2_evidence",
+    "python2_source_evidence",
+    "refuse_python2_source",
     "refuse_python2_ufo",
 ]
