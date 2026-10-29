@@ -1389,7 +1389,7 @@ The loop_sm CT colour origins and their projection [V-s leading-colour report §
 | Four-gluon R2 (general-N_c asset) | single trace × C_A; T_F N_f; δδ | C_A single-trace part, colour-ordered | T_F N_f (P−1); δδ (P−2) |
 | ggV, ggS, ggVV, ggSS | δ^{ab}/T_F | — | All (P−1) |
 
-LC/NLC need these named invariants, which a UFO with numeric SU(3) colour does not provide (`loops/model.py:1-7` [V]). LC/NLC are therefore refused unless the model supplies a source-owned continuation: `QCDR2Continuation` (`loops/qcd_r2_color.py:30` [V]) for QCD, a future EW or BSM declaration otherwise. FC always works (MASTER_PLAN §2.15; judge X1).
+LC/NLC need these named invariants, which a UFO with numeric SU(3) colour does not provide (`loops/model.py:1-7` [V]). LC/NLC therefore need a formal-N_c continuation: the model's own (source-owned: `QCDR2Continuation`, `loops/qcd_r2_color.py:30` [V], for QCD; a future EW or BSM declaration otherwise) or, for loop_sm, the one pyAmpliCol ships (below); a request reaching a counterterm vertex no continuation covers is refused (`colour-declaration-coverage`). FC always works (MASTER_PLAN §2.15; judge X1).
 
 **Shipped loop_sm declaration (M-QCD MQ-NC, as built).** pyAmpliCol ships the formal-N_c data of MG5_aMC 3.7.0's loop_sm (`models/loop_color_declarations/loop_sm.json`, written by `tools/developer/build_loop_colour_data.py`), so LC and NLC work on stock loop_sm without a hand-written declaration; full colour stays the default of loop requests (USER Q1, MQ-MODEL).
 
