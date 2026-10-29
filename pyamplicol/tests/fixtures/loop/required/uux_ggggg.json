@@ -375,7 +375,7 @@
       "process_name": "uux_ggggg",
       "host": "itphlies",
       "cpu": 342,
-      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/uux_ggggg/points.json",
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/uux_ggggg/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
         "absent_card_parameters_fixed_to_zero": [
@@ -412,8 +412,8 @@
       },
       "generation": {
         "process_name": "uux_ggggg",
-        "mg5": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
-        "model": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/models/loop_sm-no_b_mass",
+        "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+        "model": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/models/loop_sm-no_b_mass",
         "command": "u u~ > g g g g g QED=0 [virt=QCD]",
         "host": "itphlies",
         "status": "compiled",
@@ -446,28 +446,28 @@
       "version": "MadLoop/MG5_aMC 3.7.0",
       "provenance": {
         "MG5_aMC": {
-          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+          "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
           "version": "3.7.0"
         },
         "reducer_libraries": {
           "libcts.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
             "version": null
           },
           "libiregi.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
             "version": null
           },
           "libninja.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
             "version": "1.2.0"
           },
           "libavh_olo.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
             "version": "3.6"
           },
           "libcollier.a": {
-            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
             "version": "1.2.9"
           }
         }
@@ -553,10 +553,10 @@
       "process_name": "uux_ggggg",
       "host": "itphlies",
       "cpu": 319,
-      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/uux_ggggg/points.json",
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/required/uux_ggggg/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
-        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/builds/recola2-2.3.0-colorbranch-fix/src-tree",
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/builds/recola2-2.3.0-colorbranch-fix/src-tree",
         "commands": [
           "mass W 80.4190024457561601055171371731 0",
           "mass Z 91.188 0",
