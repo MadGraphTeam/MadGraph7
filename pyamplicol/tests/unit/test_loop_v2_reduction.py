@@ -1,162 +1,70 @@
 # SPDX-License-Identifier: 0BSD
-"""The v2 NinjaRS adapter against the existing ``PolynomialPlan`` path.
+"""The v2 NinjaRS adapter against the removed legacy ``PolynomialPlan`` path.
 
-A recording backend captures every family reduction of the inherited engine
-(shifts, masses, invariants, scales and the projected family coefficients) and
-the adapter re-reduces the same lanes as dense tensor numerators.
+Frozen captures (``tests/fixtures/loop/legacy/reduction/``, recorded once
+from the legacy engine before its removal) hold every family reduction of the
+legacy engine (shifts, masses, invariants, scales and the projected family
+numerators in the NinjaRS tensor order) and its Laurent results; the adapter
+re-reduces the same lanes.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 from decimal import Decimal, localcontext
-from functools import partial
 from pathlib import Path
 
-import numpy as np
 import pytest
-
-from pyamplicol.loops import physical_process
 
 pytestmark = pytest.mark.loop_physics
 
-REFERENCES = Path(__file__).resolve().parents[2] / "tools/loop_reference"
+CAPTURES = Path(__file__).resolve().parents[1] / "fixtures/loop/legacy/reduction"
 
 
-class _RecordingPlan:
-    def __init__(self, plan, meta, calls):
-        self._plan, self._meta, self._calls = plan, meta, calls
-
-    def __getattr__(self, name):
-        return getattr(self._plan, name)
-
-    def evaluate_batch(self, shifts, masses, scales, coefficients, s_matrix=None):
-        result = self._plan.evaluate_batch(
-            shifts, masses, scales, coefficients, s_matrix=s_matrix
-        )
-        self._calls.append(
-            (self._meta, shifts, masses, scales, s_matrix, coefficients, result)
-        )
-        return result
-
-
-class _RecordingBackend:
-    """The native loop module, recording each family reduction call."""
-
-    def __init__(self, native):
-        self._native, self.calls = native, []
-
-    def __getattr__(self, name):
-        return getattr(self._native, name)
-
-    def PolynomialPlan(self, propagators, sectors, parameters, **options):
-        plan = self._native.PolynomialPlan(propagators, sectors, parameters, **options)
-        return _RecordingPlan(plan, (propagators, sectors, parameters), self.calls)
-
-
-def _dense(native, meta, coefficients, arithmetic, precision):
-    """Scatter the legacy monomial coefficients into the NinjaRS tensor order."""
-    _, sectors, parameters = meta
-    assert tuple(sectors[1:]) == ("0", "0")
-    column = {name: index for index, name in enumerate(parameters)}
-    terms = []
-    for term in sectors[0].split("+"):
-        name, *factors = term.split("*")
-        powers = [0, 0, 0, 0]
-        for factor in factors:
-            variable, exponent = factor.split("^")
-            powers[("q0", "q1", "q2", "q3").index(variable)] = int(exponent)
-        terms.append((column[name], tuple(powers)))
-    rank = max(sum(powers) for _, powers in terms)
-    order = {tuple(m): i for i, m in enumerate(native.v2_tensor_monomials(rank))}
-    rows, width = coefficients.rows, coefficients.columns
-    values = coefficients.to_decimal()
-    dense = [["0", "0"] for _ in range(rows * len(order))]
-    for row in range(rows):
-        for source, powers in terms:
-            dense[row * len(order) + order[powers]] = values[row * width + source]
+def _batch(native, record, arithmetic, precision):
     return native.NativeBatch.from_decimal(
-        dense, rows, len(order), arithmetic, precision, coefficients.row_ids
+        [tuple(value) for value in record["values"]],
+        record["rows"],
+        record["columns"],
+        arithmetic,
+        precision,
+        record["row_ids"],
     )
 
 
-def _capture(native, factory, fixture, arithmetic, precision, engine):
-    points = np.asarray(
-        json.loads((REFERENCES / fixture).read_text(), parse_float=str, parse_int=str)[
-            "points"
-        ],
-        dtype=str,
+class _Frozen:
+    """A frozen legacy reduction result (its Laurent values)."""
+
+    def __init__(self, values):
+        self.values = values
+
+
+def _load(native, process, arithmetic, precision, engine):
+    suffix = f"{process}_{engine}_{arithmetic}" + (str(precision) if precision else "")
+    data = json.loads(gzip.decompress((CAPTURES / f"{suffix}.json.gz").read_bytes()))
+    assert (data["arithmetic"], data["precision"], data["engine"]) == (
+        arithmetic,
+        precision,
+        engine,
     )
-    backend = _RecordingBackend(native)
-    factory(
-        backend=backend,
-        arithmetic=arithmetic,
-        precision=precision,
-        reduction_engine=engine,
-    ).evaluate_decimal(points, ["1000000"] * len(points), model_values=["0.118", "173"])
+
+    def batch(record):
+        return None if record is None else _batch(native, record, arithmetic, precision)
+
     groups = [
         (
-            meta[0],
-            shifts,
-            masses,
-            scales,
-            matrix,
-            _dense(native, meta, coefficients, arithmetic, precision),
+            group["propagators"],
+            batch(group["shifts"]),
+            batch(group["masses"]),
+            batch(group["scales"]),
+            batch(group["s_matrix"]),
+            batch(group["numerator"]),
         )
-        for meta, shifts, masses, scales, matrix, coefficients, _ in backend.calls
+        for group in data["groups"]
     ]
-    return groups, [call[-1] for call in backend.calls]
-
-
-_GLUONS = (physical_process.gluon_scattering_qcd_program, "gluon_scattering_qcd.json")
-# Unequal-mass (gluon, top) bubbles: the reversed check frame reaches the B2
-# masters with the swapped mass order at the same p^2.
-_TOPS = (
-    partial(
-        physical_process._qcd_process_program,
-        ("g", "g"),
-        ("t", "t~"),
-        ("epsilon", "epsilon", "u_bar", "v"),
-        256,
-    ),
-    "top_pair_qcd.json",
-)
-
-
-def _five_gluon_program(**options):
-    """gg -> ggg in the control model, as the inherited QCD controls."""
-    from symbolica import E, S
-
-    from pyamplicol.loops.control_models import qcd_qed_control_model
-
-    model = qcd_qed_control_model()
-    process = physical_process.build_loop_process(
-        model.process(("g", "g"), ("g", "g", "g")),
-        selected_corrections=["QCD"],
-        perturbative_orders={"QCD": 1},
-        born_order_bounds={"QCD": 3, "QED": 0},
-        loop_order_bounds={"QCD": 5, "QED": 0},
-    )
-    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
-    strong = (4 * E("pi") * alpha_s) ** E("1/2")
-    expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
-    for name in ("GC_10", "GC_11", "GC_12"):
-        coupling = model.coupling(name)
-        expressions[coupling.symbol.get_name()] = coupling.expression.replace(
-            S("UFO::G"), strong
-        )
-    return physical_process.NativeBareProcessProgram(
-        process,
-        state_kinds=("epsilon",) * 2 + ("epsilon_bar",) * 3,
-        initial_average=E("1536"),
-        model_expressions=expressions,
-        model_inputs=(alpha_s, top_mass),
-        **options,
-    )
-
-
-# The massless five-point momenta of the u u~ -> ggg reference.
-_FIVE_GLUONS = (_five_gluon_program, "quark_three_gluon_qcd.json")
+    legacy = [_Frozen(batch(record)) for record in data.get("results", ())]
+    return groups, legacy
 
 
 @pytest.fixture(scope="module")
@@ -166,14 +74,7 @@ def captured(loop_native):
     def capture(process, arithmetic="double", precision=None, engine="fast"):
         key = (process, arithmetic, precision, engine)
         if key not in cache:
-            factory, fixture = {
-                "gg_gg": _GLUONS,
-                "gg_ttx": _TOPS,
-                "gg_ggg": _FIVE_GLUONS,
-            }[process]
-            cache[key] = _capture(
-                loop_native, factory, fixture, arithmetic, precision, engine
-            )
+            cache[key] = _load(loop_native, process, arithmetic, precision, engine)
         return cache[key]
 
     return capture
@@ -297,7 +198,7 @@ def test_generic_engine_from_exponent_arrays_equals_legacy_extended_precision(
 
 @pytest.mark.loop_nightly
 def test_master_hit_rate_on_five_gluons(loop_native, captured, record_property):
-    """Report the cache hit rate of one gg -> ggg batch (about 7 min capture)."""
+    """Report the cache hit rate of one gg -> ggg batch (frozen groups)."""
     groups, _ = captured("gg_ggg")
     reducer = loop_native.V2Reducer("double", None, "fast")
     uncached = loop_native.V2Reducer("double", None, "fast", cache_masters=False)
