@@ -38,10 +38,10 @@
 #***********************************************************************
 # Output format
 #***********************************************************************
-  %(time_of_flight)s = time_of_flight ! threshold (in mm) below which the invariant livetime is not written (-1 means not written)
+  %(time_of_flight)s = time_of_flight ! threshold (in mm) below which the invariant lifetime is not written (-1 means not written)
   %(event_norm)s =  event_norm       ! average/sum/bias. Normalization of the weight in the LHEF
 #***********************************************************************
-# Number of points per itegration channel (ignored for aMC@NLO runs)   *
+# Number of points per integration channel (ignored for aMC@NLO runs)   *
 #***********************************************************************
  %(req_acc_fo)s   = req_acc_FO       ! Required accuracy (-1=ignored, and use the 
  	                   ! number of points and iter. below)

@@ -47,7 +47,7 @@
 ! itself must accumulate the values, and must return them when called
 ! with ifirst=2.
 ! 
-! Added the posibility to keep track of more than one integral:
+! Added the possibility to keep track of more than one integral:
 !
 ! nintegrals=1 : the function that is used to update the grids. This is
 ! the ABS cross section. If imode.eq.1, this does not contain the
@@ -85,7 +85,7 @@ module mint_module
   !     nintervals = min_inter * 2^n,
   ! where 'n' is an integer smaller than or equal to min(min_it0,min_it1).
   !
-  ! The number of intergrals should be equal to
+  ! The number of integrals should be equal to
   !     nintegrals=6+2*n_ave_virt
   !
 
@@ -423,7 +423,7 @@ contains
                ans_l3(i),' +/- ',unc_l3(i) ,' (',efrac(i)*100d0 ,'%)'
        endif
     enddo
-    write(*,'(a,1x,e10.4)') 'accumulated result last 3 iterrations Chi^2 per DoF =' &
+    write(*,'(a,1x,e10.4)') 'accumulated result over the last 3 iterations Chi^2 per DoF =' &
          ,chi2_l3(1)
   end subroutine print_results_accumulated_three_iterations
 
@@ -509,7 +509,7 @@ contains
     integer iappl
     common /for_applgrid/ iappl
 ! If there was a large fluctation in this iteration, be careful with
-! including it in the accumalated results and plots.
+! including it in the accumulated results and plots.
     if (efrac(1).gt.0.3d0 .and. iappl.eq.0 .and. nit.gt.3) then
 ! Do not include the results in the plots
        if (fixed_order) call accum(.false.)
@@ -1041,7 +1041,7 @@ contains
        nintcurr_virt=nint_used_virt/ifold(kdim)
        if(nintcurr*ifold(kdim).ne.nint_used .or. &
             nintcurr_virt*ifold(kdim).ne.nint_used_virt) then
-          write(*,*) 'mint: the values in the ifold array shoud be divisors of', &
+          write(*,*) 'mint: the values in the ifold array should be divisors of', &
                nint_used,'and',nint_used_virt
           stop 1
        endif

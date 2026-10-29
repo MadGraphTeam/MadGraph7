@@ -10133,7 +10133,7 @@ C       This is dummy particle used in multiparticle vertices
 """)
 
 class AlohaFortranWriterTest(unittest.TestCase):
-    """ A basic test to see if the Aloha Fortran Writter is working """
+    """ A basic test to see if the Aloha Fortran Writer is working """
     
     def setUp(self):
         """ check that old file are remove """

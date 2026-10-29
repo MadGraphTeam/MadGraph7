@@ -143,7 +143,7 @@ class IOTest(object):
         self.procdef = procdef
         self.helasModel = helasModel
         self.exporter_name = exporter
-        # Security mesure
+        # Security measure
         if not str(path.dirname(_file_path)) in str(outputPath) and \
                                         not str(outputPath).startswith('/tmp/'):
             raise MadGraph5Error("OutputPath must be within MG directory or"+\
@@ -187,7 +187,7 @@ class IOTest(object):
                 
     @staticmethod
     def remove_f77_function_from_file(path, function=[]):
-        """remove a subroutine/function of a file. (usefull to restric the IOTest)"""
+        """remove a subroutine/function of a file. (useful to restric the IOTest)"""
         
         if not isinstance(function, list):
             function= [function.lower()]
@@ -504,7 +504,7 @@ class IOTestManager(unittest.TestCase):
         return '\n'.join(kept)
 
 #    def test_IOTests(self):
-#        """ A test function in the mother so that all childs automatically run
+#        """ A test function in the mother so that all children automatically run
 #        their tests when scanned with the test_manager. """
 #        
 #        # Set it to True if you want info during the regular test_manager.py runs

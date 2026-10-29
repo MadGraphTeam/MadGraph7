@@ -125,7 +125,7 @@ c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 
 c     *********************************************************************
-c     Try to find a correspondance in ident_card
+c     Try to find a correspondence in ident_card
 c
       ref_file = 20
       call LHA_open_file(ref_file,'ident_card.dat',fopened)

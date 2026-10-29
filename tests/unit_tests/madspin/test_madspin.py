@@ -1220,7 +1220,7 @@ class TestEvent(unittest.TestCase):
     
     
     def test_madspin_event(self):
-        """check the reading/writting of the events inside MadSpin"""
+        """check the reading/writing of the events inside MadSpin"""
         
         inputfile = open(pjoin(MG5DIR, 'tests', 'input_files', 'madspin_event.lhe'))
         

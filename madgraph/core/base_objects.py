@@ -359,7 +359,7 @@ class Particle(PhysicsObject):
                     raise self.PhysicsObjectError("value %s is not a valid dictionary for counterterm value" % repr(val))
                 for vkey, vvalue in val.items():
                     if vkey not in [0,-1,-2]:
-                        raise self.PhysicsObjectError("Key %s is not a valid laurent serie order" % repr(vkey))
+                        raise self.PhysicsObjectError("Key %s is not a valid Laurent series order" % repr(vkey))
                     if not isinstance(vvalue,str):
                         raise self.PhysicsObjectError("Coupling %s is not a valid string" % repr(vvalue))
         if name == 'spin':
@@ -419,12 +419,12 @@ class Particle(PhysicsObject):
     # Helper functions
 
     def is_perturbating(self,order,model):
-        """Returns wether this particle contributes in perturbation of the order passed
+        """Returns whether this particle contributes in perturbation of the order passed
            in argument given the model specified. It is very fast for usual models"""
            
         for int in model['interactions'].get_type('base'):
             # We discard the interactions with more than one type of orders
-            # contributing because it then doesn't necessarly mean that this
+            # contributing because it then doesn't necessarily mean that this
             # particle (self) is charged under the group corresponding to the
             # coupling order 'order'. The typical example is in SUSY which 
             # features a ' photon-gluon-squark-antisquark ' interaction which
@@ -1062,7 +1062,7 @@ class Interaction(PhysicsObject):
     def update_flavor(self, other_flavor, ids, new_part, anti_part):
         """add a new coupling to the current merged flavor coupling
            -> self coupling should be already of type FLV_Coupling
-           -> other_flavor can an interation without FLV_Coupling  (default case)
+           -> other_flavor can an interaction without FLV_Coupling  (default case)
                or with FLV_Coupling (if the other flavor has already been merged) 
                like for lepton-neutrino W interaction 
         """
@@ -1191,7 +1191,7 @@ class InteractionList(PhysicsObjectList):
     def synchronize_interactions_with_particles(self, particle_dict):
         """Make sure that the particles in the interactions are those
         in the particle_dict, and that there are no interactions
-        refering to particles that don't exist. To be called when the
+        referring to particles that don't exist. To be called when the
         particle_dict is updated in a model.
         """
 
@@ -1648,7 +1648,7 @@ class Model(PhysicsObject):
         # and replace the coupling key by a three index key with last index being (I,J,K)
         # where 0 means no flavor index and 1,2,3,... are the flavor index for the associated particle
         # need to track if such interaction already exist and update if it does
-        # Note that we need to support both the case where the interation did not had any flavor index before
+        # Note that we need to support both the case where the interaction did not have any flavor index before
         # and the case where it had one from a previous merge (think lepto-quark)
         new_interactions = {} #key is the tuple of the particle 
         for inter in self.get('interactions')[:]:
@@ -1730,7 +1730,7 @@ class Model(PhysicsObject):
         # and replace the coupling key by a three index key with last index being (I,J,K)
         # where 0 means no flavor index and 1 is the particles and 2 the anti-particle
         # need to track if such interaction already exist and update if it does
-        # Note that we need to support both the case where the interation did not had any flavor index before
+        # Note that we need to support both the case where the interaction did not have any flavor index before
         # and the case where it had one from a previous merge 
         new_interactions = {} #key is the tuple of the particle
         ids = [id, -id] 
@@ -1880,7 +1880,7 @@ class Model(PhysicsObject):
 
     def get_order_hierarchy(self):
         """Set a default order hierarchy for the model if not set by the UFO."""
-        # Set coupling hierachy
+        # Set coupling hierarchy
         hierarchy = dict([(order, 1) for order in self.get('coupling_orders')])
         # Special case for only QCD and QED couplings, unless already set
         if set(self.get('coupling_orders')) == set(['QCD', 'QED']):
@@ -2032,7 +2032,7 @@ class Model(PhysicsObject):
                     names.remove('aS')
                 except Exception:
                     pass
-                # find all set of parameter where at least one paremeter are present
+                # find all set of parameter where at least one parameter are present
                 this_ones = set(names)
                 for subset in list(correlated):
                     if any(n in subset for n in names):
@@ -2460,9 +2460,9 @@ class Model(PhysicsObject):
         # 1) Change the 'CMSParam' of loop_qcd_qed model to 1.0 so as to remove
         #    the 'real' prefix fromall UVCT wf renormalization expressions.
         #    If toCMS is False, then it makes sure CMSParam is 0.0 and returns
-        #    immediatly.
+        #    immediately.
         # 2) Find All input parameter mass and width associated
-        #   Add a internal parameter and replace mass with that param
+        #   Add an internal parameter and replace mass with that param
         # 3) Find All mass fixed by the model and width associated
         #   -> Both need to be fixed with a real() /Imag()
         # 4) Find All width set by the model
@@ -2853,7 +2853,7 @@ class Leg(PhysicsObject):
         # filter on the helicty
         self['polarization'] = []
         self['flavor'] = []
-        # propteries of bound state
+        # properties of bound state
         self['onium'] = {}
 
     def filter(self, name, value):
@@ -2911,7 +2911,7 @@ class Leg(PhysicsObject):
                       " %s is not a valid total angular momentum" % str(value['J']))
                 if value['C'] not in [1, 8]:
                     raise self.PhysicsObjectError( \
-                      " %s is not a valid color configuartion" % str(value['C']))
+                      " %s is not a valid color configuration" % str(value['C']))
                                                                     
         return True
 
@@ -2954,7 +2954,7 @@ class Leg(PhysicsObject):
     # to define it differently than that later.
 
     def same(self, leg):
-        """ Returns true if the leg in argument has the same ID and the same numer """
+        """ Returns true if the leg in argument has the same ID and the same number """
 
         # In case we want to check this leg with an integer in the tagging procedure, 
         # then it only has to match the leg number.
@@ -3142,7 +3142,7 @@ class MultiLeg(PhysicsObject):
                       " %s is not a valid total angular momentum" % str(value['J']))
                 if value['C'] not in [1, 8]:
                     raise self.PhysicsObjectError( \
-                      " %s is not a valid color configuartion" % str(value['C']))
+                      " %s is not a valid color configuration" % str(value['C']))
 
         if name == 'state':
             if not isinstance(value, bool):
@@ -3444,7 +3444,7 @@ class Diagram(PhysicsObject):
     
     def calculate_orders(self, model):
         """Calculate the actual coupling orders of this diagram. Note
-        that the special order WEIGTHED corresponds to the sum of
+        that the special order WEIGHTED corresponds to the sum of
         hierarchys for the couplings."""
 
         coupling_orders = dict([(c, 0) for c in model.get('coupling_orders')])
@@ -3469,7 +3469,7 @@ class Diagram(PhysicsObject):
 
     def pass_squared_order_constraints(self, diag_multiplier, squared_orders,
                                                                sq_orders_types):
-        """ Returns wether the contributiong consisting in the current diagram 
+        """ Returns whether the contribution consisting in the current diagram
         multiplied by diag_multiplier passes the *positive* squared_orders 
         specified ( a dictionary ) of types sq_order_types (a dictionary whose 
         values are the relational operator used to define the constraint of the
@@ -3598,7 +3598,7 @@ class Diagram(PhysicsObject):
             return 2**num_props
         
     def get_flow_charge_diff(self, model):
-        """return the difference of total diff of charge occuring on the 
+        """return the difference of total diff of charge occurring on the
         lofw of the initial parton. return [None,None] if the two initial parton
         are connected and the (partial) value if None if the initial parton is 
         not a fermiom"""
@@ -3672,13 +3672,13 @@ class DiagramList(PhysicsObjectList):
         return max_order
 
     def apply_negative_sq_order(self, ref_diag_list, order, value, order_type):
-        """ This function returns a fitlered version of the diagram list self
+        """ This function returns a filtered version of the diagram list self
         which satisfy the negative squared_order constraint 'order' with negative
         value 'value' and of type 'order_type', assuming that the diagram_list
         it must be squared against is 'reg_diag_list'. It also returns the
-        new postive target squared order which correspond to this negative order
+        new positive target squared order which correspond to this negative order
         constraint. Example: u u~ > d d~ QED^2<=-2 means that one wants to
-        pick terms only up to the the next-to-leading order contributiong in QED,
+        pick terms only up to the next-to-leading order contribution in QED,
         which is QED=2 in this case, so that target_order=4 is returned."""
         
         # First we must compute all contributions to that order
@@ -3722,7 +3722,7 @@ class DiagramList(PhysicsObjectList):
 
 
     def get_min_order(self,order):
-        """ Return the order of the diagram in the list with the mimimum coupling
+        """ Return the order of the diagram in the list with the minimum coupling
         order for the coupling specified """
         min_order=-1
         for diag in self:
@@ -4055,9 +4055,9 @@ class Process(PhysicsObject):
         return mystr
 
     def nice_string(self, indent=0, print_weighted=True, prefix=True, print_perturbated=True):
-        """Returns a nicely formated string about current process
+        """Returns a nicely formatted string about current process
         content. Since the WEIGHTED order is automatically set and added to 
-        the user-defined list of orders, it can be ommitted for some info
+        the user-defined list of orders, it can be omitted for some info
         displays."""
 
         if isinstance(prefix, bool) and prefix:
@@ -4752,7 +4752,7 @@ class Process(PhysicsObject):
                                              (sq_orders[k]>v or sq_orders[k]<0):
                         logger.warning(
 '''The process with the squared coupling order (%s^2%s%s) specified can potentially 
-recieve contributions with powers of the coupling %s larger than the maximal 
+receive contributions with powers of the coupling %s larger than the maximal
 value allowed by the model builder (%s). Hence, MadGraph7 sets the amplitude order
 for that coupling to be this maximal one. '''%(k,self.get('sqorders_types')[k],
                                              self.get('squared_orders')[k],k,v))
@@ -5002,7 +5002,7 @@ class ProcessDefinition(Process):
                 yield process
 
     def nice_string(self, indent=0, print_weighted=False, prefix=True):
-        """Returns a nicely formated string about current process
+        """Returns a nicely formatted string about current process
         content"""
 
         if prefix:

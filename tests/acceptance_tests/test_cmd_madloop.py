@@ -1025,7 +1025,7 @@ class TestCmdLoop(unittest.TestCase):
         def propagator(Q2, mz, gammaz):
             return 1/((Q2 - mz**2)**2 + mz**2 * gammaz**2)
 
-    #We check that the mass, the decay and the transfered mommentum of the z are the same in the decay and the production for each of the 5 events
+    #We check that the mass, the decay and the transferred momentum of the z are the same in the decay and the production for each of the 5 events
         for i in range(5):
             self.assertAlmostEqual(p2_decay[i], p2_production[i], places=7)
             comparison = 3 * propagator(p2_decay[i], 9.118800e+01, gammaz_decay) * convolution(rho_production[i], rho_decay[i])
@@ -1333,7 +1333,7 @@ class TestCmdLoop(unittest.TestCase):
                     set run_card use_syst False
                 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -1353,7 +1353,7 @@ set reweight_card particle_in_density_matrix [24, -24]
 set reweight_card order_helicities [-1, 1, -1, 0, -1, -1, 0, 1, 0, 0, 0, -1, 1, 1, 1, 0, 1, -1]
 set matrix_normalisation False
 """
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()

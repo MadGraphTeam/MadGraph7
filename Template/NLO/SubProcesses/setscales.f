@@ -49,7 +49,7 @@ c
 c This subroutine sets the values of the renormalization, factorization,
 c and Ellis-Sexton scales, and computes the value of alpha_S through the
 c call to set_ren_scale (for backward compatibility).
-c The scale and couplings values are updated in the relevant common blocks
+c The scale and coupling values are updated in the relevant common blocks
 c (mostly in run.inc, and one  in coupl.inc)
       implicit none
       include "genps.inc"
