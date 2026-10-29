@@ -486,7 +486,7 @@ def test_fixed_lepton_masses_and_yukawas_remove_exactly_zero_source_vertices(gmu
 def test_fixed_gmu_masses_preserve_native_graph_family_denominators(gmu):
     from symbolica import S
 
-    from pyamplicol.loops.graphs import build_loop_process
+    from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
     zeros = (
         "aEW0M1",

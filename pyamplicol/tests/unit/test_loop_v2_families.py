@@ -112,7 +112,7 @@ def _feynkit_ring(graph):
 
 
 def _feynkit(process, born):
-    from pyamplicol.loops.graphs import build_loop_process
+    from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
     loop = {**born, "QCD": born.get("QCD", 0) + 2}
     return build_loop_process(
@@ -445,6 +445,17 @@ def test_production_modules_never_generate_diagrams():
     )
     for path in ("families.py", "skeletons.py", "schedules.py"):
         assert not forbidden.search((source / path).read_text()), path
+    # Nothing in the package enumerates loop diagrams or maps integral
+    # families (the legacy per-diagram engine was removed; FeynKit's diagrams
+    # are a test oracle only, ``tools/loop_reference/feynkit_loop_graphs.py``).
+    enumeration = re.compile(r"generate_diagrams|find_mappings|build_loop_process")
+    package = Path(v2_families.__file__).parents[2]
+    offenders = [
+        str(path.relative_to(package))
+        for path in package.rglob("*.py")
+        if enumeration.search(path.read_text())
+    ]
+    assert offenders == [], offenders
 
 
 # --------------------------------------------------------------------------- loop_sm

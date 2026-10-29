@@ -83,7 +83,6 @@ loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
 [loop]
 r2_strategy = "model"
-engine = "v2"
 {declared}
 [loop.preparation]
 fixed_parameters = {{{parameters}}}
@@ -184,7 +183,6 @@ def test_unrepairable_slot_mismatch_is_the_listed_refusal(loop_sm_ufo):
         born_order_bounds={"QCD": 2, "QED": 0},
         loop_order_bounds={"QCD": 4, "QED": 0},
         fixed_parameters=fixed,
-        certify_primitives=False,
     )
     with pytest.raises(LoopRequestUnsupported) as refused:
         prepare_loop_request_model(
@@ -192,7 +190,6 @@ def test_unrepairable_slot_mismatch_is_the_listed_refusal(loop_sm_ufo):
             born_order_bounds={"QCD": 2, "QED": 2},
             loop_order_bounds={"QCD": 4, "QED": 2},
             fixed_parameters=fixed,
-            certify_primitives=False,
         )
     assert refused.value.key == "lorentz-slot-arity"
     assert "V_1001" in str(refused.value) and other["name"] in str(refused.value)
@@ -694,7 +691,6 @@ def test_majorana_and_contact_vertices_are_listed_refusals(loop_sm_ufo, key):
             born_order_bounds={"QCD": 2, "QED": 0},
             loop_order_bounds={"QCD": 4, "QED": 0},
             fixed_parameters={"MB": "0", "ymb": "0"},
-            certify_primitives=False,
         )
     assert refused.value.key == key
 

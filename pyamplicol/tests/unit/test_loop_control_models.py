@@ -48,7 +48,7 @@ def test_control_restriction_preserves_generic_inputs_and_heavy_mass_symbols(
 
 def test_control_restriction_reaches_numerators_denominators_and_families(dependencies):
     from pyamplicol.loops.control_models import qcd_qed_control_model
-    from pyamplicol.loops.graphs import build_loop_process
+    from tools.loop_reference.feynkit_loop_graphs import build_loop_process
 
     model = qcd_qed_control_model()
     ir = build_loop_process(

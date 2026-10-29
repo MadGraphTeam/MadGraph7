@@ -34,34 +34,3 @@ def test_native_epsilon_orientation_metric_and_exact_components(components):
     assert sum(component != 0 for component in value) == 24
     # Includes all four (+---) contraction metrics and Idenso's native -i.
     assert (epsilon * epsilon).to_tensor(physical_tensor_library())[0] == 24
-
-
-def test_routed_component_libraries_keep_momenta_local(components):
-    symbolica, t = components
-    from symbolica.community import hepkit as h
-
-    from pyamplicol.loops.graphs import build_loop_process
-    from pyamplicol.loops.recurrence import momentum_component_library
-
-    process = build_loop_process(
-        h.Model.phi4().process(["phi", "phi"], ["phi", "phi"]),
-        selected_corrections=["SCALAR"],
-        perturbative_orders={"SCALAR": 1},
-    )
-    graph = process.loops[0]
-    q = tuple(symbolica.S(*(f"epsilon_test::q{i}" for i in range(4))))
-    zero = (symbolica.E("0"),) * 4
-    first = momentum_component_library(graph, (q,), (zero,) * 4)
-    second = momentum_component_library(
-        graph, (tuple(2 * value for value in q),), (zero,) * 4
-    )
-    edge = next(
-        edge for edge in graph.native.edges if any(edge.momentum_signature().loops)
-    )
-    name = t.TensorName(h.Symbols.edge_momentum().get_name())
-    vector = name(edge.id, t.Representation.mink(4)(symbolica.S("epsilon_test::p")))
-    a, b = vector.to_tensor(first), vector.to_tensor(second)
-    assert list(b) == [2 * value for value in a]
-    assert list(vector.to_tensor(first)) == list(a)
-    epsilon = t.TensorExpression.levi_civita(t.Representation.mink(4))(0, 1, 2, 3)
-    assert list(epsilon.to_tensor(first)) == list(epsilon.to_tensor(second))
