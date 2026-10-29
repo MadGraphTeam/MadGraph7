@@ -46,7 +46,6 @@ from .dag_ordering import (
     _labels_projected_to_word,
     _lc_all_adjoint_symmetry_order_variants,
     _lc_color_order_reachable_masks,
-    _loop_born_direct_contraction_ir,
     _mask_labels,
 )
 from .dag_reachability import (
@@ -241,7 +240,7 @@ class GenericDAGCompiler:
 
         ``loop_born`` compiles the Born DAG of a loop request: a Dirac current
         closing on a Weyl sink is a root with the marker contraction
-        ``dag_ordering.DIRAC_WEYL_CLOSURE`` (``_loop_born_direct_contraction_ir``)
+        ``dag_ordering.DIRAC_WEYL_CLOSURE`` (``_direct_contraction_ir``)
         instead of a refusal. No tree evaluator lowers such a root; the loop
         engine reads the roots' orders, sectors and helicities only.
         """
@@ -2226,13 +2225,10 @@ class GenericDAGCompiler:
             left: CurrentNode,
             right: CurrentNode,
         ) -> ContractionIR | None:
-            closure = (
-                _loop_born_direct_contraction_ir
-                if self.loop_born
-                else _direct_contraction_ir
-            )
             if not self.online_evaluation_reuse:
-                return closure(self.model, left.index, right.index)
+                return _direct_contraction_ir(
+                    self.model, left.index, right.index, loop_born=self.loop_born
+                )
             key = (
                 left.index.particle_id,
                 right.index.particle_id,
@@ -2240,10 +2236,11 @@ class GenericDAGCompiler:
                 right.index.chirality,
             )
             if key not in eager_direct_contractions:
-                eager_direct_contractions[key] = closure(
+                eager_direct_contractions[key] = _direct_contraction_ir(
                     self.model,
                     left.index,
                     right.index,
+                    loop_born=self.loop_born,
                 )
             return eager_direct_contractions[key]
 

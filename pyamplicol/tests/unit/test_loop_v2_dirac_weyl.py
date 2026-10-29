@@ -212,13 +212,15 @@ def test_loop_slices_never_read_the_root_contraction(
     process = "b u > d t"
     point = _point(("0", "0", "0", MT))
     plain = _slice(compiled, loop_native, process, MASSLESS_B)
-    native = dag_compiler._loop_born_direct_contraction_ir
+    native = dag_compiler._direct_contraction_ir
 
-    def marked(model, left, right):
-        contraction = native(model, left, right)
-        return None if contraction is None else DIRAC_WEYL_CLOSURE
+    def marked(model, left, right, *, loop_born=False):
+        contraction = native(model, left, right, loop_born=loop_born)
+        if contraction is None or not loop_born:
+            return contraction
+        return DIRAC_WEYL_CLOSURE
 
-    monkeypatch.setattr(dag_compiler, "_loop_born_direct_contraction_ir", marked)
+    monkeypatch.setattr(dag_compiler, "_direct_contraction_ir", marked)
     marker = _slice(compiled, loop_native, process, MASSLESS_B)
     kinds = {
         (root.kind, root.contraction_ir == DIRAC_WEYL_CLOSURE)

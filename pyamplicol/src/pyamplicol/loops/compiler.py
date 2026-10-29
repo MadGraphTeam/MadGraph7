@@ -15,7 +15,7 @@ from typing import Any
 from pyamplicol.models.loop_import import RawLoopModel
 
 from .counterterms import prepare_counterterm_model
-from .covariant_model import build_covariant_structure
+from .covariant_model import build_covariant_structure, repair_source_declarations
 from .model import build_loop_model
 from .model_catalogue import certified_source_counterterm_bases
 from .model_restrictions import prepare_loop_restrictions
@@ -136,6 +136,21 @@ def prepare_loop_request_model(
         born_order_bounds=born_order_bounds,
         loop_order_bounds=loop_order_bounds,
     )
+    # Structural source repairs (constant-tensor slot arity) of the vertices
+    # the request reaches, recorded in the derived source. A source without
+    # such a defect in scope, or already repaired (the public route repairs
+    # the compiled model it publishes), is prepared as it is, byte for byte.
+    repaired = repair_source_declarations(
+        raw, within={tuple(key[:2]) for key in scope.admitted_keys}
+    )
+    if repaired is not raw:
+        raw = repaired
+        declarations = prepare_loop_restrictions(raw, simplify=simplify)
+        scope = prepare_loop_request_scope(
+            declarations.derived,
+            born_order_bounds=born_order_bounds,
+            loop_order_bounds=loop_order_bounds,
+        )
     structure = build_covariant_structure(
         declarations.derived,
         request_scope=scope,

@@ -15,6 +15,34 @@ MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  ([^\r\n]+)")
 HOST_PATH_MARKERS = (b"/Users/", b"/home/", b"file://")
 
 EXPECTED_UFO_FILES = {
+    # MG5_aMC 3.7.0 models/loop_sm byte for byte (user ruling 2026-10-28
+    # ~15:25 (4)): every module and restriction card, no MG5_aMC cache.
+    "loop_sm": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_c_mass.dat",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_lepton_masses.dat",
+        "restrict_no_b_mass.dat",
+        "restrict_no_masses.dat",
+        "restrict_no_tau_mass.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_test.dat",
+        "restrict_zeromass_ckm.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
     "scalar_gravity": {
         "__init__.py",
         "coupling_orders.py",
@@ -185,8 +213,8 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
 
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
-    assert len(records) == 66
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 27
+    assert len(records) == 90
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 51
 
     record_paths = set()
     for entry in records:
