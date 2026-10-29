@@ -88,14 +88,24 @@ KERNELSPEC FVal<T> dj_clus(
     FVal<T> jet_radius
 ) {
     if (!hadronic) {
-        // Durham e+e- measure: 2*min(E1^2, E2^2)*(1 - cos_theta)
+        // Durham e+e- measure: 2*min(E1^2, E2^2)*(1 - cos_theta), evaluated as
+        // 4*min(E1^2, E2^2)*sin^2(theta/2) with theta = atan2(|p1 x p2|,
+        // p1.p2). For a nearly collinear pair 1 - cos_theta is the difference
+        // of two numbers close to one and loses most of its digits.
         auto p1a = sqrt(esquare<T>(p1));
         auto p2a = sqrt(esquare<T>(p2));
         if (p1a * p2a == 0.0) {
             return 0.0;
         }
-        auto costh = edot<T>(p1, p2) / (p1a * p2a);
-        return 2.0 * min(p1[0] * p1[0], p2[0] * p2[0]) * max(1.0 - costh, 0.0);
+        auto cross_x = p1[2] * p2[3] - p1[3] * p2[2];
+        auto cross_y = p1[3] * p2[1] - p1[1] * p2[3];
+        auto cross_z = p1[1] * p2[2] - p1[2] * p2[1];
+        auto theta = atan2(
+            sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z),
+            edot<T>(p1, p2)
+        );
+        auto sin_half = sin(0.5 * theta);
+        return 4.0 * min(p1[0] * p1[0], p2[0] * p2[0]) * sin_half * sin_half;
     }
 
     // hadronic: massless+massive pair clusters to the lighter parton's mT^2
@@ -108,25 +118,32 @@ KERNELSPEC FVal<T> dj_clus(
         return djb_clus<T>(p2, true) * ONE_PLUS_TINY;
     }
 
-    // both massless or both massive: generalised kt measure in (eta, phi)
+    // both massless or both massive: generalised kt measure in (eta, phi),
+    // min(pt1^2, pt2^2) * 2 * (cosh(deta) - cos(dphi)) / D^2 as in cluster.f,
+    // evaluated as 4 * (sinh^2(deta/2) + sin^2(dphi/2)), with dphi from
+    // atan2(cross, dot) and eta = asinh(pz/pt). For a nearly collinear pair
+    // cosh(deta) and cos(dphi) are both close to one, and their difference
+    // lost up to eight digits, so that scalar and SIMD math (and the GPU) gave
+    // different scales; log((|p| + pz)/(|p| - pz)) also cancels for a forward
+    // parton.
     auto pt1_sq = p1[1] * p1[1] + p1[2] * p1[2];
     auto pt2_sq = p2[1] * p2[1] + p2[2] * p2[2];
     if (pt1_sq == 0.0 || pt2_sq == 0.0) {
         return 0.0;
     }
-    auto p1a = sqrt(pt1_sq + p1[3] * p1[3]);
-    auto p2a = sqrt(pt2_sq + p2[3] * p2[3]);
-    auto eta1 = 0.5 * log((p1a + p1[3]) / (p1a - p1[3]));
-    auto eta2 = 0.5 * log((p2a + p2[3]) / (p2a - p2[3]));
+    auto deta = asinh(p1[3] / sqrt(pt1_sq)) - asinh(p2[3] / sqrt(pt2_sq));
+    auto dphi =
+        atan2(p1[1] * p2[2] - p1[2] * p2[1], p1[1] * p2[1] + p1[2] * p2[2]);
+    auto sinh_half = sinh(0.5 * deta);
+    auto sin_half = sin(0.5 * dphi);
     auto m_max_sq = max(mass1 * mass1, mass2 * mass2);
-    auto dphi_cos = (p1[1] * p2[1] + p1[2] * p2[2]) / sqrt(pt1_sq * pt2_sq);
     auto result = m_max_sq +
-        min(pt1_sq, pt2_sq) * 2.0 * (cosh(eta1 - eta2) - dphi_cos) /
+        min(pt1_sq, pt2_sq) * 4.0 *
+            (sinh_half * sinh_half + sin_half * sin_half) /
             (jet_radius * jet_radius);
-    // An exactly collinear pair makes eta1 or eta2 infinite and their
-    // difference NaN. The Fortran zeroes both negative and NaN results here
-    // ("prevent numerical inaccuracies"); max() alone would let the NaN
-    // through.
+    // The Fortran zeroes both negative and NaN results here ("prevent
+    // numerical inaccuracies"); max() alone would let a NaN from extreme
+    // inputs through.
     if (!(result > 0.0)) {
         return 0.0;
     }
