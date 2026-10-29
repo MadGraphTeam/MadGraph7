@@ -57,6 +57,25 @@ measures it against each coefficient itself, so ``finite`` is the relative
 accuracy of the finite part. Without a requested check no estimate exists:
 ``LoopSlice.evaluate`` then returns ``stability=None``. Escalating the
 precision is the caller's decision.
+
+``RECOMMENDED_CHECKS`` is that configuration with ``default_rotation(0)``
+(a generic axis, as calibrated); it is the estimate of the O1 rule. Two
+weaker choices miss errors by more than ten times their estimate (package
+mq-stab, binary64 against double-double):
+
+* A rotation about the beam axis (z for the collision-frame points of a
+  2 -> n process) leaves both incoming momenta and the energy and p_z of
+  every momentum bitwise unchanged. With the cached reduction check it
+  reported 7.6e-14 for the double pole of u u~ > u u~ e+ e- at the fixture's
+  point 2, whose error is 1.7e-12 (22.8 x); any rotation moving the beams
+  brackets it (error 0.5 x the estimate). The masters are not the cause
+  there: every rotation keeps their exact invariants and so their binary64
+  inputs bitwise.
+* Without the rescaled check no master is evaluated twice: at
+  g g > b b~ h (4FS, m_b = 4.7) the finite part's binary64 error sits in
+  the masters with the light b and is 23-96 x the estimate of every
+  rotation with the cached check; the rescaled check brings it to
+  0.14-0.24 x (7.5 x at the worst point).
 """
 
 from __future__ import annotations
@@ -174,6 +193,26 @@ class Rotation:
         return tuple(out)
 
 
+def default_rotation(index: int) -> Rotation:
+    """The ``index``-th default rotation check: exact, deterministic, generic.
+
+    Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
+    of a turn, so no two checks share an axis or a rotation angle, none is a
+    coordinate axis (the beam axis included: module docstring) and none is
+    a symmetry of a typical point. ``Rotation.from_axis_angle`` rounds the
+    quaternion to rationals, which keeps every rotated point exactly on shell.
+    """
+
+    golden = (1 + math.sqrt(5)) / 2
+    z = 1 - (2 * index + 1) / (2 * (index + 2))
+    phi = 2 * math.pi * index / golden
+    radius = math.sqrt(1 - z * z)
+    angle = 2 * math.pi * (((index + 1) / golden) % 1)
+    return Rotation.from_axis_angle(
+        (radius * math.cos(phi), radius * math.sin(phi), z), max(angle, 0.5)
+    )
+
+
 def _determinant(m) -> Fraction:
     return (
         m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
@@ -219,6 +258,13 @@ class StabilityChecks:
     def frame(self) -> str | None:
         """The re-reduction frame of the reduction check, or None."""
         return FRAMES.get(self.reduction)
+
+
+# The recommended configuration (DESIGN §10.4) and the O1 rule's estimate:
+# one generic rotation and the rescaled reduction check (module docstring).
+RECOMMENDED_CHECKS = StabilityChecks(
+    (default_rotation(0),), reduction_direction=True, rescaled=True
+)
 
 
 def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float:
@@ -399,6 +445,7 @@ def _at(budget: Any, k: int) -> float:
 __all__ = [
     "FLOOR_UNITS",
     "FRAMES",
+    "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
     "ROTATION",
@@ -407,6 +454,7 @@ __all__ = [
     "Rotation",
     "StabilityChecks",
     "StabilityEstimate",
+    "default_rotation",
     "deviation",
     "differences",
     "per_coefficient",

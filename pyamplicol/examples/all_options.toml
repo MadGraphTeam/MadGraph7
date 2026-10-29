@@ -350,15 +350,21 @@ verify_successful = false
 
 [evaluation.stability_checks]
 # Stability checks of v2 virtual evaluations; with none, no estimate is returned.
+# Recommended: rotation_count = 1, reduction_direction = true, rescaled = true.
 # evaluation.stability_checks.rotations: Exact rotations, "<x|y|z>:<cos>:<sin>"
-# (e.g. "z:3/5:4/5") or "<ax>,<ay>,<az>:<radians>". Default empty.
+# (e.g. "x:3/5:4/5"; avoid the beam axis) or "<ax>,<ay>,<az>:<radians>".
+# Default empty.
 rotations = []
 # evaluation.stability_checks.rotation_count: Number of default rotations
-# instead of an explicit list. Default 0.
+# (generic axes) instead of an explicit list. Default 0.
 rotation_count = 0
 # evaluation.stability_checks.reduction_direction: Re-reduce every loop
 # numerator in a reversed frame (cached masters). Default false.
 reduction_direction = false
+# evaluation.stability_checks.rescaled: Run that re-reduction at rescaled
+# inputs, evaluating the master integrals again (requires
+# reduction_direction). Default false.
+rescaled = false
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.
