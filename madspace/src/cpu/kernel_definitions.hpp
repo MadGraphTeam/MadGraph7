@@ -19,6 +19,10 @@ struct CpuTypes {
     using FOut = TensorView<double, dim>;
     template <int dim>
     using IOut = TensorView<me_int_t, dim>;
+    template <int dim>
+    using FSIn = const TensorView<double, dim>;
+    template <int dim>
+    using ISIn = const TensorView<me_int_t, dim>;
     using FVal = double;
     using IVal = me_int_t;
     using BVal = bool;
@@ -67,6 +71,10 @@ struct SimdTypes {
     using FOut = cpu::VectorizedTensorView<FVec, double, dim, false>;
     template <int dim>
     using IOut = cpu::VectorizedTensorView<IVec, me_int_t, dim, false>;
+    template <int dim>
+    using FSIn = const cpu::SingleVectorizedTensorView<FVec, double, dim, false>;
+    template <int dim>
+    using ISIn = const cpu::SingleVectorizedTensorView<IVec, me_int_t, dim, false>;
     using FVal = FVec;
     using IVal = IVec;
     using BVal = BVec;

@@ -233,7 +233,7 @@ class TestFKSProcess(unittest.TestCase):
     
     
     def test_FKSMultiProcess(self):
-        """tests the correct initializiation of a FKSMultiProcess. In particular
+        """tests the correct initialization of a FKSMultiProcess. In particular
         checks that the correct number of borns is found"""
         
         p = [1, 21]
@@ -317,7 +317,7 @@ class TestFKSProcess(unittest.TestCase):
 
 
     def test_FKSMultiProcess_no_fsr(self):
-        """tests the correct initializiation of a FKSMultiProcess. In particular
+        """tests the correct initialization of a FKSMultiProcess. In particular
         checks the setting for has_isr/fsr"""
         
         p = [1, -1]
@@ -370,7 +370,7 @@ class TestFKSProcess(unittest.TestCase):
 
 
     def test_FKSMultiProcess_no_isr(self):
-        """tests the correct initializiation of a FKSMultiProcess. In particular
+        """tests the correct initialization of a FKSMultiProcess. In particular
         checks the setting for has_isr/fsr"""
         p = [1, -1]
         a = [22]
@@ -422,7 +422,7 @@ class TestFKSProcess(unittest.TestCase):
 
 
     def test_FKSMultiProcess_add(self):
-        """tests the correct initializiation of a FKSMultiProcess and the add funciton. In particular
+        """tests the correct initialization of a FKSMultiProcess and the add function. In particular
         checks the setting for has_isr/fsr"""
         p = [1, -1]
         a = [22]
@@ -893,7 +893,7 @@ class TestFKSProcess(unittest.TestCase):
             'orders':{'QCD':3, 'QED':0, 'WEIGHTED': 3}, 'id':1})
         sorted_real_proc_qed = MG.Process({'legs':sorted_legs_qed, 'model':self.mymodel,
             'orders':{'QCD':2, 'QED':1, 'WEIGHTED': 4}, 'id':1})
-## an emplty amplitude is generted so far...
+## an empty amplitude is generated so far...
         self.assertEqual(diagram_generation.Amplitude(), realproc.amplitude)
         self.assertEqual(diagram_generation.Amplitude(), realproc_qed.amplitude)
 

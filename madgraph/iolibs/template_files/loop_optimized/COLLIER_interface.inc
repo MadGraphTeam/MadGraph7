@@ -94,7 +94,7 @@ C
 C
 C     These global variables cache the coefficients already computed by COLLIER
 C     so that they can be reused. In particular, in CTMODE 2, the cached ERROR 
-C     quantities for eahc rank will be used to make use of COLLIER's internal
+C     quantities for each rank will be used to make use of COLLIER's internal
 C     assessment of the numerical accuracy.
 C
       logical LOOP_ID_DONE(NLOOPGROUPS)
@@ -264,7 +264,7 @@ C       This do loop spans over 'i' in the expression above.
           ENDDO
           MomInv(CURR_INDEX) = DCMPLX(RBUFF(0)**2-RBUFF(1)**2-RBUFF(2)**2-RBUFF(3)**2,0.0d0)
 
-C         Now regularize the onshell behavior of the kinematic invarients
+C         Now regularize the onshell behavior of the kinematic invariants
 C         All loop masses are tested, but that might be a bit too inclusive.
           DO K=1,NLOOPLINE
             IF(ABS(M2L(K)).NE.0.0d0) THEN
@@ -624,7 +624,7 @@ C       except if the LoopFilter is ON which really shouldn't be the case anymor
         IF(NEED_REINITIALIZATION) THEN
 C         Log the event because if it happens a lot of time and floods the screen, the user must see it
 C         and either change its usage of MadLoop or turnoff COLLIER cache
-          WRITE(*,*) 'INFO: MadLoop detected that the global cache of COLLIER had to be reset because of a change in your use of MadLoop. This should not happend for each event.'
+          WRITE(*,*) 'INFO: MadLoop detected that the global cache of COLLIER had to be reset because of a change in your use of MadLoop. This should not happen for every event.'
           USERHEL_BU         = USERHEL 
           SQSO_TARGET_BU     = SQSO_TARGET
           COLLIERMode_BU     = COLLIERMode

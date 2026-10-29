@@ -138,6 +138,11 @@ class HelasCallWriter(base_objects.PhysicsObject):
     mother_dict = {1: 'S', 2: 'O', -2: 'I', 3: 'V', 5: 'T', 4:'OR', -4:'IR',
                    99:'P'}
     
+    # |pdg| of the particles whose propagators are written with a zero width
+    # (see get_wavefunction_call). Set for one matrix element at a time by the
+    # exporter (output standalone --zerowidth_decay=).
+    zerowidth_pdgs = frozenset()
+
     @staticmethod
     def customize_argument_for_all_other_helas_object(call, arg):
         """ Place holder for PLUGIN/...
@@ -358,38 +363,46 @@ class HelasCallWriter(base_objects.PhysicsObject):
         amp_slots = self.get_amplitude_slots(matrix_element)
         position = [0]
 
-        res = []
-        written = set()
-        for diagram in matrix_element.get('diagrams'):
+        # no t-channel in a decay (is_t_channel assumes two initial particles),
+        # also when the output mixes decays with 2 > n processes (--standalone)
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if matrix_element.get('processes')[0].get_ninitial() == 1:
+            self.options['zerowidth_tchannel'] = False
+        try:
+            res = []
+            written = set()
+            for diagram in matrix_element.get('diagrams'):
 
 
-            for wf in diagram.get('wavefunctions'):
-                res.append(self.get_wavefunction_call(wf))
-                for i in after.get(wf.get('number'), []):
-                    # a wavefunction number can be listed by more than one
-                    # diagram, and the sum must only be written once
-                    if i in written:
+                for wf in diagram.get('wavefunctions'):
+                    res.append(self.get_wavefunction_call(wf))
+                    for i in after.get(wf.get('number'), []):
+                        # a wavefunction number can be listed by more than one
+                        # diagram, and the sum must only be written once
+                        if i in written:
+                            continue
+                        written.add(i)
+                        cubic, quartic, coeff = sums[i]
+                        res.extend(self.get_current_sum_lines(
+                            slots[i], cubic, quartic, coeff))
+                res.append("# Amplitude(s) for diagram number %d" % \
+                           diagram.get('number'))
+                for amplitude in diagram.get('amplitudes'):
+                    if amplitude.get('number') in folded:
+                        # summed into another amplitude through a current sum
                         continue
-                    written.add(i)
-                    cubic, quartic, coeff = sums[i]
-                    res.extend(self.get_current_sum_lines(
-                        slots[i], cubic, quartic, coeff))
-            res.append("# Amplitude(s) for diagram number %d" % \
-                       diagram.get('number'))
-            for amplitude in diagram.get('amplitudes'):
-                if amplitude.get('number') in folded:
-                    # summed into another amplitude through a current sum
-                    continue
-                res.append(self.get_amplitude_call_on_slot(
-                    amplitude, uses.get(amplitude.get('number')), slots,
-                    amp_slots))
-                if amp_slots is not None:
-                    res.extend(self.get_amplitude_merge_lines_at(
-                        amp_slots, position[0]))
-                    position[0] += 1
+                    res.append(self.get_amplitude_call_on_slot(
+                        amplitude, uses.get(amplitude.get('number')), slots,
+                        amp_slots))
+                    if amp_slots is not None:
+                        res.extend(self.get_amplitude_merge_lines_at(
+                            amp_slots, position[0]))
+                        position[0] += 1
 
-        if amp_slots is None:
-            res.extend(self.get_amplitude_merge_lines(matrix_element))
+            if amp_slots is None:
+                res.extend(self.get_amplitude_merge_lines(matrix_element))
+        finally:
+            self.options['zerowidth_tchannel'] = zerowidth_tchannel
 
         return res
 
@@ -509,6 +522,16 @@ class HelasCallWriter(base_objects.PhysicsObject):
             call, n = re.subn(r',\s*fk_(?!ZERO)\w*\s*,', ', ZERO,', str(call), flags=re.I)
             if n:
                 self.width_tchannel_set_tozero = True
+        # zerowidth_pdgs: propagators of these particles (|pdg|) get a zero
+        # width in this call only -- the model parameter itself is untouched.
+        # Nothing to do in the complex-mass scheme, where the call carries a
+        # complex mass instead of a (mass, width) pair.
+        zero = self.zerowidth_pdgs
+        if zero and abs(wavefunction.get('pdg_code')) in zero:
+            width = str(wavefunction.get('width'))
+            if width.upper() != 'ZERO':
+                call = re.sub(r',\s*(fk_)?%s\s*,' % re.escape(width), ', ZERO,',
+                              str(call), count=1, flags=re.I)
         return call
         
 
@@ -1470,7 +1493,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 helas_dict['MPLoopCoupling%i'%(i+1)]= \
                    '-%s%s'%(self.mp_prefix,coupl[1:]) if coupl.startswith('-') \
                                               else '%s%s'%(self.mp_prefix,coupl)
-            # We add here the placeholde for the proc_prefix
+            # We add here the placeholder for the proc_prefix
             return 'CALL %(proc_prefix)s'+call%helas_dict
 
         self.add_amplitude(loopamp.get_call_key(), create_loop_amp)
@@ -1910,7 +1933,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         call = call + "%(LoopRank)d,"
         call = call + "I_SO,%(loop_group_id)d)"
         
-        # We add here the placeholde for the proc_prefix
+        # We add here the placeholder for the proc_prefix
         call_function = lambda amp: 'CALL %(proc_prefix)s'+\
                             call % amp.get_helas_call_dict(OptimizedOutput=True)
         self.add_amplitude(loopamp.get_call_key(), call_function)
@@ -2056,7 +2079,7 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills
@@ -2318,7 +2341,7 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills

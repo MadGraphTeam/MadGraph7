@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <unordered_set>
 #include <vector>
@@ -219,6 +220,10 @@ private:
         int color_index, helicity_index, diagram_index, flavor_index;
         int ren_scale, alpha_qcd;
         int x1, fact_scale1, x2, fact_scale2, partial_weight_product;
+        int cluster_scales;
+        int alphas_scales;
+        // x, pdg, q, info, lead_q of the pdf ladder
+        std::array<int, 5> ladder;
         int subprocess_index;
         int bias;
         int random, rest;
@@ -245,6 +250,11 @@ private:
     RunningIntegral _cross_section;
     RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
+    // Expected number of accepted events, sum of min(|w| / max_weight, 1) over the
+    // committed generate stages, rescaled like count_unweighted when the max
+    // weight rises. Decides when the max weight is frozen: unlike count_unweighted
+    // it only depends on the generate stages, which commit in a fixed order.
+    double _expected_unweighted = 0.;
     bool _max_weight_fixed = false;
     // mean and standard error
     std::optional<std::pair<double, double>> _abs_integral_prior;

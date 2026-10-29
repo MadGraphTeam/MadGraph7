@@ -959,7 +959,7 @@ class LoopDiagramGenerationTest(unittest.TestCase):
             #                                  legend=myloopamplitude.get('process').input_string())
             #plot.draw(opt=options)
 
-            ### This is to display some informations
+            ### This is to display some information
             #mydiag1=myloopamplitude.get('loop_diagrams')[0]
             #mydiag2=myloopamplitude.get('loop_diagrams')[5]      
             #print "I got tag for diag 1=",mydiag1['canonical_tag']

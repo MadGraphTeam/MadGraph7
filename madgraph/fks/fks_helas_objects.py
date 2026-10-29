@@ -108,7 +108,7 @@ def async_generate_born(args):
 
     logger.info('Generating born %s' % \
             born.born_amp['process'].nice_string(print_weighted=False).replace('Process', 'process'))
-    #load informations on reals from temp files
+    #load information on reals from temp files
     helasreal_list = []
     amp_to_remove = []
     for amp in born.real_amps:
@@ -964,7 +964,7 @@ class FKSHelasRealProcess(object): #test written
         initialization for HelasMatrixElement.
         Sets i/j fks and the permutation.
         real_me_list and real_amp_list are the lists of pre-generated matrix elements in 1-1 
-        correspondance with the amplitudes"""
+        correspondence with the amplitudes"""
         
         if fksrealproc != None:
             self.isfinite = False

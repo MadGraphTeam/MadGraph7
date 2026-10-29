@@ -642,9 +642,9 @@ class TestEvent(unittest.TestCase):
             for j in range(len(all_perms[0])):
                 if all_perms[i][j] == all_perms[0][j]:
                     nb_identical[j] +=1
-        self.assertEqual(nb_identical, [36,36,12,12,12,12,12,12]) # for the electron permuation: 2 repetition and from the positron one 6 repetition.
+        self.assertEqual(nb_identical, [36,36,12,12,12,12,12,12]) # for the electron permutation: 2 repetition and from the positron one 6 repetition.
 
-        # redo the same but where two pair of electron/positron are indistiguishable
+        # redo the same but where two pair of electron/positron are indistinguishable
         input = """
     10      1 +7.8873842e-07 2.27574700e+02 7.54677100e-03 1.14295200e-01
             2 -1    0    0  501    0 +0.0000000000e+00 +0.0000000000e+00 +1.1463656627e+03 1.1463656627e+03 0.0000000000e+00 0.0000e+00 -1.0000e+00
@@ -724,7 +724,7 @@ class TestEvent(unittest.TestCase):
                                      [9,9,6,3,3,6,3,3]]) # technically other combination are possible 
 
 
-        # redo the same but with less particles (simpler case so should go trough)
+        # redo the same but with less particles (simpler case so should go through)
         input = """
     8      1 +7.8873842e-07 2.27574700e+02 7.54677100e-03 1.14295200e-01
             2 -1    0    0  501    0 +0.0000000000e+00 +0.0000000000e+00 +1.1463656627e+03 1.1463656627e+03 0.0000000000e+00 0.0000e+00 -1.0000e+00

@@ -2500,7 +2500,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 for l in legs:
@@ -2552,7 +2552,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
                 # If no color basis, just output trivial color flow
                 res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
             else:
-                # Else, build a color representation dictionnary
+                # Else, build a color representation dictionary
                 repr_dict = {}
                 legs = proc.get_legs_with_decays()
                 legs[0:2] = [legs[1],legs[0]]
@@ -3645,11 +3645,34 @@ class ProcessExporterMG7(ProcessExporterCPP):
             # Never let this break the output: on any surprise just fall back to
             # -1 (systematics then simply cannot reconstruct the reweighting).
             try:
-                for diagram in me.get('diagrams'):
-                    qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+                me_qcd_orders = [diagram.calculate_orders().get('QCD', 0)
+                                 for diagram in me.get('diagrams')]
+                qcd_orders.update(me_qcd_orders)
             except Exception as error:
                 logger.debug('could not determine the QCD order: %s', error)
                 qcd_orders.add(None)
+                me_qcd_orders = []
+            # the number of jets an MLM matching has to match in the shower
+            # (Pythia8's JetMatching:nJetMax), as export_v4.write_auto_dsig_file
+            # counts it: light coloured final-state partons, at most the QCD
+            # order of the amplitude
+            try:
+                model = me.get('processes')[0].get('model')
+
+                def is_light_parton(pid):
+                    particle = model.get_particle(pid)
+                    return (particle is not None
+                            and particle.get('mass') == 'ZERO'
+                            and particle.get('color') > 1)
+
+                n_partons = max(
+                    len([1 for pid in proc.get_final_ids() if is_light_parton(pid)])
+                    for proc in me.get('processes'))
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'],
+                    min(max(me_qcd_orders, default=0), n_partons))
+            except Exception as error:
+                logger.debug('could not count the matched jets: %s', error)
 
         # a single value of alpha_s (uniform QCD power) lets systematics
         # reconstruct the LO reweighting info without an <mgrwt> block
@@ -3676,7 +3699,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 
-        interface containing all potential usefull information.
+        interface containing all potential useful information.
     """
 
     opt = dict(cmd.options)

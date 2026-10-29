@@ -9,7 +9,7 @@ c     ncall          Number of times to evaluate the function/iteration
 c     itmax          Max number of iterations
 c     itmin          Min number of iterations
 c     dsig           Function to be integrated
-c     ninvar         Number of invarients to keep grids on (s,t,u, s',t' etc)
+c     ninvar         Number of invariants to keep grids on (s,t,u, s',t' etc)
 c     nconfigs       Number of different pole configurations 
 c     VECSIZE_USED   Number of events in parallel out of VECSIZE_MEMMAX
 c                    (NB this is the #events handled by the cudacpp bridge,
@@ -236,16 +236,21 @@ c                 need to restore common block
                   cuts_orient(:) = all_cuts_orient(:, i)
                   call prepare_grouping_choice(all_p(1,i), all_wgt(i),i.eq.(iwarp-1)*WARP_SIZE+1)
                enddo
-               call select_grouping(imirror_vec(iwarp),iflav_vec(iwarp), iproc, iconf_vec(iwarp), all_wgt, iwarp)
+               call store_grouping_choice(iwarp)
+               if (ivec.lt.VECSIZE_USED)then
+                  cycle
+               endif
+c              all warps of the vector share the subprocess (iproc)
+c              while the configuration, flavour and orientation are chosen per warp
+               call select_grouping_vec(imirror_vec, iflav_vec, iproc, iconf_vec, all_wgt, VECSIZE_USED)
 c              events failing the cuts in the selected beam orientation do not contribute
+               do iwarp=1, VECSIZE_USED/WARP_SIZE
                if (imirror_vec(iwarp).eq.1.or.imirror_vec(iwarp).eq.2) then
                   do i=(iwarp-1)*WARP_SIZE+1, iwarp*warp_size
                      if (.not.all_cuts_orient(imirror_vec(iwarp),i)) all_wgt(i)=0d0
                   enddo
                endif
-               if (ivec.lt.VECSIZE_USED)then
-                  cycle
-               endif
+               enddo
 c              reset variable for the next grid               
                ivec = 0
                ilock = 0
@@ -271,7 +276,7 @@ c     write(*,*) i, all_wgt(i), fx, all_wgt(i)*fx
                   all_wgt(i) = all_wgt(i)*all_fx(i)
               enddo
                do i =1, VECSIZE_USED
-c     if last paremeter is true -> allow grid update so only for a full page
+c     if last parameter is true -> allow grid update so only for a full page
                   lastbin(:) = all_lastbin(:,i)
                   if (all_wgt(i) .ne. 0d0) kevent=kevent+1
 c                  write(*,*) 'put point in sample kevent', kevent, 'allow_update', ivec.eq.VECSIZE_USED                   
@@ -362,11 +367,11 @@ c     a larger error estimate, hence a smaller weight in the average)
       write(*,'(a)') '-------------------------------------------------'
       write(*,'(a)') '---------------------------'
 
-      if (nun .lt. 0) nun=-nun   !Case when wrote maximun number allowed
+      if (nun .lt. 0) nun=-nun   !Case when wrote maximum number allowed
       if (chi2 .gt. 1) tsigma=tsigma*sqrt(chi2)
 c     JA 02/2011 Added twgt to results.dat to allow event generation in
 c     first iteration for gridpack runs
-C     OM 02/2015 Added maxwgt (target of the secondary unweight) to allow splitted
+C     OM 02/2015 Added maxwgt (target of the secondary unweight) to allow split
 C        generation of event.
       if (icor .eq. 0) then
          write(66,'(3e12.5,2i9,i5,i9,e10.3,e12.5,3e13.5,i9)')tmean,tsigma, 0.0,
@@ -517,7 +522,7 @@ c
       elseif (xmean(1) .ge. 1e1) then     !Use pico barns
          scale=1d0
          cpref='(pb)'
-      else                               !Use fempto
+      else                               !Use femto
          scale=1d+3
          cpref='(fb)'
       endif
@@ -724,7 +729,7 @@ c         write(*,*) 'Too many dimensions dim > invar',dim,invar
 c         stop
 c      endif
       if (p4 .gt. maxinvar) then
-         write(*,*) 'Too many invarients requested from Sample()',p4
+         write(*,*) 'Too many invariants requested from Sample()',p4
          stop
       endif
       if (p5 .gt. maxconfigs) then
@@ -742,7 +747,7 @@ c         stop
          print*,'Using h-tuple random number sequence.'
       elseif (ituple .eq. 2) then
          print*,'Using Sobel quasi-random number sequence.'
-         write(*,*) 'Sorry cant use sobel'
+         write(*,*) 'Sorry, cannot use Sobol'
          stop
 c         call isobel(dim)
       else
@@ -750,10 +755,10 @@ c         call isobel(dim)
       endif
 c
 c     See if need mapping between dimensions in different configurations
-c     (ie using s,t,u type invarients)
+c     (ie using s,t,u type invariants)
 c
       if (Minvar(1,1) .eq. -1) then
-         print*,'No invarient mapping defined, using 1 to 1.'
+         print*,'No invariant mapping defined, using 1 to 1.'
          do i=1,configs
             do j=1,dim
                Minvar(j,i) = j+(i-1)*dim
@@ -1149,7 +1154,7 @@ C     Local variables
 c     
 c      Begin code
 c
-C     Fetch a random number bewteen 0.0 and 1.0
+C     Fetch a random number between 0.0 and 1.0
 c     The fourth argument is not used and therefore a dummy
       dummy = 0
       call ntuple(rdm,0.0d0,1.0d0,dummy,iconfig)
@@ -1533,7 +1538,7 @@ c     (the refine can ask for this after itmin-1 iterations)
 C
 C     Subroutine to take care of the update of the discrete grids
 C     (used for helicity and the matrix<i> choice in the grouped case
-C     as implented in the DiscreteSampler module.
+C     as implemented in the DiscreteSampler module.
 C
       subroutine add_entry_to_discrete_dimensions(wgt)
       use DiscreteSampler
@@ -1589,7 +1594,7 @@ c       that they shouldn't be added here.
 C
 C     Subroutine to take care of the update of the discrete grids
 C     (used for helicity and the matrix<i> choice in the grouped case
-C     as implented in the DiscreteSampler module.
+C     as implemented in the DiscreteSampler module.
 C
       subroutine update_discrete_dimensions()
       use DiscreteSampler
@@ -1798,7 +1803,7 @@ c-----
          last_goal = 0d0
          twgt_it = 0d0
          twgt1 = 0d0       !
-         iavg = 0         !Vars for averging to increase err estimate
+         iavg = 0         !Vars for averaging to increase err estimate
          navg = 1      !
          wmax1= 99d99
          wmax = -1d0
@@ -1828,9 +1833,9 @@ c-----
 c        Add the current point to the DiscreteSamplerGrid
          call add_entry_to_discrete_dimensions(wgt)
          if (kn.eq.0.and.(iteration.eq.1.or.use_cut.eq.-2)) then
-            ! ensure that all cumulative variable are at zero (usefull for reset)
+            ! ensure that all cumulative variable are at zero (useful for reset)
             twgt1 = 0d0         !
-            iavg = 0            !Vars for averging to increase err estimate
+            iavg = 0            !Vars for averaging to increase err estimate
             navg = 1            !
             wmax1= 99d99
             wmax = -1d0
@@ -2018,10 +2023,10 @@ c               vol = 1d0/(knt*itm)
                sigma = (sigma/vol/vol - knt*mean*mean)
      .              / dble(knt-1) / dble(knt)
             endif
-c     For a (numerically) constant integrand, e.g. a 1 > 2 decay, the
-c     difference above can round to exactly zero: the 1/sigma weights of
-c     the iterations are then infinite and the result NaN
-            sigma = max(sigma, (1d-12*mean)**2)
+c           a constant integrand (e.g. a 2-body decay) can give a variance
+c           exactly zero (or negative by rounding): floor it at the
+c           numerical precision to keep mean**2/sigma finite
+            sigma = max(sigma, (1d-14*mean)**2, 1d-300)
 
             tmean = tmean + mean * (mean**2 / sigma)
             trmean = trmean + rmean * (mean**2 / sigma)

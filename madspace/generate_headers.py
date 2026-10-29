@@ -42,6 +42,7 @@ def main():
     runtime_backward_mixin(commands, "cpu", out_dir)
     runtime_mixin(commands, "gpu", out_dir)
     runtime_backward_mixin(commands, "gpu", out_dir)
+    kernel_checks(commands, out_dir)
 
 
 def write_autogen(f):
@@ -225,7 +226,7 @@ def instruction_set_mixin(commands, out_dir):
         first = True
         for name, cmd in commands.items():
             opcode = cmd["opcode"]
-            differentiable = "true" if cmd.get("differentiable", False) else "true"
+            differentiable = "true" if cmd.get("differentiable", False) else "false"
             if "class" in cmd:
                 f.write(
                     f"    InstructionOwner(new {cmd['class']}("
@@ -349,6 +350,61 @@ def runtime_backward_mixin(commands, device, out_dir):
                     f"    {func}(instr, locals, local_grads, "
                     f"{{{in_stored_str}}}, {{{out_stored_str}}}, device);\n"
                     f"    break;\n"
+                )
+
+
+def is_single_input(arg):
+    return isinstance(arg.get("type"), list) and len(arg["type"]) > 1 and (
+        arg["type"][1] == "single"
+    )
+
+
+def kernel_checks(commands, out_dir):
+    """Compile-time checks that the parameters of the vectorized kernels use the
+    single types (FSIn, ISIn) exactly for the inputs marked as single in the yaml.
+    A mismatch would make the CPU runtime fall back to the scalar kernels."""
+    with open(out_dir / "cpu" / "kernel_checks.inc", "w") as f:
+        write_autogen(f)
+
+        def check(kernel, index, single, what):
+            f.write(
+                f"static_assert(\n"
+                f"    single_params<decltype(&{kernel}<SimdTypes>)>::value[{index}] == "
+                f"{'true' if single else 'false'},\n"
+                f'    "{kernel}: parameter {index} ({what}) must '
+                f'{"" if single else "not "}be single"\n'
+                f");\n"
+            )
+
+        for name, cmd in commands.items():
+            if cmd.get("custom_op", False) or not cmd.get("vectorized", True):
+                continue
+            inputs = cmd["inputs"]
+            if is_single_input(inputs[0]):
+                raise ValueError(
+                    f"{name}: the first input of a kernel can not be single"
+                )
+            for i, arg in enumerate(inputs):
+                check(f"kernel_{name}", i, is_single_input(arg), arg["name"])
+
+            if not cmd.get("differentiable", False):
+                continue
+            in_stored = [
+                i for i, arg in enumerate(inputs) if arg.get("backward_arg", False)
+            ]
+            out_stored = [
+                i
+                for i, arg in enumerate(cmd["outputs"])
+                if arg.get("backward_arg", False)
+            ]
+            if len(in_stored) + len(out_stored) == 0:
+                in_stored = list(range(len(inputs)))
+            for k, i in enumerate(in_stored):
+                check(
+                    f"backward_kernel_{name}",
+                    k,
+                    is_single_input(inputs[i]),
+                    inputs[i]["name"],
                 )
 
 

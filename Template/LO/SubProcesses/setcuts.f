@@ -210,7 +210,7 @@ c
          is_a_nu(i)=.false.
 
 
-c-do not apply cuts to these. CAREFULL: PDG_CUT do not consider do_cuts (they simply check the cut_decays)
+c-do not apply cuts to these. CAREFUL: PDG_CUT do not consider do_cuts (they simply check the cut_decays)
          if (pmass(i).gt.20d0)     do_cuts(i)=.false.  ! no cuts on top,W,Z,H
          if (abs(idup(i,1,iproc)).eq.12) do_cuts(i)=.false.  ! no cuts on ve ve~
          if (abs(idup(i,1,iproc)).eq.14) do_cuts(i)=.false.  ! no cuts on vm vm~
@@ -950,8 +950,8 @@ c**************************************************
                   foundpartner=.true.
                   if(iabs(idup(iforest(2,k,j),1,1)).le.maxjetflavor.or.
      $                 idup(iforest(2,k,j),1,1).eq.21.or.
-     $                 iabs(idup(iforest(2,k,j),1,1)).le.maxjetflavor.or.
-     $                 idup(iforest(2,k,j),1,1).eq.21)then
+     $                 iabs(idup(iforest(1,k,j),1,1)).le.maxjetflavor.or.
+     $                 idup(iforest(1,k,j),1,1).eq.21)then
                      if (do_cuts(iforest(2,k,j)).and. do_cuts(iforest(1,k,j)))then
                         xqcutij(iforest(2,k,j),iforest(1,k,j))=xqcut
                         xqcutij(iforest(1,k,j),iforest(2,k,j))=xqcut
