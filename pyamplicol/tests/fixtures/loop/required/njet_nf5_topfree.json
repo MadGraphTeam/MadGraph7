@@ -430,7 +430,7 @@
    "maximum_estimated_relative_accuracy": 2.250718534588927e-16,
    "provider": {
     "tool": "NJet 3.1.2",
-    "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-release",
+    "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-release",
     "options": {
      "mode": "direct",
      "amp": "standard",
@@ -445,7 +445,7 @@
     "driver_source_sha256": "9b64d9468c9440c7bae1148d6402db3ef7dcea4db52873f4db6ef90d4b04f4e4",
     "host": "itphlies",
     "cpu_model": "AMD EPYC 9754 128-Core Processor",
-    "run_record": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_2g.json",
+    "run_record": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-gg_2g.json",
     "run_record_sha256": "ba214bc814e2478ef2d26561bbf6be163c4bd9a303a860b6ef0e20414dac328e"
    }
   },
@@ -929,7 +929,7 @@
    "maximum_estimated_relative_accuracy": 8.403337794301211e-14,
    "provider": {
     "tool": "NJet 2.1.1",
-    "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-2.1.1-release",
+    "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-2.1.1-release",
     "options": {
      "mode": "direct",
      "amp": "standard",
@@ -944,7 +944,7 @@
     "driver_source_sha256": "9b64d9468c9440c7bae1148d6402db3ef7dcea4db52873f4db6ef90d4b04f4e4",
     "host": "itphlies",
     "cpu_model": "AMD EPYC 9754 128-Core Processor",
-    "run_record": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-dd-gg_3g.json",
+    "run_record": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet211-dd-gg_3g.json",
     "run_record_sha256": "e4d77c8a0c3305fcd5ee6b2577799d40d18268d499f4cb15e5d3b2798f683186"
    }
   },
@@ -1488,7 +1488,7 @@
    "maximum_estimated_relative_accuracy": 2.247300334791017e-15,
    "provider": {
     "tool": "NJet 3.1.2",
-    "build": "/shared/external/pyLoopAmpliCol/workspace/builds/njet-3.1.2-release",
+    "build": "${PYAMPLICOL_LOOP_WORKSPACE}/builds/njet-3.1.2-release",
     "options": {
      "mode": "direct",
      "amp": "standard",
@@ -1503,7 +1503,7 @@
     "driver_source_sha256": "9b64d9468c9440c7bae1148d6402db3ef7dcea4db52873f4db6ef90d4b04f4e4",
     "host": "itphlies",
     "cpu_model": "AMD EPYC 9754 128-Core Processor",
-    "run_record": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_4g.json",
+    "run_record": "${LOOP_REFERENCE_ROOT}/runs/njet/calibration/njet312-dd-gg_4g.json",
     "run_record_sha256": "6d15a84442fa1d18b1e15664afec63be98dddd5d6288d3ca73629681915ff3f8"
    }
   }
