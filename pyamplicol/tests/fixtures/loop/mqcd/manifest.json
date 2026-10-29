@@ -2121,7 +2121,8 @@
    "vanishing": [],
    "reference_tolerance": 1e-10,
    "inputs": "native",
-   "catani": "none"
+   "catani": "tree",
+   "tree_correlations": "tests/fixtures/loop/mqcd/references/tree-correlations-A23.json"
   },
   {
    "id": "A24",
