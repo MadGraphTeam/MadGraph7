@@ -2876,14 +2876,11 @@ density_channel_weights:
     - name: mask
       type: [float, n]
       desc: "1 for the channels that integrate the flavor of the event, else 0"
-    - name: channel_index
-      type: [int]
-      desc: "channel that generated the event"
   outputs:
     - name: channel_weights
       type: [float, n]
       desc: "weight per channel"
-  desc: "Normalised channel weights proportional to the masked channel densities, all of the weight on the generating channel if none is positive. Building block of @ref MappingChannelWeights."
+  desc: "Normalised channel weights proportional to the masked channel densities, uniform over the masked channels if none is positive. Building block of @ref MappingChannelWeights."
 
 interpolate_pdf:
   inputs:

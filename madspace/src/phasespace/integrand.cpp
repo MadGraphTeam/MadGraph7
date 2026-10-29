@@ -825,13 +825,7 @@ NamedVector<Value> Integrand::build_common_part(
     Value mapping_diagram_acc;
     if (_mapping_chan_weights &&
         (channel_count > 1 || _mapping_chan_weights->has_diagrams())) {
-        ValueVec cw_args{
-            momenta_acc,
-            x1_acc,
-            x2_acc,
-            flavor_id,
-            fb.batch_gather(indices_acc, args.at("chan_index"))
-        };
+        ValueVec cw_args{momenta_acc, x1_acc, x2_acc, flavor_id};
         if (_mapping_chan_weights->mirror_beams()) {
             cw_args.push_back(args.at("mirror_index_acc"));
         }

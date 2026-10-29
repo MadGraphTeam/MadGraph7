@@ -232,7 +232,6 @@ MappingChannelWeights::MappingChannelWeights(
                 {"x1", batch_float},
                 {"x2", batch_float},
                 {"flavor", batch_int},
-                {"channel_index", batch_int},
             };
             if (mappings.at(0).mirror_beams()) {
                 args.push_back("mirror_index", batch_int);
@@ -327,9 +326,7 @@ NamedVector<Value> MappingChannelWeights::build_function_impl(
     }
     Value flavor = args.at("flavor");
     Value channel_weights = fb.density_channel_weights(
-        fb.stack(densities),
-        fb.gather_vector(flavor, _flavor_masks),
-        args.at("channel_index")
+        fb.stack(densities), fb.gather_vector(flavor, _flavor_masks)
     );
     NamedVector<Value> ret{{"channel_weights", channel_weights}};
     if (!_diagram_channels.empty()) {

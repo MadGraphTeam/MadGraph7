@@ -105,10 +105,7 @@ def test_weights_are_the_normalised_masked_densities(flavor):
     p, x1, x2 = p[ok], x1[ok], x2[ok]
     n = p.shape[0]
     flavors = torch.full((n,), flavor, dtype=torch.int32)
-    channels = torch.full((n,), 1, dtype=torch.int32)
-    alpha, diagram = (
-        torch.from_dlpack(t) for t in runtime.call([p, x1, x2, flavors, channels])
-    )
+    alpha, diagram = (torch.from_dlpack(t) for t in runtime.call([p, x1, x2, flavors]))
     expected = torch.stack(
         [density(RESONANT, p, x1, x2), density(PLAIN, p, x1, x2)], dim=1
     ) * torch.tensor(masks[flavor])
@@ -136,9 +133,27 @@ def test_channels_without_the_flavor_get_no_weight():
                 x1[ok],
                 x2[ok],
                 torch.zeros(n, dtype=torch.int32),
-                torch.ones(n, dtype=torch.int32),
             ]
         )[0]
     )
     torch.testing.assert_close(alpha[:, 1], torch.ones(n, dtype=alpha.dtype))
     torch.testing.assert_close(alpha[:, 0], torch.zeros(n, dtype=alpha.dtype))
+
+
+def test_uniform_weights_without_valid_densities():
+    """If no inverse gives a valid density, the weights are uniform over the
+    channels of the flavor: a function of the event alone."""
+    weights = ms.MappingChannelWeights([RESONANT, PLAIN, PLAIN], [[1.0, 0.0, 1.0]])
+    runtime = ms.FunctionRuntime(weights.function(), default_context())
+    p, x1, x2, w = sample(PLAIN, 1000, 5)
+    ok = w > 0
+    n = int(ok.sum())
+    flavors = torch.zeros(n, dtype=torch.int32)
+    p, x1, x2 = p[ok], x1[ok], x2[ok]
+    alpha = torch.from_dlpack(runtime.call([p, x1, x2, flavors])[0])
+    assert not torch.allclose(alpha[:, 0], alpha[:, 2])
+    # inverse mappings that fail numerically
+    p = torch.full_like(p, float("nan"))
+    alpha = torch.from_dlpack(runtime.call([p, x1, x2, flavors])[0])
+    expected = torch.tensor([0.5, 0.0, 0.5], dtype=alpha.dtype).expand(n, 3)
+    torch.testing.assert_close(alpha, expected)

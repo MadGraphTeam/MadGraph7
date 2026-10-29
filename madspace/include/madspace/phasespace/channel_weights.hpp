@@ -125,7 +125,8 @@ private:
  * discrete choices, and @f$m_{fk}@f$ is 1 if channel @f$k@f$ integrates
  * flavour @f$f@f$, else 0. The adaptive samplers do not enter, so the weights
  * of one channel do not depend on the state of the others. A channel whose
- * mapping cannot produce the event gets the weight 0.
+ * mapping cannot produce the event gets the weight 0. If no channel of the
+ * flavour has a valid density, the weights are uniform over these channels.
  *
  * Optionally, it also samples a diagram for the event record: diagram
  * @f$d@f$ belongs to channel @f$c_d@f$ and is drawn with a probability
@@ -138,8 +139,6 @@ private:
  * - `x1`, `x2` – `float`, shape `(batch,)` – the momentum fractions returned
  *   by the mapping that generated the event.
  * - `flavor` – `int`, shape `(batch,)` – the flavour index.
- * - `channel_index` – `int`, shape `(batch,)` – the channel that generated the
- *   event.
  * - `mirror_index` – `int`, shape `(batch,)` – the orientation of the beams.
  *   Present only if the mappings are built with `mirror_beams`.
  *
