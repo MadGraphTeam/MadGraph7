@@ -530,6 +530,25 @@ def carrier_errors(expected: dict, mine: dict, at_three: dict, alpha_s, keys=Non
     return out
 
 
+def vanishing_gap(expected: dict, at_three: dict, alpha_s) -> list:
+    """[the largest nonzero |r| / A held absolutely, the smallest |r| / A held
+    relatively] over the scan's projections (a diagnostic: the values that
+    vanish identically lie far below 1e-28 A, the others far above)."""
+
+    absolute, relative = Fraction(0), None
+    for values in expected.values():
+        for key, value in values.items():
+            scale = absolute_scale(at_three, key, alpha_s)
+            if not value or not scale:
+                continue
+            size = abs(value) / scale
+            if size <= VANISHING:
+                absolute = max(absolute, size)
+            elif relative is None or size < relative:
+                relative = size
+    return [float(absolute), None if relative is None else float(relative)]
+
+
 def catani_errors(scan_point: dict, alpha_s) -> Fraction:
     """The largest deviation of the poles from Catani at the integer N of
     ``CATANI_NC`` (N -> one point's scan record), per sector and pole."""
@@ -622,6 +641,7 @@ def rule_seven(model, compiled, native, row: str, indices, cache, listed=None):
                 "listed": (row, index) in listed,
                 "errors": errors,
                 "dd_beyond": beyond,
+                "vanishing_gap": vanishing_gap(expected, at_three, alpha_s),
             }
         )
     return report
@@ -656,7 +676,10 @@ def _printable(report: dict) -> str:
             **{k: report[k] for k in ("row", "top", "span")},
             "points": [
                 {
-                    **{k: p[k] for k in ("index", "listed", "dd_beyond")},
+                    **{
+                        k: p[k]
+                        for k in ("index", "listed", "dd_beyond", "vanishing_gap")
+                    },
                     **{k: float(v) for k, v in p["errors"].items()},
                 }
                 for p in report["points"]
