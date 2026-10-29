@@ -48,6 +48,10 @@ class BackendLineSplitTest(unittest.TestCase):
 
     def test_other_brackets_are_refused(self):
         self.assertRaises(InvalidCmd, split, 'p p > j j [amplicol] [QCD]')
+        self.assertRaises(InvalidCmd, split, 'p p > j j [QCD] [amplicol]')
+        # the pre-check must not route it to aMC@NLO with 'amplicol' as order
+        process_type = MGCmd.MasterCmd.extract_process_type
+        self.assertRaises(InvalidCmd, process_type, 'p p > t t~ [QCD] [amplicol]')
 
     def test_process_type(self):
         process_type = MGCmd.MasterCmd.extract_process_type

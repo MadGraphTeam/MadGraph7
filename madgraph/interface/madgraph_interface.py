@@ -190,8 +190,9 @@ def split_backend_line(line):
     """(line without the bracket, backend) for a process with a matrix-element
     backend bracket like '[amplicol]', (line, '') for any other line."""
 
-    match = _BACKEND_BRACKET.search(line)
-    if not match or match.group('backend').lower() not in ME_BACKENDS:
+    match = next((m for m in _BACKEND_BRACKET.finditer(line)
+                  if m.group('backend').lower() in ME_BACKENDS), None)
+    if not match:
         return line, ''
     rest = line[:match.start()] + ' ' + line[match.end():]
     if '[' in rest or ']' in rest:
