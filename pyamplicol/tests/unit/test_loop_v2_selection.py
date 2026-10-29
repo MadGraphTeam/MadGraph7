@@ -545,44 +545,51 @@ def test_a_flow_interfering_between_born_orders_is_refused_at_generation(
 
 @pytest.mark.loop_physics
 def test_helicity_selections_keep_split_block_currents(
-    loop_sm_compiled_model, loop_native
+    loop_sm_ufo, loop_native, tmp_path
 ):
-    """u u~ > w+ w- g at leading colour: the u current of legs {1, 3, 4} is
-    two tree blocks of one name and chirality (flavour flows u and u d u,
-    ``test_loop_v2_vv_jet.py``), which the native tree program adds per row
-    (``block_row_terms``). A runtime helicity selection restricts the tree
-    program to what its kept rows read (``loop_v2/trees_rows.rs``), both
-    trees included: the two halves of the Born helicity rows sum to the
-    inclusive value in double-double at the first point of MadLoop's
-    reference (``mqcd/uux_wpwmg_4fs.json``)."""
+    """u u~ > w+ w- g at leading colour on its public artifact (stored
+    path): the u current of legs {1, 3, 4} is two tree blocks of one name and
+    chirality (flavour flows u and u d u, ``test_loop_v2_vv_jet.py``), which
+    the stored native tree program adds per row (``block_row_terms``). A
+    runtime helicity selection forms its column set from the stored resolved
+    records and restricts that tree program to the state its kept rows read
+    (``TreeProgram::set_columns``, ``loop_v2/trees_rows.rs``), the further
+    terms of a read row included (``block_slots``): the two halves of the
+    helicity rows sum to the inclusive value, and single helicities equal
+    their resolved rows, in double-double at the first point of MadLoop's
+    reference (``mqcd/uux_wpwmg_4fs.json``). Without the further terms the
+    halves sum to 1.34 of the inclusive finite part."""
 
     from fractions import Fraction
 
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.loops.v2.observables import ObservableSlice
-    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
 
-    request = SliceRequest(
-        "u u~ > w+ w- g",
-        {"QCD": 1, "QED": 2},
-        {"QCD": 3, "QED": 2},
-        fixed_parameters={"WT": "0", "WZ": "0", "WW": "0", "WH": "0"},
-        accuracy="lc",
+    process = "u u~ > w+ w- g"
+    output = tmp_path / "artifact"
+    card = tmp_path / "card.toml"
+    card.write_text(
+        _card(
+            model=json.dumps(str(loop_sm_ufo)),
+            output=json.dumps(str(output)),
+            selectors="max_coupling_orders = {QED = 2}",
+            process=json.dumps(process),
+            fixed='{WT = "0", WZ = "0", WW = "0", WH = "0"}',
+        )
     )
-    slice_ = LoopSlice.generate(
-        load_compiled_model(loop_sm_compiled_model), request, loop_native
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse(process, name="p"),)), output
     )
-    split = [
-        block.key
-        for block in slice_.blocks.blocks
-        if block.key.external_mask == 0b1101 and block.key.chirality == 1
-    ]
-    assert sorted(key.flavour_flow for key in split) == [(-2,), (-2, -1, -2)]
-    runtime = _runtime(ObservableSlice.of(slice_))
+    stored = output / "processes" / "p" / "loop-runtime.pacbin"
+    trees = read_native_process(stored, read_plan(stored)).trees.program
+    assert trees.get("block_row_terms")
+    runtime = Runtime.load(output, process="p", model_parameters=PARAMETERS)
     reference = json.loads((MQCD / "uux_wpwmg_4fs.json").read_text())
     point = [reference["points"][0]]
     scale = [str(Fraction(reference["mu_r"][0]) ** 2)]
-    helicities = [lc.helicity_id(row) for row in runtime.selection_catalogue().rows]
+    helicities = [h.id for h in runtime.physics.helicities]
     half = len(helicities) // 2
 
     def values(**selectors) -> list:
@@ -595,13 +602,31 @@ def test_helicity_selections_keep_split_block_currents(
         ]
 
     expected = values()
+    born = abs(expected[0])  # one squared Born order
     parts = [
         values(helicities=helicities[:half]),
         values(helicities=helicities[half:]),
     ]
     assert all(any(abs(x) > 0 for x in part) for part in parts)
-    born = abs(expected[0])  # one squared Born order
     _close(list(map(sum, zip(*parts, strict=True))), expected, DOUBLE_DOUBLE, born)
+    # Single helicities against the resolved rows (the stored inclusive
+    # columns, no row restriction): the first nonzero row and the largest.
+    resolved = runtime.evaluate_resolved(point, mu_r2=scale, arithmetic="double-double")
+    assert list(resolved.helicity_ids) == helicities
+    ((rows,),) = (resolved.values[0],)
+    ((born_rows,),) = (resolved.born_values[0],)
+    nonzero = [k for k, (entry,) in enumerate(rows) if entry.double_pole != 0]
+    assert 0 < len(nonzero) < len(helicities)
+    largest = max(nonzero, key=lambda k: abs(rows[k][0].finite))
+    for k in sorted({nonzero[0], largest}):
+        (entry,) = rows[k]
+        (row_born,) = born_rows[k]
+        _close(
+            values(helicities=[helicities[k]]),
+            [row_born, entry.finite, entry.single_pole, entry.double_pole],
+            DOUBLE_DOUBLE,
+            born,
+        )
 
 
 # ------------------------------------------------------- tree-engine parity
@@ -848,7 +873,7 @@ def test_declared_correlators_with_a_selection_are_refused(
         output = tmp_path / f"artifact-{k}"
         card = tmp_path / f"card-{k}.toml"
         card.write_text(
-            _CARD.format(
+            _card(
                 model=json.dumps(str(loop_sm_colour_model)),
                 output=json.dumps(str(output)),
                 selectors=selectors,
@@ -1114,7 +1139,7 @@ def artifacts(loop_sm_colour_model, loop_native, tmp_path_factory):
             tmp = tmp_path_factory.mktemp(key)
             card = tmp / "card.toml"
             card.write_text(
-                _CARD.format(
+                _card(
                     model=json.dumps(str(loop_sm_colour_model)),
                     output=json.dumps(str(tmp / "artifact")),
                     selectors=selectors,
@@ -1150,13 +1175,23 @@ contraction = "direct"
 r2_strategy = "model"
 engine = "v2"
 [loop.preparation]
-fixed_parameters = {{MB = "0"}}
+fixed_parameters = {fixed}
 [generation]
 output = {output}
 emit_api_bundle = false
 [generation.validation]
 post_build_validation = false
 """
+
+
+def _card(**fields: str) -> str:
+    """``_CARD`` with its fields (by default no selectors, leading colour and
+    MB = 0)."""
+
+    defaults = {"selectors": "", "accuracy": "lc", "fixed": '{MB = "0"}'}
+    return _CARD.format(**{**defaults, **fields})
+
+
 _SELECTORS = (
     'selected_color_sector_ids = [2]\nselected_source_helicities = {"1" = -1, "5" = 1}'
 )
@@ -1324,7 +1359,7 @@ def test_the_dry_run_refuses_selected_helicities_the_process_lacks(
     ):
         card = tmp_path / f"card{k}.toml"
         card.write_text(
-            _CARD.format(
+            _card(
                 model=json.dumps(str(loop_sm_colour_model)),
                 output=json.dumps(str(tmp_path / f"artifact{k}")),
                 selectors=f"selected_source_helicities = {selector}",
