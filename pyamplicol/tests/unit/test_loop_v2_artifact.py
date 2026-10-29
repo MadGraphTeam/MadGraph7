@@ -2524,9 +2524,10 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
 
     processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
     reason = (
-        r"'ggtt' \([^)]*\): tree currents propagate coloured particles whose "
-        r"width is not fixed to zero: t \(WT\)\..*real on-shell.*"
-        r'fixed_parameters \(WT = "0"\)'
+        r"coloured-width: 'ggtt' \([^)]*\): tree currents propagate coloured "
+        r"particles whose width is not fixed to zero: t \(WT\); fix it in "
+        r'\[loop\.preparation\] fixed_parameters \(WT = "0"\).*'
+        r'model\.restriction = "no_widths".*real on-shell'
     )
     refused = _ggtt_generator(loop_sm_compiled_model, tmp_path, "a")
     (blocker,) = refused.plan(processes).unsupported_features
