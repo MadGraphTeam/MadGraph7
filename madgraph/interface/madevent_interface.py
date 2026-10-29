@@ -4499,26 +4499,46 @@ Beware that this can be dangerous for local multicore runs.""")
         else:
             hepmc_version = self.get_auto_hepmc_version()
 
+        # The jet rates of an MLM shower (Main:InternalAnalysis) split per jet
+        # sample, for the DJR plots: a main164 that does not do it is patched
+        # (misc.patch_pythia8_main164_djrs), unless DJRoutput:jetSamples is off.
+        # Not a Pythia8 setting either.
+        PY8_Card.vetoParamWriteOut('DJRoutput:jetSamples')
+        jet_sample_djrs = bool(PY8_Card['Main:InternalAnalysis']) and \
+                                         bool(PY8_Card['DJRoutput:jetSamples'])
+        if jet_sample_djrs:
+            try:
+                return self._get_pythia8_main164(hepmc_format, hepmc_version, True)
+            except self.InvalidCmd as error:
+                logger.warning('main164 could not be built to split the jet rates ' +
+                    'per jet sample, the DJR plots show their sum only:\n%s' % error)
+        return self._get_pythia8_main164(hepmc_format, hepmc_version, False)
+
+    def _get_pythia8_main164(self, hepmc_format, hepmc_version, jet_sample_djrs):
+        """get_pythia8_main164 for a given HepMC version, falling back to the
+        version Pythia8 was configured with under HEPMCoutput:format = auto."""
+
         try:
-            return self.get_pythia8_main164_for(hepmc_version)
+            return self.get_pythia8_main164_for(hepmc_version, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             if hepmc_format != 'auto':
                 raise self.InvalidCmd(str(error))
             logger.warning('%s\nPythia8 writes the HepMC version it was '% error +
                            'configured with instead.')
         try:
-            return self.get_pythia8_main164_for(None)
+            return self.get_pythia8_main164_for(None, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             raise self.InvalidCmd(str(error))
 
-    def get_pythia8_main164_for(self, hepmc_version):
+    def get_pythia8_main164_for(self, hepmc_version, jet_sample_djrs=False):
         """main164 writing HepMC<hepmc_version> events (None: the version
         Pythia8 was configured with), see misc.get_pythia8_main164."""
 
         return misc.get_pythia8_main164(self.options['pythia8_path'],
                           fallback_dir=pjoin(self.me_dir, 'lib', 'PY8_main164'),
                           hepmc_version=hepmc_version,
-                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3))
+                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3),
+                          jet_sample_djrs=jet_sample_djrs)
 
     def setup_Pythia8RunAndCard(self, PY8_Card, run_type):
         """ Setup the Pythia8 Run environment and card. In particular all the process and run specific parameters
@@ -4846,8 +4866,6 @@ already exists and is not a fifo file."""%fifo_path)
                                                     'pythia8_card_default.dat'))
         PY8_Card.read(pjoin(self.me_dir, 'Cards', 'pythia8_card.dat'),
                                                                   setter='user')
-        pythia_main = self.get_pythia8_main164(PY8_Card)
-        
         run_type = 'default'
         merged_run_types = ['MLM','CKKW']
         if int(self.run_card['ickkw'])==1:
@@ -4858,6 +4876,9 @@ already exists and is not a fifo file."""%fifo_path)
 
         # Edit the card and run environment according to the run specification
         HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type)
+        # after the setup: an MLM shower writes the jet rates (InternalAnalysis),
+        # which selects a main164 that also splits them per jet sample
+        pythia_main = self.get_pythia8_main164(PY8_Card)
 
 
         if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):

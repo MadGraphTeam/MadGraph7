@@ -2105,6 +2105,12 @@ class PY8Card(ConfigFile):
                                                  always_write_to_card=False)
         self.add_param("InternalAnalysis:output", './djrs.dat', hidden=True,
                                                  always_write_to_card=False)
+        # Not a Pythia8 setting: also split those jet rates per jet sample
+        # (number of matrix-element partons), building a patched copy of
+        # main164 when the installed one does not do it (see
+        # misc.patch_pythia8_main164_djrs). Off: the plots show their sum only.
+        self.add_param("DJRoutput:jetSamples", True, hidden=True,
+                                                 always_write_to_card=False)
         # for MLM merging
         # -1.0 means that it will be set automatically by MadGraph7
         self.add_param("JetMatching:qCut", -1.0, always_write_to_card=False)

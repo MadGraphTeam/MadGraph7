@@ -274,9 +274,21 @@ class TEST_pythia8_main164(unittest.TestCase):
         os.chmod(self.examples, 0o755)
         shutil.rmtree(self.tmpdir)
 
-    def write_sources(self, mainMG=False, hepmc=2):
+    # the lines of Pythia8's main164.cc (8.316, 8.317) that the per-jet-sample
+    # DJR patch anchors on
+    main164_djr_anchors = (
+        '  CombineMatchingInput jetMatchingHook;\n'
+        '  if (doJetMatching) jetMatchingHook.setHook(pythia);\n'
+        '  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n'
+        '      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n'
+        '        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n'
+        '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
+        '      d34Hists[i].table(output, false, false);\n'
+        '      output << "</run>\\n";\n')
+
+    def write_sources(self, mainMG=False, hepmc=2, source=None):
         with open(os.path.join(self.examples, 'main164.cc'), 'w') as fsock:
-            fsock.write('#!/bin/sh\necho main164\n')
+            fsock.write(source if source is not None else '#!/bin/sh\necho main164\n')
         rule = "mainMG: main164.cc\n\techo mainMG > main164; chmod +x main164\n" \
                                                                if mainMG else ''
         with open(os.path.join(self.examples, 'Makefile'), 'w') as fsock:
@@ -427,6 +439,61 @@ class TEST_pythia8_main164(unittest.TestCase):
                           os.path.realpath(os.path.join(prefix, 'lib'))))
         # a HepMC3 installation is not a HepMC2 one
         self.assertEqual(misc.find_hepmc(2, [prefix]), None)
+
+    def test_main164_djr_patch(self):
+        """the per-jet-sample split, the bin errors and the '<run id' fix are
+        patched in; an unknown source is left alone"""
+        patched = misc.patch_pythia8_main164_djrs(self.main164_djr_anchors)
+        self.assertIsNotNone(patched)
+        self.assertIn('dynamic_pointer_cast<JetMatchingMadgraph>', patched)
+        self.assertIn('madgraphHook->nMEpartons().first', patched)
+        self.assertIn('<jethistograms njet=', patched)
+        self.assertIn('table(output, false, false, true)', patched)
+        self.assertNotIn('<< "\\"" << "\\">', patched)
+        self.assertTrue(misc.pythia8_main164_writes_jet_sample_djrs(patched))
+        self.assertFalse(misc.pythia8_main164_writes_jet_sample_djrs(
+                                                    self.main164_djr_anchors))
+        self.assertIsNone(misc.patch_pythia8_main164_djrs('int main() {}\n'))
+
+    def test_jet_sample_djrs_build_a_patched_main164(self):
+        self.write_sources(source=self.main164_djr_anchors)
+        executable = misc.get_pythia8_main164(self.py8, jet_sample_djrs=True)
+        shared = os.path.join(self.examples, 'main164_djr')
+        self.assertEqual(executable, os.path.join(shared, 'main164'))
+        # the stub make copies the source: it is the patched one
+        self.assertIn('nMEpartons', open(executable).read())
+        # Pythia8's own main164.cc is never modified
+        self.assertEqual(open(os.path.join(self.examples, 'main164.cc')).read(),
+                         self.main164_djr_anchors)
+        # built once
+        os.remove(os.path.join(shared, 'main164.cc'))
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         executable)
+        # the default one is not affected
+        self.assertEqual(misc.get_pythia8_main164(self.py8),
+                         os.path.join(self.examples, 'main164'))
+
+    def test_jet_sample_djrs_not_patched_when_not_needed_or_possible(self):
+        # a main164 that splits per jet sample by itself
+        self.write_sources(source=self.main164_djr_anchors +
+                                   '// madgraphHook->nMEpartons()\n')
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         os.path.join(self.examples, 'main164'))
+        # a main164.cc the patch does not know: the stock one
+        os.remove(os.path.join(self.examples, 'main164'))
+        self.write_sources()
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         os.path.join(self.examples, 'main164'))
+        self.assertFalse(os.path.exists(os.path.join(self.examples, 'main164_djr')))
+
+    def test_jet_sample_djrs_with_another_hepmc_version(self):
+        self.write_sources(hepmc=2, source=self.main164_djr_anchors)
+        prefix = self.make_hepmc(3)
+        executable = misc.get_pythia8_main164(self.py8, hepmc_version=3,
+                                  hepmc_paths=[prefix], jet_sample_djrs=True)
+        self.assertEqual(executable, os.path.join(self.examples,
+                                                  'main164_hepmc3_djr', 'main164'))
+        self.assertIn('nMEpartons', open(executable).read())
 
     def test_same_hepmc_version_uses_the_default_main164(self):
         self.write_sources(hepmc=2)
