@@ -289,13 +289,14 @@ def test_lhe_event_rwgt_format():
 
 def test_config_json_roundtrip():
     grid_file, info_file = grid_files()
-    config = make_config(write_inputs=True, together=False)
+    config = make_config(write_inputs=True, together=False, alps=[0.5, 1.0, 2.0])
     config.pdf_members = [
         ms.PdfMemberSpec(PDF_SET, 338500, 1, grid_file, info_file, "replicas", "d")
     ]
     text = config.to_json()
     back = ms.SystematicsConfig.from_json(text)
     assert back.mur == config.mur and back.muf == config.muf
+    assert back.alps == [0.5, 1.0, 2.0]
     assert back.write_inputs and not back.together
     assert back.pdf_members[0].grid_file == grid_file
     args = ms.SubprocessSystArgs(qcd_power=2, beam_pdgs=[[2, 2], [21, 2]])
@@ -460,3 +461,127 @@ def test_event_histograms(grids, ref):
     for lo, nom, hi in zip(env["low"], data2[0]["bin_values"], env["high"]):
         assert lo <= nom + 1e-12 and hi >= nom - 1e-12
     assert [w["id"] for w in data2[0]["weights"]] == [1, 2]
+
+
+def test_mlm_vertices_follow_the_emission_scale(grids, ref):
+    """An MLM event carries alpha_s(mu_R)^(n - n_v) prod_v alpha_s(q_v). As in
+    madevent's systematics.py, a mu_R variation moves only the n - n_v powers,
+    and an emission scale variation (alpsfact) only the vertices. A vertex
+    carrying 0 is one the clustering did not reweight: it is one of the mu_R
+    powers. A reweighted vertex can sit exactly at mu_R (one clustering under
+    clustering_mean) and is still a vertex."""
+    grid, alpha_s = grids
+    config = make_config(mur=[0.5, 1.0, 2.0], muf=[1.0], alps=[0.5, 1.0, 2.0])
+    n = 4
+    args = [ms.SubprocessSystArgs(qcd_power=n, beam_pdgs=[[2, 2]])]
+    calc = ms.SystematicsCalculator(config, args, grid, alpha_s)
+    variations = calc.variations
+    assert [(v.mur, v.alps) for v in variations] == [
+        (0.5, 1.0), (2.0, 1.0), (1.0, 0.5), (1.0, 2.0)
+    ]
+    assert [v.is_emission for v in variations] == [False, False, True, True]
+    assert calc.emission_variation_indices == [2, 3]
+    assert 'name="Emission scale variation"' in calc.initrwgt()
+    assert 'ALPSFACT="0.5"' in calc.initrwgt()
+
+    events = make_events(ref, n=30)
+    rng = np.random.default_rng(7)
+    vertices = []
+    for i, mu in enumerate(events["ren_scale"]):
+        # two reweighted vertices, the second at mu_R on every other event,
+        # and one that is not reweighted
+        second = mu if i % 2 else mu * rng.uniform(0.05, 0.9)
+        vertices.append([mu * rng.uniform(0.05, 0.9), second, 0.0])
+    weights = calc.weights(**events, alphas_scales=vertices)
+    for i, row in enumerate(weights):
+        w0 = events["event_weight"][i]
+        mu = events["ren_scale"][i]
+        q = np.array(vertices[i][:2])
+        nominal = ref.alphas(mu) ** (n - 2) * np.prod(ref.alphas(q))
+        for var, w in zip(variations, row):
+            varied = ref.alphas(var.mur * mu) ** (n - 2) * np.prod(
+                ref.alphas(var.alps * q)
+            )
+            assert w == approx(w0 * varied / nominal, rel=1e-12)
+
+    # without the vertex scales in the record: every power follows mu_R, and
+    # an emission variation is the nominal weight
+    for w0, mu, row in zip(
+        events["event_weight"], events["ren_scale"], calc.weights(**events)
+    ):
+        assert row[0] == approx(w0 * (ref.alphas(0.5 * mu) / ref.alphas(mu)) ** n,
+                                rel=1e-12)
+        assert row[2] == approx(w0, rel=1e-15)
+
+
+def test_mlm_pdf_ladder_follows_alpsfact_and_muf(grids, ref):
+    """The pdf reweighting ladder of an MLM event, varied as madevent's
+    systematics.py rebuilds it from the pdfrwt entries of each beam: the beam
+    parton at x_beam and its leading scale, then per step the line's flavour,
+    its momentum fraction before the step and the step's scale. With S the
+    last entry's scale, a variation is
+        f(x_N-1, k S) prod_i<N-1 f_i(x_i, Q_i) / f_i(x_i+1, Q_i),
+        Q_i = min(alpsfact q_i, k S),
+    relative to the same at k = alpsfact = 1. A beam with no step has only
+    its leading density, at k S. An event without a ladder (the 2 -> 1
+    sample) keeps the plain beam ratio."""
+    grid, alpha_s = grids
+    low = 2.0
+    config = make_config(
+        mur=[1.0], muf=[0.5, 1.0, 2.0], alps=[0.5, 1.0, 2.0],
+        pdf_ladder=True, ladder_min_scale=low,
+    )
+    # no alpha_s: the weights move through the PDFs alone
+    args = [ms.SubprocessSystArgs(qcd_power=0, beam_pdgs=[[2, 2]])]
+    calc = ms.SystematicsCalculator(config, args, grid, alpha_s)
+    variations = calc.variations
+    assert [(v.muf, v.alps) for v in variations] == [
+        (0.5, 1.0), (2.0, 1.0), (1.0, 0.5), (1.0, 2.0)
+    ]
+
+    events = make_events(ref, n=20)
+    rng = np.random.default_rng(11)
+    ladder, lead = [], []
+    for i, (x1, mu) in enumerate(zip(events["x1"], events["ren_scale"])):
+        if i == 0:
+            ladder.append([])
+            lead.append([0.0, 0.0])  # no ladder at all
+            continue
+        q1 = max(mu * rng.uniform(0.02, 0.8), low)
+        q2 = max(mu * rng.uniform(0.02, 0.8), q1)
+        z1, z2 = rng.uniform(0.3, 0.9, 2)
+        # beam 1 lowered to q1, with two steps (a gluon line from q1 to q2,
+        # then a quark line up to mu); beam 2 left at mu with no step.
+        # Step rows: [x before the step, pdg, scale, active + 2 beam]
+        lead.append([q1, mu])
+        ladder.append([[0.0] * 4, [x1, 21, q2, 1.0], [x1 * z1, 2, mu, 1.0]])
+        del z2
+    weights = calc.weights(**events, ladder=ladder, ladder_lead=lead)
+
+    def ladder_weight(i, k, a):
+        x1, x2, mu = events["x1"][i], events["x2"][i], events["ren_scale"][i]
+        clamp = lambda q: max(q, low)
+        # beam 1: entries (2, x1, q1), (21, x1, q2), (2, x1 z1, mu)
+        entries = [(2, x1, lead[i][0]), (21, x1, ladder[i][1][2]),
+                   (2, ladder[i][2][0], ladder[i][2][2])]
+        top = k * entries[-1][2]
+        w = ref.pdf(entries[-1][0], entries[-1][1], clamp(top))
+        for (pdg, x, q), (_, x_next, _) in zip(entries, entries[1:]):
+            scale = clamp(min(a * q, top))
+            w *= ref.pdf(pdg, x, scale) / ref.pdf(pdg, x_next, scale)
+        # beam 2: its leading density alone, at k mu
+        return w * ref.pdf(2, x2, clamp(k * lead[i][1]))
+
+    for i, row in enumerate(weights):
+        w0 = events["event_weight"][i]
+        x1, x2, mu = events["x1"][i], events["x2"][i], events["ren_scale"][i]
+        for var, w in zip(variations, row):
+            if i == 0:
+                if var.alps != 1.0:
+                    assert w == approx(w0, rel=1e-15)
+                    continue
+                expected = (ref.pdf(2, x1, var.muf * mu) * ref.pdf(2, x2, var.muf * mu)
+                            / events["partial_weight_product"][i])
+            else:
+                expected = ladder_weight(i, var.muf, var.alps) / ladder_weight(i, 1.0, 1.0)
+            assert w == approx(w0 * expected, rel=1e-12)

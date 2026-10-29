@@ -41,7 +41,7 @@ class TestBanner(unittest.TestCase):
     
     def test_banner(self):
 
-        #try to instansiate a banner with no argument
+        #try to instantiate a banner with no argument
         mybanner = bannermod.Banner()
         self.assertTrue(hasattr, (mybanner, "lhe_version"))
         
@@ -51,7 +51,7 @@ class TestBanner(unittest.TestCase):
         # check that all attribute are common
         self.assertEqual(mybanner.__dict__, secondbanner.__dict__)
         
-        # check that the two are different and independant
+        # check that the two are different and independent
         self.assertNotEqual(id(secondbanner), id(mybanner))
         mybanner.test = True
         self.assertFalse(hasattr(secondbanner, "test"))
@@ -83,7 +83,7 @@ class TestBanner(unittest.TestCase):
 
 class TestConfigFileCase(unittest.TestCase):
     """ A class to test the TestConfig functionality """
-    # a lot of the functionality are actually already tested in the child
+    # a lot of the functionality is actually already tested in the child
     # TESTMadLoopParam and are not repeated here.
      
     def setUp(self):
@@ -328,7 +328,7 @@ class TestConfigFileCase(unittest.TestCase):
         #check that postscript are correctly called
         self.config.control = False
 
-        #Note that this is a bit hacky since this is not a normall class fct
+        #Note that this is a bit hacky since this is not a normal class function
         # but this does the job
         def f( value, *args, **opts):
             self.config.control=True
@@ -543,6 +543,63 @@ Beams:LHEF='events_ouaf.lhe.gz'
         self.assertEqual(modified_PY8Card, read_PY8Card)
 
 
+class TestRivetCard(unittest.TestCase):
+    """ Test the RivetCard functionality """
+
+    def get_weight_name(self, run_opts={}, py8_opts={}, weight_name=None):
+        run_card = bannermod.RunCardLO()
+        for key, value in run_opts.items():
+            run_card[key] = value
+        py8_card = bannermod.PY8Card()
+        for key, value in py8_opts.items():
+            py8_card[key] = value
+        rivet_card = bannermod.RivetCard()
+        if weight_name is not None:
+            rivet_card['weight_name'] = weight_name
+        rivet_card.setWeightName(runcard=run_card, py8card=py8_card)
+        return rivet_card['weight_name']
+
+    def test_setWeightName(self):
+        """ check that the weight name matches the HepMC weight name written
+            by MG5aMC_PY8_interface for the central merging scale """
+
+        # no merging
+        self.assertEqual(self.get_weight_name({'ickkw': 0}), 'None')
+
+        # MLM: user-defined and automatic (1.5*xqcut) qCut
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0}),
+                         'Weight_MERGING=30.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 1, 'xqcut': 20.0},
+                                              {'JetMatching:qCut': -1.0}),
+                         'Weight_MERGING=30.000')
+
+        # CKKW-L: user-defined and automatic (ptlund/ktdurham) TMS
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': 25.5}),
+                         'Weight_MERGING=25.500')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=15.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ktdurham': 40.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=40.000')
+
+        # NLO run_card (no ktdurham/ptlund/xqcut entries): no crash
+        for ickkw in [0, 3]:
+            run_card = bannermod.RunCardNLO()
+            run_card['ickkw'] = ickkw
+            rivet_card = bannermod.RivetCard()
+            rivet_card.setWeightName(runcard=run_card,
+                                     py8card=bannermod.PY8Card())
+            self.assertEqual(rivet_card['weight_name'], 'None')
+
+        # user-defined weight name is kept
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0},
+                                              weight_name='MUR=1_MUF=1'),
+                         'MUR=1_MUF=1')
+
 
 def wrap_like_older_versions(text):
     """the proc card as ProcCard.write used to write it: every line cut at 70
@@ -682,7 +739,7 @@ class TestRunCardNLOMeFrame(unittest.TestCase):
 
 class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
-    # a lot of the funtionality are actually already tested in the child
+    # a lot of the functionality is actually already tested in the child
     # TESTMadLoopParam and are not repeated here.
     
 
@@ -818,7 +875,7 @@ class TestRunCard(unittest.TestCase):
         self.assertEqual(run_card['fixed_fac_scale1'], False)
         self.assertEqual(run_card['fixed_fac_scale2'], False)
 
-        # check that for elastisc a a collision we do  not force to use fixed_fac_scale1/2
+        # check that for elastic a a collision we do  not force to use fixed_fac_scale1/2
         run_card.set('lpp1', 2, user=True)
         run_card.set('lpp2', 2, user=True)
         #with self.assertRaises(bannermod.InvalidRunCard):
@@ -885,7 +942,7 @@ class TestRunCard(unittest.TestCase):
         """check that one can added complex structure via unknown entry functionality with the smart detection.
         
            note that the smart detection is done via guess_entry_fromname which is tested by
-           test_guess_entry_fromname. So this test is mainly to test that the output function of that function is corrrectly
+           test_guess_entry_fromname. So this test is mainly to test that the output function of that function is correctly
            linked to add_param as done in add_unknown_entry
         """
 
@@ -929,14 +986,14 @@ class TestRunCard(unittest.TestCase):
         self.assertNotIn(name.lower(), run_card.definition_path[True]) 
         self.assertNotIn(name, run_card.includepath[True])
 
-        # check that one can overwritte hidden 
+        # check that one can overwrite hidden
         input = ("max_data<hidden=False>", "3.0", False)
         fct(*input)
         name = "max_data"
         self.assertEqual(run_card[name], 3.0)
         self.assertNotIn(name.lower(), run_card.hidden_param)
 
-        # check that one can overwritte autodef
+        # check that one can overwrite autodef
         input = ("max_data2<autodef=False>", "3", False)
         fct(*input)
         name = "max_data2"
@@ -944,8 +1001,8 @@ class TestRunCard(unittest.TestCase):
         self.assertNotIn(name.lower(), run_card.definition_path[True])
         self.assertIn(name.lower(), run_card.hidden_param)
 
-        # check that one can overwritte include to False but autodef to True
-        # check that one can overwritte autodef
+        # check that one can overwrite include to False but autodef to True
+        # check that one can overwrite autodef
         input = ("data3<autodef=True><include=False>", "True", False)
         fct(*input)
         name = "data3"
@@ -1017,7 +1074,7 @@ class TestRunCard(unittest.TestCase):
         else:
             self.assertIn("COMMON/USER_CUSTOM_RUN/test_list,include_pdf2", f.getvalue())
 
-        #check that cleaning is occuring correctly 
+        #check that cleaning is occurring correctly
         run_card = bannermod.RunCardLO()
         run_card.write_autodef(None,output_file=f)
         self.assertNotIn("CHARACTER INCLUDE_PDF(0:100)", f.getvalue())
@@ -1031,7 +1088,7 @@ class TestRunCard(unittest.TestCase):
 
     def test_autodef_nomissmatch(self):
         """
-        check that the code detects LO/NLO cards missmatch and crash correctly in that case
+        check that the code detects LO/NLO cards mismatch and crash correctly in that case
         """
         
         LO = bannermod.RunCardLO()
@@ -1114,7 +1171,7 @@ c
         self.assertIn("SHAT = X(1)*X(2)*EBEAM(1)*EBEAM(2)", new_text)
         self.assertIn("LOGICAL  FUNCTION DUMMY_BOOSTFRAME()", new_text)
 
-        # launch the function with only one editted
+        # launch the function with only one edited
         open(pjoin(self.tmpdir, 'custom'),'w').write(custom_contents1)
         LO.edit_dummy_fct_from_file([pjoin(self.tmpdir, 'custom')], self.tmpdir)
 
@@ -1338,7 +1395,7 @@ c
         # check that pdlabel is set on the proton pdf
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel2'])
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel1'])
-        # should now allow assymetric pdlabel here
+        # should now allow asymmetric pdlabel here
         run_card.set('pdlabel1','lhapdf', user=True) 
         # 'nn23lo1' rather than the invalid 'nnpdf23lo1' used before: that one
         # was rejected and left pdlabel2 at its default, which only differed
@@ -1402,7 +1459,7 @@ c
         self.assertEqual(run_card['pdlabel1'], 'isronlyll')
         self.assertEqual(run_card['pdlabel2'], 'isronlyll')
         # check that at fortran pdlabel is passed to generic value "dressed"
-        # but that invidual value are kept 
+        # but that individual values are kept
         f = io.StringIO()
         run_card.write_include_file(None,output_file=f)
         self.assertIn("pdlabel = 'dressed'", f.getvalue())
@@ -1592,6 +1649,52 @@ class TestRunCardMG7(unittest.TestCase):
         finally:
             os.remove(tmp.name)
 
+    def test_mlm_jet_radius_defaults_to_madevents_d(self):
+        """beam.jet_radius is madevent's hidden run_card d (common/to_dj/D),
+        which is 1 there and in FxFx; hidden in the TOML card too, so it is only
+        written once it differs from that, and reads back as 1 otherwise"""
+        import tomllib
+        legacy = bannermod.RunCardLO()
+        self.assertEqual(legacy['d'], 1.0)
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['jet_radius'], legacy['d'])
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        self.assertNotIn('jet_radius', tomllib.loads(out.getvalue())['beam'])
+        self.assertEqual(
+            bannermod.RunCardMG7(out.getvalue())['beam']['jet_radius'], 1.0)
+        rc.set('beam.jet_radius', 0.4, user=True)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        self.assertEqual(tomllib.loads(out.getvalue())['beam']['jet_radius'], 0.4)
+
+    def test_hidden_mlm_options_survive_a_rewrite(self):
+        """The MLM clustering options are hidden: absent from the default card,
+        and written at the end of [beam] once set, also when set without
+        user=True as from_LO does, so a rewrite of the card keeps them"""
+        import tomllib
+        hidden = ['jet_radius', 'jet_scale_scheme', 'scale_scheme',
+                  'parton_line_scheme', 'alphas_reweighting', 'pdf_reweighting',
+                  'clustering_mean_pdf_ladder', 'clustering_measure',
+                  'clustering_history']
+        rc = bannermod.RunCardMG7()
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        beam = tomllib.loads(out.getvalue())['beam']
+        self.assertEqual([k for k in hidden if k in beam], [])
+        self.assertIn('max_jet_flavor', beam)
+        rc.set('beam.scale_scheme', 'madevent')
+        rc.set('beam.clustering_history', 'diagram', user=True)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        reread = bannermod.RunCardMG7(out.getvalue())
+        self.assertEqual(reread['beam']['scale_scheme'], 'madevent')
+        self.assertEqual(reread['beam']['clustering_history'], 'diagram')
+        # and a second rewrite keeps them
+        out2 = io.StringIO()
+        reread.write(out2, template=self.template)
+        self.assertEqual(out2.getvalue(), out.getvalue())
+
     def test_numeric_suffix_like_legacy(self):
         """integer/float k/M suffixes are parsed as in the legacy RunCard"""
         rc = bannermod.RunCardMG7()
@@ -1624,6 +1727,194 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertTrue(rc.is_cut_name('jet-pt.min'))
         self.assertTrue(rc.is_cut_name('cuts.jet-pt.max'))
         self.assertFalse(rc.is_cut_name('generation.events'))
+
+    def test_set_lo_cut(self):
+        """madevent cut names land in [cuts] as from_LO maps them, the "no
+        cut" sentinels removing the bound; [histograms] is left alone"""
+        rc = bannermod.RunCardMG7()
+        rc.dynamic_sections['histograms']['sqrt_s'] = \
+            {'min': 0., 'max': 2000., 'bin_count': 50}
+        self.assertEqual(rc.set_lo_cut('mmll', '200'),
+                         ('lepton-sfos_pair_mass', 'min', 200.0))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'min': 200.0})
+        rc.set_lo_cut('MMLLMAX', '1 TeV')
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'],
+                         {'min': 200.0, 'max': 1000.0})
+        # minimum 0 / maximum -1 mean "no cut"
+        self.assertEqual(rc.set_lo_cut('mmll', 0),
+                         ('lepton-sfos_pair_mass', 'min', None))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'max': 1000.0})
+        rc.set_lo_cut('mmllmax', -1)
+        self.assertNotIn('lepton-sfos_pair_mass', rc['cuts'])
+        # a maximum of 0 is a real cut, as in from_LO
+        rc.set_lo_cut('ptjmax', 0)
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0, 'max': 0.0})
+        rc.set_lo_cut('etaj', -1)
+        self.assertNotIn('jet-eta_abs', rc['cuts'])
+        # sqrt_s is a cut and a histogram under the same key
+        rc.set_lo_cut('dsqrt_shat', '500')
+        self.assertEqual(rc['cuts']['sqrt_s'], {'min': 500.0})
+        self.assertEqual(rc['histograms']['sqrt_s'],
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_cut, 'ptj', 'abc')
+
+    def test_set_lo_cut_composite(self):
+        """the ordered/summed cuts from_LO converts are settable too, and
+        bring the group they are written on when the card lacks it"""
+        rc = bannermod.RunCardMG7()
+        multiparticles = rc['multiparticles']
+        self.assertNotIn('parton', multiparticles)
+        self.assertNotIn('alllepton', multiparticles)
+        rc.set_lo_cut('ptj1min', 50)
+        rc.set_lo_cut('ht3min', 200)
+        self.assertEqual(rc['cuts']['jet_1-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['jet_1-jet_2-jet_3-pt-sum'], {'min': 200.0})
+        self.assertNotIn('parton', multiparticles)
+        rc.set_lo_cut('ihtmin', 100)
+        self.assertEqual(rc['cuts']['parton-pt-sum'], {'min': 100.0})
+        self.assertEqual(sorted(multiparticles['parton']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_cut('ptllmin', 30)
+        self.assertEqual(rc['cuts']['alllepton-sum-pt'], {'min': 30.0})
+        self.assertEqual(list(multiparticles['alllepton']),
+                         list(multiparticles['lepton']) + list(multiparticles['missing']))
+        # a group the user defined is kept
+        multiparticles['alllepton'] = [11, -11]
+        rc.set_lo_cut('mmnl', 80)
+        self.assertEqual(multiparticles['alllepton'], [11, -11])
+        # "no cut" removes the cut, not the group
+        rc.set_lo_cut('ihtmin', 0)
+        self.assertNotIn('parton-pt-sum', rc['cuts'])
+        self.assertIn('parton', multiparticles)
+
+    def test_set_lo_param_value_translation(self):
+        """madevent codes become the mg7 names; mg7 values are left alone"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc.set_lo_param('dynamical_scale_choice', '1'),
+                         ({'beam.dynamical_scale_choice': 'transverse_energy'}, []))
+        rc.set_lo_param('dynamical_scale_choice', 'shat')
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        # no mg7 equivalent: a warning, the value is kept
+        changes, warnings = rc.set_lo_param('dynamical_scale_choice', '0')
+        self.assertEqual(changes, {})
+        self.assertIn('user-defined', warnings[0])
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'transverse_mass'))
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'HT/4'))
+        rc.set_lo_param('sde_strategy', '2')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'denominators')
+        rc.set_lo_param('sde_strategy', '1')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'diagrams')
+        self.assertEqual(len(rc.set_lo_param('sde_strategy', '3')[1]), 1)
+        self.assertIsNone(rc.set_lo_param('sde_strategy', 'denominators'))
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(sorted(rc['multiparticles']['jet']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_param('fixed_fac_scale', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'maxjetflavor', '9')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'fixed_fac_scale', 'abc')
+        # the beam settings are set_lo_beam_param's
+        for name in rc.lo_beam_params:
+            self.assertNotIn(name, rc._LO_SET_PARAMS)
+        self.assertEqual(rc.lo_set_warnings(), [])
+
+    def test_set_lo_param_fixed_fac_scale_per_beam(self):
+        """fixed_fac_scale1/2 combine within one question; different values,
+        which the one mg7 switch cannot hold, are reported once, at the end"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('fixed_fac_scale1', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        self.assertEqual(rc.set_lo_param('fixed_fac_scale2', 'T')[1], [])
+        self.assertEqual(rc.lo_set_warnings(), [])
+        rc.set_lo_param('fixed_fac_scale1', 'F')
+        self.assertIs(rc['beam.fixed_fact_scale'], False)
+        self.assertIn('fixed_fac_scale1 = False and fixed_fac_scale2 = True',
+                      rc.lo_set_warnings()[0])
+        self.assertEqual(rc.lo_set_warnings(), [])    # said once
+
+    def test_set_lo_param_pdg_cuts(self):
+        """{pdg: value} cuts as written in a run_card.dat"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '{6: 100, 25: 50}')
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['multiparticles']['pdg6'], [6, -6])
+        rc.set_lo_param('eta_max_pdg', '{6: 2.5}')
+        self.assertEqual(rc['cuts']['pdg6-eta_abs'], {'max': 2.5})
+        changes, _ = rc.set_lo_param('pt_min_pdg', '{6: 0}')
+        self.assertEqual(changes, {'cuts.pdg6-pt': None})
+        self.assertNotIn('pdg6-pt', rc['cuts'])
+        # X X~ pairs only, whichever of the two is set first
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        rc.set_lo_param('mxx_min_pdg', '{6: 500}')
+        self.assertEqual(rc['cuts']['pdg6-sfos_pair_mass'], {'min': 500.0})
+        rc.set_lo_param('mxx_only_part_antipart', "{'default': False, 6: False}")
+        self.assertNotIn('pdg6-sfos_pair_mass', rc['cuts'])
+        self.assertEqual(rc['cuts']['pdg6-pair_mass'], {'min': 500.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{6: abc}')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '100')
+
+    def test_set_lo_param_pdg_cut_forms(self):
+        """the {pdg: value} parameters take the forms the run_card.dat editor
+        takes, a single entry updating only that pdg"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '6 100')
+        rc.set_lo_param('pt_min_pdg', '25:50')
+        rc.set_lo_param('pt_min_pdg', "{'23': 30}")
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['pdg23-pt'], {'min': 30.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{top: 100}')
+
+    def test_set_lo_param_pair_mass_follows_the_card(self):
+        """mxx_min_pdg updates the pair-mass cut the card already has, and
+        mg7 never ends up with two pair-mass minima on one pdg"""
+        rc = bannermod.RunCardMG7()
+        cuts = rc.dynamic_sections['cuts']
+        # as converted from a run_card.dat with mxx_only_part_antipart {6: True}
+        cuts['pdg6-sfos_pair_mass'] = {'min': 250.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 600}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # an explicit choice wins, and the other kind of pair loses its minimum
+        rc.set_lo_param('mxx_only_part_antipart', '{6: False}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-sfos_pair_mass', cuts)
+        cuts['pdg6-sfos_pair_mass'] = {'min': 100.0, 'max': 900.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 700}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 700.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0})
+        # renaming onto an existing cut merges the bounds, the tighter wins
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0, 'min': 700.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # the choice is kept with the card, not with the question
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 300}')
+        self.assertNotIn('pdg25-sfos_pair_mass', cuts)
+        rc.set_lo_param('mxx_only_part_antipart', '{25: True}')
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 400}')
+        self.assertEqual(cuts['pdg25-sfos_pair_mass'], {'min': 400.0})
+        self.assertNotIn('pdg25-pair_mass', cuts)
+
+    def test_set_lo_param_matches_from_LO(self):
+        """"set" lands where the run_card.dat conversion puts the same values"""
+        lo = bannermod.RunCardLO()
+        values = {'dynamical_scale_choice': 1, 'sde_strategy': 2,
+                  'maxjetflavor': 5, 'fixed_fac_scale': True}
+        for name, value in values.items():
+            lo.set(name, value, user=True)
+        converted, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        rc = bannermod.RunCardMG7()
+        for name, value in values.items():
+            self.assertIsNotNone(rc.set_lo_param(name, str(value)), name)
+        for key in ('beam.dynamical_scale_choice', 'beam.fixed_fact_scale',
+                    'phasespace.sde_strategy'):
+            self.assertEqual(rc[key], converted[key], key)
+        self.assertEqual(rc['multiparticles']['jet'], converted['multiparticles']['jet'])
+        self.assertEqual(rc.lo_set_warnings(), [])
 
     def test_evaluate_math_and_masses(self):
         """values support arithmetic and mass references"""
@@ -1843,6 +2134,61 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_legacy_keys_report_mlm_merging(self):
+        """The madevent shower interface picks MLM jet matching from ickkw
+        and sets JetMatching:qCut from xqcut and nQmatch from maxjetflavor.
+        An mg7 MLM sample has to report them, or Pythia8 showers it with no
+        matching and double counts the jets."""
+        card = bannermod.RunCardMG7()
+        # not merged: the plain shower path, as before
+        self.assertEqual(card['ickkw'], 0)
+        self.assertEqual(card['xqcut'], 0.0)
+        self.assertEqual(card['maxjetflavor'], 5)
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        card.set('phasespace.xqcut', 30.0)
+        card.set('beam.max_jet_flavor', 4)
+        self.assertTrue(card.is_mlm_merged())
+        self.assertEqual(card['ickkw'], 1)
+        self.assertEqual(card['xqcut'], 30.0)
+        self.assertEqual(card['maxjetflavor'], 4)
+        self.assertEqual(card['ktdurham'], -1.0)
+        # no merging cut, or no beams to merge on: not a merged sample
+        card.set('phasespace.xqcut', 0.0)
+        self.assertEqual(card['ickkw'], 0)
+        card.set('phasespace.xqcut', 30.0)
+        card.set('beam.leptonic', True)
+        self.assertEqual(card['ickkw'], 0)
+        self.assertEqual(card['xqcut'], 0.0)
+
+    def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+
+    def test_from_LO_conversion_of_mlm_merging(self):
+        """ickkw = 1 with xqcut is madevent's MLM: mg7's "mlm" scale choice
+        with madevent's scale scheme, the same xqcut and jet flavours"""
+        lo = bannermod.RunCardLO()
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        lo['maxjetflavor'] = 5
+        lo['auto_ptj_mjj'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(mg7['beam']['scale_scheme'], 'madevent')
+        self.assertEqual(mg7['phasespace']['xqcut'], 20.0)
+        self.assertFalse(mg7['phasespace']['auto_ptj_mjj'])
+        self.assertEqual(mg7['beam']['max_jet_flavor'], 5)
+        joined = ' '.join(dropped)
+        self.assertNotIn('ickkw', joined)
+        self.assertNotIn('xqcut', joined)
+        self.assertEqual(mg7['ickkw'], 1)
+        # without a merging cut there is nothing to merge
+        lo['xqcut'] = 0
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertNotEqual(mg7['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertIn('ickkw=1', ' '.join(dropped))
+
     def test_from_LO_conversion_per_beam(self):
         """asymmetric beam energies and PDFs are kept per beam"""
         lo = bannermod.RunCardLO()
@@ -1905,6 +2251,25 @@ class TestRunCardMG7(unittest.TestCase):
         plain, _ = bannermod.RunCardMG7.from_LO(bannermod.RunCardLO(), warn=False)
         self.assertNotIn('alllepton', plain['multiparticles'])
         self.assertNotIn('parton', plain['multiparticles'])
+
+    def test_from_LO_pdg_cuts_read_from_a_run_card(self):
+        """the per-pdg cuts of a run_card.dat file, which is read with string
+        pdg keys ({'6': 100.0}), are converted too"""
+        lo = bannermod.RunCardLO()
+        lo.set('pt_min_pdg', '{6: 100}', user=True)
+        lo.set('mxx_min_pdg', '{6: 250, 25: 100}', user=True)
+        lo.set('mxx_only_part_antipart', '{6: True}', user=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'run_card.dat')
+            lo.write(path)
+            lo = bannermod.RunCardLO(path)
+        self.assertEqual(lo['pt_min_pdg'], {'6': 100.0})
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        cuts = mg7['cuts']
+        self.assertEqual(cuts['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 250.0})
+        self.assertEqual(cuts['pdg25-pair_mass'], {'min': 100.0})
+        self.assertEqual(mg7['multiparticles']['pdg25'], [25, -25])
 
     def test_from_LO_me_frame(self):
         """me_frame is carried over, the LO default included: madevent's [1,2]
@@ -2081,6 +2446,81 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
 
 
+class TestPhotonPDFDefault(unittest.TestCase):
+    """issue #311: the NNPDF4.0 default sets have no photon, so a process with
+    a photon taken from the proton, or with EW corrections at NLO, defaults to
+    the QED set of the same family."""
+
+    model = None
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm')
+
+    def process(self, initial, final=(11, -11), nlo=False):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.fks.fks_common as fks_common
+        Leg = fks_common.FKSLeg if nlo else base_objects.Leg
+        legs = [Leg({'id': i, 'state': False}) for i in initial]
+        legs += [Leg({'id': i, 'state': True}) for i in final]
+        return base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model})
+
+    def lo_card(self, initial, **user):
+        rc = bannermod.RunCardLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        rc.create_default_for_process(pc, '', [[self.process(initial)]])
+        return rc
+
+    def nlo_card(self, initial, splitting_types=('QCD',), **user):
+        rc = bannermod.RunCardNLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        pc['splitting_types'] = list(splitting_types)
+        rc.create_default_for_process(pc, '', [self.process(initial, nlo=True)])
+        return rc
+
+    def test_lo(self):
+        self.assertEqual(self.lo_card([2, -2])['lhaid'], 331900)
+        self.assertEqual(self.lo_card([22, 22])['lhaid'], 335900)
+        self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
+        # the user choice wins
+        self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_nlo(self):
+        # plain sm has a massive b: 4-flavour set
+        self.assertEqual(self.nlo_card([2, -2])['lhaid'], [334700])
+        # EW corrections or a photon in the initial state: QED set
+        self.assertEqual(self.nlo_card([2, -2], ('QCD', 'QED'))['lhaid'], [335900])
+        self.assertEqual(self.nlo_card([22, 2])['lhaid'], [335900])
+        # lepton collider: no proton PDF, nothing changes
+        rc = self.nlo_card([11, -11], ('QED',))
+        self.assertEqual(rc['lpp1'], 0)
+        self.assertEqual(rc['lhaid'], [334700])
+        # the user choice wins
+        self.assertEqual(self.nlo_card([2, -2], ('QED',), lhaid=[331700])['lhaid'],
+                         [331700])
+
+    def test_mg7(self):
+        def card(initial):
+            rc = bannermod.RunCardMG7()
+            pc = bannermod.ProcCharacteristic()
+            pc['ninitial'] = 2
+            rc.create_default_for_process(pc, '', [[self.process(initial)]])
+            return rc
+        self.assertEqual(card([2, -2])['beam']['pdf1'], 'NNPDF40_lo_as_01180')
+        rc = card([22, 22])
+        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertIs(rc['beam']['leptonic'], False)
+
+
 class FakeParticle(dict):
     def get(self, key, default=None):
         return dict.get(self, key, default)
@@ -2110,6 +2550,50 @@ def mg7_proc(initial, final, model=None):
     legs = [{'state': False, 'id': i} for i in initial]
     legs += [{'state': True, 'id': i} for i in final]
     return {'legs': legs, 'legs_with_decays': [], 'model': model or FakeModel()}
+
+
+class TestRunCardMG7AutoMLM(unittest.TestCase):
+    """A process generated with several jet multiplicities is set up as an MLM
+    merged sample at output time, as madevent's ickkw = 1 is."""
+
+    class PC(dict):
+        def __init__(self, ninitial=2):
+            super().__init__(ninitial=ninitial, loop_induced=False,
+                             colored_pdgs=[])
+
+    def build(self, processes):
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(), '', processes)
+        return rc
+
+    def test_extra_jets_turn_mlm_on(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12])],
+                         [mg7_proc([2, -1], [-11, 12, 21])]])
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], 30.0)
+        self.assertTrue(rc.is_mlm_merged())
+        self.assertEqual(rc['ickkw'], 1)
+        # drjj = drjl = 0, as madevent
+        self.assertNotIn('jet-delta_r', rc.dynamic_sections['cuts'])
+        self.assertNotIn('jet-lepton-delta_r', rc.dynamic_sections['cuts'])
+        self.assertIn('lepton-delta_r', rc.dynamic_sections['cuts'])
+
+    def test_an_extra_photon_is_no_merging(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12])],
+                         [mg7_proc([2, -1], [-11, 12, 22])]])
+        self.assertNotEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], 0.0)
+        self.assertIn('jet-delta_r', rc.dynamic_sections['cuts'])
+
+    def test_one_multiplicity_is_no_merging(self):
+        rc = self.build([[mg7_proc([2, -1], [-11, 12, 21])]])
+        self.assertFalse(rc.is_mlm_merged())
+
+    def test_lepton_collider_is_no_merging(self):
+        rc = self.build([[mg7_proc([11, -11], [2, -2])],
+                         [mg7_proc([11, -11], [2, -2, 21])]])
+        self.assertFalse(rc.is_mlm_merged())
+        self.assertEqual(rc['phasespace']['xqcut'], 0.0)
 
 
 class TestRunCardMG7Histograms(unittest.TestCase):
@@ -2321,7 +2805,7 @@ class TestMadLoopParam(unittest.TestCase):
             previous_line = [previous_line[1], line]
             
     def test_modifparameter(self):
-        """ test that we can modify the parameter and that the formating is applied 
+        """ test that we can modify the parameter and that the formatting is applied
         correctly """
 
         #1. create the object without argument
@@ -2356,7 +2840,7 @@ class TestMadLoopParam(unittest.TestCase):
                 self.assertRaises(Exception, param1.__setitem__, (name, value))
                 
     def test_writeMLparam(self):
-        """check that the writting is correct"""
+        """check that the writing is correct"""
         
         param1 = MadLoopParam(pjoin(MG5DIR,"Template", "loop_material","StandAlone",
                                       "Cards","MadLoopParams.dat"))

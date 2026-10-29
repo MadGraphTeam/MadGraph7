@@ -55,6 +55,24 @@ def mapping(process):
 
 
 @pytest.fixture
+def cut_mapping(process):
+    # a mild pt cut keeps the events away from extremely soft gluons, for which the
+    # inverse of the t-channel invariants is numerically ill-conditioned
+    pids = [21, 21] + [6 if mass > 0 else 21 for mass in process["outgoing_masses"]]
+    O = ms.Observable
+    cuts = ms.Cuts([ms.CutItem(O(pids, O.obs_pt, [O.jet_pids]), min=1.0)])
+    diagram = ms.Diagram(
+        process["incoming_masses"],
+        process["outgoing_masses"],
+        [ms.Propagator(*prop) for prop in process["propagators"]],
+        process["vertices"],
+    )
+    return ms.PhaseSpaceMapping(
+        ms.Topology(diagram), CM_ENERGY, cuts=cuts, permutations=process["permutations"]
+    )
+
+
+@pytest.fixture
 def masses(process):
     return process["incoming_masses"] + process["outgoing_masses"]
 
@@ -130,8 +148,8 @@ def test_process_momentum_conservation(mapping, masses, permutation_count):
     assert_approx(p_out, p_in, rel=1e-6, abs=1e-10)
 
 
-def test_process_inverse(mapping, masses, permutation_count):
-    r = rand((BATCH_SIZE, mapping.random_dim()), generator=rng)
+def test_process_inverse(cut_mapping, masses, permutation_count):
+    r = rand((BATCH_SIZE, cut_mapping.random_dim()), generator=rng)
     condition = (
         []
         if permutation_count <= 1
@@ -141,7 +159,10 @@ def test_process_inverse(mapping, masses, permutation_count):
             )
         ]
     )
-    *map_out, det = mapping.map_forward([r], condition)
-    r_inv, det_inv = mapping.map_inverse(map_out, condition)
-    assert_approx(r_inv, r, abs=1e-3, rel=1e-3)
-    assert_approx(det_inv, 1 / det, rel=1e-3)
+    *map_out, det = cut_mapping.map_forward([r], condition)
+    r_inv, det_inv = cut_mapping.map_inverse(map_out, condition)
+    # events removed by the cuts (zero weight) are outside the phase space
+    passed = det > 0
+    assert torch.any(passed)
+    assert_approx(r_inv[passed], r[passed], abs=1e-3, rel=1e-3)
+    assert_approx(det_inv[passed], 1 / det[passed], rel=1e-3)

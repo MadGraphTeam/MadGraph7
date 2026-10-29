@@ -688,6 +688,112 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(dict(obj.run_card['histograms']), before)
         self.assertNotIn('run', obj.modified_card)
 
+    # -- "set <madevent cut name> ..." in the launch question ---------------
+    def cut_selector(self):
+        """histogram_selector() whose generic editor must not be reached: it
+        is what answered "WARNING: invalid set command mmll 200"."""
+        obj = self.histogram_selector()
+        generic = mock.patch.object(type(obj).__mro__[1], 'do_set')
+        self.generic_do_set = generic.start()
+        self.addCleanup(generic.stop)
+        return obj
+
+    def test_set_madevent_cut_names(self):
+        """set mmll/mmllmax/... edit the [cuts] entry from_LO maps them to"""
+        obj = self.cut_selector()
+        obj.do_set('mmll 200')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0})
+        self.assertIn('run', obj.modified_card)
+        obj.do_set('run_card mmllmax 2*100+100')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0, 'max': 300.0})
+        obj.do_set('mmll 0')
+        obj.do_set('mmllmax -1')
+        self.assertNotIn('lepton-sfos_pair_mass', obj.run_card['cuts'])
+        # sqrt_s is also a histogram name: only the cut moves
+        obj.do_set('dsqrt_shat 500')
+        self.assertEqual(dict(obj.run_card['cuts']['sqrt_s']), {'min': 500.0})
+        self.assertEqual(dict(obj.run_card['histograms']['sqrt_s']),
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_cut_name_rejects_non_numbers(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        obj.do_set('ptj abc')
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.assertNotIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_scale_and_pdg_names(self):
+        """the integer scale/strategy codes, maxjetflavor and the per-pdg
+        cuts are translated. The generic editor aborted a launch script on
+        the integer codes."""
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice 1')
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('dynamical_scale_choice 0')     # no equivalent: kept
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('sde_strategy 2')
+        self.assertEqual(obj.run_card['phasespace']['sde_strategy'], 'denominators')
+        obj.do_set('maxjetflavor 5')
+        self.assertIn(5, obj.run_card['multiparticles']['jet'])
+        obj.do_set('pt_min_pdg {6: 100}')
+        self.assertEqual(dict(obj.run_card['cuts']['pdg6-pt']), {'min': 100.0})
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mg7_values_still_reach_the_editor(self):
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice transverse_mass')
+        obj.do_set('sde_strategy denominators')
+        obj.do_set('dynamical_scale_choice HT/4')
+        self.assertEqual(self.generic_do_set.call_count, 3)
+
+    def test_per_beam_fixed_fac_scale_is_reported_when_the_question_closes(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        with mock.patch.object(parent, 'check_card_consistency'):
+            obj.do_set('fixed_fac_scale1 T')
+            obj.do_set('fixed_fac_scale2 F')
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                obj.check_card_consistency()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
+                      logs.output[0])
+
+    def test_set_madevent_cut_name_scan_is_refused_by_name(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        with self.assertLogs('madgraph7', level='WARNING') as logs:
+            obj.do_set('ptj scan:[20, 30]')
+        self.assertIn('cannot be scanned', logs.output[0])
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_lo_param_bugs_are_not_hidden(self):
+        """only a bad value is reported as "ignoring set ..."; an error of
+        the translation itself is not swallowed"""
+        obj = self.cut_selector()
+        with mock.patch.object(type(obj.run_card), 'set_lo_param',
+                               side_effect=TypeError('bug')):
+            self.assertRaises(TypeError, obj.do_set, 'maxjetflavor 4')
+
+    def test_per_beam_state_is_cleared_when_the_check_fails(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        obj.do_set('fixed_fac_scale1 T')
+        obj.do_set('fixed_fac_scale2 F')
+        with mock.patch.object(parent, 'check_card_consistency',
+                               side_effect=RuntimeError('card check')):
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                self.assertRaises(RuntimeError, obj.check_card_consistency)
+        self.assertIn('fixed_fac_scale1 = True', logs.output[0])
+        self.assertEqual(obj.run_card.lo_set_warnings(), [])
+
     def test_set_madevent_beam_names(self):
         """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
         them, edit the per-beam [beam] entries"""
@@ -1462,3 +1568,83 @@ class MG7DecayProductsTest(unittest.TestCase):
         meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
                           ['p0', 'o2', 'p1']], [1], permutation=(0, 1, 4, 2, 3))
         self.assertEqual(self.launch.decay_products(meta), {1, 2})
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7AutoPtjMjjCutNamesTest(unittest.TestCase):
+    """The cuts auto_ptj_mjj writes must be ones madspace can build.
+
+    apply_auto_ptj_mjj names a cut after the observable it wants, and
+    parse_observable turns that name straight into an ms.Observable option.
+    Nothing else checks the two agree, so renaming an observable in madspace
+    (m_inv became pair_mass) left the launcher asking for a cut that no longer
+    existed, and every merged run with xqcut > 0 died building its cuts --
+    before reaching the clustering the cut exists for.
+
+    The two methods are called unbound, on a stand-in carrying just the run
+    card: building a real MadgraphProcess needs a process directory, which
+    would put this test out of reach of a unit run.
+    """
+
+    OUTGOING_PDGS = [21, 21, 25, 1, -1]
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    def make_process(self, cuts, xqcut=20.0, auto=True):
+        return types.SimpleNamespace(is_decay=False, run_card={
+            'beam': {'dynamical_scale_choice': 'mlm'},
+            'phasespace': {'xqcut': xqcut, 'auto_ptj_mjj': auto},
+            'multiparticles': {'jet': [21, 1, 2, -1, -2],
+                               'lepton': [11, 13, -11, -13]},
+            'cuts': dict(cuts),
+        })
+
+    def apply(self, cuts, **kwargs):
+        process = self.make_process(cuts, **kwargs)
+        out = {key: dict(values) for key, values in cuts.items()}
+        self.launch.MadgraphProcess.apply_auto_ptj_mjj(process, out)
+        return process, out
+
+    def test_every_cut_it_writes_builds_an_observable(self):
+        import madspace as ms
+
+        process, cuts = self.apply({'jet-pt': {'min': 10.0},
+                                    'jet-delta_r': {'min': 0.4}})
+        for key in cuts:
+            kwargs = self.launch.MadgraphProcess.parse_observable(
+                process, key, 'pt')
+            # raises TypeError if the observable name is not one madspace knows
+            ms.Observable(self.OUTGOING_PDGS, **kwargs)
+
+    def test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut(self):
+        _, cuts = self.apply({'jet-pt': {'min': 10.0}}, xqcut=20.0)
+        self.assertEqual(cuts['jet-pt']['min'], 20.0)
+        self.assertEqual(cuts['jet-pair_mass']['min'], 20.0)
+
+    def test_it_drops_the_jet_cone_cuts(self):
+        """A dR cut would carve a hole out of the region the shower fills."""
+        _, cuts = self.apply({'jet-delta_r': {'min': 0.4},
+                              'jet-lepton-delta_r': {'min': 0.4}})
+        self.assertEqual(cuts['jet-delta_r']['min'], 0.0)
+        self.assertEqual(cuts['jet-lepton-delta_r']['min'], 0.0)
+
+    def test_with_the_option_off_it_only_zeroes_cuts_above_xqcut(self):
+        _, cuts = self.apply({'jet-pt': {'min': 50.0}}, xqcut=20.0, auto=False)
+        self.assertEqual(cuts['jet-pt']['min'], 0.0)
+        self.assertNotIn('jet-pair_mass', cuts)
+        _, cuts = self.apply({'jet-pt': {'min': 10.0}}, xqcut=20.0, auto=False)
+        self.assertEqual(cuts['jet-pt']['min'], 10.0)
+
+    def test_it_leaves_an_unmerged_run_alone(self):
+        for kwargs in ({'xqcut': 0.0}, {}):
+            process = self.make_process({'jet-pt': {'min': 10.0}}, **kwargs)
+            if not kwargs:
+                process.run_card['beam']['dynamical_scale_choice'] = \
+                    'transverse_mass'
+            cuts = {'jet-pt': {'min': 10.0}, 'jet-delta_r': {'min': 0.4}}
+            self.launch.MadgraphProcess.apply_auto_ptj_mjj(process, cuts)
+            self.assertEqual(cuts, {'jet-pt': {'min': 10.0},
+                                    'jet-delta_r': {'min': 0.4}})

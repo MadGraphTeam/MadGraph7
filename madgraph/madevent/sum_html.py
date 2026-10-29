@@ -199,7 +199,7 @@ class RunStatistics(dict):
         """Returns a one-line string summarizing the run statistics 
         gathered for the channel G."""
         
-        # Do not return anythign for now if there is no madloop calls. This can
+        # Do not return anything for now if there is no madloop calls. This can
         # change of course if more statistics are gathered, unrelated to MadLoop.
         if self['n_madloop_calls']==0:
             return ''
@@ -318,7 +318,7 @@ class OneResult(object):
     
     #@cluster.multiple_try(nb_try=5,sleep=20)
     def read_results(self, filepath):
-        """read results.dat and fullfill information"""
+        """read results.dat and fill information"""
         
         if isinstance(filepath, str):
             finput = open(filepath)
@@ -590,7 +590,7 @@ class Combine_results(list, OneResult):
         #    nb_iter = 0 
         #nb_iter = misc.mmin([len(a.ysec_iter) for a in self], 0)
         #misc.sprint(nb_iter)
-        # syncronize all iterations to a single one
+        # synchronize all iterations to a single one
         for oneresult in self:
             oneresult.change_iterations_number(0)
             

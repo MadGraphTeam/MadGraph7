@@ -4,3 +4,6 @@
 .gitattributes export-ignore
 .pre-commit-config.yaml export-ignore
 .bzrignore export-ignore
+
+# Preserve the frozen report bytes and keep compressed PDF streams out of diffs.
+doc/benchmarkfolder/*.pdf binary

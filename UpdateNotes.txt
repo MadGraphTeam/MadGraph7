@@ -5,6 +5,75 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: madevent MLM (ickkw=1) with use_syst: the <pdfrwt> entry of the incoming partons
+       used the flavour class of the grouped subprocess instead of the event's flavour
+       (pdg 1 for s s~, 2 for c c~), so the systematics (PDF and mu_F variations) of every
+       s/c-initiated event were computed with the d/u PDF (up to 9% for mu_F=2 on p p > z).
+   OM: madevent LO vector mode (vector_size>1): the good-helicity scan saw a single
+       beam orientation per warp, so up to half of p p > z was dropped. With helicity
+       recycling, the madevent_forhel scan now runs event by event. Without it
+       (hel_recycling = False), the scan inside SMATRIX now runs its MAXTRIES events
+       for each beam orientation and gets the orientation of each event. Also fixed a
+       latent bug: an event in IMODE 5 no longer skips the rest of the vector (the
+       vector code currently always uses IMODE 0).
+   RF: Add real-diagram channels for fixed-order NLO, through the
+       hidden option real_channels_x0 in the run_card. Useful for
+       processes that have new structures opening beyond LO, such as
+       pp>w+bb [QCD] (W radiating from a final state quark line) or
+       pp>w+h [QED] (photon induced t-channel contribution). A typical
+       value would be a few percent or so (e.g., 0.03). See also
+       Sec.6.3 of 0908.4272 [hep-ph].
+   OM: real_channels_x0 is now set by default, at output, for the processes
+       whose real-emission diagrams have propagators that the Born channels
+       do not follow (0.05, e.g. pp>w+h [QED], pp>w+bb~ [QCD], pp>w+w- [QED];
+       -1 otherwise, e.g. pp>jj, pp>w+j, pp>tt~j, pp>tt~h [QCD]). The
+       decision is the same for a resonance and its decay products
+       (pp>w+j and pp>e+vej). The value is written in the run_card, and
+       ignored for MC@NLO/LO/merged runs.
+   OM: The default PDF follows the process when a photon is needed (issue #311):
+       a photon in the initial state of a proton beam (LO, NLO and the mg7
+       [beam] pdf) or NLO EW corrections ([QED]) select
+       NNPDF40_nlo_as_01180_qed (lhaid 335900), at NLO also for a model with a
+       massive b (NNPDF4.0 has no 4-flavour QED set). The NNPDF4.0 defaults
+       have no photon. A PDF set by the user is kept.
+   OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
+       with the current fortran compiler. The error raised when CutTools/IREGI were
+       compiled with another compiler (e.g. after a gfortran update) now points to it.
+   OM: compute_widths (and the 'auto' widths of a param_card) integrates the
+       N-body decays (N>2) with madspace instead of MadEvent: 6 s instead of
+       26 s for the Higgs of heft up to 3 bodies, with a more precise result.
+       'compute_widths ... --engine=madevent' (or 'DECAY 6 auto
+       --engine=madevent') selects the former MadEvent integration. Falls
+       back to MadEvent, with a warning, if madspace cannot do it. The precompiled
+       standard headers (new 'make PCH=1' of madmatrix, clang only) halve the
+       build of many small processes: used by mg7 runs of 4 subprocess
+       directories or more.
+   OM: compute_widths --nlo without a dedicated code for the model (SMWidth, the
+       SM) now runs the two-body decays with a colour charge at NLO with MC@NLO
+       (aMC@NLO fixed order, loop_sm for sm); the decays into 3 bodies or more
+       stay at LO. 'DECAY 6 auto --nlo --body_decay=3' takes the options of
+       compute_widths in the param_card ('auto@NLO' stays 'auto --nlo'), also
+       with 'set decay 6 auto --nlo --body_decay=3'. A width on auto that is
+       not computed in the same call is now kept in the card (it used to be
+       dropped when another width was computed). '--nlo=smwidth' and
+       '--nlo=mcatnlo' choose the code (SMWidth, QCD and EW, or MC@NLO, QCD);
+       the QCD widths of the two agree to 0.05% for t, W and Z.
+   OM: compute_widths --nlo --corrections=QED|QCD+QED runs the two-body decays at
+       NLO electroweak (or QCD and EW) with MC@NLO ([QED] / [QCD QED] of aMC@NLO,
+       loop_qcd_qed_sm), for every two-body decay and not only the coloured ones.
+       t, W and Z agree with SMWidth to 0.1% (EW) and 0.13% (QCD+EW, the top
+       without the finite width of the W); the b is run apart from d and s since
+       its isospin partner is the top. Bug fix: the NLO runs used the names of the
+       UFO model for the particles (m-, tt+) and failed for leptons: they use the
+       names of MG (mu-, ta+).
+   OM: Bug fix: 'compute_widths --nlo' with SMWidth gave zero for every width
+       when the path of the param_card was longer than 100 characters (smwidth
+       cannot read it): it now works on copies with short names, and reports
+       an error when smwidth gives no width.
+   OM: Bug fix: the alpha_s of a madspace decay (1 > N, also 'output mg7' of a
+       decay) was alpha_s(m_Z) at any mass. It is now the 2-loop running up to
+       the decaying mass, as in MadEvent: e.g. 4.7% lower alpha_s(125 GeV) and
+       9.7% lower width for h > g g in heft.
    OM: Bug fix: 'check_sa.exe perf' of 'output standalone' ignored the alpha_s
        of the param card and always used 0.118 (the 'matrix' mode was right).
        With --momenta/-e and --dump-me, the matrix elements at user points are
@@ -110,6 +179,35 @@ ANNOUNCEMENT:
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
 
+
+3.8.2 (XX/XX/XX):
+    OM: LO grouped output (default): the renormalisation/factorisation scales and the MLM xqcut
+        veto were computed on the momenta before the symmetry permutation of the channel (#453).
+        Channels with such permutations were biased (e.g. -3.5% for u q > z u q, also with MLM).
+        Fixed both for the scalar and the vector (vector_size>1, cudacpp) mode.
+    OM: LO vector mode (vector_size>1): fix the reweighting of MLM matching (the central factorisation
+        scale of the last event of the batch was used for all events), the config/mirror used per warp,
+        and a crash (memory corruption) when vector_size was changed in the run_card after the output.
+    OM: LO vector mode with nb_warp>1: when a P directory groups several subprocesses, each warp
+        selected its own subprocess but only the last one was evaluated for all warps (wrong weights,
+        'Clustering failed' crashes). The subprocess is now chosen once per vector (from the PDF weights
+        averaged over the warps) and the configuration/beam orientation per warp.
+    OM: MadSpin (spinmode=PA): new option 'auto_zero_width_PA' (default True) setting the width
+        of the particles decayed by MadSpin to zero in the matrix element of the production density
+        matrix, and each one in the matrix element of its own decay density matrix only (Breit-Wigner
+        sampling, reshuffling, propagator factor and branching ratios keep the param_card widths).
+    OM: output standalone: new option --zerowidth_decay=True|False|<pdg>,<pdg>,... writing propagators
+        with a zero width (param_card untouched): in a 2>N process those of the final-state particles,
+        in a 1>N process (decay) those of the decaying particle only; a pdg list restricts to those.
+    VD+OM: Density mode of the reweighting (since 3.8.0): the particles of the density matrix are now
+        ordered as given in particle_in_density_matrix (they followed the order of the process), also
+        when they are ranked with an observable. That ranking could be wrong, or drop a particle, when
+        other particles were in between. A pdg code (or a rank) absent from the process is now an error.
+    OM: Density mode of the reweighting (since 3.8.0): boost_choice used the wrong particles when the
+        event contains intermediate particles, e.g. the t+W frame instead of the b+t~ one for
+        g g > t t~, t > b w+ with boost_choice [5, -6].
+    VD: Quantum Information library: new observable Get_Steering (two-qubit steering for 2 or 3
+        measurements per site, 1510.08030).
 
 3.8.1 (XX/XX/XX):
     OM: LO: the final unweighting no longer truncates the events above the maximum

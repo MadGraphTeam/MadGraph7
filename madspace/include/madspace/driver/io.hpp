@@ -21,12 +21,33 @@ Tensor load_tensor(TarReader& tar, const std::string& name);
 void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
 struct FieldLayout {
-    static constexpr const char* i32 = "<i4";
-    static constexpr const char* f64 = "<f8";
+    enum Type { i32, f64 };
 
     std::string name;
-    const char* type;
+    Type type;
     int group;
+
+    /// Size of a field of the given type in bytes.
+    static constexpr std::size_t size(Type type) {
+        switch (type) {
+        case i32:
+            return 4;
+        case f64:
+            return 8;
+        }
+        throw std::logic_error("unknown field type");
+    }
+
+    /// numpy type string of a field of the given type.
+    static constexpr const char* dtype(Type type) {
+        switch (type) {
+        case i32:
+            return "<i4";
+        case f64:
+            return "<f8";
+        }
+        throw std::logic_error("unknown field type");
+    }
 };
 
 template <typename T>
@@ -58,6 +79,14 @@ public:
     static constexpr int f_particle_data = 1;
     static constexpr int f_lhe_particle = 2;
     static constexpr int f_clustering = 4;
+    // MLM alpha_s reweighting: the scale of the clustering vertex stored on
+    // outgoing particle 2 + i is vertex i's. Only kept in the combined buffer
+    // the systematics read, never written to an event file.
+    static constexpr int f_alphas_scales = 8;
+    // MLM pdf reweighting ladder: step s (each one that can carry a pdf
+    // ratio) on particle s, each beam's leading density on particle 0 and 1.
+    // Like f_alphas_scales only in the combined buffer, for the systematics.
+    static constexpr int f_pdf_ladder = 16;
 
     static std::vector<FieldLayout> layout(int fields) {
         std::vector<FieldLayout> ret;
@@ -94,6 +123,21 @@ public:
         if (fields & f_clustering) {
             ret.push_back({"cluster_scale", FieldLayout::f64, 1});
         }
+        if (fields & f_alphas_scales) {
+            ret.push_back({"alphas_scale", FieldLayout::f64, 2});
+        }
+        if (fields & f_pdf_ladder) {
+            ret.insert(
+                ret.end(),
+                {
+                    {"ladder_x", FieldLayout::f64, 3},
+                    {"ladder_pdg", FieldLayout::f64, 3},
+                    {"ladder_q", FieldLayout::f64, 3},
+                    {"ladder_info", FieldLayout::f64, 3},
+                    {"ladder_lead_q", FieldLayout::f64, 3},
+                }
+            );
+        }
         return ret;
     }
 
@@ -123,8 +167,20 @@ public:
 
     // clustering data
     UnalignedRef<double> cluster_scale() { return &_data[_offsets[0] + 0]; }
+    // scale alpha_s was evaluated at for one MLM clustering vertex, see
+    // f_alphas_scales
+    UnalignedRef<double> alphas_scale() { return &_data[_offsets[1] + 0]; }
+    // pdf reweighting ladder, see f_pdf_ladder, as madevent books it for its
+    // systematics: per step the line's flavour, its momentum fraction before
+    // the step's z and the scale the step takes it to; ladder_info is
+    // active + 2 beam.
+    UnalignedRef<double> ladder_x() { return &_data[_offsets[2] + 0]; }
+    UnalignedRef<double> ladder_pdg() { return &_data[_offsets[2] + 8]; }
+    UnalignedRef<double> ladder_q() { return &_data[_offsets[2] + 16]; }
+    UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 24]; }
+    UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 32]; }
 
-    void from_lhe_particle(const LHEParticle& particle) {
+    void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;
         lhe_status_code() = particle.status_code;
         lhe_mother1() = particle.mother1;
@@ -138,6 +194,9 @@ public:
         lhe_mass() = particle.mass;
         lhe_lifetime() = particle.lifetime;
         lhe_spin() = particle.spin;
+        if (has_clustering) {
+            cluster_scale() = particle.cluster_scale;
+        }
     }
 
 private:
@@ -296,14 +355,7 @@ public:
                 size = 0;
                 std::size_t group_index = 0;
                 for (auto& field : layout) {
-                    std::size_t field_size;
-                    if (field.type == FieldLayout::i32) {
-                        field_size = 4;
-                    } else if (field.type == FieldLayout::f64) {
-                        field_size = 8;
-                    } else {
-                        std::logic_error("unknown type");
-                    }
+                    std::size_t field_size = FieldLayout::size(field.type);
                     if (field.group > group_index) {
                         offsets.resize(field.group);
                         offsets.back() = size;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <optional>
 #include <vector>
 
 #include "madspace/phasespace/base.hpp"
@@ -53,14 +55,34 @@ namespace madspace {
 class ColorOrderedMapping : public Mapping {
 public:
     /**
-     * @param color_order       0-based permutation of `{0, ..., n-1}`
-     *                          (`n = n_out + 2`) giving the chain order;
-     *                          particles 0 and 1 are the incoming beams. See
-     *                          @ref Topology.
-     * @param t_invariant_power Exponent of the `1/|t|^p` sampling of every
-     *                          momentum transfer; see @ref Invariant.
-     * @param s_invariant_power Exponent of the `1/s^p` sampling of every
-     *                          time-like invariant; see @ref Invariant.
+     * Settings of the chain. Besides these, the chain follows AmpliCol's
+     * gen23 [2]: a side of exactly two particles (with the other side not
+     * empty) is one 2->3 step with the opposite beam as the previous emission,
+     * the composite and rest masses are sampled as `1/sqrt(s)` (flat in the
+     * mass), and the s23 random numbers of the 2->3 steps are remapped with the
+     * arcsine map of @ref TwoToThreeParticleScattering.
+     */
+    struct Options {
+        /// 0-based permutation of `{0, ..., n-1}` (`n = n_out + 2`) giving the
+        /// chain order; particles 0 and 1 are the incoming beams. See
+        /// @ref Topology.
+        std::vector<std::size_t> color_order;
+        /// Exponent of the `1/|x|^p` sampling of the momentum transfers and
+        /// the s23 invariants of the chain; see @ref Invariant. Unset: 1 with
+        /// cuts (AmpliCol) and 0.8 without, where these ranges reach zero and
+        /// `1/|x|` would pile the points up at the regulator of
+        /// @ref Invariant.
+        std::optional<double> chain_invariant_power = std::nullopt;
+        /// In every 2->3 step, keep the azimuthal solution that passes the pt
+        /// cuts, and pick with the discrete choice only when both pass, as
+        /// AmpliCol does. The weight assumes uniformly sampled discrete
+        /// choices: turn it off when they are sampled with a learned
+        /// distribution.
+        bool cut_aware_branch = true;
+    };
+
+    /**
+     * @param options           Chain order and settings; see @ref Options.
      * @param pt_min            Per-outgoing-particle minimum transverse
      *                          momentum; empty disables the cut. See @ref Cuts.
      * @param m_inv_min         Symmetric matrix of minimum pair invariant
@@ -68,10 +90,6 @@ public:
      * @param dr_min            Symmetric matrix of minimum pair `delta_r`
      *                          separations; empty disables the cut. See
      *                          @ref Cuts.
-     * @param arcsine_s23       Remap the random number of every 2->3
-     *                          invariant with the arcsine map in the azimuth,
-     *                          removing the `1/|sin(phi)|` edge peak of the
-     *                          weight; see @ref TwoToThreeParticleScattering.
      * @param y_max             Per-outgoing-particle bound on the absolute lab
      *                          rapidity, negative (or empty) for none. Used
      *                          where a block scatters the two beams in the
@@ -87,13 +105,10 @@ public:
      *                          conditions.
      */
     ColorOrderedMapping(
-        const std::vector<std::size_t>& color_order,
-        double t_invariant_power = 0.8,
-        double s_invariant_power = 0.8,
+        const Options& options,
         const std::vector<double>& pt_min = {},
         const std::vector<std::vector<double>>& m_inv_min = {},
         const std::vector<std::vector<double>>& dr_min = {},
-        bool arcsine_s23 = true,
         const std::vector<double>& y_max = {}
     );
 
@@ -125,13 +140,10 @@ private:
     // The public constructor with the rapidity bounds worked out once.
     ColorOrderedMapping(
         const RapidityBounds& bounds,
-        const std::vector<std::size_t>& color_order,
-        double t_invariant_power,
-        double s_invariant_power,
+        const Options& options,
         const std::vector<double>& pt_min,
         const std::vector<std::vector<double>>& m_inv_min,
-        const std::vector<std::vector<double>>& dr_min,
-        bool arcsine_s23
+        const std::vector<std::vector<double>>& dr_min
     );
 
     Result build_forward_impl(
@@ -151,6 +163,22 @@ private:
     // term, which is applied separately) for a subset of outgoing particles.
     // Returns 0 when cuts are disabled or the subset has fewer than 2 members.
     double cut_floor(const std::vector<std::size_t>& subset) const;
+    // Floor on the squared mass of a set of outgoing particles (masses and
+    // cuts), and floor on its transverse mass: the sum of those of the
+    // particles with their pt cuts, at least the square root of the former.
+    std::array<Value, 2> set_floors(
+        FunctionBuilder& fb, const std::vector<std::size_t>& set, const ValueVec& m_out
+    ) const;
+    // Range of the squared mass of the rest system of a walk over the set s
+    // after its peel j, from a system of mass prev_mass.
+    std::array<Value, 2> rest_mass_range(
+        FunctionBuilder& fb,
+        const std::vector<std::size_t>& s,
+        std::size_t j,
+        Value prev_mass,
+        Value e_cm,
+        const ValueVec& m_out
+    ) const;
 
     // 0-indexed outgoing-particle indices (values in {0,...,n_out-1}).
     // _set1 contains the outgoing particles attached to beam 0's side,
@@ -179,12 +207,14 @@ private:
     bool _has_cut;
     bool _rapidity_window;
 
-    Invariant _uniform_invariant;
+    Invariant _mass_invariant;
     TwoToTwoParticleScattering _com_scattering;
     TwoToTwoParticleScattering _lab_scattering;
     // first peel of a single chain, whose incoming momenta are the beams
     TwoToTwoParticleScattering _chain_scattering;
     TwoToThreeParticleScattering _two_to_three;
+    // the 2->3 step of a side of two particles, with an incoming recoil
+    TwoToThreeParticleScattering _two_to_three_beam;
     DoubleT _double_t;
 };
 

@@ -154,6 +154,26 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
+  // is evaluated with: the invariant mass of its momentum, as in the Fortran
+  // standalone output (SQRT(P(0,i)**2-...)) and the C++ backends; one event per
+  // thread. The pole mass comes first only for the code generator, which maps
+  // it to its parameter.
+  template<class M_ACCESS>
+  __device__ inline fptype_amp
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
+  {
+    (void)poleMass;
+    const fptype_momenta e = M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar );
+    const fptype_momenta px = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
+    const fptype_momenta py = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
+    const fptype_momenta pz = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
+    const fptype_momenta m2 = e * e - px * px - py * py - pz * pz;
+    return static_cast<fptype_amp>( m2 > 0 ? sqrt( m2 ) : 0 );
+  }
+
+  //--------------------------------------------------------------------------
+
   // Accumulate a multichannel numerator contribution in place. All good-helicity
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.
@@ -215,7 +235,7 @@ namespace madmatrix
     cxtype_amp_sv w_sv_tmp[1][nw6];
     ALOHAOBJ aloha_obj_tmp[1];
     aloha_obj_tmp[0] = ALOHAOBJ{ pvec_sv_tmp[0], w_sv_tmp[0] };
-    cxtype_amp_sv amp_tmp_sv[1]; // to ensure proper aligment for vector instructions
+    cxtype_amp_sv amp_tmp_sv[1]; // to ensure proper alignment for vector instructions
     fptype_amp* amp_tmp_fp = reinterpret_cast<fptype_amp*>( amp_tmp_sv );
 
     // jamp: sum (for one event) of the invariant amplitudes for all Feynman diagrams in a
@@ -390,6 +410,14 @@ namespace madmatrix
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
     return nGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
+  int
+  sigmaKin_getNGoodHel()
+  {
+    return cNGoodHel; // the host copy of dcNGoodHel
   }
 
   //--------------------------------------------------------------------------

@@ -203,7 +203,7 @@ C
 	  LOGICAL HEL_INCONSISTENT	  
       %(real_dp_format)s P(0:3,NEXTERNAL)	  
 C DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C  I=1 -> ORIGINAL PS, CTMODE=1
 C  I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C  I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -350,7 +350,7 @@ C     in which case neither is its quadruple precision version.
 ## } else {
       DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
 ## }
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
 	  %(real_dp_format)s PS(0:3,NEXTERNAL)
 	  common/%(proc_prefix)sPSPOINT/PS
@@ -852,7 +852,7 @@ C In the initialization, I cannot perform stability test and therefore guarantee
   CTMODEINIT_BU=CTMODEINIT
 C So either one choses quad precision directly
 C  CTMODEINIT=4
-C Or, because this is very slow, we keep the orignal value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
+C Or, because this is very slow, we keep the original value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
   CTMODEINIT=CTMODEINIT_BU
 ENDIF
 
@@ -1213,7 +1213,7 @@ C It is however a good cross-check.
       TEMP2(2) = HEL_MULT*DBLE(CFTOT*(AMPL(2,I)*DCONJG(AMPL(1,J)) + AMPL(1,I)*DCONJG(AMPL(2,J))))
       TEMP2(3) = HEL_MULT*DBLE(CFTOT*(AMPL(3,I)*DCONJG(AMPL(1,J)) + AMPL(1,I)*DCONJG(AMPL(3,J))+AMPL(2,I)*DCONJG(AMPL(2,J))))
 ## }
-C To mimick the structure of the squared amplitude reduction, we add here the squared counterterm contribution directly to the result ANS() and put the loop contributions in the LOOPRES array which will be added to ANS later
+C To mimic the structure of the squared amplitude reduction, we add here the squared counterterm contribution directly to the result ANS() and put the loop contributions in the LOOPRES array which will be added to ANS later
       IF (I.LE.NCTAMPS) THEN
         IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
           DO K=1,3
@@ -1271,7 +1271,7 @@ C   The quantity LOOPRES defined below is not physical, but it's ok since it is 
       ENDIF
 C   The if statement below is not strictly necessary but makes it clear when it is executed.
     ELSEIF(H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 C       If both computational method is used, then we must just update RES_FROM_JAMP
         DO K=0,3
@@ -1282,7 +1282,7 @@ C       If both computational method is used, then we must just update RES_FROM_
       ENDIF
     ENDIF
 	IF (H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 	    CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS_DERIVED_QUANTITIES(HEL_MULT)
 	  ENDIF
@@ -1414,7 +1414,7 @@ ENDDO
 
 IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
   IF((USERHEL.EQ.-1).OR.(USERHEL.EQ.HELPICKED)) THEN
-C   Make sure that that no polarization constraint filters out this helicity
+C   Make sure that no polarization constraint filters out this helicity
     IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(HELPICKED)) THEN
 C     TO KEEP TRACK OF THE FINAL ANSWER TO BE RETURNED DURING CHECK PHASE
       DO I=0,NSQUAREDSO
@@ -1502,7 +1502,7 @@ C Of course if it is one, then we do not need to do anything (because with HELIN
 			ENDIF
 		  ENDDO
 		ENDIF
-C In all cases, from now on this helicity will be computed independantly of the others.
+C In all cases, from now on this helicity will be computed independently of the others.
 C In particular, it is the only thing to do if the helicity was flagged not contributing.
 		GOODHEL(HELPICKED)=1
 	  ENDIF
@@ -1534,7 +1534,7 @@ C   DOUBLE CHECK THE HELICITY FILTER
     IF (GOODHEL(HELPICKED).EQ.-HELOFFSET) THEN
 	  IF (.NOT.%(proc_prefix)sIsZero(DABS(HELSAVED(1,HELPICKED))+DABS(HELSAVED(2,HELPICKED))+DABS(HELSAVED(2,HELPICKED)),REF/DBLE(NCOMB),-1,-1)) THEN
 	    write(*,*) '##W15 Helicity filter could not be successfully double checked.'
-	    write(*,*) '##One reason for this is that you might have changed sensible parameters which affected what are the zero helicity configurations.'
+	    write(*,*) '##One reason for this is that you might have changed sensitive parameters which affected what are the zero helicity configurations.'
 	    write(*,*) '##MadLoop will try to reset the Helicity filter with the next PS points it receives.'
 	    NTRY=0
 	    OPEN(29,FILE=HelFilterFN,err=348)
@@ -1545,7 +1545,7 @@ C   DOUBLE CHECK THE HELICITY FILTER
 	IF (GOODHEL(HELPICKED).LT.-HELOFFSET.AND.NTRY.NE.0) THEN
 	  IF(%(proc_prefix)sISSAME(HELSAVED(1,HELPICKED),HELSAVED(1,ABS(GOODHEL(HELPICKED)+HELOFFSET)),REF,.TRUE.).EQ.0) THEN
 	    write(*,*) '##W15 Helicity filter could not be successfully double checked.'
-	    write(*,*) '##One reason for this is that you might have changed sensible parameters which affected the helicity dependance relations.'
+	    write(*,*) '##One reason for this is that you might have changed sensitive parameters which affected the helicity dependence relations.'
 	    write(*,*) '##MadLoop will try to reset the Helicity filter with the next PS points it receives.'
 	    NTRY=0
 	    OPEN(30,FILE=HelFilterFN,err=349)
@@ -1601,7 +1601,7 @@ C and wait for a point for which the evaluation isn't be zero.
 ## if(LoopInduced){
 ELSE
 C When not in checking mode, update the ref for the first MAXNREF_EVALS points (The ref. scale could still be used after this stage if BYPASS_CHECK was set to true at some point using SLOOPMATRIX_THRES).
-C Is is possible to simply remove the if statement below to have a running reference scale which always depends on the MAXNREF_EVALS *last* evaluations. 
+C It is possible to simply remove the if statement below to have a running reference scale which always depends on the MAXNREF_EVALS *last* evaluations.
     if (NPSPOINTS.LE.MAXNREF_EVALS) THEN
 	  TMPR = ABS(ANS(1,0)) + ABS(ANS(2,0)) + ABS(ANS(3,0))
 	  IF (TMPR.ne.0.0d0) THEN
@@ -2135,7 +2135,7 @@ C BEGIN CODE
 C ----------
 	  IF(abs(reference_value).eq.0.0d0) then
 	    %(proc_prefix)sIsZero=.FALSE.
-		write(*,*) '##E02 ERRROR Reference value for comparison is zero.'
+		write(*,*) '##E02 ERROR Reference value for comparison is zero.'
 		STOP 1
 	  else
 	    %(proc_prefix)sIsZero=((abs(toTest)/abs(reference_value)).lt.ZEROTHRES)

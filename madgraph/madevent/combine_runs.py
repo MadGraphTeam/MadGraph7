@@ -41,7 +41,7 @@ else:
     
 logger = logging.getLogger('madevent.combine_run') # -> stdout
 
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
    

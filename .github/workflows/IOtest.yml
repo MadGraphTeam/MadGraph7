@@ -45,9 +45,12 @@ jobs:
     #   IOtest_fks IOtest_fd_gauge IOtest_export
     #   IOtest_unit_proc IOtest_ewsudakov
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- IOtest_iotest_examples ----
       - name: "IOtest_iotest_examples: test IOTest framework examples"
@@ -98,18 +101,29 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   # Loop squared-order IOTest – needs UFO model cache (from unittest_29)
   IOtest_loop_sqso:
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/restore_ufomodel
       - name: test loop squared order IO test
         run: |
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py testIO_Loop_sqso_uux_ddx -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   IOtest_bundle_2:
@@ -176,12 +190,19 @@ jobs:
 
   # Gnuplot histogram output IOTest (from acceptancetest_100)
   IOtest_gnuplot:
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - name: test gnuplot histogram output IO test
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py testIO_gnuplot_histo_output -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp

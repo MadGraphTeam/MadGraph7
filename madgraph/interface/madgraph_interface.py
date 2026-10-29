@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import absolute_import
 import atexit
 import collections
+import concurrent.futures
 import cmath
 import math
 import glob
@@ -43,6 +44,7 @@ import inspect
 import urllib.request, urllib.parse, urllib.error
 import random
 import io
+import json
 #useful shortcut
 pjoin = os.path.join
 
@@ -590,6 +592,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --hepmc2       (pythia8) Build Pythia8 against HepMC2 instead of HepMC3.")
         logger.info("                    Either way, main164 is also compiled for the other HepMC version.")
         logger.info(" ")
+        logger.info("   \"install cuttools_iregi\"",'$MG:BOLD')
+        logger.info("   recompile the CutTools and IREGI libraries shipped with MadGraph7")
+        logger.info("   (in vendor/) with the current fortran compiler (option fortran_compiler).")
+        logger.info("   Needed after a change (or an update) of the fortran compiler.")
+        logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
         logger.info("   If not it load the difference between your current version and the latest one,")
@@ -792,6 +799,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --axial_gauge=True: [madevent|standalone_fortran] build the polarisation of massless vectors in the axial gauge of another external (lightlike) leg, so that whole diagrams vanish (default:False).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
+        logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
@@ -874,7 +883,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("    --lambdaCMS = <python_list> : specifies the list of lambdaCMS values to ")
         logger.info(r"      use for the test. For example: '[(1/2.0)**exp\ for\ exp\ in\ range(0,20)]'")
         logger.info("      In the list expression, you must escape spaces. Also, this option")
-        logger.info("      *must* appear last in the otpion list. Finally, the default value is '1.0e-6'")
+        logger.info("      *must* appear last in the option list. Finally, the default value is '1.0e-6'")
         logger.info("      for which an optimal list of progressive values is picked up to 1.0e-6")
         logger.info("    --show_plot = True or False: Whether to show plot during analysis (default is True)")
         logger.info("    --report = concise or full: Whether return a concise or full report.")
@@ -967,6 +976,24 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
+
+    def _log_diagram_filter_syntax(self):
+        """The diagram filter options, for 'help generate' and 'help add'."""
+        logger.info("Diagram filter syntax:",'$MG:BOLD')
+        logger.info(" o process --diagram_filter=PLUGINNAME")
+        logger.info(" o NLO process [QCD] --tree_diagram_filter=PLUGINNAME --loop_diagram_filter=PLUGINNAME")
+        logger.info(" o Example: generate u u~ > d d~ QED=2 --diagram_filter=no_photon",'$MG:color:GREEN')
+        logger.info(" > Removes the diagrams for which the function new_diagram_filter of the plugin")
+        logger.info("   PLUGINNAME (in its __init__.py) returns True. It is called as")
+        logger.info("   new_diagram_filter(diagram, model).")
+        logger.info(" > --diagram_filter applies to tree-level and MadLoop ([virt=], [noborn=])")
+        logger.info("   processes, to the Born and the loop diagrams. For NLO processes with FKS")
+        logger.info("   subtraction, --tree_diagram_filter filters the Born and real-emission")
+        logger.info("   diagrams and --loop_diagram_filter the loop diagrams of the virtual.")
+        logger.info(" > Without =PLUGINNAME, the function remove_diag of PLUGIN/user_filter.py is used.")
+        logger.info(" > Removing diagrams usually breaks gauge invariance.")
+        logger.info(" > See the 'Diagram filters' page of the documentation.")
 
     def _log_interference_syntax(self):
         """The interference syntax, for 'help generate' and 'help add'."""
@@ -1030,6 +1057,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
@@ -1070,7 +1098,24 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("        default: take value from the model")
         logger.info("  --output=X: path where to write the resulting card. ")
         logger.info("        default: overwrite input file. If no input file, write it in the model directory")
-        logger.info("  --nlo: Compute NLO width [if the model support it]")
+        logger.info("  --nlo: Compute the NLO width. With the dedicated code of the model")
+        logger.info("        (SMWidth, for the SM: QCD and EW) when it has one. Otherwise the two-body")
+        logger.info("        decays that have a colour charge are run at NLO in QCD with MC@NLO (it")
+        logger.info("        needs a model with loop information; sm uses loop_sm) and the decays into")
+        logger.info("        three bodies or more stay at LO: --nlo --body_decay=3 is the two-body")
+        logger.info("        decays at NLO and the three-body ones at LO, --body_decay=2 the two-body")
+        logger.info("        decays only. --nlo=smwidth or --nlo=mcatnlo chooses the code.")
+        logger.info("  --corrections=X: corrections of the MC@NLO runs: QCD (default), QED (the")
+        logger.info("        electroweak corrections, EW is accepted) or QCD+QED. The electroweak ones")
+        logger.info("        are for every two-body decay, not only the coloured ones, and need a")
+        logger.info("        model with loop information (loop_qcd_qed_sm).")
+        logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
+        logger.info("        default: madspace (the phase-space library of the mg7 output, with madevent")
+        logger.info("        as fallback when it is unusable). madevent is the Fortran integration of the")
+        logger.info("        former releases; it is the only one for the complex mass scheme.")
+        logger.info("")
+        logger.info("  In a param_card, a width set to auto takes the same options:")
+        logger.info("        DECAY 6 auto --nlo --body_decay=3   (DECAY 6 auto@NLO is 'auto --nlo')")
         logger.info("")
         logger.info(" example: calculate_width h --body_decay=2 --output=./param_card")
 
@@ -1119,7 +1164,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > At LO, users need to set 'group_subprocesses False' and 'me_frame' (run_card).")
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
         logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
-        logger.info(" > For the proces 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
+        logger.info(" > For the process 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
         logger.info("Polarization at NLO:",'$MG:BOLD')
         logger.info(" > A polarized massive particle needs a frame, so it is allowed for the NLO modes")
         logger.info("   that have one:")
@@ -1616,7 +1661,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 self.check_process_format(right)
             return
 
-        #check balance of paranthesis
+        #check balance of parenthesis
         if process.count('(') != process.count(')'):
             raise self.InvalidCmd('Invalid Format, no balance between open and close parenthesis')
         #remove parenthesis for fututre introspection
@@ -1643,7 +1688,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd(
                 '\"%s\" is a wrong process format. Please try again' % process)
 
-        # '/' and '$' sould be used only after the process definition
+        # '/' and '$' should be used only after the process definition
         for particles in particles_parts[:-1]:
             if re.search(r'\D/', particles):
                 raise self.InvalidCmd(
@@ -2237,7 +2282,7 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout', 'max_npoint_for_channel', 'max_t_for_channel']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('%s values should be a integer' % args[0])
+                raise self.InvalidCmd('%s values should be an integer' % args[0])
             
         if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion']:
             try:
@@ -2252,7 +2297,7 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('timeout values should be a integer')
+                raise self.InvalidCmd('timeout values should be an integer')
 
         if args[0] in ['OLP']:
             if args[1] not in MadGraphCmd._OLP_supported:
@@ -2418,13 +2463,17 @@ This will take effect only in a NEW terminal
         particles = set()
         options = {'path':None, 'output':None,
                    'min_br':None, 'body_decay':4.0025, 'precision_channel':0.01,
-                   'nlo':False}
+                   'nlo':False, 'engine':None, 'corrections':None}
         # check that the firsts argument is valid
         
         for i,arg in enumerate(args):
             if arg.startswith('--'):
                 if arg.startswith('--nlo'):
-                    options['nlo'] =True  
+                    # --nlo, or --nlo=smwidth / --nlo=mcatnlo to choose the code
+                    value = arg.partition('=')[2].lower()
+                    if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
+                        raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
+                    options['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
                     continue
                 elif not '=' in arg:
                     raise self.InvalidCmd('Options required an equal (and then the value)')
@@ -2488,6 +2537,22 @@ This will take effect only in a NEW terminal
 
         if not options['min_br']:
             options['min_br'] = (float(options['body_decay']) % 1) / 5
+        if options['engine'] is not None:
+            options['engine'] = str(options['engine']).lower()
+            if options['engine'] not in ('madspace', 'madevent'):
+                raise self.InvalidCmd(
+                    '--engine takes madspace or madevent, not %s' % options['engine'])
+        if options['corrections'] is not None:
+            try:
+                options['corrections'] = check_param_card.parse_nlo_corrections(
+                                                           options['corrections'])
+            except check_param_card.InvalidParam as error:
+                raise self.InvalidCmd(str(error))
+            if not options['nlo']:
+                raise self.InvalidCmd('--corrections needs --nlo')
+            if options['nlo'] == 'smwidth':
+                raise self.InvalidCmd('SMWidth computes the QCD and the electroweak '
+                    'corrections together: --corrections is for --nlo=mcatnlo')
         return particles, options
 
 
@@ -2699,7 +2764,7 @@ class CompleteForCmd(cmd.CompleteCmd):
             pert_couplings_allowed = []
         if self._curr_model.get('name').startswith('sm'):
             pert_couplings_allowed = pert_couplings_allowed + ['QCD']
-        # Find wether the loop mode is already set or not
+        # Find whether the loop mode is already set or not
         loop_specs = line[line.index('[')+1:]
         try:
             loop_orders = loop_specs[loop_specs.index('=')+1:]
@@ -2806,8 +2871,8 @@ class CompleteForCmd(cmd.CompleteCmd):
         if not categories:
             # The direct completion (might be needed for some completion using
             # this function but adding some other completions (like in check)).
-            # For those, it looks ok in the categorie mode on my mac, but if
-            # someone sees wierd result on Linux systems, then use the
+            # For those, it looks ok in the category mode on my mac, but if
+            # someone sees weird result on Linux systems, then use the
             # default completion for these features.
             return self.list_completion(text, particles+syntax+couplings)
         else:
@@ -2850,10 +2915,16 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
+            filters = ['%s=%s' % (opt, name) for name in
+                       misc.plugin_diagram_filter(self.plugin_path, None)
+                       for opt in ['--diagram_filter', '--tree_diagram_filter',
+                                   '--loop_diagram_filter']]
             return self.list_completion(text, ['--no_crossing', 
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
-                                               '--standalone']) 
+                                               '--tree_diagram_filter',
+                                               '--loop_diagram_filter',
+                                               '--standalone'] + filters)
 
         try:
             return self.model_completion(text, ' '.join(args[1:]),line, formatting)
@@ -3327,7 +3398,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -3743,8 +3814,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
-                     'looptools', 'MadSTR', 'RunningCoupling', 'madspace',
-                     'ninjars']
+                     'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
+                     'madspace', 'ninjars']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -3858,7 +3929,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'stdout_level':None,
                           'loop_optimized_output':True,
                           'loop_color_flows':False,
-                          'max_npoint_for_channel': 0, # 0 means automaticly adapted
+                          'max_npoint_for_channel': 0, # 0 means automatically adapted
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
@@ -3992,6 +4063,27 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
+    def extract_diagram_filter(self, args, option='--diagram_filter'):
+        """Remove the --diagram_filter[=PLUGINNAME] option from args and return
+        the filter to use: False if absent, True for the filter of
+        PLUGIN/user_filter.py (bare option, historical behaviour) or the
+        function new_diagram_filter of the plugin PLUGINNAME. The option name
+        can be changed (--tree_diagram_filter, --loop_diagram_filter)."""
+
+        diagram_filter = False
+        for arg in list(args):
+            if arg == option:
+                diagram_filter = True
+                args.remove(arg)
+            elif arg.startswith(option + '='):
+                args.remove(arg)
+                try:
+                    diagram_filter = misc.plugin_diagram_filter(
+                                      self.plugin_path, arg.split('=', 1)[1])
+                except MadGraph5Error as error:
+                    raise self.InvalidCmd(str(error))
+        return diagram_filter
+
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
     def do_add(self, line, counter=0):
@@ -4019,10 +4111,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             warning_duplicate = False
             args.remove('--no_warning=duplicate')
 
-        diagram_filter = False
-        if '--diagram_filter' in args:
-            diagram_filter = True
-            args.remove('--diagram_filter')
+        diagram_filter = self.extract_diagram_filter(args)
         
         standalone_only = False
         if '--standalone' in args:
@@ -4119,9 +4208,9 @@ This implies that with decay chains:
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
                 logger.critical("Not Supported syntax:\n"+ \
-                                "   Syntax like p p  > Z{T} Z are ambiguious" +\
+                                "   Syntax like p p  > Z{T} Z are ambiguous" +\
                                 "   Behavior is not guarantee to be stable within future version of the code." + \
-                                "   Furthemore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
+                                "   Furthermore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
                                 "   We suggest you to abort this computation")
                 ans = self.ask('Do you want to continue', 'no',['yes','no'])
                 if ans == 'no':
@@ -4133,7 +4222,7 @@ This implies that with decay chains:
             self._curr_proc_defs.append(myprocdef)
 
             try:
-                # Negative coupling order contraints can be given on at most one
+                # Negative coupling order constraints can be given on at most one
                 # coupling order (and either in squared orders or orders, not both)
                 if len([1 for val in list(myprocdef.get('orders').values())+\
                               list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -4351,34 +4440,9 @@ This implies that with decay chains:
             answer = self.ask('model conversion to support both py2 and py3 are done in place.\n They are NO guarantee of success.\n It can make the model to stop working under PY2 as well.\n Do you want to proceed?',
                      'y', ['y','n'])
             if answer != 'y':
-                return 
-        
-        #Object_library 
-        text = open(pjoin(model_dir, 'object_library.py')).read()
-        #(.iteritems() -> .items())
-        text = text.replace('.iteritems()', '.items()')
-        # raise UFOError, "" -> raise UFOError()
-        text = re.sub('raise (\\w+)\\s*,\\s*["\']([^"]+)["\']',
-                      r'raise \g<1>("\g<2>")', text)
-        text = open(pjoin(model_dir, 'object_library.py'),'w').write(text)
-        
-        # write_param_card.dat -> copy the one of the sm model
-        files.cp(pjoin(MG5DIR, 'models','sm','write_param_card.py'),
-                 pjoin(model_dir, 'write_param_card.py'))
-        
-        # __init__.py check that function_library and object_library are imported
-        text = open(pjoin(model_dir, '__init__.py')).read()
-        mod = False
-        # import function_library 
-        # from . import function_library
-        to_check =  ['object_library', 'function_library']
-        for lib in to_check:
-            if 'import %s' % lib in text:
-                continue
-            mod = True
-            text = "import %s \n" % lib + text  
-        if mod:
-            open(pjoin(model_dir, '__init__.py'),'w').write(text)
+                return
+
+        import_ufo.convert_model_py2_to_py3(model_dir, force=True)
         
         
         
@@ -4591,7 +4655,7 @@ This implies that with decay chains:
             print(' '.join([fockstate.get('name') for fockstate in self._fockstates]))
 
         elif args[0] == 'boundstates':
-            print('Bound state lables:')
+            print('Bound state labels:')
             for key in self._boundstates:
                 print(self.boundstate_string(key))
 
@@ -4649,7 +4713,7 @@ This implies that with decay chains:
 
             try:
                 ufomodel = ufomodels.load_model(self._curr_model.get('name'))
-                print('Note that this is the UFO informations.')
+                print('Note that this is the UFO information.')
                 print(' "display couplings" present the actual definition')
                 print('prints the current states of mode')
                 print(eval('ufomodel.couplings.%s.nice_string()'%args[1]))
@@ -5296,7 +5360,7 @@ This implies that with decay chains:
                 if option[1] == 'None':
                     options['events'] = None
                 elif not os.path.exists(option[1]):
-                    raise Exception('path %s does not exists' % option[1])
+                    raise Exception('path %s does not exist' % option[1])
                 else:
                     options['events'] = option[1]
             elif option[0] == '--skip_evt':
@@ -5395,7 +5459,7 @@ This implies that with decay chains:
                 except:
                     tweaks = [value]
                 if not all(isinstance(t,str) for t in tweaks):
-                    raise self.InvalidCmd("Invalid specificaiton of tweaks: %s"%value)
+                    raise self.InvalidCmd("Invalid specification of tweaks: %s"%value)
                 CMS_options['tweak'] = []
                 for tweakID, tweakset in enumerate(tweaks):
                     specs =re.match(r'^(?P<tweakset>.*)\((?P<name>.*)\)$', tweakset)
@@ -6276,7 +6340,7 @@ This implies that with decay chains:
                 coupling_alias['aS'] = 'QCD^2=2*'
         
         ## The 'split_orders' (i.e. those for which individual matrix element
-        ## evalutations must be provided for each corresponding order value) are
+        ## evaluations must be provided for each corresponding order value) are
         ## defined from the orders specified in between [] and any order for
         ## which there are squared order constraints.
         split_orders = []
@@ -6356,9 +6420,9 @@ This implies that with decay chains:
 
         # If the squared orders are defined but not the orders, assume 
         # orders=sq_orders. In case the squared order has a negative value or is
-        # defined with the '>' operato, then this order correspondingly set to 
+        # defined with the '>' operator, then this order correspondingly set to
         # be maximal (99) since there is no way to know, during generation, if 
-        # the amplitude being contstructed will be leading or not.
+        # the amplitude being constructed will be leading or not.
         # This only applies when no perturbation couplings are provided, ie
         # for LO-only generation
         if orders=={} and squared_orders!={} and not perturbation_couplings:
@@ -6856,7 +6920,7 @@ This implies that with decay chains:
                                        self._curr_model.get('order_hierarchy')
                                        [elem if not elem.endswith('.sqrt') else elem[:-5]])
             except KeyError:
-                raise self.InvalidCmd("The loaded model does not defined a "+\
+                raise self.InvalidCmd("The loaded model does not define a "+\
                     " coupling order hierarchy for these couplings: %s"%\
                       str([so for so in split_orders if so!='WEIGHTED' and so not 
                                  in list(self._curr_model['order_hierarchy'].keys())]))
@@ -6909,7 +6973,7 @@ This implies that with decay chains:
                 required_schannel_ids = \
                                self.extract_particle_ids(required_schannels, crash_on_duplication=True)
             except DuplicateParticle:
-                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MadGraph7, this was allowed but incorectly intrepreted as \"> A >\".")
+                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In older versions of MadGraph7, this was allowed but incorrectly interpreted as \"> A >\".")
 
             if required_schannel_ids and not \
                    isinstance(required_schannel_ids[0], list):
@@ -7089,6 +7153,17 @@ This implies that with decay chains:
             #if not isinstance(self, extended_cmd.CmdShell):
             #    raise self.InvalidCmd, "loop_filter is not allowed in web mode"
         args = [a for a in args if not a.startswith('--loop_filter=')]
+        diagram_filter = self.extract_diagram_filter(args)
+        # the options of the NLO (FKS) generation, which falls back to this
+        # mode when it finds no Born diagram: no Born diagram is generated
+        # here, the loop filter is the diagram filter of this mode
+        if self.extract_diagram_filter(args, '--tree_diagram_filter'):
+            raise self.InvalidCmd("No Born diagram for %s: it can not be "
+                "filtered with --tree_diagram_filter (in the loop-induced mode "
+                "use --diagram_filter or --loop_diagram_filter)." %
+                ' '.join(a for a in args if not a.startswith('--')))
+        diagram_filter = self.extract_diagram_filter(args,
+                                    '--loop_diagram_filter') or diagram_filter
         
         if not myprocdef:
             myprocdef = self.extract_process(' '.join(args))
@@ -7115,7 +7190,7 @@ This implies that with decay chains:
              self._curr_amps[0]['has_born']):
             raise self.InvalidCmd("Can not mix loop induced process with not loop induced process")
             
-        # Negative coupling order contraints can be given on at most one
+        # Negative coupling order constraints can be given on at most one
         # coupling order (and either in squared orders or orders, not both)
         if len([1 for val in list(myprocdef.get('orders').values())+\
                       list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -7135,14 +7210,15 @@ This implies that with decay chains:
                        "ignore_six_quark_processes" in self.options \
                        else []
 
-        # Decide here wether one needs a LoopMultiProcess or a MultiProcess
+        # Decide here whether one needs a LoopMultiProcess or a MultiProcess
 
         try:
             myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
                                  collect_mirror_procs = collect_mirror_procs,
                                  ignore_six_quark_processes = ignore_six_quark_processes,
                                  optimize=optimize,
-                                 loop_filter=loop_filter)
+                                 loop_filter=loop_filter,
+                                 diagram_filter=diagram_filter)
             amplitudes = myproc.get('amplitudes')
         except diagram_generation.NoDiagramException:
             if myprocdef.get_interference_mode() != 'LIxtree':
@@ -7445,7 +7521,7 @@ This implies that with decay chains:
             if not line.strip():
                 break
             index_par = line.find(')')
-            # special cases: parenthesis but no , => remove the paranthesis!
+            # special cases: parenthesis but no , => remove the parenthesis!
             if line.lstrip()[0] == '(' and index_par !=-1 and \
                                                     not ',' in line[:index_par]:
                 par_start = line.find('(')
@@ -7546,7 +7622,7 @@ This implies that with decay chains:
                             except Exception:
                                 raise err
                     else:
-                        raise self.InvalidCmd('UFO model not python3 compatible. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
+                        raise self.InvalidCmd('UFO model is not compatible with Python 3. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
                 if os.path.sep in args[1] and "import" in self.history[-1]:
                     self.history[-1] = 'import model %s' % self._curr_model.get('modelpath+restriction')
 
@@ -7642,7 +7718,7 @@ This implies that with decay chains:
                 raise MadGraph5Error('No default directory in output')
 
 
-            #convert and excecute the card
+            #convert and execute the card
             self.import_mg4_proc_card(proc_card)
 
     def remove_pointless_decay(self, param_card):
@@ -8041,6 +8117,52 @@ This implies that with decay chains:
 
         return self._fockstates
 
+    def install_cuttools_iregi(self):
+        """Recompile from scratch the CutTools and IREGI libraries of vendor/
+        with the current fortran compiler, for instance after an update of
+        gfortran (the loop runs refuse a CutTools compiled by another one)."""
+
+        compiler = self.options['fortran_compiler'] or 'gfortran'
+        try:
+            version = misc.get_gfortran_version(compiler)
+        except Exception:
+            raise self.InvalidCmd('Fortran compiler "%s" not found: check the '
+                                  'option fortran_compiler.' % compiler)
+
+        ct_dir = pjoin(MG5DIR, 'vendor', 'CutTools')
+        current = misc.detect_current_compiler(pjoin(ct_dir, 'makefile'))
+        if current != compiler:
+            misc.mod_compilator(ct_dir, compiler, current)
+        logger.info('Compiling CutTools with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        misc.compile(['clean'], cwd=ct_dir, job_specs=False)
+        misc.compile(cwd=ct_dir, job_specs=False)
+        for name in ['libcts.a', 'mpmodule.mod']:
+            if not os.path.exists(pjoin(ct_dir, 'includects', name)):
+                raise MadGraph5Error('CutTools could not be compiled in %s.'
+                                     % ct_dir)
+
+        iregi_dir = pjoin(MG5DIR, 'vendor', 'IREGI', 'src')
+        current = misc.detect_current_compiler(pjoin(iregi_dir,
+                                                     'makefile_ML5_lib'))
+        if current != compiler:
+            misc.mod_compilator(iregi_dir, compiler, current)
+        logger.info('Compiling IREGI with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        # the IREGI makefiles locate their sources through $(PWD)
+        env = dict(os.environ, PWD=iregi_dir)
+        misc.compile(['-f', 'makefile_ML5_lib', 'clean'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        misc.compile(['-f', 'makefile_ML5_lib'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        if not os.path.exists(pjoin(iregi_dir, 'libiregi.a')):
+            raise MadGraph5Error('IREGI could not be compiled in %s.'
+                                 % iregi_dir)
+        # the same record as CutTools, checked before the loop runs
+        with open(pjoin(iregi_dir, 'compiler_version.log'), 'w') as fsock:
+            fsock.write('%s\n' % version)
+        logger.info('CutTools and IREGI recompiled.')
+
     def install_pythia8_main164(self, prefix, config_file, add_options):
         """Compile main164, the Pythia8 program MadEvent showers with, for both
         HepMC2 and HepMC3 (installing the HepMC version Pythia8 was not
@@ -8055,6 +8177,14 @@ This implies that with decay chains:
             logger.warning('Pythia8 is installed but its main164 could not be ' +
                 'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
             return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
         # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
         if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
             self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
@@ -8221,7 +8351,7 @@ This implies that with decay chains:
             elif lhapdf_version==6:
                 lhapdf_option.append('--with_lhapdf5=OFF')
                 lhapdf_option.append('--with_lhapdf6=%s'%lhapdf_path)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
 
@@ -8234,7 +8364,7 @@ This implies that with decay chains:
                         + lhapdf_option + compiler_options + add_options)
         else:
             logger.info('Now installing %s. Be patient...'%tool)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -8485,6 +8615,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                 self.exec_cmd('save options %s ninjars' % config_file,
                               printcmd=False, log=False)
             return
+        elif args[0] == 'cuttools_iregi':
+            self.install_cuttools_iregi()
+            return
         elif args[0] == 'madspace':
             install_script = pjoin(MG5DIR, 'madspace', 'install.py')
             install_args = args[1:]
@@ -8585,7 +8718,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             
         if args[0] in self._advanced_install_opts:
             # Now launch the advanced installation of the tool args[0]
-            # path['HEPToolsInstaller'] is the online adress where to downlaod
+            # path['HEPToolsInstaller'] is the online address where to download
             # the installers if necessary.
             add_options.extend(install_options['options_for_HEPToolsInstaller'])
             if not any(opt.startswith('--logging=') for opt in add_options):
@@ -8765,12 +8898,12 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                 plugin = sys.modules['PLUGIN.%s' % name] 
                 new_interface = plugin.new_interface
                 new_output = plugin.new_output
-                latest_validated_version = plugin.latest_validated_version
-                minimal_mg5amcnlo_version = plugin.minimal_mg5amcnlo_version
-                maximal_mg5amcnlo_version = plugin.maximal_mg5amcnlo_version
+                latest_validated_version = getattr(plugin,
+                                         'latest_validated_mg7_version',
+                                         getattr(plugin, 'latest_validated_version', ''))
             except Exception as error:
                 print(error)
-                logger.warning('Plugin not python3 compatible! It will run with python2')
+                logger.warning('Plugin is not compatible with Python 3! It will run with python2')
                 text = open(os.path.join(MG5DIR, 'PLUGIN', name, '__init__.py')).read()
                 if re.search(r'^\s*new_interface\s*=\s*(?!None).', text, re.M):
                     new_interface = True
@@ -8779,8 +8912,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                     misc.sprint(text)
                 new_output = []
                 latest_validated_version = ''
-                minimal_mg5amcnlo_version = ''
-                maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
             logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
@@ -8941,7 +9072,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             #pattern = re.compile(r'''=== removed file \'(?P<new>[^\']*)\'''')
             #all_rm = pattern.findall(text)
             pattern=re.compile(r'''=== removed file \'(?P<new>[^\']*)\'(?=.*=== added file \'(?P=new)\')''',re.S)
-            print('this step can take a few minuts. please be patient')
+            print('this step can take a few minutes. please be patient')
             all_rm_add = pattern.findall(text)
             #=== added file 'tests/input_files/full_sm/interactions.dat'
             for new in all_add:
@@ -9325,7 +9456,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         config_file.close()      
         self.options['stdout_level'] = logging.getLogger('madgraph').level
         if not final:
-            return self.options # the return is usefull for unittest
+            return self.options # the return is useful for unittest
 
         # Treat each expected input
         # 1: Pythia8_path and hewrig++ paths
@@ -9459,8 +9590,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return self.options
 
     def check_for_export_dir(self, filepath):
-        """Check if the files is in a valid export directory and assign it to
-        export path if if is"""
+        """Check if the file is in a valid export directory and assign it to
+        export path if it is"""
 
         # keep previous if a previous one is defined
         if self._export_dir:
@@ -9475,7 +9606,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             self._export_dir = os.path.sep.join(path_split[:-2])
             return
 
-    def setup_mg7_environment(self):
+    def setup_mg7_environment(self, lhapdf=True):
         """Export what an mg7 run needs from MG5's configuration.
 
         These used to be built into the environment of the bin/generate_events
@@ -9483,6 +9614,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         the run shells out to (the madspace build, the real LHAPDF library used
         by systematics/MadSpin/reweight), and the only channel those have is
         os.environ -- so set it here rather than per child process.
+
+        ``lhapdf=False`` leaves LHAPDF out, for a run without PDFs (the survey
+        of a decay).
         """
         # The one-off madspace build picks up a cmake installed through MG5's
         # 'install cmake' from here (heptools_install_dir may point outside
@@ -9492,6 +9626,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if not os.path.isabs(heptools_dir):
                 heptools_dir = pjoin(MG5DIR, heptools_dir)
             os.environ['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+
+        if not lhapdf:
+            return
 
         # The resolved LHAPDF location. The launcher resolves it the same way on
         # its own (launch.lhapdf_paths), so this only matters for the real
@@ -11092,10 +11229,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             if not old:
                 if log:
-                    logger.info('Complex mass already desactivated.')
+                    logger.info('Complex mass already deactivated.')
                 return
             if log:
-                logger.info('Desactivate complex mass scheme.')
+                logger.info('Deactivate complex mass scheme.')
         if not self._curr_model:
             return
         self.do_import("model %s" % self._curr_model.get('name'), options={'allow_qed_cms':True})
@@ -11473,7 +11610,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if major_version != sys.version_info[0] or \
                minor_version != sys.version_info[1]:
                return  
-            # remove the --python- arguent to not include it in the option/configuration file
+            # remove the --python- argument to not include it in the option/configuration file
             del args[2]
 
         to_do = True
@@ -11491,10 +11628,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             except Exception:
                 res = 1
             if res != 0 and args[1] != 'None':
-                logger.info('%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
+                # the shipped default just means "no LHAPDF here", which the
+                # mg7 output does not need (it downloads the PDF sets itself)
+                log_level = logging.DEBUG if args[1] == 'lhapdf-config' else logging.INFO
+                logger.log(log_level, '%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
-                        'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
+                        'Note that you can still compile and run aMC@NLO with the built-in PDFs,\n' + \
+                        'and the mg7 output downloads its PDF sets without LHAPDF\n' + \
                         ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
@@ -11979,7 +12120,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def set2_automatic_html_opening(self, args, log=True):
         """Set whether the code should automatically open the html status page when
-        running madevent executation (default: yes).
+        running madevent execution (default: yes).
         """
         return self.set_default('automatic_html_opening', args, log=log)
     
@@ -12054,7 +12195,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
     def set2_dmtcp(self, args, log=True):
         """ Usage: set dmtcp /PATH/TO/dmtcp_install_directory
-            usefull only if checkpointing is True.
+            useful only if checkpointing is True.
             DMTCP installation directory should contain bin/dmtcp_restart and bin/dmtcp_launch
         """
         args = ['dmtcp'] + args
@@ -12123,7 +12264,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Be careful:
         # This command is associated to a post_cmd: post_set.
         # This command mainly delegates to set2_xxx functions.
-        # which is the recomend way to provide help via docstrings.
+        # which is the recommended way to provide help via docstrings.
         args = self.split_arg(line)
 
         if args and cmd.is_removed_option(args[0]):
@@ -13190,6 +13331,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 pairs.append(('Hagebock:2025jyk',
                                'data-parallel matrix-element evaluation (MadMatrix)'))
 
+        # NLO output: FKS subtraction (MadFKS) and, when virtuals are
+        # generated by MadLoop, the one-loop matrix elements
+        if self._export_format == 'NLO':
+            pairs.append(('Frederix:2009yq',
+                           'FKS subtraction (MadFKS)'))
+            try:
+                has_virt = bool(self._fks_multi_proc.get_virt_amplitudes())
+            except Exception:
+                has_virt = False
+            if has_virt and self.options.get('OLP', 'MadLoop') == 'MadLoop':
+                pairs.append(('Hirschi:2011pa',
+                               'one-loop matrix elements (MadLoop)'))
+
         # running couplings (model-level RGE)
         try:
             if self._curr_model and self._curr_model.get('running_elements'):
@@ -13221,7 +13375,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('could not write generation citations: %s', error)
 
     def do_help(self, line):
-        """ propose some usefull possible action """
+        """ propose some useful possible action """
 
         super(MadGraphCmd,self).do_help(line)
 
@@ -13280,7 +13434,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except ImportError:
             pass
 
-        if '--nlo' not in line:
+        if not re.search(r'--nlo(?:\s|$|=(?!false))', line):
             warning_text = """Please note that the automatic computation of the width is
     only valid in narrow-width approximation and at tree-level."""
             logger.warning(warning_text)
@@ -13294,10 +13448,40 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)
 
-        if '--nlo' in line:
-            # call SMWidth to calculate NLO Width
-            self.compute_widths_SMWidth(line, model=model)
-            return
+        nlo = re.search(r'--nlo(?:=(\w+))?(?:\s|$)', line)
+        nlo_code = nlo.group(1).lower() if nlo and nlo.group(1) else None
+        if nlo_code not in (None, 'true', 'false', 'smwidth', 'mcatnlo'):
+            raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % nlo_code)
+        if nlo_code == 'false':
+            nlo = None
+        if nlo_code in ('true', 'false'):
+            nlo_code = None
+        # SMWidth does not choose its corrections (QCD and EW): asking for some is
+        # asking for MC@NLO
+        mcatnlo_only = re.search(r'--corrections=', line) is not None
+        if nlo and (nlo_code == 'smwidth' or
+                    (nlo_code is None and not mcatnlo_only and self.has_smwidth(model))):
+            # the dedicated code of the model for the NLO widths (the SM)
+            return self.compute_widths_SMWidth(line, model=model)
+
+        # the decay model of this computation, if the LO step makes one: the NLO
+        # step needs the tree-level diagrams of the same model, and a second decay
+        # model made from the first one's model finds its vertices twice
+        self._widths_decaymodel = None
+
+        decay_info, particles, opts = self._compute_widths_lo(line, model, do2body,
+                                                              decaymodel)
+        if nlo:
+            # no dedicated code, or MC@NLO asked for: the two-body decays are run at
+            # NLO with MC@NLO
+            decay_info = self.compute_widths_nlo(particles, opts, decay_info,
+                                                 model, decaymodel)
+        return decay_info
+
+    def _compute_widths_lo(self, line, model, do2body, decaymodel):
+        """The LO widths of do_compute_widths. Returns the decay_info (the
+        partial widths of every particle, {pid: [[decay products, width], ...]}),
+        the particles and the options of the command."""
 
         # check the argument and return those in a dictionary format
         particles, opts = self.check_compute_widths(self.split_arg(line))
@@ -13306,7 +13490,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -13347,7 +13531,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                             value_mass = eval(str(p.mass), data)
                         except Exception:
                             # the p object can still be UFO reference. since the 
-                            # mass name might hve change load back the MG5 one.
+                            # mass name might have changed load back the MG5 one.
                             value_mass = eval(str(model.get_particle(p.pdg_code).get('mass')), data)
                         tmp_mass -= abs(value_mass)             
                     if tmp_mass <=0:
@@ -13375,7 +13559,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
                                                        opts['path'], opts['output'])
                 if float(opts['body_decay']) == 2:
-                    return  decay_info
+                    return decay_info, particles, opts
         else:
             skip_2body = True
 
@@ -13386,14 +13570,45 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.do_decay_diagram('%s %s' % (' '.join([repr(id) for id in particles]),
                                          ' '.join('--%s=%s' % (key,value)
                                                   for key,value in opts.items()
-                                                  if key not in ['precision_channel'])
+                                                  if key not in ['precision_channel', 'engine',
+                                                                 'corrections'])
                                          ), skip_2body=skip_2body, model=decaymodel)
+        self._widths_decaymodel = self._curr_decaymodel
 
         if self._curr_amps:
             logger.info('Pass to numerical integration for computing the widths:')
         else:            
             logger.info('No need for N body-decay (N>2). Results are in %s' % opts['output'])
-            return  decay_info
+            return decay_info, particles, opts
+
+        engine = opts['engine'] or 'madspace'
+        if engine == 'madspace' and (self.options.get('complex_mass_scheme') or
+                                     aloha.complex_mass):
+            # the mg7 output has no complex mass scheme: its matrix elements
+            # would not even compile
+            if opts['engine']:
+                raise self.InvalidCmd('madspace does not support the complex mass '
+                                      'scheme. Use --engine=madevent.')
+            logger_mg.info('The complex mass scheme is not supported by madspace: '
+                           'the widths are computed with madevent.')
+            engine = 'madevent'
+        if engine == 'madspace':
+            try:
+                decay_info = self.integrate_widths_madspace(opts, decay_info)
+            except Exception as error:
+                if opts['engine']:
+                    # asked for explicitly: do not hide that it does not work
+                    raise
+                logger.warning('The width integration with madspace failed (%s).\n'
+                               'Falling back to madevent. Use --engine=madevent '
+                               'to select it and silence this message.', error)
+                logger.debug('madspace width failure', exc_info=True)
+            else:
+                madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
+                                                           opts['path'], opts['output'])
+                if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                    check_param_card.convert_to_slha1(opts['output'])
+                return decay_info, particles, opts
 
         # Do the MadEvent integration!!
         with misc.TMP_directory(dir=os.getcwd()) as path:
@@ -13479,9 +13694,341 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
             check_param_card.convert_to_slha1(opts['output'])
+        return decay_info, particles, opts
+
+
+
+    def run_madspace_decay_widths(self, decay_dir, precision):
+        """Integrate the decays of an mg7 output with madspace, in a process of
+        its own (see launch.compute_decay_widths), and return their widths."""
+        result_file = pjoin(decay_dir, 'decay_widths.json')
+        log_file = pjoin(decay_dir, 'decay_widths.log')
+        cmd = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
+               '--decay-widths=%s' % result_file, '--precision=%s' % precision]
+        if self.options['nb_core']:
+            cmd.append('--nb-core=%s' % self.options['nb_core'])
+        with open(log_file, 'w') as log:
+            returncode = subprocess.call(cmd, cwd=decay_dir, stdout=log,
+                                         stderr=subprocess.STDOUT,
+                                         stdin=subprocess.DEVNULL)
+        if returncode:
+            with open(log_file) as log:
+                tail = ''.join(log.readlines()[-15:])
+            raise MadGraph5Error('madspace failed to integrate the decays '
+                                 '(exit status %s):\n%s' % (returncode, tail))
+        with open(result_file) as fin:
+            return json.load(fin)
+
+    def integrate_widths_madspace(self, opts, decay_info):
+        """Integrate the N-body decays of self._curr_amps with madspace.
+
+        Counterpart of the MadEvent integration of do_compute_widths: the
+        amplitudes of the decay_diagram command are written as an mg7 output
+        and its survey (madspace) gives the partial widths. One output
+        directory per decaying particle, since a madspace decay directory has a
+        single decaying mass. The partial widths are added to a copy of
+        decay_info (the same {pid: [[decay products, width], ...]} the
+        two-body formulas fill), which is returned: when a particle fails
+        after others succeeded, the caller still has the decay_info it would
+        hand to MadEvent.
+        """
+        from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+        # the survey of a decay uses no PDF: only the build needs the environment
+        self.setup_mg7_environment(lhapdf=False)
+        mg7_bootstrap.ensure_madspace(interactive=False,
+                                      jobs=self.options['nb_core'])
+        decay_info = copy.deepcopy(decay_info)
+
+        amps_by_pid = collections.OrderedDict()
+        for amp in self._curr_amps:
+            pid = abs(amp.get('process').get('legs')[0].get('id'))
+            amps_by_pid.setdefault(pid, []).append(amp)
+
+        all_amps = self._curr_amps
+        start = time.time()
+        try:
+            for pid, amps in amps_by_pid.items():
+                self._curr_amps = diagram_generation.AmplitudeList(amps)
+                # 'output' only builds the matrix elements when there are none:
+                # without this every particle after the first would export the
+                # matrix elements of the previous one
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+                particle = self._curr_model.get_particle(pid)
+                with misc.TMP_directory(dir=os.getcwd()) as path:
+                    decay_dir = pjoin(path, 'temp_decay')
+                    with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent',
+                                          'madgraph7'], [40]*5):
+                        self.exec_cmd('output mg7 %s -f' % decay_dir, child=False)
+                        # the param_card to use is the one of the madevent run
+                        if os.path.exists(opts['output']):
+                            files.cp(opts['output'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        else:
+                            files.cp(opts['path'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                            check_param_card.convert_to_slha1(pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        results = self.run_madspace_decay_widths(
+                            decay_dir, float(opts['precision_channel']))
+
+                # one entry per final state: a decay can come in several flavour
+                # assignments or subprocesses
+                partial = collections.OrderedDict()
+                for res in results:
+                    key = tuple(sorted(res['outgoing']))
+                    partial[key] = partial.get(key, 0.) + res['width']
+                total = sum(partial.values())
+                error = sum(res['error']**2 for res in results) ** 0.5
+                logger_mg.info('%s: width from the N-body decays = %.5g +- %.2g GeV',
+                               particle.get('name'), total, error)
+                if pid not in decay_info:
+                    decay_info[pid] = []
+                for decay_to, width in partial.items():
+                    if 0 < width < 0.1 and particle['color'] != 1:
+                        logger.warning("partial width of particle %s lower than QCD scale:%s. Set it to zero. (%s)" \
+                                       % (particle.get('name'), width, list(decay_to)))
+                        continue
+                    decay_info[pid].append([list(decay_to), width])
+        finally:
+            self._curr_amps = all_amps
+            self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        logger_mg.debug('madspace widths computed in %.1f s', time.time() - start)
         return decay_info
 
+    @staticmethod
+    def has_smwidth(model):
+        """Does the model come with SMWidth, the dedicated code (HDECAY) of the
+        NLO widths of the Standard Model?"""
+        return os.path.exists(pjoin(model.get('modelpath'), 'SMWidth'))
 
+    def compute_widths_nlo(self, particles, opts, decay_info, model, decaymodel=None):
+        """NLO widths of the two-body decays, with MC@NLO (aMC@NLO at fixed
+        order). Used by 'compute_widths --nlo' when the model has no dedicated
+        code for it (SMWidth), or with '--corrections'.
+
+        ``decay_info`` holds the LO widths. The corrections are those of
+        opts['corrections']: QCD (the default), QED (the electroweak ones), or both.
+        A two-body decay is run at NLO and its width replaced when it has a QCD
+        correction -- a colour charge in the decaying particle or in a decay product
+        -- or, with the electroweak corrections, always: every decay has one. The
+        decays into three bodies or more stay at LO, which is what '--body_decay=3'
+        asks for with '--nlo'. The param_card is rewritten with the sums.
+
+        A decay that cannot be run (a model without loop information, ...) keeps
+        its LO width, with a warning. Returns the new decay_info."""
+
+        corrections = (opts.get('corrections') or 'QCD').split('+')
+        if 'QED' in corrections and 'QED' not in (self._curr_model.get('perturbation_couplings') or []):
+            logger.warning('The model has no QED loop information: the electroweak '
+                'corrections are computed with the loop model MG finds for it '
+                '(loop_qcd_qed_sm), whose electroweak input scheme and parameters may '
+                'not be those of the card. Load a model with loop information '
+                '(loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu) to choose them.')
+        channels = []
+        for pid in particles:
+            decaying = model.get_particle(pid)
+            for index, (decay_to, width) in enumerate(decay_info.get(pid, [])):
+                if len(decay_to) != 2 or not width:
+                    continue
+                products = [model.get_particle(abs(code)) for code in decay_to]
+                if 'QED' not in corrections and \
+                        all(p.get('color') == 1 for p in [decaying] + products):
+                    continue # no QCD correction
+                channels.append((pid, index, tuple(decay_to)))
+        if not channels:
+            logger_mg.info('None of the two-body decays has a %s correction: '
+                           'the widths are the LO ones.', '+'.join(corrections))
+            return decay_info
+
+        orders = self.two_body_born_orders(sorted(set(pid for pid, _, _ in channels)),
+                                           opts, decaymodel)
+        model_ref = self._curr_model.get('modelpath+restriction')
+        param_card = opts['output'] if os.path.exists(opts['output']) else opts['path']
+        precision = float(opts['precision_channel'])
+
+        with misc.MuteLogger(['madgraph'], [40]):
+            default_names = base_objects.Model.load_default_name()
+
+        def process_line(pid, decay_to):
+            names = [self.particle_name(model, pid, default_names)] + \
+                    [self.particle_name(model, code, default_names) for code in decay_to]
+            born = orders.get((pid, tuple(sorted(decay_to))))
+            if born is None:
+                raise MadGraph5Error('no tree-level diagram for this decay')
+            hierarchy = self._curr_model.get('order_hierarchy') or {'QCD': 1, 'QED': 2}
+            born = ' '.join('%s=%d' % (name, born.get(name, 0)) for name in hierarchy)
+            return '%s > %s %s %s [%s]' % (names[0], names[1], names[2], born,
+                                           ' '.join(corrections))
+
+        # Flavours the model treats alike (u and c, d and s, W > u d~ and W > c s~
+        # in the SM) have the same LO width to the last digit and the same NLO
+        # width: run one of them. The same decaying particle, the same colours,
+        # masses and charges of the decay products, and the same LO width.
+        # The electroweak corrections also see the isospin partner of the decay
+        # products, in the loops: the b, whose partner is the top quark, is not a d
+        # (Z > b b~ is 1.5% lower than Z > d d~ at NLO EW). Only the light quarks of
+        # a type, and the leptons and the neutrinos of the three families, are taken
+        # as alike for them; any other particle has its own run.
+        def kind(code):
+            code = abs(code)
+            for name, codes in (('d', (1, 3)), ('u', (2, 4)), ('l', (11, 13, 15)),
+                                ('v', (12, 14, 16))):
+                if code in codes:
+                    return name
+            return code
+
+        def signature(channel):
+            pid, index, decay_to = channel
+            products = [model.get_particle(abs(code)) for code in decay_to]
+            flavours = tuple(sorted(str(kind(code)) for code in decay_to)) \
+                       if 'QED' in corrections else ()
+            return (pid, tuple(sorted((p.get('color'), str(p.get('mass')), p.get('charge'))
+                                      for p in products)), flavours,
+                    float('%.9g' % decay_info[pid][index][1]))
+
+        signatures = [signature(channel) for channel in channels]
+        unique = []
+        for number, sig in enumerate(signatures):
+            if sig not in [signatures[first] for first in unique]:
+                unique.append(number)
+        workers = max(1, min(len(unique), 4))
+        cores = max(1, (self.options['nb_core'] or os.cpu_count() or 1) // workers)
+
+        logger_mg.info('NLO %s width of %d two-body decay(s) with MC@NLO (%d run(s)) ...',
+                       '+'.join(corrections), len(channels), len(unique))
+        start = time.time()
+        with misc.TMP_directory(dir=os.getcwd()) as path:
+            def run(number):
+                pid, _, decay_to = channels[number]
+                try:
+                    return self.run_mcatnlo_width(
+                        pjoin(path, 'nlo_%d' % number), process_line(pid, decay_to),
+                        model_ref, param_card, precision, cores)
+                except Exception as error:
+                    return error
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                done = dict(zip(unique, pool.map(run, unique)))
+        outcomes = [done[next(first for first in unique if signatures[first] == sig)]
+                    for sig in signatures]
+
+        decay_info = copy.deepcopy(decay_info)
+        for (pid, index, decay_to), outcome in zip(channels, outcomes):
+            name = '%s > %s' % (self.particle_name(model, pid, default_names),
+                    ' '.join(self.particle_name(model, code, default_names)
+                             for code in decay_to))
+            lo = decay_info[pid][index][1]
+            if isinstance(outcome, Exception):
+                logger.warning('NLO width of %s failed (%s): the LO width %.5g GeV is kept.',
+                               name, outcome, lo)
+                continue
+            width, error = outcome
+            logger_mg.info('NLO width of %s: %.5g +- %.2g GeV (LO %.5g GeV, NLO/LO = %.3f)',
+                           name, width, error, lo, width / lo)
+            decay_info[pid][index][1] = width
+        logger_mg.debug('NLO widths computed in %.1f s', time.time() - start)
+
+        madevent_interface.MadEventCmd.update_width_in_param_card(
+                                      decay_info, opts['output'], opts['output'])
+        return decay_info
+
+    @staticmethod
+    def particle_name(model, code, default=None):
+        """The name of the particle of pdg code ``code`` (negative: the antiparticle)
+        in the MG convention (mu-, ta+, ...), which is the one of a session that imports
+        the model: the NLO runs generate their process in such a session, whereas
+        the model of the decays keeps the names of the UFO (m-, tt+). ``default`` is
+        the table of these names, read when it is not given."""
+        if default is None:
+            with misc.MuteLogger(['madgraph'], [40]):
+                default = base_objects.Model.load_default_name()
+        if code in default:
+            return default[code]
+        particle = model.get_particle(abs(code))
+        return particle.get('name') if code > 0 else particle.get('antiname')
+
+    def two_body_born_orders(self, pids, opts, decaymodel=None):
+        """The coupling orders of the tree-level two-body decays of the particles
+        ``pids``: {(pid, sorted decay products): {'QED': 1}}. The NLO process
+        needs them, 'generate t > w+ b [QCD]' cannot guess them."""
+        all_amps = self._curr_amps
+        try:
+            self.do_decay_diagram('%s --body_decay=2 --path=%s' % (
+                  ' '.join(str(pid) for pid in pids), opts['path']),
+                  skip_2body=False, model=decaymodel or self._widths_decaymodel)
+            orders = {}
+            for amp in self._curr_amps:
+                legs = amp.get('process').get('legs')
+                key = (abs(legs[0].get('id')), tuple(sorted(l.get('id') for l in legs[1:])))
+                orders[key] = dict(amp.get('diagrams')[0].get('orders'))
+        finally:
+            self._curr_amps = all_amps
+        return orders
+
+    def run_mcatnlo_width(self, workdir, process, model_ref, param_card, precision, nb_core):
+        """The NLO (QCD) partial width of a decay, with aMC@NLO at fixed order:
+        'process' is generated with its [QCD] correction, exported, and run, in
+        processes of their own. ``param_card`` gives the values of the
+        parameters. Returns the width and its error, in GeV."""
+        os.makedirs(workdir)
+        proc_dir = pjoin(workdir, 'PROC_NLO')
+
+        def run(cmd, log_name):
+            log_path = pjoin(workdir, log_name)
+            with open(log_path, 'w') as log:
+                returncode = subprocess.call(cmd, cwd=workdir, stdout=log,
+                                             stderr=subprocess.STDOUT,
+                                             stdin=subprocess.DEVNULL)
+            with open(log_path) as log:
+                text = log.read()
+            if returncode or re.search(r'Error detected|interrupted with error|Traceback', text):
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                # the error of MG, 'InvalidCmd : ...', or the last line
+                message = next((l for l in reversed(lines)
+                                if re.match(r'\w*(Error|Exception|Cmd)\w* ?:', l)),
+                               lines[-1] if lines else 'exit status %s' % returncode)
+                raise MadGraph5Error('%s (%s)' % (message, log_path))
+            return text
+
+        script = pjoin(workdir, 'generate.mg5')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            if aloha.complex_mass:
+                fsock.write('set complex_mass_scheme True\n')
+            # the gauge of the session, which a model such as loop_qcd_qed_sm needs
+            gauge = self.options.get('gauge')
+            if gauge and gauge not in ('unitary', 'default'):
+                fsock.write('set gauge %s\n' % gauge)
+            fsock.write('import model %s\n' % model_ref)
+            fsock.write('generate %s\n' % process)
+            fsock.write('output %s -f\n' % proc_dir)
+        run([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), script], 'generate.log')
+
+        # the parameters of the user, in the card the loop model wrote
+        card = pjoin(proc_dir, 'Cards', 'param_card.dat')
+        check_param_card.merge_param_card_values(param_card, card)
+        run_card = pjoin(proc_dir, 'Cards', 'run_card.dat')
+        with open(run_card) as fsock:
+            text = fsock.read()
+        text = re.sub(r'(?m)^(\s*)[-\d.eE+]+(\s*=\s*req_acc_FO\b)',
+                      lambda m: '%s%s%s' % (m.group(1), precision, m.group(2)), text)
+        with open(run_card, 'w') as fsock:
+            fsock.write(text)
+
+        script = pjoin(workdir, 'launch.txt')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            fsock.write('launch NLO -f\n')
+        run([sys.executable, pjoin(proc_dir, 'bin', 'aMCatNLO'), script], 'launch.log')
+
+        pattern = re.compile(r'\(Partial\) decay width:\s*([-+\d.eE]+)\s*\+-\s*([-+\d.eE]+)\s*GeV')
+        for summary in sorted(glob.glob(pjoin(proc_dir, 'Events', '*', 'summary.txt')),
+                              reverse=True):
+            with open(summary) as fsock:
+                found = pattern.search(fsock.read())
+            if found:
+                return float(found.group(1)), float(found.group(2))
+        raise MadGraph5Error('no width in the results of aMC@NLO (%s)' % workdir)
 
     # Calculate decay width with SMWidth
     def compute_widths_SMWidth(self, line, model=None):
@@ -13495,7 +14042,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -13546,26 +14093,46 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             misc.compile(cwd=pjoin(model_path, 'SMWidth'))
 
         # look for the ident_card.dat
-        identpath=" "
         carddir=os.path.dirname(opts['path'])
-        if 'ident_card.dat' in os.listdir(carddir):
-            identpath=pjoin(carddir,'ident_card.dat')
+        has_ident = 'ident_card.dat' in os.listdir(carddir or '.')
+        # smwidth keeps the path of the cards in 100 characters: with a longer one
+        # it reads nothing and every width comes out as zero. It runs in its own
+        # directory, on copies of the cards with short names.
+        smdir = pjoin(model_path, 'SMWidth')
+        copies = ['smwidth_card_%d.dat' % os.getpid()]
+        files.cp(opts['path'], pjoin(smdir, copies[0]))
+        identpath = " "
+        if has_ident:
+            copies.append('smwidth_ident_%d.dat' % os.getpid())
+            files.cp(pjoin(carddir, 'ident_card.dat'), pjoin(smdir, copies[1]))
+            identpath = copies[1]
         #run the code
-        output,error = misc.Popen(['./smwidth',opts['path'],identpath,arg2],
-                                  stdout=subprocess.PIPE,
-                                  stdin=subprocess.PIPE,
-                                  cwd=pjoin(model_path, 'SMWidth')).communicate()
+        try:
+            output,error = misc.Popen(['./smwidth', copies[0], identpath, arg2],
+                                      stdout=subprocess.PIPE,
+                                      stdin=subprocess.PIPE,
+                                      cwd=smdir).communicate()
+        finally:
+            for name in copies:
+                if os.path.exists(pjoin(smdir, name)):
+                    os.remove(pjoin(smdir, name))
         pattern = re.compile(r'''  decay\s+(\+?\-?\d+)\s+(\+?\-?\d+\.\d+E\+?\-?\d+)''',re.I)
         width_list = pattern.findall(output.decode(errors='ignore'))
+        if not width_list:
+            raise MadGraph5Error('SMWidth returned no width:\n%s' %
+                                 '\n'.join(output.decode(errors='ignore').splitlines()[-8:]))
         width_dict = {}
         for pid,width in width_list:
             width_dict[int(pid)] = float(width)
 
+        decay_info = {}
         for pid in particles:
             if not pid in width_dict:
                 width = 0
             else:
                 width = width_dict[pid]
+            # the total only: HDECAY does not give the channels
+            decay_info[pid] = [[[], width]]
             param = param_card['decay'].get((pid,))
             param.value = width
             param.format = 'float'
@@ -13582,7 +14149,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             param_card.write(opts['path'])
             logger.info('Results are written in %s' % opts['path'])
-        return
+        return decay_info
 
     # Calculate decay width
     def do_decay_diagram(self, line, skip_2body=False,  model=None):

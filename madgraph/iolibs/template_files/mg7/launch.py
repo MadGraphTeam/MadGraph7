@@ -35,7 +35,8 @@ import madspace as ms
 # madspace is imported; stop its install directory from shadowing the caller's
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
-from madgraph.models.check_param_card import ParamCard
+from madgraph.models.check_param_card import ParamCard, group_auto_widths
+from madgraph.models.model_reader import Alphas_Runner
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
@@ -59,6 +60,13 @@ if _source_hash != ms.SOURCE_HASH:
     print()
 
 logger = logging.getLogger("madgraph7")
+
+# From this many subprocess directories to compile, the standard headers are
+# precompiled once ('make PCH=1', see madmatrix.mk): each file of a small process
+# spends most of its time parsing them. Below, building the precompiled header
+# costs about what it saves.
+PCH_MIN_SUBPROCESSES = 4
+
 LOG_LEVEL_MAP = {
     ms.Logger.LogLevel.level_debug: logging.DEBUG,
     ms.Logger.LogLevel.level_info: logging.INFO,
@@ -184,6 +192,20 @@ def me_parameters(run_card):
     return parameters
 
 
+def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
+    """Whether an MLM sample's beam densities walk the clustering ladder, the
+    pdf half of madevent's rewgt: under scale_scheme "madevent", and under
+    "clustering_mean" with clustering_mean_pdf_ladder. The Python side of
+    EnergyScale::mlm_pdf_reweighting, which decides the same for the kernel;
+    the systematics then vary the ladder as madevent's do."""
+    beam = run_card["beam"]
+    return bool(
+        mlm_clustering and not is_decay and not leptonic
+        and beam["pdf_reweighting"]
+        and (beam["scale_scheme"] == "madevent"
+             or beam["clustering_mean_pdf_ladder"]))
+
+
 def interference_helicities_summed(run_card):
     """Whether [generation] interference_helicity is "summed".
 
@@ -283,7 +305,11 @@ class HistItem:
 
 
 class MadgraphProcess:
-    def __init__(self):
+    def __init__(self, extra_make_args=(), split_flavors=False):
+        # appended to the make command that builds the matrix elements
+        self.extra_make_args = list(extra_make_args)
+        # one subprocess per flavour of a decay (split_decay_flavors)
+        self.split_flavors = split_flavors
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
@@ -308,7 +334,20 @@ class MadgraphProcess:
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
-        if self.run_card["phasespace"]["merge_subprocesses"]:
+        merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+            # A merged subprocess bundles matrix elements whose legs differ -
+            # q q~ > l l g next to q g > l l q - while the MLM clustering is
+            # built once per subprocess from a single assignment of flavours to
+            # legs. It would cluster the gluon-initiated elements as if their
+            # beam were a quark, and pick the history per diagram from the
+            # weights of one element only.
+            logger.warning(
+                "merge_subprocesses is not supported with dynamical_scale_choice "
+                "= mlm; the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses:
             with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
                 self.merged_subprocess_data = json.load(f)
         else:
@@ -428,6 +467,29 @@ class MadgraphProcess:
         if self.decaying_mass <= 0.0:
             raise ValueError("the decaying particle must have a non-zero mass")
         self.drop_closed_channels()
+        if getattr(self, "split_flavors", False):
+            self.split_decay_flavors()
+
+    def split_decay_flavors(self) -> None:
+        """Integrate every flavour of a decay subprocess on its own.
+
+        A subprocess can hold several flavours with different matrix elements
+        (z > d d~ g and z > u u~ g in one P1_z_QQxg): its integrand samples
+        them, and its result is their sum. The widths of compute_decay_widths
+        need each of them, so each flavour becomes a subprocess of its own,
+        with the same matrix-element library and flavour index and the
+        diagrams active for it (see _single_flavor_metas).
+        """
+        if self.merged_subprocess_data is not None:
+            raise ValueError(
+                "split_flavors needs merge_subprocesses = false: "
+                "merged_subprocesses.json indexes the unsplit subprocesses"
+            )
+        self.subprocess_data = [
+            single
+            for meta in self.subprocess_data
+            for single in _single_flavor_metas(meta)
+        ]
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.
@@ -472,7 +534,7 @@ class MadgraphProcess:
         self.subprocess_data = kept
 
     def init_backend(self) -> None:
-        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+        ms.set_simd_mode(self.run_card["run"]["madspace_cpu_mode"])
 
     def init_event_dir(self) -> None:
         output_dir = self.run_card["gridpack"]["output_dir"]
@@ -644,9 +706,57 @@ class MadgraphProcess:
             name=name,
         )
 
+    def apply_auto_ptj_mjj(self, cuts: dict) -> None:
+        """madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f.
+
+        A merging cut already bounds every matrix-element jet from below, so
+        raising the jet pt and pair-mass cuts to xqcut removes no phase space
+        that survives the merging anyway while making the integration much more
+        efficient. The jet dR cuts go the other way and are dropped:
+        xqcut supersedes them, and a dR cut would carve a hole out of exactly
+        the region the parton shower is supposed to fill, leaving a gap in the
+        jet rates at the merging scale.
+
+        With the option off, madevent still drops the dR cuts, and only zeroes
+        a pt or pair-mass cut that sits above xqcut - it never tightens.
+        """
+        if self.is_decay or self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+            return
+        xqcut = self.run_card["phasespace"]["xqcut"]
+        if xqcut <= 0:
+            return
+        for key in ("jet-delta_r", "jet-lepton-delta_r"):
+            if cuts.get(key, {}).get("min", 0.0) > 0.0:
+                cuts[key]["min"] = 0.0
+        auto = self.run_card["phasespace"]["auto_ptj_mjj"]
+        # Both halves of madevent's rule matter, and for different reasons.
+        #
+        # ptj reaches the phase space only for jets that are leaf children of
+        # the root: a jet inside a composite s-channel node - two jets off one
+        # gluon, say - has its pt_min reset to zero in PhaseSpaceMapping, and
+        # that node's invariant is then sampled from threshold upward knowing
+        # nothing about the cut. mjj is what bounds those nodes, because a
+        # pairwise invariant-mass minimum is carried into the propagator's own
+        # e_min and so into the s_min the sampler uses.
+        #
+        # Leaving mjj out is what makes the highest multiplicity misbehave at a
+        # tight xqcut: almost every point it proposes is vetoed, and the few
+        # survivors sit against a boundary it cannot see.
+        for key in ("jet-pt", "jet-pair_mass"):
+            if auto:
+                cuts.setdefault(key, {})["min"] = xqcut
+            elif cuts.get(key, {}).get("min", 0.0) > xqcut:
+                cuts[key]["min"] = 0.0
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
+        cuts = {
+            key: dict(values)
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        }
+        self.apply_auto_ptj_mjj(cuts)
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -654,8 +764,7 @@ class MadgraphProcess:
                 max=values.get("max", inf),
                 mode=values.get("mode", "all"),
             )
-            for key, values in self.run_card["cuts"].items()
-            if key != "order_by"
+            for key, values in cuts.items()
         ]
 
     # [histograms] key that means "the distribution of the event weight",
@@ -686,28 +795,35 @@ class MadgraphProcess:
         """Make sure the requested LHAPDF set is available, downloading it into
         the first writable PDF directory if needed, and return the (possibly
         updated) LHAPDF resolution. Nothing is downloaded when the set is
-        already present."""
+        already present. LHAPDF itself is not needed: madspace reads the grid
+        files directly, so without a usable lhapdf-config (or when 'lhapdf
+        install' fails) the set is fetched straight from the LHAPDF server."""
         paths = lhapdf_paths()
         if paths.find_set(pdf_set):
-            return paths
-        if not paths.config:
-            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
             return paths
         if not paths.download_path:
             logger.debug("no writable PDF directory: cannot download %s", pdf_set)
             return paths
-        try:
-            from madgraph.interface.common_run_interface import CommonRunCmd
-            os.makedirs(paths.download_path, exist_ok=True)
-            logger.info("PDF set %s not found; downloading into %s",
-                        pdf_set, paths.download_path)
-            CommonRunCmd.install_lhapdf_pdfset_static(
-                paths.config, paths.download_path, pdf_set)
-        except Exception as err:
-            logger.warning("Could not download PDF set %s: %s", pdf_set, err)
-            return paths
+        logger.info("PDF set %s not found; downloading into %s",
+                    pdf_set, paths.download_path)
+        if paths.config:
+            try:
+                from madgraph.interface.common_run_interface import CommonRunCmd
+                os.makedirs(paths.download_path, exist_ok=True)
+                CommonRunCmd.install_lhapdf_pdfset_static(
+                    paths.config, paths.download_path, pdf_set)
+            except Exception as err:
+                logger.debug("lhapdf could not install %s: %s", pdf_set, err)
+        if not os.path.isdir(os.path.join(paths.download_path, pdf_set)):
+            try:
+                misc.download_lhapdf_set(pdf_set, paths.download_path)
+            except Exception as err:
+                logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+                return paths
         global _LHAPDF
         _LHAPDF = paths.with_data_path(paths.download_path)
+        # subprocesses (systematics, MadSpin, reweight) find it here too
+        os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
         return _LHAPDF
 
     def _no_pdf_message(self, pdf_set: str) -> str:
@@ -717,14 +833,21 @@ class MadgraphProcess:
         if self.lhapdf.config:
             found = "using lhapdf-config: %s" % self.lhapdf.config
         else:
-            found = ("no usable lhapdf-config was found, so the set could not "
-                     "be downloaded automatically")
+            found = "no lhapdf-config found (not needed for the download)"
+        if self.lhapdf.download_path:
+            download = ("the download from %s into %s failed (see the "
+                        "warning above)" % (misc.LHAPDF_SETS_URL,
+                                            self.lhapdf.download_path))
+        else:
+            download = "no writable directory to download the set into"
         return (
             "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
+            "  %s\n"
             "Fix this in one of the following ways:\n"
+            "  * check the set name against %s/pdfsets.index and your network\n"
             "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
             "  * point MadGraph at an existing one:\n"
             "        MG7> set lhapdf /path/to/lhapdf-config\n"
@@ -733,7 +856,7 @@ class MadgraphProcess:
             "        lhapdf = /path/to/lhapdf-config\n"
             "    to %s\n"
             "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
-            % (pdf_set, searched, found,
+            % (pdf_set, searched, found, download, misc.LHAPDF_SETS_URL,
                os.path.join("Cards", "me5_configuration.txt"), pdf_set))
 
     def init_beam(self) -> None:
@@ -770,26 +893,54 @@ class MadgraphProcess:
             "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
             "partonic_energy": ms.EnergyScale.partonic_energy,
         }
-        if beam_args["dynamical_scale_choice"] in dynamical_scales:
-            dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+        # "mlm" is not one of the closed-form scale choices: it needs the diagram
+        # topologies of each subprocess, so the EnergyScale is built later, in
+        # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
+        if beam_args["dynamical_scale_choice"] == "mlm":
+            self.mlm_clustering = True
+            self.scale_kwargs = {}
+        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
+            self.mlm_clustering = False
+            self.scale_kwargs = dict(
+                dynamical_scale_type=dynamical_scales[
+                    beam_args["dynamical_scale_choice"]
+                ],
+                ren_scale_fixed=beam_args["fixed_ren_scale"],
+                fact_scale_fixed=beam_args["fixed_fact_scale"],
+                ren_scale=beam_args["ren_scale"],
+                fact_scale1=beam_args["fact_scale1"],
+                fact_scale2=beam_args["fact_scale2"],
+                scale_factor=float(beam_args.get("scale_factor", 1.)),
+            )
         else:
             raise ValueError("Unknown dynamical scale choice")
-        self.scale_kwargs = dict(
-            dynamical_scale_type=dynamical_scale_type,
-            ren_scale_fixed=beam_args["fixed_ren_scale"],
-            fact_scale_fixed=beam_args["fixed_fact_scale"],
-            ren_scale=beam_args["ren_scale"],
-            fact_scale1=beam_args["fact_scale1"],
-            fact_scale2=beam_args["fact_scale2"],
-            scale_factor=float(beam_args.get("scale_factor", 1.)),
-        )
         if self.is_decay and self.custom_functions.pop("scale", None) is not None:
             logger.warning("custom scale ignored: a decay uses the decaying mass")
         if self.is_decay and self.custom_functions.pop("pdf", None) is not None:
             logger.warning("custom pdf ignored: a decay has no parton densities")
+        if self.mlm_clustering and not self.is_decay:
+            # The merging needs the scales of its own clustering history: a
+            # custom scale or a factor on it would move the merging scale away
+            # from the one the shower is matched to.
+            if self.custom_functions.pop("scale", None) is not None:
+                logger.warning(
+                    "custom scale ignored under dynamical_scale_choice = mlm")
+            if float(beam_args.get("scale_factor", 1.)) != 1.:
+                logger.warning(
+                    "scale_factor ignored under dynamical_scale_choice = mlm")
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
-            # it, fixed, whatever the card asks for.
+            # it, fixed, whatever the card asks for. That includes "mlm": a
+            # decay has no beams to cluster into, so there is no merging to do.
+            if self.mlm_clustering:
+                logger.warning(
+                    "dynamical_scale_choice = mlm has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead"
+                )
+                self.mlm_clustering = False
+            self.scale_kwargs.setdefault(
+                "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
+            )
             self.scale_kwargs.update(
                 ren_scale_fixed=True,
                 fact_scale_fixed=True,
@@ -839,6 +990,17 @@ class MadgraphProcess:
             self.pdf_grid = ms.PdfGrid(
                 os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat")
             )
+        # The grid only covers a band in Q. Asking for a density above its
+        # highest Q reads past the end of the interpolation and comes back as a
+        # NaN, so the scale is capped there. A dynamical scale rarely gets near
+        # it, but the madevent MLM scheme, which multiplies four clustering
+        # scales together under a fourth root, can. A custom PDF brings no grid
+        # to read the range from, so it is left uncapped.
+        grids = [grid for grid in (self.pdf_grid, self.pdf_grid2)
+                 if isinstance(grid, ms.PdfGrid)]
+        self.max_scale = min(max(grid.q) for grid in grids) if grids else 0.0
+        # the bottom of the same range, where the densities freeze
+        self.min_pdf_scale = max(min(grid.q) for grid in grids) if grids else 0.0
         for context in self.contexts:
             if not isinstance(self.pdf_grid, ms.CustomPdf):
                 self.pdf_grid.initialize_globals(context)
@@ -1009,6 +1171,21 @@ class MadgraphProcess:
         config = ms.SystematicsConfig()
         config.mur = [float(v) for v in syst["mur"]]
         config.muf = [float(v) for v in syst["muf"]]
+        # the emission scale of the MLM alpha_s vertices, which only an MLM
+        # sample with per-vertex alpha_s has
+        if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["alphas_reweighting"] != "none"):
+            config.alps = [float(v) for v in syst["alps"]]
+        else:
+            config.alps = [1.0]
+        # the pdf reweighting ladder of an MLM sample, varied as madevent's
+        # systematics vary it; a varied scale is kept inside the PDF grid,
+        # where LHAPDF freezes it for madevent
+        config.pdf_ladder = mlm_pdf_ladder(
+            self.run_card, self.mlm_clustering, self.is_decay, self.leptonic)
+        if config.pdf_ladder:
+            config.ladder_min_scale = float(self.min_pdf_scale)
+            config.ladder_max_scale = float(self.max_scale)
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
@@ -1224,7 +1401,8 @@ class MadgraphProcess:
             # values line up across rows, with extra spacing between the two
             return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
 
-        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        scale_count = sum(1 for v in self.systematics.variations
+                          if v.is_scale or v.is_emission)
         member_count = len(self.systematics.members)
         rows = [("Variations per event:",
                  f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
@@ -1234,6 +1412,9 @@ class MadgraphProcess:
         scale = systematics_summary.scale_percentages(summary)
         if scale is not None:
             rows.append(("Scale variation:", format_variation(*scale)))
+        emission = systematics_summary.emission_percentages(summary)
+        if emission is not None:
+            rows.append(("Emission scale variation:", format_variation(*emission)))
         for _entry, up, down in systematics_summary.pdf_percentages(summary):
             rows.append(("PDF variation:", format_variation(up, down)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
@@ -1245,32 +1426,87 @@ class MadgraphProcess:
             for label, value in rows:
                 logger.info("systematics, %s %s", label, value)
 
+    # the scale below which the alpha_s of a decay is frozen (write_fixed_alphas_info)
+    ALPHAS_FREEZE_SCALE = 1.0
+
     def write_fixed_alphas_info(self) -> str:
-        """Write a minimal LHAPDF ``.info`` holding a constant alpha_s.
+        """Write a minimal LHAPDF ``.info`` with the alpha_s of a decay.
 
         A decay has no beams, so there is no PDF set to take alpha_s from --
         and demanding one (possibly downloading it) just to evaluate a coupling
         would be absurd. The renormalisation scale of a decay is fixed at the
-        decaying mass anyway, so a constant alpha_s is the right answer, not an
-        approximation: take it from the param card, exactly as the Fortran
-        decay matrix elements do.
+        decaying mass, so only alpha_s(M) matters. Like the Fortran decay
+        matrix elements (Source/alfas_functions.f, ``nloop = 2``) it is the
+        2-loop running from the alpha_s(m_Z) of the param card up to M -- not
+        alpha_s(m_Z) itself, which overshoots alpha_s(125 GeV) by 4.7% (and
+        h > g g, which goes like alpha_s^2, by 9.7%).
+
+        The grid carries the running over the whole scale range and has a node
+        exactly at the decaying mass, so the interpolation returns alpha_s(M)
+        untouched. Below ALPHAS_FREEZE_SCALE (or wherever the running stops
+        being defined, closer to the Landau pole) alpha_s is frozen at its last
+        value: a light decaying particle (the muon, ...) has no QCD to speak
+        of, and its widths must not fail on a coupling they do not use.
         """
         # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
         # parameter setup feeds to G.
-        alpha_s = float(self.param_card.get_value("sminputs", 3))
+        alpha_s_mz = float(self.param_card.get_value("sminputs", 3))
+        runner = Alphas_Runner(alpha_s_mz, 2, cmass=1.42, bmass=4.7)
+        mass = float(self.decaying_mass)
         path = os.path.join(self.run_path, "fixed_alphas.info")
         # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
-        # comfortable number of nodes rather than the bare minimum of three.
-        q_values = [10 ** (i / 4.0) for i in range(-4, 21)]
+        # comfortable number of nodes rather than the bare minimum of three:
+        # 1 GeV to 100 TeV, and the decaying mass.
+        nodes = [10 ** (i / 4.0) for i in range(0, 21)]
+        q_values = sorted(
+            [q for q in nodes if abs(q / mass - 1) > 1e-9] + [mass]
+        )
+
+        def running(q):
+            try:
+                value = runner(q)
+            except (ArithmeticError, ValueError):
+                return None
+            return value if math.isfinite(value) and value > 0 else None
+
+        # from the top down, freezing at the first scale where the running is
+        # not used (below ALPHAS_FREEZE_SCALE) or not defined
+        values = {}
+        frozen = None
+        for q in reversed(q_values):
+            value = None
+            if frozen is None and q >= self.ALPHAS_FREEZE_SCALE:
+                value = running(q)
+            if value is None:
+                if frozen is None:
+                    if not values:
+                        raise ValueError(
+                            f"alpha_s({q:g} GeV) cannot be computed from "
+                            f"alpha_s(m_Z) = {alpha_s_mz:g}"
+                        )
+                    frozen = min(values)
+                value = values[frozen]
+            values[q] = value
+        alpha_s_values = [values[q] for q in q_values]
+        if frozen is not None and mass < frozen:
+            logger.info(
+                "decay mode: alpha_s frozen below %g GeV at alpha_s(%g GeV) = "
+                "%.6g (decaying mass %g GeV)", frozen, frozen, values[frozen],
+                mass,
+            )
         with open(path, "w") as f:
-            f.write("SetDesc: constant alpha_s for a decay (no beams)\n")
-            f.write("AlphaS_Qs: [%s]\n" % ", ".join(f"{q:g}" for q in q_values))
+            f.write("SetDesc: 2-loop running alpha_s of a decay (no beams)\n")
+            f.write(
+                "AlphaS_Qs: [%s]\n" % ", ".join(f"{q:.12g}" for q in q_values)
+            )
             f.write(
                 "AlphaS_Vals: [%s]\n"
-                % ", ".join(f"{alpha_s:g}" for _ in q_values)
+                % ", ".join(f"{a:.12g}" for a in alpha_s_values)
             )
         logger.info(
-            "decay mode: fixed alpha_s = %g at mu = %g GeV", alpha_s, self.e_cm
+            "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
+            "alpha_s(m_Z) = %g, as madevent)",
+            mass, values[mass], alpha_s_mz,
         )
         return path
 
@@ -1386,10 +1622,11 @@ class MadgraphProcess:
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
-            missing = [
-                meta for meta in self.subprocess_data
+            # by library: the flavours of a split subprocess share one
+            missing = list({
+                meta["me_path"]: meta for meta in self.subprocess_data
                 if not os.path.isfile(meta["me_path"].format(device=backend))
-            ]
+            }.values())
             if not missing:
                 continue
             logger.info(
@@ -1398,11 +1635,12 @@ class MadgraphProcess:
                 f"see log detail in {log_path}"
             )
             start_time = time.time()
-            self.make_subprocesses(
-                subproc_path,
-                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
-                nb_core, log_path,
-            )
+            make_args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            make_args += self.extra_make_args
+            if (len(missing) >= PCH_MIN_SUBPROCESSES
+                    and not any(arg.startswith("PCH=") for arg in make_args)):
+                make_args.append("PCH=1")
+            self.make_subprocesses(subproc_path, make_args, nb_core, log_path)
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
@@ -1521,7 +1759,13 @@ class MadgraphProcess:
             # rather than dividing by it: that asks for the smallest networks and
             # leaves MadNIS off, which is what an empty subprocess wants.
             rsd = (variance * count_opt)**0.5 / mean if mean else 0.
-            subproc.set_madnis_auto_settings(rsd)
+            subproc.set_madnis_auto_settings(
+                rsd,
+                min(
+                    (channel.phasespace_mapping.random_dim() for channel in ps.channels),
+                    default=0,
+                ),
+            )
             chan_offset += len(ps.channels)
             if subproc.madnis_settings["enable"]:
                 madnis_enabled = True
@@ -1569,9 +1813,15 @@ class MadgraphProcess:
 
         verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
+        trained_phasespaces = []
         training_args = []
         self.event_generator = None
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            if not subproc.madnis_supported:
+                # no flow for a one-dimensional phase space: keep its VEGAS
+                # channels, and their event generators, from the survey
+                madnis_phasespaces.append(phasespace)
+                continue
             for channel in phasespace.channels:
                 channel.event_generator = None
 
@@ -1605,6 +1855,7 @@ class MadgraphProcess:
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
+            trained_phasespaces.append(phasespace)
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -1637,7 +1888,7 @@ class MadgraphProcess:
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
-            madnis_phasespaces, madnis_training.active_channels()
+            trained_phasespaces, madnis_training.active_channels()
         ):
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
@@ -2578,6 +2829,8 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        # set from the survey by set_madnis_auto_settings
+        self.madnis_supported = True
         self.multi_channel_data = None
 
         self.unmerged_meta = None
@@ -2674,13 +2927,79 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = ms.EnergyScale(
-            particle_count=self.particle_count,
-            custom_scale=self.process.custom_function(
-                "scale", self.particle_count, representative_pids
-            ),
-            **self.process.scale_kwargs
-        )
+        # The scale range exists to keep the densities inside the PDF grid, so
+        # a run without beam densities - a lepton collider or a decay - has
+        # none: a floor there would only throw away events whose scale is
+        # legitimately low, a decay of a particle lighter than min_scale say.
+        if self.process.leptonic:
+            min_scale = max_scale = 0.0
+        else:
+            min_scale = self.process.run_card["beam"]["min_scale"]
+            max_scale = self.process.max_scale
+        if self.process.mlm_clustering:
+            mc_data = self.build_multi_channel_data()
+            all_pids = (clean_pids(self.meta["incoming"])
+                        + clean_pids(self.meta["outgoing"]))
+            self.scale = ms.EnergyScale(
+                ms.MLMClustering(
+                    topologies=[topo[0] for topo in mc_data.topologies],
+                    permutations=mc_data.permutations,
+                    diagram_indices=mc_data.diagram_indices,
+                    cm_energy=self.process.e_cm,
+                    jet_scale_scheme=getattr(
+                        ms.MLMClustering.JetScaleScheme,
+                        self.process.run_card["beam"]["jet_scale_scheme"],
+                    ),
+                    scale_scheme=getattr(
+                        ms.MLMClustering.ScaleScheme,
+                        self.process.run_card["beam"]["scale_scheme"],
+                    ),
+                    pdg_color_types={
+                        int(key): value
+                        for key, value in self.meta["pdg_color_types"].items()
+                    },
+                    xqcut=self.process.run_card["phasespace"]["xqcut"],
+                    bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+                    jet_radius=self.process.run_card["beam"]["jet_radius"],
+                    hadronic=not self.process.leptonic,
+                    external_pdg_ids=all_pids,
+                    max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
+                    parton_line_scheme=getattr(
+                        ms.MLMClustering.PartonLineScheme,
+                        self.process.run_card["beam"]["parton_line_scheme"],
+                    ),
+                    alphas_scheme=getattr(
+                        ms.MLMClustering.AlphasScheme,
+                        self.process.run_card["beam"]["alphas_reweighting"],
+                    ),
+                    pdf_reweighting=self.process.run_card["beam"][
+                        "pdf_reweighting"
+                    ],
+                    clustering_measure=getattr(
+                        ms.MLMClustering.ClusteringMeasure,
+                        self.process.run_card["beam"]["clustering_measure"],
+                    ),
+                    clustering_history=getattr(
+                        ms.MLMClustering.ClusteringHistory,
+                        self.process.run_card["beam"]["clustering_history"],
+                    ),
+                    clustering_mean_pdf_ladder=self.process.run_card["beam"][
+                        "clustering_mean_pdf_ladder"
+                    ],
+                ),
+                min_scale=min_scale,
+                max_scale=max_scale,
+            )
+        else:
+            self.scale = ms.EnergyScale(
+                particle_count=self.particle_count,
+                custom_scale=self.process.custom_function(
+                    "scale", self.particle_count, representative_pids
+                ),
+                min_scale=min_scale,
+                max_scale=max_scale,
+                **self.process.scale_kwargs,
+            )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(all_api_paths)
@@ -3122,7 +3441,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
-    def set_madnis_auto_settings(self, rsd: float):
+    def set_madnis_auto_settings(self, rsd: float, random_dim: int):
+        """Choose the MadNIS settings of this subprocess from the relative
+        spread rsd of the survey. random_dim is the smallest number of random
+        numbers of its channels: a normalizing flow needs at least two, so a
+        one-dimensional phase space (a 2 -> 1 process) never uses MadNIS."""
         madnis_args = self.process.run_card["madnis"]
         n_out = len(self.meta["outgoing"])
         n_events = self.process.run_card["generation"]["events"]
@@ -3155,6 +3478,14 @@ class MadgraphSubprocess:
             run_card_value = madnis_args[key]
             if run_card_value != "auto":
                 self.madnis_settings[key] = run_card_value
+        self.madnis_supported = random_dim >= 2
+        if not self.madnis_supported and self.madnis_settings["enable"]:
+            logger.warning(
+                "MadNIS disabled for subprocess %s: its phase space has %d "
+                "random dimension(s), a normalizing flow needs at least 2",
+                self.subproc_id, random_dim,
+            )
+            self.madnis_settings["enable"] = False
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
@@ -3395,6 +3726,11 @@ class MadgraphSubprocess:
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
+        # With an MLM history picked per diagram, the cross section at the
+        # scales of that history is the first matrix-element evaluation rescaled
+        # by alpha_s and PDF ratios when every diagram has the same power of
+        # alpha_s (-1: mixed powers, evaluate the matrix element again)
+        mlm_history_qcd_power = int(self.meta.get("qcd_power", -1))
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3428,6 +3764,7 @@ class MadgraphSubprocess:
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
+                mlm_history_qcd_power,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
@@ -3514,6 +3851,19 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
         if _LHAPDF.config:
             os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
     return _LHAPDF
+
+
+def lhapdf_index_paths() -> list:
+    """The PDF directories to look an lhaid up in. Without LHAPDF there may be
+    no pdfsets.index anywhere yet, so fetch one into the download directory."""
+
+    paths = lhapdf_paths()
+    data_paths = list(paths.data_paths)
+    if not any(os.path.exists(os.path.join(p, "pdfsets.index")) for p in data_paths) \
+            and paths.download_path \
+            and misc.download_lhapdf_index(paths.download_path):
+        data_paths.append(paths.download_path)
+    return data_paths
 
 
 class MG7Cmd(Cmd):
@@ -3779,6 +4129,21 @@ def build_selector_cmd(mother=None):
                 self.run_card.allow_scan = True
             return getattr(self, "run_set", out)
 
+        def check_card_consistency(self):
+            # madevent settings given per beam ("set fixed_fac_scale1 ...")
+            # that the mg7 card could not follow: said once, at the end, so
+            # "set fixed_fac_scale1 T" then "set fixed_fac_scale2 T" stays
+            # quiet. Collected first: lo_set_warnings also forgets them, which
+            # must happen even if the generic checks below raise.
+            warnings = []
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                warnings = self.run_card.lo_set_warnings()
+            try:
+                super().check_card_consistency()
+            finally:
+                for text in warnings:
+                    logger.warning(text)
+
         def do_set(self, line, *args, **kwargs):
             # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
             # editing, energy units and arithmetic/mass expressions on the TOML
@@ -3845,6 +4210,61 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # legacy madevent cut names ("set ptj 20", "set mmll 200",
+                    # "set etaj -1", ...) -> the [cuts] entry the LO->MG7
+                    # run_card conversion maps them to (_LO_CUT_MAP), with the
+                    # same "no cut" sentinels (minimum <= 0, maximum < 0).
+                    if rest and nlow in run_card._LO_CUT_MAP:
+                        if rest.lower().startswith("scan"):
+                            logger.warning("ignoring 'set %s %s': the [cuts] entries of "
+                                           "the mg7 run_card.toml cannot be scanned",
+                                           nlow, rest)
+                            return
+                        try:
+                            cut, bound, val = run_card.set_lo_cut(
+                                nlow, run_card.evaluate(rest, masses))
+                        except _banner_mod.InvalidCmd:
+                            logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
+                            return
+                        if val is None:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
+                                        "no cut", nlow, cut, bound)
+                        else:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml to %s",
+                                        nlow, cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # madevent parameters that are not a plain rename: the
+                    # value is translated ("set dynamical_scale_choice 3") or
+                    # several of them make one mg7 entry (fixed_fac_scale1 +
+                    # fixed_fac_scale2 -> beam.fixed_fact_scale). mg7 values
+                    # ("set sde_strategy denominators") come back as None and
+                    # go on to the generic editor.
+                    if rest and nlow in run_card._LO_SET_PARAMS:
+                        try:
+                            done = run_card.set_lo_param(nlow, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
+                            return
+                        if done is not None:
+                            changes, warnings = done
+                            for key, val in changes.items():
+                                if val is None:
+                                    logger.info("set %s: removed %s from the run_card.toml",
+                                                nlow, key)
+                                else:
+                                    logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                                nlow, key, val)
+                            for text in warnings:
+                                logger.warning(text)
+                            if changes:
+                                self.modified_card.add("run")
+                            elif not warnings:
+                                logger.info("set %s %s: nothing to change in the run_card.toml",
+                                            nlow, rest)
+                            return
+
                     # 'iseed' is the madevent spelling of the mg7 run.seed,
                     # but the two disagree on how to ask for a random seed:
                     # madevent uses 0, mg7 uses -1 (0 being a perfectly good
@@ -3870,7 +4290,7 @@ def build_selector_cmd(mother=None):
                     # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
                     # beam or for both) onto the per-beam [beam] entries
                     if rest and nlow in run_card.lo_beam_params:
-                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        data_paths = lhapdf_index_paths() if nlow == "lhaid" else ()
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:
@@ -4451,12 +4871,14 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             text = f.read()
     except OSError:
         return
-    # matches "DECAY <pdg> auto" (optionally "auto@NLO"), as in
-    # common_run_interface.static_check_param_card
-    pdgs = re.findall(r"(?im)^\s*decay\s+([+-]?\d+)\s+auto", text)
-    if not pdgs:
+    # "DECAY <pdg> auto", with the options of compute_widths that may follow
+    # ("auto@NLO", "auto --nlo --body_decay=3"), as in
+    # common_run_interface.static_check_param_card: one compute_widths per set of
+    # options
+    groups = group_auto_widths(text)
+    if not groups:
         return
-    pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
+    pdgs = [pdg for group in groups.values() for pdg in group]
 
     model = read_stored_model()
     if not model:
@@ -4471,8 +4893,10 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
         return
 
     import tempfile
-    cmds = "import model %s\ncompute_widths %s --path=%s\n" % (
-        model, " ".join(pdgs), os.path.abspath(param_card_path))
+    cmds = "import model %s\n" % model
+    for options, group in groups.items():
+        cmds += "compute_widths %s --path=%s %s\n" % (
+            " ".join(group), os.path.abspath(param_card_path), " ".join(options))
     with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as fh:
         fh.write(cmds)
         cmdfile = fh.name
@@ -4488,6 +4912,133 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             os.remove(cmdfile)
         except OSError:
             pass
+
+
+def compute_decay_widths(
+    me_dir: str = ".", precision: float = 0.01, nb_core: int | None = None,
+    extra_make_args=(),
+) -> list[dict]:
+    """Integrate the decays of an mg7 decay directory and return their widths.
+
+    This is the madspace counterpart of madevent's ``survey decay``: only the
+    survey runs (no unweighting, no events, no systematics), and it stops once
+    every channel is below ``precision`` relative error, like the
+    ``--precision_channel`` of ``compute_widths``.
+
+    ``me_dir`` is an output directory of 1 -> n processes of one decaying
+    particle. It is meant to run in a process of its own (``bin/generate_events
+    --decay-widths=FILE``, which is how ``compute_widths`` calls it): the
+    madspace objects write their status file from a destructor, and the
+    caller removes the temporary directory as soon as the widths are back.
+    The result holds one entry per decay and flavour assignment::
+
+        {"incoming": 25, "outgoing": [5, -5], "width": 4.3e-3, "error": 1e-9}
+
+    (signed pdg ids, width in GeV). The flavours of a subprocess (different
+    matrix elements, e.g. the u u~ g and d d~ g of z > q q~ g) are integrated
+    separately (MadgraphProcess.split_decay_flavors); the assignments of one
+    flavour share its matrix element (they are the same function of the
+    momenta, or they would not be grouped) and split its width evenly. A
+    decay the decaying particle is too light for has no entry.
+    """
+    cwd = os.getcwd()
+    os.chdir(me_dir)
+    process = None
+    try:
+        card_path = os.path.join("Cards", "run_card.toml")
+        card = RunCardMG7(card_path, consistency=False)
+        card["generation"]["survey_target_precision"] = precision
+        card["generation"]["survey_max_iters"] = 30
+        # one survey result per decay, not per group of mergeable ones
+        card["phasespace"]["merge_subprocesses"] = False
+        card["run"]["verbosity"] = "silent"
+        if nb_core:
+            card["run"]["cpu_thread_pool_size"] = int(nb_core)
+        card.write(card_path)
+
+        # one survey result per flavour, not per subprocess
+        process = MadgraphProcess(extra_make_args=extra_make_args,
+                                  split_flavors=True)
+        if not process.is_decay:
+            raise ValueError("compute_decay_widths needs a decay (1 -> n) output")
+        process.survey()
+
+        channel_status = process.event_generator.channel_status()
+        results = []
+        offset = 0
+        for subproc, phasespace in zip(process.subprocesses, process.phasespaces):
+            statuses = channel_status[offset:offset + len(phasespace.channels)]
+            offset += len(phasespace.channels)
+            width = sum(status.mean for status in statuses)
+            error = sum(status.error ** 2 for status in statuses) ** 0.5
+            options = _decay_flavor_options(subproc.meta)
+            for option in options:
+                results.append({
+                    "incoming": option[0],
+                    "outgoing": list(option[1:]),
+                    "width": width / len(options),
+                    "error": error / len(options),
+                })
+        return results
+    finally:
+        if process is not None:
+            # StatusFile finishes info.json from its destructor: run it before
+            # the caller removes the directory (see init_event_dir)
+            _release_channel_generators(process)
+            del process
+            gc.collect()
+        os.chdir(cwd)
+
+
+def _single_flavor_metas(meta: dict) -> list[dict]:
+    """The subprocess ``meta`` as one subprocess per flavour (see
+    MadgraphProcess.split_decay_flavors).
+
+    Each copy keeps the flavour (its matrix-element index and its assignments)
+    and, in every channel, the diagrams that flavour is active in, renumbered
+    to its only flavour, 0. A channel left without diagrams is dropped, and a
+    flavour left without channels (no diagram at all) has no subprocess. A
+    subprocess of one flavour is returned as it is.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) == 1:
+        return [meta]
+    singles = []
+    for position, flavor in enumerate(flavors):
+        channels = []
+        for channel in meta["channels"]:
+            diagrams = [
+                dict(diagram, active_flavors=[0])
+                for diagram in channel["diagrams"]
+                if position in diagram["active_flavors"]
+            ]
+            if diagrams:
+                channels.append(dict(channel, diagrams=diagrams))
+        if channels:
+            singles.append(dict(meta, flavors=[flavor], channels=channels))
+    return singles
+
+
+def _decay_flavor_options(meta: dict) -> list[list[int]]:
+    """The flavour assignments of a subprocess of compute_decay_widths, which
+    share its width evenly.
+
+    That is right for the assignments of one flavour, which have one matrix
+    element (d d~ and s s~ of a massless s, the three neutrinos). Different
+    flavours have different matrix elements (the u u~ and d d~ of a
+    flavour-grouped subprocess) and the survey of a subprocess only gives
+    their sum: compute_decay_widths splits them first (split_flavors), and a
+    subprocess still holding several is an error, not an even split that
+    would get the branching ratios wrong.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) != 1:
+        raise ValueError(
+            "compute_decay_widths: the subprocess %s has %d flavours with "
+            "different matrix elements, the survey cannot give the width of "
+            "each" % (meta.get("path", "?"), len(flavors))
+        )
+    return [list(option) for option in flavors[0]["options"]]
 
 
 def _release_channel_generators(process) -> None:
@@ -4686,6 +5237,27 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    parser.add_argument(
+        "--decay-widths", metavar="JSON", default=None,
+        help="only integrate the 1 -> n decays of this directory and write "
+             "their widths (GeV) as JSON, see compute_decay_widths")
+    parser.add_argument(
+        "--precision", type=float, default=0.01,
+        help="relative precision aimed at for every channel (--decay-widths)")
+    parser.add_argument(
+        "--nb-core", type=int, default=None,
+        help="number of threads and compilation jobs (--decay-widths)")
+    parser.add_argument(
+        "--make-arg", action="append", default=[],
+        help="extra argument of the matrix element build (--decay-widths)")
     args = parser.parse_args()
+
+    if args.decay_widths:
+        results = compute_decay_widths(
+            ".", precision=args.precision, nb_core=args.nb_core,
+            extra_make_args=args.make_arg)
+        with open(args.decay_widths, "w") as f:
+            json.dump(results, f)
+        return
 
     MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")
