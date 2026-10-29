@@ -28,9 +28,10 @@ names ``process``, ``born`` and ``loop`` orders, optional
 ``parameters``; the output adds the Catani prediction of each sector
 (``ir_poles``). With ``"points"`` (a list of ``[point, mu_r2]``) instead of
 ``point`` and ``mu_r2`` one generation serves every point, and the output's
-``results`` hold one such record per point. At N != 3 a request with a
-colour-triplet leg must have rescaled a U(1)-subtraction weight (the tree
-patch below), or the entry fails. With ``"ward": true`` it runs the
+``results`` hold one such record per point. At N != 3 the trees must pass
+through the patched colour fold (``use_nc``), and trees holding a
+U(1)-subtraction auxiliary (an internal gluon on quark lines) must have its
+weight rescaled, or the entry fails. With ``"ward": true`` it runs the
 gauge-Ward check of the request at N_c = N instead (``ward_main``;
 ``precision`` is the Ward carrier, "double" or "double-double");
 ``"identities"`` replaces some of the declaration's identities (a control).
@@ -139,7 +140,9 @@ def use_nc(n: Fraction, *, catani: bool = False) -> dict[str, int]:
     """Set N_c = ``n`` in this process (module constants and tree weights;
     with ``catani`` the Casimirs and beta_0 of Catani's operator too).
 
-    Returns the counter of rescaled tree interactions (``"interactions"``).
+    Returns the counters of the patched fold's calls (``"dags"``), the
+    U(1)-subtraction auxiliary currents it saw (``"auxiliaries"``) and the
+    tree interactions it rescaled (``"interactions"``).
     """
 
     import importlib
@@ -177,7 +180,7 @@ def use_nc(n: Fraction, *, catani: bool = False) -> dict[str, int]:
         poles._CASIMIRS = {3: (nc * nc - 1) / (2 * nc), 8: nc}
         poles._DYNKIN = {3: Fraction(1, 2), 8: nc}
 
-    counter = {"interactions": 0}
+    counter = {"dags": 0, "auxiliaries": 0, "interactions": 0}
     fold = dag_compiler.apply_colour_connection_signs
 
     def rescaled(dag, model):
@@ -186,6 +189,8 @@ def use_nc(n: Fraction, *, catani: bool = False) -> dict[str, int]:
             for current in dag.currents
             if current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         }
+        counter["dags"] += 1
+        counter["auxiliaries"] += len(auxiliaries)
         interactions = []
         for interaction in dag.interactions:
             if interaction.result_id in auxiliaries:
@@ -294,32 +299,66 @@ def request_main(argv: list[str]) -> None:
     with dag_input.native_flags(dag=False, program=False):
         full = LoopSlice.generate(compiled, request, load_loop_native())
     assert not full.blocks.graded
-    if n != 3 and any(abs(leg.representation) == 3 for leg in full.basis.legs):
-        # The quark lines' U(1)-subtraction weights must take 1/N.
-        assert counter["interactions"], "no U(1)-subtraction weight was rescaled"
+    if n != 3:
+        # The tree patch applied: the trees went through the patched fold,
+        # and every U(1)-subtraction auxiliary they hold (an internal gluon
+        # on quark lines) has its weight 1/N.
+        assert counter["dags"], "the trees bypassed the patched colour fold"
+        if counter["auxiliaries"]:
+            assert counter["interactions"], "no U(1)-subtraction weight rescaled"
 
-    def record(point, mu_r2) -> dict:
-        result = full.evaluate(
-            point,
-            mu_r2,
-            parameters=spec.get("parameters", {}),
-            precision=_precision(precision_text),
-        )
-        poles = (
-            {
+    precision = _precision(precision_text)
+    parameters = spec.get("parameters", {})
+    pairs = spec["points"] if "points" in spec else [(spec["point"], spec["mu_r2"])]
+    if spec.get("dressing", "python") == "native":
+        results = _native_dressing(full, pairs, parameters, precision)
+    else:
+        results = []
+        for point, mu_r2 in pairs:
+            result = full.evaluate(
+                point, mu_r2, parameters=parameters, precision=precision
+            )
+            results.append((result, result.ir_poles))
+    records = [
+        {
+            "ir_poles": {
                 repr(sector): [str(single), str(double)]
-                for sector, (single, double) in (result.ir_poles or {}).items()
+                for sector, (single, double) in (poles or {}).items()
             }
             if catani or n == 3
-            else None
-        )
-        return {"ir_poles": poles, **result_json(result)}
-
-    if "points" in spec:
-        out = {"results": [record(point, mu_r2) for point, mu_r2 in spec["points"]]}
-    else:
-        out = record(spec["point"], spec["mu_r2"])
+            else None,
+            **result_json(result),
+        }
+        for result, poles in results
+    ]
+    out = {"results": records} if "points" in spec else records[0]
     print(json.dumps({"rescaled": counter["interactions"], **out}))
+
+
+def _native_dressing(full, pairs, parameters, precision) -> list:
+    """(result, Catani poles) per (point, mu_r2) of ``pairs``: the Python
+    point inputs of ``full`` (trees, Born, counterterm and field scalars at
+    the patched N_c) dressed and reduced by the native executor in
+    ``precision`` (``"dressing": "native"``); Catani's operator from the same
+    Python point inputs (the native executor forms none)."""
+
+    from pyamplicol.loops.v2.assemble import _Numbers
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    executor = NativeExecutor(full, inputs="python", forward=False)
+    points = [point for point, _scale in pairs]
+    scales = [scale for _point, scale in pairs]
+    results = executor.evaluate(
+        points, scales, parameters=parameters, precision=precision
+    )
+    _carrier, evaluations = executor._cached_points(
+        points, scales, parameters, precision
+    )
+    poles = []
+    for evaluation in evaluations:
+        with _Numbers(precision).scope():
+            poles.append(evaluation._ir_poles())
+    return list(zip(results, poles, strict=True))
 
 
 def ward_main(compiled, request, spec, carrier: str, counter) -> None:

@@ -21,8 +21,15 @@ sector (``LoopSlice.degrees``; design §7.4-§7.6).
 
 The N_c scan is full colour as a function of N_c (``loop_nc_scan
 request``): N_c = N wherever the engine substitutes it, one process per N
-(one generation for all of a row's points), on the Python reference path at
-``SCAN_DIGITS`` digits. Full colour has no grade split, so the scan does
+(one generation for all of a row's points), the Python point inputs (trees,
+Born, colour cells, counterterm and field scalars at N, in Python lanes)
+dressed and reduced by the native executor at ``SCAN_DIGITS`` digits
+(``"dressing": "native"``). The Python reference path's own dressing equals
+it within 7e-53 at N = 2 and 1/2 on A08, A12, A13 and B03's point 0
+(``test_native_dressing_of_the_scan_equals_the_python_path``), but carries a
+precision-independent error at B03's point 1 (the bare loop 4e-25 off
+Catani at 60, 80 and 100 digits alike, where the native carriers equal
+Catani to 1e-65; routed). Full colour has no grade split, so the scan does
 not rest on the grade bookkeeping that LC and NLC use. FC(N) = sum_p c_p
 N^p, with the external colour average of N_c = 3 at every N. The window p =
 P_top - span .. P_top (P_top the request's largest leading degree, span
@@ -74,12 +81,13 @@ enters it) per sector and pole within 1e-24, rule 4's double-double band.
 This is MQ-NC oracle (c) on every row, not only the five rows PLAN §3.2
 lists.
 
-Tiers. PLAN §4.2 marks A01, A09, A12, C01 and D05 as default rows with nc;
-the default tier keeps A12 (quark lines: U(1)-subtraction weights and the
-quark-line counterterms at N) and D05 (an electroweak Born: the declaration
-of the counterterms with EW legs) at points 0 and 1, and A01, A09 and C01
-run their projection nightly (A01 and A09 keep their default-tier NJet,
-Catani and Ward oracle ids), the user's fast-default-tier rule (DECISIONS
+Tiers. PLAN §4.2 marks A01, A09, A12, C01 and D05 as default rows with nc.
+The default tier keeps A12 (quark lines: the U(1)-subtraction weights and
+the quark-line counterterms at N) and D05 (an electroweak Born: the only
+default-tier LC/NLC request reaching the declared counterterms with
+electroweak legs) at points 0 and 1, about 100 s each; A01, A09 and C01 run
+their projection nightly (A01 and A09 keep their default-tier NJet, Catani
+and Ward oracle ids), the user's fast-default-tier rule (DECISIONS
 2026-10-28 ~17:05).
 """
 
@@ -112,8 +120,14 @@ DEFAULT_POINTS = (0, 1)
 ALL_POINTS = (0, 1, 2, 3)
 
 # Points where double-double's own accuracy is coarser than 1e-24 (module
-# docstring): (row, point) -> the measured error and estimate.
-DD_LISTED: dict[tuple[str, int], str] = {}
+# docstring): (row, point) -> the measured error and estimate. A18 (g g >
+# u u~ u u~): the full-colour virtual's finite part; LC and NLC hold 1e-24
+# there, and native MPFR holds every identity within 1e-45.
+DD_LISTED: dict[tuple[str, int], str] = {
+    ("A18", 0): "FC virtual finite 1.9e-24, E_DD 7.1e-24",
+    ("A18", 2): "FC virtual finite 7.2e-24, E_DD 9.2e-24",
+    ("A18", 3): "FC virtual finite 7.2e-24, E_DD 2.6e-23",
+}
 
 # The rows' nc columns (rule 7): this file's projection ids, then the
 # independent oracles' ids.
@@ -192,9 +206,10 @@ NC_COLUMN = {
 # u u~ > e- e+ g, 6 for u u~ > d d~ g, 8 for u u~ > g g g, and 10 for
 # u u~ > u u~ u u~ (test_loop_v2_fermion_lines). The two check nodes lie
 # inside the node range of every window (it holds 1/2 .. 4 from span 4).
-# 40 digits lose 17 of them on g g > b b~'s massive loop (6.9e-23 against
-# 60 digits); 60 digits leave a floor near 1e-31 there and below 1e-50 on
-# the massless rows.
+# On the Python reference path, 40 digits lose 17 of them on g g > b b~'s
+# massive loop (6.9e-23 against 60 digits) and 60 digits leave a floor near
+# 1e-31 there; the native dressing at 60 digits keeps the massless rows'
+# floor below 1e-50.
 FIT_NODES = (
     "3",
     "2",
@@ -266,6 +281,7 @@ def row_spec(row: str, indices) -> dict:
         points=[list(data["points"][i]) for i in indices],
     )
     spec["parameters"] = {"aS": data["alpha_s"]}
+    spec["dressing"] = "native"
     return spec
 
 
@@ -734,3 +750,43 @@ def test_lc_and_nlc_at_the_nightly_points_of_default_rows(
 
     indices = tuple(i for i in ALL_POINTS if i not in DEFAULT_POINTS)
     _run(loop_sm_compiled_model, loop_native, tmp_path, row, indices)
+
+
+@pytest.mark.loop_nightly
+def test_native_dressing_of_the_scan_equals_the_python_path(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """The scan's native dressing of the Python point inputs equals the
+    Python reference path's own dressing at N_c = 2 and 1/2 (A12 at its
+    campaign points 0 and 1: U(1)-subtraction weights, quark-line
+    counterterms and colour cells at N): every component and Catani's poles
+    within 1e-50 (measured <= 3e-56)."""
+
+    spec = row_spec("A12", DEFAULT_POINTS)
+    runs = {
+        dressing: scan(
+            loop_sm_compiled_model,
+            {**spec, "dressing": dressing},
+            ("2", "1/2"),
+            f"arbitrary:{SCAN_DIGITS}",
+            tmp_path / dressing,
+        )
+        for dressing in ("python", "native")
+    }
+    worst = Fraction(0)
+    for n, python in runs["python"].items():
+        native = runs["native"][n]
+        assert python["rescaled"] == native["rescaled"] > 0, n
+        for mine, theirs in zip(python["results"], native["results"], strict=True):
+            a = _entries(mine["born"], mine["components"])
+            b = _entries(theirs["born"], theirs["components"])
+            assert set(a) == set(b), n
+            for key, value in a.items():
+                size = max(abs(value), abs(b[key]))
+                worst = max(worst, abs(value - b[key]) / size if size else 0)
+            assert mine["ir_poles"].keys() == theirs["ir_poles"].keys(), n
+            for sector, poles in mine["ir_poles"].items():
+                for x, y in zip(poles, theirs["ir_poles"][sector], strict=True):
+                    x, y = _exact(x), _exact(y)
+                    worst = max(worst, abs(x - y) / max(abs(x), abs(y)))
+    assert worst <= Fraction(1, 10**50), float(worst)
