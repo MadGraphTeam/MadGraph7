@@ -663,23 +663,39 @@ engine's selectors, with the tree engine's identifiers and conventions.
 At evaluation, `Runtime.evaluate(..., helicities=[...], color_flows=[...])`
 returns the sum of the selected Born helicity rows and colour flows (Born
 included): helicities by tree ID (`h:-1,+1,...`, values in leg order) or the
-runtime's `h<index>`, flows by tree ID (`flow:2,4,3,5,1`) or 1-based ordinal
-in the tree runtime's order. `runtime.physics.born_anchored_color_components`
-lists the flows. A complete set of selections sums to the inclusive value; a
-(helicity, flow) selection equals its `evaluate_resolved` entry. At
-generation, `process.selected_source_helicities` (leg label to helicity) and
-`process.selected_color_sector_ids` (sectors of the tree engine's
-leading-colour plan, after `reference_color_order` and `max_color_sectors`)
-prune the recursion to the selection: fewer Born rows, skeletons and tree
-currents. The artifact's `evaluate()` then returns the selection. A sector
-of a folded trace holds two flows, the sector's and its reflection, as in
-the tree engine. An evaluation-time selection costs at most one inclusive
+runtime's `h<index>`, flows by tree ID (`flow:2,4,3,5,1`) or 1-based ordinal.
+`runtime.physics.born_anchored_color_components` lists the flows the
+artifact computes, numbered as the tree runtime with the same `[process]`
+selectors numbers its flows: in the order of the tree engine's
+leading-colour plan (after `reference_color_order` and `max_color_sectors`;
+`reference_color_order` alone selects nothing and only orders), and under
+a generation-time colour selection only the selected flows. The physics
+helicity entries keep the runtime's `h<index>` IDs (the helicity axis of
+`evaluate_resolved` at every colour accuracy); their tree ID is `h:`
+followed by their `values`. A complete set of selections sums to the
+inclusive value; a (helicity, flow) selection equals its `evaluate_resolved`
+entry. At generation, `process.selected_source_helicities` (leg label to
+helicity) and `process.selected_color_sector_ids` (sectors of the tree
+engine's leading-colour plan, after `reference_color_order` and
+`max_color_sectors`) prune the recursion to the selection: fewer Born rows,
+skeletons and tree currents. The artifact's `evaluate()` then returns the
+selection, and its physics reports `helicity_coverage` and `color_coverage`
+`"selected"`. A sector of a folded trace holds two flows, the sector's and
+its reflection, as in the tree engine. As in the tree engine, declared
+colour or spin correlations with any of these selectors are refused at
+generation (`selected-correlators`): generate the correlations in an
+inclusive artifact. An evaluation-time selection costs at most one inclusive
 evaluation: it runs only the loop families its flows read, and only the
 helicity rows its helicities reach in the loop dressing and the tree
 currents. A generation-time selection is somewhat cheaper still (one
 helicity and one flow, binary64: u u~ > g g g about 0.7 ms per point at
-evaluation and 0.5-0.6 ms at generation, against 2.0 ms inclusive at
-leading colour; u u~ > g g g g 3.8 ms and 2.6 ms, against 30 ms).
+evaluation and 0.6 ms at generation, against 2.0 ms inclusive at leading
+colour; u u~ > g g g g 4.0 ms and 2.9 ms, against 30 ms). The first call of
+each distinct evaluation-time selection also forms and compiles its column
+set once, which the runtime keeps for later calls (u u~ > g g g g: about
+1 s for a new (helicity, flow) pair); sampling many distinct selections one
+event at a time therefore pays that setup per selection. A generation-time
+selection has no such setup.
 
 ```toml
 [process]
