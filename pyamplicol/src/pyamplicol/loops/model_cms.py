@@ -785,3 +785,200 @@ def complex_mass_scheme(
         reglog_convention,
         scheme.propagators,
     )
+
+
+# ------------------------------------------------------- the tree model view
+
+
+def _ordered(parameters: list[Any], heads: Mapping[str, Any]) -> list[Any]:
+    """``parameters`` in a dependency order (each after the parameters its
+    expression reads), the source order kept where it already is one."""
+
+    pending = list(parameters)
+    placed: set[str] = set()
+    ordered: list[Any] = []
+    while pending:
+        remaining = []
+        for parameter in pending:
+            expression = parameter.expression
+            reads = (
+                set()
+                if expression is None
+                else {
+                    name
+                    for name, head in heads.items()
+                    if head in expression.get_all_symbols(False)
+                }
+                - {parameter.name}
+            )
+            if reads <= placed:
+                ordered.append(parameter)
+                placed.add(parameter.name)
+            else:
+                remaining.append(parameter)
+        if len(remaining) == len(pending):
+            names = ", ".join(parameter.name for parameter in remaining)
+            raise ValueError(f"cyclic complex-mass parameter definitions: {names}")
+        pending = remaining
+    return ordered
+
+
+def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
+    """The compiled model's normalized tree payload (``CompiledModel.model``,
+    the loader's restricted view) under ``scheme``: the same steps on the
+    loader's records (``complex_mass_scheme``), the internal parameter and
+    coupling values evaluated again (``loading._canonical_loader_values``)."""
+
+    import json
+
+    from symbolica import S
+    from ufo_model_loader.common import JSONLook
+    from ufo_model_loader.model import Model, Parameter, ParameterNature, ParameterType
+    from ufo_model_loader.symbolica_processing import parse_python_expression_safe
+
+    from pyamplicol.models.loading import _canonical_loader_values
+
+    model = Model.from_json(json.dumps(dict(payload)))
+    parameters = {parameter.name: parameter for parameter in model.parameters}
+    if len(parameters) != len(model.parameters):
+        raise ValueError("ambiguous tree model parameter names")
+    raw = scheme.original
+    heads = {name: S(f"UFO::{name}") for name in parameters}
+    heads.update({alias: S(f"UFO::{alias}") for alias in scheme.masses.values()})
+    renaming = [(heads[mass], heads[alias]) for mass, alias in scheme.masses.items()]
+
+    def renamed(expression):
+        for old, new in renaming:
+            expression = expression.replace(old, new)
+        return expression
+
+    def source(name: str) -> str:
+        record = raw.record("parameters", name)
+        return raw.exact_value("parameters", record["id"])["expression"]
+
+    if scheme.cms_parameter in parameters:
+        parameter = parameters[scheme.cms_parameter]
+        parameter.expression, parameter.value = None, complex(1.0)
+    for name in scheme.internal_widths:
+        parameter = parameters[name]
+        parameter.expression = parse_python_expression_safe(f"re({source(name)})")
+        parameter.value = None
+    for name, mass in scheme.yukawas.items():
+        if name not in parameters:
+            continue
+        parameter = parameters[name]
+        parameter.nature = ParameterNature.INTERNAL
+        parameter.parameter_type = ParameterType.REAL
+        parameter.lhablock = parameter.lhacode = None
+        parameter.expression = parse_python_expression_safe(
+            next(key for key, alias in scheme.masses.items() if alias == mass)
+            if mass in scheme.masses.values()
+            else mass
+        )
+        parameter.value = None
+    if scheme.masses:
+        kept = set(scheme.real)
+        for parameter in model.parameters:
+            if parameter.nature == ParameterNature.EXTERNAL or parameter.name in kept:
+                continue
+            parameter.parameter_type = ParameterType.COMPLEX
+            if parameter.expression is not None:
+                parameter.expression = renamed(parameter.expression)
+        for mass, alias in scheme.masses.items():
+            created = Parameter(
+                None,
+                None,
+                alias,
+                ParameterNature.INTERNAL,
+                ParameterType.COMPLEX,
+                None,
+                f"cmath.sqrt({mass}**2 - complex(0,1) * {mass} * "
+                f"{scheme.widths[mass]})",
+            )
+            model.parameters.append(created)
+            parameters[alias] = created
+        for coupling in model.couplings:
+            if coupling.expression is not None:
+                coupling.expression = renamed(coupling.expression)
+        for propagator in model.propagators:
+            propagator.numerator = renamed(propagator.numerator)
+            propagator.denominator = renamed(propagator.denominator)
+        for particle in model.particles:
+            alias = scheme.masses.get(particle.mass.name)
+            if alias is not None:
+                particle.mass = parameters[alias]
+                particle.width = parameters["ZERO"]
+    model.parameters = _ordered(model.parameters, heads)
+    model.name_to_position["parameters"] = {
+        parameter.name: index for index, parameter in enumerate(model.parameters)
+    }
+    _canonical_loader_values(model)
+    result = json.loads(model.to_json(JSONLook.COMPACT))
+    result.pop("raw_ufo", None)
+    result.pop("raw_ufo_error", None)
+    for key, value in payload.items():
+        if key not in result:
+            result[key] = value
+    for old, new in zip(
+        payload.get("propagators", ()), result["propagators"], strict=True
+    ):
+        for key, value in old.items():
+            new.setdefault(key, value)
+    return result
+
+
+def complex_mass_model(
+    compiled: Any,
+    *,
+    fixed_parameters: Mapping[str, Any] | None = None,
+    reglog_convention: str = "ufo-standard",
+    cache_dir: Any = None,
+):
+    """``compiled`` (a ``CompiledModel`` with its raw sidecar) in the
+    complex-mass scheme: the raw sidecar transformed
+    (``complex_mass_scheme``), the tree payload with the same decisions
+    (``tree_model_payload``) compiled again (``compile_counterterm_model_ir``'s
+    content-addressed cache), the external defaults without the former
+    Yukawa inputs, the scheme recorded in the source options. Returns the
+    model and its ``ComplexMassScheme``."""
+
+    from dataclasses import replace
+
+    from pyamplicol.models.loading import _counterterm_ir
+
+    raw = compiled.raw_loop_model
+    if raw is None:
+        raise ValueError("the complex-mass scheme needs the model's raw UFO records")
+    scheme = complex_mass_scheme(
+        raw, fixed_parameters=fixed_parameters, reglog_convention=reglog_convention
+    )
+    payload = tree_model_payload(compiled.model, scheme)
+    ir, _entry = _counterterm_ir(
+        payload,
+        tree_kernel_variant="transverse",
+        u1_projected_vertices=frozenset(),
+        cache_dir=cache_dir,
+        gauge=compiled.ir.gauge,
+    )
+    external = {
+        parameter["name"]
+        for parameter in payload["parameters"]
+        if parameter["nature"] == "external"
+    }
+    options = dict(compiled.source.get("options", {}))
+    options[METADATA_KEY] = scheme.metadata()
+    transformed = replace(
+        compiled,
+        source={**compiled.source, "options": options},
+        model=payload,
+        ir=ir,
+        parameter_defaults={
+            name: value
+            for name, value in compiled.parameter_defaults.items()
+            if name in external
+        },
+        raw_loop_model=scheme.derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    return transformed, scheme

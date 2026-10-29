@@ -217,6 +217,33 @@ ORACLE = {
 }
 
 
+def _mg5_values(madgraph_source, ufo: Path, restriction, fixed, directory: Path):
+    """MG5_aMC's complex-mass model at the card of an ``ORACLE`` case
+    (``tools/loop_reference/mg5_cms_model.py``, run with this Python)."""
+
+    card = (
+        _loop_sm_top_width_card(ufo, directory)
+        if fixed
+        else ufo / f"restrict_{restriction}.dat"
+    )
+    output = directory / "mg5.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(REPOSITORY / "tools/loop_reference/mg5_cms_model.py"),
+            f"--mg5={madgraph_source}",
+            f"--ufo={ufo}",
+            f"--card={card}",
+            f"--output={output}",
+        ],
+        check=True,
+        cwd=directory,
+        capture_output=True,
+        timeout=600,
+    )
+    return json.loads(output.read_text())
+
+
 def _mg5_outputs(raw, mg5):
     """Our (name, epsilon power) of each MG5 name: parameters (``mdl_``
     names, MG5's unprefixed ones), the pole masses (``CMASS_mdl_M``), the CT
@@ -277,27 +304,7 @@ def test_parameters_and_couplings_equal_mg5_complex_mass_model(
 
     fixture, restriction, fixed = ORACLE[case]
     ufo = Path(request.getfixturevalue(fixture))
-    card = (
-        _loop_sm_top_width_card(ufo, tmp_path)
-        if fixed
-        else ufo / f"restrict_{restriction}.dat"
-    )
-    output = tmp_path / "mg5.json"
-    subprocess.run(
-        [
-            sys.executable,
-            str(REPOSITORY / "tools/loop_reference/mg5_cms_model.py"),
-            f"--mg5={madgraph_source}",
-            f"--ufo={ufo}",
-            f"--card={card}",
-            f"--output={output}",
-        ],
-        check=True,
-        cwd=tmp_path,
-        capture_output=True,
-        timeout=600,
-    )
-    mg5 = json.loads(output.read_text())
+    mg5 = _mg5_values(madgraph_source, ufo, restriction, fixed, tmp_path)
     scheme = complex_mass_scheme(
         load_raw_loop_model(str(ufo), restriction=restriction),
         fixed_parameters=fixed,
@@ -379,3 +386,52 @@ def test_pole_mass_bindings_through_the_structural_model(cms, loop_native):
     assert all(Decimal(pair[1]) == 0 for pair in zero.values.to_decimal()[:4])
     sw = complex(*map(float, values[1]))
     assert abs(sw.imag) > 1e-4 and abs(cmath.phase(sw)) < 0.1
+
+
+@pytest.mark.loop_physics
+def test_tree_model_view_equals_mg5_complex_mass_model(
+    loop_gmu_ufo, madgraph_source, tmp_path
+):
+    """The compiled tree model under the scheme (``complex_mass_model``: the
+    loader's restricted payload with the same decisions, compiled again)
+    holds MG5's values: every internal parameter and coupling of the
+    payload (the loader's own evaluation) equals MG5's complex-mass model to
+    1e-12; the pole-mass particles propagate with width ZERO and the former
+    Yukawa input is no external parameter; the raw sidecar is the scheme's."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(
+        loop_gmu_ufo,
+        cache_dir=tmp_path / "model-cache",
+        require_supported=False,
+        gauge="feynman",
+    )
+    model, scheme = complex_mass_model(compiled, cache_dir=tmp_path / "model-cache")
+    assert model.raw_loop_model is scheme.derived and model.ir.gauge == "feynman"
+    assert "ymt" not in model.parameter_defaults and "MT" in model.parameter_defaults
+    particles = {record.name: record for record in model.ir.particles}
+    for name, mass in (("t", "CMASS_MT"), ("Z", "CMASS_MZ"), ("G0", "CMASS_MZ")):
+        assert (str(particles[name].mass), str(particles[name].width)) == (mass, "ZERO")
+    mg5 = _mg5_values(madgraph_source, Path(loop_gmu_ufo), "default", {}, tmp_path)
+    compared = 0
+    for kind, records in (("parameters", "parameters"), ("couplings", "couplings")):
+        for record in model.model[records]:
+            if kind == "parameters" and record["nature"] == "external":
+                continue
+            name = record["name"]
+            key = (
+                name.replace("CMASS_", "CMASS_mdl_")
+                if name.startswith("CMASS_")
+                else name
+                if kind == "couplings" or name in mg5[kind]
+                else f"mdl_{name}"
+            )
+            reference = complex(*map(float, mg5[kind][key]))
+            value = complex(*record["value"])
+            scale = abs(reference)
+            error = abs(value - reference) / scale if scale else abs(value)
+            assert error <= TOLERANCE, (name, value, reference)
+            compared += 1
+    assert compared > 100
