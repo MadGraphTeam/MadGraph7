@@ -492,9 +492,9 @@ def export_trees(
     # (row, start, Wick sign) term the executor adds in order.
     block_row_terms = []
     for current, word, chirality, row, dimension in exporter.block_rows:
-        entries = index[(current.mask, current.field, current.orders, word)][
-            chirality
-        ][row]
+        entries = index[(current.mask, current.field, current.orders, word)][chirality][
+            row
+        ]
         for k, (tree, entry) in enumerate(entries):
             start, size = slot(tree, entry)
             if size != dimension:
