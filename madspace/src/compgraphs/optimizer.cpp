@@ -83,7 +83,7 @@ Function madspace::sort_breadth_first(const Function& function) {
     return func_out;
 }
 
-Function madspace::fuse_conversions(const Function& function) {
+Function madspace::fuse_instructions(const Function& function) {
     Function func_out = function;
     auto& instructions = func_out._instructions;
     std::vector<int> producer(function.locals().size(), -1);

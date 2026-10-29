@@ -111,7 +111,7 @@ def test_conversion_lowering_graph(direction):
     flow = make_flow("lowering")
     function = getattr(flow, f"{direction}_function")()
     before = instruction_counts(function)
-    after = instruction_counts(ms.fuse_conversions(function))
+    after = instruction_counts(ms.fuse_instructions(function))
     spline = "rqs_forward" if direction == "forward" else "rqs_inverse"
     # every MLP of the flow converts its input and its output
     assert before["convert_float32"] == before["convert_float64"] == 4
@@ -124,7 +124,8 @@ def test_conversion_lowering_graph(direction):
     # the original function is not modified, and the pass is idempotent
     assert instruction_counts(function) == before
     assert (
-        instruction_counts(ms.fuse_conversions(ms.fuse_conversions(function))) == after
+        instruction_counts(ms.fuse_instructions(ms.fuse_instructions(function)))
+        == after
     )
 
 
@@ -151,7 +152,7 @@ def test_conversion_lowering_numerics(direction, monkeypatch):
             if not lowered:
                 mp.setenv("MADSPACE_NO_FUSION", "1")
             module = FunctionModule(
-                ms.fuse_conversions(function) if lowered else function, ctx
+                ms.fuse_instructions(function) if lowered else function, ctx
             )
             r_grad = r.clone().requires_grad_()
             out, det = module(r_grad)
@@ -191,7 +192,7 @@ def test_matmul_activation(activation, precision, monkeypatch):
             weights.dtype
         )
     function = mlp.function()
-    lowered = ms.fuse_conversions(function)
+    lowered = ms.fuse_instructions(function)
     assert instruction_counts_any(lowered, f"matmul_{activation}_{precision}") == 2
     assert instruction_counts_any(lowered, f"{activation}_{precision}") == 0
 

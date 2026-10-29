@@ -47,6 +47,6 @@ Function sort_breadth_first(const Function& function);
  * The graph keeps only the generic instructions and so stays portable; the fused
  * instructions never appear in a saved function.
  */
-Function fuse_conversions(const Function& function);
+Function fuse_instructions(const Function& function);
 
 } // namespace madspace

@@ -1927,7 +1927,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     Function function = sort_breadth_first(
         std::getenv("MADSPACE_NO_FUSION")
             ? function_arg
-            : fuse_conversions(function_arg)
+            : fuse_instructions(function_arg)
     );
 
     _locals_init.resize(function.locals().size());

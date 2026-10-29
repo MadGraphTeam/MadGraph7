@@ -287,8 +287,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     m.def(
-        "fuse_conversions",
-        &fuse_conversions,
+        "fuse_instructions",
+        &fuse_instructions,
         py::arg("function"),
         "Fuses single-precision conversions and network activations into the "
         "instructions producing their inputs (the lowering the GPU backend applies "
