@@ -709,8 +709,11 @@ class SeedColour:
                 )
                 for p in network
             )
-        # (mask, field, orders) -> block name (``block_name``) -> block (the
-        # blocks of one name differ only by chirality, which colour ignores).
+        # (mask, field, orders) -> block name (``block_name``) -> block. The
+        # blocks of one name differ only by chirality or by the flavour flow
+        # of their trees (one field current the tree engine splits; their
+        # rows add, ``assemble._BlockRows``), which colour ignores: their
+        # colour flows must agree up to the sign their rows carry.
         self._words: dict[tuple[int, str, Orders], dict[BlockName, Block]] = {}
         for block in blocks.blocks:
             key = block.key
@@ -729,9 +732,16 @@ class SeedColour:
                     "grades (generation.dag_grades left it mixed)"
                 )
             field_name = self._fields.incoming(key.particle_id)["name"]
-            self._words.setdefault(
+            first = self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
             ).setdefault(block_name(blocks, block), block)
+            if first is not block and replace(first.colour_flow, sign=1) != replace(
+                block.colour_flow, sign=1
+            ):
+                raise ValueError(
+                    f"blocks {first.id} and {block.id} of word {key.word} and "
+                    "field current differ in colour flow"
+                )
         # The block names of each block current in state order, once.
         self._ordered: dict[tuple[int, str, Orders], tuple[BlockName, ...]] = {}
 

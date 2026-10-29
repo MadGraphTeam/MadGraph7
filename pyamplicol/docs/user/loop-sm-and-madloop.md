@@ -65,6 +65,12 @@ No `[loop.model]` section and no colour setting are needed:
 shipped loop_sm (`u u~ > e- e+ / Z [virt=QCD]` on `loop_sm-no_b_mass`) and
 compares it with MadLoop.
 
+Vector-boson pairs with jets (`u u~ > w+ w- g`, `b b~ > w+ w- g`) agree with
+MadLoop's quadruple-precision values to about 1e-12. Earlier builds got their
+virtual wrong where one tree current takes two flavour paths (the u line of
+`u, W+, W-` through a gamma*/Z* or through a t-channel d): the loops used one
+of them only.
+
 ## MadLoop process syntax
 
 | MadLoop / MG5_aMC | pyAmpliCol |

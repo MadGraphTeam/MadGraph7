@@ -754,7 +754,14 @@ returned poles are:
   (below), so that their cancellation can be checked.
 - `"ir"`: the infrared poles of the renormalised virtual, which Catani's
   operator predicts. Where the ultraviolet renormalisation is complete they
-  equal the poles of `"all"`.
+  equal the poles of `"all"`. They are the poles of the computed loops: a
+  QCD request, like MadLoop's `[virt=QCD]`, has no loop with a W, Z or H
+  line, so where the Born trees join quark lines in different ways through
+  such lines (`u d > u d h` at `QCD=0`: a Z or a W between the lines; `u b >
+  d t g`: the gluon on either line) the gluon exchanges across the lines are
+  left out and the poles differ from the full Catani operator's. Such
+  sectors carry no Catani prediction (`LoopSlice.unpredicted_sectors()`
+  states why for each).
 
 Both selections cost the same and both also return each origin's parts by
 component, `VirtualEvaluation.pole_parts` (per point, `uv` and `ir`, each

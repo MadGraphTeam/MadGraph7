@@ -118,6 +118,7 @@
   "ew:VBF-H",
   "ew:VH",
   "ew:VV",
+  "ew:VV+jet",
   "ew:W-exchange",
   "ew:W-leptons",
   "ew:dilepton",
@@ -195,13 +196,12 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1199,
+    "seconds": 1191,
     "rows": [
-     "A13",
-     "A13@sectors",
      "B05",
      "B05@sectors",
-     "D02"
+     "F01",
+     "F01@5F"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
    },
@@ -224,22 +224,21 @@
    },
    {
     "job": 4,
-    "seconds": 1193,
+    "seconds": 1182,
     "rows": [
      "A14",
      "B07",
-     "C03",
      "C06",
-     "D06",
-     "D06@madloop",
      "E06",
-     "E06@sectors"
+     "E06@sectors",
+     "F04",
+     "F04@5F"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1197,
+    "seconds": 1181,
     "rows": [
      "A09",
      "A09@collinear",
@@ -258,11 +257,9 @@
      "C01@params",
      "D07",
      "D07@sectors",
-     "D08",
-     "D08@sectors",
-     "D15",
+     "D29",
+     "D29@5F",
      "E01",
-     "H01",
      "M01@P0",
      "M01@P2",
      "M01@public-P0",
@@ -280,63 +277,78 @@
      "A02@madloop",
      "A03",
      "A05",
-     "A06",
-     "A06@sectors",
-     "A07",
+     "A13",
+     "A13@sectors",
      "A19",
      "A19@sectors",
      "A20",
      "A20@sectors",
-     "A25",
-     "A26",
      "B02",
      "B02@madloop",
      "B06",
      "B08",
      "C02",
-     "C04",
      "C05",
      "C07",
      "C08",
+     "C09",
      "D05",
-     "D09",
-     "D09@sectors",
+     "D06",
+     "D06@madloop",
+     "D08",
+     "D08@sectors",
      "D10",
      "D10@sectors",
      "D11",
-     "D12",
-     "D13",
-     "D16",
      "D17",
-     "D19",
+     "D17@5F",
      "D20",
-     "D23",
      "D25",
      "D25@zero",
      "D26",
-     "D27",
+     "D28",
      "E02",
-     "F01",
      "F02",
-     "F04",
-     "G01",
+     "F02@5F",
      "G02",
-     "R01"
+     "H01",
+     "H02",
+     "H03"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
    },
    {
     "job": 7,
-    "seconds": 132,
+    "seconds": 551,
     "rows": [
      "A04",
+     "A06",
+     "A06@sectors",
+     "A07",
      "A12",
      "A12@sectors",
+     "A25",
+     "A26",
+     "C03",
+     "C04",
      "D01",
+     "D02",
+     "D09",
+     "D09@sectors",
+     "D12",
+     "D13",
+     "D15",
+     "D16",
      "D18",
+     "D19",
      "D21",
+     "D23",
      "D24",
-     "E05"
+     "D27",
+     "E05",
+     "F03",
+     "G01",
+     "R01"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_7.py"
    }
@@ -3326,13 +3338,13 @@
     "singletop:4FS-t",
     "massive:b"
    ],
-   "predicted_sectors": [
+   "predicted_sectors": [],
+   "unpredicted_sectors": [
     {
      "QCD": 4,
      "QED": 4
     }
    ],
-   "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -3424,7 +3436,7 @@
    "gauge": "unitary",
    "scheme": "qcd-cmass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (+ Recola; MQ-5F)",
    "reference": {
     "format": "required",
@@ -3458,11 +3470,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D01",
@@ -4593,11 +4601,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -4719,13 +4722,13 @@
     "2->3",
     "ew:VBF-H"
    ],
-   "predicted_sectors": [
+   "predicted_sectors": [],
+   "unpredicted_sectors": [
     {
      "QCD": 2,
      "QED": 6
     }
    ],
-   "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12
@@ -5215,6 +5218,172 @@
    "reference_tolerance": 1e-12
   },
   {
+   "id": "D28",
+   "class": "Q-EWBorn",
+   "process": "u u~ > w+ w- g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "N, S (VV + jet, 4F)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/uux_wpwmg_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "ew:VV+jet",
+    "scheme:4FS"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-11
+  },
+  {
+   "id": "D29",
+   "class": "Q-EWBorn",
+   "process": "b b~ > w+ w- g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "restriction": "default",
+   "restriction_code": "5F*",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "N, S (VV + jet, massive t-channel line; MQ-5F)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/mqcd/bbx_wpwmg.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "ward"
+   ],
+   "features": [
+    "initial:qqbar",
+    "2->3",
+    "ew:VV+jet"
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "variants": [
+    {
+     "name": "5F",
+     "gating": true,
+     "tier": "nightly",
+     "restriction": "no_b_mass",
+     "restriction_code": "5F",
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "notes": "PLAN \u00a73.0 MQ-5F: the row's request on the restricted UFO (no_b_mass), against the row's reference (so equal to its default-restriction MB = ymb = 0 route under \u00a71.4)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/bbx_wpwmg.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     }
+    }
+   ]
+  },
+  {
    "id": "E01",
    "class": "Q-ttX",
    "process": "g g > t t~ h",
@@ -5632,11 +5801,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ],
@@ -5744,11 +5908,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -5783,7 +5942,7 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
    "reference": {
     "format": "required",
@@ -5817,11 +5976,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "F04",
@@ -5922,11 +6077,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -6217,7 +6367,7 @@
    "gauge": "unitary",
    "scheme": "qcd-ckm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s + CKM-factor relation (MQ-5F)",
    "reference": {
     "format": "required",
@@ -6251,10 +6401,6 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   },
    "ckm_relation": {
     "twin_process": "g b > t w-",
     "numerator": [
@@ -6291,7 +6437,7 @@
    "gauge": "unitary",
    "scheme": "qcd-ckm4",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (single-provider exception; MQ-5F)",
    "reference": {
     "format": "required",
@@ -6324,11 +6470,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "M01",

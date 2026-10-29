@@ -163,14 +163,15 @@ from .poles import (
     exact_charge,
     has_poles,
     pole_mode,
-    predicted_sectors,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
     reducer_poles,
+    sector_predictions,
     sector_sum,
     select_lane,
     select_sector,
+    separated_exchange,
     split_sector,
     splits,
     strong_beta0,
@@ -3062,6 +3063,18 @@ class LoopSlice:
 
     # -- colour correlations (IR-pole check) ------------------------------------
 
+    def unpredicted_sectors(self) -> dict[Orders, str]:
+        """The squared-order sectors without a Catani prediction and why
+        (``poles.UNPREDICTED_REASONS``, ``poles.sector_predictions``):
+        ``PointResult.ir_poles`` leaves them out, and they are checked
+        against a provider per split order only."""
+
+        return {
+            sector: reason
+            for sector, reason in _sector_predictions(self).items()
+            if reason is not None
+        }
+
     def dipoles(self) -> dict[tuple[int, int], tuple[tuple[Fraction, ...], ...]]:
         """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j.
 
@@ -4504,7 +4517,15 @@ def _interfere(
 
 class _BlockRows:
     """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
-    keyed by the contents' block names (``PositionColour.block_names``)."""
+    keyed by the contents' block names (``PositionColour.block_names``).
+
+    A row is the sum of the tree blocks of one name, chirality and helicity
+    row: the tree engine splits a field current into several DAG currents
+    whose keys differ only by the flavour flow of their trees (u u~ > w+ w- g:
+    the u current of legs {1, 3, 4} through gamma*/Z* and through a t-channel
+    d), and a loop vertex attaches their sum. ``_index`` holds per row the
+    ``(block, row)`` entries in block order; ``value`` adds their Feynman-rule
+    currents in that order (one entry: its current, as before)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
@@ -4530,7 +4551,8 @@ class _BlockRows:
                 ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
-                    bucket[key.chirality][helicities] = (block, row)
+                    entries = bucket[key.chirality].get(helicities, ())
+                    bucket[key.chirality][helicities] = (*entries, (block, row))
             slice_._cache["block-rows"] = index
         self._index = index
         self._rows = rows
@@ -4540,12 +4562,22 @@ class _BlockRows:
         return {chirality: tuple(rows) for chirality, rows in found.items()}
 
     def value(self, block, word, chirality, row, dimension):
-        tree, entry = self._index[(block.mask, block.field, block.orders, word)][
-            chirality
-        ][row]
-        variant = "source" if tree.is_source else "propagated"
-        sign = tree.wick_sign
-        return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
+        entries = self._index[(block.mask, block.field, block.orders, word)][chirality][
+            row
+        ]
+        total = None
+        for tree, entry in entries:
+            variant = "source" if tree.is_source else "propagated"
+            sign = tree.wick_sign
+            current = tuple(
+                sign * value for value in self._rows[(entry.current_id, variant)]
+            )
+            total = (
+                current
+                if total is None
+                else tuple(a + b for a, b in zip(total, current, strict=True))
+            )
+        return total
 
 
 def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
@@ -4938,7 +4970,18 @@ def _correction_orders(slice_) -> ew_policy.CorrectionOrders:
 
 def _predicted_sectors(slice_) -> frozenset[Orders]:
     """The sectors whose IR poles the request's operators predict
-    (``poles.predicted_sectors``), kept in the slice's cache.
+    (``_sector_predictions``)."""
+
+    return frozenset(
+        sector
+        for sector, reason in _sector_predictions(slice_).items()
+        if reason is None
+    )
+
+
+def _sector_predictions(slice_) -> dict[Orders, str | None]:
+    """``poles.sector_predictions`` of the slice (None: predicted, else the
+    typed reason), kept in the slice's cache.
 
     A tree of an order the Born program does not hold is absent when the
     order lies within the request's Born bounds (the program holds every
@@ -4951,10 +4994,11 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
     by its power in the order): e+ e- > t t~ h has no tree of order
     g_s^2 e, which the vertex test alone cannot tell. It runs only for a
     loop order whose lower tree lies outside the Born program, once per
-    slice, at the first IR-pole prediction."""
+    slice, at the first IR-pole prediction. A correction's separated
+    exchanges are ``_born_partitions``'."""
 
     cache = slice_._cache
-    found = cache.get("predicted-sectors")
+    found = cache.get("sector-predictions")
     if found is not None:
         return found
     compiled, request = slice_.compiled, slice_.request
@@ -4994,12 +5038,131 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
         )
         return order in found
 
-    found = cache["predicted-sectors"] = predicted_sectors(
+    correction_orders = _correction_orders(slice_)
+
+    def separated(name: str, orders: frozenset[Orders]) -> bool:
+        if name == correction_orders.strong:
+            abelian = False
+            charged = frozenset(
+                leg.label for leg in slice_.basis.legs if leg.representation != 1
+            )
+        elif name == correction_orders.abelian:
+            abelian = True
+            charged = frozenset(
+                leg.index + 1
+                for leg in slice_.families.legs
+                if exact_charge(names[leg.field].charge) != 0
+            )
+        else:
+            # A correction without an operator makes no prediction anyway.
+            return False
+        partitions = _born_partitions(slice_, charged)
+        return separated_exchange(
+            (p for order in orders for p in partitions.get(order, ())),
+            abelian=abelian,
+        )
+
+    found = cache["sector-predictions"] = sector_predictions(
         slice_.sectors,
         slice_.blocks.born_orders,
         request.corrections,
         tree_exists,
+        separated,
     )
+    return found
+
+
+def _born_partitions(slice_, charged: frozenset[int]) -> dict[Orders, frozenset]:
+    """Per Born amplitude order, the partitions (``poles.Partition``) of its
+    trees: the ``charged`` leg labels grouped by the lines of species that
+    the request's corrections circulate (``perturbative_species_orders``,
+    the loop selection's species condition), kept per slice and leg set.
+
+    A recursion over the Born DAG, never over its trees: per current the
+    set of its trees' (closed components, open component) states, the open
+    one the charged legs its own line joins; a line of a species no
+    requested correction circulates closes it. A root joins the open
+    components of its currents (and of its closure vertex's leg). Without
+    such a line between charged legs every tree has one component, and no
+    state is formed."""
+
+    cache = slice_._cache.setdefault("born-partitions", {})
+    found = cache.get(charged)
+    if found is not None:
+        return found
+    dag = slice_.blocks.born_dag
+    if hasattr(dag, "materialize"):
+        dag = dag.materialize()
+    species = slice_.prepared.structure.perturbative_species_orders or {}
+    corrections = frozenset(slice_.request.corrections)
+    full = (1 << len(slice_.blocks.process.legs)) - 1
+    charged_mask = sum(1 << (label - 1) for label in charged)
+    orders = {root.root_id: root.coupling_orders for root in slice_.blocks.born_roots}
+
+    def closes(node) -> bool:
+        index = node.index
+        return (
+            not node.is_source
+            and index.auxiliary_kind is None
+            and not species.get(abs(int(index.particle_id)), frozenset()) & corrections
+        )
+
+    if not any(
+        closes(node)
+        and node.index.external_mask & charged_mask
+        and (full ^ node.index.external_mask) & charged_mask
+        for node in dag.currents
+    ):
+        one = frozenset({frozenset({charged})} if charged else {frozenset()})
+        found = cache[charged] = {order: one for order in set(orders.values())}
+        return found
+    incoming: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for interaction in dag.interactions:
+        incoming[interaction.result_id].append(
+            (interaction.left_id, interaction.right_id)
+        )
+    states: dict[int, frozenset] = {}
+    empty: frozenset = frozenset()
+
+    def current(identifier: int) -> frozenset:
+        got = states.get(identifier)
+        if got is not None:
+            return got
+        node = dag.currents[identifier]
+        if node.is_source:
+            label = node.source_leg_label
+            got = frozenset(
+                {(empty, frozenset({label}) if label in charged else empty)}
+            )
+        else:
+            joined = {
+                (closed_l | closed_r, open_l | open_r)
+                for left, right in incoming[identifier]
+                for closed_l, open_l in current(left)
+                for closed_r, open_r in current(right)
+            }
+            if closes(node):
+                joined = {
+                    (closed | frozenset({open_}) if open_ else closed, empty)
+                    for closed, open_ in joined
+                }
+            got = frozenset(joined)
+        states[identifier] = got
+        return got
+
+    out: dict[Orders, set] = defaultdict(set)
+    for root in dag.amplitude_roots:
+        left, right = dag.currents[root.left_id], dag.currents[root.right_id]
+        sink = full ^ (left.index.external_mask | right.index.external_mask)
+        vertex = frozenset(label for label in charged if sink & (1 << (label - 1)))
+        for closed_l, open_l in current(root.left_id):
+            for closed_r, open_r in current(root.right_id):
+                component = open_l | open_r | vertex
+                partition = closed_l | closed_r
+                if component:
+                    partition = partition | frozenset({component})
+                out[orders[root.id]].add(partition)
+    found = cache[charged] = {order: frozenset(p) for order, p in out.items()}
     return found
 
 

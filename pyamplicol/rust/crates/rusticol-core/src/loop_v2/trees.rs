@@ -278,6 +278,11 @@ struct TreeFile {
     interactions: InteractionFile,
     /// (state component start, dimension, Wick sign) per plan block row.
     block_rows: Vec<(usize, usize, i32)>,
+    /// Further (plan block row, state component start, Wick sign) terms of
+    /// rows whose block current the tree engine splits into several trees
+    /// (by flavour flow): each adds its current to the row, in order.
+    #[serde(default)]
+    block_row_terms: Vec<(usize, usize, i32)>,
     born: BornFile,
     parameters: ParameterFile,
     /// The counterterm and external-field components (none: Born and bare
@@ -787,6 +792,10 @@ pub struct TreeProgram {
     sources: SchemaSources,
     interactions: Interactions,
     block_rows: Vec<(usize, usize, i32)>,
+    /// `TreeFile::block_row_terms` and each block row's offset in a point's
+    /// rows.
+    block_row_terms: Vec<(usize, usize, i32)>,
+    block_row_offsets: Vec<usize>,
     rows: usize,
     components: usize,
     plan_components: Vec<Option<usize>>,
@@ -1807,6 +1816,24 @@ impl TreeProgram {
                 "block row",
             )?;
         }
+        for &(row, start, sign) in &file.block_row_terms {
+            require(
+                file.block_rows
+                    .get(row)
+                    .is_some_and(|&(_, dimension, _)| start + dimension <= file.state_size)
+                    && sign.abs() == 1,
+                "block row term",
+            )?;
+        }
+        let block_row_offsets = file
+            .block_rows
+            .iter()
+            .scan(0, |offset, &(_, dimension, _)| {
+                let start = *offset;
+                *offset += dimension;
+                Some(start)
+            })
+            .collect();
         let born = file.born;
         require(born.rows == plan.rows, "Born rows differ from the plan's")?;
         require(
@@ -1918,6 +1945,8 @@ impl TreeProgram {
             sources: SchemaSources::from_value(&file.source_fill)?,
             interactions,
             block_rows: file.block_rows,
+            block_row_terms: file.block_row_terms,
+            block_row_offsets,
             rows: born.rows,
             components: born.components,
             plan_components: born.plan_components,
@@ -2865,6 +2894,20 @@ impl TreeProgram {
                     } else {
                         value.clone()
                     });
+                }
+            }
+            for &(row, start, sign) in &self.block_row_terms {
+                let dimension = self.block_rows[row].1;
+                let offset = self.block_row_offsets[row];
+                for (target, value) in rows[offset..offset + dimension]
+                    .iter_mut()
+                    .zip(&state[start..start + dimension])
+                {
+                    *target += if sign < 0 {
+                        -value.clone()
+                    } else {
+                        value.clone()
+                    };
                 }
             }
             out.block_rows.push(rows);
