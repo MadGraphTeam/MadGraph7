@@ -1452,7 +1452,8 @@
     1
    ],
    "inputs": "native",
-   "catani": "none"
+   "catani": "tree",
+   "tree_correlations": "tests/fixtures/loop/mqcd/references/tree-correlations-A14.json"
   },
   {
    "id": "A15",

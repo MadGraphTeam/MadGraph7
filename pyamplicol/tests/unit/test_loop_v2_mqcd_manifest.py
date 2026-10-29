@@ -893,7 +893,8 @@ def test_report_data_counts_variants_smokes_and_findings(
     assert sum(data["counts"].values()) == len(data["rows"])
     table = builder.markdown(data)
     line = next(x for x in table.splitlines() if x.startswith("| A09"))
-    assert "fail" in line and "F9" in line and "soft: r1 p0" in line
+    assert "fail" in line and "F9" in line
+    assert "soft: r1 p0 DD total finite 2e-12>1e-12" in line
     # Rule 1's tolerance is stated per row (1e-10 only where needed).
     assert rows["A01"]["reference_tolerance"] == 1e-12
     assert rows["A19"]["reference_tolerance"] == 1e-12
