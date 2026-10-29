@@ -146,7 +146,16 @@ madspace::weighting_groups_to_json(const std::vector<WeightingGroup>& groups) {
                 {"override_outputs", override_outputs},
             });
         }
-        j.push_back({{"channel_indices", group.channel_indices}, {"steps", steps}});
+        json group_json{{"channel_indices", group.channel_indices}, {"steps", steps}};
+        if (group.first_pass_max_overweight_truncation) {
+            group_json["first_pass_max_overweight_truncation"] =
+                *group.first_pass_max_overweight_truncation;
+        }
+        if (group.first_pass_freeze_max_weight_after) {
+            group_json["first_pass_freeze_max_weight_after"] =
+                *group.first_pass_freeze_max_weight_after;
+        }
+        j.push_back(group_json);
     }
     return j.dump();
 }
@@ -159,6 +168,14 @@ madspace::weighting_groups_from_json(const std::string& text) {
             .channel_indices =
                 group_json.at("channel_indices").get<std::vector<std::size_t>>()
         };
+        if (group_json.contains("first_pass_max_overweight_truncation")) {
+            group.first_pass_max_overweight_truncation =
+                group_json.at("first_pass_max_overweight_truncation").get<double>();
+        }
+        if (group_json.contains("first_pass_freeze_max_weight_after")) {
+            group.first_pass_freeze_max_weight_after =
+                group_json.at("first_pass_freeze_max_weight_after").get<std::size_t>();
+        }
         for (auto& step_json : group_json.at("steps")) {
             WeightingStep step{
                 .mode = step_json.at("mode").get<std::string>() == "unweight"
@@ -359,6 +376,11 @@ WeightingPipeline::WeightingPipeline(
         );
         for (auto channel_index : group_config.channel_indices) {
             channels.at(channel_index)->set_weighting_steps(group.settings);
+            channels.at(channel_index)
+                ->set_first_pass_settings(
+                    group_config.first_pass_max_overweight_truncation,
+                    group_config.first_pass_freeze_max_weight_after
+                );
             _next_sequences.at(channel_index).assign(step_count + 1, 0);
             _ready.at(channel_index).resize(step_count + 1);
         }

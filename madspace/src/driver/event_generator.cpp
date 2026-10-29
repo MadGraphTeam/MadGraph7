@@ -138,7 +138,8 @@ void EventGenerator::run_generate(GenerateMode mode) {
         if (channel->status().count_opt == 0 || mode == GenerateMode::fix_max_weights) {
             channel->set_target_count(
                 mode == GenerateMode::fix_max_weights
-                    ? _config.freeze_max_weight_after
+                    ? channel->first_pass_freeze_max_weight_after()
+                          .value_or(_config.freeze_max_weight_after)
                     : _config.target_count
             );
         }
@@ -662,7 +663,10 @@ void EventGenerator::update_integral_fractions(bool final_step) {
          zip(_channels, counts, _channel_integral_fractions)) {
         if (_generate_mode == GenerateMode::fix_max_weights) {
             // the maxima of all steps have to freeze
-            std::size_t freeze_count = _config.freeze_max_weight_after;
+            std::size_t freeze_count =
+                channel->first_pass_freeze_max_weight_after().value_or(
+                    _config.freeze_max_weight_after
+                );
             for (auto& step : channel->weighting_steps()) {
                 freeze_count = std::max(freeze_count, step.freeze_max_weight_after);
             }

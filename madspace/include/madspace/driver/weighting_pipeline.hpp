@@ -22,6 +22,12 @@ struct WeightingGroup {
     std::vector<std::size_t> channel_indices;
     /// The steps, in order.
     std::vector<WeightingStep> steps;
+    /// If set, replaces @ref GeneratorConfig::max_overweight_truncation for
+    /// the first unweighting of the channels of the group.
+    std::optional<double> first_pass_max_overweight_truncation;
+    /// If set, replaces @ref GeneratorConfig::freeze_max_weight_after for the
+    /// first unweighting of the channels of the group.
+    std::optional<std::size_t> first_pass_freeze_max_weight_after;
 };
 
 /// JSON text of `groups`, for example to store them in a gridpack. The matrix

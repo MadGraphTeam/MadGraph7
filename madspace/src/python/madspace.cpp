@@ -3516,6 +3516,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("ChannelEventGenerator::step_max_weight")
         )
         .def(
+            "max_overweight_truncation",
+            &ChannelEventGenerator::max_overweight_truncation,
+            pydoc::doc("ChannelEventGenerator::max_overweight_truncation")
+        )
+        .def(
+            "freeze_max_weight_after",
+            &ChannelEventGenerator::freeze_max_weight_after,
+            pydoc::doc("ChannelEventGenerator::freeze_max_weight_after")
+        )
+        .def(
             "set_target_count",
             &ChannelEventGenerator::set_target_count,
             py::arg("target_count"),
@@ -3599,14 +3609,33 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<WeightingGroup>(m, "WeightingGroup", pydoc::doc("WeightingGroup"))
         .def(
             py::init([](const std::vector<std::size_t>& channel_indices,
-                        const std::vector<WeightingStep>& steps) {
+                        const std::vector<WeightingStep>& steps,
+                        std::optional<double> first_pass_max_overweight_truncation,
+                        std::optional<std::size_t> first_pass_freeze_max_weight_after) {
                 return WeightingGroup{
-                    .channel_indices = channel_indices, .steps = steps
+                    .channel_indices = channel_indices,
+                    .steps = steps,
+                    .first_pass_max_overweight_truncation =
+                        first_pass_max_overweight_truncation,
+                    .first_pass_freeze_max_weight_after =
+                        first_pass_freeze_max_weight_after,
                 };
             }),
             py::arg("channel_indices"),
             py::arg("steps"),
+            py::arg("first_pass_max_overweight_truncation") = py::none(),
+            py::arg("first_pass_freeze_max_weight_after") = py::none(),
             pydoc::doc("WeightingGroup")
+        )
+        .def_readwrite(
+            "first_pass_max_overweight_truncation",
+            &WeightingGroup::first_pass_max_overweight_truncation,
+            pydoc::doc("WeightingGroup::first_pass_max_overweight_truncation")
+        )
+        .def_readwrite(
+            "first_pass_freeze_max_weight_after",
+            &WeightingGroup::first_pass_freeze_max_weight_after,
+            pydoc::doc("WeightingGroup::first_pass_freeze_max_weight_after")
         )
         .def_readwrite(
             "channel_indices",

@@ -1211,6 +1211,19 @@ void ChannelEventGenerator::set_weighting_steps(
     }
 }
 
+void ChannelEventGenerator::set_first_pass_settings(
+    std::optional<double> max_overweight_truncation,
+    std::optional<std::size_t> freeze_max_weight_after
+) {
+    if (max_overweight_truncation) {
+        _config.max_overweight_truncation = *max_overweight_truncation;
+    }
+    if (freeze_max_weight_after) {
+        _config.freeze_max_weight_after = *freeze_max_weight_after;
+        _first_pass_freeze_max_weight_after = freeze_max_weight_after;
+    }
+}
+
 void ChannelEventGenerator::set_fixed_step_max_weight(
     std::size_t step, double max_weight
 ) {

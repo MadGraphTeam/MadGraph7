@@ -209,6 +209,27 @@ public:
     void set_weighting_steps(const std::vector<StepSettings>& steps);
     /// The re- and unweighting steps.
     const std::vector<StepSettings>& weighting_steps() const { return _step_settings; }
+    /// Replace @ref GeneratorConfig::max_overweight_truncation and
+    /// @ref GeneratorConfig::freeze_max_weight_after of the first unweighting,
+    /// where set.
+    void set_first_pass_settings(
+        std::optional<double> max_overweight_truncation,
+        std::optional<std::size_t> freeze_max_weight_after
+    );
+    /// The truncation of the first unweighting, see
+    /// @ref GeneratorConfig::max_overweight_truncation.
+    double max_overweight_truncation() const {
+        return _config.max_overweight_truncation;
+    }
+    /// The freeze count of the first unweighting, see
+    /// @ref GeneratorConfig::freeze_max_weight_after.
+    std::size_t freeze_max_weight_after() const {
+        return _config.freeze_max_weight_after;
+    }
+    /// The freeze count set with @ref set_first_pass_settings, if any.
+    std::optional<std::size_t> first_pass_freeze_max_weight_after() const {
+        return _first_pass_freeze_max_weight_after;
+    }
     /// Maximum weight of step `step`, counted from 1.
     double step_max_weight(std::size_t step) const {
         return _step_states.at(step - 1).max_weight;
@@ -448,6 +469,7 @@ private:
     double _freeze_count = 0.;
     StepIntegral _final_integral;
     std::size_t _event_epoch = 0;
+    std::optional<std::size_t> _first_pass_freeze_max_weight_after;
 
     friend void to_json(nlohmann::json& j, const ChannelEventGenerator& channel);
 };

@@ -467,6 +467,56 @@ def test_ratio_matrix_element_rules(tmp_path):
     assert loaded[0].steps[0].matrix_elements[0].channel() == 3
 
 
+def test_first_pass_settings_of_group(tmp_path):
+    """The first unweighting of the channels of a group uses the settings of
+    the group, the other channels the global ones."""
+    context, alphas_file = make_context(str(tmp_path), 2)
+    surrogate = python_matrix_element(context, surrogate_me)
+    full = python_matrix_element(context, true_me)
+    config = make_config()
+    channels = [
+        ms.ChannelEventGenerator(
+            [context],
+            make_integrand(alphas_file, surrogate),
+            str(tmp_path / f"events.{name}.npy"),
+            str(tmp_path / f"weights.{name}.npy"),
+            config,
+            0,
+            name,
+            None,
+        )
+        for name in ("group", "plain")
+    ]
+    group = ms.WeightingGroup(
+        [0],
+        [ms.WeightingStep([full], freeze_max_weight_after=300)],
+        first_pass_max_overweight_truncation=0.2,
+        first_pass_freeze_max_weight_after=2000,
+    )
+    generator = ms.EventGenerator(
+        [context], channels, seed=3, config=config, groups=[group]
+    )
+    assert [c.max_overweight_truncation() for c in channels] == [0.2, 0.05]
+    assert [c.freeze_max_weight_after() for c in channels] == [2000, 1000]
+    generator.survey()
+    # each channel runs until its own maximum freezes
+    generator.fix_max_weights()
+    assert [c.status().count_target for c in channels] == [2000, 1000]
+
+    # stored with the group, old JSON without them still loads
+    text = ms.weighting_groups_to_json([group])
+    loaded = ms.weighting_groups_from_json(text)[0]
+    assert loaded.first_pass_max_overweight_truncation == 0.2
+    assert loaded.first_pass_freeze_max_weight_after == 2000
+    old = json.loads(text)
+    del old[0]["first_pass_max_overweight_truncation"]
+    del old[0]["first_pass_freeze_max_weight_after"]
+    loaded = ms.weighting_groups_from_json(json.dumps(old))[0]
+    assert loaded.first_pass_max_overweight_truncation is None
+    assert loaded.first_pass_freeze_max_weight_after is None
+    assert "first_pass" not in ms.weighting_groups_to_json([loaded])
+
+
 def test_invalid_groups(tmp_path):
     context, alphas_file = make_context(str(tmp_path), 1)
     me = python_matrix_element(context, true_me)
