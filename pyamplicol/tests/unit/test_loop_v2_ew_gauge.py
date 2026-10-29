@@ -1393,20 +1393,103 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     t-channel W between the b-t lines), which makes 150 % of its UV
     counterterm component at point 0 (``goldstone-mixing.json``). The clone
     lines read the charged mixings as the neutral ones
-    (``ct_line_insertions._momentum_ratio``). The request is refused today
-    at the W ghost vertex [ghA ghWm~ W-] of its loops, not closed under
-    conjugation, whose loop-segment reading through a conjugate rule is not
-    established (``conventions.FermionSignError``; WP3.2 Feynman-gauge loop
-    lines): exactly that refusal is an expected failure (about 10 minutes),
-    and the comparison runs once the request generates."""
+    (``ct_line_insertions._momentum_ratio``). Its loops hold the W ghost
+    vertices [ghA ghWm~ W-], read on their own legs since WP3.2 EWI-7
+    (``conventions.conjugate_vertex_rules``; refused before). Evaluated by
+    the native executor in double-double at the three points: Born, the UV
+    counterterm component (the opposite mixing sign would miss it by three
+    times its size), R2 and every pole of the whole virtual equal MadLoop's
+    to 1e-12 and the poles Catani's; the finite parts to 1e-8 (MadLoop's
+    double-precision counterterm parameters, below). Binary64 loses 2e-5 of
+    the single pole to cancellations at point 0 (mb^2/s = 2e-5), which its
+    stability estimate flags (one rotation and the rescaled reduction check:
+    3e-4 to 1e-3 at the three points; the O1 rule takes such points to
+    double-double). About 6 minutes."""
 
-    from pyamplicol.loops.v2.conventions import FermionSignError
+    from fractions import Fraction
 
-    try:
-        _uv_component_equals_madloop(
-            gmu_massive_b, "gb_ttxb_ew_mb", loop_reference, loop_native
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+
+    reference = loop_reference("goldstone-mixing")["processes"]["gb_ttxb_ew_mb"]
+    known = set(gmu_massive_b.parameter_defaults)
+    request = SliceRequest(
+        reference["process"].split(" QCD=")[0],
+        reference["born_orders"],
+        reference["loop_orders"],
+        corrections=("QED",),
+        fixed_parameters={
+            key: value
+            for key, value in reference["fixed_parameters"].items()
+            if key in known
+        },
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(gmu_massive_b, request, loop_native)
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
+    keys = ("finite", "single_pole", "double_pole")
+    worst = {"uv": 0.0, "r2": 0.0, "virtual": 0.0, "catani": 0.0}
+    finite = {"uv": 0.0, "virtual": 0.0}
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        (result,) = executor.evaluate(
+            [point],
+            [str(Fraction(mu) ** 2)],
+            parameters=reference["parameters"],
+            precision=Precision.double_double(),
         )
-    except FermionSignError as error:
-        if "('ghA', 'ghWm~', 'W-') is not closed under conjugation" in str(error):
-            pytest.xfail(f"the request is refused: {error}")
-        raise
+        assert float(sum(result.born.values())) == pytest.approx(row["born"], rel=1e-13)
+        (sector,) = result.components["virtual"]
+
+        def laurent(*names, result=result, sector=sector):
+            return [
+                sum(
+                    float(result.components[name][sector].coefficients[i])
+                    for name in names
+                )
+                for i in range(3)
+            ]
+
+        mixing = row.get("mixing") or {
+            key: row["neutral"][key] + row["charged"][key] for key in row["ct"]
+        }
+        uv = [row["ct"][k] - row["r2"][k] for k in keys]
+        for name, mine, want in (
+            ("uv", laurent("uv_local", "uv_external_fields"), uv),
+            ("r2", laurent("r2"), [row["r2"][k] for k in keys]),
+            ("virtual", laurent("virtual"), [row["virtual"][k] for k in keys]),
+        ):
+            scale = max(abs(x) for x in want)
+            for index, (found, expected) in enumerate(zip(mine, want, strict=True)):
+                error = abs(found - expected) / scale
+                if index == 0 and name != "r2":
+                    # Finite parts: see below (user ruling 2026-10-29 ~10:20).
+                    finite[name] = max(finite[name], error)
+                    assert error <= 1e-8, (name, mine, want)
+                    continue
+                worst[name] = max(worst[name], error)
+                assert error <= 1e-12, (name, mine, want)
+        # The opposite sign of the mixings would miss by twice theirs.
+        assert abs(mixing["finite"]) > 1e-9 * abs(row["ct"]["finite"])
+        single, double = (float(x.real) for x in map(complex, result.ir_poles[sector]))
+        virtual = laurent("virtual")
+        scale = max(abs(single), abs(double))
+        for found, want in zip(virtual[1:], (single, double), strict=True):
+            error = abs(found - want) / scale
+            worst["catani"] = max(worst["catani"], error)
+            assert error <= 1e-12, (virtual, single, double)
+    print({key: f"{error:.1e}" for key, error in worst.items()}, finite)
+    # The finite parts of the UV component and of the virtual differ from
+    # MadLoop's by at most 1.3e-10 and 1.1e-9 of their largest coefficients
+    # (measured 2026-10-28), the same in binary64, double-double and 40
+    # digits on this side, while R2 and every pole agree to 1e-13. At this
+    # card the plan's counterterm parameters equal the UFO's own 40-digit
+    # evaluation to 4e-26, while the UFO's binary64 evaluation of the massive
+    # b's field counterterms (bWcft_UV_EW_R, dMB_bWcft_UV_EW_R) is off by
+    # 4.5e-11, consistent with MadLoop's double-precision counterterm
+    # parameters. Below the user's 1e-5 attention threshold (2026-10-29
+    # ~10:20), so the finite parts are held to 1e-8.

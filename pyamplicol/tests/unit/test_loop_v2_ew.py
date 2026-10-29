@@ -1535,7 +1535,8 @@ _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
 _UNLABELLED = (
     "LoopRequestUnsupported",
     r"veto-unlabelled-counterterms: .* particle_veto removes the species "
-    r"\[23, 24, 25, 250, 251\]",
+    # The Z and W ghosts go with them (``ew_policy.gauge_closed_veto``).
+    r"\[23, 24, 25, 250, 251, 9000002, 9000003, 9000004\]",
 )
 # Electroweak requests need every propagating width fixed to zero outside
 # the complex-mass scheme (``ew_policy``, the user's decision [U8]).
@@ -1766,8 +1767,11 @@ LADDER = [
     ),
     # The lepton line of the Z/photon decay runs through the loops (B4,
     # lifted by EWI-5); g g > t t~ e- e+ lowers its G0-Z and G0-A mixings
-    # (EWI-4b). Each generates in about 10 min (8 GB); their values against
-    # the three-provider fixtures are EWI-7's.
+    # (EWI-4b). Each generates in about 5-10 min (8 GB); their values
+    # against the three-provider fixtures (WP3.2 EWI-7):
+    # ``test_loop_v2_ew_validate.test_electroweak_ladder_equals_three_providers``
+    # (u u~ > e- e+ g, and g g > t t~) and ``test_loop_v2_ew_leptons.
+    # test_top_pair_and_leptons_equal_three_providers`` (g g > t t~ e- e+).
     _rung(
         "gmu_uux_emepg",
         "loop_gmu",
