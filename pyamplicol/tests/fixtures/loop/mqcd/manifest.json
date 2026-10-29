@@ -1447,7 +1447,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "ward_legs": [
     1
    ],
@@ -1519,7 +1519,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "inputs": "native",
    "catani": "none",
    "extras_pending": {
@@ -1748,7 +1748,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -1853,7 +1853,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -1960,7 +1960,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -2052,7 +2052,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10
+   "reference_tolerance": 1e-12
   },
   {
    "id": "A23",
@@ -2216,7 +2216,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "particle_veto": [
     6
    ],
@@ -2860,7 +2860,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -2950,7 +2950,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10
+   "reference_tolerance": 1e-12
   },
   {
    "id": "B07",
@@ -3016,7 +3016,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10
+   "reference_tolerance": 1e-12
   },
   {
    "id": "B08",
@@ -3520,7 +3520,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10
+   "reference_tolerance": 1e-12
   },
   {
    "id": "C07",
@@ -3988,7 +3988,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "notes": "the fixture's exact rational points (precision_points, exactly massless with exact momentum conservation); its rounded RAMBO points are off shell at binary64 rounding, which double-double resolves (Catani vs the virtual at 4e-14)",
    "variants": [
     {
@@ -4094,7 +4094,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -4199,7 +4199,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -4301,7 +4301,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -4405,7 +4405,7 @@
    "binary64_out_of_scope": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",
@@ -5812,7 +5812,7 @@
    ],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "variants": [
     {
      "name": "sectors",

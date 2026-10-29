@@ -432,7 +432,8 @@ def test_rule1_outliers_need_their_accuracy_and_a_second_provider():
 
 def test_rule1_holds_each_row_to_its_stated_tolerance():
     """Rule 1 at the row's ``reference_tolerance`` (user ruling 2026-10-29
-    ~01:12: 1e-10 from 2->4 up); the absolute checks stay at 1e-12 F_s."""
+    ~01:12: up to 1e-10 from 2->4 up where needed); the absolute checks stay
+    at 1e-12 F_s."""
 
     dd = _point("double-double", 2.0, (1.0, -3.0, 0.5))
     high = _row(process="u u~ > d d~ s s~", reference_tolerance=1e-10)
@@ -468,19 +469,22 @@ def test_rule1_holds_each_row_to_its_stated_tolerance():
     assert not double.passed and double.bound == pytest.approx(1e-12 * flux)
 
 
-def test_rule1_tolerance_follows_the_multiplicity(rows):
-    """1e-12 at 2->2 and 2->3, 1e-10 from 2->4 up, never above the ceiling;
-    a variant keeps its base row's."""
+def test_rule1_tolerance_is_relaxed_only_where_the_providers_need_it(rows):
+    """1e-12, relaxed to 1e-10 only on the 2->4+ rows whose providers' own
+    precision needs it (A18, A23; the user's ruling ~01:12 "if need be"),
+    never above the ceiling; a variant keeps its base row's."""
 
+    relaxed = set()
     for name, row in rows.items():
         final = len(row.process.split(">")[1].split())
-        expected = (
-            mqcd.REFERENCE_TOLERANCE_HIGH if final >= 4 else mqcd.REFERENCE_TOLERANCE
-        )
-        assert row.reference_tolerance == expected, name
         assert row.reference_tolerance <= mqcd.REFERENCE_TOLERANCE_CEILING
+        if row.reference_tolerance != mqcd.REFERENCE_TOLERANCE:
+            assert final >= 4, name
+            assert row.reference_tolerance == mqcd.REFERENCE_TOLERANCE_HIGH, name
+            relaxed.add(row.base or name)
         if row.base and not row.subprocess:
             assert row.reference_tolerance == rows[row.base].reference_tolerance
+    assert relaxed == {"A18", "A23"}
 
 
 def test_rule1_checks_a_vanishing_coefficient_absolutely():
@@ -745,6 +749,14 @@ def _nc_manifest(manifest, columns, path, waiting=()):
     return path
 
 
+def _points(name: str, tier: str) -> list[int]:
+    """A row's (or variant's) manifest points of ``tier``, as its record
+    states them."""
+
+    row = mqcd.rows().get(name)
+    return [] if row is None else list(row.tier_points(tier))
+
+
 def _report_builder():
     import importlib.util
 
@@ -774,12 +786,18 @@ def test_report_data_counts_variants_smokes_and_findings(
         check = {"rule": "1", "point": 0, "carrier": "double-double",
                  "sector": "total", "coefficient": "finite", "error": 2e-12,
                  "bound": 1e-12, "note": "", "passed": passed}  # fmt: skip
-        data = {"row": name, "tier": tier, "passed": passed, "checks": 1,
-                "failures": int(not passed), "check_records": [check]}  # fmt: skip
+        data = {"row": name, "tier": tier, "points": _points(name, tier),
+                "passed": passed, "checks": 1, "failures": int(not passed),
+                "check_records": [check]}  # fmt: skip
         (tmp_path / f"{name}.{tier}.json").write_text(json.dumps(data))
 
     record("A01", "default", True)
     record("A01@sectors", "nightly", True)
+    # Without its nightly record (point 2, extras) A01 is not run.
+    data = builder.build([tmp_path], {}, None)
+    a01 = next(row for row in data["rows"] if row["id"] == "A01")
+    assert (a01["status"], a01["missing_records"]) == ("not-run", ["nightly"])
+    record("A01", "nightly", True)
     record("A06", "nightly", True)  # its gating variant A06@sectors not run
     record("A09", "default", True)
     record("A09@soft", "nightly", False)
@@ -790,6 +808,16 @@ def test_report_data_counts_variants_smokes_and_findings(
     data = builder.build([tmp_path], {}, findings)
     rows = {row["id"]: row for row in data["rows"]}
     assert rows["A01"]["status"] == "pass"
+    # A partial rerun (other points) in a later directory is no tier record.
+    rerun = tmp_path.parent / "rerun"
+    rerun.mkdir()
+    partial = {"row": "A01", "tier": "nightly", "points": [0], "passed": True,
+               "checks": 1, "failures": 0, "check_records": []}  # fmt: skip
+    (rerun / "A01.nightly.json").write_text(json.dumps(partial))
+    (tmp_path / "A01.nightly.json").unlink()
+    later = {r["id"]: r for r in builder.build([tmp_path, rerun], {}, None)["rows"]}
+    assert later["A01"]["status"] == "not-run"
+    record("A01", "nightly", True)
     assert rows["A09"]["status"] == "fail"
     assert rows["C04"]["status"] == "pass"
     assert rows["A02"]["status"] == "not-run"
@@ -801,8 +829,9 @@ def test_report_data_counts_variants_smokes_and_findings(
     table = builder.markdown(data)
     line = next(x for x in table.splitlines() if x.startswith("| A09"))
     assert "fail" in line and "F9" in line and "soft: r1 p0" in line
-    # Rule 1's tolerance is stated per row (1e-10 from 2->4 up).
+    # Rule 1's tolerance is stated per row (1e-10 only where needed).
     assert rows["A01"]["reference_tolerance"] == 1e-12
+    assert rows["A19"]["reference_tolerance"] == 1e-12
     assert rows["A18"]["reference_tolerance"] == 1e-10
     line = next(x for x in table.splitlines() if x.startswith("| A18"))
     assert "| 1e-10 |" in line
@@ -840,10 +869,11 @@ def test_report_data_reads_the_nc_column_from_junit(tmp_path, monkeypatch, manif
     monkeypatch.setattr(builder, "MANIFEST", path)
     results = tmp_path / "results"
     results.mkdir()
-    for name, tier in (("A12", "default"), ("A12@sectors", "nightly"),
-                       ("D05", "default")):  # fmt: skip
-        record = {"row": name, "tier": tier, "passed": True, "checks": 1,
-                  "failures": 0, "check_records": []}  # fmt: skip
+    for name, tier in (("A12", "default"), ("A12", "nightly"),
+                       ("A12@sectors", "nightly"), ("D05", "default")):  # fmt: skip
+        record = {"row": name, "tier": tier, "points": _points(name, tier),
+                  "passed": True, "checks": 1, "failures": 0,
+                  "check_records": []}  # fmt: skip
         (results / f"{name}.{tier}.json").write_text(json.dumps(record))
     cases = [
         ("test_loop_v2_nc_projection", f"{projection.split('::')[1]}[A12]", ""),
@@ -947,8 +977,9 @@ def test_report_data_builds_the_composite_row_from_its_parts(
     results = tmp_path / "results"
     results.mkdir()
     for name in ("M01@P0", "M01@P2", "M01@public-P0", "M01@public-P2"):
-        record = {"row": name, "tier": "nightly", "passed": True, "checks": 1,
-                  "failures": 0, "check_records": []}  # fmt: skip
+        record = {"row": name, "tier": "nightly", "points": _points(name, "nightly"),
+                  "passed": True, "checks": 1, "failures": 0,
+                  "check_records": []}  # fmt: skip
         (results / f"{name}.nightly.json").write_text(json.dumps(record))
     (node,) = mqcd.rows()["M01"].delegated["bitwise"]
     path, function = node.split("::")
