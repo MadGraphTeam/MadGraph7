@@ -718,25 +718,100 @@ def djb_clus_reference(p, hadronic=True):
 
 
 def dj_clus_reference(p1, p2, mass1, mass2, jet_radius):
-    """The both-massless / both-massive branch of dj_clus."""
+    """The both-massless / both-massive branch of dj_clus:
+    min(pt1^2, pt2^2) * 2 * (cosh(deta) - cos(dphi)) / D^2, in the form the
+    kernel evaluates it, 4 * (sinh^2(deta/2) + sin^2(dphi/2)), which keeps its
+    digits for a nearly collinear pair."""
     pt1_sq = p1[1] ** 2 + p1[2] ** 2
     pt2_sq = p2[1] ** 2 + p2[2] ** 2
     if pt1_sq == 0.0 or pt2_sq == 0.0:
         return 0.0
-    p1a = np.sqrt(pt1_sq + p1[3] ** 2)
-    p2a = np.sqrt(pt2_sq + p2[3] ** 2)
-    eta1 = 0.5 * np.log((p1a + p1[3]) / (p1a - p1[3]))
-    eta2 = 0.5 * np.log((p2a + p2[3]) / (p2a - p2[3]))
+    deta = np.arcsinh(p1[3] / np.sqrt(pt1_sq)) - np.arcsinh(p2[3] / np.sqrt(pt2_sq))
+    dphi = np.arctan2(p1[1] * p2[2] - p1[2] * p2[1], p1[1] * p2[1] + p1[2] * p2[2])
     m_max_sq = max(mass1**2, mass2**2)
-    dphi_cos = (p1[1] * p2[1] + p1[2] * p2[2]) / np.sqrt(pt1_sq * pt2_sq)
     return max(
         m_max_sq
         + min(pt1_sq, pt2_sq)
-        * 2.0
-        * (np.cosh(eta1 - eta2) - dphi_cos)
+        * 4.0
+        * (np.sinh(deta / 2) ** 2 + np.sin(dphi / 2) ** 2)
         / jet_radius**2,
         0.0,
     )
+
+
+def durham_reference(p1, p2):
+    """The lepton-collider branch of dj_clus, 2 * min(E1^2, E2^2) *
+    (1 - cos_theta), as 4 * min(E1^2, E2^2) * sin^2(theta/2)."""
+    cross = np.cross(p1[1:], p2[1:])
+    theta = np.arctan2(np.linalg.norm(cross), np.dot(p1[1:], p2[1:]))
+    return 4.0 * min(p1[0] ** 2, p2[0] ** 2) * np.sin(theta / 2) ** 2
+
+
+def massless(px, py, pz):
+    return np.array([np.sqrt(px * px + py * py + pz * pz), px, py, pz])
+
+
+def collinear_pair_event(hadronic):
+    """Two final-state partons about 1e-5 apart, legs 2 and 4 (e+ e- > d d~ g)
+    or 2 and 3 (g g > g g g), with the third one recoiling and the beams along
+    z: momentum is conserved. For such a pair cosh(deta) - cos(dphi), or
+    1 - cos_theta, is of order 1e-10."""
+    def pt_eta_phi(pt, eta, phi):
+        return massless(pt * np.cos(phi), pt * np.sin(phi), pt * np.sinh(eta))
+    a = pt_eta_phi(300.0, 2.5, 0.7)
+    b = pt_eta_phi(250.0, 2.5 + 8e-6, 0.7 + 6e-6)
+    if hadronic:
+        c = massless(-(a[1] + b[1]), -(a[2] + b[2]), -400.0)
+        final = [a, b, c]
+    else:
+        c = massless(-(a[1] + b[1]), -(a[2] + b[2]), -(a[3] + b[3]))
+        final = [a, c, b]
+    energy = sum(p[0] for p in final)
+    pz = sum(p[3] for p in final)
+    beam1 = np.array([(energy + pz) / 2, 0.0, 0.0, (energy + pz) / 2])
+    beam2 = np.array([(energy - pz) / 2, 0.0, 0.0, -(energy - pz) / 2])
+    return np.array([[beam1, beam2] + final])
+
+
+@pytest.mark.parametrize("hadronic", [True, False], ids=["kt", "durham"])
+def test_a_nearly_collinear_pair_keeps_its_clustering_scale(hadronic):
+    """The clustering scale of two partons 1e-5 apart. Written as in cluster.f,
+    cosh(deta) - cos(dphi) (or 1 - cos_theta) is the difference of two numbers
+    within 1e-10 of one, which left about 1e-6 of relative error, enough for
+    scalar and SIMD math to give different scales and histories. The kernel's
+    form of the measure has none of that cancellation."""
+    jet_radius = 0.4
+    if hadronic:
+        pdg_ids = [21, 21, 21, 21, 21]
+        vertices = [["o0", "o1", "p0"], ["i0", "o2", "p1"], ["p1", "p0", "i1"]]
+        legs = (2, 3)
+    else:
+        pdg_ids = [-11, 11, 1, -1, 21]
+        vertices = [["o0", "o2", "p0"], ["p0", "o1", "p1"], ["i0", "p1", "i1"]]
+        legs = (2, 4)
+    diagrams = [{
+        "incoming_masses": [0.0, 0.0],
+        "outgoing_masses": [0.0, 0.0, 0.0],
+        "propagators": [[0.0, 0.0], [0.0, 0.0]],
+        "vertices": vertices,
+        "permutations": [[0, 1, 2, 3, 4]],
+    }]
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, jet_radius=jet_radius,
+        hadronic=hadronic, clustering_mean_pdf_ladder=False,
+        jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission,
+    )
+    event = collinear_pair_event(hadronic)
+    _, _, _, jets, _ = run(clustering, event)
+    p1, p2 = event[0][legs[0]], event[0][legs[1]]
+    if hadronic:
+        expected = np.sqrt(dj_clus_reference(p1, p2, 0.0, 0.0, jet_radius))
+    else:
+        expected = np.sqrt(durham_reference(p1, p2))
+    assert 1e-4 < expected < 1e-1, "not the collinear configuration intended"
+    # the softest clustering is that pair: both its legs carry its scale
+    for leg in legs:
+        assert jets[0][leg - 2] == pytest.approx(expected, rel=1e-9)
 
 
 def first_step_candidates(clustering, n_ext, event, jet_radius, masses):
