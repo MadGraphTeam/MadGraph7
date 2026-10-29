@@ -668,7 +668,9 @@ on a newer glibc is stopped by the dynamic loader on an older one
 #### Leading-colour helicity and colour-flow selection
 
 At leading colour (`[color] accuracy = "lc"`) a v2 virtual offers the tree
-engine's selectors, with the tree engine's identifiers and conventions.
+engine's selectors, with the tree engine's identifiers and selector
+conventions (per-flow values at a cross order of several Born orders follow
+the loop's convention, below).
 At evaluation, `Runtime.evaluate(..., helicities=[...], color_flows=[...])`
 returns the sum of the selected Born helicity rows and colour flows (Born
 included): helicities by tree ID (`h:-1,+1,...`, values in leg order) or the
@@ -683,7 +685,9 @@ helicity entries keep the runtime's `h<index>` IDs (the helicity axis of
 `evaluate_resolved` at every colour accuracy); their tree ID is `h:`
 followed by their `values`. A complete set of selections sums to the
 inclusive value; a (helicity, flow) selection equals its `evaluate_resolved`
-entry. At generation, `process.selected_source_helicities` (leg label to
+entry. `evaluate_resolved` takes the same selectors and returns the selected
+helicity rows and the selected flows' Born basis elements, each entry as
+without selectors. At generation, `process.selected_source_helicities` (leg label to
 helicity) and `process.selected_color_sector_ids` (sectors of the tree
 engine's leading-colour plan, after `reference_color_order` and
 `max_color_sectors`) prune the recursion to the selection: fewer Born rows,
@@ -733,7 +737,12 @@ can interfere at the leading power with another flow between the two orders
 (there QCD^2 QED^2): its evaluation-time selection keeps that term, and a
 generation-time selection that would drop it is refused
 (`interfering-colour-flows`); select the interfering flows together, or
-select at evaluation. Identical-flavour quark lines (u u~ >
+select at evaluation. At such a cross order a flow's value is the selected
+flow interfering with the whole Born of the other order (bra the flow, ket
+every flow), not the tree engine's per-flow `evaluate_orders` value: it can
+be nonzero where the inclusive leading-colour value vanishes (u u~ > d d~
+at QCD^2 QED^2: the two flows give +-8.5e-3 and sum to 0), and complete
+sets of flows sum to the inclusive value. Identical-flavour quark lines (u u~ >
 u u~ g) take every selection. A member of an exact flavour group
 (`process.flavor_blind`) lists no flows and takes no evaluation-time
 selection (`CompatibilityError`): select on its representative process,
