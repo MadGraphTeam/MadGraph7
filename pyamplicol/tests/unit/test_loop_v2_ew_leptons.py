@@ -294,6 +294,17 @@ READING_FLIPS = {
     ("G-", "H", "W+"),
     ("G0", "ghWm", "ghWm~"),
     ("G0", "ghWp", "ghWp~"),
+    # The W ghost vertices not closed under conjugation, read on their own
+    # legs (WP3.2 EWI-7): s(W+-) = -1, s(G+-) = +1 in the gauge-fixed
+    # solution of the conjugate readings (s(W-) s(G+) = -1).
+    ("W+", "ghA", "ghWp~"),
+    ("W+", "ghA~", "ghWm"),
+    ("W+", "ghWm", "ghZ~"),
+    ("W+", "ghWp~", "ghZ"),
+    ("W-", "ghA", "ghWm~"),
+    ("W-", "ghA~", "ghWp"),
+    ("W-", "ghWm~", "ghZ"),
+    ("W-", "ghWp", "ghZ~"),
 }
 
 
@@ -1162,7 +1173,9 @@ def test_top_pair_and_leptons_equal_three_providers(
     G+- H loops on the top line, which the colour-singlet segments' reading
     sign fixes (O(1) in the finite part without it). Evaluated by the native
     executor in double-double: binary64 loses 2e-10 of the finite part to
-    cancellations at point 0. Generation about 10 min, 8 GB."""
+    cancellations at point 0; the native point inputs equal the Python
+    inputs there (WP3.2 EWI-7's ladder rung with EWI-N's inputs). Generation
+    about 10 min, 8 GB."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
@@ -1207,6 +1220,33 @@ def test_top_pair_and_leptons_equal_three_providers(
                 error = _metric(value, values[key], floor)
                 worst[provider] = max(worst[provider], error)
                 assert error <= tolerance, (provider, key, value, values[key])
+    # The native point inputs (WP3.2 EWI-N) equal the Python inputs on the
+    # same plan at point 0, in double-double (binary64 loses 2e-10 there).
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    (mine,), (theirs,) = (
+        lane.evaluate(
+            [reference["points"][0]],
+            [str(Fraction(reference["mu_r"][0]) ** 2)],
+            parameters=dict(reference["parameters"]),
+            precision=Precision.double_double(),
+        )
+        for lane in (native, python)
+    )
+    deviation = 0.0
+    for component, sectors in theirs.components.items():
+        for sector, laurent in sectors.items():
+            size = max(
+                abs(float(x)) for x in theirs.components["virtual"][sector].coefficients
+            )
+            for x, y in zip(
+                mine.components[component][sector].coefficients,
+                laurent.coefficients,
+                strict=True,
+            ):
+                deviation = max(deviation, abs(float(x) - float(y)) / size)
+    assert deviation <= 1e-12, deviation
+    worst["native - python inputs"] = deviation
     print({provider: f"{error:.1e}" for provider, error in worst.items()})
 
 
@@ -1559,7 +1599,11 @@ def test_photon_only_mumu_on_loop_qcd_qed_sm_is_refused_before_the_trees(
         _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
     assert refused.value.key == "veto-unlabelled-counterterms"
     message = str(refused.value)
-    assert "removes the species [23, 24, 25, 250, 251]" in message
+    # The Z and W ghosts go with them (``ew_policy.gauge_closed_veto``).
+    assert (
+        "removes the species [23, 24, 25, 250, 251, 9000002, 9000003, 9000004]"
+        in message
+    )
     assert "V_UV" in message and "loop_particles = []" in message
     request = SliceRequest(
         "u u~ > d d~",
@@ -1635,7 +1679,10 @@ def test_public_generation_cli_and_dry_run_refuse_photon_only_mumu(
     compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
     veto = 'particle_veto = ["Z", "W+", "H", "G0", "G+"]'
     key = "veto-unlabelled-counterterms"
-    removed = "particle_veto removes the species [23, 24, 25, 250, 251]"
+    removed = (
+        "particle_veto removes the species "
+        "[23, 24, 25, 250, 251, 9000002, 9000003, 9000004]"
+    )
     processes = ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="eemm"),))
 
     def card(name, veto):

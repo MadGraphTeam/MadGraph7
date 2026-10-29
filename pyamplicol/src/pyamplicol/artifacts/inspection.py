@@ -132,6 +132,11 @@ class ArtifactLoopInspection:
     color_correlations: tuple[str, ...] = ()
     spin_correlations: tuple[tuple[int, ...], ...] = ()
     point_inputs: str | None = None
+    # The conventions of an electroweak virtual (WP3.2 EWI-7: regularisation
+    # and lambda_HV, gamma five, gauge, UV, mass and electroweak input
+    # schemes, external photons; from the generation record), (field,
+    # value) pairs; empty otherwise.
+    conventions: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +331,24 @@ class ArtifactInspection:
     evaluator_container_member_count: int | None = None
     evaluator_container_unpacked_size_bytes: int | None = None
     process_groups: ArtifactProcessGroupsInspection | None = None
+
+
+def _conventions(value: object, context: str) -> tuple[tuple[str, str], ...]:
+    """The (field, value) pairs of a v2 process's recorded conventions
+    (its generation record's ``conventions``, ``generation.loop_artifact.
+    recorded_conventions``), mappings as sorted ``key=value`` lists; empty
+    when none is recorded."""
+
+    if value is None:
+        return ()
+    out = []
+    for key, item in _mapping(value, f"{context}.conventions").items():
+        if isinstance(item, Mapping):
+            text = ", ".join(f"{k}={v}" for k, v in sorted(item.items()))
+        else:
+            text = str(item)
+        out.append((str(key), text))
+    return tuple(out)
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:
@@ -3038,6 +3061,7 @@ def _loop_process_inspection(
     from pyamplicol.generation.loop_artifact import (
         LOOP_PHYSICS_KIND,
         LOOP_RUNTIME_KIND,
+        recorded_conventions,
     )
 
     process_id = str(process["id"])
@@ -3147,6 +3171,9 @@ def _loop_process_inspection(
         ),
         point_inputs=_string(
             execution.get("point_inputs"), f"{execution_path}.point_inputs"
+        ),
+        conventions=_conventions(
+            recorded_conventions(manifest.extensions, process_id), context
         ),
     )
     external_pdgs = tuple(

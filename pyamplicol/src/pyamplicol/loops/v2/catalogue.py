@@ -75,6 +75,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from fractions import Fraction
 from itertools import permutations, product
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
@@ -551,6 +552,7 @@ class _CatalogueBuilder:
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
         self._reading_signs: dict[int, int] = {}
         self._field_signs: _FieldSigns | None = None
+        self._conjugate_signs: _FieldSigns | None = None
 
     # -- species -----------------------------------------------------------
 
@@ -753,19 +755,25 @@ class _CatalogueBuilder:
     def _reading_sign(self, term: CompiledVertexTerm) -> int:
         records = tuple(self.particles[name] for name in term.particles)
         # Ghosts first: the gluon's ghost vertex is no sign kinematically.
+        # Every ghost vertex is read on its own legs, closed under
+        # conjugation or not (``conventions.conjugate_vertex_rules``): the
+        # product of the field signs of its other legs. On a vertex not
+        # closed under conjugation (a W ghost vertex, [ghA ghWm~ W-]) that
+        # product holds a charged field, whose sign the equations fix only
+        # up to one sign per charge-conjugate family (s(W+) s(W-) = 1,
+        # s(W-) s(G+) = -1 on the SM): ``gauge`` sets the free one to +1,
+        # which every ghost loop, charge-balanced, cancels.
         if any(record.ghost_number for record in records):
-            if not self._closed(term.particles):
-                # Never read: the readings refuse a ghost vertex not closed
-                # under conjugation (``conventions.conjugate_vertex_rules``).
-                return 1
-            sign = self._signs().product(
-                record.name for record in records if not record.ghost_number
+            closed = self._closed(term.particles)
+            sign = self._signs(conjugates=not closed).product(
+                (record.name for record in records if not record.ghost_number),
+                gauge=not closed,
             )
             if sign is None:
                 raise LoopKernelCatalogueError(
                     f"ghost vertex {term.vertex} {tuple(term.particles)}: the "
-                    "field signs of its other legs are not fixed by the closed "
-                    "boson vertices"
+                    "field signs of its other legs are not fixed by the boson "
+                    "vertices"
                 )
             return sign
         what = f"vertex {term.vertex} {tuple(term.particles)}"
@@ -841,30 +849,133 @@ class _CatalogueBuilder:
             "mixed momentum parity or exchange symmetry)"
         )
 
-    def _signs(self) -> _FieldSigns:
+    def _signs(self, *, conjugates: bool = False) -> _FieldSigns:
         """Field signs of the tree engine's basis, from the reading signs of
         the model's closed boson vertices of every colour (module
-        docstring). A vertex without a reading sign fixes no field sign (a
-        segment of it is refused by ``reading_sign`` itself)."""
+        docstring); with ``conjugates`` also from the boson vertices not
+        closed under conjugation, read through their conjugate rules (the
+        signs of the ghost vertices not closed under conjugation; the closed
+        ones keep the closed vertices' equations alone). A vertex without a
+        reading sign fixes no field sign (a segment of it is refused by
+        ``reading_sign`` itself)."""
 
+        if conjugates:
+            if self._conjugate_signs is None:
+                self._conjugate_signs = self._solve_signs(conjugates=True)
+            return self._conjugate_signs
         if self._field_signs is None:
-            equations = []
-            for term in self.compiled.ir.vertex_terms:
-                records = tuple(self.particles[name] for name in term.particles)
-                if any(
-                    record.ghost_number
-                    or record.spin == _FERMION_SPIN
-                    or record.auxiliary_kind is not None
-                    for record in records
-                ) or not self._closed(term.particles):
-                    continue
-                try:
-                    sign = self.reading_sign(term)
-                except LoopKernelCatalogueError:
-                    continue
-                equations.append((term.particles, sign))
-            self._field_signs = _FieldSigns(equations)
+            self._field_signs = self._solve_signs(conjugates=False)
         return self._field_signs
+
+    def _solve_signs(self, *, conjugates: bool) -> _FieldSigns:
+        equations = []
+        for term in self.compiled.ir.vertex_terms:
+            records = tuple(self.particles[name] for name in term.particles)
+            if any(
+                record.ghost_number
+                or record.spin == _FERMION_SPIN
+                or record.auxiliary_kind is not None
+                for record in records
+            ):
+                continue
+            if not self._closed(term.particles):
+                # A boson vertex read through its conjugate rule: the
+                # tree engine's reading against the own-leg one is a
+                # product of field signs too (WP3.2 EWI-7), which ties
+                # the charged fields' signs together (W G H, W G G0,
+                # W G A, W G Z).
+                if conjugates:
+                    sign = self._conjugate_reading_sign(term, records)
+                    if sign is not None:
+                        equations.append((term.particles, sign))
+                continue
+            try:
+                sign = self.reading_sign(term)
+            except LoopKernelCatalogueError:
+                continue
+            equations.append((term.particles, sign))
+        return _FieldSigns(equations)
+
+    def _conjugate_reading_sign(
+        self, term: CompiledVertexTerm, records: tuple[CompiledParticleRecord, ...]
+    ) -> int | None:
+        """The tree engine's reading of a boson vertex not closed under
+        conjugation against its own-leg reading (incoming fields, incoming
+        momenta), or None where it is not a sign: c' L'(pi legs, -p) /
+        (c L(legs, p)) with c', L' the coupling and Lorentz structure of the
+        model's unique conjugate term (the antiparticles' term at the same
+        coupling orders, one colour and Lorentz cell each: the Hermitian
+        partner), pi each leg's antiparticle leg of that term."""
+
+        def orders_of(item: CompiledVertexTerm) -> tuple[tuple[str, int], ...]:
+            return tuple(
+                sorted((name, int(power)) for name, power in item.coupling_orders)
+            )
+
+        anti = sorted(record.antiname for record in records)
+        orders = orders_of(term)
+        cells = [
+            other
+            for other in self.compiled.ir.vertex_terms
+            if other.vertex == term.vertex
+        ]
+        partners = [
+            other
+            for other in self.compiled.ir.vertex_terms
+            if sorted(other.particles) == anti and orders_of(other) == orders
+        ]
+        if len(cells) != 1 or len(partners) != 1:
+            return None
+        (partner,) = partners
+        free = list(range(len(partner.particles)))
+        legs = {}
+        for leg, record in enumerate(records):
+            match = [o for o in free if partner.particles[o] == record.antiname]
+            if len(match) != 1:
+                return None  # identical legs: no unique pairing
+            legs[leg] = match[0]
+            free.remove(match[0])
+        pdgs = tuple(record.pdg_code for record in records)
+        dimensions = tuple(int(self.model.current_dimension(pdg, 0)) for pdg in pdgs)
+        values = formal_components(self.model, "block-current", sum(dimensions))
+        vectors = formal_components(self.model, "block-momentum", 4 * len(records))
+        currents, momenta = {}, {}
+        offset = 0
+        for leg, (pdg, dimension) in enumerate(zip(pdgs, dimensions, strict=True)):
+            currents[leg] = self._embedded_current(
+                pdg, 0, values[offset : offset + dimension]
+            )
+            momenta[leg] = vectors[4 * leg : 4 * leg + 4]
+            offset += dimension
+        (own,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            tuple(record.spin for record in records),
+            currents,
+            momenta,
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        spins = [0] * len(records)
+        for leg, record in enumerate(records):
+            spins[legs[leg]] = record.spin
+        (tree,) = _contract_lorentz(
+            self.model_symbols,
+            partner.lorentz_expression,
+            tuple(spins),
+            {legs[leg]: currents[leg] for leg in currents},
+            {legs[leg]: tuple(-x for x in momenta[leg]) for leg in momenta},
+            output_leg=None,
+            tag=f"loop_v2_r{partner.id}",
+        )
+        ratio = (self._coupling(partner) / self._coupling(term)).cancel()
+        for kinematic in (1, -1):
+            if (tree - kinematic * own).expand().to_canonical_string() != "0":
+                continue
+            for value in (1, -1):
+                if (ratio - value).expand().to_canonical_string() == "0":
+                    return kinematic * value
+        return None
 
     def _embedded_current(
         self,
@@ -1046,18 +1157,37 @@ class _CatalogueBuilder:
             raise LoopKernelCatalogueError(
                 f"counterterm {entry.vertex_name} has a ghost leg"
             )
-        lorentz = self.lorentz.get(entry.lorentz_name)
+        # A root entry promoted onto a scalar-vector mixing line
+        # (``ct_sites.PromotedRootEntry``): its scalar leg takes a vector
+        # current contracted with the leg's momentum, L * P(mu_k, k).
+        promoted = getattr(entry, "promoted_leg", None)
+        name = entry.lorentz_name if promoted is None else entry.base_lorentz_name
+        lorentz = self.lorentz.get(name)
         if lorentz is None:
             raise LoopKernelCatalogueError(
-                f"counterterm Lorentz structure {entry.lorentz_name!r} is not in "
+                f"counterterm Lorentz structure {name!r} is not in "
                 f"the compiled payload of {self.compiled.name!r}"
+            )
+        structure = str(lorentz["structure"])
+        if promoted is not None:
+            if records[promoted].spin != 1:
+                raise LoopKernelCatalogueError(
+                    f"{entry.vertex_name}: leg {promoted + 1} is not a scalar leg"
+                )
+            vector = self._promotion_vector(records[promoted])
+            records = (*records[:promoted], vector, *records[promoted + 1 :])
+            pdgs = tuple(record.pdg_code for record in records)
+            leg = promoted + 1
+            structure = (
+                f"({structure})*UFO::{{}}::P("
+                f"UFO::{{}}::idx(1,{leg}),UFO::{{}}::idx(1,{leg}))"
             )
         spins = tuple(record.spin for record in records)
         try:
             # R2 rules of neutral currents carry Epsilon (e.g. R2_GGZ), the
             # dense ``tensors.LEVI_CIVITA``.
             expression = normalize_lorentz_expression(
-                str(lorentz["structure"]),
+                structure,
                 spins,
                 model_symbols=self.model_symbols,
             ).expression
@@ -1077,6 +1207,30 @@ class _CatalogueBuilder:
             *(_state_chiralities(self.model, pdg) for pdg in pdgs)
         ):
             self._add_counterterm_site(entry, pdgs, spins, expression, chiralities)
+
+    def _promotion_vector(self, scalar: Any) -> Any:
+        """A vector record whose current a promoted scalar leg takes (four
+        components, no chirality): the uncoloured, non-ghost vector of the
+        scalar's charge with the lowest |PDG| code (a mixing line's vector
+        current enters the kernel as is, whichever vector it was)."""
+
+        charge = Fraction(str(scalar.charge))
+        found = sorted(
+            (
+                record
+                for record in self.by_pdg.values()
+                if record.spin == 3
+                and record.ghost_number == 0
+                and int(record.color) == 1
+                and Fraction(str(record.charge)) == charge
+            ),
+            key=lambda record: (abs(record.pdg_code), record.pdg_code),
+        )
+        if not found:
+            raise LoopKernelCatalogueError(
+                f"no vector of charge {charge} for a promoted scalar leg"
+            )
+        return found[0]
 
     def _add_counterterm_site(
         self,
@@ -1309,8 +1463,11 @@ class _FieldSigns:
                 mask, parity = mask ^ row, parity ^ row_parity
         return mask, parity
 
-    def product(self, names: Iterable[str]) -> int | None:
-        """prod s_f over ``names``, None when the equations do not fix it.
+    def product(self, names: Iterable[str], *, gauge: bool = False) -> int | None:
+        """prod s_f over ``names``, None when the equations do not fix it;
+        with ``gauge`` every sign the equations leave free is +1 (one
+        solution of the equations: products the equations fix are the same
+        in every solution).
 
         Refused (``LoopKernelCatalogueError``) when one of the fields (with
         odd multiplicity) lies in a component whose equations contradict
@@ -1329,7 +1486,9 @@ class _FieldSigns:
                 f"fields {touched} are not those of a field basis"
             )
         mask, parity = self._reduce(mask, 0)
-        return None if mask else (-1 if parity else 1)
+        if mask and not gauge:
+            return None
+        return -1 if parity else 1
 
 
 def _counterterm_entry_key(entry: KernelBasisEntry) -> tuple[str, int, int, int, int]:

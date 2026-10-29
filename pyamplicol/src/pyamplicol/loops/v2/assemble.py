@@ -1451,13 +1451,20 @@ def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
     (``ew_policy.request_corrections``) and, for LC and NLC, its colour
     declaration: the model's own (``resolve_loop_color_declaration``: the
     source's declaration, else the shipped one of its counterterm vertices,
-    ``models.loop_color_declarations``) when the request names none.
-    Unchanged when it names both."""
+    ``models.loop_color_declarations``) when the request names none; its
+    ``particle_veto`` with the ghosts of the vector bosons it removes
+    (``ew_policy.gauge_closed_veto``). Unchanged when it names both and its
+    veto is so closed."""
 
     if request.corrections is None:
         request = replace(
             request, corrections=ew_policy.request_corrections(compiled, request)
         )
+    if request.particle_veto:
+        # A vetoed vector boson takes its Faddeev-Popov ghosts with it.
+        veto = ew_policy.gauge_closed_veto(compiled, request.particle_veto)
+        if veto != request.particle_veto:
+            request = replace(request, particle_veto=veto)
     raw = getattr(compiled, "raw_loop_model", None)
     if (
         request.accuracy != "full"
@@ -2112,6 +2119,16 @@ class LoopSlice:
         entries = [e for site in root_sites for e in site.rule.entries]
         entries += _conjugate_site_entries(root_sites, conjugates, program)
         entries += [e for rows in ordinary for e in rows]
+        # Root vertices read on a Goldstone-vector mixing line's Goldstone
+        # side (WP3.2 EWI-7): their promoted entries.
+        from .ct_closure import promoted_root_entries
+
+        entries += promoted_root_entries(
+            None if program is None else program.blocks,
+            ordinary,
+            lambda rows: rows if conjugates.closed(rows) else conjugates.of(rows),
+            data,
+        )
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
         )

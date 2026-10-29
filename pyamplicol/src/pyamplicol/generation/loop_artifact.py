@@ -12,6 +12,7 @@ Virtual processes are published by the shared-recursion engine v2
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -187,6 +188,29 @@ class LoopV2ProcessArtifact:
     @property
     def runtime_capability(self) -> str:
         return LOOP_V2_RUNTIME_CAPABILITY
+
+
+def recorded_conventions(
+    extensions: Mapping[str, object], process_id: str
+) -> dict[str, object] | None:
+    """The conventions of process ``process_id``'s electroweak virtual as the
+    artifact's generation extension records them (the process's generation
+    filters, ``conventions``: WP3.2 EWI-7, ``loops.v2.ew_policy.
+    scheme_conventions``), None when none is recorded. The physics metadata
+    keeps its schema (the native admission reads it)."""
+
+    generation = extensions.get("generation")
+    if not isinstance(generation, Mapping):
+        return None
+    records = generation.get("concrete_processes")
+    if not isinstance(records, (list, tuple)):
+        return None
+    for record in records:
+        if isinstance(record, Mapping) and record.get("id") == process_id:
+            filters = record.get("filters")
+            found = filters.get("conventions") if isinstance(filters, Mapping) else None
+            return dict(found) if isinstance(found, Mapping) else None
+    return None
 
 
 def _v2_process_payloads(
