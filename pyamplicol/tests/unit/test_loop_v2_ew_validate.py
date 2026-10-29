@@ -127,6 +127,33 @@ def _executor(slice_):
     )
 
 
+def _assert_native_inputs(slice_, reference, index=0) -> float:
+    """The native point inputs (WP3.2 EWI-N) equal the Python inputs on the
+    same exported plan at row ``index``: every component per sector within
+    1e-12 of the sector's virtual (binary64; the lanes are not bitwise
+    equal, DESIGN §12.1 item 4). Returns the worst deviation."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    mine = _evaluate(native, reference, index)
+    theirs = _evaluate(python, reference, index)
+    worst = 0.0
+    for component, sectors in theirs.components.items():
+        for sector, laurent in sectors.items():
+            virtual = theirs.components["virtual"][sector].coefficients
+            size = max(abs(float(x)) for x in virtual)
+            for x, y in zip(
+                mine.components[component][sector].coefficients,
+                laurent.coefficients,
+                strict=True,
+            ):
+                worst = max(worst, abs(float(x) - float(y)) / size)
+    assert worst <= 1e-12, worst
+    return worst
+
+
 def _evaluate(executor, reference, index, precision=None, stability=None):
     (result,) = executor.evaluate(
         [reference["points"][index]],
@@ -781,35 +808,21 @@ def test_both_input_schemes_generate_electroweak_mumu(ufo, request, loop_native)
     print(ufo, record)
 
 
-class _NativeInputsRefused(Exception):
-    """The public generation's refusal of an electroweak artifact whose
-    native point inputs fail the listed ``plane-mismatch`` check (WP3.2
-    EWI-N), raised so that a strict xfail pins exactly that refusal."""
-
-
 @pytest.mark.loop_nightly
-@pytest.mark.xfail(
-    strict=True,
-    raises=_NativeInputsRefused,
-    reason=(
-        "WP3.2 EWI-N (ew-native): electroweak artifacts are not storable until "
-        "their native point inputs pass the plane check (plane-mismatch on a "
-        "counterterm coefficient of e- e+ > mu- mu+ on loop_qcd_qed_sm)"
-    ),
-)
 def test_stored_electroweak_artifact_lists_its_conventions(
     loop_qcd_qed_sm_ufo, loop_native, tmp_path
 ):
     """The record end to end (WP3.2 EWI-7): ``Generator.generate`` of
     e- e+ > mu- mu+ with full electroweak corrections writes the conventions
     into the process's generation record and its metadata, and
-    ``Runtime.inspect`` shows them. A strict xfail on the native-input
-    refusal until EWI-N stores electroweak artifacts. About 2 min."""
+    ``Runtime.inspect`` and the artifact inspection show them (stored with
+    native point inputs since WP3.2 EWI-N continuation 1; a strict xfail
+    before). About 2 min."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.api.errors import GenerationError
     from pyamplicol.artifacts import load_manifest
+    from pyamplicol.artifacts.inspection import inspect_artifact
     from pyamplicol.config import resolve_config
 
     _PUBLIC_CARD = _sibling("test_loop_v2_ew_leptons")._PUBLIC_CARD
@@ -823,18 +836,15 @@ def test_stored_electroweak_artifact_lists_its_conventions(
         )
     )
     processes = ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="eemm"),))
-    try:
-        Generator(resolve_config(card)).generate(processes, output)
-    except GenerationError as error:
-        if "plane-mismatch" in str(error):
-            raise _NativeInputsRefused(str(error)) from error
-        raise
+    Generator(resolve_config(card)).generate(processes, output)
     manifest = load_manifest(output, verify_payloads=True)
     (record,) = manifest.extensions["generation"]["concrete_processes"]
     conventions = record["filters"]["conventions"]
     assert conventions["ew_input_scheme"] == "alpha"
     info = Runtime.load(output, process="eemm").inspect()
     assert info["conventions"] == conventions
+    (process,) = inspect_artifact(output).processes
+    assert dict(process.loop.conventions)["ew_input_scheme"] == "alpha"
 
 
 # ------------------------------------------- ghost vertices, listed refusals
@@ -1007,7 +1017,9 @@ def test_goldstone_side_root_mixing_of_top_pair_initial_states_equals_recola(
     ours by exactly its finite-part difference from Recola (up to 2.5 % and
     7.7 % of the finite part): MadLoop omits R2_G0tt_b (its exports call
     R2_G0TT, R2_HTT and R2_HTT_B and never R2_G0TT_B; slice-status
-    DECISIONS 2026-10-28 ~08:10 (1)). About 5 min each."""
+    DECISIONS 2026-10-28 ~08:10 (1)). The native point inputs, the promoted
+    root terms in the native closure, equal the Python inputs at point 0
+    (WP3.2 EWI-N; t t~ > t t~: 8.7e-15 of the virtual). About 6 min each."""
 
     compiled = _gmu(loop_gmu_ufo)
     reference, slice_ = _fixture_slice(name, compiled, loop_native)
@@ -1064,6 +1076,8 @@ def test_goldstone_side_root_mixing_of_top_pair_initial_states_equals_recola(
         assert abs(r2 - omitted) <= ROOT_MIXING_TOLERANCE * scale, (index, r2, omitted)
         # The mixings: 0.3 % to 5.6 % of MadLoop's UV single pole.
         assert abs(row["mixing"]["single_pole"]) > 1e-3 * abs(row["ct"]["single_pole"])
+    # The promoted root terms in the native closure (WP3.2 EWI-N inputs).
+    worst["native - python inputs"] = _assert_native_inputs(slice_, reference)
     print({k: f"{v:.1e}" for k, v in worst.items()})
 
 
@@ -1074,8 +1088,9 @@ def test_single_top_s_channel_equals_madloop_and_recola(loop_gmu_ufo, loop_nativ
     whose Born closes at a vertex since m-qcd MQ-5F; refused before) against
     MadLoop and Recola (``required/udx_tbx_ew``, which agree to 4e-13) at
     its three points: Born and every Laurent coefficient through the native
-    executor in binary64 within the ladder's tolerance, the poles Catani's.
-    About 5 min."""
+    executor in binary64 within the ladder's tolerance, the poles Catani's;
+    the native point inputs (WP3.2 EWI-N) equal the Python inputs at point
+    0 (2.5e-15 of the virtual). About 6 min."""
 
     compiled = _gmu(loop_gmu_ufo)
     reference, slice_ = _fixture_slice("udx_tbx_ew", compiled, loop_native)
@@ -1090,7 +1105,12 @@ def test_single_top_s_channel_equals_madloop_and_recola(loop_gmu_ufo, loop_nativ
             worst[provider] = max(worst.get(provider, 0.0), error)
         catani = max(catani, _assert_catani(result))
     assert set(worst) == {"madloop", "recola"}
-    print({k: f"{v:.1e}" for k, v in worst.items()}, f"catani {catani:.1e}")
+    native = _assert_native_inputs(slice_, reference)
+    print(
+        {k: f"{v:.1e}" for k, v in worst.items()},
+        f"catani {catani:.1e}",
+        f"native - python inputs {native:.1e}",
+    )
 
 
 # ------------------------------------------------------- reflection audit
