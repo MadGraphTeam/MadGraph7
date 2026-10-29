@@ -245,6 +245,107 @@
    "tier": "the 2->4 EW rows (DY07, DY08, CM08) are nightly: one generation fits a 30-min job"
   }
  },
+ "smokes": {
+  "restrictions": [
+   {
+    "id": "loop_qcd_qed_sm_Gmu:a0",
+    "row": "LL01",
+    "restriction": "a0",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm_Gmu:ckm",
+    "row": "LL01",
+    "restriction": "ckm",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm_Gmu:no_widths",
+    "row": "LL01",
+    "restriction": "no_widths",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm_Gmu:with_b_mass",
+    "row": "LL01",
+    "restriction": "with_b_mass",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm_Gmu:with_b_mass_no_width",
+    "row": "LL01",
+    "restriction": "with_b_mass_no_width",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm_Gmu:with_technical",
+    "row": "LL01",
+    "restriction": "with_technical",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm:ckm",
+    "row": "LL03",
+    "restriction": "ckm",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm:no_widths",
+    "row": "LL03",
+    "restriction": "no_widths",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm:with_b_mass",
+    "row": "LL03",
+    "restriction": "with_b_mass",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm:with_b_mass_no_widths",
+    "row": "LL03",
+    "restriction": "with_b_mass_no_widths",
+    "executor": "native"
+   },
+   {
+    "id": "loop_qcd_qed_sm:with_technical",
+    "row": "LL03",
+    "restriction": "with_technical",
+    "executor": "native"
+   }
+  ],
+  "jobs": [
+   {
+    "job": 1,
+    "smokes": [
+     "loop_qcd_qed_sm_Gmu:a0",
+     "loop_qcd_qed_sm_Gmu:ckm",
+     "loop_qcd_qed_sm_Gmu:no_widths",
+     "loop_qcd_qed_sm_Gmu:with_b_mass"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_smokes.py"
+   },
+   {
+    "job": 2,
+    "smokes": [
+     "loop_qcd_qed_sm_Gmu:with_b_mass_no_width",
+     "loop_qcd_qed_sm_Gmu:with_technical",
+     "loop_qcd_qed_sm:ckm",
+     "loop_qcd_qed_sm:no_widths"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_smokes_2.py"
+   },
+   {
+    "job": 3,
+    "smokes": [
+     "loop_qcd_qed_sm:with_b_mass",
+     "loop_qcd_qed_sm:with_b_mass_no_widths",
+     "loop_qcd_qed_sm:with_technical"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_smokes_3.py"
+   }
+  ]
+ },
  "nightly_jobs": {
   "budget_seconds": 1500,
   "measurement": "DEFAULT_SECONDS per id until a nightly run measures them",
