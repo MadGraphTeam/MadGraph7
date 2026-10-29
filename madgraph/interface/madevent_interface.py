@@ -3469,7 +3469,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             # when running in multi-core with a central disk. So it is turned
             # off here. If these filters were not initialized then they will 
             # have to be re-computed at the beginning of each run.
-            if 'WriteOutFilters' in self.MadLoopparam.user_set and \
+            if 'writeoutfilters' in self.MadLoopparam.user_set and \
                                        self.MadLoopparam.get('WriteOutFilters'):
                 logger.info(
 """You chose to have MadLoop writing out filters. 
@@ -3515,7 +3515,7 @@ Beware that this can be dangerous for local multicore runs.""")
             else:
                 run_card = self.run_card
             if run_card['nhel'] == 0:
-                if 'MLReductionLib' in self.MadLoopparam.user_set and \
+                if 'mlreductionlib' in self.MadLoopparam.user_set and \
                     self.MadLoopparam.get('MLReductionLib').startswith(('1', '6', '8')):
                     logger.warning(
     """You chose to set the preferred reduction technique in MadLoop to be OPP (see parameter MLReductionLib).
@@ -3523,7 +3523,7 @@ Beware that this can be dangerous for local multicore runs.""")
                 # We do not include GOLEM for now since it cannot recycle TIR coefs yet.
                 self.MadLoopparam.set('MLReductionLib','7|6|1', changeifuserset=False)
             else:
-                if 'MLReductionLib' in self.MadLoopparam.user_set and \
+                if 'mlreductionlib' in self.MadLoopparam.user_set and \
                     not self.MadLoopparam.get('MLReductionLib').startswith(('1', '6', '8')):
                     logger.warning(
     """You chose to set the preferred reduction technique in MadLoop to be different than OPP (see parameter MLReductionLib).
@@ -3535,9 +3535,9 @@ Beware that this can be dangerous for local multicore runs.""")
             # to zero when not MC-ing over helicities, unless the parameter
             # Force_ML_Helicity_Sum is set to True in the matrix<i>.f codes.
             if run_card['nhel'] == 0:
-                if ('NRotations_DP' in self.MadLoopparam.user_set and \
+                if ('nrotations_dp' in self.MadLoopparam.user_set and \
                                      self.MadLoopparam.get('NRotations_DP')!=0) or \
-                   ('NRotations_QP' in self.MadLoopparam.user_set and \
+                   ('nrotations_qp' in self.MadLoopparam.user_set and \
                                          self.MadLoopparam.get('NRotations_QP')!=0):
                     logger.warning(
     """You chose to also use a lorentz rotation for stability tests (see parameter NRotations_[DP|QP]).
@@ -3566,7 +3566,7 @@ Beware that this can be dangerous for local multicore runs.""")
             # This is important for getting g g > z z [QCD] working with a
             # ptheavy cut as low as 1 GeV.  
             if self.proc_characteristics['nexternal']<=4:
-                if ('MLStabThres' in self.MadLoopparam.user_set and \
+                if ('mlstabthres' in self.MadLoopparam.user_set and \
                                    self.MadLoopparam.get('MLStabThres')>1.0e-7):
                     logger.warning(
     """You chose to increase the default value of the MadLoop parameter 'MLStabThres' above 1.0e-7.

@@ -293,11 +293,15 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
         if (getattr(self, 'has_loop_induced', False) or
                 not getattr(self, 'tir_available_dict', {}).get('ninjars', False) or
-                'mlreductionlib' in card.user_set or card['MLReductionLib'] != '6|7|1' or
-                not ninjars_install.is_available(getattr(self, 'ninjars_dir', None))):
+                'mlreductionlib' in card.user_set or card['MLReductionLib'] != '6|7|1'):
+            return False
+        preferred = ninjars_install.default_reduction_library(
+            True, getattr(self, 'ninjars_dir', None))
+        if preferred != [8]:
             return False
         # An active value is required: Fortran ignores commented default lines.
-        card.set('MLReductionLib', '8|6|7|1', user=True)
+        card.set('MLReductionLib', '%s|%s' % (preferred[0], card['MLReductionLib']),
+                 user=True)
         return True
 
     def write_f2py_makefile(self, model):

@@ -3391,16 +3391,6 @@ RESTART = %(mint_mode)s
              r"Unknown return code \(100\)\:\s+(?P<n100>\d+).*"+\
              r"Unknown return code \(10\)\:\s+(?P<n10>\d+).*",re.DOTALL)
     
-        unit_code_meaning = { 0 : 'Not identified (CTModeRun != -1)',
-                              1 : 'CutTools (double precision)',
-                              2 : 'PJFry++',
-                              3 : 'IREGI',
-                              4 : 'Golem95',
-                              5 : 'Samurai',
-                              6 : 'Ninja (double precision)',
-                              7 : 'COLLIER',
-                              8 : 'Ninja (quadruple precision)',
-                              9 : 'CutTools (quadruple precision)'}
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
         ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
@@ -3452,8 +3442,8 @@ RESTART = %(mint_mode)s
             nTot10  = sum([chan[9] for chan in stats['UPS'].values()],0)
             nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
                                                              for i in range(10)]
-            nTot1[8] -= ninjars_usage['DP']
-            nTot1[2] -= ninjars_usage['QP']
+            backend_usage = sum_html.decode_madloop_backend_usage(
+                nTot1, ninjars_usage['DP'], ninjars_usage['QP'])
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])
@@ -3468,23 +3458,15 @@ RESTART = %(mint_mode)s
             tmpStr += '\n    Quadruple precision used:            %d'%nTotqdp
             tmpStr += '\n    Initialization phase-space points:   %d'%nTotini
             tmpStr += '\n    Reduction methods used:'
-            red_methods = [(unit_code_meaning[i],nTot1[i]) for i in \
-                                         unit_code_meaning.keys() if nTot1[i]>0]
-            red_methods.extend(
-                ('NinjaRS (%s precision)' % (
-                    'double' if precision == 'DP' else 'quadruple'), count)
-                for precision, count in ninjars_usage.items() if count > 0)
+            red_methods = [(sum_html.MADLOOP_BACKEND_LABELS[backend], count)
+                           for backend, count in backend_usage.items()
+                           if count > 0]
             for method, n in sorted(red_methods, key= lambda l: l[1], reverse=True):
                 tmpStr += '\n      > %s%s%s'%(method,' '*(33-len(method)),n)                
             if nTot100 != 0:
                 debug_msg += '\n  Unknown return code (100):             %d'%nTot100
             if nTot10 != 0:
                 debug_msg += '\n  Unknown return code (10):              %d'%nTot10
-            nUnknownUnit = sum(nTot1[u] for u in range(10) if u \
-                                                not in list(unit_code_meaning.keys()))
-            if nUnknownUnit != 0:
-                debug_msg += '\n  Unknown return code (1):               %d'\
-                                                                   %nUnknownUnit
 
             if maxUPS[1]>0.001:
                 message += tmpStr

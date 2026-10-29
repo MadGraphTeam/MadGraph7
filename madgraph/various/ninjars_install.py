@@ -75,6 +75,16 @@ def is_available(libdir):
         return False
 
 
+def default_reduction_library(has_born, libdir):
+    """Return a fresh timing/profile default, preserving loop-induced policy.
+
+    Only Born-process defaults prefer an installed NinjaRS backend. Exporters
+    retain their own fallback order and loop-induced tensor-reduction defaults.
+    Explicit user selections must be left untouched by callers.
+    """
+    return [8] if has_born and is_available(libdir) else [6]
+
+
 def pre_link_flags(libdir):
     """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
     return read_config(libdir)['link_before']

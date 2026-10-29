@@ -254,6 +254,19 @@ C     a non existing or malformed parameter file
   998 continue
 
       if(printParam.and..not.paramPrinted) then
+C     A partial card may omit MLReductionLib. Print the effective list rather
+C     than the uninitialized local string used only while parsing that entry.
+      MLReductionLib_str_save=''
+      DO i=1,9
+        IF(MLReductionLib(i).EQ.0) EXIT
+        WRITE(MLReductionLib_char,'(I1)') MLReductionLib(i)
+        IF(i.EQ.1) THEN
+          MLReductionLib_str_save=TRIM(MLReductionLib_char)
+        ELSE
+          MLReductionLib_str_save=TRIM(MLReductionLib_str_save)//
+     &      '|'//TRIM(MLReductionLib_char)
+        ENDIF
+      ENDDO
       write(*,*)
      & '==============================================================='
       if (couldRead) then      

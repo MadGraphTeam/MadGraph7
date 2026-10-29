@@ -104,6 +104,22 @@ C ----------
 C BEGIN CODE
 C ----------
 
+C Reject unavailable OPP backends which reach the TIR fallback. Check before
+C consulting the cache so an unsupported ID can never reuse old coefficients.
+      SELECT CASE(MLReductionLib(I_LIB))
+      CASE(2,3,4,7)
+        CONTINUE
+      CASE DEFAULT
+        IF(MLReductionLib(I_LIB).EQ.8) THEN
+          WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+          WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+        ELSE
+          WRITE(*,*) 'ERROR:: Unsupported TIR reduction library:',MLReductionLib(I_LIB)
+          WRITE(*,*) 'Select an available MLReductionLib and regenerate and rebuild this process.'
+        ENDIF
+        STOP 1
+      END SELECT
+
 C Initialize for the very first time ML is called LAST_ILIB with the first ILIB used.
 CALL ML_LOOP_POLE_FLAGS(UV_POLES,IR_POLES)
 IF(LAST_POLE_MODE.NE.LoopPoleMode.OR.(LAST_UV_POLES.NEQV.UV_POLES).OR.(LAST_IR_POLES.NEQV.IR_POLES)) THEN

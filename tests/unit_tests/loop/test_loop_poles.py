@@ -107,6 +107,46 @@ class LoopPoleFortranTest(unittest.TestCase):
         self.assertIn('Set MLReductionLib to 8, 7 or 8|7', result.stdout)
         self.assertNotIn('POLE SELECTOR PASSED', result.stdout)
 
+    def test_partial_card_prints_effective_reduction_list(self):
+        (self.work / 'card.dat').write_text('#LoopPoleMode\n2\n')
+        (self.work / 'check.f').write_text('''
+      PROGRAM CHECK
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER MODE,EXPECTED(9)
+      CHARACTER*1 ARG
+      CHARACTER*512 FILENAME
+      CALL DEFAULTPARAM()
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) MODE
+      IF(MODE.EQ.1) THEN
+        MLReductionLib=0
+        MLReductionLib(1:2)=(/8,7/)
+      ENDIF
+      EXPECTED=MLReductionLib
+      IF(MODE.EQ.2) THEN
+        EXPECTED=0
+        EXPECTED(1:2)=(/7,8/)
+      ENDIF
+      FILENAME='card.dat'
+      CALL MADLOOPPARAMREADER(FILENAME,.TRUE.)
+      IF(ANY(MLReductionLib.NE.EXPECTED)) STOP 51
+      WRITE(*,*) 'REDUCTION DIAGNOSTIC PASSED'
+      END
+''')
+        self.compile('check.f')
+        for mode, expected in ((0, '6|7|1'), (1, '8|7'), (2, '7|8')):
+            if mode == 2:
+                (self.work / 'card.dat').write_text(
+                    '#LoopPoleMode\n2\n#MLReductionLib\n7|8\n')
+            with self.subTest(mode=mode):
+                result = self.run_command(str(self.work / 'check'), str(mode))
+                displayed = next(line.split('=', 1)[1].strip()
+                                 for line in result.stdout.splitlines()
+                                 if '> MLReductionLib ' in line)
+                self.assertEqual(displayed, expected)
+                self.assertIn('REDUCTION DIAGNOSTIC PASSED', result.stdout)
+
     def test_collier_projection_and_mode_changes_invalidate_cached_tensors(self):
         # Compile the production wrapper against a deterministic COLLIER double.
         # Real-library numerical comparisons are separate integration tests.

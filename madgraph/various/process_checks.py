@@ -1820,7 +1820,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             # The exceptional PS points are those which stay unstable in quad prec.
             Exceptional_PS_points = []
         
-            MLoptions=MLOptions
+            MLoptions=copy.deepcopy(MLOptions)
             MLoptions["MLReductionLib"]=tool
             clean = (tool==tools[0]) and not nPoints==0
             if infos_IN==None or (tool_name not in infos_IN):
@@ -2434,24 +2434,23 @@ def check_profile(process_definition, param_card = None,cuttools="",tir={},
     if not myProfiler.loop_optimized_output:
         MLoptions={}
     else:
-        MLoptions=MLOptions
+        MLoptions=copy.deepcopy(MLOptions)
         # Prefer an installed NinjaRS backend for Born-process profiles unless
         # the caller explicitly selected a reduction list.
         has_born = (matrix_element.get('has_born') if reusing else
                         matrix_element.get('processes')[0].get('has_born'))
-        if has_born and ('MLReductionLib' not in MLoptions or
-                                      len(MLoptions['MLReductionLib']) == 0):
-            MLoptions['MLReductionLib'] = [8] if ninjars_install.is_available(
-                                              tir.get('ninjars_dir')) else [6]
+        if 'MLReductionLib' not in MLoptions or not MLoptions['MLReductionLib']:
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                has_born, tir.get('ninjars_dir'))
 
     timing2 = myProfiler.time_matrix_element(matrix_element, reusing, 
                             param_card, keep_folder=keep_folder,options=options,
                             MLOptions = MLoptions) 
     
-    timing2['reduction_tool'] = MLoptions['MLReductionLib'][0]
-
     if timing2 == None:
         return None, None
+
+    timing2['reduction_tool'] = MLoptions.get('MLReductionLib', [1])[0]
 
     # The timing info is made of the merged two dictionaries
     timing = dict(list(timing1.items())+list(timing2.items()))
@@ -2503,7 +2502,7 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
     if not myStabilityChecker.loop_optimized_output:
         MLoptions = {}
     else:
-        MLoptions = MLOptions
+        MLoptions = copy.deepcopy(MLOptions)
         # Make sure that the poles computation is disabled for COLLIER
         if 'COLLIERComputeUVpoles' not in MLoptions:
             MLoptions['COLLIERComputeUVpoles']=False
@@ -2574,7 +2573,7 @@ def check_timing(process_definition, param_card= None, cuttools="",tir={},
     if not myTimer.loop_optimized_output:
         MLoptions = {}
     else:
-        MLoptions = MLOptions
+        MLoptions = copy.deepcopy(MLOptions)
         # Make sure that the poles computation is disabled for COLLIER
         if 'COLLIERComputeUVpoles' not in MLoptions:
             MLoptions['COLLIERComputeUVpoles']=False
@@ -2588,8 +2587,8 @@ def check_timing(process_definition, param_card= None, cuttools="",tir={},
                                             len(MLoptions['MLReductionLib'])==0:
             has_born = (matrix_element.get('has_born') if reusing else
                         matrix_element.get('processes')[0].get('has_born'))
-            MLoptions['MLReductionLib'] = [8] if (has_born and
-                ninjars_install.is_available(tir.get('ninjars_dir'))) else [6]
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                has_born, tir.get('ninjars_dir'))
             
     timing2 = myTimer.time_matrix_element(matrix_element, reusing, param_card,
                                      keep_folder = keep_folder, options=options,
@@ -2601,7 +2600,7 @@ def check_timing(process_definition, param_card= None, cuttools="",tir={},
         # Return the merged two dictionaries
         res = dict(list(timing1.items())+list(timing2.items()))
         res['loop_optimized_output']=myTimer.loop_optimized_output
-        res['reduction_tool'] = MLoptions['MLReductionLib'][0]
+        res['reduction_tool'] = MLoptions.get('MLReductionLib', [1])[0]
         return res
 
 #===============================================================================

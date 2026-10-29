@@ -142,6 +142,119 @@ class NinjaRSFortranTest(unittest.TestCase):
             with self.subTest(amplitude_reduction=amplitude):
                 self.check_wrapper(amplitude)
 
+    def test_tir_rejects_unsupported_backends_before_cache_access(self):
+        """Direct dispatch cannot bypass the normal unavailable-library filter."""
+        source = (TEMPLATE / 'TIR_interface.inc').read_text()
+        source = source[:source.index(
+            '      SUBROUTINE %(proc_prefix)sSWITCH_ORDER')]
+        replacements = {
+            'proc_prefix': 'TEST_', 'nloop_groups': 1, 'nSquaredSO': 1,
+            'nexternal': 2, 'info_lines': '', 'process_lines': '',
+            'real_dp_format': 'REAL*8', 'complex_dp_format': 'COMPLEX*16',
+            'mass_dp_format': 'COMPLEX*16', 'include_vector': '',
+        }
+        (self.work / 'loop_max_coefs.inc').write_text(
+            '      INTEGER LOOPMAXCOEFS\n      PARAMETER (LOOPMAXCOEFS=1)\n')
+        (self.work / 'tir_cache_size.inc').write_text(
+            '      PARAMETER (TIR_CACHE_SIZE=1)\n')
+        (self.work / 'coupl.inc').write_text(
+            '      REAL*8 MU_R\n      COMMON/TEST_COUPL/MU_R\n')
+        driver = '''
+      PROGRAM TEST_DISPATCH
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER MODE,CTMODE,LIBINDEX
+      REAL*8 PL(0:3,1),LSCALE,MU_R,NORMALIZATION
+      COMPLEX*16 MASS(1),RES(3),LOOPCOEFS(1)
+      LOGICAL STABLE,INIT_FLAGS(6),TIR_DONE(1,0:1)
+      CHARACTER*2 ARG
+      COMMON/TEST_CT/LSCALE,CTMODE
+      COMMON/TEST_I_LIB/LIBINDEX
+      COMMON/TEST_LCOEFS/LOOPCOEFS
+      COMMON/TEST_COUPL/MU_R
+      COMMON/TEST_TIRCACHING/TIR_DONE
+      COMMON/REDUCTIONCODEINIT/INIT_FLAGS
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) MODE
+      PL=0D0
+      MASS=1D0
+      LOOPCOEFS=1D0
+      INIT_FLAGS=.FALSE.
+      TIR_DONE=.FALSE.
+      STABLE=.TRUE.
+      LIBINDEX=1
+      CTMODE=1
+      LoopPoleMode=0
+      COLLIERUseInternalStabilityTest=.FALSE.
+      MU_R=91D0
+      MLReductionLib=0
+      MLReductionLib(1)=7
+      IF(MODE.GE.10) THEN
+C Fill a real coefficient cache with a valid reduction before switching IDs.
+        CALL TEST_TIRLOOP(1,1,1,1,PL,MASS,0,RES,STABLE)
+      ENDIF
+      MLReductionLib(1)=MOD(MODE,10)
+      CALL TEST_TIRLOOP(1,1,1,1,PL,MASS,0,RES,STABLE)
+      NORMALIZATION=%(factor)dD0/(16D0*3.14159265358979323846D0**2)
+      IF(ANY(ABS(RES-NORMALIZATION).GT.1D-15)) STOP 81
+      WRITE(*,*) 'DISPATCH RETURNED'
+      END
+      SUBROUTINE TEST_INITTIR()
+      END
+      SUBROUTINE ML_LOOP_POLE_FLAGS(UV,IR)
+      LOGICAL UV,IR
+      UV=.TRUE.
+      IR=.TRUE.
+      END
+      SUBROUTINE TEST_CLEAR_TIR_CACHE()
+      LOGICAL TIR_DONE(1,0:1)
+      COMMON/TEST_TIRCACHING/TIR_DONE
+      TIR_DONE=.FALSE.
+      END
+      INTEGER FUNCTION TEST_TIRCACHE_INDEX(MODE)
+      INTEGER MODE
+      TEST_TIRCACHE_INDEX=1
+      END
+      SUBROUTINE TEST_COLLIERLOOP(MODE,N,R,PL,PDEN,MASS,COEFS,ERRORS)
+      INTEGER MODE,N,R
+      REAL*8 PL(0:3,N),PDEN(0:3,N)
+      COMPLEX*16 MASS(N),COEFS(1,3),ERRORS(1,3)
+      COEFS=1D0
+      ERRORS=0D0
+      END
+'''
+        for amplitude in (False, True):
+            for caching in (False, True):
+                with self.subTest(amplitude=amplitude, caching=caching):
+                    with FortranWriter(str(self.work / 'tir.f')) as writer:
+                        writer.writelines(source % replacements, context={
+                            'AmplitudeReduction': amplitude, 'TIRCaching': caching,
+                            'collier_available': True, 'golem_available': False,
+                            'iregi_available': False, 'pjfry_available': False})
+                    (self.work / 'dispatch.f').write_text(
+                        driver % {'factor': 1 if amplitude else 2})
+                    self.run_command('gfortran', '-ffixed-line-length-132',
+                                     '-fcheck=all', '-I', str(PARAMS),
+                                     'tir.f', 'dispatch.f', '-o', 'dispatch')
+                    for mode in (7, 17, 8, 18, 6, 16):
+                        result = subprocess.run(
+                            [str(self.work / 'dispatch'), str(mode)],
+                            cwd=self.work, text=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
+                        with self.subTest(mode=mode):
+                            if mode % 10 == 7:
+                                self.assertEqual(result.returncode, 0, result.stdout)
+                                self.assertIn('DISPATCH RETURNED', result.stdout)
+                            else:
+                                self.assertNotEqual(result.returncode, 0, result.stdout)
+                                self.assertNotIn('DISPATCH RETURNED', result.stdout)
+                                if mode % 10 == 8:
+                                    self.assertIn('install ninjars', result.stdout)
+                                    self.assertIn('regenerate and rebuild', result.stdout)
+                                else:
+                                    self.assertIn('Unsupported TIR reduction library',
+                                                  result.stdout)
+
     def test_exit_cleanup_with_and_without_ninjars(self):
         source = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
         source = source[source.index(

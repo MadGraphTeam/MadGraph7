@@ -5673,8 +5673,8 @@ This implies that with decay chains:
 
         if automatic_reduction and myprocdef and myprocdef.get('has_born'):
             from madgraph.various import ninjars_install
-            MLoptions['MLReductionLib'] = [8 if ninjars_install.is_available(
-                self.options.get('ninjars')) else 6]
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                myprocdef.get('has_born'), self.options.get('ninjars'))
 
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
