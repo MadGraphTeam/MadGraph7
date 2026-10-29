@@ -79,7 +79,7 @@ MG5_aMC syntax inside a process expression is refused with the key
 | --- | --- |
 | 4FS with tops (massive b) | `restriction = "no_widths"` (all widths zero, MB = ymb = 4.7) |
 | 5FS (massless b) | `restriction = "no_b_mass"` with `[loop.preparation] fixed_parameters = { WT = "0" }` whenever a top propagates in a tree current |
-| 5FS with a b and a t on one fermion line (`g b > t w-`, `b b~ > w+ w-`, `u b > d t`, `t t~ > b b~`) | `restriction = "no_b_mass"` with `fixed_parameters = { WT = "0" }` as above, or the default restriction with `{ MB = "0", ymb = "0", WT = "0" }`: the same parameter values and the same virtual (binary64 to 1e-13) |
+| 5FS with a b and a t on one fermion line (`u d~ > t b~`, `u b > d t`, `g b > t w-`, `b b~ > w+ w-`) | `restriction = "no_b_mass"` with `fixed_parameters = { WT = "0" }` as above, or the default restriction with `{ MB = "0", ymb = "0", WT = "0" }`: the same parameter values and the same virtual (binary64 to 1e-13) |
 | massive charm | `restriction = "c_mass"` |
 | non-diagonal CKM | `restriction = "zeromass_ckm"` or `"ckm"` |
 
