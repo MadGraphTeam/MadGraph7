@@ -18,6 +18,9 @@
 * Every listed refusal key a request on loop_sm can reach fires in a dry run
   (``Generator.plan`` / ``pyamplicol generate --dry-run``), and the dry run
   lists every key.
+* A multiparticle request (``p p > t t~``, campaign row M01) holds MadLoop's
+  subprocesses, each bitwise its own single-process generation (nightly), and
+  a loop process loads under any letter case of the model's spelling.
 """
 
 from __future__ import annotations
@@ -841,3 +844,44 @@ def test_process_selection_takes_any_letter_case_of_the_model_spelling(monkeypat
     assert artifact._select(twins, "A A > t t~")[0]["id"] == "p_2"
     with pytest.raises(EvaluationError, match=r"ambiguous.* p_1, p_2"):
         artifact._select(twins, "a A > t t~")
+
+
+@pytest.mark.loop_nightly
+def test_multiparticle_subprocesses_are_madloops_and_their_own_generations(
+    loop_native, tmp_path
+):
+    """Campaign row M01 on the public route: ``p p > t t~`` on
+    loop_sm-no_b_mass is one artifact holding MadLoop's subprocesses
+    (P0_uux_ttx: the five q q~, the b included; P2_gg_ttx: g g), and each
+    subprocess, loaded by its expression in MadLoop's spelling, is bitwise its
+    own single-process generation (binary64, two points)."""
+
+    from pyamplicol import Runtime
+
+    multi = tmp_path / "multi"
+    _generator(
+        _ufo_card("loop_sm", multi, "p p > t t~", restriction="no_b_mass"),
+        tmp_path / "multi.toml",
+    ).generate(_processes("p p > t t~"), multi)
+    stored = json.loads((multi / "artifact.json").read_text())["processes"]
+    assert {
+        (tuple(sorted(p["external_pdgs"][:2])), tuple(sorted(p["external_pdgs"][2:])))
+        for p in stored
+    } == {((-q, q), (-6, 6)) for q in range(1, 6)} | {((21, 21), (-6, 6))}
+    masses_in, masses_out = _masses(_compile("loop_sm", "no_b_mass"), "g g > t t~")
+    points = [_point(masses_in, masses_out, seed) for seed in (11, 12)]
+    for name, expression in (("uux", "u u~ > t t~"), ("gg", "g g > t t~")):
+        single = tmp_path / name
+        _generator(
+            _ufo_card("loop_sm", single, expression, restriction="no_b_mass"),
+            tmp_path / f"{name}.toml",
+        ).generate(_processes(expression), single)
+        found = [
+            _values(runtime.evaluate(points, mu_r2=[8315.0] * len(points)))
+            for runtime in (
+                Runtime.load(multi, process=expression),
+                Runtime.load(single, process="p"),
+            )
+        ]
+        assert found[0] == found[1], expression
+        assert all(sector[0] != 0 for _, laurent in found[0] for sector in laurent)
