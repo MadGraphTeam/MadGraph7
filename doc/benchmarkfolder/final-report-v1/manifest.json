@@ -1,5 +1,5 @@
 {
-  "excluded_redundant_materialization": "cli-report.json is preserved as deterministiccli-report.json.gz with exactdecodedhash inprovenance; plaintext is not partofpublicationselection",
+  "excluded_redundant_materialization": "cli-report.json is preserved as deterministic cli-report.json.gz with exact decoded hash in provenance; the gzip and seven font binaries are acquired from immutable commit cc6f6fe6dd344a0a767dcfe52341c147e39a193a into ignored local paths using fetch_artifacts.py.",
   "expected_pdf": {
     "bytes": 346438,
     "path": "benchmark.pdf",
@@ -7,16 +7,20 @@
   },
   "files": {
     "README.md": {
-      "bytes": 1175,
-      "sha256": "bc22c0af46a9e7bc74792b8f140efc6d9e9def2a55d17e9993d4aab4c3e6870b"
+      "bytes": 2245,
+      "sha256": "3b39bbcfb8e4fd8914535f8d932b459e8501f7caad485bb8f42bc350ee6a0309"
     },
     "benchmark.typ": {
       "bytes": 23441,
       "sha256": "c92260703b39819d8566d55d1f8b37c8c76f56fa542e067ab75016a14669f490"
     },
+    "fetch_artifacts.py": {
+      "bytes": 3323,
+      "sha256": "791f951413c8a895e4ddb3b6e6032c5c2a2ed9425b2e8755be391b196b3cf038"
+    },
     "final-report-v1/README.md": {
-      "bytes": 6722,
-      "sha256": "e9f3f5ef7389496a25c48b806c8dc3c64a2a08883740899ba3a6f226ce1ee313"
+      "bytes": 7033,
+      "sha256": "8fcd5039f6d146809a88d1df7b57fa3340edca99430c4baa26bce9155c5d8259"
     },
     "final-report-v1/cli-report.json.gz": {
       "bytes": 1351700,

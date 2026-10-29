@@ -1,5 +1,19 @@
 {
   "amplitude_calls": 0,
+  "artifact_acquisition_20261029": {
+    "binary_artifacts": 8,
+    "binary_bytes": 3513980,
+    "byte_identical_pdf": true,
+    "command": "python -B doc/benchmarkfolder/fetch_artifacts.py",
+    "current_manifest_sha256": "694f53830829c679a02bfb6ab7c489858153a96fd4aaf7eafe1457da79f2d62d",
+    "native_reads": 0,
+    "observed_utc": "2026-10-29T20:35:49.978632+00:00",
+    "offline_reproduced_pdf_sha256": "c87adf29a508a5428bf351067d1a63d0ad23cb0b2632483e9dabd4763f1ad443",
+    "revision": "cc6f6fe6dd344a0a767dcfe52341c147e39a193a",
+    "scope": "Optional binary inputs removed from new source checkouts; original offline reproduction command and PDF/source/scientific values unchanged.",
+    "verification": "Fresh download from immutable GitHub commit into an isolated report copy; unchanged reproduction script using Typst 0.15.1 (9dfd3a08).",
+    "verified_input_files": 37
+  },
   "byte_identical_pdf": true,
   "command": [
     "python",

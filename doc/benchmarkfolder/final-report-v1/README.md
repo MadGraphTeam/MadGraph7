@@ -29,6 +29,11 @@ measurements and the separately scoped correctness/precision evidence.
 
 ## Offline PDF reproduction
 
+First run `python -B doc/benchmarkfolder/fetch_artifacts.py` to obtain the
+checksum-verified fonts and compressed CLI materialization from the immutable
+report archive. These optional binary files are ignored in new checkouts; see
+the [acquisition instructions](../README.md). The remaining steps are offline.
+
 Activate the documented environment or provide **Typst 0.15.1 (9dfd3a08)**, then
 run from the repository root:
 

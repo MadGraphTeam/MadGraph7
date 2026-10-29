@@ -90,6 +90,8 @@ UNITTEST_proc/
 # Local development references and report plotting caches.
 /references/
 /doc/benchmarkfolder/final-report-v1/.mpl-cache/
+/doc/benchmarkfolder/final-report-v1/cli-report.json.gz
+/doc/benchmarkfolder/final-report-v1/fonts/*.otf
 
 # models/ only holds UFO models: downloaded ones are ignored, shipped ones kept
 models/*
