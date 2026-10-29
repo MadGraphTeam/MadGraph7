@@ -18,8 +18,8 @@ Production admits counterterms by the plain tree-level rule
 ``particle_veto``), passed as ``admission`` to ``generate_counterterm_sites``
 for the CT vertices at the root of the closure (``ct_closure``). The site
 closure of every rule, the O6 oracle, keeps MadLoop's matching
-(``set_LoopCT_vertices``, as the legacy ``loops.counterterms.match_counterterms``
-does) as an independent check of that rule, with loop graphs replaced by
+(``set_LoopCT_vertices``, as the removed legacy ``loops.counterterms.
+match_counterterms`` did) as an independent check of that rule, with loop graphs replaced by
 *witnesses*: admitted family routings whose structural rank satisfies
 R >= 2N - 4. A witness signature is the multiset of its attached
 block currents (leg mask, field, orders) plus the summed orders of its loop

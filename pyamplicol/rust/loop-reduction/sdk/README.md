@@ -7,8 +7,9 @@
 > regenerate the artifact"). Resolved, directed-colour (correlated),
 > spin-source and verified/rescued evaluations were served by the legacy
 > runtime only: their entry points remain in the ABI and refuse with the
-> plan v4 reason (use the Python API). The sections below that describe them
-> document those entry points; their tests and example clients were removed.
+> plan v4 reason (use the Python API). Where the text below describes
+> verification, rescue or resolved axes, it describes those refusing entry
+> points; their tests and example clients were removed.
 
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
@@ -170,15 +171,6 @@ exclusive access, and parameter updates use the existing atomic source owner.
 There is no per-event model-parameter interface. `mu_r2` is explicit, positive,
 scalar or per-point; it is unrelated to the numerator's extra-dimensional mu².
 
-Focused Rust controls accept `PYAMPLICOL_VIRTUAL_ARTIFACT` for the resolved gg
-fixture and `PYAMPLICOL_VIRTUAL_MIXED_ARTIFACT` for the full-CKM uudd source fixture.
-`PYAMPLICOL_VIRTUAL_LC_ARTIFACT` exercises genuine source LC anchors, including
-analytic gg checks, all component axes and native subset precision rescue.
-Run the opt-in debug controls with `RUST_MIN_STACK=16777216`: the Rust test
-harness's default 2 MiB thread stack is smaller than these dependency-backed
-debug evaluators need. The standalone C controls pass on the ordinary process
-stack. This test configuration is not a process-size or multiplicity limit.
-
 C++17 callers include `include/rusticol_virtual.hpp` and use the move-only
 `rusticol::VirtualRuntime` and `VirtualEvaluation` classes. Function errors throw
 `VirtualError`; per-point numerical failures remain statuses in a successfully
@@ -244,78 +236,14 @@ these same outputs using UMAMI's bulk offset/count/stride layout. Its separate
 keys expose every squared order and Laurent coefficient, with mandatory lane
 statuses and no probability or finite-only tree fallback.
 
-## Grouped complex colour correlations
+## Correlated and spin-source entry points
 
-`evaluate_correlated` evaluates every saved directed colour history in one native
-call. It returns a separate `CorrelatedEvaluation`, leaving ordinary real-valued
-ABI structures and scalar semantics unchanged. Its Born axes are
-`[successful_point, history, born_order]`; virtual axes are
-`[successful_point, history, virtual_order, epsilon]`. Histories and squared orders
-are never summed implicitly. Query ordered history IDs before interpreting this
-axis; the SDK query returns IDs, not a second convention for colour-leg labels.
-The native saved plan remains the authority for the exact ordered operations.
-
-The active scope is inclusive spectator helicities, full colour and model-rule
-R2. Saved massless-gluon source classes additionally accept literal complex
-vectors through `evaluate_correlated_with_sources`. Correlated resolved output,
-LC/NLC composition and mappings remain unavailable. Capability inspection reports whether the artifact actually
-contains directed kernels. The same handle still supports ordinary evaluation.
-
-C uses the explicit pair `rusticol_virtual_complex64 { real, imag }` and a separate
-owned `rusticol_virtual_correlated_result`. Element counts refer to pairs. C++
-returns `std::complex<double>` vectors. The dependency-free Rust wrapper returns
-its existing `Complex64 { re, im }` values. Neither relies on a language complex
-ABI matching the C pair. Fortran `evaluate_correlated` returns
-`virtual_correlated_evaluation` with `complex(c_double)` arrays:
-
-| Array | Fortran dimensions |
-|---|---|
-| `born` | `(born_order, history, successful_point)` |
-| `virtual_values` | `(epsilon, virtual_order, history, successful_point)` |
-
-All wrappers preserve compact successful IDs, all-input statuses and owned
-history/diagnostic JSON. Explicit higher-precision verification uses the shared
-native coordinator and checks both separately integrated cross terms as well as
-complete outputs. No imaginary part is discarded. Result ownership survives
-runtime clear/free, and short C buffers remain untouched.
-
-`PYAMPLICOL_VIRTUAL_DIRECTED_ARTIFACT` runs the retained source control in
-`tests/correlated_runtime.rs`, including maximum uint64 IDs, empty/all-failed
-batches, complex swapped histories, ordinary identity reconstruction and subset
-AP60/AP80 rescue. `examples/client_correlated.{c,cpp,f90,rs}` exercise the
-standalone wrappers; the C client also validates UMAMI offset/stride transport,
-failed-row sentinels and short-buffer rejection. These are correctness controls,
-not benchmark timing measurements.
-
-## Saved joint spin sources
-
-Query `spin_correlation_classes_json` for the exact joint sets available in an
-artifact. Each source label is a one-based physical leg. A call selects a complete
-saved joint class; it does not silently combine singleton classes. There is no
-fixed bound on the number of classes or selected legs. The current source-kernel
-certification covers external massless gluons in the full-colour QCD model-rule
-path. Ordinary `evaluate_correlated` still selects ordinary external states.
-
-Safe Rust uses borrowed `SpinSources { legs, values }`. C uses
-`rusticol_virtual_spin_sources` with the same explicit complex pairs as outputs.
-C++, and the packaged Rust wrapper, take leg and complex-vector slices. Vectors
-are laid out in row/selected-leg/Lorentz-component order, with four components
-per leg. Supply one row to broadcast or one row per physical point. Components
-are used literally: no normalization, conjugation or transverse projection is
-applied. Only the saved SourceIR crossing phase transforms them.
-
-Fortran appends optional `spin_legs` and `spin_vectors` to `evaluate_correlated`;
-both must be present together. Vectors have dimensions `(4, selected_leg, row)`.
-Every wrapper borrows sources only for its synchronous native call. Exact copies
-of the binary64 components survive compaction and optional high-precision replay.
-The standalone output remains binary64. The owned result records its selected
-source labels (`spin_legs_json` in wrappers, `spin_legs` in the Cargo API).
-
-`PYAMPLICOL_VIRTUAL_SPIN_ARTIFACT` runs the retained source transport control in
-`tests/spin_runtime.rs`. The `examples/client_spin.{c,cpp,f90,rs}` clients exercise
-the same saved artifact without regenerating diagrams. The C client additionally
-checks UMAMI source offset/stride layouts, literal complex scaling, short buffers
-and output/result lifetimes.
+`rusticol_virtual_evaluate_correlated` (grouped complex colour histories),
+its joint spin-source form and the matching C++, Fortran, Rust and UMAMI
+wrappers remain in the ABI. They were served by the removed legacy runtime
+and refuse a plan v4 process with the plan v4 reason: evaluate correlated,
+resolved and spin-source virtuals of plan v4 through the Python API
+(`evaluate_correlated`, `evaluate_correlated_many`, `evaluate_resolved`).
 
 ## glibc floor (Linux)
 

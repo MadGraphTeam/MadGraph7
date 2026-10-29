@@ -1,5 +1,12 @@
 # pyAmpliCol UMAMI virtual extension, version 1
 
+> **Plan v4 only.** The legacy one-loop engine was removed (2026-10-29, user
+> ruling M-QCD Q3): as in the shared SDK ([README](../README.md)), a plan v4
+> process serves ordinary (unresolved) binary64 virtuals here; resolved,
+> correlated and verified calls refuse with the plan v4 reason. The native
+> control client below (`client_umami_virtual.c`) was written for the removed
+> legacy artifacts.
+
 This source adapter extends UMAMI's keyed bulk-memory conventions for the
 pyAmpliCol virtual SDK. It is explicitly a **pyAmpliCol extension**, not a
 standard UMAMI virtual interface. The upstream `umami.h`, existing tree provider
@@ -121,58 +128,11 @@ benchmark timings. The same control accepts a saved LC gg plan and checks every
 signed component through the strided layout, inclusive reconstruction and
 whole-point failure/verification statuses.
 
-## Additive grouped complex operation
+## Correlated operation
 
-`pyamplicol_umami_virtual_v1_evaluate_correlated` reuses the same handle, inputs,
-scale/policy options and offset/count/stride contract. `resolved` must be zero.
-It evaluates all saved full-colour physical-helicity histories in one native
-bulk call and accepts these separate output keys:
+`pyamplicol_umami_virtual_v1_evaluate_correlated` (grouped complex colour
+histories and joint spin-vector inputs) remains exported with its keys and
+`pyamplicol_umami_virtual_v1_supported_correlated_inputs`. It was served by the
+removed legacy runtime and refuses a plan v4 process with the plan v4 reason;
+evaluate correlated and spin-source virtuals of plan v4 through the Python API.
 
-| Output | Element type | Address |
-|---|---|---|
-| `PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_BORN` | `rusticol_virtual_complex64` | `event + stride * (order + born_orders * history)` |
-| `PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_VIRTUAL` | `rusticol_virtual_complex64` | `event + stride * (order + virtual_orders * (history + J * epsilon))` |
-| `PYAMPLICOL_UMAMI_V1_OUT_STATUS` | `uint32_t` | `event` |
-
-`J` is the saved history count. Ordered history IDs come from
-`rusticol_virtual_correlation_histories_json`; Born and virtual order catalogues
-remain independent. Complex capacities count pairs, each with explicit `real`
-and `imag` doubles. No positive-weight interpretation or implicit history sum is
-introduced. Ordinary real keys are rejected by this operation, and complex keys
-are rejected by ordinary evaluation.
-
-The optional result is a `rusticol_virtual_correlated_result`, freed with
-`rusticol_virtual_correlated_result_free`. Failure statuses, exact input rescue,
-untouched failed/outside-slice numerical slots and preflight-before-write rules
-are shared with ordinary transport. `examples/client_correlated.c` validates
-both complex components, nonzero offsets, sparse maximum uint64 IDs, failed
-rows, padding sentinels and independent owned diagnostics against the same
-standalone result. Spin and resolved/projected-colour correlation composition
-remain separately declared capabilities.
-
-### Joint spin-vector inputs
-
-The correlated operation also accepts the saved massless-gluon source classes
-reported by `rusticol_virtual_spin_correlation_classes_json`. Query
-`pyamplicol_umami_virtual_v1_supported_correlated_inputs` for its input-key list.
-Supply `PYAMPLICOL_UMAMI_V1_IN_SPIN_LEGS` (`size_t[L]`, one-based labels) together
-with exactly one of these explicit complex-pair arrays:
-
-| Input | Capacity | Address |
-|---|---|---|
-| `PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS` | `stride * L * 4` | `event + stride * (selected_leg + L * component)` |
-| `PYAMPLICOL_UMAMI_V1_IN_SPIN_VECTORS_SCALAR` | `L * 4` | `selected_leg + L * component` |
-
-The leg-buffer capacity is exactly `L`, not spare allocation capacity. Other
-capacities retain their usual minimum-buffer meaning. Sources are borrowed only
-for the call; literal complex pairs are copied into the existing native batch.
-No conjugation, normalization or projection is applied. Every point selects the
-same joint class, while values may differ by event. Unused event slots are not
-read. Empty calls still validate supplied source labels against the saved class.
-The owned result supplies `rusticol_virtual_correlated_result_spin_legs_json`.
-
-The ordinary real operation rejects these source keys. Missing/duplicate keys,
-both scalar and per-event sources, short buffers and unsupported classes produce
-errors before output writes. There is no arbitrary source-count limit. The active
-scope remains full-colour QCD with model R2 and declared massless-gluon sources;
-resolved, LC/NLC and flavour-mapped source composition are not claimed here.
