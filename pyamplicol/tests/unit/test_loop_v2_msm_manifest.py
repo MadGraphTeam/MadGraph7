@@ -332,3 +332,29 @@ def test_rule5_components_compare_each_component():
         if not c.passed
     ]
     assert {c.coefficient for c in failed} == {"r2 finite"}
+
+
+@pytest.mark.loop_fast
+def test_nightly_jobs_cover_the_tier_within_the_budget(manifest):
+    """Every nightly id (an active gating row or variant with nightly points
+    or a checked extra) is in exactly one file job, each job within its
+    budget, each with its test file and no file without a job; the same for
+    the restriction smokes."""
+
+    ids = mqcd.nightly_ids(manifest)
+    jobs = manifest["nightly_jobs"]["jobs"]
+    listed = [name for job in jobs for name in job["rows"]]
+    assert sorted(listed) == sorted(ids)
+    budget = manifest["nightly_jobs"]["budget_seconds"]
+    assert budget <= 1800 and all(job["seconds"] <= budget for job in jobs)
+    files = {job["file"] for job in jobs} | {
+        job["file"] for job in manifest["smokes"]["jobs"]
+    }
+    found = {
+        str(path.relative_to(ROOT))
+        for pattern in ("test_loop_v2_msm_nightly*.py", "test_loop_v2_msm_smokes*.py")
+        for path in (ROOT / "tests" / "unit").glob(pattern)
+    }
+    assert found == files
+    smokes = [n for job in manifest["smokes"]["jobs"] for n in job["smokes"]]
+    assert sorted(smokes) == sorted(e["id"] for e in manifest["smokes"]["restrictions"])

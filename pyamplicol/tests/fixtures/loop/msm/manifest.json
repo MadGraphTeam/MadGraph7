@@ -352,57 +352,36 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1200,
+    "seconds": 1319,
     "rows": [
      "DY05",
-     "LL01"
+     "LL01",
+     "LL02",
+     "LL03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 1200,
+    "seconds": 1401,
     "rows": [
-     "LL02",
-     "LL03"
+     "LL10",
+     "SC01",
+     "SC05",
+     "TT01",
+     "VV06"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
    },
    {
     "job": 3,
-    "seconds": 1200,
-    "rows": [
-     "LL10",
-     "SC01"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
-   },
-   {
-    "job": 4,
-    "seconds": 1200,
-    "rows": [
-     "SC05",
-     "TT01"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
-   },
-   {
-    "job": 5,
-    "seconds": 1200,
+    "seconds": 1162,
     "rows": [
      "TT05",
-     "TV06"
+     "TV06",
+     "VJ03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
-   },
-   {
-    "job": 6,
-    "seconds": 1200,
-    "rows": [
-     "VJ03",
-     "VV06"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
    }
   ]
  },
