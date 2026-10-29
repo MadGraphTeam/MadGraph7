@@ -595,7 +595,15 @@ std::size_t EventGenerator::start_jobs() {
 }
 
 std::size_t EventGenerator::start_pipeline_jobs() {
-    return _pipeline ? _pipeline->start_jobs(_result_queue, false) : 0;
+    if (!_pipeline) {
+        return 0;
+    }
+    // once no more events are dispatched, partial batches use the idle threads
+    bool flush = _ready_jobs.empty() &&
+        std::all_of(_context_unweight_queue.begin(),
+                    _context_unweight_queue.end(),
+                    [](auto& queue) { return queue.empty(); });
+    return _pipeline->start_jobs(_result_queue, flush, _context_job_counts);
 }
 
 // Batches no longer have to be full: the steps don't depend on the batching.

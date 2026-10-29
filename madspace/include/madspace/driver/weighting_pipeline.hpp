@@ -76,9 +76,14 @@ public:
     static bool owns_job(std::size_t job_id) { return job_id & job_id_flag; }
     /// Take the unweighted events of `job`, in the job order of its channel.
     void add_events(GeneratorBatchJob& job);
-    /// Start the jobs of full batches, or of all collected events with
-    /// `flush`. Returns the number of started jobs.
-    std::size_t start_jobs(ResultQueue& result_queue, bool flush);
+    /// Start the jobs of full batches. With `flush`, all collected events are
+    /// split over the free threads of each context, where `busy_counts` are
+    /// the other jobs running on it. Returns the number of started jobs.
+    std::size_t start_jobs(
+        ResultQueue& result_queue,
+        bool flush,
+        const std::vector<std::size_t>& busy_counts = {}
+    );
     /// Process the result of the finished job `job_id`.
     void commit_job(std::size_t job_id);
     /// Whether events are still collected or in jobs.
@@ -143,6 +148,13 @@ private:
     void set_ready(ChunkPtr chunk, std::size_t stage);
     void commit_stage(ChunkPtr chunk, std::size_t stage);
     void decide(Chunk& chunk, std::size_t step);
+    void start_job(
+        ResultQueue& result_queue,
+        std::size_t group_index,
+        std::size_t context_index,
+        std::size_t stage,
+        std::vector<ChunkPtr> chunks
+    );
     void run_job(Job& job);
     void gather_events(Chunk& chunk, ContextRuntimes& runtimes);
     std::size_t batch_size(std::size_t context_index) const;
@@ -158,6 +170,7 @@ private:
     std::vector<std::vector<std::size_t>> _next_sequences;
     std::vector<std::vector<std::map<std::size_t, ChunkPtr>>> _ready;
     std::unordered_map<std::size_t, Job> _jobs;
+    std::vector<std::size_t> _context_job_counts;
     std::size_t _job_counter = 0;
     std::size_t _chunk_count = 0;
     Sink _sink;

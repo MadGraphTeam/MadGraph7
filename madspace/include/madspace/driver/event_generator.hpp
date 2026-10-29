@@ -257,7 +257,8 @@ private:
     void drain_pipeline();
     // unweighting efficiency of each pass, the first one before and after cuts
     std::tuple<double, double, std::vector<double>> pass_efficiencies() const;
-    // start the jobs of the steps whose batches are full
+    // start the jobs of the steps whose batches are full, and the partial ones
+    // once the generation jobs leave threads idle
     std::size_t start_pipeline_jobs();
     // Layout of the combined events as read from the channel files
     DataLayout combined_layout() const;

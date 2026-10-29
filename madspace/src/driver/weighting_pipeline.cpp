@@ -5,6 +5,7 @@
 #include <format>
 #include <limits>
 #include <stdexcept>
+#include <tuple>
 
 #include "madspace/util.hpp"
 
@@ -241,6 +242,7 @@ WeightingPipeline::WeightingPipeline(
     _channel_sequences(channels.size()),
     _next_sequences(channels.size()),
     _ready(channels.size()),
+    _context_job_counts(contexts.size()),
     _sink(sink) {
     if (!_sink) {
         _sink = [this](StepEvents& step_events) {
@@ -560,45 +562,97 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
     }
 }
 
-std::size_t WeightingPipeline::start_jobs(ResultQueue& result_queue, bool flush) {
+std::size_t WeightingPipeline::start_jobs(
+    ResultQueue& result_queue, bool flush, const std::vector<std::size_t>& busy_counts
+) {
     std::size_t started = 0;
-    for (std::size_t group_index = 0; auto& group : _groups) {
-        for (std::size_t context_index = 0; context_index < _contexts.size();
-             ++context_index) {
-            auto& buffers = group.buffers.at(context_index);
-            auto& sizes = group.buffer_sizes.at(context_index);
-            for (std::size_t stage = 1; stage <= buffers.size(); ++stage) {
-                auto& buffer = buffers.at(stage - 1);
-                auto& size = sizes.at(stage - 1);
-                if (buffer.empty() || (!flush && size < batch_size(context_index))) {
-                    continue;
+    for (std::size_t context_index = 0; context_index < _contexts.size();
+         ++context_index) {
+        std::vector<std::tuple<std::size_t, std::size_t>> stages;
+        for (std::size_t group_index = 0; auto& group : _groups) {
+            for (std::size_t stage = 1; stage <= group.settings.size() + 1; ++stage) {
+                if (!group.buffers.at(context_index).at(stage - 1).empty()) {
+                    stages.emplace_back(group_index, stage);
                 }
-                std::size_t job_id = job_id_flag | _job_counter++;
-                auto& job =
-                    _jobs
-                        .emplace(
-                            job_id,
-                            Job{
-                                .group = group_index,
-                                .stage = stage,
-                                .context_index = context_index,
-                                .chunks = std::move(buffer),
-                            }
-                        )
-                        .first->second;
-                buffer.clear();
-                size = 0;
-                result_queue.submit(
-                    _contexts.at(context_index)->thread_pool(), job_id, [this, &job] {
-                        run_job(job);
-                    }
-                );
-                ++started;
             }
+            ++group_index;
         }
-        ++group_index;
+        std::size_t free = 0, share = 1;
+        if (flush && !stages.empty()) {
+            // with flush, the buffers share the free threads
+            std::size_t thread_count =
+                _contexts.at(context_index)->thread_pool().thread_count();
+            std::size_t busy = _context_job_counts.at(context_index) +
+                (busy_counts.empty() ? 0 : busy_counts.at(context_index));
+            free = thread_count > busy ? thread_count - busy : 0;
+            share = std::max<std::size_t>(1, free / stages.size());
+        }
+        for (auto [group_index, stage] : stages) {
+            auto& group = _groups.at(group_index);
+            auto& buffer = group.buffers.at(context_index).at(stage - 1);
+            auto& size = group.buffer_sizes.at(context_index).at(stage - 1);
+            bool full = size >= batch_size(context_index);
+            if (!full && free == 0) {
+                continue;
+            }
+            std::size_t job_count =
+                std::clamp<std::size_t>(std::min(share, free), 1, buffer.size());
+            free -= std::min(free, job_count);
+            // split at the chunk boundaries into jobs of similar size
+            std::vector<ChunkPtr> chunks;
+            std::size_t job_events = 0, done_events = 0;
+            for (std::size_t job_index = 0; auto& chunk : buffer) {
+                chunks.push_back(chunk);
+                job_events += chunk->size();
+                if (job_events * (job_count - job_index) >= size - done_events ||
+                    &chunk == &buffer.back()) {
+                    done_events += job_events;
+                    job_events = 0;
+                    start_job(
+                        result_queue,
+                        group_index,
+                        context_index,
+                        stage,
+                        std::move(chunks)
+                    );
+                    chunks.clear();
+                    ++job_index;
+                    ++started;
+                }
+            }
+            buffer.clear();
+            size = 0;
+        }
     }
     return started;
+}
+
+void WeightingPipeline::start_job(
+    ResultQueue& result_queue,
+    std::size_t group_index,
+    std::size_t context_index,
+    std::size_t stage,
+    std::vector<ChunkPtr> chunks
+) {
+    std::size_t job_id = job_id_flag | _job_counter++;
+    auto& job =
+        _jobs
+            .emplace(
+                job_id,
+                Job{
+                    .group = group_index,
+                    .stage = stage,
+                    .context_index = context_index,
+                    .chunks = std::move(chunks),
+                }
+            )
+            .first->second;
+    ++_context_job_counts.at(context_index);
+    result_queue.submit(
+        _contexts.at(context_index)->thread_pool(), job_id, [this, &job] {
+            run_job(job);
+        }
+    );
 }
 
 void WeightingPipeline::gather_events(Chunk& chunk, ContextRuntimes& runtimes) {
@@ -703,6 +757,7 @@ void WeightingPipeline::run_job(Job& job) {
 void WeightingPipeline::commit_job(std::size_t job_id) {
     auto node = _jobs.extract(job_id);
     auto& job = node.mapped();
+    --_context_job_counts.at(job.context_index);
     for (auto& chunk : job.chunks) {
         set_ready(chunk, job.stage);
     }
@@ -710,6 +765,7 @@ void WeightingPipeline::commit_job(std::size_t job_id) {
 
 void WeightingPipeline::reset() {
     _jobs.clear();
+    std::fill(_context_job_counts.begin(), _context_job_counts.end(), 0);
     for (auto& group : _groups) {
         for (auto& buffers : group.buffers) {
             for (auto& buffer : buffers) {
