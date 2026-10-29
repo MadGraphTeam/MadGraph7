@@ -1323,9 +1323,10 @@ def test_the_accuracy_check_asserts_binary64_only_within_the_o1_scope():
     assert failed["passed"] is False and failed["double_double_points"] == []
     assert failed["max_error"] == pytest.approx(3e-8, rel=1e-6)
     # Beyond it the double-double value is asserted at the same tolerance.
-    assert record([2.0, off, 2.0], {0: 1e-12, 1: 2.5e-6, 2: 1e-12}, worse)[
-        "passed"
-    ] is False
+    assert (
+        record([2.0, off, 2.0], {0: 1e-12, 1: 2.5e-6, 2: 1e-12}, worse)["passed"]
+        is False
+    )
     # The Born is asserted in binary64 at every point.
     fixture["rows"] = [
         {"providers": {"recola": {"born": 1.0 + 1e-7, "finite": 2.0}}}
@@ -1350,9 +1351,7 @@ def test_the_accuracy_check_evaluates_with_the_o1_estimate_and_dd_beyond_it(
     from tools.loop_benchmark import pyamplicol_v2
 
     fixture = _accuracy_fixture()
-    monkeypatch.setattr(
-        pyamplicol_v2, "reference_fixture", lambda key: ("fx", fixture)
-    )
+    monkeypatch.setattr(pyamplicol_v2, "reference_fixture", lambda key: ("fx", fixture))
     # Per point: the binary64 finite part's deviation and its absolute budget
     # split over two sectors (E = 5e-8 / 2 at point 1).
     deviation = [0.0, 2.4e-7, 1e-12]
@@ -1405,6 +1404,63 @@ def test_the_accuracy_check_evaluates_with_the_o1_estimate_and_dd_beyond_it(
     assert estimates[0] == pytest.approx(1e-12)
     assert estimates[1] == pytest.approx(2.5e-8, rel=1e-6)
     assert estimates[2] == pytest.approx(5e-10, rel=1e-6)
+
+
+@pytest.mark.loop_physics
+def test_the_gg_gggg_accuracy_check_asserts_double_double_at_point_1(
+    tmp_path, loop_native
+):
+    """E1 (g g > g g g g, native inputs, full colour; about 1.5 min): point 1
+    is a pinched two-mass triangle whose binary64 estimate exceeds 1e-9, so
+    its double-double value is asserted, and it equals MadLoop's
+    quadruple-precision one (m-qcd PLAN §1.4 rule 1); every point's carrier
+    follows its estimate, and the binary64 values evaluated with the checks
+    are the timed configuration's (bitwise those without checks)."""
+
+    import types
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    options = types.SimpleNamespace(
+        process="gg_gggg",
+        accuracy="full",
+        inputs="native",
+        lanes=16,
+        schedule="B",
+        native_build=None,
+        scratch=tmp_path,
+        store=None,
+    )
+    run = pyamplicol_v2.Run(options)
+    try:
+        run.generate()
+        run.accuracy()
+        check = run.record["accuracy_check"]
+        _, fixture = pyamplicol_v2.reference_fixture("gg_gggg")
+        points, scales = pyamplicol_v2.fixture_batch(fixture, [0, 1, 2])
+        plain = run.executor.evaluate(
+            points,
+            scales,
+            parameters=run.parameters,
+            poles=pyamplicol_v2._finite_only(),
+        )
+    finally:
+        run.close()
+    rows = check["rows"]
+    assert [pyamplicol_v2._totals(r) for r in plain] == [
+        (row["born"], row["finite"]) for row in rows
+    ]
+    for row in rows:
+        estimate = row["estimate"]["finite"]
+        assert row["asserted"]["finite"] == pyamplicol_v2.asserted_carrier(estimate)
+    point = rows[1]
+    assert point["estimate"]["finite"] > pyamplicol_v2.O1_CAP
+    assert 1 in check["double_double_points"]
+    assert point["double_double"]["errors"]["madloop"]["finite"] <= 1e-12
+    assert check["passed"] is True and check["max_error"] <= check["tolerance"]
+    assert check["max_error_binary64"] >= max(
+        e["finite"] for e in point["errors"].values()
+    )
 
 
 @pytest.mark.loop_physics
