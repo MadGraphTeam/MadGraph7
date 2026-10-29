@@ -605,6 +605,14 @@ PER_HELICITY = {
     "gg_ttx_sectors": (0, 1, 2, 3),
     "gg_ggg_hel": (0, 1, 2),
 }
+# Reference outliers (held to 1e-11): at gg_ggg_hel point 1 MadLoop's single
+# pole of the parity pair below, ~1e-9 of the summed single pole, is 1.1e-12
+# and 3.5e-12 from ours; ours equals the arbitrary-precision (40 digits)
+# value to 1.5e-26 on both, which are equal, while MadLoop's two differ by
+# 2.4e-12. Every other loop coefficient of the three points agrees to 1.2e-13.
+PER_HELICITY_OUTLIERS = {
+    ("gg_ggg_hel", 1): frozenset({(-1, 1, -1, 1, -1), (1, -1, 1, -1, 1)}),
+}
 
 
 @pytest.mark.loop_physics
@@ -624,7 +632,8 @@ def test_single_helicities_equal_madloop_per_helicity(
     ``SLOOPMATRIXHEL`` (colour-averaged, not helicity-averaged) to 1e-12 per
     coefficient (m-qcd PLAN §1.4 rule 1) as the entry's reference record
     says: relatively, or, for a helicity whose Born vanishes, absolutely
-    against 1e-12 of F_s = |B| alpha_s/2pi of the point's summed Born. The
+    against 1e-12 of F_s = |B| alpha_s/2pi of the point's summed Born; a
+    listed reference outlier (``PER_HELICITY_OUTLIERS``) to 1e-11. The
     leading-colour selection of the same IDs is the leading-colour resolved
     row (the identities above), so this ties single-helicity selections to
     MadLoop's labels and normalisation."""
@@ -678,17 +687,22 @@ def test_single_helicities_equal_madloop_per_helicity(
             ]
             for k, ident in enumerate(ids)
         }
+        outliers = {
+            lc.helicity_id(tuple(enumerate(h)))
+            for h in PER_HELICITY_OUTLIERS.get((name, p), ())
+        }
         for ident, row in madloop.items():
             record = row["reference"]
             assert record["status"] == "ok", (p, ident, record["reason"])
             expected = [row[key] for key in keys]
+            tolerance = 1e-11 if ident in outliers else 1e-12
             for c, (a, b) in enumerate(zip(ours[ident], expected, strict=True)):
                 if record["comparison"] == "absolute":
                     scale = record["absolute_scale"] * alpha / (2 * math.pi)
                     assert abs(a) <= 1e-12 * scale, (p, ident, keys[c], a)
                 else:
                     error = abs(a - b) / max(abs(a), abs(b))
-                    assert error <= 1e-12, (p, ident, keys[c], a, b, error)
+                    assert error <= tolerance, (p, ident, keys[c], a, b, error)
 
 
 # ------------------------------------------------------------------ public route
