@@ -38,7 +38,8 @@ recently used (``SelectionCache``; ``$PYAMPLICOL_LOOP_SELECTION_CACHE``
 sets the count, 0 keeps none): a kept selection holds its native plan and
 executors (u u~ > g g g g at leading colour: about 66 MB and 0.9 s of setup
 per (helicity, flow) pair), so sampling many distinct selections stays
-bounded in memory.
+bounded in memory (apart from about 1.5 MB of native heap each formation
+leaves, as any rebuilt native executor does; design §8.5).
 """
 
 from __future__ import annotations

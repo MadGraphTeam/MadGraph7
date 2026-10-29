@@ -706,8 +706,10 @@ pair). The runtime keeps the 8 most recently used selections for later
 calls; the environment variable `PYAMPLICOL_LOOP_SELECTION_CACHE` sets
 another count (0 keeps none), and `Runtime.clear()` releases them. Sampling
 many distinct selections one event at a time therefore pays that setup per
-selection, with bounded memory. A generation-time selection has no such
-setup.
+selection; the kept sets bound the memory, apart from about 1.5 MB that each
+formation leaves in the native heap (as every rebuild of a native executor
+does today, e.g. `Runtime.clear()` followed by an evaluation). A
+generation-time selection has no such setup.
 
 ```toml
 [process]
