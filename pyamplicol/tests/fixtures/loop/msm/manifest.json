@@ -3338,6 +3338,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "inputs": "native",
+   "catani": "engine",
    "pending": {
     "waits_for": "EWI-7",
     "reason": "the row's package: EWI-7"
@@ -6717,6 +6719,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "inputs": "native",
+   "catani": "engine",
    "pending": {
     "waits_for": [
      "MS-REF",
@@ -6800,6 +6804,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "inputs": "native",
+   "catani": "engine",
    "pending": {
     "waits_for": [
      "MS-REF",
@@ -6882,6 +6888,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "inputs": "native",
+   "catani": "engine",
    "pending": {
     "waits_for": [
      "MS-REF",
@@ -6966,6 +6974,8 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "inputs": "native",
+   "catani": "engine",
    "pending": {
     "waits_for": "EWI-7",
     "reason": "the row's package: EWI-7"
