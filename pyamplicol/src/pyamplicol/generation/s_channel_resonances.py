@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: 0BSD
-"""The unstable s-channel propagators a process can put on shell.
+"""The unstable s-channel propagators a process may put on shell.
 
 A phase-space mapping has to follow these resonances, or it undersamples their
 peaks. This is a species-level reachability sweep over the subsets of external
 legs, like the DAG prepass: it ignores helicity and colour, keeps the coupling
-orders, and may overestimate.
+orders, and may overestimate. Masses and widths are only known at launch, so
+every candidate whose mass and width are not zero in the model is kept.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ..models.base import CouplingOrders, Model
+from ..models.base import CouplingOrders, Model, Particle
 from ..processes.ir import CanonicalProcessIR
 from .dag_reachability import (
     _combine_coupling_order_tuples,
@@ -27,12 +28,12 @@ def s_channel_resonances(
     model: Model,
     max_coupling_orders: Mapping[str, int] | None = None,
 ) -> list[dict[str, object]]:
-    """``[{"pdg", "labels", "color"}]`` of every unstable particle that a tree
-    current of two or more final-state legs can carry, with a mass above their
-    threshold and a complementary current to close the amplitude with. The
+    """``[{"pdg", "labels", "color"}]`` of every possibly unstable particle (see
+    ``_possibly_unstable``) that a tree current of two or more final-state legs
+    can carry, with a complementary current to close the amplitude with. The
     pdg carries the summed charge of the outgoing legs it decays to."""
 
-    if not any(p.width > 0.0 and p.mass > 0.0 for p in model.particles.values()):
+    if not any(_possibly_unstable(model, p) for p in model.particles.values()):
         return []
     limits = _normalize_coupling_order_limits(max_coupling_orders)
     legs = process.legs
@@ -75,11 +76,9 @@ def s_channel_resonances(
         if mask & ~final or mask.bit_count() < 2:
             continue
         decay_legs = [leg for leg in legs if mask >> (leg.label - 1) & 1]
-        threshold = sum(float(model.mass(int(leg.pdg))) for leg in decay_legs)
         rest = species.get(every & ~mask, {})
         for pdg, orders in particles.items():
-            particle = model.particle(pdg)
-            if particle.width <= 0.0 or particle.mass <= threshold:
+            if not _possibly_unstable(model, model.particle(pdg)):
                 continue
             closing = rest.get(model.anti_particle(pdg), ())
             if not any(
@@ -103,3 +102,21 @@ def s_channel_resonances(
                 },
             )
     return [found[key] for key in sorted(found)]
+
+
+def _possibly_unstable(model: Model, particle: Particle) -> bool:
+    """Whether neither the mass nor the width of a particle is zero in the
+    model: a zero value without a parameter (ZERO in UFO) is final."""
+
+    def zero(kind: str) -> bool:
+        if getattr(particle, kind) != 0.0:
+            return False
+        provider = getattr(model, f"runtime_{kind}_parameter_name", None)
+        if not callable(provider):
+            return True
+        try:
+            return provider(particle.pdg) is None
+        except KeyError:
+            return False
+
+    return not zero("mass") and not zero("width")

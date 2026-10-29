@@ -215,12 +215,17 @@ A provider's metadata contains:
   A selector lists its phase-space channels in `multichannels`; they differ in
   where its colour singlets attach to the colour lines (after the antiquark
   ends, in every order and distribution, as in AmpliCol), in the non-cyclic
-  order of three or more lines, and in which resonances of the process they
-  follow, with a non-resonant one always included. A UMAMI channel collects
-  the selectors linked by shared phase-space channels. Weight the channels of a
-  selector by a partition of unity, for example their normalised mapping
-  densities, rather than adding them. A coloured resonance that can go on shell
-  is rejected for now.
+  order of three or more lines, and in which compatible (nested or disjoint)
+  set of colour-singlet resonances of the process they follow, with a
+  non-resonant one always included. The candidates are every resonance whose
+  mass and width are not zero in the model: drop those that cannot go on shell
+  with the parameter-card values, and merge the channels that then agree. A
+  UMAMI channel collects the selectors linked by shared phase-space channels.
+  Weight the channels of a selector by a partition of unity, for example their
+  normalised mapping densities, rather than adding them.
+- `channels[].colored_resonances`: the coloured resonances (`pdg`, decay
+  `legs`, `color`) of its selectors, which the phase-space channels do not
+  follow; reject the parameters if one of them can go on shell.
 - `pdg_ids`, `color_orders`, `color_flows` and `helicities`: shared physical
   configuration tables. Indices are zero-based and colour-flow references can
   be absent for contracted colour.
