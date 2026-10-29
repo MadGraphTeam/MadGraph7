@@ -34,7 +34,9 @@ entry) Catani's operator also takes N_c = N: C_A = N, C_F = (N^2-1)/(2N),
 beta_0's C_A (``loops.v2.poles``) and the colour-correlated Borns at N (the
 Python correlators; the native ones are contracted at N_c = 3). No colour
 declaration enters it, so the renormalised virtual's poles at N against it
-test the counterterms' UV N_c dependence.
+test the counterterms' UV N_c dependence. At N_c = 1, where C_F vanishes,
+and with ``"catani": false`` the operator is not patched and ``ir_poles``
+is null.
 """
 
 from __future__ import annotations
@@ -150,10 +152,13 @@ def _precision(text: str):
     return Precision.arbitrary(int(digits))
 
 
-def slice_request(spec: dict, declaration, accuracy: str = "full"):
+def slice_request(
+    spec: dict, declaration, accuracy: str = "full", contraction: str = "direct"
+):
     """The ``SliceRequest`` of a request JSON (``request`` entry) at
-    ``accuracy`` with the colour declaration ``declaration``, contracted
-    directly. Optional ``corrections`` (correction orders)."""
+    ``accuracy`` with the colour declaration ``declaration`` and the seed
+    contraction policy ``contraction`` (direct by default: the scan's Python
+    lanes). Optional ``corrections`` (correction orders)."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
 
@@ -167,7 +172,7 @@ def slice_request(spec: dict, declaration, accuracy: str = "full"):
         particle_veto=tuple(spec.get("particle_veto", ())),
         accuracy=accuracy,
         colour_declaration=declaration,
-        colour_contraction="direct",
+        colour_contraction=contraction,
     )
 
 
@@ -176,7 +181,11 @@ def request_main(argv: list[str]) -> None:
 
     model, request_text, n_text, precision_text = argv
     n = Fraction(n_text)
-    counter = use_nc(n, catani=True) if n != 3 else {"interactions": 0}
+    spec = json.loads(request_text)
+    # Catani's operator divides by C_F, which vanishes at N_c = 1: there
+    # (and with ``"catani": false``) the output has no prediction.
+    catani = n * n != 1 and spec.get("catani", True)
+    counter = use_nc(n, catani=catani) if n != 3 else {"interactions": 0}
 
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2 import dag_input
@@ -186,7 +195,6 @@ def request_main(argv: list[str]) -> None:
         resolve_loop_color_declaration,
     )
 
-    spec = json.loads(request_text)
     compiled = load_compiled_model(model)
     # Full colour with the model's colour declaration (the shipped one of
     # loop_sm): its graded counterterm and field couplings take N_c = N.
@@ -215,10 +223,14 @@ def request_main(argv: list[str]) -> None:
         parameters=spec.get("parameters", {}),
         precision=_precision(precision_text),
     )
-    poles = {
-        repr(sector): [str(single), str(double)]
-        for sector, (single, double) in (result.ir_poles or {}).items()
-    }
+    poles = (
+        {
+            repr(sector): [str(single), str(double)]
+            for sector, (single, double) in (result.ir_poles or {}).items()
+        }
+        if catani or n == 3
+        else None
+    )
     print(
         json.dumps(
             {
