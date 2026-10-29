@@ -32,8 +32,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdlib> // for std::abort (crossing guard in EvaluateDiagrams.inc)
 #include <cmath>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <vector>
 
@@ -70,6 +72,169 @@ namespace madmatrix
   static double bsmIndepParam[Parameters::nBsmIndepParam > 0 ? Parameters::nBsmIndepParam : 1];
   // BWCUTOFF of the $-excluded propagators (ALOHA P1D tag), see setBwCutoff
   static fptype cBWCUTOFF = 15.;
+
+  //--------------------------------------------------------------------------
+  // Crossing symmetry (ProcessTables::use_crossing, from --use_crossing).
+  // An event's flavor index is then the EXTENDED id K*nmaxflavor + flav:
+  // flav picks the flavor combination as usual (and is constant across a SIMD
+  // page, see umami.cc), while the crossing-table row K may differ from lane
+  // to lane. calculate_jamps permutes each lane's momenta into the base slot
+  // order (the preamble of EvaluateDiagrams.inc) and evaluates, in every lane,
+  // the SAME helicity row of the base table: a leg that changed side is fed
+  // the opposite helicity (with its NSF flag, see _crossing_external_block),
+  // which is the same all-outgoing configuration. The crossed amplitude being
+  // the analytic continuation of the base one, the crossings share their zero
+  // rows, so ONE good-helicity list (cGoodHel) serves every lane: the scan
+  // below takes the union over the crossings this ME records, which only
+  // differs from the base's own by the frame-dependent rows of a massive leg.
+
+  // C-parity good-helicity de-duplication. Two helicity rows that are exact
+  // mirrors (every helicity negated) give an identical |M|^2 under a parity/C
+  // conserving amplitude, so only one of the two need ever be computed: the
+  // good-helicity list is REDUCED to the lower-index representative of each
+  // C-pair, every representative is counted twice, and the event-by-event
+  // helicity choice returns the representative or its cFlip partner at equal
+  // rate. That halves the sigmaKin trip count and the calculate_jamps + colour
+  // sum calls. The verdict is taken in the (serial) good-helicity scan, so
+  // sigmaKin only ever reads these tables and stays thread-safe. It is
+  // all-or-nothing: one unpaired good row or one mismatched pair turns it off.
+  // With crossing the pairing is the same for every crossing (each evaluates
+  // the base row, so the mirror of a row is the base mirror), and the scan
+  // tests every crossing: one verdict for all of them.
+  static int cFlip[ncomb];            // C-parity partner: every helicity negated (an involution)
+  static bool cCsymScanned;           // the validating scan actually ran (never trust a default)
+  static bool cCsymBad;               // latched when ANY pair mismatched at a scan point (any crossing)
+  static bool cCsymOk;                // the de-duplication is on
+
+  // Initial-state spin*color average of the process crossing-table row
+  // `cross` crosses into (the product of the per-leg spin*color of the base
+  // legs it puts in the initial state, tabulated by the exporter). 0 for a
+  // row out of range, which the per-event denominator turns into a zero ME.
+  inline int
+  spincol_cross( int cross )
+  {
+    return ( cross >= 0 && cross < ncross ) ? xspincol_tab[cross] : 0;
+  }
+
+  // Identical-final-state factor (product of n!) of the crossed process.
+  // Flavor dependent, hence runtime: two crossed final legs are identical when
+  // they carry the same flavor group (same representative PDG -- ids_base,
+  // conjugated to antipid_base when the leg changes side) and the same actual
+  // flavor. FLAVOR is not permuted, so input slot k reads the base leg
+  // pinv[k] it is fed to: cFlavors[iflavor][pinv[k]]. A decay-block leaf
+  // (countable_tab 0) is skipped -- a crossing never moves one, and the
+  // resonance-level symmetry of the blocks is the constant ident_resonance --
+  // exactly as the fortran GET_IDENT_CROSS.
+  int
+  ident_cross( int cross, int iflavor )
+  {
+    int perm[npar], ic[npar];
+    cross_pinv( cross, perm, ic );
+    int bpid[npar];
+    for( int k = 0; k < npar; k++ )
+      bpid[k] = ( ic[k] == 1 ) ? ids_base[perm[k]] : antipid_base[perm[k]];
+    bool used[npar];
+    for( int k = 0; k < npar; k++ ) used[k] = false;
+    int fact = ident_resonance;
+    for( int k = npari; k < npar; k++ )
+    {
+      if( used[k] || !countable_tab[perm[k]] ) continue;
+      int n = 1;
+      for( int l = k + 1; l < npar; l++ )
+      {
+        if( used[l] || !countable_tab[perm[l]] ) continue;
+        if( bpid[k] == bpid[l] && cFlavors[iflavor][perm[k]] == cFlavors[iflavor][perm[l]] )
+        {
+          used[l] = true;
+          n = n + 1;
+          fact = fact * n;
+        }
+      }
+    }
+    return fact;
+  }
+
+  // Crossed-event selected helicity code (allselhel). For a crossed event the
+  // reported helicity is the CROSSED process's own canonical code, not the
+  // base row: input slot k carries base leg pinv[k], which the crossed lane
+  // evaluated with the base row's helicity negated when the leg changed side
+  // (xic[k] = -1, see _crossing_external_block). The NSF flag keeps that fed
+  // value physical, so it is the crossed leg's helicity, encoded in mixed
+  // radix over the crossed process's own per-leg states (xhel_states row K,
+  // see the exporter). That is the code the expanded output of the crossed
+  // process reports, the one the madevent output writes for a routed event,
+  // and the one an `output mg7` crossed entry decodes with its own helicity
+  // table. Row 0 is the identity (base row+1), so the non-crossing path is
+  // unchanged; a row out of the table reports 0 (its |M|^2 is 0).
+  //
+  // xhel_states MUST be the allow_reverse=True per-leg order (see the exporter).
+  inline int
+  selected_hel_code( int base_ihel, unsigned int flavor_id )
+  {
+    const int xcross = (int)( flavor_id / nmaxflavor );
+    if( xcross == 0 ) return base_ihel + 1;
+    if( xcross >= ncross ) return 0;
+    int xperm[npar], xic[npar];
+    cross_pinv( xcross, xperm, xic );
+    int code = 0;
+    for( int k = 0; k < npar; k++ )
+    {
+      const int val = (int)cHel[base_ihel][xperm[k]] * xic[k];
+      const int slot = xcross * npar + k; // this crossing's own states for slot k
+      int d = 0;
+      for( int dd = 0; dd < xhel_nhstate[slot]; dd++ )
+      {
+        if( xhel_states[slot * xhel_maxhel + dd] == val )
+        {
+          d = dd;
+          break;
+        }
+      }
+      code = code * xhel_nhstate[slot] + d;
+    }
+    return code + 1;
+  }
+
+  // Pick the helicity row to report for the ighel-th good helicity of a lane.
+  // The row stands for a C-parity PAIR counted twice when the de-duplication
+  // is on, so either member must come out at equal rate or the event-level
+  // helicity distribution is biased while |M|^2 and the cross section stay
+  // perfectly correct. The fair coin is recycled from the selection variate
+  // itself: given that the (unnormalised) CDF landed in [lo,hi), rnd is exactly
+  // uniform on that interval, so its position within the bin is an independent
+  // U(0,1). Drawing a fresh random number instead would desynchronise the
+  // stream shared with the Fortran integrator.
+  // Returns the 0-based base row; every lane, crossed or not, evaluated the
+  // ighel-th row of the one good-helicity list.
+  inline int
+  csym_selected_row( const int ihel, const fptype rnd, const fptype lo, const fptype hi )
+  {
+    if( !cCsymOk ) return ihel;
+    const fptype w = hi - lo;
+    if( !( w > (fptype)0 ) ) return ihel; // degenerate bin: cannot be selected anyway
+    return ( ( rnd - lo ) < (fptype)0.5 * w ) ? ihel : cFlip[ihel];
+  }
+
+  // The reported (Fortran-indexed, [1,ncomb]) helicity of one lane
+  inline int
+  selected_helicity( int ighel, unsigned int flavor_id, fptype rnd, fptype lo, fptype hi )
+  {
+    const int row = csym_selected_row( cGoodHel[ighel], rnd, lo, hi );
+    if constexpr( use_crossing )
+      return selected_hel_code( row, flavor_id );
+    else
+      return row + 1;
+  }
+
+  // Whether the helicity sum of the lane with this flavor id is C-parity
+  // de-duplicated (its representatives then each stand for two rows): one
+  // verdict for every crossing, see sigmaKin_getGoodHel
+  inline bool
+  csym_lane_on( unsigned int flavor_id )
+  {
+    (void)flavor_id;
+    return cCsymOk;
+  }
 
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
   {
@@ -323,10 +488,14 @@ namespace madmatrix
       // Numerators for the current event page (C++); denominators are no longer
       // accumulated here: they are derived as the sum of numerators later.
       fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      // Scalar iflavor for the current event page (constant across the SIMD vector)
+      // Scalar iflavor for the current event page (constant across the SIMD vector).
+      // With crossing the per-event id is cross*nmaxflavor + flavor: only the
+      // flavor is constant across the page, and it is what indexes cFlavors and
+      // the flavor masks; the crossing is applied per lane by EvaluateDiagrams.inc.
       const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
-      const unsigned int iflavor = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
+      const unsigned int iflavor_ext = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
+      const unsigned int iflavor = use_crossing ? iflavor_ext % (unsigned int)nmaxflavor : iflavor_ext;
 #include "EvaluateDiagrams.inc"
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
@@ -386,8 +555,37 @@ namespace madmatrix
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
     (void)iflavorVec; // flavor is forced below to scan every flavor combination
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
-    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    // C-parity partner of every helicity row, and the per-hel |M|^2 of the
+    // current scan page for the C-parity test
+    fptype me_scan[ncomb][neppV];
+    cCsymScanned = false;
+    cCsymBad = false;
+    for( int h = 0; h < ncomb; h++ )
     {
+      cFlip[h] = h;
+      for( int j = 0; j < ncomb; j++ )
+      {
+        bool same = true;
+        for( int k = 0; k < npar; k++ ) if( cHel[j][k] != -cHel[h][k] ) same = false;
+        if( same ) { cFlip[h] = j; break; }
+      }
+    }
+    // Crossing: sample every extended flavor id, i.e. every row of the
+    // crossing table -- the crossings this ME records (every applicable one
+    // only with --crossing_table=all) -- times every flavor, and OR them into
+    // the one list: each crossing is evaluated in its own frame, where a
+    // massive leg can need a row the base does not. Each row costs a full ncomb-helicity
+    // calculate_jamps scan, which is why the table carries no merely
+    // applicable crossing by default (scanning those was a 46x one-off
+    // startup cost on g g > t t~ g g g: 48 applicable, 0 recorded).
+    constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
+    for( int iflav = 0; iflav < nscan; ++iflav )
+    {
+    const int xcross = iflav / nmaxflavor; // always 0 without crossing
+    if constexpr( use_crossing )
+    {
+      if( spincol_cross( xcross ) == 0 ) continue;
+    }
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
@@ -416,22 +614,55 @@ namespace madmatrix
 #endif
         calculate_jamps( cHel[ihel], allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
+        for( int ie = 0; ie < neppV; ++ie ) me_scan[ihel][ie] = allMEs[ievt00 + ie];
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
           if( allMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
             isGoodHel[ihel] = true;
-          }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          {
             isGoodHel[ihel] = true;
-          }
 #endif
         }
       }
+      // C-parity test of this (flavor, page). The largest |M|^2 is the scale a
+      // difference has to be significant against: a RELATIVE test alone
+      // compares the roundoff noise of two numerically-zero rows against itself
+      // and fails at random -- which latched "not C-symmetric" on manifestly
+      // C-symmetric processes (the MHV-vanishing gluon configurations of
+      // u u~ > g g sit at |M|^2 ~ 1e-30 out of ~10), silently disabling the
+      // dedup. A row that far below the largest cannot bias the helicity sum
+      // whichever way it is paired, while a genuine parity violation shows up
+      // at the relative level. One verdict for every crossing.
+      {
+        fptype mmax = (fptype)0.;
+        for( int h = 0; h < ncomb; h++ )
+          for( int ie = 0; ie < neppV; ++ie )
+          {
+            const fptype v = me_scan[h][ie] < (fptype)0. ? -me_scan[h][ie] : me_scan[h][ie];
+            if( v > mmax ) mmax = v;
+          }
+        for( int h = 0; h < ncomb; h++ )
+        {
+          if( cFlip[h] > h )
+          {
+            for( int ie = 0; ie < neppV; ++ie )
+            {
+              const fptype a = me_scan[h][ie];
+              const fptype b = me_scan[cFlip[h]][ie];
+              fptype d = a - b;
+              if( d < (fptype)0. ) d = -d;
+              const fptype aa = a < (fptype)0. ? -a : a;
+              const fptype bb = b < (fptype)0. ? -b : b;
+              if( d > (fptype)1e-6 * ( aa + bb ) && d > (fptype)1e-12 * mmax )
+                cCsymBad = true;
+            }
+          }
+        }
+      }
+      cCsymScanned = true; // a full ncomb-row comparison has been made
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
   }
@@ -453,6 +684,32 @@ namespace madmatrix
     }
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
+    {
+      // All-or-nothing C-parity verdict. cCsymScanned is the load-bearing term:
+      // if the validating scan never ran (cached good helicities, an API caller
+      // reaching setGoodHel on its own) the flag must default to OFF, never to
+      // ON -- trusting an un-run scan is how this dedup was once silently
+      // enabled on a parity-violating process.
+      cCsymOk = cCsymScanned && !cCsymBad;
+      for( int h = 0; h < ncomb; h++ )
+        if( isGoodHel[h] && ( cFlip[h] == h || !isGoodHel[cFlip[h]] ) ) cCsymOk = false;
+#ifdef MGONGPU_NOCSYM
+      cCsymOk = false; // ablation knob: force the full helicity sum
+#endif
+      if( cCsymOk )
+      {
+        // Keep only the lower-index representative of every C-parity pair.
+        // sigmaKin counts each one twice and csym_selected_row hands back the
+        // representative or its mirror at equal rate, so this is exact rather
+        // than approximate: the dropped rows have an identical |M|^2.
+        int n = 0;
+        for( int g = 0; g < nGoodHel; g++ )
+          if( goodHel[g] < cFlip[goodHel[g]] ) { cGoodHel[n] = goodHel[g]; n++; }
+        for( int h = n; h < ncomb; h++ ) cGoodHel[h] = 0;
+        cNGoodHel = n;
+        nGoodHel = n;
+      }
+    }
     return nGoodHel;
   }
 
@@ -526,29 +783,37 @@ namespace madmatrix
   // average and the channel weight) and sets selhel; a vanishing |M|^2 returns 0 and
   // leaves selhel alone, as the positive case does.
   [[maybe_unused]] static inline fptype
-  select_helicity_signed( const fptype* ighelSum, // input: running sums over the good helicities
-                          const fptype rndhel,    // input: random number for the helicity choice
-                          int& selhel )           // output: chosen helicity (Fortran range [1,ncomb])
+  select_helicity_signed( const fptype* ighelSum,       // input: running sums over the good helicities
+                          const int ngood,              // input: number of good helicities in ighelSum
+                          const unsigned int flavor_id, // input: flavor (crossing) index of the event
+                          const fptype rndhel,          // input: random number for the helicity choice
+                          int& selhel )                 // output: chosen helicity (Fortran range [1,ncomb])
   {
     fptype absTotal = 0;
-    for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+    for( int ighel = 0; ighel < ngood; ighel++ )
       absTotal += std::abs( ighelSum[ighel] - ( ighel > 0 ? ighelSum[ighel - 1] : 0 ) );
     if( absTotal == 0 ) return 0;
-    fptype absSum = 0;
+    fptype absSum = 0, absLo = 0, absHi = 0;
     int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
-    for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+    for( int ighel = 0; ighel < ngood; ighel++ )
     {
       const fptype t = ighelSum[ighel] - ( ighel > 0 ? ighelSum[ighel - 1] : 0 );
       if( t == 0 ) continue;
       ighelLast = ighel;
+      absLo = absSum;
       absSum += std::abs( t );
+      absHi = absSum;
       if( rndhel < absSum / absTotal ) // the last ratio is exactly 1 (same terms, same order)
         break;
     }
     const fptype tLast = ighelSum[ighelLast] - ( ighelLast > 0 ? ighelSum[ighelLast - 1] : 0 );
-    selhel = cGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+    // The same row choice as the positive case (selected_helicity): the lane's own
+    // crossed helicity code with crossing, and the C-parity partner of a
+    // de-duplicated representative picked within its |T| bin [absLo, absHi)
+    selhel = selected_helicity( ighelLast, flavor_id, rndhel * absTotal, absLo, absHi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
     return std::copysign( absTotal, tLast );
   }
+
 
   //--------------------------------------------------------------------------
   // Evaluate |M|^2, part independent of incoming flavour
@@ -614,10 +879,13 @@ namespace madmatrix
 #else
     const int npagV2 = npagV; // loop on one SIMD page (neppV events) at a time
 #endif
+    // The good-helicity loop bound: the (possibly C-parity halved) good
+    // helicity count, the same for every lane (crossed or not)
+    const int nGoodLoop = cNGoodHel;
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
-#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2, sampleSignedHelicity
-#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
+#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, nGoodLoop, npagV2, sampleSignedHelicity
+#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, allDiagramIdsOut, allrnddiagram, iflavorVec, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
 #undef _OMPLIST1
@@ -636,6 +904,20 @@ namespace madmatrix
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (second neppV page)
 #endif
 
+      // Per-lane C-parity weight: 1 where this lane's helicity sum was
+      // de-duplicated (every good helicity then stands for two rows), 0
+      // otherwise. Materialised once per page and consumed by BOTH the scalar
+      // helicity loop and the BLAS batch: letting the two paths drift apart is
+      // what once made the batch return exactly half of |M|^2.
+      fptype_sv csymExtra{};
+      for( int ie = 0; ie < neppV; ie++ )
+        reinterpret_cast<fptype*>( &csymExtra )[ie] = csym_lane_on( iflavorVec[ievt00 + ie] ) ? (fptype)1. : (fptype)0.;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+      fptype_sv csymExtra2{};
+      for( int ie = 0; ie < neppV; ie++ )
+        reinterpret_cast<fptype*>( &csymExtra2 )[ie] = csym_lane_on( iflavorVec[ievt00 + neppV + ie] ) ? (fptype)1. : (fptype)0.;
+#endif
+
       // The color matrix does not depend on the helicity, so for a large-enough color matrix
       // (ColorMatrixData::shouldUseBlas) it pays to keep the jamps of every good helicity and
       // hand them all to BLAS in one call after the loop instead of the per-helicity color sum.
@@ -645,7 +927,7 @@ namespace madmatrix
       if( ColorMatrixData::shouldUseBlas )
       {
         static thread_local std::vector<cxtype_sv> ghelJamp_sv( (size_t)ncomb * nParity * ncolor );
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
           const int ihel = cGoodHel[ighel];
           cxtype_sv* jamp_sv = ghelJamp_sv.data() + (size_t)ighel * nParity * ncolor;
@@ -654,18 +936,31 @@ namespace madmatrix
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
           calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         }
+        // The C-parity weight is NOT optional here: with the de-duplication on,
+        // every helicity this loop just computed stands for two. The scalar loop
+        // below adds the second copy per helicity; the batch has no per-helicity
+        // step to hang that on, so the same per-lane 0/1 vector goes into
+        // color_sum_cpu_blas and is applied while it builds the running sums.
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-        color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
+        color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), nGoodLoop, ievt00,
+                            reinterpret_cast<const fptype*>( &csymExtra ), reinterpret_cast<const fptype*>( &csymExtra2 ) );
 #else
-        color_sum_cpu_blas( allMEs, MEs_ighel, nullptr, ghelJamp_sv.data(), cNGoodHel, ievt00 );
+        color_sum_cpu_blas( allMEs, MEs_ighel, nullptr, ghelJamp_sv.data(), nGoodLoop, ievt00,
+                            reinterpret_cast<const fptype*>( &csymExtra ), nullptr );
 #endif
       }
       else
 #endif // MGONGPU_CPP_HAS_BLAS
       {
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
           const int ihel = cGoodHel[ighel];
+          // Snapshot the running |M|^2 sum before this helicity's contribution is
+          // added, so the C-parity step below can add the very same contribution again
+          const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+          const fptype_sv me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
+#endif
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
@@ -675,6 +970,19 @@ namespace madmatrix
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
           MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
+          // C-parity weight 2 where the lane's sum was de-duplicated: the mirror
+          // row this representative stands for has an identical |M|^2. MEs_ighel
+          // is updated too -- it is the running CDF the helicity choice samples.
+          {
+            fptype_sv& me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
+            me1 = me1 + ( MEs_ighel[ighel] - me1before ) * csymExtra;
+            MEs_ighel[ighel] = me1;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+            fptype_sv& me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
+            me2 = me2 + ( MEs_ighel2[ighel] - me2before ) * csymExtra2;
+            MEs_ighel2[ighel] = me2;
+#endif
+          }
         }
       }
 
@@ -687,43 +995,59 @@ namespace madmatrix
           if( sampleSignedHelicity )
           {
             fptype ighelSum[ncomb];
-            for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+            for( int ighel = 0; ighel < nGoodLoop; ighel++ )
 #if defined MGONGPU_CPPSIMD
               ighelSum[ighel] = MEs_ighel[ighel][ieppV];
 #else
               ighelSum[ighel] = MEs_ighel[ighel];
 #endif
-            *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, allrndhel[ievt], allselhel[ievt] );
+            *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt], allrndhel[ievt], allselhel[ievt] );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
             const int ievt2 = ievt00 + ieppV + neppV;
-            for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+            for( int ighel = 0; ighel < nGoodLoop; ighel++ )
               ighelSum[ighel] = MEs_ighel2[ighel][ieppV];
-            *E_ACCESS::ieventAccessRecord( allMEs, ievt2 ) = select_helicity_signed( ighelSum, allrndhel[ievt2], allselhel[ievt2] );
+            *E_ACCESS::ieventAccessRecord( allMEs, ievt2 ) = select_helicity_signed( ighelSum, nGoodLoop, iflavorVec[ievt2], allrndhel[ievt2], allselhel[ievt2] );
 #endif
             continue;
           }
         }
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
 #if defined MGONGPU_CPPSIMD
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[cNGoodHel - 1][ieppV] );
+          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[nGoodLoop - 1][ieppV] );
 #else
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[cNGoodHel - 1] );
+          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[nGoodLoop - 1] );
 #endif
           if( okhel )
           {
-            const int ihelF = cGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            // Unnormalised CDF bin [clo,chi) of the selected ighel, and the total
+            // ctot the stored variate is normalised by (okhel tested rnd < hi/tot)
+            fptype clo = (fptype)0;
+#if defined MGONGPU_CPPSIMD
+            const fptype ctot = MEs_ighel[nGoodLoop - 1][ieppV];
+            const fptype chi = MEs_ighel[ighel][ieppV];
+            if( ighel > 0 ) clo = MEs_ighel[ighel - 1][ieppV];
+#else
+            const fptype ctot = MEs_ighel[nGoodLoop - 1];
+            const fptype chi = MEs_ighel[ighel];
+            if( ighel > 0 ) clo = MEs_ighel[ighel - 1];
+#endif
+            const int ihelF = selected_helicity( ighel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt] = ihelF;
             break;
           }
         }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nGoodLoop; ighel++ )
         {
-          if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[cNGoodHel - 1][ieppV] ) )
+          if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[nGoodLoop - 1][ieppV] ) )
           {
-            const int ihelF = cGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            fptype clo = (fptype)0;
+            const fptype ctot = MEs_ighel2[nGoodLoop - 1][ieppV];
+            const fptype chi = MEs_ighel2[ighel][ieppV];
+            if( ighel > 0 ) clo = MEs_ighel2[ighel - 1][ieppV];
+            const int ihelF = selected_helicity( ighel, iflavorVec[ievt2], allrndhel[ievt2] * ctot, clo, chi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt2] = ihelF;
             break;
           }
@@ -847,7 +1171,30 @@ namespace madmatrix
       const int ievt0 = ipagV * neppV;
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
-      MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) ) / static_cast<fptype>( helcolDenominators[0] );
+      if constexpr( !use_crossing )
+        MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) ) / static_cast<fptype>( helcolDenominators[0] );
+      else
+      {
+        // Per-event crossing-aware denominator: the crossing may differ per
+        // lane. cross==0 keeps the historical IDEN/BROKEN_SYM path; a genuine
+        // crossing rebuilds it from the crossed initial-state spin*color times
+        // the identical-final-state factor of the actual flavors. An invalid
+        // crossing must ASSIGN 0 (not multiply), because its unphysical
+        // momentum relabelling can make the lane's |M|^2 a NaN and nan*0 = nan.
+        for( int ieppV = 0; ieppV < neppV; ++ieppV )
+        {
+          const unsigned int fid = iflavorVec[ievt0 + ieppV];
+          const int dcr = (int)( fid / nmaxflavor );
+          const int dfl = (int)( fid % nmaxflavor );
+          fptype& me = reinterpret_cast<fptype*>( &MEs_sv )[ieppV];
+          if( dcr == 0 )
+            me *= (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];
+          else if( spincol_cross( dcr ) == 0 )
+            me = (fptype)0.; // no such crossing-table row -> ME 0
+          else
+            me *= (fptype)1. / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );
+        }
+      }
       if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
       {
         // The numerators have already been accumulated over all good helicities in place (running sum

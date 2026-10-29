@@ -418,25 +418,37 @@ extern "C"
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 
+    // The SIMD grouping key is the REDUCED flavor (id % nmaxflavor), not the
+    // full extended flavorID. The extended id encodes both a reduced flavor and
+    // a crossing (id = cross*nmaxflavor + flavor). calculate_jamps only requires
+    // the reduced flavor to be constant across a SIMD vector (the wavefunction
+    // flavor is read once per vector); the crossing is applied per event by the
+    // momentum gather, so one vector may legitimately mix crossings. Indexing
+    // the grouping arrays by the full id (as an earlier version did) overflowed
+    // them whenever a crossing was present (id >= nmaxflavor), corrupting the
+    // stack and crashing (SIGABRT/SIGSEGV).
     constexpr std::size_t flavor_count = ProcessData::nmaxflavor;
     HostBufferBase<unsigned int, false> flavor_indices( ((count + page_size2 - 1) / page_size2 + flavor_count) * page_size2 );
     bool sort_flavors = vector_size > 1 && flavor_count > 1 && flavor_indices_in;
-    if ( sort_flavors ) 
+    if ( sort_flavors )
     {
       permutation.resize(count);
       std::size_t voffset = 0;
       std::size_t vector_indices[flavor_count] = {};
       std::size_t vector_counts[flavor_count] = {};
       // determine permutation of inputs such that all entries in a SIMD vector
-      // have the same flavor index
+      // share the same reduced flavor (they may still carry different crossings)
       for( std::size_t i_event = 0; i_event < count; ++i_event )
       {
         unsigned int flav = flavor_indices_in[i_event + offset];
-        auto& vcount = vector_counts[flav];
-        auto& vindex = vector_indices[flav];
+        unsigned int rflav = flav % (unsigned int)ProcessData::nmaxflavor;
+        auto& vcount = vector_counts[rflav];
+        auto& vindex = vector_indices[rflav];
         if ( vcount == 0 )
         {
           vindex = voffset * page_size2;
+          // no pre-fill: a padding lane copies the first event of its page,
+          // extended id included (see the lane loop below)
           voffset += 1;
         }
         permutation[i_event] = vindex + vcount;

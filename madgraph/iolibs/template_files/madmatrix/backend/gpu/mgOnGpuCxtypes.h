@@ -936,6 +936,17 @@ namespace madmatrix
   template<typename CX = cxtype>
   inline __host__ __device__ CX cxzero_sv() { return CX{}; }
 
+  // Denominator p^2 - M^2 + i M W of a massive propagator, with the width
+  // kept only where p^2 > 0 (timelike): a spacelike (t-channel) propagator
+  // has no pole to regulate. Used by the ALOHA routines when the width of a
+  // t-channel propagator is dropped (aloha.t_channel_width False, the
+  // default), lane by lane, as the Fortran routines do event by event.
+  inline __host__ __device__ cxtype_denom_sv
+  propagator_denom( const fptype_denom_sv& p2, const fptype_denom M, const fptype_denom W )
+  {
+    return cxtype_denom_sv( p2 - M * M, ( p2 > 0 ) ? M * W : fptype_denom( 0 ) );
+  }
+
   // Functions and operators for cxtype_sv (and multi-precision variant)
   template<typename CX>
   inline __host__ __device__ auto

@@ -55,6 +55,9 @@
     // unless the color sum runs on a smaller basis (see set_color_flow_lines_cpp).
     static constexpr int ncolor_flow = %(ncolor_flow)s;%(split_order_constants)s
     static constexpr int nmaxflavor = ProcessData::nmaxflavor;
+    // Rows of the crossing table (1 without crossing): the extended flavor
+    // ids K*nmaxflavor + flav run over [0, ncross*nmaxflavor).
+    static constexpr int ncross = ProcessTables::ncross;
 
   private: /* clang-format on */
 

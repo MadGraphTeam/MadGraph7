@@ -48,7 +48,9 @@ namespace madmatrix
                       fptype_sv* MEs_ighel2,           // output: [ncomb] the same for the second neppV page (mixed mode only)
                       const cxtype_sv* ghelAllJamp_sv, // input: jamp_sv[nGoodHel][nParity*ncolor] for all good helicities
                       const int nGoodHel,              // input: number of good helicities
-                      const int ievt0 );               // input: first event number in current C++ event page
+                      const int ievt0,                 // input: first event number in current C++ event page
+                      const fptype* csymExtra,         // input: [neppV] 1 where this lane's C-parity de-duplication is on, 0 otherwise (nullptr: off everywhere)
+                      const fptype* csymExtra2 );      // input: [neppV] the same for the second neppV page (mixed mode only)
 #endif
 
   //--------------------------------------------------------------------------

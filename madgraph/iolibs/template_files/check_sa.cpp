@@ -65,5 +65,7 @@ int main(int argc, char** argv){
     cout << " -----------------------------------------------------------------------------" << endl;
   }
 
+%(crossing_example)s
+
   return 0;
 }
