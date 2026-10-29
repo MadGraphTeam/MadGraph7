@@ -5344,7 +5344,49 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12
+   "reference_tolerance": 1e-12,
+   "variants": [
+    {
+     "name": "5F",
+     "gating": true,
+     "tier": "nightly",
+     "restriction": "no_b_mass",
+     "restriction_code": "5F",
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "notes": "PLAN \u00a73.0 MQ-5F: the row's request on the restricted UFO (no_b_mass), against the row's reference (so equal to its default-restriction MB = ymb = 0 route under \u00a71.4)",
+     "extras": [],
+     "extras_pending": {},
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/mqcd/bbx_wpwmg.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "status": "pending",
+     "pending": {
+      "waits_for": "MQ-5F",
+      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
+     }
+    }
+   ]
   },
   {
    "id": "E01",
