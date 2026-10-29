@@ -1222,8 +1222,8 @@ def _v2_selection(backend, compiled, process: str, label: str):
 
     ``selected_source_helicities`` fixes leg helicities (labels as the tree
     engine's; an unknown leg or a helicity the leg does not have is refused
-    here, so in the dry run too). The colour selectors pick sectors of the tree engine's
-    leading-colour plan (``reference_color_order`` first, at most
+    here, so in the dry run too). The colour selectors pick sectors of the
+    tree engine's leading-colour plan (``reference_color_order`` first, at most
     ``max_color_sectors``, then ``selected_color_sector_ids`` by id), each a
     flow and, for a folded trace, its reflection (the tree engine's physical
     flows); a missing sector id is refused as the tree engine refuses it.
