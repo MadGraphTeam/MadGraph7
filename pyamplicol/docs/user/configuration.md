@@ -189,7 +189,8 @@ for the CLI flags and the `group-processes` command, and
 
 ```toml
 [color]
-accuracy = "lc"                 # lc, nlc, or full
+accuracy = "lc"                 # lc, nlc, or full; unset: lc for tree
+                                # requests, full for one-loop requests
 contraction = "auto"            # auto, direct, or symmetric-group-fft
 fft_basis = "adjoint"           # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
@@ -760,6 +761,11 @@ bracketed it). With `"all"`, `"ir"` and `"none"` either check works. The
 Correlated and resolved outputs
 take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
+
+A one-loop request without `color.accuracy` is full colour (MadLoop's
+accuracy); LC and NLC are opt-in. MG5_aMC's loop_sm ships with pyAmpliCol
+(`model.source = "loop_sm"`, with its `[loop.model]` declaration): see
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
 model's source colour declaration; formal-N_c projections for any number of

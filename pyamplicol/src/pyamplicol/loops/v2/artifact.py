@@ -337,22 +337,19 @@ def require_zero_coloured_widths(
     propagators carry no width); a resonant coloured particle needs the
     complex-mass scheme (WP3.2)."""
 
-    from pyamplicol.api.errors import GenerationError
+    from .refusals import LoopRequestUnsupported
 
     widths = coloured_widths(dags, compiled, fixed_parameters)
     if not widths:
         return
     named = ", ".join(f"{name} ({width})" for name, width in sorted(widths.items()))
     fixed = ", ".join(f'{width} = "0"' for width in sorted(set(widths.values())))
-    raise GenerationError(
+    raise LoopRequestUnsupported(
+        "coloured-width",
         f"{process}: tree currents propagate coloured particles whose width "
-        f"is not fixed to zero: {named}. v2 virtuals are real on-shell (loop "
-        "propagators carry no width and the model counterterms renormalise "
-        "the real mass), so such a width makes the Born, its colour "
-        "correlations and the virtual inconsistent; fix it to zero in "
-        f"[loop.preparation] fixed_parameters ({fixed}), the legacy engine's "
-        "convention, or use loop.engine='legacy'. A resonant coloured "
-        "particle needs the complex-mass scheme, which is not available yet"
+        f"is not fixed to zero: {named}; fix it in [loop.preparation] "
+        f"fixed_parameters ({fixed}) or take a restriction whose widths are "
+        'zero (model.restriction = "no_widths")',
     )
 
 
@@ -968,28 +965,53 @@ def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]
             raise EvaluationError(
                 "this artifact holds several processes; select one with process="
             )
-    normalized = " ".join(process.split())
     for record in records:
         if record["id"] == process:
-            return record, None
-    for record in records:
-        if " ".join(str(record["expression"]).split()) == normalized:
             return record, None
     from pyamplicol.artifacts.process_groups import read_process_groups
 
     groups = read_process_groups(manifest.root)
-    for representative, group in (groups.groups if groups else {}).items():
-        for member in group.members:
-            if member.process_id != representative and (
-                member.process_id == process
-                or " ".join(member.expression.split()) == normalized
-            ):
-                if str(member.basis) != "exact-loop-flavor":
-                    break
-                for record in records:
-                    if record["id"] == representative:
-                        return record, member
+    # The public spelling rule of requests (processes.model.
+    # resolve_model_particle_name): the exact spelling first, then a unique
+    # letter-case-insensitive match, as the tree artifacts' selector compares
+    # lower-cased tokens (rusticol-core normalize_process_expression). The
+    # artifact records the model's spelling (loop_sm's gluon is ``G``), so
+    # ``g g > t t~`` selects ``G G > t t~``.
+    for fold in (False, True):
+        wanted = _selector_text(process, fold=fold)
+        matches = [
+            record
+            for record in records
+            if _selector_text(str(record["expression"]), fold=fold) == wanted
+        ]
+        if fold and len(matches) > 1:
+            choices = ", ".join(sorted(str(record["id"]) for record in matches))
+            raise EvaluationError(
+                f"process expression {process!r} is ambiguous; select one of "
+                f"these stable ids: {choices}"
+            )
+        if matches:
+            return matches[0], None
+        for representative, group in (groups.groups if groups else {}).items():
+            for member in group.members:
+                if member.process_id != representative and (
+                    member.process_id == process
+                    or _selector_text(member.expression, fold=fold) == wanted
+                ):
+                    if str(member.basis) != "exact-loop-flavor":
+                        break
+                    for record in records:
+                        if record["id"] == representative:
+                            return record, member
     raise EvaluationError(f"artifact has no process {process!r}")
+
+
+def _selector_text(expression: str, *, fold: bool) -> str:
+    """A process expression as ``_select`` compares it: whitespace-normalised
+    and, with ``fold``, lower-cased per token."""
+
+    tokens = expression.split()
+    return " ".join(token.lower() for token in tokens) if fold else " ".join(tokens)
 
 
 def _json_payload(manifest: Any, path: str) -> dict[str, Any]:

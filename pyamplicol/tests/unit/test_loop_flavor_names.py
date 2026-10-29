@@ -94,12 +94,16 @@ def test_loop_admission_keeps_public_spelling_and_exact_ordered_identity():
     for expression in ("s s~ > G G", "s s~ > g g", "s s~ > G g"):
         member = _member(expression)
         assert AdmittedFlavorMember(relation, member).member.expression == expression
-    for expression in ("s s~ > A A", "s~ s > G G", "s > s~ G G", "s s~ G > G"):
+    for expression in ("s s~ > A A", "s~ s > G G", "s s~ G > G"):
         with pytest.raises(ValueError, match="differs from the admitted"):
             AdmittedFlavorMember(relation, _member(expression))
     with pytest.raises(ValueError, match="not an external state"):
         AdmittedFlavorMember(relation, _member("s s~ > unknown G"))
-    with pytest.raises(ValueError, match="one concrete collision"):
+    # A 1 -> n member and a decay chain are refused by the process parser
+    # with their listed keys (``processes.refusals``).
+    with pytest.raises(ValueError, match="decay-process: "):
+        AdmittedFlavorMember(relation, _member("s > s~ G G"))
+    with pytest.raises(ValueError, match="madloop-syntax: "):
         AdmittedFlavorMember(relation, _member("s s~ > G G, G > s s~"))
     for changes in (
         {"factor": 2},
