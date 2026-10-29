@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import math
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
@@ -161,11 +161,17 @@ def test_rows_are_well_formed(manifest, rows):
         ):
             found = mqcd.helicity_reference(row)
             assert found["rows"] and found["rows"][0], name
-        # The native-input route forms no Catani prediction: such a row says
-        # so (rule 4 recorded as not formed).
-        # The public route forms none either (its tools-route twin does).
-        tools = row.inputs == "python" and row.route == "tools"
-        assert row.catani == ("python" if tools else "none"), name
+        # Rule 4's prediction: the Python-input executor's; on the native-
+        # input route (no executor prediction, WP3.1 I5c) the tree engine's;
+        # none on the public route (its tools-route twin holds rule 4).
+        expected = (
+            "none"
+            if row.route == "public"
+            else "tree"
+            if row.inputs == "native"
+            else "python"
+        )
+        assert row.catani == expected, name
         if row.base is not None:
             base = rows[row.base]
             # A variant is another reference on the base request, or the
@@ -565,6 +571,60 @@ def test_rule4_holds_the_poles_and_the_sector_sets():
     none = _point("double-double", 2.0, (1.0, -3.0, 0.5), (1e-28,) * 3, None)
     unpredicted = _row(predicted_sectors=[], unpredicted_sectors=[{"QCD": 8}])
     assert all(c.passed for c in mqcd.rule4(unpredicted, 0, none))
+
+
+def test_rule4_flags_a_stale_out_of_scope_listing():
+    """A binary64 pole inside the O1 scope that the manifest lists as out of
+    scope fails rule 4 as a stale listing (as rule 2 does)."""
+
+    catani = {SECTOR: (Decimal("-3.0"), Decimal("0.5"))}
+    b64 = _point("double", 2.0, (1.0, -3.0, 0.5), (1e-13,) * 3, catani)
+    listed = _row(
+        binary64_out_of_scope=[
+            {"point": 0, "sector": "QCD^8", "coefficient": "single_pole"}
+        ]
+    )
+    assert all(c.passed for c in mqcd.rule4(_row(), 0, b64))
+    (stale,) = [c for c in mqcd.rule4(listed, 0, b64) if not c.passed]
+    assert stale.coefficient == "single_pole" and "stale" in stale.note
+
+
+def test_massless_catani_operator():
+    """Rule 4's "tree" operator: q q~ -> colour singlet, <T_1.T_2> = -C_F B:
+    poles (alpha_s / 2 pi) C_F B (-2 / eps^2 - (3 + 2 log(mu^2 / s)) / eps)."""
+
+    from fractions import Fraction
+
+    born, s, mu2 = Decimal("1.5"), Fraction(4), Fraction(1)
+    point = [[Fraction(1), 0, 0, Fraction(1)], [Fraction(1), 0, 0, Fraction(-1)]]
+    legs = {1: (3, Fraction(2)), 2: (3, Fraction(2))}  # gamma_q = 3/2 C_F
+    correlated = {(1, 2): -Decimal(4) / 3 * born, (2, 1): -Decimal(4) / 3 * born}
+    single, double = mqcd.massless_catani(
+        legs, point, correlated, mu2, Decimal("0.118")
+    )
+    with localcontext() as context:
+        context.prec = 50
+        factor = Decimal("0.118") / (2 * mqcd.PI) * Decimal(4) / 3 * born
+        log = (Decimal(mu2.numerator) / Decimal(s.numerator)).ln()
+        expected = (-(3 + 2 * log) * factor, -2 * factor)
+    assert mqcd.relative(double, expected[1]) < 1e-38
+    assert mqcd.relative(single, expected[0]) < 1e-38
+
+
+def test_rule6_checks_a_vanishing_coefficient_absolutely():
+    """Rule 6 holds an identically vanishing coefficient absolutely (against
+    double-double and 60 digits, |a - r| against F_s), not skipped."""
+
+    row = _row(vanishing=[{"sector": "QCD^8", "coefficient": "double_pole"}])
+    dd = _point("double-double", 2.0, (1.0, -3.0, 0.0), (1e-28,) * 3)
+    ap = _point("arbitrary-40", 2.0, (1.0, -3.0, 0.0))
+    near = _point("arbitrary-60", 2.0, (1.0, -3.0, 1e-30))
+    checks = mqcd.rule6(row, 0, dd, ap, ap)
+    doubles = [c for c in checks if c.coefficient == "double_pole"]
+    assert len(doubles) == 2 and all(c.passed for c in doubles)
+    checks = mqcd.rule6(row, 0, dd, ap, near)
+    (failed,) = [c for c in checks if not c.passed]
+    assert failed.coefficient == "double_pole" and "vanishes" in failed.note
 
 
 def test_field_factor_poles():

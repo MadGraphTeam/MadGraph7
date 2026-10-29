@@ -1452,7 +1452,7 @@
     1
    ],
    "inputs": "native",
-   "catani": "none"
+   "catani": "tree"
   },
   {
    "id": "A15",
@@ -1521,7 +1521,7 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "inputs": "native",
-   "catani": "none",
+   "catani": "tree",
    "extras_pending": {
     "nc": "MQ-NC (shipped N_c declaration and its independent oracles; rule 7)"
    }
@@ -2119,7 +2119,7 @@
    "vanishing": [],
    "reference_tolerance": 1e-10,
    "inputs": "native",
-   "catani": "none"
+   "catani": "tree"
   },
   {
    "id": "A24",
@@ -2221,7 +2221,7 @@
     6
    ],
    "inputs": "native",
-   "catani": "none"
+   "catani": "tree"
   },
   {
    "id": "A25",
