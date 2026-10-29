@@ -160,6 +160,64 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
             assert abs(float(laurent.double_pole - double)) <= TOLERANCE * size
 
 
+# The user's one-order-of-magnitude margin of single-point estimate tests
+# (2026-10-23; DESIGN §10.4, ``test_loop_v2_stability.ESTIMATE_MARGIN``).
+ESTIMATE_MARGIN = 10
+
+
+@pytest.mark.loop_physics
+def test_recommended_estimate_brackets_the_uux_uuxepem_double_pole(
+    loop_sm_compiled_model, loop_native
+):
+    """Package mq-stab, the '22x case': u u~ > u u~ e+ e- at the fixture's
+    points 0 and 2, binary64 against our double-double. With a rotation about
+    the beam axis (z by (3/5, 4/5): both incoming momenta and every energy
+    and p_z stay bitwise the same) and the cached reduction check, the double
+    pole's estimate was 1.2e-13 and 7.6e-14 for errors of 5.6e-13 and 1.7e-12
+    (4.7x and 22.8x); a rotation moving the beams brackets them (0.5x). The
+    masters are not the cause: every rotation keeps their exact invariants.
+    The recommended checks (``stability.RECOMMENDED_CHECKS``: a generic
+    rotation and the rescaled reduction check) bracket every Laurent
+    coefficient within ``ESTIMATE_MARGIN``."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+    from pyamplicol.models.loading import load_compiled_model
+
+    reference = _reference("uux_uuxepem")
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    slice_ = LoopSlice.generate(compiled, _request(compiled, reference), loop_native)
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
+    for index in (0, 2):
+        point = [reference["points"][index]]
+        scale = [str(Fraction(reference["mu_r"][index]) ** 2)]
+        parameters = reference["parameters"]
+        (truth,) = executor.evaluate(
+            point, scale, parameters=parameters, precision=Precision.double_double()
+        )
+        (checked,) = executor.evaluate(
+            point,
+            scale,
+            parameters=parameters,
+            precision=Precision.double(),
+            stability=RECOMMENDED_CHECKS,
+        )
+        estimate = checked.stability
+        for sector, laurent in truth.components["virtual"].items():
+            values = checked.components["virtual"][sector].coefficients
+            bounds = estimate.absolute[sector].coefficients
+            for key, value, exact, bound in zip(
+                LAURENT, values, laurent.coefficients, bounds, strict=True
+            ):
+                error = abs(complex(value) - complex(exact))
+                assert 0 < error <= ESTIMATE_MARGIN * bound, (
+                    index, sector, key, error, bound
+                )
+
+
 # LC and NLC as formal-N_c projections (design §7.4-§7.6). Identical-flavour
 # lines reach one colour word through a gluon and through the
 # U(1)-subtraction piece of the Fermi-exchanged pairing (from u u~ > u u~ g
