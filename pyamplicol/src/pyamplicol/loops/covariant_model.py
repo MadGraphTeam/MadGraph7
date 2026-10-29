@@ -147,7 +147,10 @@ def _repair(raw, particles, compatibility):
     """The explicit source-compatibility profile ``gmu_particle_anti``: every
     antiparticle that lost its Goldstone flag to the legacy ``Particle.anti``
     (``_lost_goldstone_flag``) gets it back, one diagnostic each. The profile
-    on a source without that defect is refused."""
+    on a source whose flags the structural source repair
+    (``repair_source_declarations``, rule ``GOLDSTONE_FLAG``) has already
+    restored is satisfied as it is; on a source without that defect it is
+    refused."""
 
     if compatibility is None:
         return ()
@@ -159,6 +162,11 @@ def _repair(raw, particles, compatibility):
         if _lost_goldstone_flag(raw, record)
     ]
     if not repaired:
+        if any(
+            item.get("rule") == GOLDSTONE_FLAG
+            for item in raw.metadata.get(SOURCE_REPAIRS_KEY, ())
+        ):
+            return ()
         raise ValueError(
             "source does not match the recognized Gmu anti metadata mismatch "
             "(an antiparticle of a declared Goldstone that the legacy "
@@ -176,14 +184,17 @@ def _repair(raw, particles, compatibility):
                     "field": "goldstoneboson",
                     "raw": False,
                     "derived": True,
-                    "reason": (
-                        "legacy anti positional arguments bind Goldstone flag to "
-                        "line; constructor defaults lose the flag"
-                    ),
+                    "reason": _LOST_FLAG_REASON,
                 }
             )
         )
     return tuple(diagnostics)
+
+
+_LOST_FLAG_REASON = (
+    "legacy anti positional arguments bind Goldstone flag to line; constructor "
+    "defaults lose the flag"
+)
 
 
 # Source declarations repaired by structure (never by a particle, vertex or
@@ -191,6 +202,7 @@ def _repair(raw, particles, compatibility):
 # the structure's diagnostics.
 SOURCE_REPAIRS_KEY = "pyamplicol_source_repairs"
 CONSTANT_TENSOR_ARITY = "constant-tensor-slot-arity"
+GOLDSTONE_FLAG = "antiparticle-goldstone-flag"
 
 
 def _slot_spins(record) -> tuple[int, ...]:
@@ -208,24 +220,38 @@ def _constant_structure(record) -> Any:
 
 
 def repair_source_declarations(raw: Any, within: Any = None) -> Any:
-    """``raw`` with its constant-tensor slot-arity defects repaired, or ``raw``
-    itself when it has none (the rule is idempotent). ``within``, if given,
-    restricts the rule to those ``(collection, vertex id)`` pairs (the
-    vertices a request reaches).
+    """``raw`` with its structural source defects repaired, or ``raw`` itself
+    when it has none (the rules are idempotent). Two rules, each found by
+    structure (never by a particle, vertex or tensor name):
 
-    A vertex (tree or counterterm) whose particles are all scalars and that
-    references a constant Lorentz tensor with a different number of (scalar)
-    slots means that constant on its own particles: the reference is moved to
-    the model's unique tensor with the vertex's spin signature and the same
-    exact constant. MadLoop 3.7.0's loop_sm declares a four-scalar vertex
-    with the three-slot constant SSS1 next to the four-slot SSSS1 of the same
-    value. Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
+    * ``GOLDSTONE_FLAG``: an antiparticle that the legacy UFO object
+      library's ``Particle.anti`` built from a declared Goldstone boson
+      without the flag (``_lost_goldstone_flag``: the library's positional
+      arguments bind ``goldstoneboson`` to ``line``; MG5_aMC's
+      loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu) gets the flag back. Particles
+      belong to every request, so ``within`` does not restrict this rule.
+    * ``CONSTANT_TENSOR_ARITY``: a vertex (tree or counterterm) whose
+      particles are all scalars and that references a constant Lorentz
+      tensor with a different number of (scalar) slots means that constant
+      on its own particles: the reference is moved to the model's unique
+      tensor with the vertex's spin signature and the same exact constant.
+      MadLoop 3.7.0's loop_sm declares a four-scalar vertex with the
+      three-slot constant SSS1 next to the four-slot SSSS1 of the same value.
+      Any other slot mismatch is left as declared: a request that reaches it
+      is refused at model preparation with the listed key
+      ``lorentz-slot-arity`` (``build_covariant_structure``), an unreachable
+      one stays inert. ``within``, if given, restricts this rule to those
+      ``(collection, vertex id)`` pairs (the vertices a request reaches).
+
+    Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
     source's metadata (the compiled model and the artifact carry it) and in
-    the covariant structure's diagnostics. Any other slot mismatch is left as
-    declared: a request that reaches it is refused at model preparation with
-    the listed key ``lorentz-slot-arity`` (``build_covariant_structure``), an
-    unreachable one stays inert."""
+    the covariant structure's diagnostics."""
 
+    flags = [
+        record
+        for record in raw.collections["particles"]
+        if _lost_goldstone_flag(raw, record)
+    ]
     tensors = raw.collections["lorentz_structures"]
     repairs = []
     for collection in ("vertices", "counterterm_vertices"):
@@ -254,10 +280,25 @@ def repair_source_declarations(raw: Any, within: Any = None) -> Any:
                 ]
                 if len(candidates) == 1:
                     repairs.append((collection, vertex, position, old, candidates[0]))
-    if not repairs:
+    if not repairs and not flags:
         return raw
     payload = raw.to_dict()
     diagnostics = list(raw.metadata.get(SOURCE_REPAIRS_KEY, ()))
+    for record in flags:
+        payload["collections"]["particles"][record["id"]]["fields"][
+            "goldstoneboson"
+        ] = True
+        diagnostics.append(
+            {
+                "rule": GOLDSTONE_FLAG,
+                "collection": "particles",
+                "particle": [record["id"], record["name"]],
+                "field": "goldstoneboson",
+                "original": False,
+                "derived": True,
+                "reason": _LOST_FLAG_REASON,
+            }
+        )
     for collection, vertex, position, old, new in repairs:
         target = payload["collections"][collection][vertex["id"]]["fields"]
         target["lorentz"][position] = {

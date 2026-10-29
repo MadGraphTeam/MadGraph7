@@ -984,15 +984,22 @@ def _load_external_model(
         from ufo_model_loader.common import JSONLook
 
         restriction = _loader_restriction_name(source, options.restriction)
-        model, parameter_card = load_model(
-            str(source),
-            restriction,
-            options.simplify,
-            wrap_indices_in_lorentz_structures=False,
-            # Loop counterterms belong to the exact source program. A tree
-            # projection need not parse or evaluate their finite coefficients.
-            include_counterterm_finite_parts=not source.is_dir(),
-        )
+        try:
+            model, parameter_card = load_model(
+                str(source),
+                restriction,
+                options.simplify,
+                wrap_indices_in_lorentz_structures=False,
+                # Loop counterterms belong to the exact source program. A tree
+                # projection need not parse or evaluate their finite
+                # coefficients.
+                include_counterterm_finite_parts=not source.is_dir(),
+            )
+        except Exception as error:
+            from .source_refusals import refuse_python2_ufo
+
+            refuse_python2_ufo(source, error)
+            raise
         _canonical_loader_values(model)
         from .loop_import import adapt_raw_ufo_model
 
