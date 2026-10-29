@@ -1918,7 +1918,7 @@ pub(super) fn build_selected_closures(
     let anchor_id = anchor_ids[0];
     let anchor_state = currents[anchor_id as usize].key.current_state_template_id();
     let states = &templates.input().current_states;
-    let dirac_weyl = DiracWeylClosureGuard::from_state_pairs(states, closures.keys().copied())?;
+    let dirac_weyl = DiracWeylClosureGuard::from_state_pairs(states, closures.keys().copied());
     for complement_id in complement_ids {
         let complement_state = currents[complement_id as usize]
             .key

@@ -4376,10 +4376,12 @@ impl StructuralFeasibilityIndex {
 /// pair that closes in other chirality states. Templates carry no Dirac-Weyl
 /// closure, so that complement would close on nothing and its diagrams (the
 /// top t channel of b b~ > w+ w-) would be dropped without an error: the
-/// recurrence (here, in its structural-demand pass) and the on-the-fly lane
-/// (`on_the_fly::sweep::build_selected_closures`,
-/// `on_the_fly::coupling_policy`) refuse the request instead, with the listed
-/// key `dirac-weyl-closure`.
+/// recurrence (here, in its structural-demand pass, at each LC sector's
+/// closure anchor) and the on-the-fly lane (at a query's anchor,
+/// `on_the_fly::sweep::build_selected_closures`; the minimal coupling-order
+/// policy, `on_the_fly::coupling_policy`, where such a pair's orders would
+/// change its limits) refuse the request instead, with the listed key
+/// `dirac-weyl-closure`.
 #[derive(Debug)]
 pub(crate) struct DiracWeylClosureGuard {
     /// Ordered (particle, particle) pairs of fermion current states that
@@ -4392,7 +4394,7 @@ impl DiracWeylClosureGuard {
     pub(crate) fn from_state_pairs(
         states: &[super::template::CurrentStateRow],
         pairs: impl IntoIterator<Item = (u32, u32)>,
-    ) -> RusticolResult<Self> {
+    ) -> Self {
         let mut closable = BTreeSet::new();
         for (left, right) in pairs {
             let (Some(left), Some(right)) = (Self::state(states, left), Self::state(states, right))
@@ -4404,7 +4406,7 @@ impl DiracWeylClosureGuard {
                 closable.insert((right.particle_id, left.particle_id));
             }
         }
-        Ok(Self { closable })
+        Self { closable }
     }
 
     fn of_template(
@@ -4424,7 +4426,7 @@ impl DiracWeylClosureGuard {
             };
             pairs.push((*left, *right));
         }
-        Self::from_state_pairs(&template.current_states, pairs)
+        Ok(Self::from_state_pairs(&template.current_states, pairs))
     }
 
     /// The state row of a template id; `None` for a state the template's
@@ -4442,6 +4444,37 @@ impl DiracWeylClosureGuard {
         state.statistics == ParticleStatistics::Fermion as u8
     }
 
+    /// The anchor and complement states, when they are a Dirac and a Weyl
+    /// state of a closable fermion pair (in either order).
+    fn dirac_weyl_pair<'a>(
+        &self,
+        states: &'a [super::template::CurrentStateRow],
+        anchor_state: u32,
+        complement_state: u32,
+    ) -> Option<[&'a super::template::CurrentStateRow; 2]> {
+        let anchor = Self::state(states, anchor_state)?;
+        let complement = Self::state(states, complement_state)?;
+        (Self::fermion(anchor)
+            && Self::fermion(complement)
+            && (anchor.chirality == 0) != (complement.chirality == 0)
+            && self
+                .closable
+                .contains(&(anchor.particle_id, complement.particle_id)))
+        .then_some([anchor, complement])
+    }
+
+    /// Whether two current states that no closure row joins are a Dirac and
+    /// a Weyl state of a closable fermion pair (in either order).
+    pub(crate) fn joins(
+        &self,
+        states: &[super::template::CurrentStateRow],
+        left_state: u32,
+        right_state: u32,
+    ) -> bool {
+        self.dirac_weyl_pair(states, left_state, right_state)
+            .is_some()
+    }
+
     /// Refuses a closure anchor and complement state that no closure row
     /// joins, when they are a Dirac and a Weyl state of a closable fermion
     /// pair; `context` names the closure (its LC sector or query).
@@ -4452,21 +4485,11 @@ impl DiracWeylClosureGuard {
         complement_state: u32,
         context: impl std::fmt::Display,
     ) -> RusticolResult<()> {
-        let (Some(anchor), Some(complement)) = (
-            Self::state(states, anchor_state),
-            Self::state(states, complement_state),
-        ) else {
+        let Some([anchor, complement]) =
+            self.dirac_weyl_pair(states, anchor_state, complement_state)
+        else {
             return Ok(());
         };
-        if !Self::fermion(anchor)
-            || !Self::fermion(complement)
-            || (anchor.chirality == 0) == (complement.chirality == 0)
-            || !self
-                .closable
-                .contains(&(anchor.particle_id, complement.particle_id))
-        {
-            return Ok(());
-        }
         let (dirac, weyl) = if anchor.chirality == 0 {
             (anchor, complement)
         } else {
@@ -16961,9 +16984,9 @@ mod dirac_weyl_guard_tests {
     #[test]
     fn a_dirac_current_against_a_weyl_state_of_a_closable_pair_is_an_evaluation_refusal() {
         let states = states();
-        let guard =
-            DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1)]).expect("guard");
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1)]);
         for (anchor, complement) in [(1, 0), (0, 1)] {
+            assert!(guard.joins(&states, anchor, complement));
             let error = guard
                 .check(&states, anchor, complement, "LC sector 7")
                 .expect_err("a Dirac-Weyl pair no closure joins must be refused");
@@ -16977,15 +17000,16 @@ mod dirac_weyl_guard_tests {
     #[test]
     fn the_guard_passes_equal_chiralities_bosons_unclosable_pairs_and_unknown_states() {
         let states = states();
-        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1), (4, 9)])
-            .expect("guard");
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2), (3, 1), (4, 9)]);
         // Two Dirac or two Weyl states; a boson; a pair no closure row joins.
         for (anchor, complement) in [(0, 2), (3, 1), (4, 0), (0, 4)] {
+            assert!(!guard.joins(&states, anchor, complement));
             guard
                 .check(&states, anchor, complement, "test")
                 .expect("passes");
         }
-        let unclosable = DiracWeylClosureGuard::from_state_pairs(&states, [(4, 4)]).expect("guard");
+        let unclosable = DiracWeylClosureGuard::from_state_pairs(&states, [(4, 4)]);
+        assert!(!unclosable.joins(&states, 1, 0));
         unclosable
             .check(&states, 1, 0, "test")
             .expect("no closable fermion pair");
