@@ -517,9 +517,13 @@ class ProcessConfig:
 
 @dataclass(frozen=True, slots=True)
 class ColorConfig:
-    accuracy: ColorAccuracy = field(
-        default=ColorAccuracy.LC,
-        metadata=_setting("str", choices=tuple(ColorAccuracy)),
+    # None: the request kind's default, resolved by ``RunConfig`` (leading
+    # colour for tree requests, full colour for one-loop requests: MadLoop's
+    # accuracy, user ruling 2026-10-28 Q1). A ``RunConfig`` always holds a
+    # resolved accuracy.
+    accuracy: ColorAccuracy | None = field(
+        default=None,
+        metadata=_setting("str", nullable=True, choices=tuple(ColorAccuracy)),
     )
     contraction: ColorContraction = field(
         default=ColorContraction.AUTO,
@@ -535,9 +539,12 @@ class ColorConfig:
     )
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "accuracy", _enum(self.accuracy, ColorAccuracy, "color.accuracy")
-        )
+        if self.accuracy is not None:
+            object.__setattr__(
+                self,
+                "accuracy",
+                _enum(self.accuracy, ColorAccuracy, "color.accuracy"),
+            )
         object.__setattr__(
             self,
             "contraction",
@@ -557,6 +564,9 @@ class ColorConfig:
             "lc_flow_layout",
             _enum(self.lc_flow_layout, LCFlowLayout, "color.lc_flow_layout"),
         )
+        if self.accuracy is None:
+            # Validated once ``RunConfig`` resolves the request kind's default.
+            return
         if (
             self.lc_flow_layout is LCFlowLayout.ALL_FLOW_UNION
             and self.accuracy is not ColorAccuracy.LC
@@ -1592,6 +1602,17 @@ class RunConfig:
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
         mode = self.evaluator.execution_mode
         virtual = self.process.loop_coupling_orders is not None
+        if self.color.accuracy is None:
+            # The request kind's colour default (user ruling 2026-10-28 Q1):
+            # one-loop requests full colour, as MadLoop; tree requests LC.
+            object.__setattr__(
+                self,
+                "color",
+                replace(
+                    self.color,
+                    accuracy=ColorAccuracy.FULL if virtual else ColorAccuracy.LC,
+                ),
+            )
         if virtual and mode not in {
             EvaluatorExecutionMode.AUTO,
             EvaluatorExecutionMode.LOOP_RECURRENCE,

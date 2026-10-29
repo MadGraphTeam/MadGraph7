@@ -29,6 +29,7 @@ from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.config import ColorContraction, LoopEngine
 from pyamplicol.loops.compiler import prepare_loop_request_model
+from pyamplicol.loops.covariant_model import with_source_repairs
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
@@ -201,6 +202,9 @@ def _prepare(
             "loop generation requires a compiled NLO UFO with its exact raw "
             "sidecar; this model contains only tree data"
         )
+    # Structural source repairs (``covariant_model.repair_source_declarations``)
+    # on the compiled model the artifact publishes, which records them.
+    compiled = with_source_repairs(compiled)
     run = backend._run_config
     # Coupling-order names resolve once, here, against the model's declared
     # names (any case); the loop side carries the declared spelling and the
@@ -1323,10 +1327,12 @@ def _v2_request(backend, context, index):
         )
     born, dag = born_amplitude_orders(compiled, process, limits, veto)
     if not born:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "loop-induced",
             f"{label} has no Born amplitude within the coupling-order limits "
-            f"{dict(sorted(limits.items()))}: v2 virtuals interfere one-loop and "
-            "Born amplitudes (loop-induced processes are not covered)"
+            f"{dict(sorted(limits.items()))}",
         )
     require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy
@@ -1358,11 +1364,14 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     ``native_trees.NATIVE_EXPORT_REFUSALS``: such a process fails generation,
     a stored plan v4 process never regenerates at load;
     ``loop_admission_refusals`` the structures the generation refuses,
-    ``refusals.LOOP_ADMISSION_REFUSALS``, with their remedies)."""
+    ``refusals.LOOP_ADMISSION_REFUSALS``, with their remedies;
+    ``process_request_refusals`` the process requests refused for tree and
+    loop alike, ``processes.refusals.PROCESS_REQUEST_REFUSALS``)."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
     from pyamplicol.loops.v2.refusals import LOOP_ADMISSION_REFUSALS
+    from pyamplicol.processes.refusals import PROCESS_REQUEST_REFUSALS
 
     blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []
@@ -1422,6 +1431,10 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         loop_admission_refusals=tuple(
             f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
             for refusal in LOOP_ADMISSION_REFUSALS
+        ),
+        process_request_refusals=tuple(
+            f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
+            for refusal in PROCESS_REQUEST_REFUSALS
         ),
     )
     return replace(result, estimated_coverage=estimated)

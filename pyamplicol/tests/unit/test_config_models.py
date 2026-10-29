@@ -344,7 +344,15 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
     fft_basis: ColorFFTBasis,
 ) -> None:
     with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
-        ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis)
+        ColorConfig(
+            accuracy="lc", contraction="symmetric-group-fft", fft_basis=fft_basis
+        )
+    # Without an accuracy a tree request resolves to LC (``RunConfig``).
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis),
+        )
 
     for accuracy in ("nlc", "full"):
         for execution_mode in ("recurrence", "on-the-fly"):

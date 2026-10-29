@@ -19,7 +19,7 @@ applies_to = "UFO and derived JSON model assets distributed with GammaLoop"
 [[licenses]]
 id = "MadGraph5-aMCatNLO"
 path = "licenses/MadGraph5_aMCatNLO.txt"
-applies_to = "ufo/sm/build_restrict.py"
+applies_to = "ufo/sm/build_restrict.py and the MG5_aMC loop model ufo/loop_sm"
 
 [[licenses]]
 id = "MIT"
@@ -70,6 +70,17 @@ canonical_json_path = "pyamplicol/assets/models/json/scalar_gravity/scalar_gravi
 license_ids = [ "0BSD", "GammaLoop-model-assets",]
 release_eligible = true
 
+[[models]]
+id = "loop_sm"
+formats = [ "ufo",]
+authors = [ "V. Hirschi",]
+generator = "FeynRules with NLOCT (MadGraph5_aMC@NLO loop model)"
+upstream_distribution = "MadGraph5_aMC@NLO 3.7.0"
+canonical_ufo_path = "pyamplicol/assets/models/ufo/loop_sm"
+license_ids = [ "MadGraph5-aMCatNLO",]
+release_eligible = true
+note = "Every UFO module and restriction card of MG5_aMC 3.7.0 models/loop_sm byte for byte; MG5_aMC's caches (py3_model*.pkl, __pycache__) and its hidden internal test cards (.restrict_parallel_test*.dat) are not shipped"
+
 [[transformations]]
 id = "verbatim-git-blob-v1"
 description = "Copy the selected baseline Git blob byte-for-byte"
@@ -108,6 +119,10 @@ authorized_by = "docs/development/model-assets/TRANSFORMATIONS.md#standard-ufo-s
 id = "loader-restriction-card-v1"
 description = "Parse every external parameter from the matching sanitized UFO restriction card and serialize the complete card, including explicit zeros, with ufo-model-loader 0.1.8 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
+
+[[transformations]]
+id = "verbatim-distribution-file-v1"
+description = "Copy the file of the upstream release distribution byte for byte"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/scalar_gravity/restrict_default.json"
@@ -1117,6 +1132,366 @@ license_ids = [ "GammaLoop-model-assets",]
 transformation_id = "verbatim-git-blob-v1"
 upstream_distribution_path = "assets/models/ufo/sm/write_param_card.py"
 upstream_exact_blob_match = false
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/CT_couplings.py"
+package_sha256 = "ec0ab5fab1d693e246284c1d82d9ef5219b274dedb909bdd3f6187cbc1ed7b02"
+package_size = 28489
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/CT_couplings.py"
+source_blob_oid = "831dcad1ea5a9fe1f7f78284d6957ad991bada41"
+source_git_mode = "100644"
+source_sha256 = "ec0ab5fab1d693e246284c1d82d9ef5219b274dedb909bdd3f6187cbc1ed7b02"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/CT_couplings.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/CT_parameters.py"
+package_sha256 = "fe89b26fcc375dbffc40003d7e064b2e66316d8d4daa897cd7a9c0ae386cfb3d"
+package_size = 7403
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/CT_parameters.py"
+source_blob_oid = "576230d6d0f89973a729b67258885b10f386cfe3"
+source_git_mode = "100644"
+source_sha256 = "fe89b26fcc375dbffc40003d7e064b2e66316d8d4daa897cd7a9c0ae386cfb3d"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/CT_parameters.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/CT_vertices.py"
+package_sha256 = "6f125c6cffdd94491fb6167411b23700468663d46c60cee90cdb675ad5659b0f"
+package_size = 40823
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/CT_vertices.py"
+source_blob_oid = "2b96d4f2f51d2d602f22c21863257945d470f128"
+source_git_mode = "100644"
+source_sha256 = "6f125c6cffdd94491fb6167411b23700468663d46c60cee90cdb675ad5659b0f"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/CT_vertices.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/__init__.py"
+package_sha256 = "f313e3030c3b3a5d8da2db3ed1b8ad487ce45dfb21810b15a1f717b9a4147d4b"
+package_size = 892
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/__init__.py"
+source_blob_oid = "9d41d670596edb6cb29cd059ec2246e1c92702f9"
+source_git_mode = "100644"
+source_sha256 = "f313e3030c3b3a5d8da2db3ed1b8ad487ce45dfb21810b15a1f717b9a4147d4b"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/__init__.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/coupling_orders.py"
+package_sha256 = "c75540ae451aaca4c8f497aed727a252a2960c65c9d6174e94039af8a0615ae0"
+package_size = 586
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/coupling_orders.py"
+source_blob_oid = "4e45ea4233e7b62592ff3f027be59d3154bd7f5c"
+source_git_mode = "100644"
+source_sha256 = "c75540ae451aaca4c8f497aed727a252a2960c65c9d6174e94039af8a0615ae0"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/coupling_orders.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/couplings.py"
+package_sha256 = "a91df246f6a68325ead56ec30d49c0586fb9b39451ae62a5c527896acb45014f"
+package_size = 13624
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/couplings.py"
+source_blob_oid = "5b70ffdf9f77509f9730a9b824276a3687872346"
+source_git_mode = "100644"
+source_sha256 = "a91df246f6a68325ead56ec30d49c0586fb9b39451ae62a5c527896acb45014f"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/couplings.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/function_library.py"
+package_sha256 = "4f61390f3cd3ba3baa6b37a908f0f3129c457bca2d4e2b2fa8806c3ac31f9ea3"
+package_size = 1817
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/function_library.py"
+source_blob_oid = "a129b2373ac4c7b93b2ced721c66f66acf4fea06"
+source_git_mode = "100644"
+source_sha256 = "4f61390f3cd3ba3baa6b37a908f0f3129c457bca2d4e2b2fa8806c3ac31f9ea3"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/function_library.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/lorentz.py"
+package_sha256 = "2552626d868a558a321c84fbafd14b43dafd2f4bbd45cf04a7693cb1caac3dc1"
+package_size = 6273
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/lorentz.py"
+source_blob_oid = "e2008afb0d8634b1ae756eab6799f663fedafedb"
+source_git_mode = "100644"
+source_sha256 = "2552626d868a558a321c84fbafd14b43dafd2f4bbd45cf04a7693cb1caac3dc1"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/lorentz.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/object_library.py"
+package_sha256 = "a4bb6c554809ff739fea28a70e3a889408ea93f48e55cfe20a68d5664a7e16e1"
+package_size = 8662
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/object_library.py"
+source_blob_oid = "070e82b69912c22cfbe3ee5942c8964c59799d53"
+source_git_mode = "100644"
+source_sha256 = "a4bb6c554809ff739fea28a70e3a889408ea93f48e55cfe20a68d5664a7e16e1"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/object_library.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/parameters.py"
+package_sha256 = "5de44653a32f4c213b6fc0696f3585f36bc34830e64d713c7e268814c847b58f"
+package_size = 26881
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/parameters.py"
+source_blob_oid = "227ec715f9068500d10fac83ad020752f4529045"
+source_git_mode = "100644"
+source_sha256 = "5de44653a32f4c213b6fc0696f3585f36bc34830e64d713c7e268814c847b58f"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/parameters.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/particles.py"
+package_sha256 = "a437dda2285158b79b44d97830d219f16a3fd1aa864f75131acca6d826893f78"
+package_size = 9783
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/particles.py"
+source_blob_oid = "20ef2ef050503086418edd04ccffd1e749036707"
+source_git_mode = "100644"
+source_sha256 = "a437dda2285158b79b44d97830d219f16a3fd1aa864f75131acca6d826893f78"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/particles.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_c_mass.dat"
+package_sha256 = "11626ca4f6a8220df5ed33d530b6fec92fe69ba5f1c82f54bc17427dd3e83116"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_c_mass.dat"
+source_blob_oid = "063853148c39057e482794a212a668e26e4a7e36"
+source_git_mode = "100644"
+source_sha256 = "11626ca4f6a8220df5ed33d530b6fec92fe69ba5f1c82f54bc17427dd3e83116"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_c_mass.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_ckm.dat"
+package_sha256 = "d51f802a2fb5f55a4be5ca0c6daaf666514757f24f42c656a3c00818afd12e44"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_ckm.dat"
+source_blob_oid = "464c9a7630a343dc5debdcb064463a2f5dbfec43"
+source_git_mode = "100644"
+source_sha256 = "d51f802a2fb5f55a4be5ca0c6daaf666514757f24f42c656a3c00818afd12e44"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_ckm.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_default.dat"
+package_sha256 = "878a7d1b110faf49824885bd340fb09d6431394d9c7f3d5b86c12d6f4ef54160"
+package_size = 1573
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_default.dat"
+source_blob_oid = "ba849e7c4d070c3d0638a419865843dc109ae8ad"
+source_git_mode = "100644"
+source_sha256 = "878a7d1b110faf49824885bd340fb09d6431394d9c7f3d5b86c12d6f4ef54160"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_default.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_lepton_masses.dat"
+package_sha256 = "12e95ad3b16a4d92c20c4d60068b27355021bd2966df2af081e06f017ba9bce7"
+package_size = 1570
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_lepton_masses.dat"
+source_blob_oid = "7512d061b872d8a18c4f5217540690eb87d41925"
+source_git_mode = "100644"
+source_sha256 = "12e95ad3b16a4d92c20c4d60068b27355021bd2966df2af081e06f017ba9bce7"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_lepton_masses.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_no_b_mass.dat"
+package_sha256 = "9e1839428fd3a3918fa14be2a5ba0b4907dc12134e91ff08d40cd1056208714c"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_no_b_mass.dat"
+source_blob_oid = "a23cd75616e68b0921fa65477602c3e18cd2793c"
+source_git_mode = "100644"
+source_sha256 = "9e1839428fd3a3918fa14be2a5ba0b4907dc12134e91ff08d40cd1056208714c"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_no_b_mass.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_no_masses.dat"
+package_sha256 = "1f72584d6ed563aa911369719a14d8ac3c51bbe055985b3d0a07b6a7b464ad83"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_no_masses.dat"
+source_blob_oid = "700612593eda124b4a8896e9cdef609474d12c25"
+source_git_mode = "100644"
+source_sha256 = "1f72584d6ed563aa911369719a14d8ac3c51bbe055985b3d0a07b6a7b464ad83"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_no_masses.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_no_tau_mass.dat"
+package_sha256 = "4170075aed30aa27eba1ec1533d42fa1496ff605bf666608ed31557e65d28f46"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_no_tau_mass.dat"
+source_blob_oid = "9626186db64f4bf2e30c9e55758d193aebe89298"
+source_git_mode = "100644"
+source_sha256 = "4170075aed30aa27eba1ec1533d42fa1496ff605bf666608ed31557e65d28f46"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_no_tau_mass.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_no_widths.dat"
+package_sha256 = "05ebf8a6e774a80af3f6880346d0e313cef5aaea92f70a9ec35de68635bdfedf"
+package_size = 1568
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_no_widths.dat"
+source_blob_oid = "1b9aa0329544d721fc36b7e6d6d208008616363e"
+source_git_mode = "100644"
+source_sha256 = "05ebf8a6e774a80af3f6880346d0e313cef5aaea92f70a9ec35de68635bdfedf"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_no_widths.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_parallel_test.dat"
+package_sha256 = "33abf2ee8645e2f55414bb89bb6b9359ad70384667d271d4213a846281622e0e"
+package_size = 1579
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_parallel_test.dat"
+source_blob_oid = "185029d34c995efd5ae353eadbf1a124e30f1ca9"
+source_git_mode = "100644"
+source_sha256 = "33abf2ee8645e2f55414bb89bb6b9359ad70384667d271d4213a846281622e0e"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_parallel_test.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_test.dat"
+package_sha256 = "2ea03c8e94750e40c403d4524bc461f9c1c5802e5f951e15abc18011513f7fe1"
+package_size = 1625
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_test.dat"
+source_blob_oid = "4f33591caceb089f53df245247ffba147f3ebe72"
+source_git_mode = "100644"
+source_sha256 = "2ea03c8e94750e40c403d4524bc461f9c1c5802e5f951e15abc18011513f7fe1"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_test.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/restrict_zeromass_ckm.dat"
+package_sha256 = "ea454a976b28615c60a12d638be9e6896b4e29de10deb8f5ff7337b81a1794ff"
+package_size = 1574
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/restrict_zeromass_ckm.dat"
+source_blob_oid = "6846e8975447cc11ed5f440bcc9e49cf182c11d6"
+source_git_mode = "100644"
+source_sha256 = "ea454a976b28615c60a12d638be9e6896b4e29de10deb8f5ff7337b81a1794ff"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/restrict_zeromass_ckm.dat"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/vertices.py"
+package_sha256 = "89a4311b8305295e3019e1570c57519c2614b784b1f9ee9637a54ee9d2f07b82"
+package_size = 28414
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/vertices.py"
+source_blob_oid = "0c9493360f0755e48366d0fbbf9f95a4feb79296"
+source_git_mode = "100644"
+source_sha256 = "89a4311b8305295e3019e1570c57519c2614b784b1f9ee9637a54ee9d2f07b82"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/vertices.py"
+upstream_exact_blob_match = true
+
+[[files]]
+canonical_package_path = "pyamplicol/assets/models/ufo/loop_sm/write_param_card.py"
+package_sha256 = "628c1411379454931f6a1f4f4e29d2034da8ac095cc2d838e03a24834130bf5a"
+package_size = 7187
+source_repository = "https://launchpad.net/mg5amcnlo"
+source_revision = "MG5_aMC_v3.7.0"
+source_path = "MG5_aMC_v3_7_0/models/loop_sm/write_param_card.py"
+source_blob_oid = "5e58801c7adc54146e108fb8deb862a74a0a4270"
+source_git_mode = "100644"
+source_sha256 = "628c1411379454931f6a1f4f4e29d2034da8ac095cc2d838e03a24834130bf5a"
+license_ids = [ "MadGraph5-aMCatNLO",]
+transformation_id = "verbatim-distribution-file-v1"
+upstream_distribution_path = "models/loop_sm/write_param_card.py"
+upstream_exact_blob_match = true
 
 [source]
 repository = "git@github.com:rikkert-frederix/AmpliCol.git"
