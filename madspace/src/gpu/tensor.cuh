@@ -5,6 +5,7 @@
 #include "madspace/driver/tensor.hpp"
 
 #include <algorithm>
+#include <type_traits>
 
 namespace madspace {
 namespace gpu {
@@ -94,10 +95,17 @@ public:
         return value;
     }
 
+    // atomic for floating-point types: the gradient of a broadcast input (batch
+    // stride 0) and the scatter_add of repeated indices accumulate from many threads
+    // into the same element
     __device__ T operator+=(T value)
         requires(_dim == 0)
     {
-        *_data += value;
+        if constexpr (std::is_floating_point_v<T>) {
+            atomicAdd(_data, value);
+        } else {
+            *_data += value;
+        }
         return value;
     }
 
