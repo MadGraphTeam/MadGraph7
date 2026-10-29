@@ -1035,7 +1035,9 @@ def counterterm_program_blocks(
     (``name, work -> work()``) runs the lowering, the recursion and the
     program's DAG, e.g. to time them (``tools/loop_v2_dag.py``).
     ``u1_grades`` (leading and next-to-leading colour) makes every block of
-    the program exact in N_c (``generation.dag_grades``).
+    the program exact in N_c (``generation.dag_grades``) and refuses a
+    reachable counterterm vertex the ``continuation`` does not cover
+    (``refusals.require_declared_colour_rules``).
 
     A rule the lowering cannot lower is inert when its vertex enters no tree
     of the program (``InsertionReachability``, REQUIREMENTS_ADDENDUM J); the
@@ -1109,10 +1111,12 @@ def counterterm_program_blocks(
                 for name, reason in sorted(recursion.residual.items())
             )
         )
-    if continuation is not None:
-        # LC and NLC grade the CT couplings by the declaration's N_c
-        # continuation: a vertex it does not cover is refused when a tree of
-        # the request can hold it (``refusals``, listed; MQ-NC).
+    if continuation is not None and u1_grades:
+        # LC and NLC (the grade split) grade the CT couplings by the
+        # declaration's N_c continuation: a vertex it does not cover is
+        # refused when a tree of the request can hold it (``refusals``,
+        # listed; MQ-NC). Full colour reads the source couplings at N_c = 3
+        # and needs no coverage.
         from .refusals import require_declared_colour_rules
 
         def reachability() -> Callable[[Any], bool]:

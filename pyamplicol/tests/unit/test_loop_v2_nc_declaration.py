@@ -16,10 +16,12 @@ loop_sm take it when they name no declaration. Checked here:
   every branch of its conditionals, so no N_c = 3 number hides in it (a
   control with C_F written as 4/3 fails the check);
 * the digest is structural: a vertex renamed or moved keeps its entry, one
-  whose coupling changes loses it;
+  whose coupling changes loses it; the data resolves only for a source that
+  states its loop scheme (shipped profile or model metadata);
 * the guard (``colour-declaration-coverage``): an LC/NLC request whose
   counterterm program can insert an uncovered vertex is refused, naming it;
-  an uncovered vertex no tree of the request holds is left alone;
+  an uncovered vertex no tree of the request holds is left alone, and so is
+  every vertex at full colour;
 * LC and NLC of a request that names no declaration equal those with the
   example declaration bitwise, and the LC/NLC smoke passes on every shipped
   restriction (nightly).
@@ -199,6 +201,57 @@ def test_the_vertex_digest_is_structural(raw_models):
     # R2_GQQ is shared by the six q q~ g R2 vertices.
     uncovered = {vertices[i]["name"] for i in coverage.uncovered_vertices}
     assert "V_R2GUU" in uncovered and len(uncovered) == 6, uncovered
+
+
+@pytest.mark.loop_fast
+def test_the_shipped_data_needs_the_sources_own_loop_scheme(raw_models):
+    """The shipped data resolves only for a source stating its scheme: the
+    shipped [loop.model] profile of stock loop_sm, or the loop declaration in
+    the model's metadata (the public route attaches the effective one). A
+    model that shares vertex digests but states another scheme, or none (a
+    changed vertex leaves the profile's digest), gets no declaration, so LC
+    and NLC refuse it for want of colour data (e.g. loop_qcd_qed_sm, which
+    shares 3 of its 499 counterterm vertices with loop_sm)."""
+
+    from dataclasses import replace as replace_scheme
+
+    from pyamplicol.loops.shipped_profiles import shipped_loop_profile
+    from pyamplicol.models.loop_color_declarations import (
+        colour_coverage,
+        resolve_shipped_declaration,
+    )
+    from pyamplicol.models.loop_declaration import with_loop_model_declaration
+
+    raw = raw_models()
+    stock = resolve_shipped_declaration(raw)
+    assert stock is not None
+    declared = shipped_loop_profile(raw).declaration
+    assert (
+        resolve_shipped_declaration(with_loop_model_declaration(raw, declared)) == stock
+    )
+    other = replace(
+        declared,
+        scheme=replace_scheme(declared.scheme, model_convention="another model"),
+    )
+    assert resolve_shipped_declaration(with_loop_model_declaration(raw, other)) is None
+
+    vertices = raw.collections["counterterm_vertices"]
+    index = next(i for i, v in enumerate(vertices) if v["name"] == "V_R2GUU")
+
+    def rename(payload, vertex):
+        vertex["name"] = vertex["fields"]["name"] = "V_RENAMED"
+
+    # A renamed vertex changes the declarations digest (no shipped profile)
+    # but no vertex digest: covered, yet without a stated scheme unresolved.
+    renamed = _with_vertex(raw, index, rename)
+    assert shipped_loop_profile(renamed) is None
+    (coverage,) = colour_coverage(renamed)
+    assert coverage.uncovered_vertices == ()
+    assert resolve_shipped_declaration(renamed) is None
+    assert (
+        resolve_shipped_declaration(with_loop_model_declaration(renamed, declared))
+        == stock
+    )
 
 
 # ------------------------------------------------- literature colour factors
@@ -432,6 +485,13 @@ def test_an_uncovered_reachable_vertex_is_refused(loop_sm, loop_native):
     prepare_request_model(
         loop_sm, _request("u u~ > e- e+ g", born, "nlc", colour_declaration=_subset())
     )
+    # Full colour reads the source couplings at N_c = 3: a declaration that
+    # does not cover a reached vertex is no reason to refuse it.
+    LoopSlice.generate(
+        loop_sm,
+        _request("u u~ > e- e+ g", born, "full", colour_declaration=_subset()),
+        loop_native,
+    )
     LoopSlice.generate(
         loop_sm,
         _request(
@@ -520,10 +580,10 @@ def test_shipped_data_scheme_is_the_shipped_loop_model_profile():
 @pytest.mark.loop_physics
 def test_public_route_lc_on_loop_sm_needs_no_declaration(loop_native, tmp_path):
     """The public route on the shipped loop_sm (``model.source = "loop_sm"``,
-    the wheel's copy): an LC card with no [loop.model] and no colour
-    declaration plans and generates g g > g g (the shipped [loop.model]
-    profile and the shipped colour declaration), and the stored process
-    evaluates at LC."""
+    the wheel's copy, its default restriction with MB = 4.7): an LC card with
+    no [loop.model], no colour declaration and no fixed parameters plans and
+    generates g g > g g (the shipped [loop.model] profile and the shipped
+    colour declaration), and the stored process evaluates at LC."""
 
     from dataclasses import asdict
 
@@ -549,8 +609,6 @@ contraction = "direct"
 [loop]
 r2_strategy = "model"
 engine = "v2"
-[loop.preparation]
-fixed_parameters = {{MB = "0"}}
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false

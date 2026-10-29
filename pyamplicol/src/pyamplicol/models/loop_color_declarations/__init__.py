@@ -48,8 +48,10 @@ source at N_c = 3.
 ``resolve_shipped_declaration`` turns the shipped data into the ordinary
 ``LoopColorDeclaration`` of one source (its kernel and field keys at that
 source's positions), which ``resolve_loop_color_declaration`` returns when
-the source carries no declaration of its own. Like every declaration it is
-declared, not certified.
+the source carries no declaration of its own and states the data's loop
+scheme (its model metadata's loop declaration, else its shipped
+``[loop.model]`` profile): a model that merely shares some vertex digests
+gets none. Like every declaration it is declared, not certified.
 """
 
 from __future__ import annotations
@@ -538,19 +540,48 @@ def _declaration(raw: Any, coverage: ColourCoverage) -> LoopColorDeclaration:
     )
 
 
+def _source_scheme(raw: Any) -> Any:
+    """The loop scheme ``raw`` states: its model metadata's loop declaration
+    (the public route attaches the effective one there), else its shipped
+    ``[loop.model]`` profile (``loops.shipped_profiles``), else None."""
+
+    from pyamplicol.models.loop_declaration import (
+        LOOP_DECLARATION_KEY,
+        LoopModelDeclaration,
+    )
+
+    payload = raw.metadata.get(LOOP_DECLARATION_KEY)
+    if payload is not None:
+        return LoopModelDeclaration.from_dict(payload).scheme
+    from pyamplicol.loops.shipped_profiles import shipped_loop_profile
+
+    profile = shipped_loop_profile(raw)
+    return None if profile is None else profile.declaration.scheme
+
+
 def resolve_shipped_declaration(raw: Any) -> LoopColorDeclaration | None:
     """The shipped declaration of ``raw`` (module docstring): the
     ``LoopColorDeclaration`` of the counterterm vertices and field factors a
     shipped data set covers, at ``raw``'s positions, or None when no data set
-    covers any of its counterterm vertices or ``raw`` lacks a parameter the
-    data's identities or scheme values name."""
+    covers any of its counterterm vertices, ``raw`` lacks a parameter the
+    data's identities or scheme values name, or ``raw``'s own loop scheme
+    (``_source_scheme``) is not the data's: another model sharing a few
+    vertex digests with loop_sm (e.g. loop_qcd_qed_sm, 3 of its 499) gets
+    none, so LC and NLC refuse it for want of colour data."""
 
+    from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+    scheme = None
     for coverage in colour_coverage(raw):
         data = coverage.data
         names = {str(record["name"]) for record in raw.collections["parameters"]}
-        if set(data.parameter_identities) | set(data.scheme_parameter_values) <= (
+        if not set(data.parameter_identities) | set(data.scheme_parameter_values) <= (
             names
         ):
+            continue
+        if scheme is None:
+            scheme = _source_scheme(raw)
+        if scheme == LoopSchemeDeclaration(**data.scheme):
             return _declaration(raw, coverage)
     return None
 

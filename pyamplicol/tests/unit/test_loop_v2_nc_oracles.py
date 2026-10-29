@@ -102,16 +102,15 @@ def _relative(a: Decimal, b: Decimal) -> Decimal:
 
 def _pole_errors(result) -> list[Decimal]:
     """Per predicted sector, the single and double poles' deviations from
-    Catani, relative to the larger prediction."""
+    Catani, strictly relative per coefficient (m-qcd PLAN §1.4 rule 4)."""
 
     errors = []
     assert result["ir_poles"], "no Catani prediction"
     for sector, (single, double) in result["ir_poles"].items():
         virtual = result["components"]["virtual"][sector]
         predicted = (Decimal(single), Decimal(double))
-        scale = max(map(abs, predicted))
         for got, want in zip((virtual[1], virtual[2]), predicted, strict=True):
-            errors.append(abs(Decimal(got) - want) / scale)
+            errors.append(_relative(Decimal(got), want))
     return errors
 
 

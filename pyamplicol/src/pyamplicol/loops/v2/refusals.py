@@ -456,8 +456,9 @@ def require_declared_colour_rules(
 def require_declared_colour_fields(
     continuation: Any, insertions: Iterable[Any], process: str
 ) -> None:
-    """Refuse (``colour-declaration-coverage``) an LC or NLC request whose
-    external-field ``insertions`` (``wavefunction.ExternalFieldInsertion``)
+    """Refuse (``colour-declaration-coverage``) an LC or NLC request
+    (``continuation`` its ``SourceColorContinuation``; None at full colour)
+    whose external-field ``insertions`` (``wavefunction.ExternalFieldInsertion``)
     take a field factor the continuation does not cover."""
 
     if continuation is None:

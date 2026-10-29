@@ -2071,16 +2071,18 @@ class LoopSlice:
         # every counterterm rule a site closes needs declared N_c data (the
         # recursion's rules are checked in ``counterterm_program_blocks``;
         # ``refusals``, listed; MQ-NC). The alpha(0) photon terms are the
-        # engine's own, not source factors.
+        # engine's own, not source factors. Full colour (with or without a
+        # declaration) reads the source couplings at N_c = 3: no check.
+        projected = continuation if request.accuracy != "full" else None
         require_declared_colour_fields(
-            continuation,
+            projected,
             (i for i in insertions if i.rule in source_field_rules),
             request.process,
         )
         if program is None:
             closed = {id(site.rule) for site in sites.sites}
             require_declared_colour_rules(
-                continuation,
+                projected,
                 {
                     name: rule
                     for name, rule in prepared.counterterms.rules.items()
