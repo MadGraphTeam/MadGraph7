@@ -78,20 +78,22 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   2026-10-28 ~15:25): ``loop-induced`` (no Born amplitude within the
   request's coupling-order limits, ``generation.loop_service._v2_request``),
   ``coloured-width`` (a coloured particle with a nonzero width in a tree
-  current, ``artifact.require_zero_coloured_widths``), ``dirac-weyl-closure``
-  (a massive Dirac current closing on a massless Weyl one,
-  ``generation.dag_ordering._direct_contraction_ir``, shared with tree
-  requests and therefore also a ``ValueError``,
-  ``LoopRequestUnsupportedValue``), and at model preparation
-  (``loops.covariant_model.build_covariant_structure``)
+  current, ``artifact.require_zero_coloured_widths``), and at model
+  preparation (``loops.covariant_model.build_covariant_structure``)
   ``lorentz-slot-arity`` (a vertex tensor whose slots do not match its
   particles once the structural source repair,
   ``covariant_model.repair_source_declarations``, has moved the constant
   scalar ones), ``majorana-fermion`` and ``multi-fermion-contact``. Each is
-  decided by structure: widths, masses and chiralities, spin slots, the
-  self-conjugacy of a fermion, the number of fermions at a vertex.
-  Process-request refusals (1 -> n decays, MG5_aMC syntax) are listed in
-  ``processes.refusals``.
+  decided by structure: widths, spin slots, the self-conjugacy of a
+  fermion, the number of fermions at a vertex. Process-request refusals
+  (1 -> n decays, MG5_aMC syntax) are listed in ``processes.refusals``.
+  A massive (Dirac) current closing on a massless (Weyl) one (a fermion line
+  joining massive and massless fermions through a chiral vertex, e.g.
+  b b~ > w+ w- with a massless b) is no loop refusal since m-qcd MQ-5F: the
+  loop Born DAG records it as a marker root and the Born closes at a vertex
+  (``generation.dag_ordering._direct_contraction_ir`` with ``loop_born``);
+  the tree lanes refuse it (``dag_ordering.DiracWeylClosureUnsupported``,
+  key ``dirac-weyl-closure``).
 * ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
   "fft"`` requires the certified symmetric-group FFT of the seed contraction
   (design §7.3). Orbits of the external adjoint labels are found and
@@ -251,20 +253,6 @@ LOOP_ADMISSION_REFUSALS = (
         "widths of coloured particles in the complex-mass scheme",
     ),
     LoopAdmissionRefusal(
-        "dirac-weyl-closure",
-        "a fermion line that joins massive and massless fermions through a "
-        "chiral vertex and closes a massive (Dirac) current on a massless "
-        "(Weyl) one (e.g. b b~ > w+ w- with a massless b and the t channel)",
-        "models install no Dirac-Weyl closure contraction, so such a closure "
-        "would silently drop its diagrams",
-        "keep the light fermion massive in the tree model (the default "
-        "restriction with the mass fixed to zero in [loop.preparation] "
-        'fixed_parameters, e.g. MB = "0" and ymb = "0", instead of a '
-        "restriction that removes the mass)",
-        "MQ-5F",
-        "Dirac-Weyl closures in loop Born admission",
-    ),
-    LoopAdmissionRefusal(
         "lorentz-slot-arity",
         "a vertex that references a Lorentz tensor whose spin slots differ from "
         "its particles, other than a constant scalar tensor with a unique "
@@ -395,9 +383,9 @@ class LoopRequestUnsupported(GenerationError):
 
 
 class LoopRequestUnsupportedValue(LoopRequestUnsupported, ValueError):
-    """A listed refusal (``LoopRequestUnsupported``) raised from code that
-    tree requests share, whose callers handle the untyped ``ValueError`` it
-    replaces (the Dirac-Weyl closure of the tree DAG)."""
+    """A listed refusal (``LoopRequestUnsupported``) raised where callers
+    handle the untyped ``ValueError`` it replaces (``lorentz-slot-arity`` at
+    model preparation)."""
 
 
 def listed_refusal_keys() -> tuple[str, ...]:
