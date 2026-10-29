@@ -112,8 +112,7 @@ The package key licenses the Python `symbolica` module. The native extension
 (and the native loop SDK) contains its own Rust copy of Symbolica. pyAmpliCol
 registers the same package key with that copy too, and the native operations
 that need Symbolica state (decoding saved evaluators of loop processes,
-double-double and arbitrary-precision loop evaluation, the legacy loop
-runtime) run under it. Without the key, that copy would run restricted: the
+double-double and arbitrary-precision loop evaluation) run under it. Without the key, that copy would run restricted: the
 first Symbolica operation of a process takes the user's single restricted
 thread, and any other process of the same user that needs one then aborts
 with "Cannot start another restricted Symbolica thread while this user's

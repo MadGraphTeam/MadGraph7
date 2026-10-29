@@ -1,5 +1,15 @@
 # Standalone virtual SDK
 
+> **Plan v4 only.** The per-diagram legacy one-loop engine was removed
+> (2026-10-29, user ruling M-QCD Q3): the SDK opens plan v4 artifacts of the
+> v2 engine; a plan v1-v3 artifact (`rusticol.loop-runtime.v3`) is refused
+> with a compatibility error ("the legacy one-loop engine was removed ...;
+> regenerate the artifact"). Resolved, directed-colour (correlated),
+> spin-source and verified/rescued evaluations were served by the legacy
+> runtime only: their entry points remain in the ABI and refuse with the
+> plan v4 reason (use the Python API). The sections below that describe them
+> document those entry points; their tests and example clients were removed.
+
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
 model importer, graph generator or alternate reducer. The existing tree SDK is
