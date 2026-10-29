@@ -79,7 +79,7 @@ use rusticol_core::loop_artifact::{
     LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata, LoopV2NativeTrees,
     load_loop_v2_artifact, read_loop_v2_native_inputs,
 };
-use rusticol_core::loop_execution::v2::{LaneKey, Poles, V2Executor, V2Options};
+use rusticol_core::loop_execution::v2::{Contraction, LaneKey, Poles, V2Executor, V2Options};
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::trees::{TreeProgram, TreeRuntime};
 use rusticol_core::{RusticolError, RusticolResult};
@@ -143,8 +143,47 @@ struct NativeRecord {
     #[serde(default)]
     scale_parameter: Option<String>,
     trees: NativeTreesRecord,
+    /// The plan's certified seed FFT (`plan_export.fourier_record`), absent
+    /// when every seed is contracted directly.
+    #[serde(default)]
+    fourier: Option<serde_json::Value>,
+    /// The certified-scaleless companion's record (its plan's seed FFT).
+    #[serde(default)]
+    scaleless: Option<CompanionRecord>,
     #[serde(flatten)]
     _rest: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct CompanionRecord {
+    #[serde(default)]
+    fourier: Option<serde_json::Value>,
+    #[serde(flatten)]
+    _rest: BTreeMap<String, serde_json::Value>,
+}
+
+/// An executor with the seed Fourier record of its plan attached, if any.
+fn with_fourier(
+    executor: V2Executor,
+    fourier: Option<&serde_json::Value>,
+) -> RusticolResult<V2Executor> {
+    match fourier {
+        None => Ok(executor),
+        Some(record) => executor.with_fourier(
+            &serde_json::to_vec(record)
+                .map_err(|e| invalid(format!("seed Fourier record: {e}")))?,
+        ),
+    }
+}
+
+/// The seed contraction of the process's declared policy (DESIGN.md §7.3):
+/// "fft" requires the certified FFT, "direct" never runs it.
+fn contraction(policy: &str) -> Contraction {
+    match policy {
+        "direct" => Contraction::Direct,
+        "fft" => Contraction::Fft,
+        _ => Contraction::Auto,
+    }
 }
 
 #[derive(Deserialize)]
@@ -446,7 +485,10 @@ impl V2Runtime {
             return Err(invalid("the tree program has no counterterm components"));
         }
         let runtime = trees.runtime(&0.0)?;
-        let executor = V2Executor::new(program, V2_LANES, threads)?;
+        let executor = with_fourier(
+            V2Executor::new(program, V2_LANES, threads)?,
+            record.fourier.as_ref(),
+        )?;
         if native.scaleless.is_some() != artifact.scaleless_program.is_some() {
             return Err(invalid(
                 "the companion's tree program is stored exactly with its plan",
@@ -540,7 +582,13 @@ impl V2Runtime {
                 ));
             }
             let runtime = trees.runtime(&0.0)?;
-            let executor = V2Executor::new(program.clone(), V2_LANES, self.threads)?;
+            let executor = with_fourier(
+                V2Executor::new(program.clone(), V2_LANES, self.threads)?,
+                self.record
+                    .scaleless
+                    .as_ref()
+                    .and_then(|twin| twin.fourier.as_ref()),
+            )?;
             self.scaleless = Some(Companion {
                 trees,
                 runtime,
@@ -774,11 +822,21 @@ impl V2Runtime {
         };
         let options = V2Options {
             poles: mode.lanes(),
+            contraction: contraction(&self.artifact.metadata.color_contraction),
             ..V2Options::default()
         };
         let (results, _report) =
             self.executor
                 .evaluate(&batch, &zero, &mut self.backend, options)?;
+        // The companion's seeds take the FFT where certified, never required
+        // (`plan_export.NativeExecutor.scaleless`).
+        let options = V2Options {
+            contraction: match options.contraction {
+                Contraction::Direct => Contraction::Direct,
+                _ => Contraction::Auto,
+            },
+            ..options
+        };
         let born = inputs
             .born_squared
             .ok_or_else(|| invalid("the tree program forms no |A0|²"))?;

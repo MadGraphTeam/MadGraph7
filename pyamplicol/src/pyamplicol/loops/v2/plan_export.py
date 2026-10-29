@@ -56,7 +56,7 @@ from pyamplicol.color.connections import ExactColorCoefficient
 from pyamplicol.config import PoleSelection
 
 from . import reference_executor as rx
-from .colour import project
+from .colour import SYMMETRIC_GROUP_FFT, project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .poly_affine import size
@@ -64,6 +64,9 @@ from .refusals import require_formal_nc_tables
 from .schedules import forward_graph
 
 PLAN_SCHEMA = 4
+# The native report's count of seed-FFT jobs (``loop_execution::v2::
+# FFT_SEED_JOBS``): present exactly when an evaluation ran the FFT.
+FFT_SEED_JOBS = "symmetric-group-fft seed jobs"
 _ONE = ExactColorCoefficient(1)
 # Lanes of the native executor's SIMD batches (gate G0, design §5.4).
 DEFAULT_LANES = 16
@@ -138,6 +141,9 @@ class ExportedPlan:
     # (``born_components``, keys); ``{"same": True, ...}`` when the plan's
     # own columns serve the set.
     column_seeds: Mapping[str, Mapping[str, Any]] | None = None
+    # The certified seed FFT of the plan's seeds (``fourier_record``; JSON),
+    # None when every seed is contracted directly.
+    fourier: str | None = None
 
     def json(self) -> str:
         """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
@@ -197,6 +203,9 @@ class _Exporter:
     # Write the schedule-B row links and step rows (the loader derives them;
     # written, they are checked against the derivation).
     links: bool = False
+    # (class, loop order) -> seed-class record of the latest ``seed_records``
+    # (the seed Fourier record's loop orbits, ``fourier_record``).
+    class_records: dict[tuple[int, Orders], int] = field(default_factory=dict)
 
     # -- kernels ------------------------------------------------------------
 
@@ -402,6 +411,7 @@ class _Exporter:
                 entries.setdefault((c, order), []).append((b, born_order))
             indexed.append((table, degree, entries))
         classes: dict[tuple[int, Orders], int] = {}
+        self.class_records = classes
         class_records: list[dict] = []
         # Projected cells by (table, class, basis element, degree, grade):
         # columns and loop orders of one class share them.
@@ -890,6 +900,119 @@ def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
     )
 
 
+FOURIER_SCHEMA = 1
+
+
+def fourier_record(
+    slice_: Any, exporter: _Exporter, columns: Sequence[SeedColumn]
+) -> str | None:
+    """The seed Fourier record of a plan (design §7.3; read and certified by
+    ``loop_v2::fourier::SeedFourier::load``), or None without a certified
+    pair the plan's seeds read.
+
+    The orbits are those ``colour.seed_fourier`` detects and certifies
+    structurally on the slice's exact seed cells (``slice_.fourier``). The
+    record maps them into the plan: per job (weight column, Born order, loop
+    order, Born N_c grade) the plan's Born component of each element of each
+    Born orbit (-1: no seed weight reads it), the plan's seed-class record
+    and sign of each element of each loop orbit (-1: no seed key reads the
+    class at that loop order) and the certified pairs whose projected kernel
+    is nonzero. It holds no weights: the native loader reads the kernels from
+    the plan's weights and certifies every pair again on them. Only weight
+    columns of the slice's own table over every basis element (the sector
+    columns) are covered; directed and Born-component columns stay direct.
+    """
+
+    fourier = slice_.fourier
+    if fourier is None:
+        return None
+    table = slice_.table
+    accuracy = slice_.request.accuracy
+    born_grades = slice_._born_grades()
+    keys, weight_of_column = weight_columns(columns)
+    first: dict[int, int] = {}
+    for k, w in enumerate(weight_of_column):
+        first.setdefault(w, k)
+    records = exporter.class_records
+    projected: dict[tuple[int, int, int | None, int], bool] = {}
+
+    def live(a: int, j: int, degree: int | None, grade: int) -> bool:
+        key = (a, j, degree, grade)
+        found = projected.get(key)
+        if found is None:
+            found = projected[key] = any(
+                project(cell, degree, accuracy, grade) for cell in fourier.kernels[a, j]
+            )
+        return found
+
+    jobs = []
+    for w in range(len(keys)):
+        column = columns[first[w]]
+        if column.table is not table or column.basis is not None:
+            continue
+        degree = column.degree
+        if accuracy != "full" and degree is None:
+            degree = table.degree(column.pairs, born_grades)
+        for born_order, loop_order in sorted(column.pairs):
+            pairs = [
+                (a, j)
+                for a, j in sorted(fourier.kernels)
+                if born_order in table.basis.orders[fourier.born_orbits[a][0]]
+                and loop_order in table.orders[fourier.loop_orbits[j][0][0]]
+                and any(
+                    (c, loop_order) in records for c, _sign in fourier.loop_orbits[j]
+                )
+            ]
+            grades = sorted(
+                {
+                    grade
+                    for a, _j in pairs
+                    for b in fourier.born_orbits[a]
+                    for grade in born_grades.get((b, born_order), ())
+                }
+            )
+            for grade in grades:
+                chosen = [
+                    (a, j)
+                    for a, j in pairs
+                    if any(
+                        grade in born_grades.get((b, born_order), ())
+                        for b in fourier.born_orbits[a]
+                    )
+                    and live(a, j, degree, grade)
+                ]
+                if not chosen:
+                    continue
+                born = sorted({a for a, _j in chosen})
+                loop = sorted({j for _a, j in chosen})
+                jobs.append(
+                    {
+                        "column": w,
+                        "born": [
+                            [
+                                exporter.born_components.get((b, born_order, grade), -1)
+                                for b in fourier.born_orbits[a]
+                            ]
+                            for a in born
+                        ],
+                        "loop": [
+                            [
+                                [records.get((c, loop_order), -1), sign]
+                                for c, sign in fourier.loop_orbits[j]
+                            ]
+                            for j in loop
+                        ],
+                        "pairs": [[born.index(a), loop.index(j)] for a, j in chosen],
+                    }
+                )
+    if not jobs:
+        return None
+    return json.dumps(
+        {"schema": FOURIER_SCHEMA, "degree": fourier.degree, "jobs": jobs},
+        separators=(",", ":"),
+    )
+
+
 def export_plan(
     slice_: Any,
     *,
@@ -980,6 +1103,7 @@ def export_plan(
     columns_given = columns
     columns = tuple(sector_columns(slice_) if columns is None else columns)
     seed_classes, seeds, column_weights = exporter.seed_records(columns)
+    fourier = fourier_record(slice_, exporter, columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
@@ -1091,6 +1215,7 @@ def export_plan(
         else tuple(range(len(columns))),
         trees=native_trees,
         column_seeds=column_seeds,
+        fourier=fourier,
     )
 
 
@@ -1200,6 +1325,7 @@ class NativeExecutor:
         born_squared: bool = True,
         counterterms: bool = True,
         scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
+        contraction: Literal["auto", "direct", "fft"] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -1207,15 +1333,14 @@ class NativeExecutor:
             raise ValueError("plan_json is the serialised exported plan")
         if isinstance(scaleless, tuple) and slice_.scaleless is None:
             raise ValueError("a scaleless companion plan needs the slice's companion")
-        if slice_.request.colour_contraction == "fft":
-            # The native seeds contract the exported exact weights directly
-            # (``seed_records``); an explicit "fft" is refused, not ignored.
-            raise ValueError(
-                "the native executor contracts seeds directly; request colour "
-                "contraction 'auto' or 'direct'"
-            )
         self.slice = slice_
         self.inputs = inputs
+        # The seed contraction (design §7.3): the request's policy, or the
+        # caller's (a companion plan contracts its seeds "auto").
+        policy = contraction or slice_.request.colour_contraction
+        if policy not in ("auto", "direct", "fft"):
+            raise ValueError(f"unknown colour contraction {policy!r}")
+        self.contraction = policy
         if merged is True:
             merged = merged_graph(slice_)
         self.exported = exported or export_plan(
@@ -1228,6 +1353,12 @@ class NativeExecutor:
         )
         if inputs == "native" and self.exported.trees is None:
             raise ValueError("native inputs need a plan exported with trees=True")
+        if policy == "fft" and self.exported.fourier is None:
+            # An explicit "fft" requires the FFT: refused, not ignored.
+            raise ValueError(
+                "colour contraction 'fft' needs a certified symmetric-group "
+                "orbit pair among the plan's seeds; request 'auto' or 'direct'"
+            )
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
@@ -1270,6 +1401,11 @@ class NativeExecutor:
                 threads=self.threads,
                 forms=self.forms,
                 trees=trees,
+                # The seed FFT runs in every floating carrier; the exact one
+                # (numerators only) and a direct policy contract directly.
+                fourier=None
+                if arithmetic == "exact" or self.contraction == "direct"
+                else self.exported.fourier,
             )
         return found
 
@@ -1306,6 +1442,9 @@ class NativeExecutor:
                     inputs=self.inputs,
                     born_squared=False,
                     counterterms=False,
+                    # The companion's families carry pole residues only: its
+                    # seeds take the FFT where certified, never required.
+                    contraction="direct" if self.contraction == "direct" else "auto",
                 )
             self._scaleless.append(built)
         return self._scaleless[0]
@@ -1675,6 +1814,36 @@ class NativeExecutor:
         native = self.native(arithmetic, digits, len(evaluations))
         return native.tree_inputs(self._inputs(evaluations, arithmetic))
 
+    def seed_values(
+        self,
+        points,
+        scales,
+        parameters=None,
+        precision=None,
+        contraction: Literal["auto", "direct", "fft"] = "auto",
+    ) -> list[list[tuple[Any, ...]]]:
+        """The seeds U0 of a batch (``inputs="native"``): per point, per seed
+        key, its ``rows * columns`` values in the carrier (``complex`` in
+        binary64, ``reference_executor.Complex`` of ``Decimal`` otherwise),
+        contracted as ``evaluate`` with ``contraction`` contracts them: the
+        oracle of the certified seed FFT (design §7.3), whose values equal
+        the direct contraction's to the contraction's own rounding, without
+        the reduction's amplification."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        raw = native.seed_values(
+            self._inputs(evaluations, arithmetic), contraction=contraction
+        )
+        return [
+            [tuple(_carrier_value(z, arithmetic) for z in key) for key in point]
+            for point in raw
+        ]
+
     def bound_masses(self, points, scales, parameters=None, precision=None):
         """The squared masses the native lane binds for a batch
         (``inputs="native"``, ``TreeProgram::bind``): per plan mass and per
@@ -1748,13 +1917,18 @@ class NativeExecutor:
                 points, scales, parameters, precision, poles, wards
             )
         failed = self.reduce(evaluations, precision, poles, retest, schedule)
+        # The executor's report names the seed contraction it ran: the
+        # certified pairs by the symmetric-group FFT, or every weight directly.
+        algorithm = (
+            SYMMETRIC_GROUP_FFT
+            if self.last_report["counts"].get(FFT_SEED_JOBS)
+            else "direct"
+        )
         for index, evaluation in enumerate(evaluations):
             if index in failed:
                 continue
             with _Numbers(precision).scope():
-                # The native seeds contract the exported exact weights K[c, b]
-                # with the Born components directly (``seed_records``).
-                evaluation.colour_contraction = "direct"
+                evaluation.colour_contraction = algorithm
                 evaluation._assemble()
         return precision, evaluations, failed
 
@@ -1801,7 +1975,10 @@ class NativeExecutor:
             "rescale": retest == "rescaled",
         }
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic), schedule=schedule, **options
+            self._inputs(evaluations, arithmetic),
+            schedule=schedule,
+            contraction=self.contraction,
+            **options,
         )
         exported = self.exported
         self.last_report = output["report"]
