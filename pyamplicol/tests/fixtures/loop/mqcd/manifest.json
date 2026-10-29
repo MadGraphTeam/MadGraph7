@@ -195,13 +195,12 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1199,
+    "seconds": 1190,
     "rows": [
-     "A13",
-     "A13@sectors",
      "B05",
      "B05@sectors",
-     "D02"
+     "D17",
+     "D17@5F"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly.py"
    },
@@ -224,22 +223,21 @@
    },
    {
     "job": 4,
-    "seconds": 1193,
+    "seconds": 1177,
     "rows": [
      "A14",
      "B07",
-     "C03",
      "C06",
-     "D06",
-     "D06@madloop",
      "E06",
-     "E06@sectors"
+     "E06@sectors",
+     "F01",
+     "F01@5F"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1197,
+    "seconds": 1190,
     "rows": [
      "A09",
      "A09@collinear",
@@ -260,9 +258,9 @@
      "D07@sectors",
      "D08",
      "D08@sectors",
-     "D15",
      "E01",
-     "H01",
+     "F04",
+     "F04@5F",
      "M01@P0",
      "M01@P2",
      "M01@public-P0",
@@ -272,7 +270,7 @@
    },
    {
     "job": 6,
-    "seconds": 1197,
+    "seconds": 1183,
     "rows": [
      "A01",
      "A01@sectors",
@@ -283,12 +281,12 @@
      "A06",
      "A06@sectors",
      "A07",
+     "A13",
+     "A13@sectors",
      "A19",
      "A19@sectors",
      "A20",
      "A20@sectors",
-     "A25",
-     "A26",
      "B02",
      "B02@madloop",
      "B06",
@@ -298,45 +296,55 @@
      "C05",
      "C07",
      "C08",
+     "C09",
      "D05",
+     "D06",
+     "D06@madloop",
      "D09",
      "D09@sectors",
      "D10",
      "D10@sectors",
      "D11",
      "D12",
-     "D13",
-     "D16",
-     "D17",
-     "D19",
      "D20",
      "D23",
      "D25",
      "D25@zero",
      "D26",
-     "D27",
      "E02",
-     "F01",
      "F02",
-     "F04",
-     "G01",
+     "F02@5F",
      "G02",
-     "R01"
+     "H01",
+     "H02",
+     "H03"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_6.py"
    },
    {
     "job": 7,
-    "seconds": 132,
+    "seconds": 402,
     "rows": [
      "A04",
      "A12",
      "A12@sectors",
+     "A25",
+     "A26",
+     "C03",
      "D01",
+     "D02",
+     "D13",
+     "D15",
+     "D16",
      "D18",
+     "D19",
      "D21",
      "D24",
-     "E05"
+     "D27",
+     "E05",
+     "F03",
+     "G01",
+     "R01"
     ],
     "file": "tests/unit/test_loop_v2_mqcd_nightly_7.py"
    }
@@ -3424,7 +3432,7 @@
    "gauge": "unitary",
    "scheme": "qcd-cmass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (+ Recola; MQ-5F)",
    "reference": {
     "format": "required",
@@ -3458,11 +3466,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "D01",
@@ -4593,11 +4597,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -5632,11 +5631,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ],
@@ -5744,11 +5738,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -5783,7 +5772,7 @@
    "gauge": "unitary",
    "scheme": "qcd",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~15 s",
    "reference": {
     "format": "required",
@@ -5817,11 +5806,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "F04",
@@ -5922,11 +5907,6 @@
        2,
        3
       ]
-     },
-     "status": "pending",
-     "pending": {
-      "waits_for": "MQ-5F",
-      "reason": "the tools route refuses the restricted-UFO request at generation (a Dirac current closing on a Weyl current: the MQ-5F class)"
      }
     }
    ]
@@ -6217,7 +6197,7 @@
    "gauge": "unitary",
    "scheme": "qcd-ckm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s + CKM-factor relation (MQ-5F)",
    "reference": {
     "format": "required",
@@ -6251,10 +6231,6 @@
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   },
    "ckm_relation": {
     "twin_process": "g b > t w-",
     "numerator": [
@@ -6291,7 +6267,7 @@
    "gauge": "unitary",
    "scheme": "qcd-ckm4",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~15 s (single-provider exception; MQ-5F)",
    "reference": {
     "format": "required",
@@ -6324,11 +6300,7 @@
    "unpredicted_sectors": [],
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
-   "pending": {
-    "waits_for": "MQ-5F",
-    "reason": "the reference exists (MQ-REF); the tools route refuses the request at generation: a Dirac (massive) current cannot close on a Weyl current (the MQ-5F class)"
-   }
+   "reference_tolerance": 1e-12
   },
   {
    "id": "M01",
