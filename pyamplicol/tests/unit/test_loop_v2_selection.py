@@ -30,6 +30,7 @@ Exhaustive configurations (2->4 complete sets, a 2->5 row) run nightly.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -42,6 +43,7 @@ from pyamplicol.loops.v2 import selection as lc
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ROOT / "tests" / "fixtures" / "loop" / "legacy"
 PARAMETERS = {"aS": "0.118", "MT": "173"}
+ALPHA_S = float(PARAMETERS["aS"])
 DOUBLE = 1e-12
 DOUBLE_DOUBLE = Decimal("1e-24")
 # Born and loop QCD orders by external leg count (QED 0).
@@ -113,10 +115,25 @@ def _values(result, index=0) -> list:
     return [born, *laurent]
 
 
-def _close(actual, expected, tolerance) -> None:
-    scale = max(abs(x) for x in expected)
+def _close(actual, expected, tolerance, born=None) -> None:
+    """Per coefficient (m-qcd PLAN §1.4): rel(a, b) = |a - b| / max(|a|, |b|)
+    <= ``tolerance``, strictly relative; with the point's inclusive Born
+    ``born`` a coefficient that vanishes identically (both below ``tolerance``
+    F_s, F_s = |born| alpha_s/2pi) is held absolutely to ``tolerance`` F_s.
+    Binary64 or ``Decimal`` values."""
+
+    if isinstance(tolerance, Decimal):
+        actual, expected = [Decimal(x) for x in actual], [Decimal(x) for x in expected]
+        born = None if born is None else Decimal(born)
+        factor = Decimal(ALPHA_S) / (2 * Decimal(math.pi))
+    else:
+        factor = ALPHA_S / (2 * math.pi)
+    floor = 0 if born is None else tolerance * abs(born) * factor
     for a, b in zip(actual, expected, strict=True):
-        assert abs(a - b) <= tolerance * scale, (actual, expected)
+        size = max(abs(a), abs(b))
+        if size <= floor:
+            continue
+        assert abs(a - b) <= tolerance * size, (actual, expected, a, b)
 
 
 def _summed(results) -> list:
@@ -144,6 +161,14 @@ def test_selection_records_catalogue_resolution_and_refusals():
     selection = lc.Selection(((5, 1), (1, -1)), ((2, 4, 3, 5, 1),))
     assert selection.helicities == ((1, -1), (5, 1))
     assert lc.Selection.from_record(selection.record()) == selection
+    assert set(selection.record()) == {"helicities", "flows"} and selection.restricts
+    # The tree engine's plan options order the flows and select nothing.
+    ordered = lc.Selection((), None, [2, 4, 3, 5, 1], None)
+    assert ordered.record()["color_order"] == [2, 4, 3, 5, 1]
+    assert lc.Selection.from_record(ordered.record()) == ordered
+    assert not ordered.restricts
+    capped = lc.Selection((), ((2, 1, 3, 5, 4),), None, 2)
+    assert lc.Selection.from_record(json.loads(json.dumps(capped.record()))) == capped
     with pytest.raises(ValueError, match="one helicity per leg"):
         lc.Selection(((1, -1), (1, 1)))
     with pytest.raises(ValueError, match="at least one flow"):
@@ -241,7 +266,7 @@ def assert_complete_sets(
         one = runtime.evaluate(
             pts, mu_r2=scales, helicities=[lc.helicity_id(row)], color_flows=[flow.id]
         )
-        _close(list(one.values[0][0]), list(entry), DOUBLE)
+        _close(list(one.values[0][0]), list(entry), DOUBLE, born=inclusive[0])
     if not double_double:
         return
     runtime = _runtime(observables, "native")
@@ -252,9 +277,7 @@ def assert_complete_sets(
         runtime.evaluate(pts, mu_r2=scales, color_flows=g, arithmetic="double-double")
         for g in partition
     )
-    scale = max(abs(x) for x in inclusive)
-    for a, b in zip(total, inclusive, strict=True):
-        assert abs(Decimal(a) - Decimal(b)) <= DOUBLE_DOUBLE * Decimal(scale)
+    _close(total, inclusive, DOUBLE_DOUBLE)
 
 
 @pytest.mark.loop_physics
@@ -354,10 +377,7 @@ def test_generation_selection_prunes_and_equals_the_runtime_selection(
         pts, mu_r2=scales, arithmetic="double-double", **selectors
     )
     value = _runtime(chosen).evaluate(pts, mu_r2=scales, arithmetic="double-double")
-    expected = _values(reference)
-    scale = max(abs(x) for x in expected)
-    for a, b in zip(_values(value), expected, strict=True):
-        assert abs(Decimal(a) - Decimal(b)) <= DOUBLE_DOUBLE * Decimal(scale)
+    _close(_values(value), _values(reference), DOUBLE_DOUBLE)
 
 
 @pytest.mark.loop_physics
@@ -376,6 +396,31 @@ def test_a_flow_below_the_leading_colour_is_zero_and_refused_at_generation(gener
 
 
 # ------------------------------------------------------- tree-engine parity
+
+
+def _chosen(compiled, process: str, **selectors):
+    """The public route's selection (``loop_service._v2_selection``) of the
+    tree engine's ``[process]`` selectors."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.generation.loop_service import _v2_selection
+
+    fields = dict.fromkeys(
+        (
+            "max_color_sectors",
+            "reference_color_order",
+            "selected_color_sector_ids",
+            "selected_source_helicities",
+        )
+    )
+    fields.update(selectors)
+    backend = SimpleNamespace(_process_selection=SimpleNamespace(**fields))
+    return _v2_selection(backend, compiled, process, "p")
+
+
+def _toml(selectors: dict) -> str:
+    return "".join(f"{key} = {json.dumps(value)}\n" for key, value in selectors.items())
 
 
 def _tree_artifact(tmp: Path, process: str, selectors: str = "") -> Path:
@@ -459,44 +504,44 @@ def test_public_colour_subset_selectors_are_the_tree_engines(
     refuses it; helicities alone keep every flow; no selector is no
     selection."""
 
-    from types import SimpleNamespace
+    from functools import partial
 
     from pyamplicol import Runtime
     from pyamplicol.api.errors import GenerationError
-    from pyamplicol.generation.loop_service import _v2_selection
+    from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loading import load_compiled_model
 
     compiled = load_compiled_model(loop_sm_compiled_model)
-
-    def chosen(process: str, **selectors):
-        fields = dict.fromkeys(
-            (
-                "max_color_sectors",
-                "reference_color_order",
-                "selected_color_sector_ids",
-                "selected_source_helicities",
-            )
-        )
-        fields.update(selectors)
-        backend = SimpleNamespace(_process_selection=SimpleNamespace(**fields))
-        return _v2_selection(backend, compiled, process, "p")
+    chosen = partial(_chosen, compiled)
 
     assert chosen("g g > g g g") is None
     assert chosen("g g > g g g", selected_source_helicities={1: -1}) == (
         lc.Selection(((1, -1),))
     )
-    # Sector ids: the tree engine's artifact with the same selector.
-    for k, (process, ids) in enumerate(
-        (("g g > g g g", [0, 7]), ("u u~ > d d~ g", [1, 2]))
-    ):
-        selection = chosen(process, selected_color_sector_ids=ids)
-        tree = Runtime.load(
-            _tree_artifact(
-                tmp_path / str(k), process, f"selected_color_sector_ids = {ids}"
+    # Sector ids and the reference order: the tree engine's artifact with the
+    # same selectors computes these flows and numbers them in this order.
+    for k, (process, selectors) in enumerate(
+        (
+            ("g g > g g g", {"selected_color_sector_ids": [0, 7]}),
+            ("u u~ > d d~ g", {"selected_color_sector_ids": [2, 1]}),
+            ("g g > g g g", {"reference_color_order": [1, 3, 2, 4, 5]}),
+            (
+                "u u~ > d d~ g",
+                {
+                    "reference_color_order": [2, 4, 3, 5, 1],
+                    "selected_color_sector_ids": [1, 3],
+                },
             ),
+        )
+    ):
+        selection = chosen(process, **selectors)
+        legs = len(process.split()) - 1
+        request = SliceRequest(process, *QCD[legs], accuracy="lc", selection=selection)
+        tree = Runtime.load(
+            _tree_artifact(tmp_path / str(k), process, _toml(selectors)),
             process="t",
         )
-        assert sorted(lc.flow_id(word) for word in selection.flows) == sorted(
+        assert [flow.id for flow in lc.request_flows(compiled, request, ())] == list(
             tree.physics.color_ids
         )
     # A truncated plan (the tree engine's recurrence route refuses it, its
@@ -512,6 +557,109 @@ def test_public_colour_subset_selectors_are_the_tree_engines(
     )
     with pytest.raises(GenerationError, match="did not materialize"):
         chosen("g g > g g g", selected_color_sector_ids=[99])
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    "selectors",
+    [
+        {"selected_color_sector_ids": [2]},
+        {"reference_color_order": [2, 4, 3, 5, 1]},
+    ],
+    ids=["sector-ids", "reference-order"],
+)
+def test_flow_ordinals_are_the_tree_engines_under_colour_selectors(
+    generate, loop_sm_compiled_model, tmp_path, selectors
+):
+    """A generation with the tree engine's colour selectors lists and numbers
+    its flows as the tree runtime of the same selectors does (sector ids: the
+    flows it computes; ``reference_color_order``: its plan's order, which
+    selects nothing): ordinal k is the tree runtime's k-th flow, whose value
+    is the inclusive slice's selection of that flow ID."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.models.loading import load_compiled_model
+
+    process = "u u~ > d d~ g"
+    selection = _chosen(
+        load_compiled_model(loop_sm_compiled_model), process, **selectors
+    )
+    tree = Runtime.load(
+        _tree_artifact(tmp_path, process, _toml(selectors)), process="t"
+    )
+    runtime = _runtime(generate(process, selection))
+    assert [f.id for f in runtime.selection_catalogue().flows] == list(
+        tree.physics.color_ids
+    )
+    inclusive = _runtime(generate(process))
+    pts, scales = _points("uux_ddxg")
+    born = _values(inclusive.evaluate(pts, mu_r2=scales))[0]
+    for k, ident in enumerate(tree.physics.color_ids):
+        _close(
+            _values(runtime.evaluate(pts, mu_r2=scales, color_flows=[str(k + 1)])),
+            _values(inclusive.evaluate(pts, mu_r2=scales, color_flows=[ident])),
+            DOUBLE,
+            born=born,
+        )
+
+
+@pytest.mark.loop_physics
+def test_declared_correlators_with_a_selection_are_refused(
+    loop_sm_colour_model, loop_sm_compiled_model, loop_native, tmp_path
+):
+    """As the tree engine's correlated generation, declared colour or spin
+    correlations (or the Ward mode) with a selection are refused with the
+    listed ``selected-correlators`` before any generation: on the public route
+    with any of the tree engine's selectors (a spin source on a leg of fixed
+    helicity would ignore the selection), and for a ``SliceRequest``
+    selection that keeps fewer helicities or flows."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.config import resolve_config
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+    from pyamplicol.models.loading import load_compiled_model
+
+    process = "g g > g g"
+    spin = CorrelatorConfig(spin_correlations=((3,),))
+    colour = CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T12", 1, 2),))
+    for k, (selectors, correlators) in enumerate(
+        (
+            ('selected_source_helicities = {"3" = -1}', spin),
+            ("selected_color_sector_ids = [0]", colour),
+            ("reference_color_order = [1, 3, 2, 4]", colour),
+        )
+    ):
+        output = tmp_path / f"artifact-{k}"
+        card = tmp_path / f"card-{k}.toml"
+        card.write_text(
+            _CARD.format(
+                model=json.dumps(str(loop_sm_colour_model)),
+                output=json.dumps(str(output)),
+                selectors=selectors,
+                accuracy="lc",
+                process=json.dumps(process),
+            )
+        )
+        with pytest.raises(LoopRequestUnsupported) as refused:
+            Generator(resolve_config(card)).generate(
+                ProcessSet((ProcessRequest.parse(process, name="p"),)),
+                output,
+                correlators=correlators,
+            )
+        assert refused.value.key == "selected-correlators"
+        assert "process." in str(refused.value)
+        assert not output.exists()
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        process, *QCD[4], selection=lc.Selection(((3, -1),)), **_options()
+    )
+    for options in ({"correlators": spin}, {"correlators": colour}, {"ward": True}):
+        with pytest.raises(LoopRequestUnsupported, match="selected-correlators"):
+            ObservableSlice.generate(compiled, request, loop_native, **options)
 
 
 # The stored complete-set rows: per process MadLoop's committed reference
@@ -531,11 +679,12 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
     """2->4 and the 2->5 row at leading colour on their public artifacts
     (nightly): three groups of the flows and the two halves of the helicity
     rows (stored selections, ``native_observables.selection_parts``) sum to
-    the inclusive value at the first point of MadLoop's committed reference:
-    in double-double to 1e-24; in binary64 under the O1 rule (m-qcd PLAN
-    §1.4 rule 2: 1e-12, or the largest stability estimate E of the
-    evaluations, one exact rotation and the reduction direction, when
-    1e-12 < E <= 1e-9)."""
+    the inclusive value at the first point of MadLoop's committed reference,
+    per coefficient: in double-double to 1e-24 of each evaluation; in binary64 under
+    the O1 rule (m-qcd PLAN §1.4 rule 2) with the per-coefficient stability
+    estimates E (one exact rotation and the reduction direction, each at
+    most 1e-9) propagated: |sum - inclusive| <= sum over the evaluations of
+    max(1e-12, E) |value| (the Born to 1e-12)."""
 
     from fractions import Fraction
 
@@ -562,9 +711,10 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
     )
     checks = VirtualStabilityChecks(("z:3/5:4/5",), True)
     for arithmetic in ("double", "double-double"):
-        estimates = []
 
-        def values(arithmetic=arithmetic, estimates=estimates, **selectors):
+        def values(arithmetic=arithmetic, **selectors):
+            """(values, per-coefficient error bounds) of one evaluation."""
+
             result = runtime.evaluate(
                 point,
                 mu_r2=scale,
@@ -572,26 +722,29 @@ def test_stored_selections_partition_the_inclusive_value(artifacts, process):
                 stability_checks=checks if arithmetic == "double" else None,
                 **selectors,
             )
-            if result.stability is not None:
-                estimates.append(result.stability[0].relative)
-            return [Decimal(str(x)) for x in _values(result)]
-
-        inclusive = values()
-        size = max(abs(x) for x in inclusive)
-        totals = [
-            [
-                sum(parts)
-                for parts in zip(*(values(**s) for s in partition), strict=True)
+            values = [Decimal(str(x)) for x in _values(result)]
+            if result.stability is None:
+                return values, [DOUBLE_DOUBLE * abs(x) for x in values]
+            estimate = result.stability[0]
+            relative = [
+                0.0,
+                estimate.finite,
+                estimate.single_pole,
+                estimate.double_pole,
             ]
-            for partition in partitions
-        ]
-        tolerance = DOUBLE_DOUBLE
-        if arithmetic == "double":
-            assert max(estimates) <= O1_CAP, (process, estimates)
-            tolerance = Decimal(max(DOUBLE, max(estimates)))
-        for total in totals:
-            for a, b in zip(total, inclusive, strict=True):
-                assert abs(a - b) <= tolerance * size, (arithmetic, a, b, tolerance)
+            assert max(relative) <= O1_CAP, (process, estimate)
+            return values, [
+                Decimal(max(DOUBLE, e)) * abs(x)
+                for e, x in zip(relative, values, strict=True)
+            ]
+
+        inclusive, inclusive_error = values()
+        for partition in partitions:
+            parts = [values(**s) for s in partition]
+            for c, b in enumerate(inclusive):
+                total = sum(part[0][c] for part in parts)
+                bound = inclusive_error[c] + sum(part[1][c] for part in parts)
+                assert abs(total - b) <= bound, (arithmetic, c, total, b, bound)
 
 
 # ------------------------------------------------------- MadLoop per helicity
@@ -605,13 +758,20 @@ PER_HELICITY = {
     "gg_ttx_sectors": (0, 1, 2, 3),
     "gg_ggg_hel": (0, 1, 2),
 }
-# Reference outliers (held to 1e-11): at gg_ggg_hel point 1 MadLoop's single
-# pole of the parity pair below, ~1e-9 of the summed single pole, is 1.1e-12
-# and 3.5e-12 from ours; ours equals the arbitrary-precision (40 digits)
-# value to 1.5e-26 on both, which are equal, while MadLoop's two differ by
-# 2.4e-12. Every other loop coefficient of the three points agrees to 1.2e-13.
+# Reference outliers by coefficient (m-qcd PLAN §1.4 rule 1 (i): the
+# provider's own precision covers the difference). Parity makes the pole
+# coefficients of helicities h and -h equal at a point (the Born's times real
+# kinematic functions), so MadLoop's spread |ML(h) - ML(-h)| on such a pair
+# is its own precision there. At gg_ggg_hel point 1 MadLoop's single poles
+# of the pair below (~1e-8 of the summed single pole) differ by 4.6e-12
+# relative; ours are 1.1e-12 and 3.5e-12 from them. A listed coefficient is
+# held to: ours equal on the pair to 1e-24 (double-double), and within
+# MadLoop's spread of each of its values; every other coefficient to 1e-12
+# (the other coefficients of the three points agree to 1.2e-13).
 PER_HELICITY_OUTLIERS = {
-    ("gg_ggg_hel", 1): frozenset({(-1, 1, -1, 1, -1), (1, -1, 1, -1, 1)}),
+    ("gg_ggg_hel", 1): {
+        "single_pole": frozenset({(-1, 1, -1, 1, -1), (1, -1, 1, -1, 1)}),
+    },
 }
 
 
@@ -633,7 +793,8 @@ def test_single_helicities_equal_madloop_per_helicity(
     coefficient (m-qcd PLAN §1.4 rule 1) as the entry's reference record
     says: relatively, or, for a helicity whose Born vanishes, absolutely
     against 1e-12 of F_s = |B| alpha_s/2pi of the point's summed Born; a
-    listed reference outlier (``PER_HELICITY_OUTLIERS``) to 1e-11. The
+    listed reference outlier (``PER_HELICITY_OUTLIERS``) by parity: ours
+    equal on h and -h, MadLoop within its own spread on them. The
     leading-colour selection of the same IDs is the leading-colour resolved
     row (the identities above), so this ties single-helicity selections to
     MadLoop's labels and normalisation."""
@@ -680,29 +841,40 @@ def test_single_helicities_equal_madloop_per_helicity(
         }
         ids = [lc.helicity_id(row) for row in observables.rows]
         assert sorted(ids) == sorted(madloop)
-        ours = {
+        exact = {
             ident: [
-                float(result.born_values[i][0][k][0]) * average,
-                *(float(x) * average for x in result.values[i][0][k][0]),
+                Decimal(str(result.born_values[i][0][k][0])) * average,
+                *(Decimal(str(x)) * average for x in result.values[i][0][k][0]),
             ]
             for k, ident in enumerate(ids)
         }
+        ours = {ident: [float(x) for x in values] for ident, values in exact.items()}
         outliers = {
-            lc.helicity_id(tuple(enumerate(h)))
-            for h in PER_HELICITY_OUTLIERS.get((name, p), ())
+            (lc.helicity_id(tuple(enumerate(h))), coefficient)
+            for coefficient, pairs in PER_HELICITY_OUTLIERS.get((name, p), {}).items()
+            for h in pairs
         }
         for ident, row in madloop.items():
             record = row["reference"]
             assert record["status"] == "ok", (p, ident, record["reason"])
             expected = [row[key] for key in keys]
-            tolerance = 1e-11 if ident in outliers else 1e-12
             for c, (a, b) in enumerate(zip(ours[ident], expected, strict=True)):
                 if record["comparison"] == "absolute":
                     scale = record["absolute_scale"] * alpha / (2 * math.pi)
                     assert abs(a) <= 1e-12 * scale, (p, ident, keys[c], a)
+                elif (ident, keys[c]) in outliers:
+                    parity = lc.helicity_id(
+                        tuple(enumerate(-h for h in row["helicity"]))
+                    )
+                    mine, image = exact[ident][c], exact[parity][c]
+                    assert abs(mine - image) <= DOUBLE_DOUBLE * max(
+                        abs(mine), abs(image)
+                    ), (p, ident, keys[c], mine, image)
+                    spread = abs(Decimal(b) - Decimal(madloop[parity][keys[c]]))
+                    assert abs(mine - Decimal(b)) <= spread, (p, ident, keys[c])
                 else:
                     error = abs(a - b) / max(abs(a), abs(b))
-                    assert error <= tolerance, (p, ident, keys[c], a, b, error)
+                    assert error <= 1e-12, (p, ident, keys[c], a, b, error)
 
 
 # ------------------------------------------------------------------ public route
@@ -814,16 +986,13 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         for h in inclusive.physics.helicities
         if h.values[0] == -1 and h.values[4] == 1
     ]
-    for arithmetic, tolerance in (("double", DOUBLE), ("double-double", 1e-24)):
+    for arithmetic, tolerance in (("double", DOUBLE), ("double-double", DOUBLE_DOUBLE)):
         reference = inclusive.evaluate(
             pts, mu_r2=scales, helicities=rows, color_flows=["3"], arithmetic=arithmetic
         )
         value = chosen.evaluate(pts, mu_r2=scales, arithmetic=arithmetic)
         for index in range(len(pts)):
-            expected = [Decimal(x) for x in _values(reference, index)]
-            scale = max(abs(x) for x in expected)
-            for a, b in zip(_values(value, index), expected, strict=True):
-                assert abs(Decimal(a) - b) <= Decimal(tolerance) * scale
+            _close(_values(value, index), _values(reference, index), tolerance)
     checked = chosen.evaluate(
         pts,
         mu_r2=scales,
@@ -836,6 +1005,7 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
     # selection is its resolved entry, and a flow's set runs only the
     # families whose seeds it reads.
     resolved = inclusive.evaluate_resolved(pts, mu_r2=scales)
+    total = inclusive.evaluate(pts, mu_r2=scales)
     flow = anchors[2]
     (b,) = flow.born_term_indices
     k = [h.id for h in inclusive.physics.helicities].index(rows[1])
@@ -846,7 +1016,12 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         entry = resolved.values[index][0][k][
             resolved.virtual_color_ids.index(f"basis-{b}")
         ]
-        _close(list(one.values[index][0]), list(entry), DOUBLE)
+        _close(
+            list(one.values[index][0]),
+            list(entry),
+            DOUBLE,
+            born=_values(total, index)[0],
+        )
     inclusive.evaluate(pts, mu_r2=scales, color_flows=[flow.id])
     stored = inclusive._backend._observable_runtime()._observables
     (flow_set,) = (
@@ -874,11 +1049,29 @@ def test_public_selectors_generate_the_selection_of_the_inclusive_artifact(artif
         _summed(
             inclusive.evaluate(pts, mu_r2=scales, color_flows=[a.id]) for a in anchors
         ),
-        _values(inclusive.evaluate(pts, mu_r2=scales)),
+        _values(total),
         DOUBLE,
     )
-    with pytest.raises(EvaluationError, match="no Born amplitude"):
+    # The selected artifact lists and numbers the flows it computes, as the
+    # tree runtime of the same selector does: ordinal 1 is its one flow;
+    # another flow is no flow of it.
+    _close(
+        _values(chosen.evaluate(pts, mu_r2=scales, color_flows=["1"])),
+        _values(chosen.evaluate(pts, mu_r2=scales)),
+        DOUBLE,
+    )
+    with pytest.raises(EvaluationError, match="unknown colour-flow selector"):
         chosen.evaluate(pts, mu_r2=scales, color_flows=["flow:2,5,4,3,1"])
+    with pytest.raises(EvaluationError, match="out of range"):
+        chosen.evaluate(pts, mu_r2=scales, color_flows=["2"])
+    assert (inclusive.physics.helicity_coverage, inclusive.physics.color_coverage) == (
+        "all",
+        "all",
+    )
+    assert (chosen.physics.helicity_coverage, chosen.physics.color_coverage) == (
+        "selected",
+        "selected",
+    )
     request = lambda runtime: runtime.inspect()["request"]  # noqa: E731
     assert "selection" not in request(inclusive)
     assert request(chosen)["selection"] == {

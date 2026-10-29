@@ -694,6 +694,24 @@ FORCED_FFT_OBSERVABLES = (
 )
 
 
+def _refuse_selected_observables(request: Any, declared: bool) -> None:
+    """Declared observables (colour or spin correlations, the Ward mode) with
+    a leading-colour selection that keeps fewer helicities or flows are
+    refused (``selected-correlators``), as the tree engine's correlated
+    generation refuses its selectors: a spin source on a leg of fixed
+    helicity would ignore the selection."""
+
+    selection = request.selection
+    if declared and selection is not None and selection.restricts:
+        from .refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "selected-correlators",
+            "correlated generation requires complete colour and helicity "
+            f"coverage; the request selects {selection.record()}",
+        )
+
+
 @dataclass
 class ObservableSlice:
     """A generated slice and its declared observables.
@@ -733,6 +751,15 @@ class ObservableSlice:
         native_inputs: bool = False,
     ) -> ObservableSlice:
         correlators = correlators or CorrelatorConfig()
+        _refuse_selected_observables(
+            request,
+            bool(
+                correlators.color_correlations
+                or correlators.spin_correlations
+                or correlators.all_color_through_order is not None
+            )
+            or ward,
+        )
         full = bool(correlators.spin_correlations) or ward
         if full:
             from .catalogue import compile_tree_kernel_variant
@@ -779,6 +806,7 @@ class ObservableSlice:
             raise LoopRequestUnsupported(
                 "forced-seed-fft-unserved", FORCED_FFT_OBSERVABLES
             )
+        _refuse_selected_observables(slice_.request, declared or ward)
         correlators = correlators or CorrelatorConfig()
         correlators = correlators._resolve_color(
             process_color_legs(slice_.blocks.process)

@@ -11,9 +11,12 @@ tree engine's conventions (``generation.physics_metadata``):
   the runtime's own ``h<index>`` names it as well;
 * a colour flow's ID is ``flow:<word>`` (``_color_id``) of a sector of the
   tree engine's leading-colour plan (``color.plan.build_color_plan`` at LC,
+  with the request's ``reference_color_order`` and ``max_color_sectors``,
   trace reflections folded as the tree engine folds them, each folded
-  sector's reflection a flow of its own), numbered from 1 in the tree
-  runtime's order (plan sectors, a folded sector's reflection after it).
+  sector's reflection a flow of its own); the flows an artifact computes
+  (all, or those of a generation-time selection) are numbered from 1 in
+  the tree runtime's order (plan sectors, a folded sector's reflection
+  after it), as the tree runtime numbers its computed flows.
 
 A flow is the Born basis element (``colour.BornBasis``) with the same outer
 flow (``colour.sector_flow``); Born basis elements of no leading-colour flow
@@ -48,10 +51,17 @@ class Selection:
     the Born closure keeps the selected flows' tensors only, so the seed
     table, the colour pruning of the skeletons, the Born and counterterm
     bras and the tree program follow (``restrict_born_terms``), and the
-    blocks keep the selected helicity rows only (``restrict_rows``)."""
+    blocks keep the selected helicity rows only (``restrict_rows``).
+
+    ``color_order`` and ``max_sectors`` are the tree engine's
+    ``reference_color_order`` and ``max_color_sectors``: they build the
+    leading-colour plan whose order numbers the artifact's flows
+    (``request_flows``); they select nothing themselves."""
 
     helicities: tuple[tuple[int, int], ...] = ()
     flows: tuple[tuple[int, ...], ...] | None = None
+    color_order: tuple[int, ...] | None = None
+    max_sectors: int | None = None
 
     def __post_init__(self) -> None:
         helicities = tuple(
@@ -65,19 +75,42 @@ class Selection:
             if not flows:
                 raise ValueError("a colour-flow selection keeps at least one flow")
             object.__setattr__(self, "flows", flows)
+        if self.color_order is not None:
+            object.__setattr__(
+                self, "color_order", tuple(int(x) for x in self.color_order) or None
+            )
+        if self.max_sectors is not None:
+            object.__setattr__(self, "max_sectors", int(self.max_sectors))
+
+    @property
+    def restricts(self) -> bool:
+        """Whether the selection keeps fewer helicity rows or flows than the
+        process has (``color_order`` and ``max_sectors`` alone only order)."""
+
+        return bool(self.helicities) or self.flows is not None
 
     def record(self) -> dict[str, Any]:
-        return {
+        record: dict[str, Any] = {
             "helicities": [list(pair) for pair in self.helicities],
             "flows": None if self.flows is None else [list(w) for w in self.flows],
         }
+        # The plan options only when set (a plain selection's record is
+        # unchanged).
+        if self.color_order is not None:
+            record["color_order"] = list(self.color_order)
+        if self.max_sectors is not None:
+            record["max_sectors"] = self.max_sectors
+        return record
 
     @classmethod
     def from_record(cls, record: Mapping[str, Any]) -> Selection:
         flows = record["flows"]
+        order = record.get("color_order")
         return cls(
             tuple((int(a), int(b)) for a, b in record["helicities"]),
             None if flows is None else tuple(tuple(int(x) for x in w) for w in flows),
+            None if order is None else tuple(int(x) for x in order),
+            record.get("max_sectors"),
         )
 
 
@@ -319,13 +352,42 @@ def plan_flows(plan: Any, basis: Any) -> tuple[Flow, ...]:
 
 
 def slice_flows(slice_: Any) -> tuple[Flow, ...]:
-    """The complete leading-colour flows of an LC slice (``plan_flows`` of the
-    tree engine's complete plan of its process on its Born basis)."""
+    """The leading-colour flows of an LC slice (``request_flows`` on its Born
+    basis)."""
 
-    if slice_.request.accuracy != "lc":
+    return request_flows(slice_.compiled, slice_.request, slice_.basis)
+
+
+def request_flows(compiled: Any, request: Any, basis: Any) -> tuple[Flow, ...]:
+    """The leading-colour flows an LC request's artifact computes, in the tree
+    runtime's order, which numbers them: ``plan_flows`` of the tree engine's
+    plan of the process built with the selection's ``color_order`` and
+    ``max_sectors`` (``reference_color_order``, ``max_color_sectors``), the
+    selected flows only under a colour-flow selection (the tree runtime of
+    ``selected_color_sector_ids`` lists and numbers the flows it computes).
+    NLC and full colour have none."""
+
+    if request.accuracy != "lc":
         return ()
-    plan = leading_colour_plan(slice_.compiled, slice_.request.process)
-    return plan_flows(plan, slice_.basis)
+    selection = request.selection
+    plan = leading_colour_plan(
+        compiled,
+        request.process,
+        max_sectors=None if selection is None else selection.max_sectors,
+        reference_color_order=None if selection is None else selection.color_order,
+    )
+    flows = plan_flows(plan, basis)
+    if selection is None or selection.flows is None:
+        return flows
+    kept = {flow_id(word) for word in selection.flows}
+    out = tuple(flow for flow in flows if flow.id in kept)
+    if len(out) != len(kept):
+        missing = sorted(kept - {flow.id for flow in out})
+        raise ValueError(
+            f"the selected colour flows {missing} are no flows of the tree "
+            "engine's leading-colour plan of the request"
+        )
+    return out
 
 
 @dataclass(frozen=True)
@@ -370,8 +432,7 @@ class Catalogue:
                     flow = self._ordinal(str(name))
                 if flow.basis is None:
                     raise EvaluationError(
-                        f"colour flow {flow.id!r} has no Born amplitude in this "
-                        "process (a generation-time selection keeps other flows)"
+                        f"colour flow {flow.id!r} has no Born amplitude in this process"
                     )
                 chosen_basis.add(flow.basis)
             basis = frozenset(chosen_basis)
@@ -385,7 +446,8 @@ class Catalogue:
         if ordinal is None or str(ordinal) != name.strip():
             raise EvaluationError(
                 f"unknown colour-flow selector {name!r}; choose a colour-flow "
-                "ID of the process (flow:<word>) or an ordinal"
+                "ID of the artifact's flows (flow:<word>; a generation-time "
+                "colour selection computes its flows only) or an ordinal"
             )
         if ordinal < 1 or ordinal > len(self.flows):
             raise EvaluationError(

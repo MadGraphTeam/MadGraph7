@@ -465,6 +465,34 @@ def _check_correlators(backend, correlators):
 
     if not isinstance(correlators, CorrelatorConfig):
         raise TypeError("correlators must be a CorrelatorConfig")
+    selection = backend._process_selection
+    partial = tuple(
+        name
+        for name in (
+            "max_color_sectors",
+            "reference_color_order",
+            "selected_color_sector_ids",
+            "selected_source_helicities",
+        )
+        if getattr(selection, name) is not None
+    )
+    declared = bool(
+        correlators.color_correlations
+        or correlators.spin_correlations
+        or correlators.all_color_through_order is not None
+    )
+    if partial and declared and _v2_leading_colour(backend._run_config):
+        # Selectors exist at leading colour only (``_feature_blockers``).
+        # As the tree engine's correlated generation (``generation.
+        # correlated``): a spin source on a leg of fixed helicity would
+        # ignore the selection.
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "selected-correlators",
+            "correlated generation requires complete colour and helicity "
+            "coverage; remove " + ", ".join(f"process.{name}" for name in partial),
+        )
     if backend._run_config.color.contraction == "symmetric-group-fft":
         raise GenerationError(
             "forced rectangular FFT requires certified ordinary/resolved banks; "
@@ -1191,12 +1219,21 @@ def _v2_selection(backend, compiled, process: str, label: str):
     leading-colour plan (``reference_color_order`` first, at most
     ``max_color_sectors``, then ``selected_color_sector_ids`` by id), each a
     flow and, for a folded trace, its reflection (the tree engine's physical
-    flows); a missing sector id is refused as the tree engine refuses it."""
+    flows); a missing sector id is refused as the tree engine refuses it.
+    The plan options are kept with the selection (``color_order``,
+    ``max_sectors``): the artifact numbers its flows in that plan's order,
+    as the tree runtime does (``reference_color_order`` alone selects
+    nothing and only orders)."""
 
     from pyamplicol.loops.v2 import selection as lc
 
     chosen = backend._process_selection
     helicities = tuple(sorted((chosen.selected_source_helicities or {}).items()))
+    order = (
+        tuple(int(x) for x in chosen.reference_color_order)
+        if chosen.reference_color_order
+        else None
+    )
     flows = None
     if (
         chosen.max_color_sectors is not None
@@ -1206,7 +1243,7 @@ def _v2_selection(backend, compiled, process: str, label: str):
             compiled,
             process,
             max_sectors=chosen.max_color_sectors,
-            reference_color_order=chosen.reference_color_order,
+            reference_color_order=order,
         )
         wanted = chosen.selected_color_sector_ids
         known = {int(sector.id) for sector in plan.sectors}
@@ -1228,9 +1265,16 @@ def _v2_selection(backend, compiled, process: str, label: str):
             raise GenerationError(f"process {label} keeps no leading-colour flow")
         if {flow.id for flow in kept} != complete:
             flows = tuple(flow.word for flow in kept)
-    if not helicities and flows is None:
+    if not helicities and flows is None and order is None:
         return None
-    return lc.Selection(helicities, flows)
+    # A sector cap orders only the flows of a truncated plan: kept with a
+    # colour-flow subset (a cap that keeps every flow keeps the plan).
+    return lc.Selection(
+        helicities,
+        flows,
+        order,
+        chosen.max_color_sectors if flows is not None else None,
+    )
 
 
 def _blocked(backend, processes) -> tuple[str, ...]:

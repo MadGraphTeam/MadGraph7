@@ -102,6 +102,13 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``LoopSlice._plan_contraction``, ``ObservableSlice.of``) instead of
   silently contracting directly. ``"auto"`` serves all of them, reporting the
   algorithm it ran.
+* ``selected-correlators`` (MQ-SELECT, a guard): declared colour or spin
+  correlations (or the Ward mode) with a leading-colour selection
+  (``selection.Selection``) are refused, as the tree engine's correlated
+  generation refuses its selectors (``generation.correlated``): on the
+  public route by the selectors set (``loop_service._check_correlators``),
+  in ``ObservableSlice.of`` by a selection that keeps fewer helicities or
+  flows (``Selection.restricts``).
 """
 
 from __future__ import annotations
@@ -275,6 +282,20 @@ LOOP_ADMISSION_REFUSALS = (
         'directly, the algorithm reported) or "direct"',
         "MQ-FFT (a guard)",
         "none (kept: a forced FFT is never silently direct)",
+    ),
+    LoopAdmissionRefusal(
+        "selected-correlators",
+        "declared colour or spin correlations (or the Ward mode) with a "
+        "leading-colour helicity or colour-flow selection (the public route's "
+        "process.selected_source_helicities, selected_color_sector_ids, "
+        "max_color_sectors or reference_color_order; SliceRequest.selection)",
+        "correlated generation requires complete colour and helicity coverage, "
+        "as the tree engine's correlated generation: a spin source on a leg "
+        "whose helicity is selected would ignore the selection",
+        "generate the correlations without selectors (an inclusive artifact), "
+        "and the selection in an artifact of its own",
+        "MQ-SELECT (a guard)",
+        "none (the tree engine's rule)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}

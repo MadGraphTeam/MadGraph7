@@ -1259,6 +1259,12 @@ class V2VirtualRuntime:
             else ()
         )
         kind = "born-anchored-interference" if anchors else "contracted-color"
+        # A generation-time selection (the request's ``selection``) keeps
+        # some helicity rows or flows: coverage 'selected', as the tree
+        # engine reports it.
+        chosen = self._execution["request"].get(OPTIONAL_REQUEST_FIELD) or {}
+        helicity_coverage = "selected" if chosen.get("helicities") else "all"
+        color_coverage = "selected" if chosen.get("flows") is not None else "all"
         pdgs = (
             [int(leg["pdg"]) for leg in self._physics["state_legs"]]
             if member is None
@@ -1268,8 +1274,8 @@ class V2VirtualRuntime:
             process_id=self._public_id,
             process=self._expression if member is None else str(member.expression),
             color_accuracy=accuracy,
-            helicity_coverage="all",
-            color_coverage="all",
+            helicity_coverage=helicity_coverage,
+            color_coverage=color_coverage,
             color_kind=kind,
             structural_zero_helicity_count=0,
             external_particles=tuple(
