@@ -76,6 +76,7 @@ void madspace::to_json(nlohmann::json& j, const GeneratorStatus& status) {
         {"iters_without_improvement", status.iters_without_improvement},
         {"optimized", status.optimized},
         {"done", status.done},
+        {"count_invalid_step_values", status.count_invalid_step_values},
     };
 }
 

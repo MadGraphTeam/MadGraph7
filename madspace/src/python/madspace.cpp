@@ -3002,6 +3002,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "done", &GeneratorStatus::done, pydoc::doc("GeneratorStatus::done")
+        )
+        .def_readwrite(
+            "count_invalid_step_values",
+            &GeneratorStatus::count_invalid_step_values,
+            pydoc::doc("GeneratorStatus::count_invalid_step_values")
         );
 
     py::classh<Histogram>(m, "Histogram", pydoc::doc("Histogram"))

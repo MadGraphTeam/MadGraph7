@@ -50,6 +50,7 @@ EventGenerator::EventGenerator(
     _channel_optimizing(channels.size()),
     _channel_integral_fractions(channels.size(), 1.),
     _context_job_counts(contexts.size()),
+    _warned_invalid_step_values(channels.size()),
     _channel_batch_pending(channels.size()),
     _channel_batch_dispatch_done(channels.size()),
     _channel_gen_order(channels.size()),
@@ -258,6 +259,7 @@ void EventGenerator::run_generate(GenerateMode mode) {
         }
     }
     print_gen_update(true);
+    warn_invalid_step_values();
 }
 
 // Same commit-ordering approach as generate().
@@ -403,6 +405,25 @@ void EventGenerator::survey(std::size_t survey_pass) {
         drain_pipeline();
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
+    warn_invalid_step_values();
+}
+
+void EventGenerator::warn_invalid_step_values() {
+    for (auto [channel, warned] : zip(_channels, _warned_invalid_step_values)) {
+        std::size_t count = channel->status().count_invalid_step_values;
+        if (count > warned) {
+            Logger::warning(
+                std::format(
+                    "channel '{}': {} events got the weight 0 in the weighting steps, "
+                    "as their matrix element ratio was not finite or the earlier "
+                    "matrix element was 0",
+                    channel->status().name,
+                    count - warned
+                )
+            );
+            warned = count;
+        }
+    }
 }
 
 // Every job counted in *in_flight* posts exactly one result (see

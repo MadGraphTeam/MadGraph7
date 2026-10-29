@@ -132,6 +132,7 @@ void madspace::sum_channel_status(
     std::size_t total_count_after_cuts = 0, total_count_after_cuts_opt = 0;
     std::size_t total_integ_count = 0;
     std::size_t iterations = 0;
+    std::size_t count_invalid_step_values = 0;
     bool optimized = true;
     const ChannelEventGenerator* bad_channel = nullptr;
     for (auto& channel : channels) {
@@ -166,6 +167,7 @@ void madspace::sum_channel_status(
         total_count_after_cuts_opt += chan_status.count_after_cuts_opt;
         total_integ_count += integral.count;
         iterations = std::max(chan_status.iterations, iterations);
+        count_invalid_step_values += chan_status.count_invalid_step_values;
         if (!chan_status.optimized) {
             optimized = false;
         }
@@ -206,5 +208,6 @@ void madspace::sum_channel_status(
     status.count_after_cuts = total_count_after_cuts;
     status.count_after_cuts_opt = total_count_after_cuts_opt;
     status.iterations = iterations;
+    status.count_invalid_step_values = count_invalid_step_values;
     status.optimized = optimized;
 }

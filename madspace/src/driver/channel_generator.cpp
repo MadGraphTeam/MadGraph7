@@ -1237,6 +1237,9 @@ void ChannelEventGenerator::update_step_max_weight(
     double min_nonzero = 0.;
     for (double value : values) {
         double abs_value = std::abs(value);
+        if (!std::isfinite(abs_value)) {
+            continue;
+        }
         if (abs_value != 0 && (min_nonzero == 0 || abs_value < min_nonzero)) {
             min_nonzero = abs_value;
         }

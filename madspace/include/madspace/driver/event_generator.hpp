@@ -159,6 +159,8 @@ private:
     std::vector<bool> _channel_optimizing;
     std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
+    // invalid step values per channel that were already warned about
+    std::vector<std::size_t> _warned_invalid_step_values;
     // True while a channel has a steady-state batch dispatched but not yet fully
     // committed; keeps next_batch_event_count() from double-counting in-flight work.
     std::vector<bool> _channel_batch_pending;
@@ -302,6 +304,7 @@ private:
         std::size_t iter
     );
 
+    void warn_invalid_step_values();
     void print_gen_init();
     void print_gen_update(bool done);
     void print_gen_update_pretty(bool done);

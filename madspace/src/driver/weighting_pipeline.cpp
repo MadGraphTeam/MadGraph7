@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <stdexcept>
 
 #include "madspace/util.hpp"
@@ -463,17 +464,31 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
     auto& settings = channel->weighting_steps().at(step - 1);
     std::size_t count = chunk.size();
     std::vector<double> ratios(count);
+    std::size_t invalid_count = 0;
     for (std::size_t i = 0; i < count; ++i) {
         double previous = chunk.matrix_elements.at(i);
         double& value = chunk.step_matrix_elements.at(i);
+        double ratio = value;
+        if (!settings.ratio) {
+            ratio = previous != 0. ? value / previous
+                : value != 0.
+                ? std::numeric_limits<double>::quiet_NaN()
+                : 0.;
+        }
+        // the event gets the weight 0, so that it cannot set the maximum
+        if (!std::isfinite(ratio)) {
+            ratio = 0.;
+            ++invalid_count;
+        }
         if (settings.ratio) {
             // the implied matrix element is the reference of the next step
-            ratios.at(i) = value;
-            value *= previous;
-        } else {
-            ratios.at(i) = previous != 0. ? value / previous : 0.;
+            value = ratio * previous;
         }
-        chunk.ratio_products.at(i) *= ratios.at(i);
+        ratios.at(i) = ratio;
+        chunk.ratio_products.at(i) *= ratio;
+    }
+    if (invalid_count > 0) {
+        channel->add_invalid_step_values(invalid_count);
     }
     std::vector<me_int_t> keep;
     if (settings.unweight) {

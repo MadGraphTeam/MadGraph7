@@ -229,6 +229,11 @@ public:
     void update_step_max_weight(
         std::size_t step, const std::vector<double>& values, std::size_t count_target
     );
+    /// Count `count` events given the weight 0 by a step, see
+    /// @ref GeneratorStatus::count_invalid_step_values.
+    void add_invalid_step_values(std::size_t count) {
+        _status.count_invalid_step_values += count;
+    }
     /// Count `count` events accepted by step `step`, which passed the earlier
     /// unweightings with the maxima `max_weight` (first step) and
     /// `max_weights` (the steps before).

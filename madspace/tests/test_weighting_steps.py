@@ -240,6 +240,46 @@ def test_reproducible_step_freeze(tmp_path):
         assert status_a.mean == status_b.mean
 
 
+def broken_me(momenta, invalid=(np.nan, np.inf)):
+    """true_me, with invalid values in two regions."""
+    px = momenta[:, 3, 1]
+    me = np.where(px > 100.0, invalid[0], true_me(momenta))
+    return np.where(px < -100.0, invalid[1], me)
+
+
+@pytest.mark.parametrize("step_modes", [["unweight"], ["reweight"]])
+def test_invalid_step_values(tmp_path, capfd, step_modes):
+    """Non-finite ratios count as weight 0, like a step matrix element of 0,
+    and are counted and warned about."""
+    results = [
+        generate(
+            str(tmp_path / name),
+            surrogate_me,
+            step_modes,
+            step_me=step_me,
+            pt_mins=(20.0, 40.0),
+            grouped=(0, 1),
+        )
+        for name, step_me in [
+            ("broken", broken_me),
+            ("zero", lambda momenta: broken_me(momenta, (0.0, 0.0))),
+        ]
+    ]
+    (status_broken, events_broken, channels), (status_zero, events_zero, _) = results
+    assert np.array_equal(events_broken, events_zero)
+    assert status_broken.mean == status_zero.mean
+    assert status_zero.count_invalid_step_values == 0
+    invalid_counts = [c.status().count_invalid_step_values for c in channels]
+    assert all(count > 0 for count in invalid_counts)
+    assert status_broken.count_invalid_step_values == sum(invalid_counts)
+    if step_modes == ["unweight"]:
+        assert all(np.isfinite(c.step_max_weight(1)) for c in channels)
+    # after the survey and after generate()
+    warnings = [line for line in capfd.readouterr().out.splitlines() if "WARN" in line]
+    assert all("got the weight 0 in the weighting steps" in w for w in warnings)
+    assert {w.split("'")[1] for w in warnings} == {"0", "1"}
+
+
 def test_index_outputs(tmp_path):
     """A step fills in indices the integrand matrix element does not return,
     and replaces the others only with override_outputs."""

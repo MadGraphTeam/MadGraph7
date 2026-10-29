@@ -251,6 +251,9 @@ struct GeneratorStatus {
     bool optimized;
     /// Whether generation of this subprocess is complete.
     bool done;
+    /// Events given the weight 0 by a weighting step, because their matrix
+    /// element ratio was not finite or the earlier matrix element was 0.
+    std::size_t count_invalid_step_values = 0;
 };
 
 /// One binned observable, accumulated during event generation; see @ref
