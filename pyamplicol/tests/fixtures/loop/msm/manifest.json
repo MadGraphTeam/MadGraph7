@@ -320,29 +320,35 @@
     "smokes": [
      "loop_qcd_qed_sm_Gmu:a0",
      "loop_qcd_qed_sm_Gmu:ckm",
-     "loop_qcd_qed_sm_Gmu:no_widths",
-     "loop_qcd_qed_sm_Gmu:with_b_mass"
+     "loop_qcd_qed_sm_Gmu:no_widths"
     ],
     "file": "tests/unit/test_loop_v2_msm_smokes.py"
    },
    {
     "job": 2,
     "smokes": [
+     "loop_qcd_qed_sm_Gmu:with_b_mass",
      "loop_qcd_qed_sm_Gmu:with_b_mass_no_width",
-     "loop_qcd_qed_sm_Gmu:with_technical",
-     "loop_qcd_qed_sm:ckm",
-     "loop_qcd_qed_sm:no_widths"
+     "loop_qcd_qed_sm_Gmu:with_technical"
     ],
     "file": "tests/unit/test_loop_v2_msm_smokes_2.py"
    },
    {
     "job": 3,
     "smokes": [
-     "loop_qcd_qed_sm:with_b_mass",
+     "loop_qcd_qed_sm:ckm",
+     "loop_qcd_qed_sm:no_widths",
+     "loop_qcd_qed_sm:with_b_mass"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_smokes_3.py"
+   },
+   {
+    "job": 4,
+    "smokes": [
      "loop_qcd_qed_sm:with_b_mass_no_widths",
      "loop_qcd_qed_sm:with_technical"
     ],
-    "file": "tests/unit/test_loop_v2_msm_smokes_3.py"
+    "file": "tests/unit/test_loop_v2_msm_smokes_4.py"
    }
   ]
  },
