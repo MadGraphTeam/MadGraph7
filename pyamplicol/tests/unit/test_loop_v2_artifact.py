@@ -537,6 +537,9 @@ def test_slice_request_records_round_trip():
         compatibility="gmu_particle_anti",
         counterterms="sites",
         selection=Selection(((1, -1),), ((1, 2, 3, 4),)),
+        external_photons=(3,),
+        alpha0_conversion="dZe_conversion",
+        alpha0_inverse="ainv0",
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     for item in fields(SliceRequest):
@@ -548,9 +551,14 @@ def test_slice_request_records_round_trip():
     assert request_from_record(record) == request
     single = request_record(default)
     assert single["loop_orders"] == {"QCD": 4}
-    # The selection is recorded only when set (requests without one keep
-    # their records' bytes).
-    assert "selection" not in single
+    # The selection and the photon options are recorded only when set
+    # (requests without them keep their records' bytes).
+    assert not {
+        "selection",
+        "external_photons",
+        "alpha0_conversion",
+        "alpha0_inverse",
+    } & set(single)
     assert request_from_record(single) == default
     with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
         request_from_record({**record, "future_option": 1})

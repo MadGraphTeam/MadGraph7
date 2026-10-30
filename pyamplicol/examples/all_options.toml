@@ -89,6 +89,19 @@ r2_strategy = "auto"
 # (an adjustable external model parameter). Default absent: the unique SLHA
 # SMINPUTS 3 parameter, else no QCD pole prediction (the virtual is unchanged).
 # alpha_s_parameter = "aS"
+# loop.external_photons: The on-shell external photons that couple with alpha(0)
+# in requests with QED corrections (MG5_aMC's !a! tags): "final" (default:
+# final-state photons; initial ones are PDF photons and keep the loops'
+# coupling), "all", "none", or a list of 1-based leg labels, e.g. [1, 3].
+external_photons = "final"
+# loop.alpha0_conversion_parameter: The model's conversion counterterm of tagged
+# photons (delta Z_e^Gmu - delta Z_e^alpha(0)). Default MG5_aMC's name.
+alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
+# loop.alpha0_inverse_parameter: The model's adjustable 1/alpha(0). Default
+# absent: the unique adjustable SLHA SMINPUTS 1 parameter (MG5_aMC's aEW0M1). A
+# parameter whose inverse is the loops' alpha declares alpha(0) loops: tagged
+# photons then need no conversion.
+# alpha0_inverse_parameter = "aEW0M1"
 # loop.model: Optional whole override of the source model's NLO declaration.
 # Default absent (use the source declaration). A supplied declaration needs all
 # of loop_coupling_orders, uv_complete, model_r2_complete and the seven scheme
