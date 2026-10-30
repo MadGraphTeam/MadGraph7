@@ -354,54 +354,186 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1461,
+    "seconds": 1359,
     "rows": [
-     "DY05",
-     "LL01"
+     "DY01",
+     "DY01@mwmz",
+     "DY02",
+     "DY03",
+     "DY04"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 1288,
+    "seconds": 1476,
     "rows": [
-     "LL02",
-     "LL03",
-     "LL10",
-     "SC01",
-     "SC05"
+     "DY05",
+     "JJ02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
    },
    {
     "job": 3,
-    "seconds": 1286,
+    "seconds": 1417,
     "rows": [
-     "SC09",
-     "ST02",
-     "TT01"
+     "DY07",
+     "DY08",
+     "JJ01",
+     "JJ03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
    },
    {
     "job": 4,
-    "seconds": 1267,
+    "seconds": 1261,
     "rows": [
-     "TT04",
-     "TT05",
-     "TT06"
+     "JJ04",
+     "LL01",
+     "LL02",
+     "LL03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1182,
+    "seconds": 1485,
     "rows": [
-     "TV06",
-     "VJ03",
-     "VV06"
+     "LL05",
+     "LL08",
+     "LL09",
+     "LL10"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
+   },
+   {
+    "job": 6,
+    "seconds": 1343,
+    "rows": [
+     "SC01",
+     "SC02",
+     "SC03"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
+   },
+   {
+    "job": 7,
+    "seconds": 1286,
+    "rows": [
+     "SC04",
+     "SC05",
+     "SC06"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
+   },
+   {
+    "job": 8,
+    "seconds": 1200,
+    "rows": [
+     "SC07",
+     "SC08"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
+   },
+   {
+    "job": 9,
+    "seconds": 1492,
+    "rows": [
+     "SC09",
+     "ST01",
+     "ST02",
+     "TT02"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
+   },
+   {
+    "job": 10,
+    "seconds": 1467,
+    "rows": [
+     "ST03",
+     "ST04",
+     "TT01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
+   },
+   {
+    "job": 11,
+    "seconds": 1375,
+    "rows": [
+     "TT03",
+     "TT04",
+     "TT05"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
+   },
+   {
+    "job": 12,
+    "seconds": 1322,
+    "rows": [
+     "TT06",
+     "TV01",
+     "TV02",
+     "VJ02"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
+   },
+   {
+    "job": 13,
+    "seconds": 1467,
+    "rows": [
+     "TV03",
+     "TV06",
+     "VJ01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
+   },
+   {
+    "job": 14,
+    "seconds": 1200,
+    "rows": [
+     "V301",
+     "VH01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
+   },
+   {
+    "job": 15,
+    "seconds": 1200,
+    "rows": [
+     "VH02",
+     "VH03"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
+   },
+   {
+    "job": 16,
+    "seconds": 1376,
+    "rows": [
+     "VJ03",
+     "VV01",
+     "VV01@4tev",
+     "VV05",
+     "VV05@zero"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
+   },
+   {
+    "job": 17,
+    "seconds": 1284,
+    "rows": [
+     "VV02",
+     "VV03",
+     "VV06"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
+   },
+   {
+    "job": 18,
+    "seconds": 823,
+    "rows": [
+     "VV07"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    }
   ]
  },
@@ -663,7 +795,37 @@
     "QED": 0.0075467711139788835
    },
    "compatibility": "gmu_particle_anti",
-   "scale_parameter": "MU_R"
+   "scale_parameter": "MU_R",
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp"
+   ]
   },
   {
    "id": "LL05",
@@ -702,14 +864,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/emep_wpwm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -739,10 +908,52 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_QQCplv",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_nunuCp0",
+    "R2_vlW"
+   ]
   },
   {
    "id": "LL08",
@@ -781,14 +992,50 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-a0",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3-5 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/emep_mummpa_ew_a0.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 1,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 0,
+      "QED": 8
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03054487223705328"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03424506474171146"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.028748699529597826"
+      ]
+     ]
+    }
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -820,10 +1067,46 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_LLCm",
+    "R2_LLCp0",
+    "R2_QQCplv",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_mmACm",
+    "R2_mmACp",
+    "R2_mmZCm",
+    "R2_mmZCp"
+   ]
   },
   {
    "id": "LL09",
@@ -869,17 +1152,27 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/emep_ttx_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/emep_ttx_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
-   "extras": [],
+   "extras": [
+    "uv"
+   ],
    "features": [
     "2->2",
     "massive:top"
@@ -914,10 +1207,50 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
+   ]
   },
   {
    "id": "LL10",
@@ -1006,6 +1339,64 @@
    ],
    "madloop_omitted_r2": [
     "R2_G0tt_b"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAH",
+    "R2_AAHt",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AG0H",
+    "R2_AZD",
+    "R2_AZH",
+    "R2_AZHt",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_G0tt",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZG0H",
+    "R2_ZG0Ht",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
    ]
   },
   {
@@ -1052,14 +1443,22 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emep_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/uux_emep_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1100,15 +1499,113 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   },
-   "extras_pending": {
-    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)",
-    "hel": "MS-REF (per-helicity SLOOPMATRIXHEL references)",
-    "sp": "MS-REF (special points S1-S4)"
-   }
+   "variants": [
+    {
+     "name": "mwmz",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/msm/uux_emep_ew_mwmz.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "S3: runtime MW = 80.379, MZ = 91.1876",
+     "zero_points": {},
+     "madloop_r2_called": [
+      "R2_AAD",
+      "R2_AAU",
+      "R2_AAboson1",
+      "R2_AAboson2",
+      "R2_AAboson3",
+      "R2_AAl",
+      "R2_AAt3",
+      "R2_AZD",
+      "R2_AZU",
+      "R2_AZboson1",
+      "R2_AZboson2",
+      "R2_AZboson3",
+      "R2_AZl",
+      "R2_AZt3",
+      "R2_UUA",
+      "R2_UUZ_V2",
+      "R2_UUZ_V5",
+      "R2_ZZD",
+      "R2_ZZU",
+      "R2_ZZboson1",
+      "R2_ZZboson2",
+      "R2_ZZboson3",
+      "R2_ZZl",
+      "R2_ZZt3",
+      "R2_ZZv",
+      "R2_eeACm",
+      "R2_eeACp",
+      "R2_eeZCm",
+      "R2_eeZCp",
+      "R2_llACp",
+      "R2_llZCp",
+      "R2_uuA2Cm",
+      "R2_uuA2Cp",
+      "R2_uuA2Cp_d",
+      "R2_uuZ2Cm",
+      "R2_uuZ2Cp",
+      "R2_uuZ2Cp_d"
+     ]
+    }
+   ],
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "DY02",
@@ -1154,14 +1651,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_epve_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1199,10 +1703,22 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_uxdW",
+    "R2_uxdW2Cp",
+    "R2_vlW"
+   ]
   },
   {
    "id": "DY03",
@@ -1237,14 +1753,21 @@
    "gauge": "feynman",
    "scheme": "ew-qcd-qed-sm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emep_ew_az.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1274,10 +1797,42 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "DY04",
@@ -1323,14 +1878,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/emu_emu_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1368,10 +1930,48 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "DY05",
@@ -1387,10 +1987,16 @@
      "QED": 2
     }
    ],
-   "loop_orders": {
-    "QCD": 1,
-    "QED": 4
-   },
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 2
+    },
+    {
+     "QCD": 1,
+     "QED": 4
+    }
+   ],
    "corrections": [
     "QCD",
     "QED"
@@ -1412,14 +2018,40 @@
    "scheme": "ew-gmu",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E required/uux_emepg_ew.json (3 providers, s^2e^6) + N top-up s^4e^4 ~3 min",
+   "reference_legend": "E required/uux_emepg_ew.json (3 providers, s^2e^6) + N top-up s^4e^4 ~3 min (top-up uux_emepg_ew_qcd: MS-REF)",
    "reference": {
-    "format": "required",
-    "path": "tests/fixtures/loop/required/uux_emepg_ew.json",
+    "format": "sectors",
+    "parts": [
+     {
+      "path": "tests/fixtures/loop/required/uux_emepg_ew.json",
+      "sector": {
+       "QCD": 2,
+       "QED": 6
+      },
+      "born_sector": {
+       "QCD": 2,
+       "QED": 4
+      }
+     },
+     {
+      "path": "tests/fixtures/loop/required/msm/uux_emepg_ew_qcd.json",
+      "sector": {
+       "QCD": 4,
+       "QED": 4
+      },
+      "born_sector": {
+       "QCD": 2,
+       "QED": 4
+      },
+      "rows": [
+       0,
+       1,
+       2
+      ]
+     }
+    ],
     "providers": [
-     "madloop",
-     "recola",
-     "openloops"
+     "madloop"
     ]
    },
    "points": {
@@ -1441,11 +2073,19 @@
    ],
    "sectors": [
     {
+     "QCD": 4,
+     "QED": 4
+    },
+    {
      "QCD": 2,
      "QED": 6
     }
    ],
    "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 4
+    },
     {
      "QCD": 2,
      "QED": 6
@@ -1461,13 +2101,59 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "ignored_fixed_parameters": [
-    "WTau"
-   ],
    "notes": "the s^2e^6 sector of the existing reference; the s^4e^4 top-up (MS-REF) extends the request to both sectors",
    "extras_pending": {
     "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   }
+   },
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "DY07",
@@ -1506,14 +2192,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~8-15 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emepmummp_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1543,11 +2236,56 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "notes": "the 2->4 cost probe (m-sm/PLAN.md \u00a73.2 item 3): generation 255 s, native export 95 s, peak 11.2 GB (tmp/ms-validate/probe/dy07, 2026-10-29): nightly",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-15 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_LLCm",
+    "R2_LLCp0",
+    "R2_QQCp0",
+    "R2_QQCplv",
+    "R2_QQCpud",
+    "R2_UUCm",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_mmACm",
+    "R2_mmACp",
+    "R2_mmZCm",
+    "R2_mmZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "DY08",
@@ -1593,14 +2331,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~8-15 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emepgg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1639,13 +2384,80 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-15 min)"
-   },
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "extras_pending": {
     "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   }
+   },
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGAAdown",
+    "R2_GGAAup",
+    "R2_GGGAvecDown",
+    "R2_GGGAvecUp",
+    "R2_GGGZaxialDown",
+    "R2_GGGZaxialUp",
+    "R2_GGGZvecDown",
+    "R2_GGGZvecUp",
+    "R2_GGHt",
+    "R2_GGZAdown",
+    "R2_GGZAup",
+    "R2_GGZZdown",
+    "R2_GGZZup",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "VJ01",
@@ -1691,14 +2503,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_zg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1738,10 +2557,26 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "VJ02",
@@ -1787,16 +2622,24 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "default",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_wpg_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/udx_wpg_ew.json"
+   },
    "points": {
     "default": [
      0,
      1
     ],
     "nightly": [
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -1836,13 +2679,25 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   },
-   "extras_pending": {
-    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_DDCm",
+    "R2_GDD2Cm",
+    "R2_GDD2Cp",
+    "R2_GDD2Cpu",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VJ03",
@@ -1858,10 +2713,16 @@
      "QED": 1
     }
    ],
-   "loop_orders": {
-    "QCD": 1,
-    "QED": 3
-   },
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
    "corrections": [
     "QCD",
     "QED"
@@ -1883,10 +2744,38 @@
    "scheme": "ew-gmu-a0",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E uux_ag_ew (s^2e^4) + N top-up ~1 min",
+   "reference_legend": "E uux_ag_ew (s^2e^4) + N top-up ~1 min (top-up uux_ag_ew_qcd: MS-REF)",
    "reference": {
-    "format": "required",
-    "path": "tests/fixtures/loop/required/uux_ag_ew.json",
+    "format": "sectors",
+    "parts": [
+     {
+      "path": "tests/fixtures/loop/required/uux_ag_ew.json",
+      "sector": {
+       "QCD": 2,
+       "QED": 4
+      },
+      "born_sector": {
+       "QCD": 2,
+       "QED": 2
+      }
+     },
+     {
+      "path": "tests/fixtures/loop/required/msm/uux_ag_ew_qcd.json",
+      "sector": {
+       "QCD": 4,
+       "QED": 2
+      },
+      "born_sector": {
+       "QCD": 2,
+       "QED": 2
+      },
+      "rows": [
+       0,
+       1,
+       2
+      ]
+     }
+    ],
     "providers": [
      "madloop"
     ],
@@ -1895,7 +2784,25 @@
      "alpha0_inverse": "137.035999",
      "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
      "model": "gmu",
-     "counterterm": "eCoup_DGmua0_UV_EW"
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 2,
+      "QED": 4
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ]
+     ]
     }
    },
    "points": {
@@ -1915,11 +2822,19 @@
    ],
    "sectors": [
     {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
      "QCD": 2,
      "QED": 4
     }
    ],
    "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
     {
      "QCD": 2,
      "QED": 4
@@ -1938,10 +2853,21 @@
    "parameters": {
     "aEW0M1": "137.035999"
    },
-   "ignored_fixed_parameters": [
-    "WTau"
-   ],
-   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the tagged final photon (Q1 (a)); the s^4e^2 top-up (MS-REF) extends the request"
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the tagged final photon (Q1 (a)); the s^4e^2 top-up (MS-REF) extends the request",
+   "madloop_r2_called": [
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d"
+   ]
   },
   {
    "id": "VV01",
@@ -1987,14 +2913,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_wpwm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2034,13 +2967,135 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   },
-   "extras_pending": {
-    "sp": "MS-REF (special points S1-S4)"
-   }
+   "variants": [
+    {
+     "name": "4tev",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/msm/uux_wpwm_ew_4tev.json",
+      "providers": [
+       "madloop"
+      ]
+     },
+     "points": {
+      "nightly": [
+       0,
+       1
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "S4: sqrt(s) = 4 TeV (EW Sudakov region, longitudinal-W cancellations)",
+     "zero_points": {},
+     "madloop_r2_called": [
+      "R2_AAD",
+      "R2_AAU",
+      "R2_AAboson1",
+      "R2_AAboson2",
+      "R2_AAboson3",
+      "R2_AAl",
+      "R2_AAt3",
+      "R2_AWW",
+      "R2_AWWcs",
+      "R2_AWWlv",
+      "R2_AWWtb",
+      "R2_AWWud",
+      "R2_AZD",
+      "R2_AZU",
+      "R2_AZboson1",
+      "R2_AZboson2",
+      "R2_AZboson3",
+      "R2_AZl",
+      "R2_AZt3",
+      "R2_DDCm",
+      "R2_QQCp0",
+      "R2_QQCpud",
+      "R2_QQq",
+      "R2_UUA",
+      "R2_UUZ_V2",
+      "R2_UUZ_V5",
+      "R2_ZWW",
+      "R2_ZWWcs",
+      "R2_ZWWlv",
+      "R2_ZWWtb",
+      "R2_ZWWud",
+      "R2_ZZD",
+      "R2_ZZU",
+      "R2_ZZboson1",
+      "R2_ZZboson2",
+      "R2_ZZboson3",
+      "R2_ZZl",
+      "R2_ZZt3",
+      "R2_ZZv",
+      "R2_dxuW",
+      "R2_dxuW2Cp",
+      "R2_uuA2Cm",
+      "R2_uuA2Cp",
+      "R2_uuA2Cp_d",
+      "R2_uuZ2Cm",
+      "R2_uuZ2Cp",
+      "R2_uuZ2Cp_d",
+      "R2_uxdW",
+      "R2_uxdW2Cp"
+     ]
+    }
+   ],
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDCm",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_dxuW",
+    "R2_dxuW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VV02",
@@ -2086,14 +3141,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_zz_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2132,13 +3194,20 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   },
-   "extras_pending": {
-    "hel": "MS-REF (per-helicity SLOOPMATRIXHEL references)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "VV03",
@@ -2184,14 +3253,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_wpz_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2229,10 +3305,41 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_DDCm",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VV05",
@@ -2278,14 +3385,50 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-a0",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_wpa_ew_a0.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 1,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 0,
+      "QED": 6
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03054487223705328"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03424506474171146"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.028748699529597826"
+      ]
+     ]
+    }
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2328,14 +3471,125 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min)"
-   },
+   "variants": [
+    {
+     "name": "zero",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/msm/udx_wpa_ew_a0_zero.json",
+      "providers": [
+       "madloop"
+      ],
+      "photon_conversion": {
+       "tagged": 1,
+       "alpha0_inverse": "137.035999",
+       "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+       "model": "gmu",
+       "counterterm": "eCoup_DGmua0_UV_EW",
+       "sector": {
+        "QCD": 0,
+        "QED": 6
+       },
+       "values": [
+        [
+         "0.0026691246884024853",
+         "0.032448892034256105"
+        ],
+        [
+         "0.0026691246884024853",
+         "0.03054487223705328"
+        ],
+        [
+         "0.0026691246884024853",
+         "0.03424506474171146"
+        ]
+       ]
+      }
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "S1: Born-zero points cos(u, photon) = -1/3 and one regular neighbour; one job per point: after MadLoop's initialisation at a Born-zero point the neighbour's QCD double pole missed the universal one by 2.9e-5 in a three-point job (alone: 1e-15)",
+     "zero_points": {
+      "0": 2,
+      "1": 2
+     },
+     "madloop_r2_called": [
+      "R2_AWW",
+      "R2_AWWcs",
+      "R2_AWWlv",
+      "R2_AWWtb",
+      "R2_AWWud",
+      "R2_DDA",
+      "R2_DDCm",
+      "R2_QQCp0",
+      "R2_QQCpud",
+      "R2_QQq",
+      "R2_UUA",
+      "R2_UUCm",
+      "R2_WWboson1",
+      "R2_WWboson2",
+      "R2_WWboson3",
+      "R2_WWcs1",
+      "R2_WWl",
+      "R2_WWtb1",
+      "R2_WWtb3",
+      "R2_WWud1",
+      "R2_ddA2Cm",
+      "R2_ddA2Cp",
+      "R2_ddA2Cp_u",
+      "R2_uuA2Cm",
+      "R2_uuA2Cp",
+      "R2_uuA2Cp_d",
+      "R2_uxdW",
+      "R2_uxdW2Cp"
+     ]
+    }
+   ],
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "extras_pending": {
-    "ward": "the photon Ward identity with an external W: its absorptive self-energy (W -> f f') is not renormalised in the real-mass scheme (c = i residual 4e-4 of the scale, m1 2026-10-30); under CMS: CM09",
-    "sp": "MS-REF (special points S1-S4)"
-   }
+    "ward": "the photon Ward identity with an external W: its absorptive self-energy (W -> f f') is not renormalised in the real-mass scheme (c = i residual 4e-4 of the scale, m1 2026-10-30); under CMS: CM09"
+   },
+   "madloop_r2_called": [
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_DDA",
+    "R2_DDCm",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ddA2Cm",
+    "R2_ddA2Cp",
+    "R2_ddA2Cp_u",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VV06",
@@ -2351,10 +3605,16 @@
      "QED": 2
     }
    ],
-   "loop_orders": {
-    "QCD": 0,
-    "QED": 4
-   },
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
    "corrections": [
     "QCD",
     "QED"
@@ -2376,10 +3636,38 @@
    "scheme": "ew-gmu-a0",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E uux_aa_ew (e^6) + N top-up ~1 min",
+   "reference_legend": "E uux_aa_ew (e^6) + N top-up ~1 min (top-up uux_aa_ew_qcd: MS-REF)",
    "reference": {
-    "format": "required",
-    "path": "tests/fixtures/loop/required/uux_aa_ew.json",
+    "format": "sectors",
+    "parts": [
+     {
+      "path": "tests/fixtures/loop/required/uux_aa_ew.json",
+      "sector": {
+       "QCD": 0,
+       "QED": 6
+      },
+      "born_sector": {
+       "QCD": 0,
+       "QED": 4
+      }
+     },
+     {
+      "path": "tests/fixtures/loop/required/msm/uux_aa_ew_qcd.json",
+      "sector": {
+       "QCD": 2,
+       "QED": 4
+      },
+      "born_sector": {
+       "QCD": 0,
+       "QED": 4
+      },
+      "rows": [
+       0,
+       1,
+       2
+      ]
+     }
+    ],
     "providers": [
      "madloop"
     ],
@@ -2388,7 +3676,25 @@
      "alpha0_inverse": "137.035999",
      "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
      "model": "gmu",
-     "counterterm": "eCoup_DGmua0_UV_EW"
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 0,
+      "QED": 6
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ]
+     ]
     }
    },
    "points": {
@@ -2407,11 +3713,19 @@
    ],
    "sectors": [
     {
+     "QCD": 2,
+     "QED": 4
+    },
+    {
      "QCD": 0,
      "QED": 6
     }
    ],
    "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 4
+    },
     {
      "QCD": 0,
      "QED": 6
@@ -2430,10 +3744,17 @@
    "parameters": {
     "aEW0M1": "137.035999"
    },
-   "ignored_fixed_parameters": [
-    "WTau"
-   ],
-   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the two tagged final photons (Q1 (a)); the s^2e^4 top-up (MS-REF) extends the request"
+   "notes": "raw MadLoop G_mu x MG5_aMC's alpha(0) formula over the two tagged final photons (Q1 (a)); the s^2e^4 top-up (MS-REF) extends the request",
+   "madloop_r2_called": [
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d"
+   ]
   },
   {
    "id": "VV07",
@@ -2479,14 +3800,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~5 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_wpwmg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -2526,10 +3854,74 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~5 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDCm",
+    "R2_GDD2Cm",
+    "R2_GDD2Cp",
+    "R2_GDD2Cpu",
+    "R2_GGHt",
+    "R2_GGWWcs",
+    "R2_GGWWtb",
+    "R2_GGWWud",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_dxuW",
+    "R2_dxuW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "V301",
@@ -2568,14 +3960,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10-15 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_wpwmz_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2605,10 +4004,108 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10-15 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZH",
+    "R2_AZHt",
+    "R2_AZU",
+    "R2_AZWW1",
+    "R2_AZWW1cs",
+    "R2_AZWW1lv",
+    "R2_AZWW1tb",
+    "R2_AZWW1ud",
+    "R2_AZWW2",
+    "R2_AZWW2cs",
+    "R2_AZWW2lv",
+    "R2_AZWW2tb",
+    "R2_AZWW2ud",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDCm",
+    "R2_GmGpboson1",
+    "R2_GmGpboson2",
+    "R2_GmGptb1",
+    "R2_GmGptb2",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_UUCm",
+    "R2_WAGm",
+    "R2_WAGmtb",
+    "R2_WAGp",
+    "R2_WAGptb",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_WZGm",
+    "R2_WZGmtb",
+    "R2_WZGp",
+    "R2_WZGptb",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZWW1",
+    "R2_ZZWW1cs",
+    "R2_ZZWW1lv",
+    "R2_ZZWW1tb",
+    "R2_ZZWW1ud",
+    "R2_ZZWW2",
+    "R2_ZZWW2cs",
+    "R2_ZZWW2lv",
+    "R2_ZZWW2tb",
+    "R2_ZZWW2ud",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_dxuW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VH01",
@@ -2654,14 +4151,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_zh_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2699,10 +4203,35 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AZD",
+    "R2_AZH",
+    "R2_AZHt",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "VH02",
@@ -2748,14 +4277,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_wph_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2793,10 +4329,23 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "VH03",
@@ -2842,14 +4391,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/ud_udh_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -2888,11 +4444,57 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "notes": "capped (QCD = 0): typed unpredicted sectors are allowed",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAH",
+    "R2_AAHt",
+    "R2_AZD",
+    "R2_AZH",
+    "R2_AZHt",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_dxuW",
+    "R2_dxuW2Cp",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "TT01",
@@ -3024,7 +4626,7 @@
    "scale_parameter": "MU_R",
    "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture",
    "extras_pending": {
-    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
+    "uv": "rule 5's EW form runs on the class's component row (MS-REF's component runs, one row per class: m-sm/PLAN.md \u00a71.4 rule 5)"
    }
   },
   {
@@ -3079,18 +4681,27 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_ttx_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/uux_ttx_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
-    "so"
+    "so",
+    "uv"
    ],
    "features": [
     "2->2",
@@ -3148,10 +4759,62 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "TT03",
@@ -3197,14 +4860,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~4-6 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gg_ttxg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -3249,6 +4919,9 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "relaxed": {
     "2": 1e-08,
     "4": 1e-08
@@ -3257,10 +4930,51 @@
     "MW": "180",
     "MZ": "200"
    },
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~4-6 min)"
-   }
+   "madloop_r2_called": [
+    "R2GC_137_43",
+    "R2GC_137_44",
+    "R2GC_138_45",
+    "R2GC_138_46",
+    "R2GC_139_47",
+    "R2GC_140_48",
+    "R2GC_140_49",
+    "R2GC_141_50",
+    "R2GC_141_51",
+    "R2GC_142_52",
+    "R2GC_142_53",
+    "R2GC_143_54",
+    "R2GC_143_55",
+    "R2GC_144_56",
+    "R2GC_144_57",
+    "R2GC_145_58",
+    "R2GC_145_59",
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_GGGAvecDown",
+    "R2_GGGAvecUp",
+    "R2_GGGZaxialDown",
+    "R2_GGGZaxialUp",
+    "R2_GGGZvecDown",
+    "R2_GGGZvecUp",
+    "R2_GGHt",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm"
+   ]
   },
   {
    "id": "TT04",
@@ -3352,6 +5066,47 @@
    "catani": "engine",
    "madloop_omitted_r2": [
     "R2_G0tt_b"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_G0tt",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
    ]
   },
   {
@@ -3453,6 +5208,55 @@
    },
    "madloop_omitted_r2": [
     "R2_G0tt_b"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_G0tt",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
    ]
   },
   {
@@ -3539,7 +5343,98 @@
    "scale_parameter": "MU_R",
    "relaxed": {
     "4": 1e-13
-   }
+   },
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAb3",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZb3",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_BBC0",
+    "R2_DDCm",
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_G0bb",
+    "R2_G0bb_t",
+    "R2_G0tt",
+    "R2_G0tt_b",
+    "R2_GBB2Cm",
+    "R2_GBB2Cmt",
+    "R2_GBB2Cp",
+    "R2_GBB2Cpt",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_GmGpboson1",
+    "R2_GmGpboson2",
+    "R2_GmGptb1",
+    "R2_GmGptb2",
+    "R2_HHb1",
+    "R2_HHb2",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Hbb",
+    "R2_Hbb_t",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZb3",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_bbA2Cm",
+    "R2_bbA2Cm_t",
+    "R2_bbA2Cp",
+    "R2_bbA2Cp_t",
+    "R2_bbZ2Cm",
+    "R2_bbZ2Cm_t",
+    "R2_bbZ2Cp",
+    "R2_bbZ2Cp_t",
+    "R2_bxtGm2Cm",
+    "R2_bxtGm2Cp",
+    "R2_bxtW2Cp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b",
+    "R2_txbGp2Cm",
+    "R2_txbGp2Cp",
+    "R2_txbW2Cp"
+   ]
   },
   {
    "id": "TV01",
@@ -3585,14 +5480,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~8-12 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gg_ttxh_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3635,10 +5537,35 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-12 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_GGHHt",
+    "R2_GGHt",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ttH"
+   ]
   },
   {
    "id": "TV02",
@@ -3684,14 +5611,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~8-12 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gg_ttxz_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -3734,10 +5668,45 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~8-12 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_GGGZaxialDown",
+    "R2_GGGZaxialUp",
+    "R2_GGGZvecDown",
+    "R2_GGGZvecUp",
+    "R2_GGHt",
+    "R2_GGZAdown",
+    "R2_GGZAup",
+    "R2_GGZZdown",
+    "R2_GGZZup",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
+   ]
   },
   {
    "id": "TV03",
@@ -3791,14 +5760,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~4-6 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_ttxwp_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -3850,10 +5826,113 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~4-6 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDA",
+    "R2_DDCm",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_GDD2Cm",
+    "R2_GDD2Cp",
+    "R2_GDD2Cpu",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_bxtW",
+    "R2_bxtW2Cp",
+    "R2_ddA2Cm",
+    "R2_ddA2Cp",
+    "R2_ddA2Cp_u",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttH",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b",
+    "R2_txbW",
+    "R2_txbW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "TV06",
@@ -3940,6 +6019,61 @@
    "scale_parameter": "MU_R",
    "ignored_fixed_parameters": [
     "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGAAdown",
+    "R2_GGAAup",
+    "R2_GGHt",
+    "R2_GGZAdown",
+    "R2_GGZAup",
+    "R2_GGZZdown",
+    "R2_GGZZup",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
    ]
   },
   {
@@ -4084,7 +6218,8 @@
       "aEWM1"
      ],
      "extras": [],
-     "extras_pending": {}
+     "extras_pending": {},
+     "madloop_r2_called": null
     }
    ],
    "catani": "engine",
@@ -4095,7 +6230,68 @@
    "ward_parameters": {
     "MW": "180",
     "MZ": "200"
-   }
+   },
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGAAdown",
+    "R2_GGAAup",
+    "R2_GGGAvecDown",
+    "R2_GGGAvecUp",
+    "R2_GGGZaxialDown",
+    "R2_GGGZaxialUp",
+    "R2_GGGZvecDown",
+    "R2_GGGZvecUp",
+    "R2_GGHt",
+    "R2_GGZAdown",
+    "R2_GGZAup",
+    "R2_GGZZdown",
+    "R2_GGZZup",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
+   ]
   },
   {
    "id": "ST01",
@@ -4141,17 +6337,27 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/ub_dt_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/ub_dt_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
-   "extras": [],
+   "extras": [
+    "uv"
+   ],
    "features": [
     "2->2",
     "single-top"
@@ -4186,10 +6392,23 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_bxtW",
+    "R2_bxtW2Cp",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "ST02",
@@ -4274,6 +6493,18 @@
    "scale_parameter": "MU_R",
    "ignored_fixed_parameters": [
     "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_bxtW2Cp",
+    "R2_uxdW2Cp"
    ]
   },
   {
@@ -4320,14 +6551,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gb_twm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4367,13 +6605,31 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   },
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "extras_pending": {
     "ward": "the gluon Ward identity with an external top beside an external W: no parameter point closes t -> b W at the W's own mass; under CMS"
-   }
+   },
+   "madloop_r2_called": [
+    "R2_DDCm",
+    "R2_GBB2Cm",
+    "R2_GBB2Cp",
+    "R2_GBB2Cpt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_bxtW",
+    "R2_bxtW2Cp"
+   ]
   },
   {
    "id": "ST04",
@@ -4410,9 +6666,15 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-b-mass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "R commit ew-validate's workspace run udx_tbx_ew_mb (MadLoop)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/udx_tbx_ew_mb.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
@@ -4448,10 +6710,21 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: R commit ew-validate's workspace run udx_tbx_ew_mb (MadLoop))"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_bxtW2Cp",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "JJ01",
@@ -4505,14 +6778,22 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_ddx_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/uux_ddx_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4569,13 +6850,74 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   },
-   "extras_pending": {
-    "uv": "MS-REF (component runs: bare / R2 / UV-CT, madloop_ct_selection.py)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDA",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_GDD2Cm",
+    "R2_GDD2Cp",
+    "R2_GDD2Cpu",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ddA2Cm",
+    "R2_ddA2Cp",
+    "R2_ddA2Cp_u",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_dxuW",
+    "R2_dxuW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "JJ02",
@@ -4629,14 +6971,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_uux_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4690,10 +7039,50 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "JJ03",
@@ -4739,14 +7128,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_gg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -4783,10 +7179,27 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm"
+   ]
   },
   {
    "id": "JJ04",
@@ -4840,14 +7253,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3-5 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_ddxg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4899,10 +7319,83 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDA",
+    "R2_DDCm",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_GDD2Cm",
+    "R2_GDD2Cp",
+    "R2_GDD2Cpu",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ddA2Cm",
+    "R2_ddA2Cp",
+    "R2_ddA2Cp_u",
+    "R2_ddZ2Cm",
+    "R2_ddZ2Cp",
+    "R2_ddZ2Cp_u",
+    "R2_dxuW",
+    "R2_dxuW2Cp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp"
+   ]
   },
   {
    "id": "PI01",
@@ -4943,12 +7436,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~1 min (one job serves both twins)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/aa_emep_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -4980,13 +7480,21 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-PHOTON"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min (one job serves both twins))"
-   }
+    "waits_for": "MS-PHOTON",
+    "reason": "the row's package: MS-PHOTON"
+   },
+   "madloop_r2_called": [
+    "R2_LLCm",
+    "R2_LLCp0",
+    "R2_QQCplv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_llACp"
+   ]
   },
   {
    "id": "PI02",
@@ -5027,12 +7535,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~2-3 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/aa_wpwm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5063,13 +7578,48 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-PHOTON"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2-3 min)"
-   }
+    "waits_for": "MS-PHOTON",
+    "reason": "the row's package: MS-PHOTON"
+   },
+   "madloop_r2_called": [
+    "R2_AAH",
+    "R2_AAHt",
+    "R2_AAWW1",
+    "R2_AAWW1cs",
+    "R2_AAWW1lv",
+    "R2_AAWW1tb",
+    "R2_AAWW1ud",
+    "R2_AAWW2",
+    "R2_AAWW2cs",
+    "R2_AAWW2lv",
+    "R2_AAWW2tb",
+    "R2_AAWW2ud",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_GmGpboson1",
+    "R2_GmGpboson2",
+    "R2_GmGptb1",
+    "R2_GmGptb2",
+    "R2_WAGm",
+    "R2_WAGmtb",
+    "R2_WAGp",
+    "R2_WAGptb",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1"
+   ]
   },
   {
    "id": "PI03",
@@ -5117,15 +7667,25 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/ag_uux_ew.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/ag_uux_ew.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
-   "extras": [],
+   "extras": [
+    "uv"
+   ],
    "features": [
     "2->2",
     "photon:initial"
@@ -5160,13 +7720,27 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-PHOTON"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+    "waits_for": "MS-PHOTON",
+    "reason": "the row's package: MS-PHOTON"
+   },
+   "madloop_r2_called": [
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d"
+   ]
   },
   {
    "id": "PI04",
@@ -5214,12 +7788,48 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/au_au_ew_a0.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 1,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 0,
+      "QED": 6
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03054487223705328"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03424506474171146"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.028748699529597826"
+      ]
+     ]
+    }
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5260,13 +7870,23 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-PHOTON"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+    "waits_for": "MS-PHOTON",
+    "reason": "the row's package: MS-PHOTON"
+   },
+   "madloop_r2_called": [
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d"
+   ]
   },
   {
    "id": "CM01",
@@ -5391,12 +8011,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N, S ~2 min (at and off sqrt(s) = M_Z)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emep_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5436,16 +8063,52 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min (at and off sqrt(s) = M_Z))"
+    "waits_for": "MS-CMS",
+    "reason": "the row's package: MS-CMS"
    },
-   "extras_pending": {
-    "sp": "MS-REF (special points S1-S4)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "CM03",
@@ -5489,12 +8152,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N, S ~2 min (near M_W)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_epve_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5534,16 +8204,26 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min (near M_W))"
+    "waits_for": "MS-CMS",
+    "reason": "the row's package: MS-CMS"
    },
-   "extras_pending": {
-    "sp": "MS-REF (special points S1-S4)"
-   }
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_uxdW",
+    "R2_uxdW2Cp",
+    "R2_vlW"
+   ]
   },
   {
    "id": "CM04",
@@ -5587,15 +8267,25 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gg_ttx_cms.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/gg_ttx_cms.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
-   "extras": [],
+   "extras": [
+    "uv"
+   ],
    "features": [
     "2->2",
     "cms"
@@ -5630,13 +8320,35 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   }
+    "waits_for": "MS-CMS",
+    "reason": "the row's package: MS-CMS"
+   },
+   "madloop_r2_called": [
+    "R2_3Gg",
+    "R2_3Gq",
+    "R2_GGHt",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GGg_1",
+    "R2_GGg_2",
+    "R2_GGq",
+    "R2_GGt",
+    "R2_GQQ",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm"
+   ]
   },
   {
    "id": "CM05",
@@ -5680,12 +8392,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~3 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_emepg_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5725,13 +8444,62 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
-   }
+    "waits_for": "MS-CMS",
+    "reason": "the row's package: MS-CMS"
+   },
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "CM07",
@@ -5769,7 +8537,13 @@
    "tier": "campaign",
    "status": "pending",
    "reference_legend": "N ~35-45 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gg_ttxemepg_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "campaign": [
      0,
@@ -5807,13 +8581,74 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS-N"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~35-45 min)"
-   }
+    "waits_for": "MS-CMS-N",
+    "reason": "the row's package: MS-CMS-N"
+   },
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_GGAAdown",
+    "R2_GGAAup",
+    "R2_GGGAvecDown",
+    "R2_GGGAvecUp",
+    "R2_GGGZaxialDown",
+    "R2_GGGZaxialUp",
+    "R2_GGGZvecDown",
+    "R2_GGGZvecUp",
+    "R2_GGHt",
+    "R2_GGZAdown",
+    "R2_GGZAup",
+    "R2_GGZZdown",
+    "R2_GGZZup",
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GTT2Cm",
+    "R2_GTT2Cmb",
+    "R2_GTT2Cp",
+    "R2_GTT2Cpb",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
+   ]
   },
   {
    "id": "CM08",
@@ -5850,12 +8685,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~10 min (2->4)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_epvebbx_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5884,13 +8726,26 @@
    "alphas": {},
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS-N"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~10 min (2->4))"
-   }
+    "waits_for": "MS-CMS-N",
+    "reason": "the row's package: MS-CMS-N"
+   },
+   "madloop_r2_called": [
+    "R2_DDA",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_bxtW",
+    "R2_txbW",
+    "R2_uxdW"
+   ]
   },
   {
    "id": "CM09",
@@ -5934,12 +8789,48 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~3-5 min (MadLoop CMS x the MG5 formula)",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_epvea_cms.json",
+    "providers": [
+     "madloop"
+    ],
+    "photon_conversion": {
+     "tagged": 1,
+     "alpha0_inverse": "137.035999",
+     "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+     "model": "gmu",
+     "counterterm": "eCoup_DGmua0_UV_EW",
+     "sector": {
+      "QCD": 0,
+      "QED": 8
+     },
+     "values": [
+      [
+       "0.0026691246884024853",
+       "0.032448892034256105"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03054487223705328"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.03424506474171146"
+      ],
+      [
+       "0.0026691246884024853",
+       "0.028748699529597826"
+      ]
+     ]
+    }
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5981,13 +8872,50 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS-N"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3-5 min (MadLoop CMS x the MG5 formula))"
-   }
+    "waits_for": "MS-CMS-N",
+    "reason": "the row's package: MS-CMS-N"
+   },
+   "madloop_r2_called": [
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_DDA",
+    "R2_DDCm",
+    "R2_LLCm",
+    "R2_LLCp0",
+    "R2_QQCp0",
+    "R2_QQCplv",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUA",
+    "R2_UUCm",
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1",
+    "R2_ddA2Cm",
+    "R2_ddA2Cp",
+    "R2_ddA2Cp_u",
+    "R2_eeACm",
+    "R2_eeACp",
+    "R2_llACp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uxdW",
+    "R2_uxdW2Cp",
+    "R2_vlW"
+   ]
   },
   {
    "id": "CM10",
@@ -6023,12 +8951,19 @@
    "tier": "nightly",
    "status": "pending",
    "reference_legend": "N ~3 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_wpbbx_cms.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6057,12 +8992,22 @@
    "reference_tolerance": 1e-12,
    "alphas": {},
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-CMS-N"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~3 min)"
-   }
+    "waits_for": "MS-CMS-N",
+    "reason": "the row's package: MS-CMS-N"
+   },
+   "madloop_r2_called": [
+    "R2_DDA",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_bxtW",
+    "R2_txbW",
+    "R2_uxdW"
+   ]
   },
   {
    "id": "MP01",
@@ -6135,11 +9080,8 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-MODEL"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~3-5 min)"
+    "waits_for": "MS-MODEL",
+    "reason": "the row's package: MS-MODEL"
    }
   },
   {
@@ -6221,11 +9163,8 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "pending": {
-    "waits_for": [
-     "MS-REF",
-     "MS-MODEL"
-    ],
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N multi-P ~4-6 min)"
+    "waits_for": "MS-MODEL",
+    "reason": "the row's package: MS-MODEL"
    }
   },
   {
@@ -6363,14 +9302,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-mm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/uux_mummp_ew_mm.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6408,12 +9354,54 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "catani": "none",
    "catani_reason": "the massive-muon UFO copy: the UFO writes the lepton field renormalisation for massless leptons (single pole = the massive QED operator + 3 alpha/2pi Born)",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAm3",
+    "R2_AAt3",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZm3",
+    "R2_AZt3",
+    "R2_UUA",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZm3",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_llACp",
+    "R2_llZCp",
+    "R2_mmACm",
+    "R2_mmACp",
+    "R2_mmZCm",
+    "R2_mmZCm_v",
+    "R2_mmZCp",
+    "R2_uuA2Cm",
+    "R2_uuA2Cp",
+    "R2_uuA2Cp_d",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
   },
   {
    "id": "SC03",
@@ -6455,17 +9443,27 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-ckm",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/udx_epve_ew_ckm.json",
+    "providers": [
+     "madloop"
+    ],
+    "components": "tests/fixtures/loop/required/msm/components/udx_epve_ew_ckm.json"
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
-   "extras": [],
+   "extras": [
+    "uv"
+   ],
    "features": [
     "2->2",
     "ckm"
@@ -6500,12 +9498,35 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "catani": "none",
    "catani_reason": "restrict_ckm: no CKM counterterm in the UFO, so the complex CKM leaves a UV pole in the QED correction (single pole = the QED operator - 0.0213 alpha/2pi Born, as MadLoop's; finding F6)",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "madloop_r2_called": [
+    "R2_WWboson1",
+    "R2_WWboson2",
+    "R2_WWboson3",
+    "R2_WWcb1",
+    "R2_WWcb3",
+    "R2_WWcd1",
+    "R2_WWcs1",
+    "R2_WWl",
+    "R2_WWtau3",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWtd1",
+    "R2_WWtd3",
+    "R2_WWts1",
+    "R2_WWts3",
+    "R2_WWub1",
+    "R2_WWub3",
+    "R2_WWud1",
+    "R2_WWus1",
+    "R2_uxdW",
+    "R2_uxdW2Cp",
+    "R2_vlW"
+   ]
   },
   {
    "id": "SC04",
@@ -6549,14 +9570,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-b-mass",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/bbx_wpwm_ew_mb.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6594,10 +9622,78 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   }
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAb3",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZb3",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDA",
+    "R2_DDZ_V2",
+    "R2_DDZ_V3",
+    "R2_HHb1",
+    "R2_HHb2",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Hbb",
+    "R2_Hbb_t",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZb3",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_bbA2Cm",
+    "R2_bbA2Cm_t",
+    "R2_bbA2Cp",
+    "R2_bbA2Cp_t",
+    "R2_bbH",
+    "R2_bbZ2Cm",
+    "R2_bbZ2Cm_t",
+    "R2_bbZ2Cp",
+    "R2_bbZ2Cp_t",
+    "R2_bxtW",
+    "R2_bxtW2Cp",
+    "R2_txbW",
+    "R2_txbW2Cp"
+   ]
   },
   {
    "id": "SC05",
@@ -6722,14 +9818,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~2-4 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/wpwm_wpwm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6760,12 +9863,61 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "inputs": "native",
    "catani": "engine",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2-4 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_WWWW1",
+    "R2_WWWW1cs",
+    "R2_WWWW1lv",
+    "R2_WWWW1tb",
+    "R2_WWWW1ud",
+    "R2_WWWW2",
+    "R2_WWWW2cs",
+    "R2_WWWW2lv",
+    "R2_WWWW2tb",
+    "R2_WWWW2ud",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv"
+   ]
   },
   {
    "id": "SC07",
@@ -6804,14 +9956,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1-2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/hh_hh_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6847,12 +10006,21 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "inputs": "native",
    "catani": "engine",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
-   }
+   "madloop_r2_called": [
+    "R2_HHHH",
+    "R2_HHHHt",
+    "R2_HHHboson",
+    "R2_HHHt",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2"
+   ]
   },
   {
    "id": "SC08",
@@ -6891,14 +10059,21 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
-   "reference": null,
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/ttx_wpwm_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -6928,12 +10103,66 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "inputs": "native",
    "catani": "engine",
-   "pending": {
-    "waits_for": "MS-REF",
-    "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~2 min)"
-   }
+   "madloop_r2_called": [
+    "R2_AAD",
+    "R2_AAU",
+    "R2_AAboson1",
+    "R2_AAboson2",
+    "R2_AAboson3",
+    "R2_AAl",
+    "R2_AAt3",
+    "R2_AWW",
+    "R2_AWWcs",
+    "R2_AWWlv",
+    "R2_AWWtb",
+    "R2_AWWud",
+    "R2_AZD",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_DDCm",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_WWH",
+    "R2_WWHtb",
+    "R2_ZWW",
+    "R2_ZWWcs",
+    "R2_ZWWlv",
+    "R2_ZWWtb",
+    "R2_ZWWud",
+    "R2_ZZD",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_bxtW2Cp",
+    "R2_ttA2Cm",
+    "R2_ttA2Cm_b",
+    "R2_ttA2Cp",
+    "R2_ttA2Cp_b",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b",
+    "R2_txbW2Cp"
+   ]
   },
   {
    "id": "SC09",
@@ -7025,6 +10254,44 @@
    "catani": "engine",
    "madloop_omitted_r2": [
     "R2_G0tt_b"
+   ],
+   "madloop_r2_called": [
+    "R2_AZD",
+    "R2_AZH",
+    "R2_AZHt",
+    "R2_AZU",
+    "R2_AZboson1",
+    "R2_AZboson2",
+    "R2_AZboson3",
+    "R2_AZl",
+    "R2_AZt3",
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_G0tt",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_Htt",
+    "R2_Htt_b",
+    "R2_QQCp0",
+    "R2_QQCptb",
+    "R2_TTC0",
+    "R2_UUCm",
+    "R2_ZG0H",
+    "R2_ZG0Ht",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv",
+    "R2_ttZ2Cm",
+    "R2_ttZ2Cm_b",
+    "R2_ttZ2Cp",
+    "R2_ttZ2Cp_b"
    ]
   }
  ]
