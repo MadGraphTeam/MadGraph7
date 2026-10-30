@@ -549,3 +549,66 @@ def test_sc10_equals_madloop_on_both_models(
         )
         assert change.real != 0
         assert abs(change.real - madloop) <= 1e-10 * abs(madloop), (k, change, madloop)
+
+
+# ------------------------------------- the rows the patch changes (nightly)
+
+# Run (fixture required/msm/<run>.json, MadLoop QP and Recola on the patched
+# model) -> restriction of the shipped G_mu model.
+PATCHED_ROWS = {
+    "ttx_ttx_ew": "default",  # TT04: R2_G0tt_b, now inserted by MadLoop
+    "ttx_zh_ew": "default",  # SC09: likewise
+    "udx_tbx_ew_mb": "with_b_mass",  # ST04: the G_mu b-mass charge counterterm
+}
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("run", sorted(PATCHED_ROWS))
+def test_patched_rows_equal_madloop_and_recola(run, loop_native):
+    """On the shipped (patched) G_mu model, TT04, SC09 and ST04 equal MadLoop
+    QP on the patched model and Recola, Born and every Laurent coefficient
+    (binary64, native executor; the fixtures' metric: relative, Laurent floor
+    |Born| alpha/2pi; 1e-9, the vanishing QED double pole of t t~ > z h in
+    binary64 cancellations reaching 2e-10). Before the patch MadLoop missed
+    Recola by 2.5 % (TT04), 7.7 % (SC09) and 1e-3 (ST04). About 3 min each."""
+
+    import argparse
+    import math
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.models.loading import compile_model_source
+    from tools import loop_v2_generate
+
+    reference = json.loads((FIXTURES / f"required/msm/{run}.json").read_text())
+    assert reference["validated_providers"] == ["madloop", "recola"]
+    compiled = compile_model_source(
+        _shipped("loop_qcd_qed_sm_Gmu"),
+        restriction=PATCHED_ROWS[run],
+        require_supported=False,
+    )
+    request, _ignored = loop_v2_generate._fixture_request(
+        reference, compiled, argparse.Namespace()
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
+    results = executor.evaluate(
+        reference["points"],
+        [str(Fraction(mu) ** 2) for mu in reference["mu_r"]],
+        parameters=dict(reference["parameters"]),
+    )
+    alpha = float(reference["derived_parameters"]["alpha"])
+    keys = ("born", "finite", "single_pole", "double_pole")
+    for index, (result, row) in enumerate(
+        zip(results, reference["rows"], strict=True)
+    ):
+        mine = [float(complex(x).real) for x in result.totals[:4]]
+        for provider in ("madloop", "recola"):
+            values = row["providers"][provider]
+            floor = abs(values["born"]) * alpha / (2 * math.pi)
+            for k, (found, key) in enumerate(zip(mine, keys, strict=True)):
+                want = values[key]
+                scale = max(abs(found), abs(want), floor if k else 0.0)
+                assert abs(found - want) <= 1e-9 * scale, (run, index, provider, key)
