@@ -30,9 +30,18 @@ loops on the continued model for the Ward identity:
 * the gluon Ward identity holds with the complex top in the loops
   (double-double and binary64; gauge invariance of the complex-mass loops,
   not a test of their mass value);
+* at the card's width native inputs equal the Python inputs (continued
+  fixture);
 * CM10 (``u d~ > w+ b b~ QCD=0`` [QCD] on loop_sm under the complex-mass
   scheme with the top width, MS-CMS's ``model_cms.complex_mass_model``)
-  equals MadLoop CMS with native inputs.
+  equals MadLoop CMS with native inputs, and through the public route
+  (``mass_scheme = "complex-mass"``) its artifact stores native inputs,
+  relocates bitwise and equals MadLoop CMS;
+* nightly: CM08 (``u d~ > e+ ve b b~`` [QCD], every width) and CM09 (``u d~ >
+  e+ ve a`` [QCD QED], a tagged photon, MG5_aMC's formula with the real part
+  of the complex conversion) on the G_mu UFO equal MadLoop CMS with native
+  inputs; CM07 (the [U4] acceptance process) is a strict xfail on the
+  transform's Yukawa tie at Gamma_t = 0 (owner MS-CMS).
 """
 
 from __future__ import annotations
@@ -47,6 +56,7 @@ import pytest
 
 from pyamplicol.loops.v2 import plan_export, ward
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+from pyamplicol.loops.v2.conventions import FermionSignError
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 
 from .loop_v2_ufo_variants import complex_mass_ufo
@@ -153,6 +163,54 @@ def _top_mass(executor) -> int:
 
 def _relative(a: float, b: float) -> float:
     return abs(a - b) / max(abs(b), 1e-300)
+
+
+# Complex-mass outputs of a parameter program on the inputs (M, W, MZ, WZ):
+# the pole mass, its square, a complex-mass W coupling, a logarithm of a
+# complex square and the real part of a complex-mass alpha (u: the
+# imaginary unit).
+POLE_OUTPUTS = (
+    "(x^2 - u*x*y)^(1/2)",
+    "x^2 - u*x*y",
+    "(1 - (x^2 - u*x*y)/(z^2 - u*z*w))^(-1/2)",
+    "log(x^2 - u*x*y)",
+    "abs(x^2 - u*x*y)*(1 - abs((x^2 - u*x*y)/(z^2 - u*z*w)))",
+)
+
+
+@pytest.mark.loop_fast
+def test_plane_check_takes_complex_mass_outputs(loop_native):
+    """The SymJIT plane check (``compile_v2_plane``) on complex-mass outputs
+    (``POLE_OUTPUTS``) at the physical point (MW = 80.419, WW = 2.09291,
+    MZ = 91.188, WZ = 2.49877): accepted, the plane application equals the
+    exact evaluator to 1e-14 and the complex outputs keep their imaginary
+    parts (the causal side, Im(M^2) = -M W < 0)."""
+
+    import numpy as np
+    from symbolica import E, Evaluator, Expression, S
+
+    from pyamplicol import _rusticol
+
+    names = ("x", "y", "z", "w")
+    state = bytes(
+        Expression.evaluator_multiple(
+            [E(text).replace(S("u"), Expression.I) for text in POLE_OUTPUTS],
+            [S(name) for name in names],
+            jit_compile=False,
+        ).save()
+    )
+    point = [80.419, 2.09291, 91.188, 2.49877]
+    plane, inputs, outputs = loop_native.compile_v2_plane(state, 2, False, [point])
+    assert (inputs, outputs) == (4, len(POLE_OUTPUTS))
+    rows = np.ascontiguousarray([[complex(x) for x in point]], dtype=np.complex128)
+    expected = np.asarray(Evaluator.load(state).evaluate_complex(rows.tolist()))
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        bytes(plane), inputs, outputs, rows.view(np.float64).ravel().tolist(), 1
+    )
+    got = np.asarray(flat, dtype=np.float64).view(np.complex128).reshape(1, -1)
+    assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
+    assert got[0, 1].imag == pytest.approx(-point[0] * point[1], rel=1e-14)
+    assert got[0, 0].imag < 0 and got[0, 4].imag == 0
 
 
 def test_a_complex_pole_mass_is_a_complex_plan_mass(slices):
@@ -519,11 +577,12 @@ def test_cms_top_width_equals_madloop(loop_sm_ufo, loop_native, tmp_path):
 
 
 def _gmu_cms_slice(
-    loop_gmu_ufo, loop_native, tmp_path, reference, process, corrections
+    loop_gmu_ufo, loop_native, tmp_path, reference, process, corrections, loops=None
 ):
     """A G_mu UFO request under the complex-mass scheme at the reference's
     widths (``model_cms.complex_mass_model``, Feynman gauge) and its native
-    executor: the reference's Born orders, one loop order per correction."""
+    executor: the reference's Born orders, one loop order per correction (or
+    ``loops``)."""
 
     from pyamplicol.loops.model_cms import complex_mass_model
     from pyamplicol.models.loading import compile_model_source
@@ -543,7 +602,8 @@ def _gmu_cms_slice(
     )
     fixed = {k: v for k, v in fixed.items() if k in model.parameter_defaults}
     born = {"QCD": 0, "QED": 0, **reference["born_orders"]}
-    loops = tuple({**born, order: born[order] + 2} for order in sorted(corrections))
+    if loops is None:
+        loops = tuple({**born, order: born[order] + 2} for order in sorted(corrections))
     slice_ = LoopSlice.generate(
         model,
         SliceRequest(
@@ -571,13 +631,18 @@ def _sector_errors(result, row, born_scale: float, want=None) -> list[float]:
     |Born| alpha / 2 pi) with the correction's coupling (alpha_s for a QCD
     sector, alpha_Gmu ~ 1/132 for a QED one)."""
 
+    # Sector keys without their zero powers (the engine's orders omit them).
     virtual = {
-        tuple(sorted(dict(sector).items())): laurent
+        tuple(
+            sorted((name, power) for name, power in dict(sector).items() if power)
+        ): laurent
         for sector, laurent in result.components["virtual"].items()
     }
     errors = []
     for k, sector in enumerate(row["sectors"]["loop"]):
-        laurent = virtual[(("QCD", sector["QCD"]), ("QED", sector["QED"]))]
+        laurent = virtual[
+            tuple((name, sector[name]) for name in ("QCD", "QED") if sector[name])
+        ]
         values = (
             want[k]
             if want is not None
@@ -701,7 +766,8 @@ def test_cms_tagged_photon_equals_madloop_with_the_mg5_conversion(
     )
     record = executor.exported.trees.program["parameters"]
     assert any(isinstance(mass, list) for mass in record["plan_masses"])
-    assert record["photons"][1] == reference["tagged_photon_legs"]
+    # The record's leg labels count from 1, the fixture's ``pdgs`` index from 0.
+    assert record["photons"][1] == [leg + 1 for leg in reference["tagged_photon_legs"]]
     factors = _tagged_photon_conversion(loop_gmu_ufo, reference, reference["points"])
     scales = [str(Fraction(mu) ** 2) for mu in reference["mu_r"]]
     for precision, tolerance in (
@@ -729,4 +795,52 @@ def test_cms_tagged_photon_equals_madloop_with_the_mg5_conversion(
                     ]
                 )
             errors = _sector_errors(result, row, abs(r * born), want)
+            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=FermionSignError,
+    reason=(
+        "CM07 has Gamma_t = 0, so the top line's mass is MT itself, and the "
+        "complex-mass transform ties the Yukawa to it (ymt := MT, as MG5_aMC "
+        "does): the top Yukawa vertices of the EW loops read the loop line's "
+        "mass, which LeafWeights._require_mass_free_couplings refuses (owner: "
+        "M-SM MS-CMS, the transform's Yukawa ties and that guard)"
+    ),
+)
+def test_cms_acceptance_process_equals_madloop(loop_gmu_ufo, loop_native, tmp_path):
+    """CM07 ([U4], the complex-mass acceptance): g g > t t~ e- e+ g
+    QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6 on the G_mu UFO under the
+    complex-mass scheme with Gamma_Z, Gamma_W > 0 and Gamma_t = 0 (complex Z,
+    W and H masses in the trees, loops and counterterms), native inputs: Born
+    and the EW sector equal MadLoop CMS in quadruple precision
+    (``required/msm/gg_ttxemepg_cms.json``) at its three points,
+    double-double to 1e-10, binary64 to 1e-6. Generation about 20-30 min."""
+
+    reference = _madloop_rows("gg_ttxemepg_cms")
+    executor, parameters = _gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        reference,
+        "g g > t t~ e- e+ g",
+        ("QCD", "QED"),
+        loops=(dict(reference["loop_orders"]),),
+    )
+    record = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in record["plan_masses"])
+    scales = [str(Fraction(mu) ** 2) for mu in reference["mu_r"]]
+    for precision, tolerance in (
+        (Precision.double_double(), 1e-10),
+        (Precision.double(), 1e-6),
+    ):
+        results = executor.evaluate(
+            reference["points"], scales, parameters=parameters, precision=precision
+        )
+        for k, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
+            born = sum(float(v) for v in result.born.values())
+            assert abs(born - row["born"]) <= tolerance * abs(row["born"])
+            errors = _sector_errors(result, row, abs(row["born"]))
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
