@@ -358,6 +358,20 @@ LOOP_ADMISSION_REFUSALS = (
         "none (the leading-colour rule)",
     ),
     LoopAdmissionRefusal(
+        "colour-declaration-coverage",
+        "a leading- or next-to-leading-colour request whose counterterm program "
+        "can insert a counterterm vertex, or whose external legs take a "
+        "field factor, that its colour declaration does not cover (e.g. a "
+        "vertex whose content differs from the shipped loop_sm data's)",
+        "LC and NLC grade counterterm and field couplings by the declaration's "
+        "formal-N_c continuation (design §6.7); an uncovered coupling has no "
+        "declared N_c dependence",
+        'full colour (color.accuracy = "full"), or a colour declaration that '
+        "covers the vertex (with_loop_color_declaration)",
+        "MQ-NC (a guard)",
+        "none (kept as the guard of declared N_c data)",
+    ),
+    LoopAdmissionRefusal(
         "external-photon-scheme",
         "tagged on-shell external photons (loop.external_photons; MG5_aMC's "
         "!a!) in a request with the electromagnetic correction where the "
@@ -392,20 +406,6 @@ LOOP_ADMISSION_REFUSALS = (
         'legs allowed), or "final", "all" or "none"',
         "MS-PHOTON (a guard)",
         "none",
-    ),
-    LoopAdmissionRefusal(
-        "colour-declaration-coverage",
-        "a leading- or next-to-leading-colour request whose counterterm program "
-        "can insert a counterterm vertex, or whose external legs take a "
-        "field factor, that its colour declaration does not cover (e.g. a "
-        "vertex whose content differs from the shipped loop_sm data's)",
-        "LC and NLC grade counterterm and field couplings by the declaration's "
-        "formal-N_c continuation (design §6.7); an uncovered coupling has no "
-        "declared N_c dependence",
-        'full colour (color.accuracy = "full"), or a colour declaration that '
-        "covers the vertex (with_loop_color_declaration)",
-        "MQ-NC (a guard)",
-        "none (kept as the guard of declared N_c data)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
