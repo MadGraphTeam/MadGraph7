@@ -6696,6 +6696,10 @@ class RunCardMG7(RunCard):
     LO = True
     filename = 'run_card'
 
+    # batch systems of madgraph.various.cluster, plus this machine
+    cluster_types = ['auto', 'multicore', 'condor', 'pbs', 'sge', 'lsf', 'ge',
+                     'slurm', 'htcaas', 'htcaas2']
+
     # dynamic (free-form) sections, stored as nested dicts rather than as
     # fixed typed parameters
     dynamic_section_names = ('multiparticles', 'cuts', 'histograms')
@@ -6878,6 +6882,60 @@ class RunCardMG7(RunCard):
                     "\"auto\" a new temporary directory")
         self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
             comment="directory for the output files; \"\" creates a new run folder in Events")
+
+        # ---------------------------- [cluster] -----------------------
+        # Cluster mode trains the subprocesses in parallel as batch jobs, then
+        # generates the events with the merged gridpacks, see cluster_run.py.
+        self.add_toml_param('cluster', 'enable', False,
+            comment="run on a batch system: train the subprocesses in parallel, "
+                    "merge the gridpacks and generate the events in parallel jobs")
+        self.add_toml_param('cluster', 'mode', "full",
+            allowed=['full', 'gridpack_only'],
+            comment="full: run both passes and combine the events; gridpack_only: "
+                    "only train, the merged gridpack is the result")
+        self.add_toml_param('cluster', 'type', "auto",
+            allowed=self.cluster_types,
+            comment="batch system; auto takes cluster_type of the MadGraph configuration, "
+                    "multicore runs the jobs on this machine")
+        self.add_toml_param('cluster', 'nb_core', -1,
+            comment="jobs run at once with type multicore; -1 uses every core")
+        self.add_toml_param('cluster', 'train_device', [], typelist=str,
+            allowed=['cpu', 'cuda', 'hip', '*'],
+            comment="[run] device of the training jobs; empty keeps the [run] device")
+        self.add_toml_param('cluster', 'train_queue', "",
+            comment="queue of the training jobs; \"\" takes cluster_queue of the configuration")
+        self.add_toml_param('cluster', 'train_walltime', "",
+            comment="walltime of the training jobs in the format of the batch system")
+        self.add_toml_param('cluster', 'train_extra_args', "",
+            comment="further arguments for the submit command of the training jobs, "
+                    "e.g. \"--gres=gpu:1\" for slurm or \"request_gpus = 1\" for condor")
+        self.add_toml_param('cluster', 'subprocesses_per_job', 1,
+            comment="subprocesses (merge groups) trained together in one job")
+        self.add_toml_param('cluster', 'fix_max_weight', True,
+            comment="true: every channel gets the max weight of its training job, the "
+                    "statistically correct choice; false: the generation jobs each "
+                    "estimate it on the fly")
+        self.add_toml_param('cluster', 'deploy_device', [], typelist=str,
+            allowed=['cpu', 'cuda', 'hip', '*'],
+            comment="[run] device of the event generation jobs; empty keeps the [run] device")
+        self.add_toml_param('cluster', 'deploy_queue', "",
+            comment="queue of the event generation jobs; \"\" takes cluster_queue of the configuration")
+        self.add_toml_param('cluster', 'deploy_walltime', "",
+            comment="walltime of the event generation jobs in the format of the batch system")
+        self.add_toml_param('cluster', 'deploy_extra_args', "",
+            comment="further arguments for the submit command of the event generation jobs")
+        self.add_toml_param('cluster', 'events_per_job', 100000,
+            comment="events of one generation job; there are [generation] events / events_per_job of them")
+        self.add_toml_param('cluster', 'nb_retry', 1, hidden=True,
+            comment="how often a failed job is submitted again")
+        self.add_toml_param('cluster', 'retry_wait', 300.0, hidden=True,
+            comment="seconds a job is given to deliver its output before it is resubmitted")
+        self.add_toml_param('cluster', 'status_update', [600, 30], typelist=int, hidden=True,
+            comment="seconds between status checks of the jobs, long and short")
+        self.add_toml_param('cluster', 'temp_path', "", hidden=True,
+            comment="cluster_temp_path: scratch directory of the nodes, for a cluster without shared disk")
+        self.add_toml_param('cluster', 'keep_job_files', False, hidden=True,
+            comment="keep the event files of the generation jobs once combined")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'ebeam1', 6500.0,
@@ -8163,6 +8221,27 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard(
                     "Invalid device '%s': the device index must be a non-negative integer"
                     % entry)
+
+        cluster = self['cluster']
+        if cluster['enable']:
+            if self['phasespace']['subprocess_selection']:
+                raise InvalidRunCard(
+                    "subprocess_selection can not be set in cluster mode, which "
+                    "selects the subprocesses of each job itself")
+            for key in ('subprocesses_per_job', 'events_per_job'):
+                if cluster[key] < 1:
+                    raise InvalidRunCard("cluster.%s must be at least 1" % key)
+            if cluster['nb_retry'] < 0:
+                raise InvalidRunCard("cluster.nb_retry can not be negative")
+        for key in ('train_device', 'deploy_device'):
+            for entry in cluster[key]:
+                device_type, _, index = str(entry).partition(':')
+                if device_type not in self.allowed_device_types or \
+                        (index and not index.isdigit()):
+                    raise InvalidRunCard(
+                        "Invalid device '%s' in cluster.%s: each entry must be one of %s, "
+                        "optionally followed by a device index (e.g. \"cuda:1\")"
+                        % (entry, key, ', '.join(self.allowed_device_types)))
 
         selection = self['phasespace']['subprocess_selection']
         if any(index < 0 for index in selection) or len(set(selection)) != len(selection):

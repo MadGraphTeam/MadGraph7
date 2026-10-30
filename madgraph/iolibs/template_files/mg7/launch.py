@@ -3961,6 +3961,11 @@ def load_mg5_options(me_dir=None) -> dict:
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
         'heptools_install_dir': None, 'hepmc3_path': None,
+        # the batch system of the cluster mode, where [cluster] leaves it open
+        'cluster_type': None, 'cluster_queue': None, 'cluster_walltime': None,
+        'cluster_nb_retry': None, 'cluster_retry_wait': None,
+        'cluster_status_update': None, 'cluster_temp_path': None,
+        'cluster_requirement': None, 'nb_core': None,
     }
     config_files = []
     base_config = misc.base_config_file()
