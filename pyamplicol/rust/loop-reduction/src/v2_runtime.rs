@@ -124,6 +124,26 @@ struct NativeTreesRecord {
     _rest: BTreeMap<String, serde_json::Value>,
 }
 
+/// The external parameter values the generation's plane check certified a
+/// tree program's binary64 parameter program at (`native_trees.
+/// _request_points`): each parameter's value fixed at generation, else its
+/// default. A batch at them takes the plane without `TreeProgram::bind`'s
+/// run-time side check, so it touches no Symbolica state.
+fn generation_values(
+    trees: &TreeProgram,
+    fixed: &BTreeMap<String, String>,
+) -> RusticolResult<Vec<Rational>> {
+    trees
+        .parameter_names()
+        .iter()
+        .zip(trees.parameter_defaults())
+        .map(|(name, default)| match fixed.get(name) {
+            Some(value) => parse_rational(value).map_err(|e| invalid(e.message())),
+            None => Ok(default.clone()),
+        })
+        .collect()
+}
+
 /// The assembly record of a native process (`native_process.NativeProcess`).
 #[derive(Deserialize)]
 struct NativeRecord {
@@ -484,7 +504,11 @@ impl V2Runtime {
         if !trees.has_counterterms() {
             return Err(invalid("the tree program has no counterterm components"));
         }
-        let runtime = trees.runtime(&0.0)?;
+        let mut runtime = trees.runtime(&0.0)?;
+        trees.certify_parameters(
+            &mut runtime,
+            &generation_values(&trees, &record.fixed_parameters)?,
+        )?;
         let executor = with_fourier(
             V2Executor::new(program, V2_LANES, threads)?,
             record.fourier.as_ref(),
@@ -581,7 +605,11 @@ impl V2Runtime {
                     "the companion's model parameters differ from the process's",
                 ));
             }
-            let runtime = trees.runtime(&0.0)?;
+            let mut runtime = trees.runtime(&0.0)?;
+            trees.certify_parameters(
+                &mut runtime,
+                &generation_values(&trees, &self.record.fixed_parameters)?,
+            )?;
             let executor = with_fourier(
                 V2Executor::new(program.clone(), V2_LANES, self.threads)?,
                 self.record

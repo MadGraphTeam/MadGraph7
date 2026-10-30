@@ -1096,10 +1096,10 @@ scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
 masses in their native point inputs (the loop propagators read M^2 - i M W; the
 binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
 point inputs and relocate as any other artifact. A width changed at run time
-may be zero (the real-mass limit): binary64 checks its compiled parameter
-program once per new set of parameter values against the exact one and
-evaluates the exact one where they disagree (a zero width puts counterterm
-arguments on their branch cuts). In double-double a width must stay at least
+may be zero (the real-mass limit): at parameter values other than the
+generation's, binary64 checks its compiled parameter program once per new
+set of values against the exact one and evaluates the exact one where they
+disagree (a zero width puts counterterm arguments on their branch cuts). In double-double a width must stay at least
 1e-150 of its mass, or be zero (`complex-mass-master` otherwise, a
 model-parameter error naming the plan mass). An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a

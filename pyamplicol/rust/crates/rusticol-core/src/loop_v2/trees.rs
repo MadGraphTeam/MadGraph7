@@ -1099,9 +1099,14 @@ pub struct TreeRuntime<T> {
 
 /// The run-time side check of a binary64 parameter program's plane
 /// application (`TreeProgram::bind`, M-SM MS-MASTERS): its exact evaluator,
-/// built on first use, and the external parameter values (the scale's entry
-/// zeroed) last checked, with whether the plane agreed there.
+/// built on first use, the external parameter values (the scale's entry
+/// zeroed) last checked, with whether the plane agreed there, and the values
+/// the generation's plane check certified
+/// ([`TreeProgram::certify_parameters`]), where a batch takes the plane
+/// without the check (so a binary64 evaluation at them touches no Symbolica
+/// state, DESIGN §3.7).
 pub struct ParameterSide<T> {
+    certified: Option<Vec<Rational>>,
     exact: Option<Kernel<T>>,
     checked: Option<(Vec<Rational>, bool)>,
 }
@@ -1112,10 +1117,11 @@ where
 {
     /// The plane application's `outputs` (row-major, `rows` rows of
     /// `width` inputs and `per_row` outputs at `inputs`) at the external
-    /// parameter values `key`: checked against the exact evaluator (`build`
-    /// on first use) on the first row when `key` differs from the last
-    /// checked values, and replaced by the exact evaluator's rows when the
-    /// plane disagreed there. Returns whether the plane's rows were kept.
+    /// parameter values `key`: kept at the certified values; elsewhere
+    /// checked against the exact evaluator (`build` on first use) on the
+    /// first row when `key` differs from the last checked values, and
+    /// replaced by the exact evaluator's rows when the plane disagreed there.
+    /// Returns whether the plane's rows were kept.
     fn settle(
         &mut self,
         key: Vec<Rational>,
@@ -1124,6 +1130,9 @@ where
         (rows, width, per_row): (usize, usize, usize),
         build: impl FnOnce() -> RusticolResult<Kernel<T>>,
     ) -> RusticolResult<bool> {
+        if self.certified.as_ref() == Some(&key) {
+            return Ok(true);
+        }
         let plane = match &self.checked {
             Some((checked, plane)) if *checked == key => *plane,
             _ => {
@@ -2247,6 +2256,41 @@ impl TreeProgram {
         &self.parameters.defaults
     }
 
+    /// Record in `runtime` the external parameter values (in
+    /// `parameter_names` order) the generation's plane check certified the
+    /// binary64 parameter program at: each parameter's value fixed at
+    /// generation, else its default (`native_trees._request_points`; the
+    /// scale's entry is ignored). A batch at them takes the plane without
+    /// `bind`'s run-time side check.
+    pub fn certify_parameters<T>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        values: &[Rational],
+    ) -> RusticolResult<()> {
+        require(
+            values.len() == self.parameters.names.len(),
+            "external parameter count",
+        )?;
+        runtime.parameter_side.certified = Some(self.parameter_key(values));
+        Ok(())
+    }
+
+    /// External parameter values with the scale's entry zeroed: what
+    /// `bind`'s run-time side check compares.
+    fn parameter_key(&self, values: &[Rational]) -> Vec<Rational> {
+        values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                if self.parameters.scale == Some(index) {
+                    Rational::from(0)
+                } else {
+                    value.clone()
+                }
+            })
+            .collect()
+    }
+
     /// The renormalisation scale's external parameter, if the program reads
     /// it (each point's sqrt(mu_R^2) binds it).
     pub fn scale_parameter(&self) -> Option<&str> {
@@ -2357,25 +2401,15 @@ impl TreeProgram {
         // (CM01 with its widths set to zero at run time on masses generated
         // complex took the other side of the electroweak UV counterterm
         // couplings' cuts: finite part 3.9e-5 against MadLoop's 1.8e-3,
-        // M-SM MS-MASTERS). So each new set of parameter values (the scale
-        // aside: it enters through logarithms of positive ratios) is checked
-        // once on the batch's first point against the exact evaluator; on a
-        // disagreement the batch, and later ones at these values, evaluate
-        // the parameter program exactly, the side DD, AP and MadLoop take.
+        // M-SM MS-MASTERS). So each new set of parameter values other than
+        // the certified ones (the scale aside: it enters through logarithms
+        // of positive ratios) is checked once on the batch's first point
+        // against the exact evaluator; on a disagreement the batch, and later
+        // ones at these values, evaluate the parameter program exactly, the
+        // side DD, AP and MadLoop take.
         if matches!(runtime.parameters, Kernel::Plane(_)) {
-            let key: Vec<Rational> = values
-                .iter()
-                .enumerate()
-                .map(|(index, value)| {
-                    if program.scale == Some(index) {
-                        Rational::from(0)
-                    } else {
-                        value.clone()
-                    }
-                })
-                .collect();
             runtime.parameter_side.settle(
-                key,
+                self.parameter_key(values),
                 &inputs,
                 &mut outputs,
                 (points, width, program.outputs),
@@ -2671,6 +2705,7 @@ impl TreeProgram {
             interference,
             columns,
             parameter_side: ParameterSide {
+                certified: None,
                 exact: None,
                 checked: None,
             },

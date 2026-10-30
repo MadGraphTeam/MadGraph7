@@ -186,6 +186,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     let mut exact = Kernel::Exact(binary64.clone().into_batch_evaluator());
     let build = || Ok(Kernel::Exact(binary64.clone().into_batch_evaluator()));
     let mut side = ParameterSide {
+        certified: None,
         exact: None,
         checked: None,
     };
@@ -219,6 +220,17 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
             .expect("settles");
         assert_eq!((kept, again), (!on_cut, expected), "x = {x}");
     }
+    // Certified values (the generation's plane check): the plane's rows are
+    // kept without a check, even on the cut.
+    let key = vec![Rational::from(4)];
+    side.certified = Some(key.clone());
+    side.checked = None;
+    let (input, mut got) = rows(&mut plane, 4.0);
+    let plane_rows = got;
+    let kept = side
+        .settle(key, &input, &mut got, (2, 1, 1), || panic!("no check"))
+        .expect("settles");
+    assert!(kept && got == plane_rows && side.checked.is_none());
 }
 
 #[test]
