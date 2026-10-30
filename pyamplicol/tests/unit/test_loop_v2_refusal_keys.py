@@ -527,3 +527,55 @@ def test_trace_steps_stay_within_the_family_rank():
         for g in groups
     )
     assert _trace_groups(bubble, 2, shape) == [bubble]
+
+
+@pytest.mark.loop_nightly
+def test_split_trace_steps_equal_the_reference_executor(loop_native):
+    """u u~ > z z [virt=QED] on the shipped loop_qcd_qed_sm_Gmu (widths
+    zero): its exported plan splits the trace steps of its N = 2 families
+    whose rings peak at different positions; the native schedule-B family
+    numerators equal the Python reference executor's (which walks the tries
+    itself) in binary64 and at 40 digits."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, compare_numerators
+
+    compiled = _compile("loop_qcd_qed_sm_Gmu")
+    request = SliceRequest(
+        "u u~ > z z",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 0, "QED": 4},
+        corrections=("QED",),
+        fixed_parameters=ZERO_WIDTHS,
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    executor = NativeExecutor(slice_, forward=False)
+    plan = json.loads(executor._plan_json)
+    ranks = [
+        (
+            family["rank"],
+            max(s["rank_in"] + s["degree"] for s in family["steps"] if s["trace"] >= 0),
+        )
+        for family in plan["families"]
+    ]
+    assert all(out <= rank for rank, out in ranks), ranks
+    energy = 1426.271508 * 2
+    point = [
+        ["1426.271508", "0", "0", "1426.271508"],
+        ["1426.271508", "0", "0", "-1426.271508"],
+        ["1426.271508", "0", "-1138.6827936", "854.0120952"],
+        ["1426.271508", "0", "1138.6827936", "-854.0120952"],
+    ]
+    scale = str(Fraction(1000) ** 2)
+    for precision, tolerance in (
+        (Precision.double(), 1e-13),
+        (Precision.arbitrary(40), 1e-35),
+    ):
+        reference, _ = slice_.family_numerators(point, scale, precision=precision)
+        (native,) = executor.family_numerators([point], [scale], precision=precision)
+        assert (
+            compare_numerators(native, reference.numerators, energy=energy) <= tolerance
+        )
