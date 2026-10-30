@@ -673,17 +673,20 @@
  "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-SM acceptance values: m-sm/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "madloop_r2_couplings": {
   "called": [
-   "R2_GmGptb2",
    "R2_HHHH",
    "R2_HHHHt",
    "R2_HHHboson",
    "R2_HHHt",
    "R2_HHboson1",
    "R2_HHboson2",
-   "R2_HHt1"
+   "R2_HHt1",
+   "R2_HHt2"
   ],
+  "called_as": {
+   "R2_HHt2": "R2_GmGptb2"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_hh_hh)"
  },
  "mqcd_run": {
   "id": "hh_hh_ew",

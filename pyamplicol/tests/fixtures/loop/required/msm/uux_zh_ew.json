@@ -813,8 +813,8 @@
    "R2_AZboson3",
    "R2_AZl",
    "R2_AZt3",
-   "R2_DDZ_V2",
-   "R2_DDZ_V3",
+   "R2_UUZ_V2",
+   "R2_UUZ_V5",
    "R2_ZZD",
    "R2_ZZH",
    "R2_ZZHt",
@@ -825,12 +825,19 @@
    "R2_ZZl",
    "R2_ZZt3",
    "R2_ZZv",
-   "R2_ccZ2Cm",
-   "R2_ccZ2Cp",
-   "R2_ccZ2Cp_s"
+   "R2_uuZ2Cm",
+   "R2_uuZ2Cp",
+   "R2_uuZ2Cp_d"
   ],
+  "called_as": {
+   "R2_UUZ_V2": "-R2_DDZ_V2",
+   "R2_UUZ_V5": "R2_DDZ_V3",
+   "R2_uuZ2Cm": "R2_ccZ2Cm",
+   "R2_uuZ2Cp": "R2_ccZ2Cp",
+   "R2_uuZ2Cp_d": "R2_ccZ2Cp_s"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_uux_zh)"
  },
  "mqcd_run": {
   "id": "uux_zh_ew",

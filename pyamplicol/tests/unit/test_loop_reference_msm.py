@@ -45,12 +45,8 @@ ROW_COUNTS = {
     "MP": 2,
     "SC": 9,
 }
-# Existing references that ew-validate (EWI-7) commits; pending until it integrates.
-EWI7_FIXTURES = {
-    "required/ttx_ttx_ew.json",
-    "required/udx_tbx_ew.json",
-    "required/ttx_zh_ew.json",
-}
+# ST04: ew-validate's workspace run committed by MS-REF (MadLoop double precision).
+ST04_FIXTURE = "required/udx_tbx_ew_mb.json"
 CMS_CONVENTIONS = ("CMSParam", "LogSwitch", "GfRedefinitionChoice")
 UNIVERSAL_POLE_TOLERANCE = 1e-10
 RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
@@ -101,10 +97,9 @@ def test_campaign_and_manifest_cover_every_row(campaign: dict, manifest: dict) -
                 ref["status"] == "committed" and (FIXTURES / ref["fixture"]).is_file()
             ), ref["run"]
         for ref in row["existing_references"]:
-            if ref["status"] != "committed":
-                assert ref["fixture"] in EWI7_FIXTURES, ref
-            else:
-                assert (FIXTURES / ref["fixture"]).is_file(), ref
+            assert (
+                ref["status"] == "committed" and (FIXTURES / ref["fixture"]).is_file()
+            ), ref
         # Oracle runs of another card (technical epsIR runs) are no rule 1 references.
         oracles = {
             f"required/msm/{r['run']}.json"
@@ -131,6 +126,15 @@ def test_every_run_process_and_scheme_is_specified(campaign: dict) -> None:
         assert bool(route.get("mass_scheme") == "complex-mass") == bool(
             schemes[route["scheme"]].get("complex_mass_scheme")
         ), code
+
+
+def _check_points(fixture: dict, spec: dict) -> None:
+    """Points on the scheme's mass shells, momentum conserving."""
+    masses = required_spec.masses(spec)
+    assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
+    for point in fixture["points"]:
+        shell, conservation = _shell_and_conservation(point, masses)
+        assert shell < Decimal("1e-25") and conservation < Decimal("1e-25")
 
 
 def _shell_and_conservation(
@@ -184,6 +188,9 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
     if fixture["complex_mass_scheme"] and "loop_qcd_qed_sm" in fixture["madloop_model"]:
         assert set(CMS_CONVENTIONS) <= set(fixture["scheme_conventions"])
     assert fixture.get("tagged_photon_legs") == spec.get("tagged_photon_legs")
+    if 22 in fixture["pdgs"]:
+        # Every external photon is recorded tagged or untagged ([] = untagged).
+        assert isinstance(fixture.get("tagged_photon_legs"), list)
     assert fixture.get("corrections", [spec["correction"]]) == spec["corrections"]
     # Provenance and MadLoop's quadruple-precision evaluation at every point.
     madloop = fixture["providers"]["madloop"]
@@ -198,21 +205,25 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
         == evaluation["requested_relative_accuracy"]
     )
     assert settings["quadruple_precision_required"] is True
-    assert settings["MadLoopParams_overrides"] == evaluation["madloop_params"]
+    # The campaign's MadLoop parameters, a run's own over them (SC02: CutTools).
+    assert settings["MadLoopParams_overrides"] == {
+        **evaluation["madloop_params"],
+        **run.get("madloop_params", {}),
+    }
+    # MadLoop's return code HTU: H = 3 (stability rescue succeeded), T = 2
+    # (quadruple precision used).
     statuses = [row["madloop_status"] for row in fixture["rows"]]
-    assert all(status // 100 == 3 for status in statuses), statuses
-    # The R2 couplings the export calls (the rule-1 R2 correction's input).
+    assert all(s // 100 == 3 and s // 10 % 10 == 2 for s in statuses), statuses
+    # The UFO R2 couplings the export inserts (the rule-1 R2 correction's input)
+    # and the merged names MG5 calls them by (madloop_ct_couplings.py).
     r2 = fixture["madloop_r2_couplings"]
     assert (
         r2["called"] == sorted(set(r2["called"]))
         and len(r2["called"]) <= r2["ufo_r2_couplings"]
+        and set(r2["called_as"]) <= set(r2["called"])
+        and all(r2["called_as"][n].lstrip("-") != n for n in r2["called_as"])
     )
-    # Points on the scheme's mass shells, momentum conserving.
-    masses = required_spec.masses(spec)
-    assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
-    for point in fixture["points"]:
-        shell, conservation = _shell_and_conservation(point, masses)
-        assert shell < Decimal("1e-25") and conservation < Decimal("1e-25")
+    _check_points(fixture, spec)
     # Every squared split order with MadLoop's accuracy; ROW = the primary sector.
     primary = tuple(
         spec["born_orders"][k] + spec["loop_orders"][k] for k in ("QCD", "QED")
@@ -253,9 +264,56 @@ def test_every_loop_sector_has_the_universal_double_pole(
     loop squared split order at every ok reference point (a joint QCD+QED sector
     gets both), with the factors recomputed here; the recorded violation is that
     of the printed sector values."""
-    run = _runs(campaign)[run_id]
-    fixture = _fixture(run_id)
-    spec = _spec(run)
+    _check_double_poles(_fixture(run_id), _spec(_runs(campaign)[run_id]))
+
+
+def test_existing_fixtures_name_their_r2_lists(campaign: dict, manifest: dict) -> None:
+    """existing_r2_couplings.json (mqcd_campaign.py existing-r2): every existing
+    fixture of a row has the R2 name list of its MadLoop export(s) or a reason
+    for none, and the manifest links it."""
+    data = json.loads(
+        (FIXTURES / "required" / "msm" / "existing_r2_couplings.json").read_text()
+    )
+    exports, without = data["exports"], data["without_r2_list"]
+    existing = {f for row in campaign["rows"] for f in row["existing_fixtures"]}
+    listed = {f for entry in exports.values() for f in entry["fixtures"]}
+    assert listed | set(without) == existing and not listed & set(without)
+    for key, entry in exports.items():
+        assert entry["fixture"] == entry["fixtures"][0]
+        assert entry["export"].startswith("${LOOP_REFERENCE_ROOT}/runs/")
+        assert Path(entry["export"]).parent.name == key
+        called = entry["called"]
+        assert (
+            called == sorted(set(called)) and len(called) <= entry["ufo_r2_couplings"]
+        )
+        assert set(entry["called_as"]) <= set(called)
+    for row in manifest["rows"]:
+        for ref in row["existing_references"]:
+            link = ref["r2_couplings"]
+            if isinstance(link, str):
+                assert without[ref["fixture"]] == link
+            else:
+                keys = [item.split("#", 1)[1] for item in link]
+                assert all(ref["fixture"] in exports[k]["fixtures"] for k in keys)
+
+
+def test_st04_existing_reference_is_relocated_and_consistent() -> None:
+    """ST04's committed fixture (ew-validate's run, MadLoop double precision):
+    no host paths, the specified process and scheme, points on the mass shells,
+    the universal double pole in every loop sector and the QED single pole."""
+    fixture = json.loads((FIXTURES / ST04_FIXTURE).read_text())
+    assert not re.search(r"/shared/|/home/|pyLoopAmpliCol", json.dumps(fixture))
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, fixture["name"])
+    assert fixture["pdgs"] == spec["pdgs"] and fixture["scheme"] == spec["scheme"]
+    assert fixture["madloop_model"] == Path(spec["madloop"]["model"]).name
+    assert fixture["parameters"] == spec["scheme_data"]["parameters"]
+    assert "recola" in fixture["excluded_providers"]
+    _check_points(fixture, spec)
+    _check_double_poles(fixture, spec)
+    _check_ir_single_poles(fixture, spec, {})
+
+
+def _check_double_poles(fixture: dict, spec: dict) -> None:
     factors, couplings = _factors(fixture, spec)
     assert fixture["universal_double_pole_factor"] == pytest.approx(
         factors[spec["correction"]], rel=1e-15
@@ -296,6 +354,148 @@ def test_every_loop_sector_has_the_universal_double_pole(
                 <= UNIVERSAL_POLE_TOLERANCE * scale
             ), (index, sector["QCD"], sector["QED"])
         assert reference["max_sector_double_pole_relative_error"] <= 2e-8, index
+
+
+# QED single pole per EW loop sector, in units of (alpha/2pi) Born: the G1
+# tolerance; 1e-5 (the lax §1.4 precision) where the model writes a massive
+# field's counterterms for the massless field (they also miss O(m^2/M_W^2)
+# Yukawa terms: 2.4e-6 at SC02).
+IR_SINGLE_POLE_TOLERANCE = 2e-8
+MASSLESS_COUNTERTERM_TOLERANCE = 1e-5
+# Massless fermions of the scheme close the photon's light-fermion loops.
+FERMIONS = (1, 2, 3, 4, 5, 6, 11, 13, 15)
+EW_RUN_IDS = [
+    r["id"]
+    for r in json.loads(CAMPAIGN.read_text())["runs"]
+    if "EW" in _spec(r)["corrections"]
+]
+
+
+def _minkowski(a: list[float], b: list[float]) -> float:
+    return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+
+
+def _qed_single_pole(
+    pdgs: list[int], masses: list, momenta: list, mu: float, light: Fraction
+) -> float:
+    """Single pole / ((alpha/2pi) Born) of a UV-renormalised one-loop amplitude
+    from photon exchange: Re Gamma_0 / 2 of the one-loop IR anomalous dimension
+    with massive legs (Becher-Neubert, arXiv:0904.1021 eq. 2) for QED charges
+    (all outgoing, Q_i Q_j for T_i.T_j, gamma_cusp = 4; gamma = -3 Q^2 for a
+    massless fermion, -2 Q^2 for a massive leg, +4/3 sum of N_c Q_f^2 over the
+    massless fermions for a photon). Independent of the engine and of MadLoop."""
+    charge, k = [], []
+    for i, (pdg, p) in enumerate(zip(pdgs, momenta, strict=True)):
+        sign = -1 if i < 2 else 1
+        charge.append(float(required_spec.particle(pdg)["charge"]) * sign)
+        k.append([sign * x for x in p])
+    m = [float(x) for x in masses]
+    gamma = 0.0
+    for i, pdg in enumerate(pdgs):
+        if abs(pdg) == 22:
+            gamma += 4 / 3 * float(light)
+            continue
+        if not charge[i]:
+            continue
+        gamma += (-3.0 if m[i] == 0 else -2.0) * charge[i] ** 2
+        for j in range(len(pdgs)):
+            if j == i or not charge[j]:
+                continue
+            s = 2 * _minkowski(k[i], k[j])
+            qq = charge[i] * charge[j]
+            if m[i] == 0 and m[j] == 0:
+                gamma += 2 * qq * math.log(mu * mu / abs(s))
+            elif m[i] and m[j]:
+                # gamma_cusp(beta) = 4 beta coth beta, cosh beta = -s/(2 m m) + i0.
+                beta = cmath.acosh(complex(-s / (2 * m[i] * m[j]), 0.0))
+                cusp = 1.0 if abs(beta) < 1e-12 else (beta / cmath.tanh(beta)).real
+                gamma -= 2 * qq * cusp
+            elif m[i]:
+                gamma += 4 * qq * math.log(m[i] * mu / abs(s))
+    return gamma / 2
+
+
+def _ir_single_pole_residuals(fixture: dict, spec: dict) -> dict:
+    """(row, QCD, QED) -> (single pole - QED IR prediction) / ((alpha/2pi) Born)
+    for every EW loop sector at the lowest QCD order of the Borns (photon
+    exchange on one Born sector, colour-diagonal; no gluon reaches it) at every
+    ok point. Absolute rows scale by the regular neighbour's Born. A scheme's
+    massless_field_counterterms add 3/2 Q^2 per such leg (the IR pole of the
+    massive on-shell field renormalisation the model omits)."""
+    scheme = spec["scheme_data"]
+    unit = float(Decimal(references.derived_parameters(scheme)["alpha"])) / (
+        2 * math.pi
+    )
+    masses = required_spec.masses(spec)
+    light = sum(
+        required_spec.particle(f)["charge"] ** 2 * (3 if f <= 6 else 1)
+        for f, mass in zip(
+            FERMIONS,
+            required_spec.masses({"pdgs": FERMIONS, "scheme_data": scheme}),
+            strict=True,
+        )
+        if not mass
+    )
+    offset = sum(
+        1.5 * float(required_spec.particle(pdg)["charge"] ** 2)
+        for pdg in fixture["pdgs"]
+        if abs(pdg) in scheme.get("massless_field_counterterms", ())
+    )
+    out = {}
+    for index, row in enumerate(fixture["rows"]):
+        reference = row["reference"]
+        if reference["status"] != "ok":
+            continue
+        born = {
+            (s["QCD"], s["QED"]): s.get("born_binary64_input", s["born"])
+            for s in row["sectors"]["born"]
+        }
+        lowest = min(q for q, _ in born)
+        predicted = offset + _qed_single_pole(
+            fixture["pdgs"],
+            masses,
+            [[float(x) for x in leg] for leg in fixture["points"][index]],
+            float(fixture["mu_r"][index]),
+            light,
+        )
+        for sector in row["sectors"]["loop"]:
+            partner = born.get((sector["QCD"], sector["QED"] - 2))
+            if sector["QCD"] != lowest or not partner:
+                continue
+            scale = max(abs(partner), reference.get("absolute_scale") or 0.0)
+            out[(index, sector["QCD"], sector["QED"])] = (
+                sector["single_pole"] - predicted * unit * partner
+            ) / (unit * scale)
+    return out
+
+
+def _check_ir_single_poles(fixture: dict, spec: dict, run: dict) -> None:
+    residuals = _ir_single_pole_residuals(fixture, spec)
+    assert residuals
+    scheme = spec["scheme_data"]
+    worst = max(abs(r) for r in residuals.values())
+    if scheme["parameters"].get("epsIR") == "0":
+        # A technical epsIR = 0 run (MS-POLES oracle): no IR poles, no rule 1 reference.
+        assert run.get("binding") is False
+        assert min(abs(r) for r in residuals.values()) > 1e-3, residuals
+    elif scheme.get("ir_single_pole_remnant"):
+        # The recorded model remnant (not UV finite) is real.
+        assert min(abs(r) for r in residuals.values()) > 1e-6, residuals
+    elif scheme.get("massless_field_counterterms"):
+        assert worst <= MASSLESS_COUNTERTERM_TOLERANCE, residuals
+    else:
+        assert worst <= IR_SINGLE_POLE_TOLERANCE, residuals
+
+
+@pytest.mark.parametrize("run_id", EW_RUN_IDS)
+def test_every_ew_sector_has_the_qed_infrared_single_pole(
+    campaign: dict, run_id: str
+) -> None:
+    """The single pole of every EW sector photon exchange alone reaches equals
+    the QED IR prediction recomputed here (UV finiteness and a sound reduction:
+    MadLoop's QP Ninja stage once passed its own test with this pole wrong)."""
+    run = _runs(campaign)[run_id]
+    _check_ir_single_poles(_fixture(run_id), _spec(run), run)
 
 
 # --------------------------------------------------------------------------
@@ -385,6 +585,28 @@ def test_complex_mass_gmu_alpha_is_the_ufo_formula() -> None:
     assert abs(alpha / float(references.derived_parameters(real)["alpha"]) - 1) > 1e-4
 
 
+def test_cm09_records_the_exports_photon_conversion_parameter() -> None:
+    """CM09 (u d~ > e+ ve a under CMS) records the export's complex
+    eCoup_DGmua0_UV_EW finite part per mu_R (madloop_parameters.py): its real
+    part runs with the parameter's 1/eps coefficient, e^2 (27 + 11 Nc) /
+    (216 pi^2) per ln mu_R^2 at the complex-mass G_mu alpha; the imaginary part
+    (the complex masses) does not run."""
+    fixture = _fixture("udx_epvea_cms")
+    record = fixture["export_parameters"]
+    values = record["values"]["MDL_ECOUP_DGMUA0_UV_EW_FIN_"]
+    assert record["mu_r"] == fixture["mu_r"] and len(values) == len(fixture["rows"])
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, "udx_epvea_cms")
+    alpha = float(Decimal(references.derived_parameters(spec["scheme_data"])["alpha"]))
+    slope = 4 * math.pi * alpha * (27 + 11 * 3) / (216 * math.pi**2)
+    mu = [float(m) for m in record["mu_r"]]
+    for i in range(1, len(mu)):
+        assert values[i][0] - values[0][0] == pytest.approx(
+            slope * math.log(mu[i] ** 2 / mu[0] ** 2), rel=1e-12
+        )
+        assert values[i][1] == pytest.approx(values[0][1], rel=1e-13)
+    assert values[0][1] != 0.0
+
+
 def test_supplied_points_at_listed_energies() -> None:
     from tools.loop_reference import supplied_points
 
@@ -405,22 +627,116 @@ def test_supplied_points_at_listed_energies() -> None:
         )
 
 
-def test_r2_name_list_reads_call_tokens(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    process = tmp_path / "SubProcesses" / "P1_xx"
+def _synthetic_export(tmp_path: Path, record: dict) -> Path:
+    export = tmp_path / "madloop-export"
+    process = export / "SubProcesses" / "P1_xx"
     process.mkdir(parents=True)
     (process / "helas_calls_ampb_1.f").write_text(
-        "      CALL FFV1_0(W(1,1),W(1,2),W(1,3),R2_G0TT,AMP(1))\n"
-        "C     R2_GOTT_B is not R2_G0tt_b\n"
+        "      CALL FFV1_0(W(1,1),W(1,2),W(1,3),R2_CCA2CP,AMPL(1,1))\n"
+        "      CALL VVV1_0(W(1,1),W(1,2),W(1,3),R2_AWWCS,AMPL(1,2))\n"
+        "      CALL FFS1_0(W(1,1),W(1,2),W(1,3),R2_G0TT,AMPL(1,3))\n"
+        "C     R2_G0TT_B is a comment\n"
     )
+    (tmp_path / "madloop-export.ct_couplings.json").write_text(json.dumps(record))
+    return export
+
+
+R2_RECORD = {
+    "subprocesses": {
+        "xx": {
+            "r2": ["R2_G0tt", "R2_uuA2Cp"],
+            "r2_called_as": {"R2_uuA2Cp": "R2_ccA2Cp"},
+            "ct_tokens": {
+                "ampb": {
+                    "R2_CCA2CP": ["R2_uuA2Cp"],
+                    "R2_AWWCS": ["c_UVvexveA1EW_1eps"],
+                    "R2_G0TT": ["R2_G0tt"],
+                },
+                "uvct": {},
+            },
+        }
+    }
+}
+
+
+def test_r2_name_list_is_the_ufo_couplings_behind_the_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The R2 list holds the UFO couplings MG5's merged call names stand for
+    (R2_CCA2CP calls R2_uuA2Cp), not the call names; a recorded name absent
+    from the sources is refused."""
+    export = _synthetic_export(tmp_path, R2_RECORD)
     monkeypatch.setattr(
         references,
         "ufo_r2_coupling_names",
-        lambda model: {"R2_G0tt", "R2_G0tt_b", "R2_AAU"},
+        lambda model: {"R2_G0tt", "R2_G0tt_b", "R2_uuA2Cp", "R2_ccA2Cp"},
     )
-    record = references.madloop_r2_couplings(tmp_path, "model")
-    assert record["called"] == ["R2_G0tt"] and record["ufo_r2_couplings"] == 3
+    record = references.madloop_r2_couplings(export, "model")
+    assert record["called"] == ["R2_G0tt", "R2_uuA2Cp"]
+    assert record["called_as"] == {"R2_uuA2Cp": "R2_ccA2Cp"}
+    assert record["ufo_r2_couplings"] == 4
+    stale = json.loads(json.dumps(R2_RECORD))
+    stale["subprocesses"]["xx"]["r2"].append("R2_G0tt_b")
+    _synthetic_export(tmp_path / "stale", stale)
+    with pytest.raises(RuntimeError, match="absent"):
+        references.madloop_r2_couplings(tmp_path / "stale" / "madloop-export", "model")
+
+
+def test_ct_amplitudes_are_classified_by_their_ufo_couplings(tmp_path: Path) -> None:
+    """madloop_ct_selection.py with the ct_couplings record: R2_AWWCS calls the
+    UV coupling c_UVvexveA1EW_1eps here, so its amplitude is 'uv', not 'r2'."""
+    from tools.loop_reference import madloop_ct_couplings, madloop_ct_selection
+
+    export = _synthetic_export(tmp_path, R2_RECORD)
+    process = export / "SubProcesses" / "P1_xx"
+    (process / "loop_matrix.f").write_text("      PARAMETER (NCTAMPS=3)\n")
+    groups = {"r2": re.compile("R2", re.I), "uv": re.compile("UV", re.I)}
+    tokens = R2_RECORD["subprocesses"][madloop_ct_couplings.subprocess_key(process)]
+    assert madloop_ct_selection.classify(process, groups) == {1: "r2", 2: "r2", 3: "r2"}
+    assert madloop_ct_selection.classify(process, groups, tokens["ct_tokens"]) == {
+        1: "r2",
+        2: "uv",
+        3: "r2",
+    }
+
+
+def test_coupling_renamings_compose_conversion_and_restriction() -> None:
+    """madloop_ct_couplings.Recorder: the conversion's identical-expression
+    renaming, then the restriction's merge (with its sign) or zero; the
+    resolved names must be the final interaction's couplings."""
+    from tools.loop_reference import madloop_ct_couplings
+
+    recorder = madloop_ct_couplings.Recorder()
+    recorder.original = {7: ["R2_a", "R2_b", "R2_c", "R2_d"]}
+    recorder.renamed = {"R2_d": "R2_a"}
+    recorder.merged = {"R2_b": ("GC_1", -1)}
+    recorder.zero = {"R2_c"}
+    interaction = {"id": 7, "couplings": {(0, 0): "R2_a", (0, 1): "-GC_1"}}
+    assert recorder.resolve(interaction) == [
+        ("R2_a", "R2_a"),
+        ("R2_b", "-GC_1"),
+        ("R2_d", "R2_a"),
+    ]
+    assert recorder.called("R2_b", particle=True) == "GC_1"
+    with pytest.raises(RuntimeError, match="not the renamed"):
+        recorder.resolve({"id": 7, "couplings": {(0, 0): "R2_a"}})
+
+
+def test_every_uv_row_and_class_names_rule5_components(
+    campaign: dict, manifest: dict
+) -> None:
+    """Rule 5 components on one row per class; every row tagged uv names the
+    component files that serve it (its own runs', else its class's)."""
+    files = {r["components"] for r in campaign["runs"] if r.get("components")}
+    for row in campaign["rows"]:
+        if "uv" in row["extras"]:
+            assert row.get("components"), row["row"]
+        assert set(row.get("components", ())) <= files, row["row"]
+    classes = {row["class"] for row in campaign["rows"]}
+    assert classes == {r["class"] for r in campaign["rows"] if r.get("components")}
+    assert [r.get("components") for r in manifest["rows"]] == [
+        r.get("components") for r in campaign["rows"]
+    ]
 
 
 @pytest.mark.parametrize(
