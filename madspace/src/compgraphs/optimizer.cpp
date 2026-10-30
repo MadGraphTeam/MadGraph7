@@ -1,7 +1,6 @@
 #include "madspace/compgraphs/optimizer.hpp"
 
 #include <algorithm>
-#include <array>
 #include <format>
 #include <numeric>
 #include <ranges>
@@ -110,29 +109,26 @@ Function madspace::fuse_instructions(const Function& function) {
         return find->second.get();
     };
 
-    // the precision of an activation instruction that fuses into a matmul, or empty
-    auto activation_precision = [](const std::string& name) -> std::string {
-        static const std::array<std::string, 6> activations{
-            "relu", "leaky_relu", "elu", "gelu", "sigmoid", "softplus"
-        };
-        for (const auto& activation : activations) {
+    // the precision of each activation instruction that fuses into a matmul
+    static const auto activation_precisions = [] {
+        std::unordered_map<std::string, std::string> precisions;
+        for (std::string activation :
+             {"relu", "leaky_relu", "elu", "gelu", "sigmoid", "softplus"}) {
             for (std::string precision : {"float32", "float64"}) {
-                if (name == activation + "_" + precision) {
-                    return precision;
-                }
+                precisions.emplace(activation + "_" + precision, precision);
             }
         }
-        return "";
-    };
+        return precisions;
+    }();
 
     std::vector<bool> removed(instructions.size());
     bool any_fused = false;
     for (std::size_t i = 0; i < instructions.size(); ++i) {
         auto& call = instructions[i];
         const std::string& name = call.instruction->name();
-        std::string precision = activation_precision(name);
-        if (name != "convert_float32" && name != "convert_float64" &&
-            precision.empty()) {
+        auto find_precision = activation_precisions.find(name);
+        bool is_activation = find_precision != activation_precisions.end();
+        if (name != "convert_float32" && name != "convert_float64" && !is_activation) {
             continue;
         }
         auto& input = call.inputs.at(0);
@@ -149,8 +145,8 @@ Function madspace::fuse_instructions(const Function& function) {
             continue;
         }
         const std::string& source_name = source.instruction->name();
-        if (!precision.empty()) {
-            if (source_name != "matmul_" + precision) {
+        if (is_activation) {
+            if (source_name != "matmul_" + find_precision->second) {
                 continue;
             }
             // the matmul output stays an output, the activation needs it backward

@@ -2,13 +2,16 @@
 
 import pytest
 import torch
+from madspace_testing import DEVICE, default_context, new_context
 
 import madspace as ms
 from madspace.torch import FunctionModule
-from madspace_testing import DEVICE, default_context, new_context
 
-# a local generator, so that the global RNG state seen by other tests is unchanged
-GEN = torch.Generator().manual_seed(1234)
+
+@pytest.fixture
+def gen():
+    """A fresh local generator per test, so results don't depend on test order."""
+    return torch.Generator().manual_seed(1234)
 
 
 def _draw(draw, *args, requires_grad=False, **kwargs):
@@ -23,6 +26,7 @@ def _randn(*args, **kwargs):
 
 def _rand(*args, **kwargs):
     return _draw(torch.rand, *args, **kwargs)
+
 
 N = 103
 DIMS_IN = 7
@@ -50,7 +54,7 @@ def batch_type(dtype, shape):
 
 @pytest.mark.parametrize("precision", DTYPES.keys())
 @pytest.mark.parametrize("name", ACTIVATIONS.keys())
-def test_activation(name, precision):
+def test_activation(name, precision, gen):
     ms_dtype, torch_dtype, tol = DTYPES[precision]
     io_type = batch_type(ms_dtype, [DIMS_IN])
     fb = ms.FunctionBuilder(
@@ -59,12 +63,10 @@ def test_activation(name, precision):
     fb.output(0, getattr(fb, name)(fb.input(0)))
     module = FunctionModule(fb.function(), default_context())
 
-    x = (
-        3 * _randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN)
-    ).requires_grad_()
+    x = (3 * _randn((N, DIMS_IN), dtype=torch_dtype, generator=gen)).requires_grad_()
     out = module(x)
     assert out.dtype == torch_dtype
-    out_grad = _randn(out.shape, dtype=out.dtype, generator=GEN)
+    out_grad = _randn(out.shape, dtype=out.dtype, generator=gen)
     (out * out_grad).sum().backward()
 
     x_ref = x.detach().clone().requires_grad_()
@@ -75,7 +77,7 @@ def test_activation(name, precision):
 
 
 @pytest.mark.parametrize("precision", DTYPES.keys())
-def test_matmul(precision):
+def test_matmul(precision, gen):
     ms_dtype, torch_dtype, tol = DTYPES[precision]
     fb = ms.FunctionBuilder(
         ms.NamedTypes(
@@ -90,15 +92,15 @@ def test_matmul(precision):
     fb.output(0, fb.matmul(fb.input(0), fb.input(1), fb.input(2)))
     module = FunctionModule(fb.function(), default_context())
 
-    x = _randn((N, DIMS_IN), dtype=torch_dtype, generator=GEN, requires_grad=True)
+    x = _randn((N, DIMS_IN), dtype=torch_dtype, generator=gen, requires_grad=True)
     # single inputs are passed without batch dimension
     w = _randn(
-        (DIMS_OUT, DIMS_IN), dtype=torch_dtype, generator=GEN, requires_grad=True
+        (DIMS_OUT, DIMS_IN), dtype=torch_dtype, generator=gen, requires_grad=True
     )
-    b = _randn((DIMS_OUT,), dtype=torch_dtype, generator=GEN, requires_grad=True)
+    b = _randn((DIMS_OUT,), dtype=torch_dtype, generator=gen, requires_grad=True)
     y = module(x, w, b)
     assert y.dtype == torch_dtype
-    y_grad = _randn(y.shape, dtype=y.dtype, generator=GEN)
+    y_grad = _randn(y.shape, dtype=y.dtype, generator=gen)
     (y * y_grad).sum().backward()
 
     refs = [t.detach().clone().requires_grad_() for t in (x, w, b)]
@@ -109,7 +111,7 @@ def test_matmul(precision):
         torch.testing.assert_close(t.grad, t_ref.grad, rtol=tol, atol=tol)
 
 
-def test_convert_roundtrip():
+def test_convert_roundtrip(gen):
     in_type = batch_type(ms.DataType.float64, [3])
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("in", in_type)]),
@@ -122,7 +124,7 @@ def test_convert_roundtrip():
     fb.output(1, fb.convert_float64(fb.relu(single)))
     module = FunctionModule(fb.function(), default_context())
 
-    x = _randn((N, 3), dtype=torch.float64, generator=GEN, requires_grad=True)
+    x = _randn((N, 3), dtype=torch.float64, generator=gen, requires_grad=True)
     single_out, out = module(x)
     assert single_out.dtype == torch.float32
     assert out.dtype == torch.float64
@@ -132,7 +134,7 @@ def test_convert_roundtrip():
     torch.testing.assert_close(x.grad, (x.detach() > 0).double())
 
 
-def test_literal_converted_for_float32():
+def test_literal_converted_for_float32(gen):
     io_type = batch_type(ms.DataType.float32, [1])
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("in", io_type)]), ms.NamedTypes([("out", io_type)])
@@ -140,11 +142,11 @@ def test_literal_converted_for_float32():
     # float64 literals are converted when the instruction dispatches to float32
     fb.output(0, fb.matmul(fb.input(0), ms.Value([2.0], [1, 1]), ms.Value([1.0])))
     module = FunctionModule(fb.function(), default_context())
-    x = _randn((N, 1), dtype=torch.float32, generator=GEN)
+    x = _randn((N, 1), dtype=torch.float32, generator=gen)
     torch.testing.assert_close(module(x), 2 * x + 1)
 
 
-def test_flow_float32_subnets(tmp_path):
+def test_flow_float32_subnets(tmp_path, gen):
     """A flow with float32 subnetworks matches the float64 one with the same
     (rounded) weights; the Jacobian and the output stay in float64."""
     # a private context, so that no globals are left in the default one
@@ -162,13 +164,12 @@ def test_flow_float32_subnets(tmp_path):
     for name in names_f64:
         weights = ctx.get_global(name).torch()
         weights[:] = (
-            0.3
-            * _randn(weights.shape, generator=GEN, dtype=torch.float32).double()
+            0.3 * _randn(weights.shape, generator=gen, dtype=torch.float32).double()
         )
         ctx.get_global(name.replace("f64", "f32")).torch()[:] = weights.float()
 
     # outputs and gradients with respect to the input and the float32 weights
-    r = _rand((N, 4), dtype=torch.float64, generator=GEN)
+    r = _rand((N, 4), dtype=torch.float64, generator=gen)
     outputs, grads = {}, {}
     for dtype, flow in flows.items():
         module = FunctionModule(flow.forward_function(), ctx)
@@ -196,7 +197,7 @@ def test_flow_float32_subnets(tmp_path):
         torch.testing.assert_close(global32, ctx.get_global(name32).torch())
 
 
-def test_structural_ops_backward():
+def test_structural_ops_backward(gen):
     """stack, unstack, cat, batch_cat and batch_split propagate float32 gradients."""
     in_type = batch_type(ms.DataType.float32, [3])
     fb = ms.FunctionBuilder(
@@ -210,9 +211,9 @@ def test_structural_ops_backward():
     fb.output(0, fb.cat(fb.batch_split(combined, counts)))
     module = FunctionModule(fb.function(), default_context())
 
-    x = _randn((N, 3), dtype=torch.float32, generator=GEN, requires_grad=True)
+    x = _randn((N, 3), dtype=torch.float32, generator=gen, requires_grad=True)
     out = module(x)
-    out_grad = _randn(out.shape, dtype=out.dtype, generator=GEN)
+    out_grad = _randn(out.shape, dtype=out.dtype, generator=gen)
     (out * out_grad).sum().backward()
 
     x_ref = x.detach().clone().requires_grad_()
@@ -221,3 +222,18 @@ def test_structural_ops_backward():
     (out_ref * out_grad).sum().backward()
     torch.testing.assert_close(out, out_ref)
     torch.testing.assert_close(x.grad, x_ref.grad)
+
+
+def test_random_int_gather(gen):
+    """random_int returns int32 indices, as used when sampling the replay buffer."""
+    io_type = batch_type(ms.DataType.float64, [])
+    fb = ms.FunctionBuilder(
+        ms.NamedTypes([("in", io_type)]), ms.NamedTypes([("out", io_type)])
+    )
+    size = fb.batch_size([fb.input(0)])
+    fb.output(0, fb.batch_gather(fb.random_int(size, size), fb.input(0)))
+    module = FunctionModule(fb.function(), default_context())
+    x = _rand((N,), dtype=torch.float64, generator=gen)
+    out = module(x)
+    assert out.shape == x.shape
+    assert torch.isin(out, x).all()
