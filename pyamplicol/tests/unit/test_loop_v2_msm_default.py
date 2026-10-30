@@ -2,7 +2,8 @@
 """M-SM campaign, default tier (m-sm/PLAN.md §3.2 MS-VALIDATE item 3, §4.3).
 
 The default tier's rows (``tests/fixtures/loop/msm/manifest.json``, tier
-``default``: VJ02, u d~ > w+ g with QCD and QED corrections) at points 0
+``default``: VJ02, u d~ > w+ g, and since MS-GEN TT01, g g > t t~, which
+generates in under 60 s, both with QCD and QED corrections) at points 0
 and 1 in binary64 and double-double under the acceptance rules of PLAN §1.4
 (``tools/loop_benchmark/mqcd.py``, the M-QCD harness parametrised by the EW
 manifest). A row whose reference has not landed (VJ02 waits for MS-REF) is

@@ -4608,7 +4608,7 @@
    },
    "gauge": "feynman",
    "scheme": "ew-gmu",
-   "tier": "nightly",
+   "tier": "default",
    "status": "active",
    "reference_legend": "E required/gg_ttx + gg_ttx_ew (3 providers)",
    "reference": {
@@ -4642,9 +4642,11 @@
     ]
    },
    "points": {
-    "nightly": [
+    "default": [
      0,
-     1,
+     1
+    ],
+    "nightly": [
      2
     ]
    },
@@ -4693,7 +4695,7 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture",
+   "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture; in the default tier since MS-GEN (PLAN \u00a73.2 item 3: generation 58 s, < 60 s; LL01 83 s and DY01 84 s stay nightly; tmp/ms-validate/gen60 at e16b620f)",
    "extras_pending": {
     "uv": "rule 5's EW form runs on the class's component row (MS-REF's component runs, one row per class: m-sm/PLAN.md \u00a71.4 rule 5)"
    }
