@@ -821,6 +821,7 @@
   "id": "udx_epve_ew_ckm",
   "process": "udx_epve_ew_ckm",
   "export": "runs/msm/udx_epve_ew_ckm/madloop-export",
+  "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
   "components": "required/msm/components/udx_epve_ew_ckm.json",
   "points": {
    "generator": "exact"

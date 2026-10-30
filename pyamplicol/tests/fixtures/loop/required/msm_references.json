@@ -68,11 +68,17 @@
     {
      "fixture": "electroweak-mumu-control.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_mummp_ew_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     },
     {
      "fixture": "electroweak-mumu-scale-control.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_mummp_ew_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -110,12 +116,15 @@
     "scheme": "ew-gmu-mm",
     "note": "declared [loop.model] (no shipped profile)"
    },
-   "note": null,
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)",
    "references": [],
    "existing_references": [
     {
      "fixture": "electroweak-massive-mumu-control.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_mummp_ew_mm_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -151,6 +160,9 @@
     {
      "fixture": "required/emep_emep_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_emep_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -861,6 +873,9 @@
     {
      "fixture": "required/emep_ttxh_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_ttxh_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "recola",
      "providers": [
@@ -2461,6 +2476,9 @@
     {
      "fixture": "required/uux_emepg_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#uux_emepg_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -3566,6 +3584,9 @@
     {
      "fixture": "required/uux_ag_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#uux_ag_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -5028,6 +5049,9 @@
     {
      "fixture": "required/uux_aa_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#uux_aa_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -6632,6 +6656,7 @@
     {
      "fixture": "required/gg_ttx.json",
      "status": "committed",
+     "r2_couplings": "QCD-only reference: MadLoop inserts the complete QCD R2 set (M-QCD)",
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -6687,6 +6712,9 @@
     {
      "fixture": "required/gg_ttx_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#gg_ttx_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -7281,6 +7309,9 @@
     {
      "fixture": "required/ttx_ttx_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#ttx_ttx_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -7369,6 +7400,9 @@
     {
      "fixture": "goldstone-mixing.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#gt_tttx_ew"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -7407,6 +7441,9 @@
     {
      "fixture": "goldstone-mixing.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#gb_ttxb_ew_mb"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -8206,6 +8243,9 @@
     {
      "fixture": "required/gg_ttxemep_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#gg_ttxemep_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -8299,6 +8339,9 @@
     {
      "fixture": "required/gg_ttxemepg_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#gg_ttxemepg_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -8354,6 +8397,7 @@
     {
      "fixture": "required/gg_ttxemepg_qcd.json",
      "status": "committed",
+     "r2_couplings": "QCD-only reference: MadLoop inserts the complete QCD R2 set (M-QCD)",
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -8640,6 +8684,9 @@
     {
      "fixture": "required/udx_tbx_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#udx_tbx_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -8924,6 +8971,9 @@
     {
      "fixture": "required/udx_tbx_ew_mb.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#udx_tbx_ew_mb"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [
@@ -10796,11 +10846,17 @@
     {
      "fixture": "cms-ufo-standard-gmu.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_mummp_ew_cms_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     },
     {
      "fixture": "cms-source-gmu.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_mummp_ew_cms_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -14512,6 +14568,9 @@
     {
      "fixture": "electroweak-eeuu-control.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#emep_uux_ew_ctl"
+     ],
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -14542,7 +14601,7 @@
     "scheme": "ew-gmu-mm",
     "note": "declared [loop.model] (no shipped profile)"
    },
-   "note": null,
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)",
    "references": [
     {
      "run": "uux_mummp_ew_mm",
@@ -14769,13 +14828,13 @@
     },
     "scheme": "ew-gmu-ckm"
    },
-   "note": "[EWI-7]",
+   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
    "references": [
     {
      "run": "udx_epve_ew_ckm",
      "fixture": "required/msm/udx_epve_ew_ckm.json",
      "process_key": "udx_epve_ew_ckm",
-     "note": null,
+     "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
      "reference_notes": {},
      "excluded_providers": {},
      "second_providers": [],
@@ -15232,6 +15291,7 @@
     {
      "fixture": "epsilon-sign.json",
      "status": "committed",
+     "r2_couplings": "QCD-only loop_sm reference: no EW R2",
      "kind": "control (no provider merge; see the fixture's scope)"
     }
    ],
@@ -15877,6 +15937,9 @@
     {
      "fixture": "required/ttx_zh_ew.json",
      "status": "committed",
+     "r2_couplings": [
+      "required/msm/existing_r2_couplings.json#ttx_zh_ew"
+     ],
      "kind": "provider reference",
      "primary_provider": "madloop",
      "providers": [

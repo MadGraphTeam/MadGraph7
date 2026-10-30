@@ -262,8 +262,8 @@ def test_every_loop_sector_has_the_universal_double_pole(
 
 def test_st04_existing_reference_is_relocated_and_consistent() -> None:
     """ST04's committed fixture (ew-validate's run, MadLoop double precision):
-    no host paths, the specified process and scheme, points on the mass shells
-    and the universal double pole in every loop sector."""
+    no host paths, the specified process and scheme, points on the mass shells,
+    the universal double pole in every loop sector and the QED single pole."""
     fixture = json.loads((FIXTURES / ST04_FIXTURE).read_text())
     assert not re.search(r"/shared/|/home/|pyLoopAmpliCol", json.dumps(fixture))
     spec = required_spec.load_process(required_spec.DEFAULT_SPEC, fixture["name"])
@@ -273,6 +273,7 @@ def test_st04_existing_reference_is_relocated_and_consistent() -> None:
     assert "recola" in fixture["excluded_providers"]
     _check_points(fixture, spec)
     _check_double_poles(fixture, spec)
+    _check_ir_single_poles(fixture, spec, {})
 
 
 def _check_double_poles(fixture: dict, spec: dict) -> None:
@@ -316,6 +317,148 @@ def _check_double_poles(fixture: dict, spec: dict) -> None:
                 <= UNIVERSAL_POLE_TOLERANCE * scale
             ), (index, sector["QCD"], sector["QED"])
         assert reference["max_sector_double_pole_relative_error"] <= 2e-8, index
+
+
+# QED single pole per EW loop sector, in units of (alpha/2pi) Born: the G1
+# tolerance; 1e-5 (the lax §1.4 precision) where the model writes a massive
+# field's counterterms for the massless field (they also miss O(m^2/M_W^2)
+# Yukawa terms: 2.4e-6 at SC02).
+IR_SINGLE_POLE_TOLERANCE = 2e-8
+MASSLESS_COUNTERTERM_TOLERANCE = 1e-5
+# Massless fermions of the scheme close the photon's light-fermion loops.
+FERMIONS = (1, 2, 3, 4, 5, 6, 11, 13, 15)
+EW_RUN_IDS = [
+    r["id"]
+    for r in json.loads(CAMPAIGN.read_text())["runs"]
+    if "EW" in _spec(r)["corrections"]
+]
+
+
+def _minkowski(a: list[float], b: list[float]) -> float:
+    return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+
+
+def _qed_single_pole(
+    pdgs: list[int], masses: list, momenta: list, mu: float, light: Fraction
+) -> float:
+    """Single pole / ((alpha/2pi) Born) of a UV-renormalised one-loop amplitude
+    from photon exchange: Re Gamma_0 / 2 of the one-loop IR anomalous dimension
+    with massive legs (Becher-Neubert, arXiv:0904.1021 eq. 2) for QED charges
+    (all outgoing, Q_i Q_j for T_i.T_j, gamma_cusp = 4; gamma = -3 Q^2 for a
+    massless fermion, -2 Q^2 for a massive leg, +4/3 sum of N_c Q_f^2 over the
+    massless fermions for a photon). Independent of the engine and of MadLoop."""
+    charge, k = [], []
+    for i, (pdg, p) in enumerate(zip(pdgs, momenta, strict=True)):
+        sign = -1 if i < 2 else 1
+        charge.append(float(required_spec.particle(pdg)["charge"]) * sign)
+        k.append([sign * x for x in p])
+    m = [float(x) for x in masses]
+    gamma = 0.0
+    for i, pdg in enumerate(pdgs):
+        if abs(pdg) == 22:
+            gamma += 4 / 3 * float(light)
+            continue
+        if not charge[i]:
+            continue
+        gamma += (-3.0 if m[i] == 0 else -2.0) * charge[i] ** 2
+        for j in range(len(pdgs)):
+            if j == i or not charge[j]:
+                continue
+            s = 2 * _minkowski(k[i], k[j])
+            qq = charge[i] * charge[j]
+            if m[i] == 0 and m[j] == 0:
+                gamma += 2 * qq * math.log(mu * mu / abs(s))
+            elif m[i] and m[j]:
+                # gamma_cusp(beta) = 4 beta coth beta, cosh beta = -s/(2 m m) + i0.
+                beta = cmath.acosh(complex(-s / (2 * m[i] * m[j]), 0.0))
+                cusp = 1.0 if abs(beta) < 1e-12 else (beta / cmath.tanh(beta)).real
+                gamma -= 2 * qq * cusp
+            elif m[i]:
+                gamma += 4 * qq * math.log(m[i] * mu / abs(s))
+    return gamma / 2
+
+
+def _ir_single_pole_residuals(fixture: dict, spec: dict) -> dict:
+    """(row, QCD, QED) -> (single pole - QED IR prediction) / ((alpha/2pi) Born)
+    for every EW loop sector at the lowest QCD order of the Borns (photon
+    exchange on one Born sector, colour-diagonal; no gluon reaches it) at every
+    ok point. Absolute rows scale by the regular neighbour's Born. A scheme's
+    massless_field_counterterms add 3/2 Q^2 per such leg (the IR pole of the
+    massive on-shell field renormalisation the model omits)."""
+    scheme = spec["scheme_data"]
+    unit = float(Decimal(references.derived_parameters(scheme)["alpha"])) / (
+        2 * math.pi
+    )
+    masses = required_spec.masses(spec)
+    light = sum(
+        required_spec.particle(f)["charge"] ** 2 * (3 if f <= 6 else 1)
+        for f, mass in zip(
+            FERMIONS,
+            required_spec.masses({"pdgs": FERMIONS, "scheme_data": scheme}),
+            strict=True,
+        )
+        if not mass
+    )
+    offset = sum(
+        1.5 * float(required_spec.particle(pdg)["charge"] ** 2)
+        for pdg in fixture["pdgs"]
+        if abs(pdg) in scheme.get("massless_field_counterterms", ())
+    )
+    out = {}
+    for index, row in enumerate(fixture["rows"]):
+        reference = row["reference"]
+        if reference["status"] != "ok":
+            continue
+        born = {
+            (s["QCD"], s["QED"]): s.get("born_binary64_input", s["born"])
+            for s in row["sectors"]["born"]
+        }
+        lowest = min(q for q, _ in born)
+        predicted = offset + _qed_single_pole(
+            fixture["pdgs"],
+            masses,
+            [[float(x) for x in leg] for leg in fixture["points"][index]],
+            float(fixture["mu_r"][index]),
+            light,
+        )
+        for sector in row["sectors"]["loop"]:
+            partner = born.get((sector["QCD"], sector["QED"] - 2))
+            if sector["QCD"] != lowest or not partner:
+                continue
+            scale = max(abs(partner), reference.get("absolute_scale") or 0.0)
+            out[(index, sector["QCD"], sector["QED"])] = (
+                sector["single_pole"] - predicted * unit * partner
+            ) / (unit * scale)
+    return out
+
+
+def _check_ir_single_poles(fixture: dict, spec: dict, run: dict) -> None:
+    residuals = _ir_single_pole_residuals(fixture, spec)
+    assert residuals
+    scheme = spec["scheme_data"]
+    worst = max(abs(r) for r in residuals.values())
+    if scheme["parameters"].get("epsIR") == "0":
+        # A technical epsIR = 0 run (MS-POLES oracle): no IR poles, no rule 1 reference.
+        assert run.get("binding") is False
+        assert min(abs(r) for r in residuals.values()) > 1e-3, residuals
+    elif scheme.get("ir_single_pole_remnant"):
+        # The recorded model remnant (not UV finite) is real.
+        assert min(abs(r) for r in residuals.values()) > 1e-6, residuals
+    elif scheme.get("massless_field_counterterms"):
+        assert worst <= MASSLESS_COUNTERTERM_TOLERANCE, residuals
+    else:
+        assert worst <= IR_SINGLE_POLE_TOLERANCE, residuals
+
+
+@pytest.mark.parametrize("run_id", EW_RUN_IDS)
+def test_every_ew_sector_has_the_qed_infrared_single_pole(
+    campaign: dict, run_id: str
+) -> None:
+    """The single pole of every EW sector photon exchange alone reaches equals
+    the QED IR prediction recomputed here (UV finiteness and a sound reduction:
+    MadLoop's QP Ninja stage once passed its own test with this pole wrong)."""
+    run = _runs(campaign)[run_id]
+    _check_ir_single_poles(_fixture(run_id), _spec(run), run)
 
 
 # --------------------------------------------------------------------------

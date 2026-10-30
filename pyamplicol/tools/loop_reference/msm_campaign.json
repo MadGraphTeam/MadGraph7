@@ -167,6 +167,14 @@
     "electroweak-mumu-control.json",
     "electroweak-mumu-scale-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ],
+    "electroweak-mumu-scale-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
    ],
@@ -186,9 +194,15 @@
    "existing_fixtures": [
     "electroweak-massive-mumu-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-massive-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_mm_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
-   ]
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
   },
   {
    "row": "LL03",
@@ -775,6 +789,11 @@
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gt_tttx_ew/madloop-export"
+    ]
+   },
    "sectors": [
     "s^2e^6"
    ],
@@ -792,6 +811,11 @@
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gb_ttxb_ew_mb/madloop-export"
+    ]
+   },
    "sectors": [
     "s^2e^6"
    ],
@@ -1139,6 +1163,14 @@
     "cms-ufo-standard-gmu.json",
     "cms-source-gmu.json"
    ],
+   "existing_r2_exports": {
+    "cms-ufo-standard-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ],
+    "cms-source-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
    ],
@@ -1355,6 +1387,11 @@
    "existing_fixtures": [
     "electroweak-eeuu-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-eeuu-control.json": [
+     "runs/msm/emep_uux_ew_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
    ]
@@ -1374,7 +1411,8 @@
    "sectors": [
     "s^2e^4",
     "e^6"
-   ]
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
   },
   {
    "row": "SC03",
@@ -1392,7 +1430,7 @@
     "s^2e^4",
     "e^6"
    ],
-   "note": "[EWI-7]",
+   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
    "components": [
     "required/msm/components/udx_epve_ew_ckm.json"
    ]
@@ -1427,6 +1465,9 @@
    "existing_fixtures": [
     "epsilon-sign.json"
    ],
+   "existing_r2_exports": {
+    "epsilon-sign.json": "QCD-only loop_sm reference: no EW R2"
+   },
    "note": "regression"
   },
   {
@@ -2243,6 +2284,7 @@
    "points": {
     "generator": "exact"
    },
+   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
    "components": "required/msm/components/udx_epve_ew_ckm.json"
   },
   {
