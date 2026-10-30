@@ -75,7 +75,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
-| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses and parameter changes that can move a branch side | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. The first batch at model-parameter values that can move a branch side of the artifact's parameter program checks that program once against its saved Symbolica state under the package key. These are a changed value of a parameter that feeds a branch-cut argument or a condition not decided by the parameters' signs, or any parameter changing sign (for example a width set to zero). The `"uv"` and `"ir"` pole selections on a model with pole regulators also evaluate the counterterms with the IR regulator at 0; the generation certifies those values as well, so these selections need no key at the generation's parameter values. On loop_sm, `g g > g g` and `g g > t t~` have no such parameter. `u u~ > d d~` has `Gf`, `MZ` and `aEWM1`, which enter `MW` through the square root of a difference. A change of αs or of the renormalisation scale therefore needs no Symbolica on loop_sm's QCD processes. On the G_mu model under the complex-mass scheme, almost every parameter can move a side, the scale included. |
+| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses and parameter changes that can move a branch side | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. The first batch at model-parameter values that can move a branch side of the artifact's parameter program checks that program once against its saved Symbolica state under the package key. These are a changed value of a parameter that feeds a branch-cut argument or a condition not decided by the parameters' signs, or any parameter changing sign (for example a width set to zero). The `"uv"` and `"ir"` pole selections on a model with pole regulators also evaluate the counterterms with the IR regulator at 0; the generation certifies those values as well, so these selections need no key at the generation's parameter values. On loop_sm, `g g > g g` and `g g > t t~` have no such parameter. `u u~ > d d~` has `Gf`, `MZ` and `aEWM1`, which enter `MW` through the square root of a difference. On the electroweak models the masses under common logarithms are such parameters (`MH`, `MT`, `MW`, `MZ` on loop_qcd_qed_sm). A change of αs or of the renormalisation scale needs no Symbolica on any shipped model. |
 | Virtual evaluation in double-double or arbitrary precision | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
@@ -150,16 +150,19 @@ to the personal license or to the restricted mode, as the Python side does.
   masses under a common logarithm, or loop_sm's `Gf`, `MZ` and `aEWM1`, which
   enter `MW` through the square root of a difference. A positive mass behind
   a zero test is not one, since its sign decides the test. The first batch
-  at a new value of such a parameter, or after any parameter changes sign
-  (for example a width set to zero under the complex-mass scheme), checks the
-  program once against its saved state. That check is a Symbolica evaluation
-  under the package key, and it replaces the program's values where the two
-  disagree. Changes of αs and of the renormalisation scale move no side on
-  loop_sm's QCD processes, so they need no Symbolica there. On the
-  electroweak models almost every parameter can move a side: the G_mu
-  complex-mass-scheme row CM05 records all of them but `WH`, the scale
-  included. Such evaluations need the package key, which is checked once per
-  new set of values (a new scale too). The `"uv"` and `"ir"` pole
+  at a new value of such a parameter checks the program once against its
+  saved state. After any parameter changes sign (for example a width set to
+  zero under the complex-mass scheme) every new set of values is checked, a
+  new scale included, since the generation analysed its own signs only.
+  That check is a Symbolica evaluation under the package key, and it
+  replaces the program's values where the two disagree. Changes of αs and
+  of the renormalisation scale move no side on any shipped model, so they
+  need no Symbolica: the electroweak counterterms' logarithms of −M²/μ_R²
+  lie on their branch cut on the side the parameters' signs decide. On the
+  electroweak models the masses under common logarithms and square roots
+  can move a side (`MH`, `MT`, `MW` and `MZ` on loop_qcd_qed_sm; `Gf`,
+  `MH`, `MT`, `MW`, `MZ`, `WW` and `WZ` for u u~ > e- e+ g on the G_mu model
+  under the complex-mass scheme). The `"uv"` and `"ir"` pole
   selections on a model with pole regulators evaluate the counterterms a
   second time with the IR regulator at 0. The generation's plane check
   certifies those values too (`ir_regulator` in the parameter record), so at
