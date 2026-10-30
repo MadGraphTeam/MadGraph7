@@ -29,22 +29,24 @@
 // - each store fills whole cache lines (cxtype_amp_sv a multiple of 64 bytes:
 //   simd_256 and simd_512). Half lines, filled one at a time far apart, are
 //   flushed to memory half written, which is much slower;
-// - the table is bigger than the cache share of one core
-//   (MGONGPU_HR_STREAM_MIN_MB, 4 by default, for the table of one call): a
-//   smaller one is still in the cache when hr_row reads it.
+// - the table of one call is big (MGONGPU_HR_STREAM_MIN_MB, 10 by default): a
+//   smaller one is still in the caches when hr_row reads it.
 // g g > t t~ g g g (30 MB per call at simd_256 in mixed precision), recycled
 // over plain with all cores busy: 0.84 -> 1.23 on 2x EPYC 7452 (128 threads),
-// 0.65 -> 0.94 on 2x EPYC 9655 (192 cores); at simd_128 (32 bytes) 1.15 -> 0.49
-// and for g g > u u~ g g (1.1 MB at simd_512) 1.60 -> 0.73, which is why both
-// conditions are there. MGONGPU_HR_TABLE_ENTRIES (nHrRows * hrNamp) comes from
-// HelRecycling.inc, or from the chunk translation unit itself, which does not
-// see HelRecycling.inc. x86 only (MGONGPU_HR_NO_STREAM, make HRNOSTREAM=1, turns
-// it off).
+// 0.65 -> 0.94 on 2x EPYC 9655 (192 cores); at simd_128 (32 bytes) 1.15 -> 0.49.
+// Over 21 processes (the helicity-recycling paper's among them) on the 2x EPYC
+// 9655, at 1, 64 and 192 cores, the non-temporal stores lose to the normal
+// ones at every table of up to 6.2 MB per call (g g > g g g g at simd_512:
+// 0.86x on one core, 0.65x on all), and win at every one of 14.8 MB and more
+// once many cores are busy (1.34x-1.57x at 64 and 192); 10 MB is between.
+// MGONGPU_HR_TABLE_ENTRIES (nHrRows * hrNamp) comes from HelRecycling.inc, or
+// from the chunk translation unit itself, which does not see HelRecycling.inc.
+// x86 only (MGONGPU_HR_NO_STREAM, make HRNOSTREAM=1, turns it off).
 #ifndef MGONGPU_HR_TABLE_ENTRIES
 #define MGONGPU_HR_TABLE_ENTRIES 0 // not the rows mode: there is no table to store
 #endif
 #ifndef MGONGPU_HR_STREAM_MIN_MB
-#define MGONGPU_HR_STREAM_MIN_MB 4
+#define MGONGPU_HR_STREAM_MIN_MB 10
 #endif
 #if defined __x86_64__ and defined MGONGPU_CPPSIMD and !defined MGONGPU_HR_NO_STREAM
 #if defined __AVX512F__
