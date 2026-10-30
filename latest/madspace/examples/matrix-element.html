@@ -650,7 +650,7 @@ machine-dependent name.</p>
 <span class="kn">import</span> <span class="nn">madspace</span> <span class="k">as</span> <span class="nn">ms</span>
 
 <span class="n">proc_dir</span> <span class="o">=</span> <span class="s2">&quot;PROC_ggttg&quot;</span>
-<span class="n">me_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">proc_dir</span><span class="p">,</span> <span class="s2">&quot;lib&quot;</span><span class="p">,</span> <span class="s2">&quot;libmadmatrix_P0_gg_ttxg_scalar.so&quot;</span><span class="p">)</span>
+<span class="n">me_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">proc_dir</span><span class="p">,</span> <span class="s2">&quot;lib&quot;</span><span class="p">,</span> <span class="s2">&quot;libmadmatrix_sm_P0_gg_ttxg_scalar_m.so&quot;</span><span class="p">)</span>
 <span class="n">param_card</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">proc_dir</span><span class="p">,</span> <span class="s2">&quot;Cards&quot;</span><span class="p">,</span> <span class="s2">&quot;param_card.dat&quot;</span><span class="p">)</span>
 
 <span class="n">ctx</span> <span class="o">=</span> <span class="n">ms</span><span class="o">.</span><span class="n">default_context</span><span class="p">()</span>
@@ -660,7 +660,9 @@ machine-dependent name.</p>
 </div>
 <p>The library name also appears, alongside every other subprocess of the process, in
 <code class="docutils literal notranslate"><span class="pre">PROC_ggttg/SubProcesses/subprocesses.json</span></code>, as <code class="docutils literal notranslate"><span class="pre">me_path</span></code> with a <code class="docutils literal notranslate"><span class="pre">{device}</span></code> placeholder
-for the backend.</p>
+for the backend and an <code class="docutils literal notranslate"><span class="pre">{fptype}</span></code> placeholder for the floating-point precision the library
+was compiled with (<code class="docutils literal notranslate"><span class="pre">FPTYPE</span></code>, <code class="docutils literal notranslate"><span class="pre">m</span></code> by default). The model name (<code class="docutils literal notranslate"><span class="pre">sm</span></code>) is part of the
+library name too.</p>
 <p><a class="reference internal" href="../python/Context.html#madspace.Context.load_matrix_element" title="madspace.Context.load_matrix_element"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Context.load_matrix_element</span></code></a> returns a
 <a class="reference internal" href="../python/MatrixElementApi.html#madspace.MatrixElementApi" title="madspace.MatrixElementApi"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixElementApi</span></code></a>, which reads the parameters from
 <code class="docutils literal notranslate"><span class="pre">param_card.dat</span></code> when it loads the library:</p>

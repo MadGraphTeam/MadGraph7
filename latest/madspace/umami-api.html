@@ -712,6 +712,12 @@
 <dd><p>a mandatory matrix element input was not provided </p>
 </dd></dl>
 
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus29UMAMI_ERROR_UNKNOWN_PARAMETERE">
+<span id="_CPPv3N11UmamiStatus29UMAMI_ERROR_UNKNOWN_PARAMETERE"></span><span id="_CPPv2N11UmamiStatus29UMAMI_ERROR_UNKNOWN_PARAMETERE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2dedac78e250715d4e57bc62f9c03896ca045"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_UNKNOWN_PARAMETER</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus29UMAMI_ERROR_UNKNOWN_PARAMETERE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>the provided parameter name is not a known, settable parameter </p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="cpp enum">
@@ -1035,7 +1041,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>handle</strong> – pointer to an instance of the subprocess. Has to be cleaned up by the caller with <code class="docutils literal notranslate"><span class="pre">free_subprocess</span></code>. </p></li>
+<li><p><strong>handle</strong> – pointer to an instance of the subprocess. Has to be cleaned up by the caller with <code class="docutils literal notranslate"><span class="pre">umami_free</span></code>. </p></li>
 <li><p><strong>param_card_path</strong> – path to the parameter file </p></li>
 </ul>
 </dd>
@@ -1059,7 +1065,7 @@
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if “name” is not a settable parameter, error code otherwise </p>
 </dd>
 </dl>
 </dd></dl>
@@ -1078,7 +1084,7 @@
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if “name” is not a known parameter, error code otherwise </p>
 </dd>
 </dl>
 </dd></dl>
@@ -1193,6 +1199,7 @@
 <li><a class="reference internal" href="#_CPPv4N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNINITIALIZED_META</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNSUPPORTED_META</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_MISSING_INPUT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus29UMAMI_ERROR_UNKNOWN_PARAMETERE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNKNOWN_PARAMETER</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv411UmamiDevice"><code class="docutils literal notranslate"><span class="pre">UmamiDevice</span></code></a><ul>
