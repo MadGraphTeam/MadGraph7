@@ -741,6 +741,60 @@ which evaluates the member. Next-to-leading and full colour expose no
 selection: they evaluate every helicity and colour, and their API and plans
 are unchanged.
 
+#### External photons: alpha(0) per leg
+
+With electroweak (QED) corrections, an on-shell external photon either couples
+with alpha(0) (a *tagged* photon, MG5_aMC's `!a!`: an isolated photon) or keeps
+the loops' coupling, alpha_Gmu on a G_mu model (an *untagged* photon: a photon
+from a PDF or in a jet). `[loop] external_photons` chooses per leg:
+
+```toml
+[loop]
+external_photons = "final"     # default: final-state photons tagged, initial ones untagged
+# external_photons = "all"     # every photon tagged (MG5_aMC with every photon !a!, e.g. UPC/EPA)
+# external_photons = "none"    # no photon tagged
+# external_photons = [1, 3]    # exactly these 1-based legs (initial legs allowed)
+```
+
+The override is `--set loop.external_photons=none` (or `=[1,3]`), and Python
+takes the same values (`LoopConfig(external_photons=...)`, the v2
+`SliceRequest(external_photons=...)`). For n tagged photons the engine applies
+MG5_aMC's formula (the G_mu branch of `export_fks.write_rescale_a0gmu_file`):
+the Born and the virtual are multiplied by (alpha(0)/alpha_Gmu)^n, and the
+virtual of the electromagnetic correction gains -2 n DGmua0 Born, with DGmua0 =
+delta Z_e^Gmu - delta Z_e^alpha(0) the model's `eCoup_DGmua0_UV_EW`; their IR
+poles carry no gamma_gamma. This needs a G_mu loop model with an adjustable
+1/alpha(0): MG5_aMC's `loop_qcd_qed_sm_Gmu` under `restriction = "a0"`
+(`aEW0M1`, a runtime parameter of the stored artifact). Untagged photons need no
+model input and keep their -gamma_gamma/eps pole, which cancels against the
+photon PDF's or the photon-to-fermion collinear counterterm. MadLoop standalone
+converts no photon: its raw values are those of `external_photons = "none"`.
+
+The default `"final"` follows the physics of the usual cases: an initial-state
+photon is a PDF photon (its coupling and pole belong to the PDF's scheme), so
+converting it would shift the result by about 3.3 % per photon
+(alpha(0)/alpha_Gmu ~ 0.967) and give the wrong IR pole; a final-state photon
+is an isolated photon, for which alpha(0) is the physical coupling. Choose
+`"all"` or a list for photons from the photon flux of a charged beam (UPC/EPA).
+Only requests with the electromagnetic correction convert photons (as in
+MG5_aMC: QCD corrections leave every photon at the model's coupling).
+
+Refusals (listed, typed): tagged photons on a model that cannot take the
+convention, `external-photon-scheme`. MG5_aMC's `loop_qcd_qed_sm` declares no
+conversion (MG5_aMC refuses tagged photons there too): use `external_photons =
+"none"` or the G_mu model with `restriction = "a0"`; on the G_mu model's default
+card 1/alpha(0) is fixed (zero): use `restriction = "a0"` or `"none"`. A listed
+leg that is no on-shell external photon of the process: `external-photon-legs`.
+The artifact records the tagged and untagged legs among the electroweak
+conventions (`inspect`: `tagged_photon_legs`, `untagged_photon_legs`).
+
+| MG5_aMC | pyAmpliCol |
+| --- | --- |
+| `generate a a > e+ e- [QED]` (no tags) | `external_photons = "none"` (the default leaves both initial photons untagged too) |
+| `generate !a! !a! > e+ e- [QED]` | `external_photons = "all"` |
+| `generate u u~ > !a! g [QCD QED]` | the default `"final"` |
+| `generate a u > !a! u [QCD QED]` | the default `"final"` (or `[3]`) |
+
 #### Ultraviolet and infrared poles
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
@@ -908,9 +962,10 @@ feature's key (see the stored programs below), for example a program whose
 binary64 SymJIT application disagrees with its exact evaluator at the
 generation's check ("plane-mismatch", naming the output: a model coupling by
 its UFO coupling and vertex, a counterterm coupling with its epsilon power, or
-a kernel). On-shell external photons with electroweak corrections couple with
-alpha(0) and are stored natively, with 1/alpha(0) (`aEW0M1` of MG5_aMC's G_mu
-loop models under `restrict_a0`) a runtime parameter. The check compares
+a kernel). Tagged on-shell external photons with electroweak corrections
+couple with alpha(0) and are stored natively, with 1/alpha(0) (`aEW0M1` of
+MG5_aMC's G_mu loop models under `restrict_a0`) a runtime parameter
+([external photons](#external-photons-alpha0-per-leg)). The check compares
 at complex points off the real axis and at the request's parameter values,
 so it depends neither on the parameters' names nor on their order; it
 refuses a branch cut taken on different sides at those values, or a branch
