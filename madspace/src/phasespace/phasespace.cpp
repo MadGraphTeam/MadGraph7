@@ -257,7 +257,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             if (nd > 0) {
                 in.push_back(
                     "discrete",
-                    Type{DataType::dt_int, batch_size, {static_cast<int>(nd)}}
+                    Type{DataType::dt_int32, batch_size, {static_cast<int>(nd)}}
                 );
             }
             return in;

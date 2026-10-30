@@ -3592,6 +3592,7 @@ class MadgraphSubprocess:
                 subnet_layers=self.madnis_settings["flow_layers"],
                 subnet_activation=self.activation(madnis_args["flow_activation"]),
                 invert_spline=madnis_args["flow_invert_spline"],
+                subnet_precision=self.nn_precision(),
             )
             if channel.adaptive_mapping is None:
                 flow.initialize_globals(self.process.contexts[0], seed)
@@ -3614,6 +3615,7 @@ class MadgraphSubprocess:
                     subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                    subnet_precision=self.nn_precision(),
                 )
                 discrete_sym.initialize_globals(self.process.contexts[0], seed)
                 cond_dim += perm_count
@@ -3628,6 +3630,7 @@ class MadgraphSubprocess:
                     subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                    subnet_precision=self.nn_precision(),
                 )
                 discrete_flavor.initialize_globals(self.process.contexts[0], seed)
 
@@ -3708,6 +3711,7 @@ class MadgraphSubprocess:
             layers=madnis_args["cwnet_layers"],
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
+            precision=self.nn_precision(),
         )
         cwnet.initialize_globals(
             self.process.contexts[0], self.process.run_seed
@@ -3724,6 +3728,11 @@ class MadgraphSubprocess:
             return modes[name]
         else:
             raise ValueError(f"Invalid t-channel mode '{name}'")
+
+    def nn_precision(self) -> ms.DataType:
+        # one precision for all networks: the optimizer trains all of them together
+        # the run card only allows float32 and float64
+        return getattr(ms.DataType, self.process.run_card["madnis"]["nn_float_precision"])
 
     def activation(self, name: str) -> ms.MLP.Activation:
         activations = {
