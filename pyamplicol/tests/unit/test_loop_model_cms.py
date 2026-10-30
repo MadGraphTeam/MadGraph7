@@ -150,6 +150,30 @@ def test_zero_widths_at_the_card_keep_their_masses_real(gmu_raw):
     assert error.value.key == "cms-yukawa-input"
 
 
+def test_the_restriction_cards_ones_become_constants(loop_gmu_ufo):
+    """MG5_aMC restricts the transformed model by its restriction card, which
+    fixes every parameter of value 1 there: under the scheme the G_mu UFO's
+    TECHNICAL switches at 1 become the constant 1 (their dead branches, e.g.
+    GfRedefinitionChoice's re(), leave the couplings); without a restriction
+    card (``"full"``) or without a pole mass nothing is fixed."""
+
+    restricted = load_raw_loop_model(str(loop_gmu_ufo), restriction="default")
+    scheme = complex_mass_scheme(restricted)
+    assert scheme.ones == ("epsUV", "epsIR", "LogSwitch", "GfRedefinitionChoice")
+    assert tuple(scheme.derived.metadata["complex_mass_scheme"]["ones"]) == scheme.ones
+    for name in scheme.ones:
+        fields = scheme.derived.record("parameters", name)["fields"]
+        assert (fields["nature"], fields["value"]["expression"]) == ("internal", "1.0")
+        assert "lhablock" not in fields
+    for name in ("MZ", "WZ", "MT", "WT"):
+        fields = scheme.derived.record("parameters", name)["fields"]
+        assert fields["nature"] == "external"
+    full = load_raw_loop_model(str(loop_gmu_ufo), restriction="full")
+    assert complex_mass_scheme(full).ones == ()
+    stable = dict.fromkeys(("WZ", "WW", "WH", "WT"), "0")
+    assert complex_mass_scheme(restricted, fixed_parameters=stable).ones == ()
+
+
 def test_an_internal_mass_with_a_width_is_refused(loop_sm_ufo):
     """loop_sm's W mass is internal: with its card width MG5 would switch the
     model's EW input scheme by a PDG-24 rule (not ported, m-sm PLAN §1.7), so
@@ -413,6 +437,8 @@ def test_tree_model_view_equals_mg5_complex_mass_model(
     model, scheme = complex_mass_model(compiled, cache_dir=tmp_path / "model-cache")
     assert model.raw_loop_model is scheme.derived and model.ir.gauge == "feynman"
     assert "ymt" not in model.parameter_defaults and "MT" in model.parameter_defaults
+    # The restriction card's ones are constants (MG5's restriction).
+    assert scheme.ones and not set(scheme.ones) & set(model.parameter_defaults)
     particles = {record.name: record for record in model.ir.particles}
     for name, mass in (("t", "CMASS_MT"), ("Z", "CMASS_MZ"), ("G0", "CMASS_MZ")):
         assert (str(particles[name].mass), str(particles[name].width)) == (mass, "ZERO")
