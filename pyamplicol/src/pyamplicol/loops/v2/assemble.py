@@ -711,6 +711,68 @@ def _check_canonical_block(block: list[Any]) -> None:
         )
 
 
+# A stage with function definitions is renamed on Symbolica's portable text
+# (``_renamed_text``: one pass per expression, linear in its size), not by
+# ``replace_multiple`` with a rule per symbol, whose cost grows with the
+# rules times the expression (46 s of the 2->3 electroweak parameter
+# program, M-SM MS-GEN). Both give the same expressions; the
+# ``replace_multiple`` passes stay the oracle (``text_canonical_stage(False)``).
+TEXT_CANONICAL_STAGE = True
+
+
+def text_canonical_stage(enabled: bool) -> Any:
+    """``TEXT_CANONICAL_STAGE`` set to ``enabled`` for a ``with`` block and
+    restored after it: ``text_canonical_stage(False)`` is the oracle lane."""
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def switch():
+        global TEXT_CANONICAL_STAGE
+        before = TEXT_CANONICAL_STAGE
+        TEXT_CANONICAL_STAGE = bool(enabled)
+        try:
+            yield
+        finally:
+            TEXT_CANONICAL_STAGE = before
+
+    return switch()
+
+
+def _renamed_text(
+    expressions: Sequence[Any],
+    variables: Mapping[Any, Any],
+    heads: Mapping[Any, Any],
+) -> list[Any]:
+    """``expressions`` with every symbol of ``variables`` and every call of a
+    function of ``heads`` renamed (old -> new symbol), on their portable
+    text (``repr``: every namespace but the default one) parsed back: a
+    token is a symbol's whole printed name (no name character, ``:``, ``{``
+    or ``}`` around it), a head when a ``(`` follows it and a variable
+    otherwise."""
+
+    import re
+
+    from symbolica import E
+
+    variable_names = {repr(old): repr(new) for old, new in variables.items()}
+    head_names = {repr(old): repr(new) for old, new in heads.items()}
+    names = sorted({*variable_names, *head_names}, key=len, reverse=True)
+    if not names:
+        return list(expressions)
+    pattern = re.compile(
+        r"(?<![\w:{}])(" + "|".join(map(re.escape, names)) + r")(?![\w:{}])(\()?"
+    )
+
+    def substitute(match: re.Match[str]) -> str:
+        name, call = match.group(1), match.group(2)
+        if call:
+            return head_names.get(name, name) + call
+        return variable_names.get(name, name)
+
+    return [E(pattern.sub(substitute, repr(expression))) for expression in expressions]
+
+
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     """A stage's outputs, parameters and function definitions on canonical
     symbols (``_canonical_symbols``).
@@ -764,6 +826,25 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     )
     old = [*parameters, *heads, *arguments]
     renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
+    if TEXT_CANONICAL_STAGE:
+        head_set = set(heads)
+        variable_map = {k: v for k, v in renamed.items() if k not in head_set}
+        head_map = {k: v for k, v in renamed.items() if k in head_set}
+        bodies = _renamed_text(
+            [body for _head, _items, body in definitions], variable_map, head_map
+        )
+        return (
+            _renamed_text(stage.output_expressions, variable_map, head_map),
+            [renamed[parameter] for parameter in parameters],
+            [
+                (
+                    renamed.get(head, head),
+                    tuple(renamed[argument] for argument in items),
+                    body,
+                )
+                for (head, items, _body), body in zip(definitions, bodies, strict=True)
+            ],
+        )
     tail = symbols.qualified("pyamplicol_v2_canonical::args___")
     # Two passes: a single ``replace_multiple`` does not descend into a call
     # its head rule replaced, so the arguments of a model-function call kept
