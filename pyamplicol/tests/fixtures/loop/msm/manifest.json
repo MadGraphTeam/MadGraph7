@@ -77,10 +77,6 @@
    "model": "loop_qcd_qed_sm_Gmu",
    "restriction": "ckm",
    "fixed_parameters": {
-    "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0",
     "WT": "0",
     "WW": "0",
     "WZ": "0",
@@ -6447,10 +6443,6 @@
    "restriction": "ckm",
    "restriction_code": "Gk",
    "fixed_parameters": {
-    "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0",
     "WT": "0",
     "WW": "0",
     "WZ": "0",
