@@ -4804,8 +4804,8 @@ def _definition_value(
 
 
 def _model_masses(
-    compiled, parameters: Mapping[str, str], digits: int
-) -> Callable[[str], Fraction]:
+    compiled, parameters: Mapping[str, str], digits: int, poles: bool = False
+) -> Callable[[str], Any]:
     """The model's mass parameters at ``parameters``, by name, as exact
     values: an external parameter its exact value; a derived one (loop_sm's
     MW, an internal mass of any model) its resolved definition at ``digits``
@@ -4815,7 +4815,11 @@ def _model_masses(
     legs' on-shell invariants (``_leg_masses``) and Catani's massive emitters
     (``_PointEvaluation._qcd_poles``, ``_qed_poles``) take the same values,
     so a derived mass's legs are on the shell its propagators and sources
-    take (DESIGN §11.1). A derived mass must be real and positive."""
+    take (DESIGN §11.1). A derived mass must be real and positive; with
+    ``poles`` an internal mass parameter of complex type (a complex-mass
+    scheme's pole mass, sqrt(M^2 - i M Gamma)) is its exact complex value
+    (``rx.Complex``), as the native lane binds a ``["complex", o]`` plan
+    mass (``native_trees._parameter_program``)."""
 
     values = _kernel_parameters(compiled, parameters)
     definitions = {
@@ -4823,10 +4827,15 @@ def _model_masses(
         for record in compiled.ir.parameters
         if record.nature == "internal"
     }
-    found: dict[str, Fraction] = {}
+    complex_types = {
+        record.name
+        for record in compiled.ir.parameters
+        if poles and record.nature == "internal" and record.parameter_type == "complex"
+    }
+    found: dict[str, Any] = {}
     substitutions: list[dict] = []
 
-    def mass(name: str) -> Fraction:
+    def mass(name: str) -> Any:
         if name == ZERO:
             return Fraction(0)
         if name in values:
@@ -4850,6 +4859,9 @@ def _model_masses(
             real, imaginary = _definition_value(
                 definitions[name], substitutions[0], digits
             )
+            if name in complex_types and imaginary != 0:
+                found[name] = rx.Complex(Fraction(real), Fraction(imaginary))
+                return found[name]
             if imaginary != 0 or real <= 0:
                 raise ValueError(
                     f"the derived mass {name!r} is not real and positive ({real}, "
@@ -4887,16 +4899,22 @@ def _constant_parameters(
 
 
 def _mass_values(
-    compiled, parameters: Mapping[str, str], masses: Iterable[Any], digits: int
-) -> dict[Any, Fraction]:
+    compiled,
+    parameters: Mapping[str, str],
+    masses: Iterable[Any],
+    digits: int,
+    poles: bool = False,
+) -> dict[Any, Any]:
     """Squared real loop masses per mass id (widths are not part of the
-    slice), a derived mass at ``digits`` decimal digits (``_model_masses``)."""
+    slice), a derived mass at ``digits`` decimal digits (``_model_masses``);
+    with ``poles`` a complex-mass scheme's pole mass squared, complex."""
 
-    mass_of = _model_masses(compiled, parameters, digits)
-    return {
-        mass: Fraction(0) if mass.massless else mass_of(mass.mass) ** 2
-        for mass in masses
-    }
+    mass_of = _model_masses(compiled, parameters, digits, poles)
+    out = {}
+    for mass in masses:
+        value = Fraction(0) if mass.massless else mass_of(mass.mass)
+        out[mass] = value * value
+    return out
 
 
 def _leg_masses(

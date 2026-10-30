@@ -744,7 +744,7 @@ class GeneratedProcess:
         squares = {
             mass.mass: _threshold_size(value)
             for mass, value in _mass_values(
-                slice_.compiled, parameters, lines, digits
+                slice_.compiled, parameters, lines, digits, poles=True
             ).items()
         }
         for leg, value in zip(

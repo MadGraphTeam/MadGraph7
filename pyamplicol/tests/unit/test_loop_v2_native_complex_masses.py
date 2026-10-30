@@ -285,6 +285,98 @@ def test_gluon_ward_identity_with_a_complex_top_pole_mass(slices):
         assert check["passed"] is True, (carrier, check["rows"])
 
 
+_CARD = """
+action = "generate"
+[model]
+source = {source}
+[process]
+entries = [{{expression = "{expression}", name = "{name}"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+[loop.preparation]
+fixed_parameters = {{MB = "0", WZ = "0", WW = "0", WH = "0"}}
+[loop.model]
+loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
+[generation]
+output = {output}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+
+
+def test_complex_pole_mass_artifact_stores_native_inputs_and_relocates_bitwise(
+    loop_sm_ufo, loop_native, tmp_path
+):
+    """The public route on the continued complex top fixture (a UFO already
+    in the complex-mass form: CMASS_MT with width ZERO, the card's top width
+    a runtime parameter): b b~ > w+ w- [QCD] stores native point inputs
+    (``point_inputs`` "native-v2") whose parameter program binds the top's
+    loop propagators as a complex plan mass, and the artifact-portability
+    check passes (no host strings, storage-v4 plane applications only,
+    bitwise-identical binary64 results at a relocated copy evaluated without
+    a licence)."""
+
+    import zlib
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
+    from tools import loop_artifact_portability as portability
+
+    ufo = complex_mass_ufo(
+        loop_sm_ufo, tmp_path / "loop_sm_continued", "t", "MT", "WT", references=True
+    )
+    expression, name = PROCESS[0], "bbx_wpwm"
+    output = tmp_path / "artifact"
+    card = tmp_path / "card.toml"
+    card.write_text(
+        _CARD.format(
+            source=json.dumps(str(ufo)),
+            expression=expression,
+            name=name,
+            output=json.dumps(str(output)),
+        )
+    )
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse(expression, name=name),)), output
+    )
+    declared = [
+        json.loads(path.read_text())["point_inputs"]
+        for path in output.rglob("execution.json")
+    ]
+    assert declared == [LOOP_V2_NATIVE_POINT_INPUTS], declared
+    # The stored tree program's parameter record holds the complex plan mass.
+    (pacbin,) = output.rglob("*.pacbin")
+    members = {path: data for path, _kind, data in portability._members(pacbin)}
+    program = json.loads(
+        zlib.decompress(members["point-inputs/tree-program.json.zlib"])
+    )
+    plan_masses = program["parameters"]["plan_masses"]
+    assert [m[0] for m in plan_masses if isinstance(m, list)] == ["complex"]
+    verdict = portability.check(
+        output, name, tmp_path / "check", count=2, licence=False
+    )
+    scan = verdict["scan"]
+    assert scan["clean"], scan["findings"]
+    assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
+
+
 # ------------------------------------------------------------ MadLoop CMS rows
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/loop/required/msm"
