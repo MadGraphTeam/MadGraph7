@@ -231,6 +231,22 @@ def test_active_references_load_at_their_points(rows):
 
 
 @pytest.mark.loop_fast
+def test_delegated_columns_name_existing_tests(rows):
+    """A delegated column (rule 5 after MS-POLES on DY01 and TT01: the
+    counterterms' UV part at epsIR = 0 against MadLoop, MS-POLES's tests)
+    names test functions that exist; build_mqcd.py reads their JUnit
+    outcomes."""
+
+    delegated = {name: row.delegated for name, row in rows.items() if row.delegated}
+    assert set(delegated) >= {"DY01", "TT01"}
+    for name, columns in delegated.items():
+        for node in (node for ids in columns.values() for node in ids):
+            path, function = node.split("::")
+            source = (mqcd.ROOT / path).read_text()
+            assert f"\ndef {function}(" in source, (name, node)
+
+
+@pytest.mark.loop_fast
 def test_tv07_is_the_target_on_native_inputs(rows):
     """EWI-9 (PLAN §3.2 item 4): TV07 at 3 points against gg_ttxemepg_ew with
     native inputs, rule 4 from the engine's operators; its joint twin's
