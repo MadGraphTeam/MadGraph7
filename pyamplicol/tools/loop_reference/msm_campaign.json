@@ -1,5 +1,5 @@
 {
- "description": "M-SM validation campaign (workspace/reports/engine-v2/m-sm/PLAN.md \u00a74): the 70 core rows of \u00a74.2 (the decay rows XX01/XX02 wait for the user's Q3) and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/msm/<run>/ and their merged references are committed as tests/fixtures/loop/required/msm/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py --campaign msm_campaign.json.",
+ "description": "M-SM validation campaign (workspace/reports/engine-v2/m-sm/PLAN.md \u00a74): the 70 core rows of \u00a74.2 (the decay rows XX01/XX02 wait for the user's Q3), SC10 (the R2_ZZHH row of MS-UFODB) and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/msm/<run>/ and their merged references are committed as tests/fixtures/loop/required/msm/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py --campaign msm_campaign.json.",
  "layout": {
   "name": "M-SM",
   "runs": "runs/msm",
@@ -1538,6 +1538,24 @@
    ],
    "note": "Recola primary: MadLoop's export omits R2 couplings the UFO-complete insertion has (R2 rule, \u00a71.4) (2.5 %); root mixing; ew-validate's fixture [EWI-7]",
    "primary_provider": "recola"
+  },
+  {
+   "row": "SC10",
+   "class": "W-scheme",
+   "process": "z z > h h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "zz_hh_ew",
+    "zz_hh_ew_mg5"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "the R2 vertices Z Z H H and Z Z G0 G0 (coupling R2_ZZHH, fixed in UFOmodeldb 6ca4b120; no other row reaches them) on the UFOmodeldb model [MS-UFODB]"
   }
  ],
  "runs": [
@@ -2322,6 +2340,26 @@
     "generator": "supplied",
     "family": "regular"
    }
+  },
+  {
+   "id": "zz_hh_ew",
+   "process": "zz_hh_ew",
+   "export": "runs/msm/zz_hh_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "zz_hh_ew_mg5",
+   "process": "zz_hh_ew_mg5",
+   "export": "runs/msm/zz_hh_ew_mg5/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "zz_hh_ew"
+   },
+   "binding": false,
+   "note": "control: MadLoop on MG5_aMC's online-database G_mu model, whose R2_ZZHH predates UFOmodeldb's fix (the only difference)"
   }
  ]
 }

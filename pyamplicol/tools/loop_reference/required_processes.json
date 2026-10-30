@@ -22,6 +22,16 @@
       "active_flavours": 5,
       "loop_quark_flavours": 6
     },
+    "ew-gmu-mg5": {
+      "description": "The ew-gmu scheme on MG5_aMC's online-database download of loop_qcd_qed_sm_Gmu (its MG5 Python-3 conversion), whose R2_ZZHH predates UFOmodeldb's fix 1f13c48f / 6ca4b120 (the only difference): the control run of SC10 (MS-UFODB).",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
+      "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
+      "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
     "ew-qcd-qed-sm": {
       "description": "Full NLO EW in MG5_aMC's loop_qcd_qed_sm (alpha(M_Z) scheme: aEWM1, MZ and MW all inputs; lhv=1, epsUV=epsIR=1) at its default restriction (massless light fermions, diagonal CKM), real on-shell masses with all widths zero, stable top, Feynman gauge. MadLoop only: the Recola and OpenLoops drivers have no translation of these inputs.",
       "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm",
@@ -1029,6 +1039,26 @@
       "correction": "EW",
       "scheme": "ew-gmu",
       "madloop": {"process": "h h > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
+    },
+    {
+      "name": "zz_hh_ew",
+      "role": "msm",
+      "msm_row": "SC10",
+      "pdgs": [23, 23, 25, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
+    },
+    {
+      "name": "zz_hh_ew_mg5",
+      "role": "msm",
+      "msm_row": "SC10",
+      "pdgs": [23, 23, 25, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-mg5",
+      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
     },
     {
       "name": "ttx_wpwm_ew",
