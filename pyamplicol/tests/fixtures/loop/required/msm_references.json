@@ -8965,7 +8965,7 @@
     "scheme": "ew-gmu-b-mass",
     "note": "MadLoop: the loop_qcd_qed_sm_Gmu_py3_b_mass copy (restrict_default.dat with MB = ymb = 4.5)"
    },
-   "note": "ew-validate's workspace run udx_tbx_ew_mb (MadLoop; Recola differs by 3e-4..1e-3 in its massive-b setting, not a provider here) [EWI-7]",
+   "note": "ew-validate's workspace run udx_tbx_ew_mb (MadLoop; Recola differs by 9.48e-5 x Born: the G_mu UFO omits dMB_eCoup_UV_EW in its charge counterterm; not a provider here) [EWI-7]",
    "references": [],
    "existing_references": [
     {
@@ -16005,6 +16005,370 @@
     }
    ],
    "primary_provider": "recola"
+  },
+  {
+   "row": "SC10",
+   "class": "W-scheme",
+   "process": "z z > h h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "pyamplicol_route": {
+    "model": "loop_qcd_qed_sm_Gmu",
+    "restriction": "default",
+    "fixed_parameters": {
+     "WT": "0",
+     "WZ": "0",
+     "WW": "0",
+     "WH": "0"
+    },
+    "scheme": "ew-gmu"
+   },
+   "note": "the R2 vertices Z Z H H and Z Z G0 G0 (coupling R2_ZZHH, fixed in UFOmodeldb 6ca4b120; no other row reaches them) on the UFOmodeldb model [MS-UFODB]",
+   "references": [
+    {
+     "run": "zz_hh_ew",
+     "fixture": "required/msm/zz_hh_ew.json",
+     "process_key": "zz_hh_ew",
+     "note": null,
+     "reference_notes": {},
+     "excluded_providers": {},
+     "second_providers": [
+      "recola"
+     ],
+     "second_provider_trigger": "diagnostic: Recola's R2 terms are not the UFO's, so it decides UFOmodeldb's R2_ZZHH fix",
+     "status": "committed",
+     "madloop_process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6",
+     "pdgs": [
+      23,
+      23,
+      25,
+      25
+     ],
+     "born_orders": {
+      "QCD": 0,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 0,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 0,
+      "QED": 4
+     },
+     "scheme": "ew-gmu",
+     "restriction": null,
+     "madloop_model": "loop_qcd_qed_sm_Gmu_py3",
+     "gauge": "Feynman",
+     "parameter_overrides": {},
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "regular",
+     "madloop_qp_point": false,
+     "point_labels": [
+      "regular",
+      "regular",
+      "regular",
+      "regular (mu_R = mu_0/2)"
+     ],
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "madloop_return_codes": [
+      329,
+      329,
+      329,
+      329
+     ],
+     "madloop_evaluation": "quadruple",
+     "evaluation_precision": [
+      "quadruple",
+      "quadruple",
+      "quadruple",
+      "quadruple"
+     ],
+     "binding_rows": [
+      0,
+      1,
+      2,
+      3
+     ],
+     "outliers": {},
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      }
+     ],
+     "second_provider_outcome": {
+      "recola": [
+       {
+        "born": 7.500624682115814e-14,
+        "finite": 1.3756861274697434e-12,
+        "single_pole": 1.0,
+        "double_pole": 0.0
+       },
+       {
+        "born": 1.384841846473388e-16,
+        "finite": 2.164899734443795e-11,
+        "single_pole": 0.8856323242187499,
+        "double_pole": 0.0
+       },
+       {
+        "born": 8.71619889429759e-15,
+        "finite": 1.9283034475250794e-12,
+        "single_pole": 1.0215625000000002,
+        "double_pole": 0.0
+       },
+       {
+        "born": 7.500624682115814e-14,
+        "finite": 1.3906528978956479e-12,
+        "single_pole": 0.9599218749999999,
+        "double_pole": 0.0
+       }
+      ]
+     },
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 0,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 0,
+        "QED": 6
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null,
+     "complex_mass_scheme": false,
+     "madloop_r2_couplings": {
+      "called": [
+       "R2_G0G0boson1",
+       "R2_G0G0boson2",
+       "R2_HHHboson",
+       "R2_HHHt",
+       "R2_HHboson1",
+       "R2_HHboson2",
+       "R2_HHt1",
+       "R2_HHt2",
+       "R2_ZG0H",
+       "R2_ZG0Ht",
+       "R2_ZZD",
+       "R2_ZZH",
+       "R2_ZZHH",
+       "R2_ZZHHt",
+       "R2_ZZHt",
+       "R2_ZZU",
+       "R2_ZZboson1",
+       "R2_ZZboson2",
+       "R2_ZZboson3",
+       "R2_ZZl",
+       "R2_ZZt3",
+       "R2_ZZv"
+      ],
+      "called_as": {
+       "R2_G0G0boson2": "R2_HHboson2",
+       "R2_HHt2": "R2_GmGptb2"
+      },
+      "ufo_r2_couplings": 1217,
+      "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_zz_hh)"
+     }
+    },
+    {
+     "run": "zz_hh_ew_mg5",
+     "fixture": "required/msm/zz_hh_ew_mg5.json",
+     "process_key": "zz_hh_ew_mg5",
+     "note": "control: MadLoop on MG5_aMC's online-database G_mu model, whose R2_ZZHH predates UFOmodeldb's fix (the only difference)",
+     "reference_notes": {},
+     "excluded_providers": {},
+     "second_providers": [],
+     "second_provider_trigger": null,
+     "binding": false,
+     "status": "committed",
+     "madloop_process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6",
+     "pdgs": [
+      23,
+      23,
+      25,
+      25
+     ],
+     "born_orders": {
+      "QCD": 0,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 0,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 0,
+      "QED": 4
+     },
+     "scheme": "ew-gmu-mg5",
+     "restriction": null,
+     "madloop_model": "loop_qcd_qed_sm_Gmu_py3",
+     "gauge": "Feynman",
+     "parameter_overrides": {},
+     "points": 4,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400",
+      "500"
+     ],
+     "point_family": "regular",
+     "madloop_qp_point": false,
+     "point_labels": [
+      "regular",
+      "regular",
+      "regular",
+      "regular (mu_R = mu_0/2)"
+     ],
+     "scale_variation": {
+      "point": 4,
+      "copy_of_point": 1,
+      "mu_r_factor": "1/2",
+      "row": 3,
+      "copy_of_row": 0
+     },
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "madloop_return_codes": [
+      329,
+      329,
+      329,
+      329
+     ],
+     "madloop_evaluation": "quadruple",
+     "evaluation_precision": [
+      "quadruple",
+      "quadruple",
+      "quadruple",
+      "quadruple"
+     ],
+     "binding_rows": [
+      0,
+      1,
+      2,
+      3
+     ],
+     "outliers": {},
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      },
+      {
+       "QCD^2=0,QED^2=6": 0.0
+      }
+     ],
+     "second_provider_outcome": {},
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 0,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 0,
+        "QED": 6
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null,
+     "complex_mass_scheme": false,
+     "madloop_r2_couplings": {
+      "called": [
+       "R2_G0G0boson1",
+       "R2_G0G0boson2",
+       "R2_HHHboson",
+       "R2_HHHt",
+       "R2_HHboson1",
+       "R2_HHboson2",
+       "R2_HHt1",
+       "R2_HHt2",
+       "R2_ZG0H",
+       "R2_ZG0Ht",
+       "R2_ZZD",
+       "R2_ZZH",
+       "R2_ZZHH",
+       "R2_ZZHHt",
+       "R2_ZZHt",
+       "R2_ZZU",
+       "R2_ZZboson1",
+       "R2_ZZboson2",
+       "R2_ZZboson3",
+       "R2_ZZl",
+       "R2_ZZt3",
+       "R2_ZZv"
+      ],
+      "called_as": {
+       "R2_G0G0boson2": "R2_HHboson2",
+       "R2_HHt2": "R2_GmGptb2"
+      },
+      "ufo_r2_couplings": 1217,
+      "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_zz_hh)"
+     }
+    }
+   ],
+   "existing_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/msm/zz_hh_ew.json",
+     "rows": [
+      0,
+      1,
+      2,
+      3
+     ]
+    }
+   ]
   }
  ]
 }

@@ -3,14 +3,21 @@
 # One-loop QCD+QED on loop_qcd_qed_sm, coming from MadLoop
 
 pyAmpliCol ships H.-S. Shao's two NLO UFO models with QCD and QED
-counterterms (arXiv:1804.10017; MG5_aMC's model database) with all their
-restriction cards:
+counterterms (arXiv:1804.10017) as [UFOmodeldb](https://github.com/mg5amcnlo/UFOmodeldb)
+ships them (commit 6ca4b120), with all their restriction cards:
 
 - `loop_qcd_qed_sm` (alpha(M_Z) input scheme), as downloaded;
 - `loop_qcd_qed_sm_Gmu` (G_mu input scheme), as the mechanical Python-3
   conversion of its Python-2 download (package-relative imports and
   `.iteritems()` -> `.items()` only; no declaration changes; source checksums
   and the conversion in `src/pyamplicol/assets/models/PROVENANCE.toml`).
+
+The copies MG5_aMC's online model database downloads (`import model
+loop_qcd_qed_sm`) differ from these in one coupling, `R2_ZZHH` (UFOmodeldb's
+fix of the R2 vertices Z Z H H and Z Z G0 G0). They take the same shipped
+`[loop.model]` profile, so pointing `model.source` at such a download works
+too and reproduces MadLoop on it; only processes whose trees hold one of those
+two vertices (e.g. `z z > h h`) differ between the two.
 
 A request with electroweak (`QED`) or joint (`QCD`, `QED`) corrections runs
 on them with no `[loop.model]` section and no compatibility setting:

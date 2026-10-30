@@ -14,6 +14,16 @@
     },
     "ew-gmu": {
       "description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3",
+      "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
+      "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "ew-gmu-mg5": {
+      "description": "The ew-gmu scheme on MG5_aMC's online-database download of loop_qcd_qed_sm_Gmu (its MG5 Python-3 conversion), whose R2_ZZHH predates UFOmodeldb's fix 1f13c48f / 6ca4b120 (the only difference): the control run of SC10 (MS-UFODB).",
       "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
@@ -24,7 +34,7 @@
     },
     "ew-qcd-qed-sm": {
       "description": "Full NLO EW in MG5_aMC's loop_qcd_qed_sm (alpha(M_Z) scheme: aEWM1, MZ and MW all inputs; lhv=1, epsUV=epsIR=1) at its default restriction (massless light fermions, diagonal CKM), real on-shell masses with all widths zero, stable top, Feynman gauge. MadLoop only: the Recola and OpenLoops drivers have no translation of these inputs.",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm",
       "parameters": {"aS": "0.118", "aEWM1": "128.93", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173.3", "ymt": "173.3"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
       "electroweak_inputs": "alpha_mw",
@@ -34,7 +44,7 @@
     },
     "ew-gmu-b-mass": {
       "description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3_b_mass",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3_b_mass",
       "parameters": {
         "aS": "0.118",
         "Gf": "0.0000116639",
@@ -129,7 +139,7 @@
     "ew-gmu-a0": {
       "description": "The ew-gmu scheme on the loop_qcd_qed_sm_Gmu restriction a0 (restrict_a0.dat: aEW0M1 = 137.035999 kept). No coupling or counterterm parameter of the G_mu UFO uses aEW0, so MadLoop's raw values equal ew-gmu's; aEW0M1 enters only MG5's alpha(0) formula for tagged photons, which MadLoop standalone does not apply.",
       "restriction": "a0",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-a0",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3-a0",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "aEW0M1": "137.035999"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -140,7 +150,7 @@
     "ew-gmu-cms": {
       "description": "The ew-gmu values under MG5's complex-mass scheme (set complex_mass_scheme True) on the default restriction: complex masses sqrt(M^2 - i M Gamma) for t, Z, W, H at the card widths of restrict_default.dat (WT = 1.37758, WZ = 2.49877, WW = 2.09291, WH = 0.00407468); a process with an external unstable multiplet sets its width to 0 (parameter_overrides). Under CMS MG5 removes the YUKAWA inputs (ymX := the complex mass), so no Yukawa is set.",
       "restriction": "default",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173"},
       "fixed_parameters": {"MB": "0", "MTA": "0", "WT": "1.37758", "WZ": "2.49877", "WW": "2.09291", "WH": "0.00407468", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -152,7 +162,7 @@
     "ew-gmu-a0-cms": {
       "description": "The ew-gmu-cms scheme on the a0 restriction (aEW0M1 = 137.035999 kept), for tagged photons under CMS.",
       "restriction": "a0",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-a0",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3-a0",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "aEW0M1": "137.035999"},
       "fixed_parameters": {"MB": "0", "MTA": "0", "WT": "1.37758", "WZ": "2.49877", "WW": "2.09291", "WH": "0.00407468", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -177,7 +187,7 @@
       "description": "The ew-gmu values on the loop_qcd_qed_sm_Gmu restriction ckm (restrict_ckm.dat): complex CKM from the card's Wolfenstein values (lamWS = 0.2253, AWS = 0.808, rhoWS = 0.132, etaWS = 0.341), massive b (MB = ymb = 4.7) and tau (MTA = ymtau = 1.777), all widths zero.",
       "ir_single_pole_remnant": "not UV finite: the UFO's Wolfenstein CKM is truncated at O(lambda^3) (not unitary) against counterterms assuming unitarity; the EW sector's single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born at the card values, scaling as lambda^4 (a model property the engine on the same UFO reproduces; rule 4 on SC03 sees it)",
       "restriction": "ckm",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-ckm",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3-ckm",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777", "lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"},
       "fixed_parameters": {"WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -189,7 +199,7 @@
       "description": "The ew-gmu values on the massive-muon copy loop_qcd_qed_sm_Gmu_massive_muon_py3 (MM = ymm = 0.105658). The copy changes only the restriction card: its muon counterterms are the massless muon's (CT_parameters.py has no MM), so the IR single pole exceeds the massive-muon one by 3/2 Q^2 (alpha/2pi) Born per muon leg up to O(m_mu^2/M_W^2) Yukawa terms (massless_field_counterterms; the on-shell field renormalisation's IR pole; a model property the engine on the same UFO reproduces, seen by rule 4 on SC02 and LL02).",
       "massless_field_counterterms": [13],
       "restriction": "default",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_massive_muon_py3",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_massive_muon_py3",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "MM": "0.105658", "ymm": "0.105658"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -200,7 +210,7 @@
     "ew-gmu-tech": {
       "description": "loop_qcd_qed_sm_Gmu on restrict_with_technical.dat at its own masses (MT = ymt = 174.3, MH = 120) with all widths zero; the TECHNICAL block stays a card input (epsUV, epsIR, LogSwitch, GfRedefinitionChoice), so a process may run at epsIR = 0 (UV part of the counterterms alone).",
       "restriction": "with_technical",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-with_technical",
+      "madloop_model": "{reference}/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3-with_technical",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "120", "MT": "174.3", "ymt": "174.3", "epsUV": "1", "epsIR": "1", "LogSwitch": "1", "GfRedefinitionChoice": "1"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
       "electroweak_inputs": "gmu",
@@ -1029,6 +1039,27 @@
       "correction": "EW",
       "scheme": "ew-gmu",
       "madloop": {"process": "h h > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
+    },
+    {
+      "name": "zz_hh_ew",
+      "role": "msm",
+      "msm_row": "SC10",
+      "pdgs": [23, 23, 25, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"},
+      "recola": {"process": "Z Z -> H H"}
+    },
+    {
+      "name": "zz_hh_ew_mg5",
+      "role": "msm",
+      "msm_row": "SC10",
+      "pdgs": [23, 23, 25, 25],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-mg5",
+      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
     },
     {
       "name": "ttx_wpwm_ew",

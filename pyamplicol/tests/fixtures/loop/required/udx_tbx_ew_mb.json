@@ -499,7 +499,7 @@
     "madloop"
   ],
   "excluded_providers": {
-    "recola": "massive-b setting differs from MadLoop and the engine by 3e-4..1e-3 (m-sm/PLAN.md \u00a74.1: Recola is not a massive-b provider until that is resolved); kept as an informative value"
+    "recola": "differs from MadLoop and the engine by +9.48e-5 x Born at every point (3e-4..1e-3 of the finite part): the G_mu UFO's CT couplings omit dMB_eCoup_UV_EW, the b-mass term of the charge counterterm (-4 dMB_eCoup_UV_EW x Born; a UFO defect, MS-UFODB); MadLoop and the engine read the UFO, Recola does not; kept as an informative value"
   },
   "providers": {
     "madloop": {
