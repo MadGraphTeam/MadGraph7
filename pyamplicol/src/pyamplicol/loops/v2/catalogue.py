@@ -143,6 +143,10 @@ LOOP_SEGMENT_FORMS: tuple[LoopSegmentForm, ...] = ("fused", "split")
 # undeclared-input check of ``_candidate_from_payload``, which stay the
 # oracle (``native_catalogue_polynomials(False)`` runs them).
 NATIVE_CATALOGUE_POLYNOMIALS = True
+# Segments per native call: enough for the worker pool, few enough that the
+# deferred outputs and the returned canonical strings (megabytes per segment
+# on the electroweak UFOs) do not pile up.
+NATIVE_CATALOGUE_CHUNK = 64
 
 
 @contextmanager
@@ -813,6 +817,8 @@ class _CatalogueBuilder:
                 bind,
             )
         )
+        if len(self._deferred) >= NATIVE_CATALOGUE_CHUNK:
+            self._flush()
 
     # -- tree reading of vertices ------------------------------------------
 
@@ -1422,7 +1428,8 @@ class _CatalogueBuilder:
 
     def _flush(self) -> None:
         """Lower the deferred segments natively, in one parallel call, and
-        bind them in their order (the oracle's, which binds each at once)."""
+        bind them in their order (the oracle's, which binds each at once;
+        ``finish`` orders the bindings and kernels)."""
 
         deferred, self._deferred = self._deferred, []
         if not deferred:
