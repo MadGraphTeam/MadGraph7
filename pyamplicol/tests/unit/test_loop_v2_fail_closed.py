@@ -427,43 +427,47 @@ CONTROLS = {
     "uux_uuxg_full": (*MIXED["uux_uuxg"], "full"),
     "gg_uuxuux_full": (*MIXED["gg_uuxuux"], "full"),
 }
+# The native member digests re-pinned when the tree program's parameter
+# record gained side_inputs (M-SM MS-MASTERS); plans and companion plans
+# unchanged.
 CONTROL_BYTES = {
     "uux_ddxg_lc": (
         "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
         "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
-        "3771d997dc0a75d410e4ec6a1f30765317e68c0ee2df09e114eccc2f7f083f65",
+        "281e0379f563c4eaad0919cc2e2254486658fccd8e21e5632fce4bbd8463778d",
     ),
     "uux_ddxg_nlc": (
         "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
         "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
-        "99a27d7b629adf25e46deb4a3a9936bfcd6f0794f88ea3f797c05717841728fb",
+        "68c0af9932081c21d88f284465e95fb292599c2d4f0906b0fb342f803915eabc",
     ),
     "uux_ddxssx_lc": (
         "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "9cc0b75266b77e6bd39c237496afe8637282573278a064432bc1eeb99dcad1dc",
+        "dbe47c0fa148d761971a1e2c2b184c2aa3d8e48f7043ee00522267a7ca665196",
     ),
     "uux_ddxssx_nlc": (
         "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "a6b26a742d6c3aa1b125e94b3ad5c92e31219f28ffaa1c38881a581621fc9ece",
+        "d7c8a986c5f5c17cd244ac200db7d82abca875905cf7127ceeb94b22f43a27d6",
     ),
     "uux_uuxg_full": (
         "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
         "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
-        "3decb1412ce99184479564e7ecbe1fc7583dbd757ba66287a54c5df551e75ffe",
+        "96d09348b1e291ca5c1729be77178c75bd7ed6febb2b019249f7184dd42d69a9",
     ),
     "gg_uuxuux_full": (
         "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
         "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
-        "f814e4f90bbe6ac8ed84b8f4f0f1616d6c45d1b014ef52968934bc88a9117f83",
+        "7bd2c560b03fa1aa60797a8b16c037252615771c29f8c9147203092e85ece756",
     ),
 }
 # The native digests of the controls without their seed Fourier record (the
-# pins before mq-fft).
+# pins before mq-fft; re-pinned with the parameter record's side_inputs,
+# M-SM MS-MASTERS).
 FOURIER_FREE = {
     "gg_uuxuux_full": (
-        "4121edeec2a19785a76b8cb34a9e053fc5a132301b3e917a19d787d371056c8a"
+        "d890d6ba5994490999d975f9232382cae45da8dfc537ff03400ad02d15c821da"
     ),
 }
 
