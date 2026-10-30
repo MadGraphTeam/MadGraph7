@@ -73,8 +73,18 @@ def test_rows_are_the_plan_rows(rows):
 def test_rows_are_well_formed(manifest, rows):
     codes = manifest["restriction_codes"]
     models = {"loop_sm", *manifest["models"]}
+    entries = {data["id"]: data for data in manifest["rows"]}
     for name, row in rows.items():
-        assert row.tier in mqcd.TIERS and row.status in ("active", "pending"), name
+        assert row.tier in mqcd.TIERS, name
+        assert row.status in ("active", "pending", "composite"), name
+        if row.status == "composite":
+            # A multiparticle row of its parts (MP01, MP02): MadLoop's P
+            # directories, one subprocess variant per P reference.
+            data = entries[name]
+            assert row.reference is None and row.pending is None, name
+            assert data["madloop_subprocesses"] and data["multiparticles"], name
+            assert data["variants"] and all(v["subprocess"] for v in data["variants"])
+            continue
         assert set(row.corrections) <= {"QCD", "QED"} and row.corrections, name
         code = codes[row.restriction_code]
         assert (row.model, row.restriction) == (code["model"], code["restriction"])
