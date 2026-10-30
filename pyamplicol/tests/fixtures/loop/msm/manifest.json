@@ -10037,7 +10037,12 @@
        3
       ]
      },
-     "vanishing": [],
+     "vanishing": [
+      {
+       "sector": "QCD^4 QED^2",
+       "coefficient": "double_pole"
+      }
+     ],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P2_gg_ttx of p p > t t~ (its single-process generation, tools route)"
