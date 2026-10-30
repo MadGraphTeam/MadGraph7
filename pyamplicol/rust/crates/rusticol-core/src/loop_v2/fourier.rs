@@ -1037,6 +1037,7 @@ mod tests {
             momenta: vec![vec![Rational::zero(); 8]; 2],
             scales: vec![Rational::from(1); 2],
             masses: Vec::new(),
+            masses_imaginary: Vec::new(),
             leg_masses: Vec::new(),
             constants: Vec::new(),
             block_rows: vec![Vec::new(); 2],

@@ -756,7 +756,7 @@ class GeneratedProcess:
             if not mass.massless
         }
         squares = {
-            mass.mass: float(value)
+            mass.mass: _threshold_size(value)
             for mass, value in _mass_values(
                 slice_.compiled, parameters, lines, digits
             ).items()
@@ -773,6 +773,20 @@ class GeneratedProcess:
         if not light:
             return {}
         return {"threshold": repr(threshold), "squared_masses": light}
+
+
+def _threshold_size(square: Any) -> float:
+    """A squared mass's size as the binary64 fast engine's threshold reads
+    it (``v2_reduce::squared_mass_reaches_fast_threshold``): |re| + |im| in
+    binary64, the value of a real (non-negative) square; a complex-mass
+    scheme's pole mass squared is complex."""
+
+    if isinstance(square, int | Fraction):
+        return float(square)
+    from .reference_executor import exact
+
+    value = exact(square)
+    return abs(float(value.real)) + abs(float(value.imag))
 
 
 def _order_text(order: Orders) -> str:

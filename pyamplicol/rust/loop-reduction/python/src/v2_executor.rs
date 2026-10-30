@@ -5,8 +5,9 @@
 //! A `V2Executor` loads one plan v4 for one carrier: `double` (binary64,
 //! NinjaRS fast engine), `double-double` and `arbitrary` (decimal digits;
 //! the generic engine), or `exact` (rational numerators only). Batch inputs
-//! are a dict of exact momenta, scales, squared masses and the legs'
-//! squared masses (`leg_masses`; decimal or fraction strings) and carrier
+//! are a dict of exact momenta, scales, squared masses (an `[re, im]` pair
+//! for a complex-mass scheme's pole mass) and the legs' squared masses
+//! (`leg_masses`; decimal or fraction strings) and carrier
 //! values of kernel constants, block rows and Born components (float pairs in
 //! binary64, string pairs otherwise).
 //! With a tree program (`trees=`, WP3.1) the block rows and Born components
@@ -130,8 +131,40 @@ fn rationals(values: Vec<String>) -> PyResult<Vec<Rational>> {
         .collect()
 }
 
+/// A batch's squared plan masses (`inputs["masses"]`): per mass id an exact
+/// text, or an `[re, im]` pair of them (a complex-mass scheme's pole mass);
+/// returns the real parts and the imaginary parts (empty when every entry is
+/// a text, `V2Batch::masses_imaginary`).
+fn squared_masses(value: &Bound<'_, PyAny>) -> PyResult<(Vec<Rational>, Vec<Rational>)> {
+    let mut real = Vec::new();
+    let mut imaginary = Vec::new();
+    let mut complex = false;
+    for item in value.try_iter()? {
+        let item = item?;
+        if let Ok(text) = item.extract::<String>() {
+            real.push(parse_rational(&text).map_err(error)?);
+            imaginary.push(Rational::from(0));
+        } else {
+            let [re, im]: [String; 2] = item.extract()?;
+            real.push(parse_rational(&re).map_err(error)?);
+            imaginary.push(parse_rational(&im).map_err(error)?);
+            complex = true;
+        }
+    }
+    if !complex {
+        imaginary.clear();
+    }
+    Ok((real, imaginary))
+}
+
 fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch<T>> {
     let native = inputs.contains("parameters")?;
+    // Bound natively from the external parameters (`Trees::fill`).
+    let (masses, masses_imaginary) = if native {
+        (Vec::new(), Vec::new())
+    } else {
+        squared_masses(&item(inputs, "masses")?)?
+    };
     let per_point = |key: &str| -> PyResult<Vec<Vec<Complex<T>>>> {
         if native {
             return Ok(Vec::new());
@@ -148,12 +181,8 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
             .map(rationals)
             .collect::<PyResult<_>>()?,
         scales: rationals(item(inputs, "scales")?.extract()?)?,
-        // Bound natively from the external parameters (`Trees::fill`).
-        masses: if native {
-            Vec::new()
-        } else {
-            rationals(item(inputs, "masses")?.extract()?)?
-        },
+        masses,
+        masses_imaginary,
         // The legs' squared masses, the on-shell invariants (DESIGN §11.1);
         // bound natively from the external parameters like `masses`. A
         // synthetic batch without external states (timing tools) may omit
@@ -268,6 +297,7 @@ impl Trees {
         })?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
+        batch.masses_imaginary = bound.masses_imaginary;
         batch.leg_masses = bound.leg_masses;
         batch.block_rows = out.block_rows.clone();
         batch.born = out.born.clone();
@@ -688,8 +718,9 @@ where
     ))
 }
 
-/// Per plan mass and per leg, the bound squared masses (exact fractions).
-type BoundMasses = (Vec<String>, Vec<Option<String>>);
+/// Per plan mass and per leg, the bound squared masses (exact fractions),
+/// and the imaginary parts of the plan's (empty: every plan mass real).
+type BoundMasses = (Vec<String>, Vec<Option<String>>, Vec<String>);
 
 fn bound_masses_with<T: Exchanged + Real + TreeCarrier>(
     trees: &Trees,
@@ -713,6 +744,11 @@ where
             .leg_masses
             .iter()
             .map(|mass| mass.as_ref().map(ToString::to_string))
+            .collect(),
+        bound
+            .masses_imaginary
+            .iter()
+            .map(ToString::to_string)
             .collect(),
     ))
 }
@@ -842,7 +878,8 @@ impl V2Executor {
 
     /// The squared masses a batch's external parameters bind natively
     /// (needs a tree program; `inputs` as for `tree_inputs`): per plan mass
-    /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions.
+    /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions,
+    /// and the plan masses' imaginary parts (empty: every plan mass real).
     fn bound_masses(&self, inputs: &Bound<'_, PyDict>) -> PyResult<BoundMasses> {
         let trees = self
             .trees

@@ -84,11 +84,11 @@ MASS_SCHEMES = (REAL_ON_SHELL, COMPLEX_MASS)
 # GfRedefinitionChoice); UFO conventions looked up by name as MG5_aMC does.
 CONVENTION_PARAMETERS = (*CMS_PARAMETER_NAMES, "LogSwitch", "GfRedefinitionChoice")
 # Whether the native point inputs of stored artifacts take complex pole masses
-# (M-SM MS-CMS-N: complex plan masses through the native trees and executor).
-# Until they do, the public route refuses a complex-mass request with a pole
-# mass (``require_native_pole_masses``, ``complex-mass-scheme``), whose
-# artifact could not be stored; the integration of MS-CMS-N sets it True.
-NATIVE_POLE_MASSES = False
+# (M-SM MS-CMS-N: complex plan masses through the native trees and executor,
+# ``native_trees._parameter_program``'s ``["complex", o]`` plan masses). A build
+# without them would refuse a public-route complex-mass request with a pole
+# mass (``require_native_pole_masses``, ``complex-mass-scheme``).
+NATIVE_POLE_MASSES = True
 REFUSAL_KEYS = (
     "mass-scheme",
     "complex-mass-scheme",
