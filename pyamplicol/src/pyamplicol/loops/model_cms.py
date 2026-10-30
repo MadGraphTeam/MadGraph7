@@ -30,6 +30,12 @@ specification and the oracle (m-sm PLAN §3.2 MS-CMS). The steps, as MG5:
    in parameters, counterterm parameters, couplings and the particles' field
    counterterms (MG5's ``UVWfct`` couplings) becomes ``CMASS_M``.
 
+Not in MG5 (values unchanged): a mass that a Yukawa tie of step 3 reads and
+that has no pole mass (a zero width, a nonzero mass at the card) gives its
+particles a real line mass ``LMASS_M := M`` to propagate with (step 4b,
+``ComplexMassScheme.lines``), so that, as with ``CMASS_M``, no coupling
+reads the line's mass parameter.
+
 Two things MG5 does in its output rather than in its model are done here on
 the records, so that one derived model serves the tree and the loop lowering:
 every particle whose mass parameter has a complex pole mass propagates with it
