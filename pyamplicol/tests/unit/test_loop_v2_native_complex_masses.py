@@ -372,3 +372,110 @@ def test_cms_top_width_equals_madloop(loop_sm_ufo, loop_native, tmp_path):
         for k, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
             errors = _laurent_errors(result, row, float(parameters["aS"]))
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+
+
+def _gmu_cms_slice(
+    loop_gmu_ufo, loop_native, tmp_path, reference, process, corrections
+):
+    """A G_mu UFO request under the complex-mass scheme at the reference's
+    widths (``model_cms.complex_mass_model``, Feynman gauge) and its native
+    executor: the reference's Born orders, one loop order per correction."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(
+        loop_gmu_ufo,
+        restriction=reference["restriction"],
+        cache_dir=tmp_path,
+        require_supported=False,
+        gauge="feynman",
+    )
+    fixed = reference["fixed_parameters"]
+    model, _scheme = complex_mass_model(
+        compiled,
+        fixed_parameters={k: v for k, v in fixed.items() if k.startswith("W")},
+        cache_dir=tmp_path,
+    )
+    fixed = {k: v for k, v in fixed.items() if k in model.parameter_defaults}
+    born = {"QCD": 0, "QED": 0, **reference["born_orders"]}
+    loops = tuple({**born, order: born[order] + 2} for order in sorted(corrections))
+    slice_ = LoopSlice.generate(
+        model,
+        SliceRequest(
+            process,
+            reference["born_orders"],
+            loops[0] if len(loops) == 1 else loops,
+            corrections=tuple(sorted(corrections)),
+            fixed_parameters=fixed,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+        ),
+        loop_native,
+    )
+    parameters = {
+        k: v
+        for k, v in reference["parameters"].items()
+        if k in model.parameter_defaults and k not in fixed
+    }
+    return NativeExecutor(slice_, inputs="native"), parameters
+
+
+def _sector_errors(result, row, born_scale: float, want=None) -> list[float]:
+    """Per loop sector of a MadLoop row (or ``want``: its converted values),
+    (finite, 1/eps, 1/eps^2) in the campaign metric against max(|value|,
+    |Born| alpha / 2 pi) with the correction's coupling (alpha_s for a QCD
+    sector, alpha_Gmu ~ 1/132 for a QED one)."""
+
+    virtual = {
+        tuple(sorted(dict(sector).items())): laurent
+        for sector, laurent in result.components["virtual"].items()
+    }
+    errors = []
+    for k, sector in enumerate(row["sectors"]["loop"]):
+        laurent = virtual[(("QCD", sector["QCD"]), ("QED", sector["QED"]))]
+        values = (
+            want[k]
+            if want is not None
+            else [sector["finite"], sector["single_pole"], sector["double_pole"]]
+        )
+        qcd = sector["QCD"] > sector["born_sector"]["QCD"]
+        flux = born_scale * (0.118 if qcd else 1 / 132.0) / (2 * math.pi)
+        errors += [
+            abs(float(a) - b) / max(abs(b), flux)
+            for a, b in zip(laurent.coefficients, values, strict=True)
+        ]
+    return errors
+
+
+@pytest.mark.loop_nightly
+def test_cms_widths_in_a_two_to_four_process_equal_madloop(
+    loop_gmu_ufo, loop_native, tmp_path
+):
+    """CM08: u d~ > e+ ve b b~ QCD=0 [QCD] on the G_mu UFO under the
+    complex-mass scheme with the card's top, W, Z and H widths (resonant W
+    and top in the Born, complex masses in the loops and counterterms), native
+    inputs: = MadLoop CMS in quadruple precision (``required/msm/
+    udx_epvebbx_cms.json``) at its four points, double-double to 1e-10
+    (measured 1.3e-14), binary64 to 1e-8 (1.2e-13). Generation about 10 min,
+    25 GB."""
+
+    reference = _madloop_rows("udx_epvebbx_cms")
+    executor, parameters = _gmu_cms_slice(
+        loop_gmu_ufo, loop_native, tmp_path, reference, "u d~ > e+ ve b b~", ("QCD",)
+    )
+    record = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in record["plan_masses"])
+    scales = [str(Fraction(mu) ** 2) for mu in reference["mu_r"]]
+    for precision, tolerance in (
+        (Precision.double_double(), 1e-10),
+        (Precision.double(), 1e-8),
+    ):
+        results = executor.evaluate(
+            reference["points"], scales, parameters=parameters, precision=precision
+        )
+        for k, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
+            born = sum(float(v) for v in result.born.values())
+            assert abs(born - row["born"]) <= tolerance * abs(row["born"])
+            errors = _sector_errors(result, row, abs(row["born"]))
+            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
