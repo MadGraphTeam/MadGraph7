@@ -136,6 +136,22 @@ class TestMergeGridpacks(unittest.TestCase):
                          ["MG5ProcCard", "MG7RunCard"])
         self.assertNotIn("subprocess_selection", meta["headers"][1]["content"])
 
+    def test_weight_mode_may_differ(self):
+        """Only some of the subprocesses can have negative weights: IDWTUP of
+        the merged gridpack is the one of a sample that can."""
+        paths = [self.path("a"), self.path("b"), self.path("c")]
+        for i, (path, mode) in enumerate(zip(paths, (3, -4, 3))):
+            write_data(path, [i])
+            meta_path = os.path.join(path, "lhe_meta.json")
+            with open(meta_path) as f:
+                meta = json.load(f)
+            meta["weight_mode"] = mode
+            with open(meta_path, "w") as f:
+                json.dump(meta, f)
+        merge.merge_gridpack_data(paths, self.path("out"))
+        with open(os.path.join(self.path("out"), "lhe_meta.json")) as f:
+            self.assertEqual(json.load(f)["weight_mode"], -4)
+
     def test_overlapping_selections(self):
         with self.assertRaisesRegex(merge.MergeError, "overlap"):
             self.merged(dict(subprocess_ids=[0, 1]), dict(subprocess_ids=[1]))

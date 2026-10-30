@@ -66,6 +66,9 @@ def merge_lhe_meta(paths: list, output: str) -> None:
         with open(path) as f:
             metas.append(json.load(f))
     cards = []
+    # whether the weights can be negative is a property of the subprocesses
+    # of each run: the merged one can be if any can
+    weight_modes = [meta.pop("weight_mode", None) for meta in metas]
     for meta in metas:
         cards.append([h for h in meta["headers"] if h["name"] == "MG7RunCard"])
         meta["headers"] = [h for h in meta["headers"] if h["name"] != "MG7RunCard"]
@@ -77,6 +80,9 @@ def merge_lhe_meta(paths: list, output: str) -> None:
                 [comparable_card(h["content"]) for h in cards[0]]:
             raise MergeError(f"the run card in {path} differs from {paths[0]}")
     merged = metas[0]
+    modes = [mode for mode in weight_modes if mode is not None]
+    if modes:
+        merged["weight_mode"] = min(modes)
     for header in cards[0]:
         header = dict(header, content=re.sub(
             r"^subprocess_selection\s*=.*\n", "", header["content"], flags=re.M))
