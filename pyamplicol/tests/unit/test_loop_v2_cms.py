@@ -25,9 +25,10 @@ ymt = MT (default physics tier), and CM04 (g g > t t~, Gamma_t = 0) equals
 MadLoop CMS.
 
 The CM rows of m-sm PLAN §4.2 with Python inputs (``LoopSlice.evaluate`` in
-binary64 and arbitrary precision; double-double runs in the native executor,
-MS-CMS-N) equal MadLoop CMS: CM10 (loop_sm with the top width) in the default
-physics tier, CM01, CM02, CM04 and CM05 (the G_mu UFO) nightly.
+binary64 and arbitrary precision; CM01 also in double-double, the native
+executor with Python inputs) equal MadLoop CMS: CM10 (loop_sm with the top
+width) in the default physics tier, CM01, CM02, CM04, CM05 and CM09 (the
+G_mu UFO; CM09 times MG5_aMC's tagged-photon formula) nightly.
 """
 
 from __future__ import annotations
