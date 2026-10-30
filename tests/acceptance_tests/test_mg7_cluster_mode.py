@@ -14,7 +14,7 @@
 
 The subprocesses are trained in parallel jobs, their gridpacks merged, and the
 events generated in parallel jobs from the merged gridpack. With the batch
-system "multicore" this runs without a cluster, so it checks everything but the
+system "local_parallel" this runs without a cluster, so it checks everything but the
 submission to a scheduler: the cross section has to agree with the one of an
 ordinary run, and every option has to leave the directory in the state a user
 expects. Self-skips if the mg7 runtime stack / PDF is unavailable.
@@ -93,8 +93,8 @@ class MG7ClusterModeTest(unittest.TestCase):
             'postprocessing.systematics': False,
             'madnis.enable': False,
             'cluster.enable': False,
-            'cluster.type': 'multicore',
-            'cluster.nb_core': 2,
+            'cluster.type': 'local_parallel',
+            'cluster.parallel_jobs': 2,
             'cluster.subprocesses_per_job': 2,
             'cluster.events_per_job': _EVENTS // 2,
         }, **settings)

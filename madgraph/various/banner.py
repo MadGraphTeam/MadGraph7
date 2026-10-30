@@ -6697,7 +6697,7 @@ class RunCardMG7(RunCard):
     filename = 'run_card'
 
     # batch systems of madgraph.various.cluster, plus this machine
-    cluster_types = ['auto', 'multicore', 'condor', 'pbs', 'sge', 'lsf', 'ge',
+    cluster_types = ['auto', 'local_parallel', 'condor', 'pbs', 'sge', 'lsf', 'ge',
                      'slurm', 'htcaas', 'htcaas2']
 
     # dynamic (free-form) sections, stored as nested dicts rather than as
@@ -6896,9 +6896,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('cluster', 'type', "auto",
             allowed=self.cluster_types,
             comment="batch system; auto takes cluster_type of the MadGraph configuration, "
-                    "multicore runs the jobs on this machine")
-        self.add_toml_param('cluster', 'nb_core', -1,
-            comment="jobs run at once with type multicore; -1 uses every core")
+                    "local_parallel runs the jobs on this machine")
+        self.add_toml_param('cluster', 'parallel_jobs', -1,
+            comment="jobs run at once with type local_parallel; -1 uses every core")
         self.add_toml_param('cluster', 'train_device', [], typelist=str,
             allowed=['cpu', 'cuda', 'hip', '*'],
             comment="[run] device of the training jobs; empty keeps the [run] device")

@@ -66,10 +66,21 @@ Batch systems
 -------------
 
 ``type`` is any of the batch systems of the MadGraph5_aMC@NLO cluster mode, or
-``multicore`` to run the jobs on the local machine. The latter is useful for testing, and
-divides the cores between the jobs. ``type = "auto"`` takes the ``cluster_type`` of the
-MadGraph configuration, which also provides the queue, if that is not set in the card, as
-well as the retry settings.
+``local_parallel``. ``type = "auto"`` takes the ``cluster_type`` of the MadGraph
+configuration, which also provides the queue, if that is not set in the card, as well as
+the retry settings.
+
+``local_parallel`` runs the same jobs as processes on the machine you launch from, at
+most ``parallel_jobs`` at once, instead of submitting them. It is not the same as an
+ordinary run, which trains the subprocesses one after the other in one process and only
+parallelizes inside it with ``cpu_thread_pool_size`` threads. The jobs of ``local_parallel``
+are separate processes, so ``cpu_thread_pool_size`` is the number of threads of each of
+them: if it is ``-1``, the cores are divided between the jobs. It is mostly useful for
+testing cluster mode without a scheduler, and can pay off when one process does not keep
+the machine busy (many small subprocesses, or a GPU that idles during the MadNIS
+training). It adds work compared to an ordinary run, since the gridpacks are merged and
+the generation is split into jobs, so use an ordinary run if one process already uses all
+the cores.
 
 The jobs run the code from the MadGraph directory and read and write the process directory,
 so both have to be available on the nodes (a shared file system).

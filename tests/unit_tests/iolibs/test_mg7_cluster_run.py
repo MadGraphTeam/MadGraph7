@@ -99,13 +99,13 @@ class TestMakeCluster(unittest.TestCase):
             with self.assertRaisesRegex(cluster_run.ClusterRunError, 'batch system'):
                 cluster_run.make_cluster(card(), options, '', '', '')
 
-    def test_multicore(self):
+    def test_local_parallel(self):
         cluster, name = cluster_run.make_cluster(
-            card(cluster__type='multicore', cluster__nb_core=3), {}, '', '', '')
-        self.assertEqual(name, 'multicore')
+            card(cluster__type='local_parallel', cluster__parallel_jobs=3), {}, '', '', '')
+        self.assertEqual(name, 'local_parallel')
         self.assertEqual(cluster.nb_core, 3)
         cluster, _ = cluster_run.make_cluster(
-            card(cluster__type='multicore'), {}, '', '', '')
+            card(cluster__type='local_parallel'), {}, '', '', '')
         self.assertEqual(cluster.nb_core, os.cpu_count())
 
 

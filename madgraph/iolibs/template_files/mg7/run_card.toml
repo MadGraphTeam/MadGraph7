@@ -62,10 +62,10 @@ output_dir = %(gridpack.output_dir)s
 enable = %(cluster.enable)s
 # options: full (both passes, events combined), gridpack_only (the merged gridpack is the result)
 mode = %(cluster.mode)s
-# options: auto (cluster_type of the MadGraph configuration), multicore (this machine),
+# options: auto (cluster_type of the MadGraph configuration), local_parallel (this machine),
 # condor, pbs, sge, lsf, ge, slurm, htcaas, htcaas2
 type = %(cluster.type)s
-nb_core = %(cluster.nb_core)s # jobs at once with type multicore; -1 uses every core
+parallel_jobs = %(cluster.parallel_jobs)s # jobs at once with type local_parallel; -1 uses every core
 # training pass; an empty device keeps the [run] device, an empty queue the configured one
 train_device = %(cluster.train_device)s
 train_queue = %(cluster.train_queue)s

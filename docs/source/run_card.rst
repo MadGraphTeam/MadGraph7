@@ -159,11 +159,11 @@ It is off by default. See :doc:`cluster` for how it works.
 
 ``type`` (``"auto"``)
     The batch system: ``condor``, ``pbs``, ``sge``, ``lsf``, ``ge``, ``slurm``,
-    ``htcaas``, ``htcaas2``, or ``multicore`` to run the jobs on this machine. ``auto``
+    ``htcaas``, ``htcaas2``, or ``local_parallel`` to run the jobs on this machine. ``auto``
     takes ``cluster_type`` of the MadGraph configuration.
 
-``nb_core`` (``-1``)
-    Jobs running at once with ``multicore``. ``-1`` uses every core. The threads of
+``parallel_jobs`` (``-1``)
+    Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of
     each job are divided accordingly if ``cpu_thread_pool_size`` is ``-1``.
 
 ``train_device`` (``[]``), ``deploy_device`` (``[]``)

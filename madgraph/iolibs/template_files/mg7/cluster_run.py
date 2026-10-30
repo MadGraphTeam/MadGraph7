@@ -92,11 +92,11 @@ def make_cluster(card, options: dict, queue: str, walltime: str, extra_args: str
             raise ClusterRunError(
                 "no batch system: set [cluster] type, or cluster_type in the "
                 "MadGraph configuration")
-    if cluster_type == "multicore":
-        nb_core = section["nb_core"]
-        if nb_core is None or nb_core < 1:
-            nb_core = os.cpu_count() or 1
-        return cluster_module.MultiCore(nb_core=nb_core), cluster_type
+    if cluster_type == "local_parallel":
+        parallel_jobs = section["parallel_jobs"]
+        if parallel_jobs is None or parallel_jobs < 1:
+            parallel_jobs = os.cpu_count() or 1
+        return cluster_module.MultiCore(nb_core=parallel_jobs), cluster_type
     if cluster_type not in cluster_module.from_name:
         raise ClusterRunError(f"unknown batch system {cluster_type!r}")
 
@@ -195,9 +195,9 @@ class ClusterRun:
     # ------------------------------------------------------------------
     def thread_count(self, cluster_type: str) -> int:
         """Threads of one job: the cores of the machine are shared by the jobs
-        of a multicore run."""
+        of a local_parallel run."""
         threads = self.card["run"]["cpu_thread_pool_size"]
-        if cluster_type == "multicore" and threads <= 0:
+        if cluster_type == "local_parallel" and threads <= 0:
             jobs = self.cluster_objects["train"][0].nb_core
             return max(1, (os.cpu_count() or 1) // max(1, jobs))
         return threads

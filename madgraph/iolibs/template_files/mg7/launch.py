@@ -3981,7 +3981,7 @@ _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 _CLUSTER_OPTIONS = (
     'cluster_type', 'cluster_queue', 'cluster_walltime', 'cluster_nb_retry',
     'cluster_retry_wait', 'cluster_status_update', 'cluster_temp_path',
-    'cluster_requirement', 'nb_core',
+    'cluster_requirement',
 )
 
 
