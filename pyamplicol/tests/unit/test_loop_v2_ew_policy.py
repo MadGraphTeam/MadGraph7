@@ -225,7 +225,7 @@ def test_tagged_legs_must_be_on_shell_photons(gmu_a0, loop_native, monkeypatch):
                 LoopSlice.generate(gmu_a0, request_, loop_native)
             if outcome is ExternalPhotonError:
                 assert refused.value.key == "external-photon-legs"
-                assert "4 (g, final)" in str(refused.value)
+                assert "4 (G, final)" in str(refused.value)
 
 
 @pytest.mark.loop_physics
