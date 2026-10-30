@@ -1053,19 +1053,42 @@ vertices and records the choice: the artifact's request record and its
 generation filters (`allow_anomalous_veto`, `counterterms_anomalous_veto`:
 rule -> cells). It needs a `particle_veto`.
 
-Widths. v2 virtuals use real on-shell masses: loop propagators carry no width and
-the model counterterms renormalise the real mass. A coloured particle that a
-tree current propagates (the top in `g g > t t~`) must therefore have a zero
-width, fixed in the card, otherwise generation and the dry run refuse the
-request:
+Widths. By default (`mass_scheme = "real-on-shell"`) v2 virtuals use real
+on-shell masses: loop propagators carry no width and the model counterterms
+renormalise the real mass. A coloured particle that a tree current propagates
+(the top in `g g > t t~`) must therefore have a zero width, fixed in the card,
+otherwise generation and the dry run refuse the request (`coloured-width`; an
+electroweak request refuses any width in its trees, `electroweak-width`):
 
 ```toml
 [loop.preparation]
 fixed_parameters = {MB = "0", WT = "0"}
 ```
 
-A resonant coloured particle needs the complex-mass scheme (not available
-yet). An evaluation
+A resonant particle needs the complex-mass scheme, MG5_aMC's `set
+complex_mass_scheme True`:
+
+```toml
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+```
+
+Stated alone, `mass_scheme` selects the scheme over the model's own (source or
+shipped) loop declaration. Generation then runs on MG5_aMC's transform of the
+model: every particle with a nonzero width at the card propagates with its
+complex pole mass `sqrt(M^2 - i M W)`, which the parameters, counterterms and
+couplings read too (`CMSParam = 1`; internal widths take their real part; the
+Yukawa couplings follow the masses). Masses and widths stay real inputs, so
+they can change at run time. The scheme refuses, with listed keys: an external
+particle with a width (`cms-external-width`: external states are stable), a
+width-carrying particle whose mass is not an external parameter
+(`cms-internal-mass`, e.g. loop_sm's W), a fixed Yukawa input
+(`cms-yukawa-input`), a value of `mass_scheme` other than `"real-on-shell"` and
+`"complex-mass"` (`mass-scheme`), and a complex fixed parameter in either
+scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
+masses in their native point inputs (the loop propagators read M^2 - i M W; the
+binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
+point inputs and relocate as any other artifact. An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
 value that is not a finite decimal number (a number, or ASCII decimal text:
 surrounding whitespace and underscores are ignored, fractions and non-ASCII

@@ -3,8 +3,10 @@
 external mass parameter is made internal with the same value (genericity
 audit M2; ``test_loop_v2_onshell.py``, ``test_loop_v2_ew.py``), a model
 whose strong coupling runs with the renormalisation scale (genericity audit
-2 m3; ``test_loop_v2_sdk_parity.py``) and one whose colour-scheme constant is
-an external parameter (genericity audit 2 M2; ``test_loop_v2_sdk_parity.py``).
+2 m3; ``test_loop_v2_sdk_parity.py``), one whose colour-scheme constant is
+an external parameter (genericity audit 2 M2; ``test_loop_v2_sdk_parity.py``)
+and one whose particle propagates with a complex pole mass
+(``test_loop_v2_native_complex_masses.py``).
 """
 
 from __future__ import annotations
@@ -12,6 +14,123 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
+
+
+def complex_mass_ufo(
+    source: Path,
+    destination: Path,
+    particle: str,
+    mass: str,
+    width: str,
+    *,
+    references: bool = False,
+) -> Path:
+    """A copy of a UFO whose particle ``particle`` (its ``Particle(...)``
+    definition's variable name) propagates with the complex pole mass
+    ``CMASS_<mass> = sqrt(mass^2 - i mass width)`` and width ``ZERO``, as
+    MG5_aMC's complex-mass scheme gives it (``Model.
+    change_mass_to_complex_scheme``): an internal parameter of complex type
+    that every propagator of the particle (and its antiparticle) reads. A
+    complex-parameter fixture of the native plumbing (MS-CMS-N), not the
+    scheme's transform. Without ``references`` the couplings and
+    counterterms keep the real ``mass``; with them every expression of the
+    internal parameters, couplings and counterterm parameters and couplings
+    reads ``CMASS_<mass>`` instead (a word match on the expression texts) and
+    the particle's Yukawa input (block YUKAWA, its PDG code) becomes the
+    internal ``CMASS_<mass>``, as MG5_aMC continues them (every internal
+    parameter but the particles' masses and widths of complex type), which
+    is that scheme for a model with one width (loop_sm with only its top
+    width).
+    Use it with the particle internal only (external states stay stable).
+    Pickled model caches are not copied (they would shadow the edit)."""
+
+    shutil.copytree(
+        source, destination, ignore=shutil.ignore_patterns("*.pkl", "__pycache__")
+    )
+    alias = f"CMASS_{mass}"
+    path = destination / "parameters.py"
+    text = path.read_text()
+    assert f"name = '{alias}'" not in text, alias
+    path.write_text(
+        text + f"\n{alias} = Parameter(name = '{alias}',\n"
+        "                 nature = 'internal',\n"
+        "                 type = 'complex',\n"
+        "                 value = "
+        f"'cmath.sqrt({mass}**2 - complex(0,1)*{mass}*{width})',\n"
+        f"                 texname = '{alias}')\n"
+    )
+    path = destination / "particles.py"
+    text = path.read_text()
+    match = re.search(rf"^{particle} = Particle\((?:.*\n)*?.*\)\n", text, re.MULTILINE)
+    assert match is not None, particle
+    block = match.group(0)
+    edited = block.replace(f"mass = Param.{mass},", f"mass = Param.{alias},").replace(
+        f"width = Param.{width},", "width = Param.ZERO,"
+    )
+    assert edited.count(alias) == 1 and "Param.ZERO" in edited, block
+    path.write_text(text.replace(block, edited))
+    if references:
+        _continue_mass(destination, block, mass, alias)
+    return destination
+
+
+def _continue_mass(destination: Path, particle: str, mass: str, alias: str) -> None:
+    """``complex_mass_ufo``'s ``references``: ``mass`` -> ``alias`` in every
+    expression text of the internal parameters, couplings and counterterm
+    parameters and couplings (``value = '...'`` and Laurent ``{p: '...'}``
+    entries), and the particle's Yukawa input made the internal ``alias``."""
+
+    word = re.compile(rf"\b{mass}\b")
+    pdg = re.search(r"pdg_code *= *(-?\d+)", particle)
+    assert pdg is not None, particle
+    # MG5_aMC types every internal parameter complex but the masses and
+    # widths of the particles.
+    kept = set(
+        re.findall(
+            r"(?:mass|width) = Param\.(\w+)", (destination / "particles.py").read_text()
+        )
+    )
+
+    def continued(match: re.Match) -> str:
+        return match.group(1) + word.sub(alias, match.group(2)) + match.group(3)
+
+    quoted = re.compile(r"""(')([^']*)(')""")
+    files = ("parameters.py", "couplings.py", "CT_parameters.py", "CT_couplings.py")
+    for name in files:
+        path = destination / name
+        if not path.exists():
+            continue
+        text = path.read_text()
+        out = []
+        for record in re.split(r"(?m)^(?=\w+ = \w+\()", text):
+            external = "nature = 'external'" in record
+            yukawa = (
+                external
+                and re.search(r"lhablock = 'YUKAWA'", record, re.IGNORECASE)
+                and re.search(rf"lhacode = \[ *{pdg.group(1)} *\]", record)
+            )
+            if yukawa:
+                head = re.match(r"(\w+) = Parameter\(name = '(\w+)'", record)
+                assert head is not None, record
+                record = (
+                    f"{head.group(1)} = Parameter(name = '{head.group(2)}',\n"
+                    "                nature = 'internal',\n"
+                    "                type = 'complex',\n"
+                    f"                value = '{alias}',\n"
+                    f"                texname = '{head.group(2)}')\n\n"
+                )
+            elif not external and not record.startswith(f"{alias} = "):
+                head = re.match(r"(\w+) = Parameter\(", record)
+                if head is not None and head.group(1) not in kept:
+                    record = record.replace("type = 'real'", "type = 'complex'", 1)
+                record = re.sub(
+                    r"(value *= *)('[^']*'|\{[^{}]*\})",
+                    lambda m: m.group(1) + quoted.sub(continued, m.group(2)),
+                    record,
+                    count=1,
+                )
+            out.append(record)
+        path.write_text("".join(out))
 
 
 def running_coupling_ufo(source: Path, destination: Path) -> Path:

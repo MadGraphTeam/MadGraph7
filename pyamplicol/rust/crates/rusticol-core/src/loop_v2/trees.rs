@@ -444,8 +444,10 @@ struct ParameterFile {
     derived_masses: Vec<(i32, usize)>,
     /// Per plan mass (squared): the external index of its mass parameter,
     /// `["output", o]` for a derived mass parameter (output `o`, real and
-    /// positive, also in `positive`; bound as `derived_masses` are), or none
-    /// (massless).
+    /// positive, also in `positive`; bound as `derived_masses` are),
+    /// `["complex", o]` for a complex one (a complex-mass scheme's pole mass:
+    /// output `o`, bound to the square of its carrier value's exact complex
+    /// rational, `BoundParameters::masses_imaginary`), or none (massless).
     plan_masses: Vec<Option<MassFile>>,
     /// The renormalisation scale's parameter, if the program reads it:
     /// sqrt(mu_R^2) of each point.
@@ -710,7 +712,8 @@ enum ModelSource {
     Output { index: usize, imaginary: bool },
 }
 
-/// A plan mass's source in the record (`ParameterFile::plan_masses`).
+/// A plan mass's source in the record (`ParameterFile::plan_masses`):
+/// `["output", o]` or `["complex", o]` (the kind is checked on loading).
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum MassFile {
@@ -719,11 +722,13 @@ enum MassFile {
 }
 
 /// A plan mass's source: an external parameter (exact) or a parameter
-/// program output (a derived mass, the exact value of its carrier).
+/// program output (a derived mass, the exact value of its carrier: real and
+/// positive, or complex).
 #[derive(Clone, Copy)]
 enum MassSource {
     Input(usize),
     Output(usize),
+    Complex(usize),
 }
 
 struct Parameters {
@@ -761,7 +766,7 @@ impl Parameters {
             .chain(&program.constants)
             .chain(program.derived_masses.iter().map(|(_, o)| o))
             .chain(program.plan_masses.iter().filter_map(|mass| match mass {
-                Some(MassSource::Output(o)) => Some(o),
+                Some(MassSource::Output(o) | MassSource::Complex(o)) => Some(o),
                 _ => None,
             }))
             .copied()
@@ -968,8 +973,13 @@ pub struct BoundParameters<T> {
     pub trees: TreeBatch<T>,
     /// The plan's kernel constants.
     pub constants: Vec<Complex<T>>,
-    /// The plan's squared masses per mass id.
+    /// The plan's squared masses per mass id (their real parts).
     pub masses: Vec<Rational>,
+    /// The imaginary parts of the plan's squared masses (a complex-mass
+    /// scheme's pole masses, `["complex", o]` plan masses;
+    /// `V2Batch::masses_imaginary`), or empty when the program has no
+    /// complex plan mass.
+    pub masses_imaginary: Vec<Rational>,
     /// The squared mass of each leg's external state (`V2Batch::leg_masses`),
     /// from the same exact mass parameters as the plan's and the sources'.
     pub leg_masses: Vec<Option<Rational>>,
@@ -1476,6 +1486,9 @@ fn load_parameters(
                 if kind == "output" && output(*o) && file.positive.contains(o) =>
             {
                 Ok(Some(MassSource::Output(*o)))
+            }
+            Some(MassFile::Output(kind, o)) if kind == "complex" && output(*o) => {
+                Ok(Some(MassSource::Complex(*o)))
             }
             Some(_) => Err(invalid("parameter program plan mass source")),
         })
@@ -2337,25 +2350,44 @@ impl TreeProgram {
             .plan_masses
             .iter()
             .filter_map(|mass| match mass {
-                Some(MassSource::Output(o)) => Some(*o),
+                Some(MassSource::Output(o) | MassSource::Complex(o)) => Some(*o),
                 _ => None,
             })
             .collect();
         let mut derived_plan = shared(&outputs, "loop masses")?.into_iter();
+        let complex_masses = program
+            .plan_masses
+            .iter()
+            .any(|mass| matches!(mass, Some(MassSource::Complex(_))));
         let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
+        let mut masses_imaginary = Vec::new();
         for mass in &program.plan_masses {
-            plan_masses.push(match mass {
-                Some(MassSource::Input(index)) => &values[*index] * &values[*index],
+            let (re, im) = match mass {
+                Some(MassSource::Input(index)) => {
+                    (&values[*index] * &values[*index], Rational::from(0))
+                }
                 Some(MassSource::Output(_)) => {
                     let value = derived_plan
                         .next()
                         .expect("one value per output plan mass")
                         .re
                         .exact()?;
-                    &value * &value
+                    (&value * &value, Rational::from(0))
                 }
-                None => Rational::from(0),
-            });
+                // A complex pole mass M: the square of its carrier value's
+                // exact complex rational (as a real derived mass's, DESIGN
+                // §11.1), the M² the tree propagators' carrier value squares.
+                Some(MassSource::Complex(_)) => {
+                    let value = derived_plan.next().expect("one value per output plan mass");
+                    let (re, im) = (value.re.exact()?, value.im.exact()?);
+                    (&re * &re - &im * &im, Rational::from(2) * &re * &im)
+                }
+                None => (Rational::from(0), Rational::from(0)),
+            };
+            plan_masses.push(re);
+            if complex_masses {
+                masses_imaginary.push(im);
+            }
         }
         Ok(BoundParameters {
             leg_masses: self
@@ -2375,6 +2407,7 @@ impl TreeProgram {
             },
             constants,
             masses: plan_masses,
+            masses_imaginary,
         })
     }
 

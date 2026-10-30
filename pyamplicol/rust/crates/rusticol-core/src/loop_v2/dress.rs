@@ -97,8 +97,11 @@ pub struct V2Batch<T> {
     pub momenta: Vec<Vec<Rational>>,
     /// Per point, `mu_R²`.
     pub scales: Vec<Rational>,
-    /// Squared mass per plan mass id.
+    /// Squared mass per plan mass id (its real part).
     pub masses: Vec<Rational>,
+    /// The imaginary part of each squared plan mass (complex-mass-scheme
+    /// pole masses, `M² - i M Γ`), or empty: every plan mass real.
+    pub masses_imaginary: Vec<Rational>,
     /// Squared mass of each leg's external state (in leg order): the value
     /// of every invariant a single leg fixes on its mass shell (a single-leg
     /// arc or its complement), never the `p²` of the given momenta, which
@@ -139,6 +142,9 @@ impl<T: Carrier> V2Batch<T> {
         }
         if self.masses.len() != plan.masses || self.constants.len() != plan.constants {
             return bad("masses or kernel constants do not match the plan");
+        }
+        if !self.masses_imaginary.is_empty() && self.masses_imaginary.len() != plan.masses {
+            return bad("imaginary parts of the masses do not match the plan");
         }
         if !self.leg_masses.is_empty() && self.leg_masses.len() != plan.legs {
             return bad("leg masses need one squared mass per leg");

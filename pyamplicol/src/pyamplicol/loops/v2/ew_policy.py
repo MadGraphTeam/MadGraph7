@@ -27,15 +27,17 @@ public generator, the tools, the tests and the artifacts all see them:
   couple with alpha(0)) is refused (``ExternalPhotonError``,
   ``external-photon-scheme``): without it the virtual would be wrong at
   O(alpha) by the photon's light-fermion logarithms.
-* ``require_zero_widths`` refuses an electroweak request whose tree currents
-  propagate a particle with a width that is not zero, coloured or not
-  (``ElectroweakWidthError``). v2 virtuals are real on-shell: loop
-  propagators carry no width and the model counterterms renormalise the
-  real masses, so a Z, W, H or top width in the trees mixes two schemes
-  (DESIGN §6.1's top-width case: a 1.8e-5 double-pole mismatch and a 2.8 %
-  finite shift). The user's decision [U8] (2026-10-25): refuse, with the fix
-  (the widths fixed to zero, or the complex-mass scheme, WP3.2 EWI-10, which
-  v2 does not have yet: every v2 request is a non-CMS request). The trees
+* ``require_zero_widths`` refuses a real on-shell electroweak request whose
+  tree currents propagate a particle with a width that is not zero, coloured
+  or not (``ElectroweakWidthError``, listed key ``electroweak-width``). Real
+  on-shell virtuals: loop propagators carry no width and the model
+  counterterms renormalise the real masses, so a Z, W, H or top width in the
+  trees mixes two schemes (DESIGN §6.1's top-width case: a 1.8e-5
+  double-pole mismatch and a 2.8 % finite shift). The user's decision [U8]
+  (2026-10-25): refuse, with the fix (the widths fixed to zero, or the
+  complex-mass scheme, ``loops.model_cms``, whose model propagates every
+  particle of a width with its complex pole mass and width zero, so this
+  check passes on it). The trees
   scanned are the Born and the loop-side blocks, before their kernels and
   the counterterm lowering. A counterterm tree (one insertion of a local
   vertex into the blocks of the loop it renormalises) propagates what those
@@ -86,9 +88,13 @@ FERMION_SPIN = 2
 VECTOR_SPIN = 3
 
 
-class ElectroweakWidthError(GenerationError):
+class ElectroweakWidthError(LoopRequestUnsupported):
     """An electroweak request whose tree currents propagate a particle with
-    a non-zero width outside the complex-mass scheme."""
+    a non-zero width outside the complex-mass scheme (listed key
+    ``electroweak-width``)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("electroweak-width", message)
 
 
 class ExternalPhotonError(LoopRequestUnsupported):
@@ -751,8 +757,8 @@ def require_zero_widths(
         "counterterms renormalise the real masses), so a width in the Born, "
         "the loop-side or the counterterm trees mixes two schemes. Fix the "
         f"widths to zero in [loop.preparation] fixed_parameters ({hint}); "
-        "resonant electroweak bosons need the complex-mass scheme, which the "
-        "v2 engine does not implement yet (WP3.2 EWI-10)"
+        "resonant particles need the complex-mass scheme ([loop.model.scheme] "
+        'mass_scheme = "complex-mass")'
     )
 
 
@@ -838,7 +844,13 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
     * ``uv_scheme``: the model's UV counterterm vertices and external-field
       factors, inserted once (REQUIREMENTS_ADDENDUM J);
     * ``mass_scheme`` "real-on-shell" (no width in any propagator,
-      ``require_zero_widths``; the complex-mass scheme is WP3.2 EWI-10);
+      ``require_zero_widths``) or "complex-mass" (MG5_aMC's complex-mass
+      model, ``loops.model_cms``), the latter with ``complex_mass``: its
+      pole masses, widths, Yukawa ties, reglog convention and the model's
+      CMSParam, LogSwitch and GfRedefinitionChoice
+      (``model_cms.convention_record``); a complex-mass request that is not
+      electroweak (QCD corrections with complex pole masses) records these
+      two fields only;
     * ``ew_input_scheme``: "G_mu" when the loops' electromagnetic coupling
       (``poles.qed_coupling``) depends on the Fermi constant (SLHA SMINPUTS
       2), "alpha" when it depends on an input 1/alpha (SMINPUTS 1: alpha(M_Z)
@@ -853,12 +865,23 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
       poles) and the request's ``external_photons_option``.
     """
 
+    from pyamplicol.loops.model_cms import COMPLEX_MASS, convention_record
+
     from .poles import qed_coupling
 
     compiled, request = slice_.compiled, slice_.request
+    complex_mass = convention_record(compiled)
+    mass_scheme = (
+        {}
+        if complex_mass is None
+        else {
+            "mass_scheme": COMPLEX_MASS,
+            "complex_mass": complex_mass,
+        }
+    )
     species = slice_.prepared.structure.perturbative_species_orders
     if not electroweak(compiled, request, species):
-        return None
+        return mass_scheme or None
     fixed = request.fixed_parameters
     parameters = {record.name: record for record in compiled.ir.parameters}
     lambda_hv = None
@@ -897,6 +920,7 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
         "gauge": str(compiled.ir.gauge),
         "uv_scheme": ("the model's UV counterterm vertices and external-field factors"),
         "mass_scheme": "real-on-shell",
+        **mass_scheme,
         "ew_input_scheme": scheme,
         "alpha_inputs": {
             name: f"{block} {' '.join(map(str, lha))}".strip()

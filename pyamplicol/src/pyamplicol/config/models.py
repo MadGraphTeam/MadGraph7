@@ -1423,6 +1423,25 @@ class LoopModelConfig:
                 raise ConfigurationError(f"loop.model.{name} must be a boolean or null")
         self.to_declaration()
 
+    @property
+    def mass_scheme_only(self) -> bool:
+        """Whether only ``[loop.model.scheme] mass_scheme`` is set: it then
+        selects the mass scheme of the model's own (source or shipped)
+        declaration, MadLoop's ``set complex_mass_scheme True``
+        (``generation.loop_service``), instead of a whole override."""
+
+        return (
+            self.loop_coupling_orders is None
+            and self.uv_complete is None
+            and self.model_r2_complete is None
+            and self.scheme.mass_scheme is not None
+            and all(
+                getattr(self.scheme, name) is None
+                for name in self.scheme.__dataclass_fields__
+                if name != "mass_scheme"
+            )
+        )
+
     def to_declaration(self) -> LoopModelDeclaration | None:
         from pyamplicol.models.loop_declaration import LoopModelDeclaration
 
@@ -1431,7 +1450,7 @@ class LoopModelConfig:
             and self.uv_complete is None
             and self.model_r2_complete is None
             and not self.scheme.supplied
-        ):
+        ) or self.mass_scheme_only:
             return None
         if (
             self.loop_coupling_orders is None
