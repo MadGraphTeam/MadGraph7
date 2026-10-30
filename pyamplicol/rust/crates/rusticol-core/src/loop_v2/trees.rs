@@ -233,7 +233,7 @@ fn verify_plane(
         .evaluate_batch(&values, &mut expected, rows)
         .map_err(|e| invalid(format!("plane check: {e}")))?;
     let got = evaluate_plane_application(plane, shape, &values, rows)?;
-    Ok(first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
+    let mixed = first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
         if let PlaneProbe::Row { row, real_axis, .. } = &mut mismatch.probe {
             if *row >= OFF_AXIS {
                 *row -= OFF_AXIS;
@@ -241,7 +241,25 @@ fn verify_plane(
             }
         }
         mismatch
-    }))
+    });
+    if mixed.is_some() || real_points.is_empty() {
+        return Ok(mixed);
+    }
+    // The real points again in a call of their own, as a batch runs them: a
+    // SIMD block of equal lanes (the padding copies the last row) runs
+    // SymJIT's SIMD code, which the block above, whose lanes take other
+    // branches, replays in scalar code. CM05's parameter program gave NaN
+    // in SIMD only (M-SM MS-MASTERS, DESIGN risk 13).
+    let real = &values[OFF_AXIS * inputs..];
+    let got = evaluate_plane_application(plane, shape, real, real_points.len())?;
+    Ok(
+        first_mismatch(&expected[OFF_AXIS * outputs..], &got, outputs).map(|mut mismatch| {
+            if let PlaneProbe::Row { real_axis, .. } = &mut mismatch.probe {
+                *real_axis = true;
+            }
+            mismatch
+        }),
+    )
 }
 
 /// `rows` rows of `inputs` complex probe values off the real axis: real parts

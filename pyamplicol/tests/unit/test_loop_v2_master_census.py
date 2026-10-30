@@ -333,3 +333,38 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
         evaluate(tiny, Precision.double_double())
     found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
     assert found.bites()["tiny-width"], found.record()
+
+
+@pytest.mark.loop_nightly
+def test_cm05_parameter_plane_nan_in_simd_is_refused(
+    loop_gmu_ufo, loop_native, tmp_path
+):
+    """CM05 (u u~ > e- e+ g [QCD QED] on the G_mu UFO under the complex-mass
+    scheme, ``required/msm/uux_emepg_cms.json``): not a master defect. One
+    output of its binary64 parameter program is NaN in SymJIT's SIMD code (a
+    block of equal lanes, as a batch runs it) and right in its scalar code
+    and the exact evaluator; the plane check evaluated the request's point in
+    a block with the off-axis probes, which SymJIT replays in scalar code, so
+    native inputs gave a NaN QCD^4 QED^4 finite part at every point
+    (``uv_local``; double-double, AP and Python inputs were right). The check
+    now runs the real point in a block of its own: the native export refuses
+    with ``plane-mismatch`` (typed), Python inputs evaluate. Generation about
+    3 min, 6 GB."""
+
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from tests.unit.test_loop_v2_cms import _gmu_cms_slice
+
+    reference = json.loads((FIXTURES / "required/msm/uux_emepg_cms.json").read_text())
+    _model, _scheme, slice_ = _gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        "u u~ > e- e+ g",
+        reference["born_orders"],
+        ("QCD", "QED"),
+        restriction=reference["restriction"],
+        fixed=reference["fixed_parameters"],
+    )
+    with pytest.raises(NativeExportUnsupported, match="plane-mismatch"):
+        NativeExecutor(slice_, inputs="native")

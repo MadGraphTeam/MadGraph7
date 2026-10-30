@@ -810,10 +810,10 @@ def _check_sectors(slice_, reference, model, carriers, points):
                 assert max(errors) <= tolerance, (carrier, k, sector, errors)
 
 
-# The CM rows whose native point inputs ``_check_cms_split`` checks too: with
-# native inputs CM05's QCD^4 QED^4 finite part is NaN at every point, in
-# "all" as well and already on the slice before MS-POLES (its poles agree
-# with Python inputs; a complex-mass master defect, MS-MASTERS).
+# The CM rows whose native point inputs ``_check_cms_split`` checks too:
+# CM05's native export refuses (``plane-mismatch``: SymJIT's SIMD code gives
+# NaN for one output of its binary64 parameter program, not a master defect;
+# MS-MASTERS, ``test_loop_v2_master_census.py``).
 NATIVE_SPLIT_ROWS = ("uux_emep_cms", "gg_ttx_cms")
 
 
