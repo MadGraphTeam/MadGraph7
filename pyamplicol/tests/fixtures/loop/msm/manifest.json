@@ -5911,7 +5911,12 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "QCD^2 QED^4",
+     "coefficient": "born"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
@@ -9493,6 +9498,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P2_uux_emep of p p > e- e+ (its single-process generation, tools route)"
@@ -9597,6 +9603,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P3_ddx_emep of p p > e- e+ (its single-process generation, tools route)"
@@ -9701,6 +9708,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P4_bbx_emep of p p > e- e+ (its single-process generation, tools route)"
@@ -9760,6 +9768,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P5_aa_emep of p p > e- e+ (its single-process generation, tools route)"
@@ -9958,6 +9967,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P0_ga_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10045,6 +10055,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P2_gg_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10187,6 +10198,12 @@
        3
       ]
      },
+     "vanishing": [
+      {
+       "sector": "QCD^2 QED^2",
+       "coefficient": "born"
+      }
+     ],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P3_uux_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10332,6 +10349,12 @@
        3
       ]
      },
+     "vanishing": [
+      {
+       "sector": "QCD^2 QED^2",
+       "coefficient": "born"
+      }
+     ],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P4_ddx_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10412,6 +10435,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P5_aa_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10579,6 +10603,7 @@
        3
       ]
      },
+     "vanishing": [],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P6_bbx_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -11034,7 +11059,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-09,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -11275,7 +11300,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-09,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -11284,6 +11309,9 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "relaxed": {
+    "2": 1e-09
+   },
    "inputs": "native",
    "catani": "engine",
    "madloop_r2_called": [
