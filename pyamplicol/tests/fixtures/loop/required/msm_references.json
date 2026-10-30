@@ -8965,7 +8965,7 @@
     "scheme": "ew-gmu-b-mass",
     "note": "MadLoop: the loop_qcd_qed_sm_Gmu_py3_b_mass copy (restrict_default.dat with MB = ymb = 4.5)"
    },
-   "note": "ew-validate's workspace run udx_tbx_ew_mb (MadLoop; Recola differs by 3e-4..1e-3 in its massive-b setting, not a provider here) [EWI-7]",
+   "note": "ew-validate's workspace run udx_tbx_ew_mb (MadLoop; Recola differs by 9.48e-5 x Born: the G_mu UFO omits dMB_eCoup_UV_EW in its charge counterterm; not a provider here) [EWI-7]",
    "references": [],
    "existing_references": [
     {

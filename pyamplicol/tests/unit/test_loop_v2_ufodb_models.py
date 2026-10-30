@@ -13,6 +13,8 @@ user 2026-10-30: https://github.com/mg5amcnlo/UFOmodeldb is the ground truth).
   only SC10 (z z > h h) can (``_reaches``, a necessary condition).
 * Recola (R2 terms of its own) equals MadLoop on the UFOmodeldb model for
   SC10 and not MadLoop on the MG5_aMC download: the fix is right.
+* A defect UFOmodeldb still has: with a massive b, the G_mu model's charge
+  counterterm omits its b-mass term (ST04's Recola offset, exactly).
 * SC10 equals MadLoop in quadruple precision on the UFOmodeldb model, and the
   difference to MadLoop on the MG5_aMC download is the R2_ZZHH term alone
   (nightly; the Python reference path of the slice: the native plan of this
@@ -279,6 +281,47 @@ def test_recola_decides_the_r2_zzhh_fix():
         download = control["providers"]["madloop"]["finite"]
         assert abs(madloop - recola) <= 1e-10 * abs(recola)
         assert abs(download - recola) >= 1e-2 * abs(recola)
+
+
+@pytest.mark.loop_fast
+def test_gmu_charge_counterterm_omits_its_b_mass_term():
+    """A UFOmodeldb defect (reported upstream): the G_mu model's CT couplings
+    renormalise the charge with eCoup_a0_UV_EW + eCoup_DGmua0_UV_EW, and
+    neither holds dMB_eCoup_UV_EW, the b-mass term only the unused
+    eCoup_Gmu_UV_EW adds. With MB = 4.5 that term is -2.37010e-5 at any
+    mu_R, so MadLoop (and the engine, on the same UFO) differ from Recola on
+    u d~ > t b~ (ST04, Born of order e^2) by -4 dMB_eCoup_UV_EW x Born =
+    +9.48039e-5 x Born at every point."""
+
+    import re
+
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    raw = load_raw_loop_model(_shipped("loop_qcd_qed_sm_Gmu"), restriction="full")
+    collections = raw.to_dict()["collections"]
+    parameters = {
+        r["name"]: json.dumps(r["fields"])
+        for r in collections["counterterm_parameters"]
+    }
+    assert "dMB_eCoup_UV_EW" in parameters["eCoup_Gmu_UV_EW"]
+    for name in ("eCoup_a0_UV_EW", "eCoup_DGmua0_UV_EW"):
+        assert "dMB_" not in parameters[name]
+    values = [
+        r["fields"]["value_source"]["argument"]
+        for r in collections["couplings"]
+        if r["fields"]["value_source"]["file"] == "CT_couplings.py"
+    ]
+    assert not any("eCoup_Gmu_UV_EW" in v for v in values)
+    assert sum("(eCoup_a0_UV_EW+eCoup_DGmua0_UV_EW)" in v for v in values) == 186
+    assert not any(re.search(r"\bdMB_eCoup_UV_EW\b", v) for v in values)
+
+    fixture = json.loads((FIXTURES / "required/udx_tbx_ew_mb.json").read_text())
+    offsets = [
+        (r["providers"]["madloop"]["finite"] - r["providers"]["recola"]["finite"])
+        / r["providers"]["madloop"]["born"]
+        for r in fixture["rows"]
+    ]
+    assert all(abs(x - 4 * 2.3700982771e-5) <= 1e-6 * x for x in offsets), offsets
 
 
 @pytest.mark.loop_nightly
