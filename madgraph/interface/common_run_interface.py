@@ -6519,6 +6519,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 return args[:i] + [' '.join(args[i:])]
         return args
 
+    def invalid_set(self, text):
+        """Reject a set command: an error in a scripted run, a warning interactively."""
+        mother = getattr(self, 'mother_interface', None)
+        if mother is not None and getattr(mother, 'inputfile', None):
+            raise InvalidCmd(text)
+        logger.warning(text)
+
     def do_set(self, line):
         """ edit the value of one parameter in the card"""
 
@@ -6527,7 +6534,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         
         
         if len(args) == 0:
-            logger.warning("No argument. For help type 'help set'.")
+            self.invalid_set("No argument. For help type 'help set'.")
+            return
         # fix some formatting problem
         if len(args)==1 and '=' in args[-1]:
             arg1, arg2 = args.pop(-1).split('=',1)
@@ -6548,23 +6556,24 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     args = args[:len(targettypes)] + [' '.join(args[len(targettypes):])]
                     targettypes = [str]
                 else:
-                    logger.warning('shortcut %s requires %s argument' % (args[0], len(targettypes)))
                     if len(args) < len(targettypes) +1:
+                        self.invalid_set('shortcut %s requires %s argument' % (args[0], len(targettypes)))
                         return
                     else:
-                        logger.warning('additional argument will be ignored')
+                        self.invalid_set('shortcut %s requires %s argument: additional argument will be ignored'
+                                         % (args[0], len(targettypes)))
             values ={}
             for i, argtype in enumerate(targettypes):           
                 try:  
                     values[str(i)] = banner_mod.ConfigFile.format_variable(args[i+1], argtype, args[0])
                 except ValueError as e:
-                    logger.warning("Wrong argument: The entry #%s should be of type %s.", i+1, argtype)
+                    self.invalid_set("Wrong argument: The entry #%s should be of type %s." % (i+1, argtype))
                     return
                 except InvalidCmd as e:
                     if isinstance(args[i+1], str) and args[i+1].startswith('scan'):
                         values[str(i)] = args[i+1]
                     else:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
                         return
             #else:
             #    logger.warning("too many argument for this command")
@@ -6574,10 +6583,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         text = arg % values
                     except KeyError:
-                        logger.warning("This command requires one argument")
+                        self.invalid_set("This command requires one argument")
                         return
                     except Exception as e:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
                         return
                     else:
                         split = text.split()
@@ -6591,12 +6600,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         arg(self)(*val)
                     except Exception as e:
-                        logger.warning(str(e))
+                        self.invalid_set(str(e))
             return
 
         start = 0
         if len(args) < 2:
-            logger.warning('Invalid set command %s (need two arguments)' % line)
+            self.invalid_set('Invalid set command %s (need two arguments)' % line)
             return            
 
         # Special case for the qcut value
@@ -6631,43 +6640,43 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         card = '' #store which card need to be modify (for name conflict)
         if args[0] == 'madweight_card':
             if not self.mw_card:
-                logger.warning('Invalid Command: No MadWeight card defined.')
+                self.invalid_set('Invalid Command: No MadWeight card defined.')
                 return
             args[0] = 'MadWeight_card'
         
         if args[0] == 'shower_card':
             if not self.shower_card:
-                logger.warning('Invalid Command: No Shower card defined.')
+                self.invalid_set('Invalid Command: No Shower card defined.')
                 return
             args[0] = 'shower_card'
 
         if args[0] == "madloop_card":
             if not self.has_ml:
-                logger.warning('Invalid Command: No MadLoopParam card defined.')
+                self.invalid_set('Invalid Command: No MadLoopParam card defined.')
                 return
             args[0] = 'MadLoop_card'
 
         if args[0] == "pythia8_card":
             if not self.has_PY8:
-                logger.warning('Invalid Command: No Pythia8 card defined.')
+                self.invalid_set('Invalid Command: No Pythia8 card defined.')
                 return
             args[0] = 'pythia8_card'
 
         if args[0] == "rivet_card":
             if not self.has_rivet:
-                logger.warning('Invalid Command: No Rivet card defined.')
+                self.invalid_set('Invalid Command: No Rivet card defined.')
                 return
             args[0] = 'rivet_card'
 
         if args[0] == 'reweight_card':
             if not self.has_density:
-                logger.warning('Invalid Command: No Reweight card defined')
+                self.invalid_set('Invalid Command: No Reweight card defined')
                 return
             args[0] = 'reweight_card'
 
         if args[0] == 'delphes_card':
             if not self.has_delphes:
-                logger.warning('Invalid Command: No Delphes card defined.')
+                self.invalid_set('Invalid Command: No Delphes card defined.')
                 return
             if args[1] == 'atlas':
                 logger.info("set default ATLAS configuration for Delphes", '$MG:BOLD')
@@ -6702,7 +6711,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
             
         elif args[0] in ['MadLoop_card']:
@@ -6716,7 +6725,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
         elif args[0] in ['pythia8_card']:
             if args[1] == 'default':
@@ -6730,7 +6739,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 card = args[0]
             start=1
             if len(args) < 3:
-                logger.warning('Invalid set command: %s (not enough arguments)' % line)
+                self.invalid_set('Invalid set command: %s (not enough arguments)' % line)
                 return
 
         elif args[0] in ['madspin_card']:
@@ -6739,7 +6748,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 files.cp(self.paths['MS_default'], self.paths['madspin'])
                 return
             else:
-                logger.warning("""Command set not allowed for modifying the madspin_card. 
+                self.invalid_set("""Command set not allowed for modifying the madspin_card. 
                     Check the command \"decay\" instead.""")
                 return
 
@@ -6754,9 +6763,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if len(matches) == 1:
                 args[start] = matches[0]
             elif len(matches) > 1:
-                logger.warning(
-                    "Ambiguous key %r — use the full section.key form, e.g.: %s",
-                    args[start], ' or '.join(matches))
+                self.invalid_set(
+                    "Ambiguous key %r — use the full section.key form, e.g.: %s"
+                    % (args[start], ' or '.join(matches)))
                 return
 
         # set dynamical_scale_choice HT/n (any n > 0), in every mode
@@ -6813,7 +6822,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             
             if args[start] == 'width':
@@ -6827,7 +6836,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         key = lhaid
                         break
                 else:
-                    logger.warning('%s is not part of block "%s" but "%s". please correct.' %
+                    self.invalid_set('%s is not part of block "%s" but "%s". please correct.' %
                                     (args[start+1], args[start], bname))
                     return
             elif args[start+1] == 'scale':
@@ -6846,7 +6855,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                                 self.setP(args[start], key, args[-1])
                         self.modified_card.add('param')
                         return
-                    logger.warning('invalid set command %s (failed to identify LHA information)' % line)
+                    self.invalid_set('invalid set command %s (failed to identify LHA information)' % line)
                     return
 
             if key in self.param_card[args[start]].param_dict:
@@ -6864,12 +6873,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         value = float(args[-1])
                     except Exception:
-                        logger.warning('Invalid input: Expected number and not \'%s\'' \
+                        self.invalid_set('Invalid input: Expected number and not \'%s\'' \
                                                                      % args[-1])
                         return
                     self.setP(args[start], key, value)
             else:
-                logger.warning('invalid set command %s' % line)
+                self.invalid_set('invalid set command %s' % line)
                 return
             self.modified_card.add('param')
         
@@ -6878,7 +6887,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             
             all_var = self.pname2block[args[start]]
@@ -6903,13 +6912,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             try:
                 key = tuple([int(i) for i in args[start+1:-1]])
             except ValueError:
-                logger.warning('invalid set command %s, onia_card can not be updated' % line)
+                self.invalid_set('invalid set command %s, onia_card can not be updated' % line)
                 return
 
             if key in self.onia_card[args[start]].param_dict:
@@ -6919,12 +6928,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     try:
                         value = float(args[-1])
                     except Exception:
-                        logger.warning('Invalid input: Expected number and not \'%s\'' \
+                        self.invalid_set('Invalid input: Expected number and not \'%s\'' \
                                                                      % args[-1])
                         return
                     self.setO(args[start], key, value)
             else:
-                logger.warning('invalid set command %s' % line)
+                self.invalid_set('invalid set command %s' % line)
                 return
             self.modified_card.add('onia')
                 
@@ -6935,7 +6944,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
                        
             block = args[start]
@@ -6951,12 +6960,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             block = [b for b, data in self.mw_card.items() if args[start] in data]
             if len(block) > 1:
-                logger.warning('%s is define in more than one block: %s.Please specify.'
+                self.invalid_set('%s is define in more than one block: %s.Please specify.'
                                % (args[start], ','.join(block)))
                 return
            
@@ -6984,7 +6993,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
                 text += ' in the format < set card parameter value>'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1].lower() == 'default':
@@ -7014,7 +7023,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1] == 'default':
@@ -7033,7 +7042,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
 
             if args[start+1] == 'default':
@@ -7053,7 +7062,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
       
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.rivet_card_default[args[start]]
@@ -7069,7 +7078,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.fo_card_default[args[start]]
@@ -7086,7 +7095,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
             if args[start] in self.conflict and card == '':
                 text = 'ambiguous name (present in more than one card). Please specify which card to edit'
-                logger.warning(text)
+                self.invalid_set(text)
                 return
             if args[start+1] == 'default':
                 value = self.reweight_card_default[args[start]]
@@ -7101,7 +7110,6 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
         #INVALID --------------------------------------------------------------
         else:      
-            logger.warning('invalid set command %s ' % line)
             arg = args[start].lower()
             if self.has_PY8:   
                 close_opts = [name for name in self.PY8Card if name.lower().startswith(arg[:3]) or arg in name.lower()]
@@ -7111,7 +7119,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 close_opts = [name for name in self.run_card if name.lower().startswith(arg[:3]) or arg in name.lower()]
                 if close_opts:
                     logger.info('Did you mean one of the following run_card options:\n%s' % '\t'.join(close_opts))
-                
+            self.invalid_set('invalid set command %s ' % line)
             return
 
     def setM(self, block, name, value):
@@ -7138,7 +7146,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             logger.info('modify madweight_card information BLOCK "%s" with id "%s" set to %s',
                     block, name, value, '$MG:BOLD')
         else:
-            logger.warning("Invalid command: No value. To set default value. Use \"default\" as value")
+            self.invalid_set("Invalid command: No value. To set default value. Use \"default\" as value")
             return
         
         self.mw_card[block][name] = value
@@ -7159,7 +7167,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.MLcard.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the MadLoopParam.dat to %s' % (name, value),'$MG:BOLD')
         if default and name.lower() in self.MLcard.user_set:
@@ -7169,7 +7177,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.PY8Card.userSet(name, value)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the pythia8_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.PY8Card.user_set:
@@ -7179,7 +7187,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.rivet_card.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the rivet_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.rivet_card.user_set:
@@ -7189,7 +7197,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         try:
             self.reweight_card.set(name, value, user=True)
         except Exception as error:
-            logger.warning("Fail to change parameter. Please Retry. Reason: %s." % error)
+            self.invalid_set("Fail to change parameter. Please Retry. Reason: %s." % error)
             return
         logger.info('modify parameter %s of the reweight_card.dat to %s' % (name, value), '$MG:BOLD')
         if default and name.lower() in self.reweight_card.user_set:
@@ -7204,21 +7212,21 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
             elif value.split()[:1] in (['auto'], ['auto@nlo']):
                 if block != 'decay':
-                    logger.warning('Invalid input: \'Auto\' value only valid for DECAY')
+                    self.invalid_set('Invalid input: \'Auto\' value only valid for DECAY')
                     return
                 try:
                     value = param_card_mod.format_auto_width(value)
                 except param_card_mod.InvalidParam as error:
-                    logger.warning('Invalid input: %s' % error)
+                    self.invalid_set('Invalid input: %s' % error)
                     return
             elif value.startswith('scan'):
                 if ':' not in value:
-                    logger.warning('Invalid input: \'scan\' mode requires a \':\' before the definition.')
+                    self.invalid_set('Invalid input: \'scan\' mode requires a \':\' before the definition.')
                     return
                 tag = value.split(':')[0]
                 tag = tag[4:].strip()
                 if tag and not tag.isdigit():
-                    logger.warning('Invalid input: scan tag need to be integer and not "%s"' % tag)
+                    self.invalid_set('Invalid input: scan tag need to be integer and not "%s"' % tag)
                     return
                 
                 
@@ -7227,7 +7235,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 try:
                     value = float(value)
                 except ValueError:
-                    logger.warning('Invalid input: \'%s\' is not valid input.'% value)
+                    self.invalid_set('Invalid input: \'%s\' is not valid input.'% value)
+                    return
 
         if lhaid:
             logger.info('modify param_card information BLOCK %s with id %s set to %s' %\
@@ -7246,14 +7255,15 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 value = default[block].param_dict[lhaid].value
 
             elif value.startswith('scan'):
-                logger.warning('Invalid input: \'scan\' mode does not work with onia_card.')
+                self.invalid_set('Invalid input: \'scan\' mode does not work with onia_card.')
                 return
 
             else:
                 try:
                     value = float(value)
                 except ValueError:
-                    logger.warning('Invalid input: \'%s\' is not valid input.'% value)
+                    self.invalid_set('Invalid input: \'%s\' is not valid input.'% value)
+                    return
 
         if lhaid:
             logger.info('modify onia_card information BLOCK %s with id %s set to %s' %\

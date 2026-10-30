@@ -796,7 +796,7 @@ class MG7CmdTest(unittest.TestCase):
     def test_set_madevent_cut_name_scan_is_refused_by_name(self):
         obj = self.cut_selector()
         before = dict(obj.run_card['cuts'])
-        with self.assertLogs('madgraph7', level='WARNING') as logs:
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
             obj.do_set('ptj scan:[20, 30]')
         self.assertIn('cannot be scanned', logs.output[0])
         self.assertEqual(dict(obj.run_card['cuts']), before)
@@ -841,6 +841,43 @@ class MG7CmdTest(unittest.TestCase):
         obj.do_set('pdlabel1 none')
         self.assertNotEqual(obj.run_card['beam']['pdf1'], 'none')
         self.assertNotIn('run', obj.modified_card)
+
+    def test_invalid_set_is_an_error_in_scripted_runs(self):
+        """the set commands the mg7 editor rejects stop a launch script"""
+        from madgraph import InvalidCmd
+        obj = self.cut_selector()
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        for line in ('pdf NNPDF', 'histograms 42', 'jet-pt.mni 20',
+                     'mmll abc', 'ptj scan:[20, 30]', 'iseed xx',
+                     'dynamical_scale_choice 99', 'sde_strategy 7', 'pdlabel1 none',
+                     'custom_functions.bogus.x 1'):
+            self.assertRaises(InvalidCmd, obj.do_set, line)
+        self.assertNotIn('run', obj.modified_card)
+        self.assertNotIn('jet-pt.mni', obj.run_card['cuts'])
+        # madevent's -1/0 scale choices only warn, so ported scripts still run
+        with self.assertLogs('madgraph7', level='WARNING'):
+            obj.do_set('dynamical_scale_choice -1')
+        self.generic_do_set.assert_not_called()
+
+    def test_unknown_lhaid_only_warns_in_scripted_runs(self):
+        from madgraph.various import banner as banner_mod
+        obj = self.histogram_selector()
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        error = banner_mod.UnknownPDFSet('lhaid = 1: unknown LHAPDF id')
+        with mock.patch.object(type(obj.run_card), 'set_lo_beam_param',
+                               side_effect=error):
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                obj.do_set('lhaid 1')
+        self.assertIn('unknown LHAPDF id', logs.output[0])
+        self.assertNotIn('run', obj.modified_card)
+
+    def test_set_custom_function_parameter(self):
+        """custom function parameters are not run_card keys: set them anyway"""
+        obj = self.cut_selector()
+        obj.do_set('custom_functions.cut_parameters.pt_min 30')
+        self.assertEqual(obj.run_card.custom_parameters('cut'), {'pt_min': 30.0})
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
 
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')

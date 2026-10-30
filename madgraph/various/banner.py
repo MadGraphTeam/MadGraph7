@@ -785,6 +785,9 @@ def recover_banner(results_object, level, run=None, tag=None):
 class InvalidRunCard(InvalidCmd):
     pass
 
+class UnknownPDFSet(InvalidRunCard):
+    """A PDF label or LHAPDF id that no PDF set of the installation matches."""
+
 class ProcCard(list):
     """Basic Proccard object"""
     
@@ -7579,12 +7582,13 @@ class RunCardMG7(RunCard):
         resolves bare key names (e.g. ``set events 1000``) when unambiguous
         across all sections."""
         if isinstance(name, str):
+            raiseerror = opts.get('raiseerror', args[2] if len(args) > 2 else False)
             lname = name.lower()
             if lname == 'e_cm':
                 lname = name = 'beam.e_cm'
             if lname == 'pdf':
-                logger.warning("Ambiguous key 'pdf' — use beam.pdf (both beams), "
-                               "beam.pdf1, beam.pdf2 or systematics.pdf")
+                self.warn("Ambiguous key 'pdf' — use beam.pdf (both beams), "
+                          "beam.pdf1, beam.pdf2 or systematics.pdf", 'warning', raiseerror)
                 return
             if lname == 'beam.e_cm':
                 value = self.parse_energy(value)
@@ -7609,9 +7613,9 @@ class RunCardMG7(RunCard):
                     name = matches[0]
                     lname = name
                 elif len(matches) > 1:
-                    logger.warning(
-                        "Ambiguous key %r — use the full section.key form, e.g.: %s",
-                        name, ' or '.join(matches))
+                    self.warn(
+                        "Ambiguous key %r — use the full section.key form, e.g.: %s"
+                        % (name, ' or '.join(matches)), 'warning', raiseerror)
                     return
             if lname in self.energy_params:
                 value = self.parse_energy(value)
@@ -7673,9 +7677,10 @@ class RunCardMG7(RunCard):
             name = name[len('cuts.'):]
         if '.' in name:
             cut, bound = name.rsplit('.', 1)
+            if bound not in ('min', 'max', 'mode'):
+                raise InvalidRunCard(
+                    "unknown bound %r of cut %s: use min, max or mode" % (bound, cut))
         else:
-            cut, bound = name, 'min'
-        if bound not in ('min', 'max', 'mode'):
             cut, bound = name, 'min'
         if bound == 'mode':
             value = str(value).strip()
@@ -7818,7 +7823,8 @@ class RunCardMG7(RunCard):
         for the caller to set as usual. Otherwise returns ``(changes,
         warnings)``: the {mg7 key: new value} written (None for a removed
         cut) and what of the request could not be followed. Raises
-        InvalidCmd for a value of the wrong type."""
+        InvalidCmd for a value of the wrong type or a code that does not
+        exist."""
         name = name.lower()
         text = str(value).split('#')[0].strip()
         beam = self['beam']
@@ -7846,18 +7852,19 @@ class RunCardMG7(RunCard):
                     put('phasespace.sde_strategy',
                         'denominators' if code == 2 else 'diagrams')
                 else:
-                    warnings.append(
-                        'sde_strategy %d does not exist (1 = diagrams, '
-                        '2 = denominators): keeping %s'
-                        % (code, self['phasespace.sde_strategy']))
+                    raise InvalidCmd('sde_strategy %d does not exist '
+                                     '(1 = diagrams, 2 = denominators)' % code)
             elif code in self._LO_DYNSCALE_MAP:
                 put('beam.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
-            else:
+            elif code in (-1, 0):
+                # madevent's own choices: a ported launch script keeps running
                 what = {-1: ' (CKKW back-clustering)',
-                        0: ' (user-defined scale)'}.get(code, '')
+                        0: ' (user-defined scale)'}[code]
                 warnings.append(
                     'dynamical_scale_choice %d%s has no mg7 equivalent: '
                     'keeping %s' % (code, what, beam['dynamical_scale_choice']))
+            else:
+                raise InvalidCmd('dynamical_scale_choice %d does not exist' % code)
 
         elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
             flag = self.format_variable(text, bool, name=name)
@@ -8099,7 +8106,7 @@ class RunCardMG7(RunCard):
                 return 'beam.leptonic = True'
         pdf = self._resolve_pdf_label(label, lhaid, [], data_paths)
         if pdf is None:
-            raise InvalidRunCard('%s = %s: unknown %s' % (
+            raise UnknownPDFSet('%s = %s: unknown %s' % (
                 name, value, 'LHAPDF id' if name == 'lhaid' else 'PDF label'))
         for beam in beams:
             self.set('beam.pdf' + beam, pdf, user=True)

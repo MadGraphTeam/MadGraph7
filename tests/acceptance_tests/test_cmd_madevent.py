@@ -3677,7 +3677,6 @@ class TestMEfromfile(unittest.TestCase):
         set ickkw 1
         set xqcut 10
         set mmll 50
-        set auto_ptj_mmjj False
         set ptj 0.01
         """ % {'path':self.run_dir})
         command.close()
@@ -3742,8 +3741,8 @@ class TestMEfromfile(unittest.TestCase):
         generate g g > b b~ HIW<=1
         output madevent %(path)s
         launch 
+        shower=OFF
         set nevents 1000
-        set shower none
         """ % {'path':self.run_dir})
         command.close()
         
