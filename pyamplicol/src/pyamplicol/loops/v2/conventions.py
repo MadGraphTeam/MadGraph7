@@ -136,6 +136,9 @@ LOOP_FACTOR_DENOMINATOR = 16
 class FermionSignError(NotImplementedError):
     """A fermion line the slice's sign rule does not cover."""
 
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "fermion-sign"
+
 
 class ReadingSignError(NotImplementedError):
     """A vertex without a sign between the tree engine's reading and a loop
@@ -145,6 +148,9 @@ class ReadingSignError(NotImplementedError):
     unknown tensor, or terms of both signs), or its Lorentz structure (the
     root closure's kernel, ``ct_sites._momentum_parity``) none under the
     momentum reversal. Generation refuses the request naming the vertex."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "reading-sign"
 
 
 # The namespace qualifier of a UFO symbol as a compiled model prints it

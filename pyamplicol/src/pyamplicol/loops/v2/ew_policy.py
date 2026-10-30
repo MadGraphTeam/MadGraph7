@@ -75,6 +75,8 @@ from typing import Any, NamedTuple
 
 from pyamplicol.api.errors import GenerationError
 
+from .refusals import LoopRequestUnsupported
+
 # UFO spins are 2s + 1.
 VECTOR_SPIN = 3
 
@@ -84,15 +86,23 @@ class ElectroweakWidthError(GenerationError):
     a non-zero width outside the complex-mass scheme."""
 
 
-class ExternalPhotonError(GenerationError):
+class ExternalPhotonError(LoopRequestUnsupported):
     """An electroweak request with an on-shell external photon on a model
     that cannot take the alpha(0) convention (``external_photon_scheme``)."""
 
+    # The listed refusal ``external-photon-scheme`` (``refusals``).
+    def __init__(self, message: str) -> None:
+        super().__init__("external-photon-scheme", message)
 
-class ElectroweakGaugeError(GenerationError):
+
+class ElectroweakGaugeError(LoopRequestUnsupported):
     """An electroweak request on a model that cannot be taken in
     't Hooft-Feynman gauge (its source declares no gauge 1, or a prepared
     bundle carries another gauge)."""
+
+    # The listed refusal ``feynman-gauge`` (``refusals``).
+    def __init__(self, message: str) -> None:
+        super().__init__("feynman-gauge", message)
 
 
 class CorrectionOrders(NamedTuple):

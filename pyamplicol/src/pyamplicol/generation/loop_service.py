@@ -73,13 +73,22 @@ _SELECTORS = (
 
 
 def _feature_blockers(backend, processes):
+    """The configuration refusals of a one-loop request
+    (``refusals.LOOP_CONFIGURATION_REFUSALS``), each a ``ListedBlocker``: its
+    listed text, which the dry run shows, with its key."""
+
+    from pyamplicol.loops.v2.refusals import ListedBlocker
+
     run = backend._run_config
     reasons = []
     if run.resolved_color.contraction != "direct" and run.color.fft_basis != "adjoint":
         reasons.append(
-            "the one-loop seed FFT (design §7.3) acts on the external adjoint "
-            "labels; color.fft_basis = 'trace' is unavailable for one-loop "
-            "requests (use 'adjoint')"
+            ListedBlocker(
+                "fft-basis-trace",
+                "the one-loop seed FFT (design §7.3) acts on the external adjoint "
+                "labels; color.fft_basis = 'trace' is unavailable for one-loop "
+                "requests (use 'adjoint')",
+            )
         )
     selection = backend._process_selection
     if not _leading_colour(run) and any(
@@ -87,29 +96,54 @@ def _feature_blockers(backend, processes):
     ):
         # Leading-colour requests take them (``_v2_selection``).
         reasons.append(
-            "public loop generation requires inclusive helicity and colour "
-            "selectors at next-to-leading and full colour; leading colour "
-            "(color.accuracy='lc') selects them"
+            ListedBlocker(
+                "colour-selectors",
+                "public loop generation requires inclusive helicity and colour "
+                "selectors at next-to-leading and full colour; leading colour "
+                "(color.accuracy='lc') selects them",
+            )
         )
-    if processes.aliases or run.process.analyze_process_groups != "none":
+    if processes.aliases:
         reasons.append(
-            "public loop artifacts do not yet publish permutation aliases "
-            "or numerical process-group analyses"
+            ListedBlocker(
+                "process-aliases",
+                "public loop artifacts do not yet publish permutation aliases ("
+                + ", ".join(sorted(alias.name for alias in processes.aliases))
+                + ")",
+            )
+        )
+    if run.process.analyze_process_groups != "none":
+        reasons.append(
+            ListedBlocker(
+                "process-group-analysis",
+                "public loop artifacts do not yet publish numerical "
+                "process-group analyses (process.analyze_process_groups = "
+                f"{str(run.process.analyze_process_groups)!r})",
+            )
         )
     if run.loop.r2_strategy == "direct":
         reasons.append(
-            "public source-model generation currently supports model R2 rules; "
-            "direct R2 is unavailable"
+            ListedBlocker(
+                "direct-r2",
+                "public source-model generation currently supports model R2 "
+                "rules; direct R2 is unavailable",
+            )
         )
     if run.generation.relation_discovery.mode != "off":
         reasons.append(
-            "tree numerical current relation discovery "
-            "is unavailable for loop generation"
+            ListedBlocker(
+                "relation-discovery",
+                "tree numerical current relation discovery "
+                "is unavailable for loop generation",
+            )
         )
     if run.evaluator.backend != "jit":
         reasons.append(
-            "public loop coefficient generation currently supports "
-            "evaluator.backend='jit'"
+            ListedBlocker(
+                "evaluator-backend",
+                "public loop coefficient generation currently supports "
+                "evaluator.backend='jit'",
+            )
         )
     # These are tree evaluator settings. The loop compiler currently selects
     # its existing native kernels/schedules and cannot apply these overrides.
@@ -143,8 +177,13 @@ def _feature_blockers(backend, processes):
         ignored.append("evaluator.output_chunk_size")
     if ignored:
         reasons.append(
-            "public loop generation does not apply nondefault tree evaluator "
-            "tuning: " + ", ".join(ignored) + "; use the existing loop kernel defaults"
+            ListedBlocker(
+                "evaluator-tuning",
+                "public loop generation does not apply nondefault tree evaluator "
+                "tuning: "
+                + ", ".join(ignored)
+                + "; use the existing loop kernel defaults",
+            )
         )
     return tuple(reasons)
 
@@ -177,9 +216,12 @@ def _prepare(
     )
     compiled = backend._artifact_model(resolved)
     if compiled.raw_loop_model is None:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "tree-only-model",
             "loop generation requires a compiled NLO UFO with its exact raw "
-            "sidecar; this model contains only tree data"
+            "sidecar; this model contains only tree data",
         )
     # Structural source repairs (``covariant_model.repair_source_declarations``)
     # on the compiled model the artifact publishes, which records them.
@@ -226,15 +268,26 @@ def _prepare(
         # cells (``loops.v2.colour.seed_fourier``), so at full colour it
         # needs no formal-colour continuation; LC and NLC do.
         if color_data is None and projected:
-            raise GenerationError(
-                "LC/NLC loop generation requires explicit source colour data in "
-                "the prepared model; attach a LoopColorDeclaration with "
+            # No declaration covers this source and scheme (the shipped
+            # N_c data are scheme-gated, MQ-NC: the QCD+QED models' scheme
+            # resolves none).
+            from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "colour-declaration-coverage",
+                f"{run.color.accuracy.upper()} loop generation requires "
+                "explicit source colour data in the prepared model and no "
+                "shipped colour declaration covers this model and scheme; "
+                "attach a LoopColorDeclaration with "
                 "with_loop_color_declaration. Model names or numerical CA/CF "
-                "values do not define a formal-colour continuation"
+                "values do not define a formal-colour continuation",
             )
         if color_data is not None and color_data.scheme != declaration.scheme:
-            raise GenerationError(
-                "source colour continuation and effective loop scheme differ"
+            from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+            raise LoopRequestUnsupported(
+                "colour-declaration-coverage",
+                "source colour continuation and effective loop scheme differ",
             )
     from pyamplicol.models.external import CompiledUFOModel
 
@@ -446,7 +499,14 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     reasons = []
     preparation = run.loop.preparation
     if preparation is not None and preparation.covariant_multiplets:
-        reasons.append("v2 virtuals take no loop.preparation covariant multiplets")
+        from pyamplicol.loops.v2.refusals import ListedBlocker
+
+        reasons.append(
+            ListedBlocker(
+                "covariant-multiplets",
+                "v2 virtuals take no loop.preparation covariant multiplets",
+            )
+        )
     return tuple(reasons)
 
 
@@ -573,9 +633,12 @@ def _require_declared_corrections(compiled, corrections) -> None:
     }
     undeclared = [name for name in corrections if orders.get(name, 0) < 1]
     if undeclared:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "undeclared-corrections",
             "requested corrections require declared NLO model support: the "
-            f"source model does not expand {undeclared} perturbatively"
+            f"source model does not expand {undeclared} perturbatively",
         )
 
 
@@ -596,11 +659,14 @@ def _v2_scale_parameter(compiled, fixed: Mapping[str, str]) -> str:
     if len(found) != 1:
         found = [record.name for record in externals]
     if len(found) != 1:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "scale-parameter",
             "the model's renormalisation-scale parameter is not identified: v2 "
             "takes the adjustable external parameter at UFO/SLHA code (LOOP, 1) "
             "or the only one of block LOOP, and this model has "
-            f"{sorted(found) or 'none'} there"
+            f"{sorted(found) or 'none'} there",
         )
     return str(found[0])
 
@@ -628,8 +694,14 @@ def _loop_orders_record(request) -> object:
 
 
 def _v2_request(backend, context, index):
+    """The slice request of one expanded process (``_v2_request_born``)."""
+
+    return _v2_request_born(backend, context, index)[0]
+
+
+def _v2_request_born(backend, context, index):
     """The slice request of one expanded process (``loops.v2.assemble``),
-    checked before any loop generation.
+    checked before any loop generation, with its Born DAG.
 
     The Born bounds are the process's coupling-order limits. The loop orders
     follow its Born amplitude orders (``v2_loop_orders``), read from the Born
@@ -667,9 +739,12 @@ def _v2_request(backend, context, index):
         & set(veto)
     )
     if external:
-        raise GenerationError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            "veto-external-particle",
             f"{label}: generation.particle_veto removes external particles "
-            f"(|PDG| {external}); a veto only applies to internal lines and loops"
+            f"(|PDG| {external}); a veto only applies to internal lines and loops",
         )
     born, dag = born_amplitude_orders(compiled, process, limits, veto)
     if not born:
@@ -702,7 +777,96 @@ def _v2_request(backend, context, index):
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
         selection=selection,
+    ), dag
+
+
+def _born_members(backend, context):
+    """The slice requests of the expanded processes that have a Born
+    amplitude, with ``context`` restricted to them, and the skipped members
+    (m-sm PLAN Q2 (a)).
+
+    A concrete process of a multiparticle request (``p p > e+ e-``: its
+    member ``g g > e+ e-``) with no Born amplitude within the coupling-order
+    limits is loop-induced: it is skipped with a typed record (key
+    ``loop-induced``, the dry run's ``skipped_members`` and the artifact's
+    ``loop_skipped_members`` extension), and the Born x virtual sum of the
+    request is that of its other members (the loop-squared contribution of
+    such a member, which MadLoop's multiparticle output holds, comes with
+    the loop-induced milestone). A request with no member left, or a single
+    concrete process, is refused (``loop-induced``)."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+    requests, dags, kept, skipped = [], [], [], []
+    for index, entry in enumerate(context.expanded):
+        try:
+            request, dag = _v2_request_born(backend, context, index)
+        except LoopRequestUnsupported as error:
+            if error.key != "loop-induced" or entry.source_expansion_size <= 1:
+                raise
+            skipped.append(
+                {
+                    "key": entry.request.name,
+                    "process": entry.request.expression,
+                    "request": entry.source_request.name,
+                    "request_expression": entry.source_request.expression,
+                    "refusal": error.key,
+                    "reason": str(error),
+                }
+            )
+            continue
+        requests.append(request)
+        dags.append(dag)
+        kept.append(index)
+    sources = {context.expanded[index].source_request.name for index in kept}
+    empty = sorted(
+        {
+            (record["request"], record["request_expression"])
+            for record in skipped
+            if record["request"] not in sources
+        }
     )
+    if empty:
+        name, expression = empty[0]
+        raise LoopRequestUnsupported(
+            "loop-induced",
+            f"no concrete process of {name!r} ({expression}) has a Born "
+            "amplitude within the coupling-order limits: "
+            + ", ".join(
+                record["process"] for record in skipped if record["request"] == name
+            ),
+        )
+    restricted = replace(
+        context,
+        expanded=tuple(context.expanded[index] for index in kept),
+        limits=tuple(context.limits[index] for index in kept),
+    )
+    return restricted, tuple(requests), tuple(dags), tuple(skipped)
+
+
+def _plan_policy_checks(compiled, request, model, dag):
+    """The dry run's checks of an electroweak request that need only the
+    model and the Born DAG (``LoopSlice.generate`` makes them again on the
+    Born and the loop-side trees): the external-photon convention
+    (``external-photon-scheme``) and the width policy on the Born currents
+    (``ew_policy.require_zero_widths``; the width and complex-parameter
+    policy is m-sm MS-CMS's, the dry run only calls it). ``model`` is the
+    request's ``prepare_request_model``."""
+
+    from pyamplicol.loops.v2 import ew_policy
+    from pyamplicol.loops.v2.assemble import resolve_request
+    from pyamplicol.processes.model import build_model_process_ir
+
+    resolved = resolve_request(compiled, request)
+    species = model.prepared.structure.perturbative_species_orders
+    if not ew_policy.electroweak(compiled, resolved, species):
+        return
+    process = build_model_process_ir(
+        resolved.process, compiled.ir, color_accuracy="full"
+    )
+    fixed = model.fixed_parameters
+    ew_policy.external_photon_scheme(compiled, resolved, process, fixed, species)
+    ew_policy.require_zero_widths(compiled, resolved, (dag,), fixed)
 
 
 def _plan_v2(backend, processes, blockers, *, model=None):
@@ -722,11 +886,16 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import prepare_request_model
     from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
-    from pyamplicol.loops.v2.refusals import LOOP_ADMISSION_REFUSALS
+    from pyamplicol.loops.v2.refusals import (
+        LOOP_ADMISSION_REFUSALS,
+        LOOP_CONFIGURATION_REFUSALS,
+        LOOP_INTERNAL_REFUSALS,
+        keyed_error,
+    )
     from pyamplicol.processes.refusals import PROCESS_REQUEST_REFUSALS
 
     blockers = blockers + _v2_blockers(backend)
-    context, coverage = None, []
+    context, coverage, skipped = None, [], ()
     if not blockers:
         try:
             context = _prepare(
@@ -738,15 +907,21 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                     "loop-generation-plan", backend._progress, len(processes.requests)
                 ),
             )
-            prepared = set()
-            for index, entry in enumerate(context.expanded):
-                request = _v2_request(backend, context, index)
+            context, requests, dags, skipped = _born_members(backend, context)
+            prepared = {}
+            for entry, request, dag in zip(
+                context.expanded, requests, dags, strict=True
+            ):
                 recipe = request_record(request)
                 del recipe["process"]
                 key = json.dumps(recipe, sort_keys=True)
                 if key not in prepared:
-                    prepare_request_model(context.resolved.compiled, request)
-                    prepared.add(key)
+                    prepared[key] = prepare_request_model(
+                        context.resolved.compiled, request
+                    )
+                _plan_policy_checks(
+                    context.resolved.compiled, request, prepared[key], dag
+                )
                 coverage.append(
                     {
                         "key": entry.request.name,
@@ -765,7 +940,8 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                     }
                 )
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
-            blockers = (str(e),)
+            # A listed key first (``refusals.keyed_error``).
+            blockers = (str(keyed_error(e)),)
     result = _plan_result(
         backend, processes, blockers, context=context, coverage=coverage
     )
@@ -785,12 +961,40 @@ def _plan_v2(backend, processes, blockers, *, model=None):
             f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
             for refusal in LOOP_ADMISSION_REFUSALS
         ),
+        loop_configuration_refusals=tuple(
+            f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
+            for refusal in LOOP_CONFIGURATION_REFUSALS
+        ),
+        loop_internal_refusals=tuple(
+            f"{refusal.key}: {refusal.feature}" for refusal in LOOP_INTERNAL_REFUSALS
+        ),
+        # Members of multiparticle requests without a Born (m-sm Q2 (a)).
+        skipped_members=tuple(skipped),
         process_request_refusals=tuple(
             f"{refusal.key}: {refusal.feature}; instead: {refusal.remedy}"
             for refusal in PROCESS_REQUEST_REFUSALS
         ),
     )
     return replace(result, estimated_coverage=estimated)
+
+
+# The artifact extension of the skipped members of multiparticle requests
+# (``_born_members``, m-sm PLAN Q2 (a)).
+SKIPPED_MEMBERS_EXTENSION = "loop_skipped_members"
+
+
+def _skipped_members_hook(skipped):
+    """The manifest extension recording the skipped members (no files)."""
+
+    def hook(_builder):
+        return {
+            SKIPPED_MEMBERS_EXTENSION: {
+                "schema_version": 1,
+                "members": [dict(record) for record in skipped],
+            }
+        }
+
+    return hook
 
 
 def _v2_member(generated, request, expression):
@@ -842,7 +1046,17 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
 
     blockers = _blocked(backend, processes)
     if blockers:
-        raise GenerationError("; ".join(blockers))
+        # The first listed configuration refusal, typed (its key); the
+        # message names every one.
+        first = blockers[0]
+        if len(blockers) == 1:
+            raise first.error()
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
+
+        raise LoopRequestUnsupported(
+            first.key,
+            first.message + "; also: " + "; ".join(blockers[1:]),
+        )
     reporter = GenerationPhaseReporter(backend._progress)
     reporter.start_generation(
         total=3, details={"execution_mode": "loop_recurrence", "engine": "v2"}
@@ -862,6 +1076,8 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                 planning=False,
                 phase=phase,
             )
+            # Members with a Born (m-sm Q2 (a)); the others are recorded.
+            context, requests, _dags, skipped = _born_members(backend, context)
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
@@ -873,7 +1089,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                 total=len(context.expanded),
             ) as phase:
                 for index, entry in enumerate(context.expanded):
-                    request = _v2_request(backend, context, index)
+                    request = requests[index]
                     name = entry.request.name
                     found = (
                         _v2_member(generated, request, entry.request.expression)
@@ -1065,6 +1281,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     process_groups=process_groups,
                     timings=reporter.timings,
                     api_bundle_hook=None,
+                    **(
+                        {"payload_hook": _skipped_members_hook(skipped)}
+                        if skipped
+                        else {}
+                    ),
                     staged_validation=(
                         lambda staged: _validate_v2_artifact(
                             backend, staged, context, generated, members
@@ -1079,6 +1300,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         reporter.finish_generation(success=False, message=str(error))
         if isinstance(error, (KeyboardInterrupt, SystemExit, PyAmpliColError)):
             raise
+        from pyamplicol.loops.v2.refusals import keyed_error
+
+        # An engine error class with a listed key (``refusals``: internal
+        # and admission keys, native export features) keeps it, typed.
+        keyed = keyed_error(error)
+        if isinstance(keyed, PyAmpliColError):
+            raise keyed from error
         raise GenerationError(str(error)) from error
     reporter.finish_generation()
     return GenerationResult(

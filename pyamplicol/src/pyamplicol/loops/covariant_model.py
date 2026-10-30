@@ -411,7 +411,13 @@ def build_covariant_structure(
     if request_scope is not None:
         request_scope.require_raw(raw)
     if 1 not in raw.metadata.get("gauge", ()):
-        raise ValueError("source model does not declare Feynman gauge")
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+        raise LoopRequestUnsupportedValue(
+            "feynman-gauge",
+            "the source model does not declare Feynman gauge (gauge = "
+            f"{list(raw.metadata.get('gauge', ()))})",
+        )
     restriction = raw.metadata.get("restriction", {})
     if restriction.get("card") is not None and not restriction.get("applied", False):
         raise NotImplementedError(

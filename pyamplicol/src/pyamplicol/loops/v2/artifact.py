@@ -934,12 +934,16 @@ def _not_storable(request: Any, what: str, error: Exception) -> Exception:
     loaded process regenerates it. There is no plan-only downgrade; any other
     exception of the export propagates (fail closed)."""
 
-    from pyamplicol.api.errors import GenerationError
+    from .refusals import NativeExportRefused
 
-    return GenerationError(
-        f"{request.process}: its {what} cannot be exported natively ({error}); "
-        "a stored plan v4 process evaluates from them and never regenerates "
-        "at load (REQUIREMENTS_ADDENDUM G)"
+    # Typed with the export refusal's key (m-sm MS-MODEL), not as text
+    # inside a plain GenerationError.
+    feature = getattr(error, "feature", None) or "native-export"
+    return NativeExportRefused(
+        feature,
+        f"{feature}: {request.process}: its {what} cannot be exported natively "
+        f"({error}); a stored plan v4 process evaluates from them and never "
+        "regenerates at load (REQUIREMENTS_ADDENDUM G)",
     )
 
 

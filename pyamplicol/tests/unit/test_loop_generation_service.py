@@ -212,9 +212,11 @@ def test_public_colour_scheme_mismatch_fails_before_preparation(monkeypatch):
         lambda *a, **kw: pytest.fail("mismatched scheme reached source preparation"),
     )
     plan = backend.plan(ProcessSet((ProcessRequest.parse("g g > g g"),)))
-    assert plan.unsupported_features == (
-        "source colour continuation and effective loop scheme differ",
-    )
+    (feature,) = plan.unsupported_features
+    assert feature.startswith(
+        "colour-declaration-coverage: source colour continuation and effective "
+        "loop scheme differ"
+    ), feature
 
 
 @pytest.mark.parametrize(

@@ -135,6 +135,9 @@ LOOP_SEGMENT_FORMS: tuple[LoopSegmentForm, ...] = ("fused", "split")
 class LoopKernelCatalogueError(ValueError):
     """Raised when a model cannot provide a complete exact loop kernel."""
 
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "loop-kernel-catalogue"
+
 
 @dataclass(frozen=True, order=True, slots=True)
 class LoopMonomialEntry:
