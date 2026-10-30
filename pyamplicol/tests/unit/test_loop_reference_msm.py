@@ -267,9 +267,7 @@ def test_every_loop_sector_has_the_universal_double_pole(
     _check_double_poles(_fixture(run_id), _spec(_runs(campaign)[run_id]))
 
 
-def test_existing_fixtures_name_their_r2_lists(
-    campaign: dict, manifest: dict
-) -> None:
+def test_existing_fixtures_name_their_r2_lists(campaign: dict, manifest: dict) -> None:
     """existing_r2_couplings.json (mqcd_campaign.py existing-r2): every existing
     fixture of a row has the R2 name list of its MadLoop export(s) or a reason
     for none, and the manifest links it."""
@@ -285,7 +283,9 @@ def test_existing_fixtures_name_their_r2_lists(
         assert entry["export"].startswith("${LOOP_REFERENCE_ROOT}/runs/")
         assert Path(entry["export"]).parent.name == key
         called = entry["called"]
-        assert called == sorted(set(called)) and len(called) <= entry["ufo_r2_couplings"]
+        assert (
+            called == sorted(set(called)) and len(called) <= entry["ufo_r2_couplings"]
+        )
         assert set(entry["called_as"]) <= set(called)
     for row in manifest["rows"]:
         for ref in row["existing_references"]:
