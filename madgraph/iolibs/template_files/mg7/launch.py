@@ -3978,7 +3978,14 @@ class MadgraphSubprocess:
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 
-def load_mg5_options(me_dir=None) -> dict:
+_CLUSTER_OPTIONS = (
+    'cluster_type', 'cluster_queue', 'cluster_walltime', 'cluster_nb_retry',
+    'cluster_retry_wait', 'cluster_status_update', 'cluster_temp_path',
+    'cluster_requirement', 'nb_core',
+)
+
+
+def load_mg5_options(me_dir=None, with_cluster=False) -> dict:
     """Read the tool paths from the MadGraph configuration, so the launcher
     knows where LHAPDF and the optional programs (Pythia8/Delphes/MadSpin/
     reweight/analysis) live.
@@ -3993,6 +4000,10 @@ def load_mg5_options(me_dir=None) -> dict:
     the last word. It defaults to the working directory, which is right for
     bin/generate_events (it chdirs there first) but not for an in-process
     caller, which has not moved yet.
+
+    ``with_cluster`` adds the batch system settings that are set, for the
+    cluster mode. They are left out otherwise, since the madevent interface
+    would apply every option it is given.
     """
 
     import madgraph
@@ -4005,11 +4016,6 @@ def load_mg5_options(me_dir=None) -> dict:
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
         'heptools_install_dir': None, 'hepmc3_path': None,
-        # the batch system of the cluster mode, where [cluster] leaves it open
-        'cluster_type': None, 'cluster_queue': None, 'cluster_walltime': None,
-        'cluster_nb_retry': None, 'cluster_retry_wait': None,
-        'cluster_status_update': None, 'cluster_temp_path': None,
-        'cluster_requirement': None, 'nb_core': None,
     }
     config_files = []
     base_config = misc.base_config_file()
@@ -4030,7 +4036,8 @@ def load_mg5_options(me_dir=None) -> dict:
                 if '=' not in line:
                     continue
                 name, value = (x.strip() for x in line.split('=', 1))
-                if name not in options or value in ('', 'None'):
+                if value in ('', 'None') or not (
+                        name in options or (with_cluster and name in _CLUSTER_OPTIONS)):
                     continue
                 if (name.endswith('_path') or name in _ROOTED_OPTIONS) and \
                         not os.path.isabs(value) and \

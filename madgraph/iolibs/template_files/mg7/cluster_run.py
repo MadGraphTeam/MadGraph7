@@ -478,5 +478,5 @@ def run_cluster(switch=None, reweight=None) -> None:
     if process.run_card["cluster"]["mode"] == "full" and \
             process.run_card["generation"]["events"] <= 0:
         raise ClusterRunError("[generation] events must be positive in cluster mode")
-    options = launch.load_mg5_options()
+    options = launch.load_mg5_options(with_cluster=True)
     ClusterRun(process, options).execute()

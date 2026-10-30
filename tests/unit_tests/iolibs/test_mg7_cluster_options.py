@@ -39,8 +39,11 @@ class TestClusterOptions(unittest.TestCase):
             with open(os.path.join(me_dir, 'Cards', 'me5_configuration.txt'), 'w') as f:
                 f.write('cluster_type = slurm\ncluster_queue = gpu # the queue\n'
                         'cluster_walltime = None\n')
-            options = launch.load_mg5_options(me_dir)
+            options = launch.load_mg5_options(me_dir, with_cluster=True)
+            plain = launch.load_mg5_options(me_dir)
         self.assertEqual(options['cluster_type'], 'slurm')
         self.assertEqual(options['cluster_queue'], 'gpu')
         # a value of None leaves the default
-        self.assertIsNone(options['cluster_walltime'])
+        self.assertNotIn('cluster_walltime', options)
+        # the madevent interface applies every option it is given
+        self.assertFalse([key for key in plain if key.startswith('cluster')])
