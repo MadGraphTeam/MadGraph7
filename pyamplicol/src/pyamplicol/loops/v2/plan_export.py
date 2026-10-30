@@ -559,9 +559,15 @@ class _Exporter:
                     self._step(steps, group, 0, shift, accumulator)
         if values:
             raise AssertionError("a trie object without a consumer")
+        # A step's rank is its largest source storage plus its largest
+        # segment degree (``_step``), which can exceed every single ring's
+        # summed degrees (``trie.rank``) where a trie node joins sources and
+        # segments of different degrees (EW rings of degree-0 and degree-1
+        # vertices): the family's rank bounds both.
+        rank = max([trie.rank, *(step["rank_in"] + step["degree"] for step in steps)])
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
-            "rank": trie.rank,
+            "rank": rank,
             "orders": [
                 self.orders.setdefault(order, len(self.orders))
                 for order in accumulators
