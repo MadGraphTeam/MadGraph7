@@ -142,9 +142,10 @@ def _ufo_files(directory: Path) -> list[str]:
 def test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name(
     request, tmp_path, name
 ):
-    """Each shipped file equals the reference copy's (loop_qcd_qed_sm: the
-    download; loop_qcd_qed_sm_Gmu: its Python-3 conversion, whose restriction
-    cards are the download's), and a bare name selects the shipped model."""
+    """Each shipped file equals the reference copy's (UFOmodeldb's with the
+    issue-1 model patch; loop_qcd_qed_sm_Gmu: its Python-3 conversion, whose
+    restriction cards are the download's but the patched with_b_mass), and a
+    bare name selects the shipped model."""
 
     import tomllib
 
@@ -169,10 +170,17 @@ def test_shipped_qcd_qed_model_is_the_reference_and_selected_by_name(
         if f"/ufo/{name}/" in entry["canonical_package_path"]
     }
     assert sorted(records) == names
+    # The G_mu modules take the Python-3 conversion, alone or after the
+    # UFOmodeldb issue-1 model patch (whose charge appends are folded).
     converted = sorted(
         file
         for file, entry in records.items()
-        if entry["transformation_id"] == "ufo-python3-conversion-v1"
+        if entry["transformation_id"]
+        in (
+            "ufo-python3-conversion-v1",
+            "ufomodeldb-issue-1-patch-python3-v1",
+            "ufomodeldb-issue-1-patch-python3-fold-v1",
+        )
     )
     expected = (
         [file for file in names if file.endswith(".py")]

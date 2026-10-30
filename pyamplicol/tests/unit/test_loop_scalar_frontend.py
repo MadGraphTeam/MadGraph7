@@ -69,7 +69,8 @@ def test_active_bindings_roundtrip_and_laurent(source):
 @pytest.mark.parametrize(
     "change,match",
     [
-        ("gate.expr='0'", "certified body"),
+        # A value written after its constructor: the listed refusal.
+        ("gate.expr='0'", "ufo-value-writes"),
         (
             "gate=Function(name='gate',arguments=('long'),expression='long')",
             "argument string",
@@ -183,8 +184,27 @@ def test_complete_gmu_scalar_source_coverage(loop_gmu_ufo):
     configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     program = lower_scalar_program(raw)
-    assert len(program.definitions) == 197 + 107 + 1809
+    # The UFOmodeldb issue-1 patch adds CKMc12, CKMc13, CKMc23, CKMs13e and
+    # splits R2_G0tt_{d,s,b} into six couplings.
+    assert len(program.definitions) == 201 + 107 + 1812
     assert len(program.library.helpers) == 16
+
+
+def test_conditional_decided_by_its_bindings_forms_only_the_taken_branch(source):
+    """Python's conditional is lazy: bound to an exact number (a fixed
+    parameter), ``0 if m == 0 else mu**2/m**2`` is 0 at m = 0 (no 0^-2, an
+    infinite coefficient no evaluator accepts) and the other branch
+    otherwise; a free ``m`` keeps the native conditional."""
+
+    library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
+    text = "( 0 if m == 0 else mu**2/m**2 )"
+    zero = library.lower(text, locals={"m": library.lower("complex(0,0)")})
+    assert zero.value == library.zero
+    half = library.lower(text, locals={"m": library.lower("complex(0.5,0)")})
+    assert half.value == library.lower("4*mu**2").value
+    free = library.lower(text).value
+    assert free.get_name() == "symbolica::if"
+    assert library.decided_number(library.lower("1 if 2 < 1 else 0").value) == 0
 
 
 def test_namespace_alias_keeps_record_identity(source):
@@ -237,33 +257,3 @@ def test_native_component_access_preserves_extremes(
         assert Decimal(values[width * row + 2][0]) == Decimal(original[row][1])
         assert Decimal(values[width * row + 4][0]) == 0
         assert Decimal(values[width * row + 6][0]) == 1
-
-
-def test_fixed_condition_lowers_only_the_taken_branch(source):
-    """A conditional whose test reads only exact numbers (a parameter fixed at
-    generation) is decided at lowering, as Python evaluates only the taken
-    branch: '0 if MB == 0 else 1/MB' at MB = 0 must not build 1/0, which made
-    the evaluator refuse 'infinity coefficients' (EW counterterm parameters
-    of loop_qcd_qed_sm with a massless b)."""
-    from symbolica import E, S
-
-    library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
-    fixed = {
-        name: library.lower(f"complex({value},0)")
-        for name, value in (("zero", "0"), ("two", "2"), ("half", "0.5"))
-    }
-    text = "0 if m == 0 else 1/m"
-    at_zero = library.lower(text, locals={"m": fixed["zero"]})
-    assert at_zero.value == E("0")
-    library.evaluator((at_zero,), ())  # no infinity coefficient
-    assert library.lower(text, locals={"m": fixed["two"]}).value == E("1/2")
-    for test, expected in (("m != 2", "4"), ("m <= 1/2", "4"), ("m < 1/2", "5")):
-        lowered = library.lower(f"4 if {test} else 5", locals={"m": fixed["half"]})
-        assert lowered.value == E(expected), test
-    # Free symbols and complex orderings stay native run-time conditionals.
-    free = library.lower(text)
-    assert free.value.contains(S("UFO::m"))
-    assert library.decided(library.lower("m == 0").value) is None
-    imaginary = library.lower("complex(0,1)")
-    ordered = library.lower("4 if m < 0 else 5", locals={"m": imaginary})
-    assert ordered.value != E("4") and ordered.value != E("5")

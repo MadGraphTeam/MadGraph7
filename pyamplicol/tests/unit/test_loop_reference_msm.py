@@ -114,9 +114,20 @@ def test_campaign_and_manifest_cover_every_row(campaign: dict, manifest: dict) -
 
 def test_every_run_process_and_scheme_is_specified(campaign: dict) -> None:
     schemes = required_spec.load(required_spec.DEFAULT_SPEC)["schemes"]
+    # A run may re-evaluate the process of one of its row's existing
+    # references on the patched models (MS-UFO-PATCH): its role is that one's.
+    existing = {}
+    for row in campaign["rows"]:
+        keys = {Path(path).stem for path in row["existing_fixtures"]}
+        for exports in row.get("existing_r2_exports", {}).values():
+            if not isinstance(exports, str):
+                keys.update(Path(export).parent.name for export in exports)
+        for run_id in row["runs"]:
+            existing[run_id] = keys
     for run in campaign["runs"]:
         spec = _spec(run)
-        assert spec["role"] == "msm" and spec["scheme_data"]["madloop_model"], run["id"]
+        assert spec["role"] == "msm" or run["process"] in existing[run["id"]], run["id"]
+        assert spec["scheme_data"]["madloop_model"], run["id"]
         # Explicit squared orders on every job (m-sm/PLAN.md §3.2 MS-REF 2).
         process = spec["madloop"]["process"]
         assert re.search(
@@ -479,6 +490,20 @@ def _check_ir_single_poles(fixture: dict, spec: dict, run: dict) -> None:
         # A technical epsIR = 0 run (MS-POLES oracle): no IR poles, no rule 1 reference.
         assert run.get("binding") is False
         assert min(abs(r) for r in residuals.values()) > 1e-3, residuals
+    elif scheme.get("tau_mass_counterterms_omitted"):
+        # The UFOmodeldb issue-1 patch's retained limitation: with a massive
+        # tau the EW counterterms (which omit its mass) leave
+        # MTA^2 / (2 sw^2 (s - MW^2)) x (alpha/2pi) Born in the single pole of
+        # u d~ > e+ ve (the user's patch notes; the only process of the scheme).
+        assert fixture["pdgs"] == [2, -1, -11, 12]
+        p = {k: float(v) for k, v in scheme["parameters"].items()}
+        sw2 = 1 - p["MW"] ** 2 / p["MZ"] ** 2
+        for (index, _qcd, _qed), residual in residuals.items():
+            legs = [[float(x) for x in leg] for leg in fixture["points"][index][:2]]
+            total = [a + b for a, b in zip(*legs, strict=True)]
+            s = _minkowski(total, total)
+            expected = p["MTA"] ** 2 / (2 * sw2 * (s - p["MW"] ** 2))
+            assert abs(residual - expected) <= IR_SINGLE_POLE_TOLERANCE, residuals
     elif scheme.get("ir_single_pole_remnant"):
         # The recorded model remnant (not UV finite) is real.
         assert min(abs(r) for r in residuals.values()) > 1e-6, residuals

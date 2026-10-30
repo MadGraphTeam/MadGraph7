@@ -229,9 +229,9 @@ def test_relocated_checkout_derives_its_workspace(tmp_path):
     assert str(root / "workspace" / "reference") in outcomes["other_input"][1]
 
     elsewhere = tmp_path / "elsewhere"
-    (elsewhere / "reference/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3").mkdir(
-        parents=True
-    )
+    (
+        elsewhere / "reference/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3"
+    ).mkdir(parents=True)
     outcomes = _run(checkout, PYAMPLICOL_LOOP_WORKSPACE=str(elsewhere))
     assert outcomes["other_input"][0] == "passed", outcomes
     assert outcomes["loop_input_after_a_skip"][0] == "passed", outcomes

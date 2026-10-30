@@ -85,6 +85,10 @@ class ScalarFunctionLibrary:
                 "imaginary_part",
             )
         }
+        self._choose_name = self.choose.get_name()
+        self._predicate_heads = {
+            symbol.get_name(): name for name, symbol in self.predicates.items()
+        }
         records = raw.collections["functions"]
         bindings = dict(raw.metadata.get("function_bindings", {}))
         if records and raw.metadata.get("function_binding_scope") != "function_library":
@@ -104,6 +108,9 @@ class ScalarFunctionLibrary:
             record = records[record_id]
             fields = record["fields"]
             if not fields.get("expression_source", {}).get("exact", False):
+                from pyamplicol.models.source_refusals import refuse_value_writes
+
+                refuse_value_writes(raw.name, fields["expression_source"])
                 raise ValueError(f"source helper {name!r} lacks a certified body")
             arguments = fields["arguments"]
             if isinstance(arguments, str):
@@ -191,56 +198,44 @@ class ScalarFunctionLibrary:
         self.helper_bodies = MappingProxyType(bodies)
         self.helpers = MappingProxyType(self.helpers)
 
-    def decided(self, condition: Any) -> bool | None:
-        """Python's truth of a lowered condition whose predicates read only
-        exact numbers (e.g. a parameter fixed at generation compared with a
-        literal), else ``None``: the native conditional decides at run time.
+    def decided_number(self, expression: Any) -> Fraction | None:
+        """The exact real value of ``expression`` when it is decided where it
+        is formed: an exact rational number, or this library's predicates
+        (``truth``, ``equal``, ``less``, ``less_equal``) and conditionals
+        (``symbolica::if``) of such values; else None (e.g. a model symbol,
+        a complex or floating-point number)."""
 
-        Exact rationals only; a predicate the run time would answer with NaN
-        (an ordering of complex numbers) stays undecided.
-        """
         from symbolica import AtomType
 
-        heads = {
-            self.predicates[name].get_name(): name
-            for name in ("truth", "equal", "less", "less_equal")
-        }
-        choose = self.choose.get_name()
-
-        def exact(atom):
-            kind = atom.get_type()
-            if kind == AtomType.Num:
-                # Floats print with a mantissa point; exact numbers never do.
-                return None if "." in atom.to_canonical_string() else atom
-            if kind != AtomType.Fn:
+        kind = expression.get_type()
+        if kind == AtomType.Num:
+            try:
+                return Fraction(expression.to_canonical_string())
+            except (ValueError, ZeroDivisionError):
                 return None
-            name, arguments = atom.get_name(), list(atom)
-            if name == choose and len(arguments) == 3:
-                test = exact(arguments[0])
-                if test is None:
-                    return None
-                return exact(arguments[1] if test != self.zero else arguments[2])
-            mode = heads.get(name)
-            values = [exact(argument) for argument in arguments]
-            if mode is None or any(value is None for value in values):
+        if kind != AtomType.Fn:
+            return None
+        name, arguments = expression.get_name(), list(expression)
+        if name == self._choose_name and len(arguments) == 3:
+            condition = self.decided_number(arguments[0])
+            if condition is None:
                 return None
-            if mode == "truth" and len(values) == 1:
-                result = values[0] != self.zero
-            elif mode == "equal" and len(values) == 2:
-                result = values[0] == values[1]
-            elif mode in {"less", "less_equal"} and len(values) == 2:
-                if not all(value.is_real() for value in values):
-                    return None
-                difference = values[1] - values[0]
-                result = difference.is_positive() or (
-                    mode == "less_equal" and difference == self.zero
-                )
-            else:
-                return None
-            return self.one if result else self.zero
-
-        value = exact(condition)
-        return None if value is None else value != self.zero
+            return self.decided_number(arguments[1 if condition != 0 else 2])
+        head = self._predicate_heads.get(name)
+        if head is None:
+            return None
+        numbers = [self.decided_number(argument) for argument in arguments]
+        if any(number is None for number in numbers):
+            return None
+        if head == "truth" and len(numbers) == 1:
+            return Fraction(int(numbers[0] != 0))
+        if head not in ("equal", "less", "less_equal") or len(numbers) != 2:
+            return None
+        left, right = numbers
+        decision = {"equal": left == right, "less": left < right}.get(
+            head, left <= right
+        )
+        return Fraction(int(decision))
 
     def inline(self, expression: Any, where: Any) -> Any:
         """Replace every helper call (value or diagnostic) whose arguments
@@ -387,15 +382,15 @@ class ScalarFunctionLibrary:
                     )
             if isinstance(node, ast.IfExp):
                 condition, diagnostic = truth(lower(node.test))
-                taken = self.decided(condition)
-                if taken is not None:
-                    # As in Python, only the taken branch is evaluated: the
-                    # other may divide by the fixed value that decided the test
-                    # ('0 if MB == 0 else .../MB' at MB = 0).
-                    branch = lower(node.body if taken else node.orelse)
-                    return ScalarExpression(
-                        branch.value, diagnostic + branch.diagnostic
-                    )
+                decided = self.decided_number(condition)
+                if decided is not None:
+                    # Python's conditional is lazy: a condition the bindings
+                    # (fixed parameters) decide forms its taken branch only,
+                    # so a singularity of the other branch at the fixed
+                    # values (the 1/MB^2 of ``0 if MB == 0 else ...`` at
+                    # MB = 0) never forms an infinite coefficient.
+                    taken = lower(node.body if decided != 0 else node.orelse)
+                    return ScalarExpression(taken.value, diagnostic + taken.diagnostic)
                 yes, no = lower(node.body), lower(node.orelse)
                 return ScalarExpression(
                     self.choose(condition, yes.value, no.value),
