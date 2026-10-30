@@ -11414,7 +11414,7 @@
    "reference_outliers": [],
    "vanishing": [
     {
-     "sector": "total",
+     "sector": "QED^6",
      "coefficient": "single_pole"
     }
    ],
