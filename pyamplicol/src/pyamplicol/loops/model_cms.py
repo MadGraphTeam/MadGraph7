@@ -75,6 +75,12 @@ MASS_SCHEMES = (REAL_ON_SHELL, COMPLEX_MASS)
 # (m-sm PLAN §1.2: CMSParam, the G_mu UFO's LogSwitch and
 # GfRedefinitionChoice); UFO conventions looked up by name as MG5_aMC does.
 CONVENTION_PARAMETERS = (*CMS_PARAMETER_NAMES, "LogSwitch", "GfRedefinitionChoice")
+# Whether the native point inputs of stored artifacts take complex pole masses
+# (M-SM MS-CMS-N: complex plan masses through the native trees and executor).
+# Until they do, the public route refuses a complex-mass request with a pole
+# mass (``require_native_pole_masses``, ``complex-mass-scheme``), whose
+# artifact could not be stored; the integration of MS-CMS-N sets it True.
+NATIVE_POLE_MASSES = False
 REFUSAL_KEYS = (
     "mass-scheme",
     "complex-mass-scheme",
@@ -910,6 +916,23 @@ def require_stable_external_states(compiled: Any, pdgs: Any, process: str) -> No
             "[loop.preparation] fixed_parameters ("
             + ", ".join(f'{width} = "0"' for width in widths)
             + ")",
+        )
+
+
+def require_native_pole_masses(compiled: Any, process: str) -> None:
+    """Refuse (``complex-mass-scheme``) a public-route request with complex
+    pole masses while the native point inputs of stored artifacts take none
+    (``NATIVE_POLE_MASSES``); ``LoopSlice.generate`` with Python inputs
+    serves it meanwhile."""
+
+    record = scheme_metadata(compiled)
+    if record and record["masses"] and not NATIVE_POLE_MASSES:
+        raise ComplexMassSchemeUnsupported(
+            "complex-mass-scheme",
+            f"{process}: the native point inputs of stored artifacts take no "
+            "complex pole masses in this build (M-SM MS-CMS-N); "
+            "loops.v2.assemble.LoopSlice.generate on model_cms.complex_mass_model "
+            "evaluates the request with Python inputs",
         )
 
 

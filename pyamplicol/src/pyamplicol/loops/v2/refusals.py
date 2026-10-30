@@ -304,13 +304,15 @@ LOOP_ADMISSION_REFUSALS = (
         "change_mass_to_complex_scheme, loops.model_cms) cannot take: no raw "
         "UFO records, an external CMSParam, an internal width without a source "
         "expression, a Yukawa input without one PDG code, no ZERO parameter, "
-        "a CMASS_ name already taken",
+        "a CMASS_ name already taken; or a public-route request with complex "
+        "pole masses while stored artifacts' native point inputs take none "
+        "(model_cms.NATIVE_POLE_MASSES, until M-SM MS-CMS-N)",
         "the complex-mass scheme is MG5_aMC's transform of the model's own "
         "records; a model outside its assumptions has no such transform",
         'the real on-shell scheme (mass_scheme = "real-on-shell") with the '
         "widths fixed to zero, or a model within the transform's assumptions",
-        "none (a guard of the transform)",
-        "none",
+        "none (a guard of the transform); the native pole masses: M-SM MS-CMS-N",
+        "complex plan masses through the native trees and executor",
     ),
     LoopAdmissionRefusal(
         "cms-internal-mass",

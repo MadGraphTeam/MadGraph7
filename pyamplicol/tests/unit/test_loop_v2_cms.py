@@ -34,6 +34,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.loops.model_cms import (
+    NATIVE_POLE_MASSES,
     REFUSAL_KEYS,
     ComplexMassSchemeUnsupported,
     require_mass_scheme,
@@ -146,9 +147,15 @@ def test_mass_scheme_refusals_fire_in_the_dry_run(
         ProcessSet((ProcessRequest.parse(expression, name="p"),))
     )
     if key is None:
-        assert plan.unsupported_features == ()
         coverage = plan.estimated_coverage
         assert coverage["model_declaration"]["scheme"]["mass_scheme"] == "complex-mass"
+        if not NATIVE_POLE_MASSES:
+            # Stored artifacts' native inputs take no pole mass yet (MS-CMS-N).
+            (blocker,) = plan.unsupported_features
+            assert blocker.startswith("complex-mass-scheme: "), blocker
+            assert "MS-CMS-N" in blocker
+            return
+        assert plan.unsupported_features == ()
         (entry,) = coverage["processes"]
         assert entry["engine"] == "v2"
         return
@@ -265,3 +272,213 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
                 alpha_s,
             )
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+
+
+# ------------------------------------------- the G_mu UFO, every width (nightly)
+
+GMU_PARAMETERS = {
+    "Gf": "0.0000116639",
+    "aS": "0.118",
+    "MT": "173.3",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+}
+
+
+def _gmu_cms_slice(
+    loop_gmu_ufo,
+    loop_native,
+    root,
+    process,
+    born,
+    corrections,
+    *,
+    restriction="default",
+    fixed=None,
+    reglog_convention="ufo-standard",
+):
+    """A G_mu UFO request (Feynman gauge) under the complex-mass scheme at the
+    card of ``fixed`` (``complex_mass_model``): the Born orders ``born``, one
+    loop order per correction."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(
+        loop_gmu_ufo,
+        restriction=restriction,
+        cache_dir=root,
+        require_supported=False,
+        gauge="feynman",
+    )
+    fixed = dict(fixed or {})
+    model, scheme = complex_mass_model(
+        compiled,
+        fixed_parameters=fixed,
+        reglog_convention=reglog_convention,
+        cache_dir=root,
+    )
+    fixed = {k: v for k, v in fixed.items() if k in model.parameter_defaults}
+    born = {"QCD": 0, "QED": 0, **born}
+    loops = tuple({**born, order: born[order] + 2} for order in sorted(corrections))
+    request = SliceRequest(
+        process,
+        born,
+        loops[0] if len(loops) == 1 else loops,
+        corrections=tuple(sorted(corrections)),
+        fixed_parameters=fixed,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    return model, scheme, LoopSlice.generate(model, request, loop_native)
+
+
+CM01_CARRIERS = (("double", 1e-8), ("arbitrary", 1e-8))
+# The widths of the CM01 blocks (``cms-source-gmu.json`` records none).
+CM01_WIDTHS = {
+    "finite": {"WZ": "2.49877", "WW": "2.09291", "WT": "1.37758", "WH": "0.00407468"},
+    "zero": {"WZ": "0", "WW": "0", "WT": "0", "WH": "0"},
+}
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    "convention,fixture",
+    [("ufo-standard", "cms-ufo-standard-gmu.json"), ("source", "cms-source-gmu.json")],
+)
+def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
+    loop_gmu_ufo, loop_native, tmp_path, convention, fixture
+):
+    """CM01: e- e+ > mu- mu+ [QED] on the G_mu UFO under the complex-mass
+    scheme (every width at the card: Z, W, t, H pole masses), Python inputs,
+    against MadLoop CMS (double-precision exports, ``fixture``): the Born and
+    the virtual's three Laurent coefficients at the continuum and three
+    Z-resonance points, at zero widths and at the widths x 0.001 (runtime
+    widths, one generation), binary64 and arbitrary precision (32 digits) to
+    1e-8; binary64 = AP(32) to 1e-9 at the small widths (the branch side of
+    the helpers on their cuts). ``"source"``: the G_mu source's reglog
+    override, a compatibility view ([U3]). Generation ~5 min, ~10 GB."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    reference = json.loads((FIXTURES / fixture).read_text())
+    _model, scheme, slice_ = _gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        "e- e+ > m- m+",
+        {"QED": 2},
+        ("QED",),
+        fixed={"MB": "0", "MTA": "0"},
+        reglog_convention=convention,
+    )
+    assert set(scheme.masses) == {"MZ", "MW", "MT", "MH"}
+    for block in ("finite", "zero", "small"):
+        expected = reference.get(block)
+        if expected is None:
+            continue
+        parameters = {**GMU_PARAMETERS, **expected.get("widths", CM01_WIDTHS[block])}
+        values = {}
+        for carrier, tolerance in CM01_CARRIERS:
+            precision = (
+                Precision.double() if carrier == "double" else Precision.arbitrary(32)
+            )
+            for k, point in enumerate(expected["points"]):
+                result = slice_.evaluate(
+                    point, "1000000", parameters=parameters, precision=precision
+                )
+                born, *laurent = (complex(x) for x in result.totals[:4])
+                values[carrier, k] = [born, *laurent]
+                theirs = [float(x) for x in expected["full"][k]]
+                born_reference = float(expected["born"][k])
+                assert abs(born.real - born_reference) <= tolerance * born_reference
+                errors = _laurent_errors(
+                    [x.real for x in laurent], born_reference, theirs, 1 / 132.0
+                )
+                assert max(errors) <= tolerance, (block, carrier, k, errors)
+        if block == "small":
+            for k in range(len(expected["points"])):
+                double, arbitrary = values["double", k], values["arbitrary", k]
+                scale = max(abs(x) for x in arbitrary)
+                assert (
+                    max(abs(a - b) for a, b in zip(double, arbitrary, strict=True))
+                    <= 1e-9 * scale
+                )
+
+
+def _check_sectors(slice_, reference, model, carriers, points):
+    """Per point and per squared-order sector of a MadLoop CMS row: the Born
+    and the virtual's Laurent coefficients in the campaign metric (the
+    correction's coupling: alpha_s for a QCD sector, alpha_Gmu ~ 1/132 for
+    an EW one)."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    parameters = {
+        k: v
+        for k, v in reference["parameters"].items()
+        if k in model.parameter_defaults and k not in slice_.request.fixed_parameters
+    }
+    for carrier, tolerance in carriers:
+        precision = (
+            Precision.double() if carrier == "double" else Precision.arbitrary(32)
+        )
+        for k in points:
+            row = reference["rows"][k]
+            result = slice_.evaluate(
+                reference["points"][k],
+                str(Fraction(reference["mu_r"][k]) ** 2),
+                parameters=parameters,
+                precision=precision,
+            )
+            born = sum(complex(v).real for v in result.born.values())
+            assert abs(born - row["born"]) <= tolerance * abs(row["born"])
+            virtual = {
+                tuple(sorted(dict(sector).items())): laurent
+                for sector, laurent in result.components["virtual"].items()
+            }
+            for sector in row["sectors"]["loop"]:
+                laurent = virtual[(("QCD", sector["QCD"]), ("QED", sector["QED"]))]
+                qcd = sector["QCD"] > sector["born_sector"]["QCD"]
+                errors = _laurent_errors(
+                    [complex(x).real for x in laurent.coefficients],
+                    row["born"],
+                    [sector["finite"], sector["single_pole"], sector["double_pole"]],
+                    float(parameters["aS"]) if qcd else 1 / 132.0,
+                )
+                assert max(errors) <= tolerance, (carrier, k, sector, errors)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    "name,process",
+    [("uux_emep_cms", "u u~ > e- e+"), ("uux_emepg_cms", "u u~ > e- e+ g")],
+    ids=["CM02", "CM05"],
+)
+def test_cm02_cm05_joint_corrections_with_python_inputs_equal_madloop_cms(
+    loop_gmu_ufo, loop_native, tmp_path, name, process
+):
+    """CM02 (u u~ > e- e+, at and off the Z pole) and CM05 (u u~ > e- e+ g)
+    [QCD QED] on the G_mu UFO under the complex-mass scheme with every width
+    (``required/msm/<name>.json``, MadLoop CMS in quadruple precision), Python
+    inputs: every squared-order sector at the four points in binary64 and at
+    the first point in arbitrary precision (32 digits), to 1e-8.
+    Generation ~10 min (CM02) to ~25 min (CM05)."""
+
+    reference = _reference(name)
+    model, _scheme, slice_ = _gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        process,
+        reference["born_orders"],
+        ("QCD", "QED"),
+        restriction=reference["restriction"],
+        fixed=reference["fixed_parameters"],
+    )
+    _check_sectors(
+        slice_, reference, model, (("double", 1e-8),), range(len(reference["points"]))
+    )
+    _check_sectors(slice_, reference, model, (("arbitrary", 1e-8),), [0])

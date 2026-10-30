@@ -659,7 +659,10 @@ def _v2_request(backend, context, index):
     the slice re-checks its loop-side tree currents after generation). The
     renormalisation-scale parameter is resolved here
     (``_v2_scale_parameter``)."""
-    from pyamplicol.loops.model_cms import require_stable_external_states
+    from pyamplicol.loops.model_cms import (
+        require_native_pole_masses,
+        require_stable_external_states,
+    )
     from pyamplicol.loops.v2.artifact import (
         born_amplitude_orders,
         require_zero_coloured_widths,
@@ -679,6 +682,7 @@ def _v2_request(backend, context, index):
     pdgs = (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
     # Under the complex-mass scheme external states are stable (EW-25).
     require_stable_external_states(compiled, pdgs, label)
+    require_native_pole_masses(compiled, label)
     external = sorted({abs(int(pdg)) for pdg in pdgs} & set(veto))
     if external:
         raise GenerationError(
