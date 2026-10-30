@@ -558,24 +558,30 @@ def test_sc10_equals_madloop_on_both_models(
 PATCHED_ROWS = {
     "ttx_ttx_ew": "default",  # TT04: R2_G0tt_b, now inserted by MadLoop
     "ttx_zh_ew": "default",  # SC09: likewise
+    "gt_tttx_ew": "default",  # TT05: likewise (double-double)
     "udx_tbx_ew_mb": "with_b_mass",  # ST04: the G_mu b-mass charge counterterm
+    "gb_ttxb_ew_mb": "with_b_mass",  # TT06: both (double-double)
 }
+# Rows evaluated in double-double: binary64 loses up to 1e-4 to m_b^2/s
+# cancellations (TT06) and 1e-9 (TT05), which their stability estimates flag.
+DOUBLE_DOUBLE = {"gt_tttx_ew", "gb_ttxb_ew_mb"}
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("run", sorted(PATCHED_ROWS))
 def test_patched_rows_equal_madloop_and_recola(run, loop_native):
-    """On the shipped (patched) G_mu model, TT04, SC09 and ST04 equal MadLoop
-    QP on the patched model and Recola, Born and every Laurent coefficient
-    (binary64, native executor; the fixtures' metric: relative, Laurent floor
-    |Born| alpha/2pi; 1e-9, the vanishing QED double pole of t t~ > z h in
-    binary64 cancellations reaching 2e-10). Before the patch MadLoop missed
-    Recola by 2.5 % (TT04), 7.7 % (SC09) and 1e-3 (ST04). About 3 min each."""
+    """On the shipped (patched) G_mu model, TT04, SC09, TT05, ST04 and TT06
+    equal MadLoop QP on the patched model and Recola, Born and every Laurent
+    coefficient (native executor, binary64 or double-double; the fixtures'
+    metric: relative, Laurent floor |Born| alpha/2pi; 1e-9, the vanishing QED
+    double pole of t t~ > z h in binary64 cancellations reaching 2e-10).
+    Before the patch MadLoop missed Recola by 2.5 % (TT04), 7.7 % (SC09) and
+    1e-3 (ST04), and omitted R2_G0tt_b on TT05. About 3 to 6 min each."""
 
     import argparse
     import math
 
-    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
     from pyamplicol.models.loading import compile_model_source
     from tools import loop_v2_generate
@@ -598,6 +604,7 @@ def test_patched_rows_equal_madloop_and_recola(run, loop_native):
         reference["points"],
         [str(Fraction(mu) ** 2) for mu in reference["mu_r"]],
         parameters=dict(reference["parameters"]),
+        precision=Precision.double_double() if run in DOUBLE_DOUBLE else None,
     )
     alpha = float(reference["derived_parameters"]["alpha"])
     keys = ("born", "finite", "single_pole", "double_pole")

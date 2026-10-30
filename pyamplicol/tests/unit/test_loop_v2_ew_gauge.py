@@ -61,11 +61,17 @@ def gmu(loop_gmu_ufo):
 
 
 @pytest.fixture(scope="module")
-def gmu_massive_b(loop_gmu_ufo):
+def gmu_massive_b(loop_gmu_ufodb_unpatched_ufo):
+    """UFOmodeldb's unpatched G_mu model with a massive b: the model of
+    ``goldstone-mixing.json``'s MadLoop components (the issue-1 patch adds the
+    b-mass term of the charge counterterm, which moves every massive-b EW
+    virtual; ``test_loop_v2_ufodb_models`` holds the patched one against
+    MadLoop and Recola)."""
+
     from pyamplicol.models.loading import compile_model_source
 
     return compile_model_source(
-        loop_gmu_ufo, restriction="with_b_mass", require_supported=False
+        loop_gmu_ufodb_unpatched_ufo, restriction="with_b_mass", require_supported=False
     )
 
 
