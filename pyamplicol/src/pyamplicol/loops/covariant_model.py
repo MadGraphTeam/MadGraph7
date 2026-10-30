@@ -346,6 +346,16 @@ def with_source_repairs(model: Any) -> Any:
 
 
 def _validate_pairs(particles):
+    """Particle-antiparticle pairs must be reciprocal and agree in their
+    metadata (the listed refusal ``antiparticle-metadata``; the Goldstone
+    flag MG5_aMC's legacy object library drops is repaired first,
+    ``repair_source_declarations``)."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+    def refuse(message: str) -> LoopRequestUnsupportedValue:
+        return LoopRequestUnsupportedValue("antiparticle-metadata", message)
+
     by_name = {p["name"]: p for p in particles}
     if len(by_name) != len(particles):
         raise ValueError("ambiguous particle names in structural model")
@@ -353,27 +363,29 @@ def _validate_pairs(particles):
         try:
             anti = by_name[particle["antiname"]]
         except KeyError as exc:
-            raise ValueError("missing source antiparticle") from exc
+            raise refuse(f"missing source antiparticle of {particle['name']}") from exc
         if anti["antiname"] != particle["name"]:
-            raise ValueError("antiparticle names are not reciprocal")
+            raise refuse(f"antiparticle names of {particle['name']} are not reciprocal")
         for key in ("spin", "mass", "width", "propagating", "goldstoneboson"):
             if particle[key] != anti[key]:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         self_conjugate = particle is anti
         if not self_conjugate and particle["pdg_code"] != -anti["pdg_code"]:
-            raise ValueError("antiparticle PDG signs differ")
+            raise refuse(f"antiparticle PDG signs of {particle['name']} differ")
         color = particle["color"]
         if anti["color"] != (color if color in (1, 8) else -color):
-            raise ValueError("antiparticle colour representations differ")
+            raise refuse(
+                f"antiparticle colour representations of {particle['name']} differ"
+            )
         for key in ("charge", "ghost_number", "lepton_number"):
             left, right = (
                 parse_exact_ufo(str(particle[key])),
                 parse_exact_ufo(str(anti[key])),
             )
             if left + right != 0:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         for key in ("y_charge", "y_charge_right"):

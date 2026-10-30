@@ -254,6 +254,21 @@ def _retexed(raw):
     return replace(raw, collections=collections)
 
 
+def _unpaired(raw):
+    """loop_sm with the W-'s width changed (its antiparticle W+ keeps WW):
+    a particle-antiparticle metadata mismatch."""
+
+    collections = dict(raw.collections)
+    particles = list(collections["particles"])
+    (z_width,) = [r["fields"]["width"] for r in particles if r["name"] == "Z"]
+    for index, record in enumerate(particles):
+        if record["name"] == "W-":
+            fields = {**record["fields"], "width": z_width}
+            particles[index] = {**record, "fields": fields}
+    collections["particles"] = tuple(particles)
+    return replace(raw, collections=collections)
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     "key,change",
@@ -261,6 +276,7 @@ def _retexed(raw):
         ("loop-model-declaration", {"raw": _retexed}),
         ("feynman-gauge", {"metadata": {"gauge": [0]}}),
         ("tree-only-model", {"tree_only": True}),
+        ("antiparticle-metadata", {"raw": _unpaired}),
     ],
 )
 def test_model_refusals_fire_in_the_dry_run(tmp_path, key, change):
@@ -275,8 +291,14 @@ def test_model_refusals_fire_in_the_dry_run(tmp_path, key, change):
     model = _modified(compiled, **change)
     if key == "loop-model-declaration":
         assert shipped_loop_profile(_retexed(compiled.raw_loop_model)) is None
+    # Another declarations digest needs the declaration in the card.
+    loop = (
+        LOOP_SM_DECLARATION.format(orders='["QCD"]', uv="true")
+        if key == "antiparticle-metadata"
+        else ""
+    )
     plan = _generator(
-        _card(tmp_path / "out", "u u~ > e- e+"), tmp_path / "card.toml"
+        _card(tmp_path / "out", "u u~ > e- e+", loop=loop), tmp_path / "card.toml"
     ).plan(_processes("u u~ > e- e+"), model=model)
     _single_blocker(plan, key)
 

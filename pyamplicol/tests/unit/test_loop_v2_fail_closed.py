@@ -159,6 +159,7 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         # veto (``test_loop_v2_refusal_keys.py``).
         "external-photon-scheme",
         "feynman-gauge",
+        "antiparticle-metadata",
         "anomalous-veto",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):

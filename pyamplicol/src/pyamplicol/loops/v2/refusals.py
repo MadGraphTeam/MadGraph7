@@ -402,6 +402,19 @@ LOOP_ADMISSION_REFUSALS = (
         "none",
     ),
     LoopAdmissionRefusal(
+        "antiparticle-metadata",
+        "a source model whose particle-antiparticle pairs are not reciprocal "
+        "or differ in spin, mass, width, propagation, Goldstone flag, PDG "
+        "sign, colour or conjugate charges (covariant_model._validate_pairs)",
+        "the loop model's covariant structure conjugates fields by their "
+        "declared antiparticles; the Goldstone flag MG5_aMC's legacy UFO "
+        "object library drops is repaired by structure first",
+        "a source whose antiparticles agree (MG5_aMC's loop models do, after "
+        "the repair)",
+        "m-sm MS-MODEL (model preparation)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
         "anomalous-veto",
         "a particle_veto that breaks the cancellation of a Levi-Civita "
         "counterterm cell (a quark of a doublet, a whole lepton generation) "
