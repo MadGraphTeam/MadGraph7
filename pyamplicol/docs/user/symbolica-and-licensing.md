@@ -75,7 +75,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
-| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. |
+| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses and parameter changes that can move a branch side | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. The first batch at model-parameter values that can move a branch side of the artifact's parameter program checks that program once against its saved Symbolica state under the package key. These are a changed value of a parameter that feeds a branch-cut argument or a condition not decided by the parameters' signs, or any parameter changing sign (for example a width set to zero). On loop_sm, `g g > g g` and `g g > t t~` have no such parameter. `u u~ > d d~` has `Gf`, `MZ` and `aEWM1`, which enter `MW` through the square root of a difference. A change of αs or of the renormalisation scale needs no Symbolica in the shipped models. |
 | Virtual evaluation in double-double or arbitrary precision | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
@@ -140,6 +140,22 @@ to the personal license or to the restricted mode, as the Python side does.
   generic engine, which uses Symbolica in the native code under the package
   key. Such evaluations also run in concurrent unlicensed processes, but
   they need the package key (or a personal licence) as double-double does.
+  A third exception concerns model parameters. The artifact certifies its
+  binary64 parameter program (couplings, counterterm couplings and masses as
+  functions of the model parameters) at the generation's parameter values.
+  At other values it records which parameters can move a branch side of that
+  program (`side_inputs` in the tree program's parameter record). These are
+  the parameters that feed a branch-cut argument (`log`, `sqrt`, a power), or
+  a condition, that the parameters' signs do not decide. Examples are two
+  masses under a common logarithm, or loop_sm's `Gf`, `MZ` and `aEWM1`, which
+  enter `MW` through the square root of a difference. A positive mass behind
+  a zero test is not one, since its sign decides the test. The first batch
+  at a new value of such a parameter, or after any parameter changes sign
+  (for example a width set to zero under the complex-mass scheme), checks the
+  program once against its saved state. That check is a Symbolica evaluation
+  under the package key, and it replaces the program's values where the two
+  disagree. Changes of αs and of the renormalisation scale move no side in
+  the shipped models, so they need no Symbolica.
 - Double-double and arbitrary-precision virtual evaluation decode saved
   Symbolica evaluator states natively under the package key, so they also
   run in concurrent unlicensed processes.

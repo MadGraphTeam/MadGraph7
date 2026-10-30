@@ -417,12 +417,14 @@ def _held_evaluations(
     carriers: list[tuple[str, int | None]],
     extra_env: dict[str, str] | None = None,
     point: dict | None = None,
+    parameters: dict[str, str] | None = None,
 ) -> tuple[dict, list[subprocess.CompletedProcess]]:
     """One unlicensed ``evaluate`` process per (arithmetic, digits), all at
     once, while ``RestrictedPermit`` holds the user's permit: a process that
     completes touched no Symbolica state needing the permit (the permit
     record's positive control says the hold discriminates). ``point``: the
-    points file's content (default: one of the tool's points)."""
+    points file's content (default: one of the tool's points); ``parameters``:
+    model parameter values every process evaluates at."""
 
     points = scratch / "points.json"
     points.write_text(json.dumps(point or portability.points(legs, 1)))
@@ -445,6 +447,8 @@ def _held_evaluations(
             ]
             if digits is not None:
                 command += ["--precision", str(digits)]
+            for name, value in (parameters or {}).items():
+                command += ["--parameter", f"{name}={value}"]
             running.append(
                 subprocess.Popen(
                     command,
@@ -1026,6 +1030,55 @@ def test_binary64_loop_evaluation_touches_no_symbolica_state(loop_artifact, tmp_
     for run in runs:
         assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
         assert RESTRICTED not in run.stdout + run.stderr
+
+
+@pytest.mark.loop_physics
+def test_binary64_side_inputs_need_the_key_only_when_they_change(
+    loop_artifact, tmp_path
+):
+    """The run-time side check of the binary64 parameter program (DESIGN
+    §12.1 (e), risk 13) compares the plane with the saved state only at a new
+    parameter key: the values of the inputs that can move a branch side and
+    the signs of the others. g g > g g on loop_sm records no side input
+    (alpha_s enters through sqrt(4 pi aS), MT through log(MU_R^2 / MT^2) and
+    zero tests its sign decides), so two concurrent unlicensed evaluations at
+    aS = 0.12 and MT = 172 complete with the native key disabled while the
+    permit is held. A parameter changing sign (the Higgs width set to zero)
+    changes the key, so the check runs: with the key it completes, with the
+    key disabled it aborts (the control)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    alpha = tmp_path / "alpha"
+    alpha.mkdir()
+    permit, runs = _held_evaluations(
+        artifact,
+        "gg",
+        alpha,
+        4,
+        [("double", None)] * 2,
+        NO_NATIVE_KEY,
+        parameters={"aS": "0.12", "MT": "172"},
+    )
+    assert permit["verified"], permit
+    for run in runs:
+        assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+        assert RESTRICTED not in run.stdout + run.stderr
+    for env, completes in ((None, True), (NO_NATIVE_KEY, False)):
+        scratch = tmp_path / f"width-{completes}"
+        scratch.mkdir()
+        permit, (run,) = _held_evaluations(
+            artifact,
+            "gg",
+            scratch,
+            4,
+            [("double", None)],
+            env,
+            parameters={"WH": "0"},
+        )
+        assert permit["verified"], permit
+        output = run.stdout[-2000:] + run.stderr[-2000:]
+        assert (run.returncode == 0) is completes, output
+        assert (RESTRICTED in output) is not completes, output
 
 
 @pytest.mark.loop_physics
