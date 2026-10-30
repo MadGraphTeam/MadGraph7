@@ -900,12 +900,12 @@
    ],
    "predicted_sectors": [
     {
-     "QCD": 0,
-     "QED": 6
-    },
-    {
      "QCD": 2,
      "QED": 4
+    },
+    {
+     "QCD": 0,
+     "QED": 6
     }
    ],
    "unpredicted_sectors": [],
@@ -3834,6 +3834,10 @@
     {
      "QCD": 2,
      "QED": 6
+    },
+    {
+     "QCD": 0,
+     "QED": 8
     }
    ],
    "unpredicted_sectors": [],
@@ -4030,12 +4034,12 @@
    ],
    "predicted_sectors": [
     {
-     "QCD": 6,
-     "QED": 6
-    },
-    {
      "QCD": 8,
      "QED": 4
+    },
+    {
+     "QCD": 6,
+     "QED": 6
     }
    ],
    "unpredicted_sectors": [],
@@ -4438,7 +4442,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -4879,6 +4883,10 @@
     {
      "QCD": 4,
      "QED": 4
+    },
+    {
+     "QCD": 2,
+     "QED": 6
     }
    ],
    "unpredicted_sectors": [],

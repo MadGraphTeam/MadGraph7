@@ -102,7 +102,8 @@ def test_rows_are_well_formed(manifest, rows):
 def test_loop_orders_reach_the_row_sectors(manifest):
     """Every sector of a row is a Born amplitude order plus a loop amplitude
     order of its request, the loop orders two powers of a correction above
-    a Born order."""
+    a Born order; the expected predicted sectors are every sector the
+    request forms (PLAN §4.2's list may name fewer: JJ04's QCD^2 QED^6)."""
 
     for data in manifest["rows"]:
         if not data["sectors"]:
@@ -127,7 +128,9 @@ def test_loop_orders_reach_the_row_sectors(manifest):
             }
         sectors = {mqcd.sector_key(s) for s in data["sectors"]}
         assert sectors <= reached, data["id"]
-        assert sectors == {mqcd.sector_key(s) for s in data["predicted_sectors"]}
+        predicted = {mqcd.sector_key(s) for s in data["predicted_sectors"]}
+        unpredicted = {mqcd.sector_key(s) for s in data["unpredicted_sectors"]}
+        assert predicted | unpredicted == reached, data["id"]
 
 
 @pytest.mark.loop_fast
