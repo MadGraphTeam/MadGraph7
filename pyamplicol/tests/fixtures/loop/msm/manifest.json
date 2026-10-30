@@ -3249,6 +3249,10 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "relaxed": {
+    "2": 1e-08,
+    "4": 1e-08
+   },
    "ward_parameters": {
     "MW": "180",
     "MZ": "200"
