@@ -689,6 +689,19 @@ class GeneratedProcess:
             if rule_key(rule) in anomalous
         }
 
+    def conventions(self) -> dict[str, object] | None:
+        """The conventions of an electroweak request's virtual (WP3.2 EWI-7,
+        ``ew_policy.scheme_conventions``: regularisation and lambda_HV, the
+        gamma-five reading, gauge, UV, mass and electroweak input schemes,
+        the external-photon convention): the generation record's
+        ``conventions`` (``Runtime.inspect`` and the artifact inspection read
+        it there); None for a request that is not electroweak (its record
+        then has no entry, so such artifacts keep their bytes)."""
+
+        from .ew_policy import scheme_conventions
+
+        return scheme_conventions(self.slice)
+
     def native_fallbacks(self) -> dict[str, str]:
         """The generation stages that took the tree engine instead of the
         native loop-request DAG builder, each with the listed feature it
@@ -1155,6 +1168,13 @@ class V2VirtualRuntime:
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
         self._manifest = manifest
+        # WP3.2 EWI-7: the conventions of an electroweak virtual, from the
+        # generation record (None when none is recorded).
+        from pyamplicol.generation.loop_artifact import recorded_conventions
+
+        self._conventions = recorded_conventions(
+            manifest.extensions, str(selected["id"])
+        )
         self._process_id = process_id
         self._expression = str(selected["expression"])
         self._physics = physics
@@ -1364,6 +1384,11 @@ class V2VirtualRuntime:
                     ),
                     "rescue_available": False,
                     "accuracy_established": False,
+                    **(
+                        {"conventions": self._conventions}
+                        if self._conventions is not None
+                        else {}
+                    ),
                 }
             )
 

@@ -246,7 +246,8 @@ def tree_reading_legs(
     reading: only spinor legs transpose, and ghost loop lines meet no tree
     row (the readings are checked against legacy, O2). Vertices not closed
     under conjugation are read through their conjugate rule
-    (``TreeReading.vertex``).
+    (``TreeReading.vertex``), ghost vertices on their own legs
+    (``conjugate_vertex_rules``).
     """
 
     fermions = [leg for leg in legs if spins[particles[leg - 1]] == FERMION_SPIN]
@@ -302,11 +303,18 @@ def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
     A rule whose particles are closed under conjugation is its own conjugate;
     otherwise the conjugate is the rule of the antiparticles at the same
     coupling orders (a Hermitian Lagrangian holds it: the W couplings of
-    [d~ u W-] and [u~ d W+]). None marks a rule without a unique conjugate,
-    with several colour structures (their pairing with the conjugate's is
-    not established) or with a ghost leg (an electroweak ghost loop line,
-    whose reading through the conjugate is not established), which the
-    readings refuse.
+    [d~ u W-] and [u~ d W+]). None marks a rule without a unique conjugate
+    or with several colour structures (their pairing with the conjugate's is
+    not established), which the readings refuse.
+
+    A rule with a ghost leg is read on its own legs, closed under
+    conjugation or not (WP3.2 EWI-7: the W ghost vertices [ghA ghWm~ W-]):
+    ghost loop lines meet no tree row and keep the incoming reading, and the
+    ghost Lagrangian pairs no vertex with a Hermitian conjugate (the "rule
+    of the antiparticles" [ghWm ghA~ W+] differentiates the other ghost leg,
+    so reading through it would move the momentum factor); its boson legs
+    take the tree engine's basis through the field signs of the catalogue
+    (``catalogue._CatalogueBuilder.reading_sign``).
     """
 
     antinames = {p["name"]: p["antiname"] for p in data["particles"]}
@@ -329,7 +337,9 @@ def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
         by_fields.setdefault(key, []).append(rule)
     out: dict[str, str | None] = {}
     for rule in data["vertex_rules"]:
-        if closed_under_conjugation(rule["particles"], antinames):
+        if closed_under_conjugation(rule["particles"], antinames) or (
+            ghosts.intersection(rule["particles"])
+        ):
             out[rule["name"]] = rule["name"]
             continue
         conjugate = tuple(sorted(antinames[name] for name in rule["particles"]))
@@ -339,7 +349,6 @@ def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
             if len(found) == 1
             and len(rule["color_structures"]) == 1
             and len(found[0]["color_structures"]) == 1
-            and not ghosts.intersection(rule["particles"])
             else None
         )
     return out

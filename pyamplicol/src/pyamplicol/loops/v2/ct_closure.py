@@ -527,6 +527,10 @@ class CountertermClosure:
             str(rule["name"]) for rule in lowered.model["vertex_rules"]
         )
         terms: list[ClosureTerm] = []
+        # The clone blocks of the scalar sides of scalar-vector mixing lines.
+        promoted = frozenset(
+            block_id for block_id, line in program.clones.items() if line.promoted
+        )
         for entries in ordinary:
             fields = entries[0].particle_names
             wanted, need = frozenset(fields), sorted(fields)
@@ -569,28 +573,26 @@ class CountertermClosure:
                         and add_orders(physical, program.clones[b.id].half) in loop
                         for b in lines
                     ):
-                        # The root would read a Goldstone-vector mixing line's
-                        # vector current as the Goldstone (WP3.2 EWI-4b). Only
-                        # the promoted copies of the lowered model's own
-                        # vertices consume it (``models.ct_line_insertions``):
-                        # a root vertex the request's tree model does not hold
-                        # because the model's restriction makes every coupling
-                        # of it vanish (e.g. a Yukawa of a massless fermion)
-                        # has no copy and contributes nothing (WP3.2 EWI-5);
-                        # any other is refused.
+                        # A Goldstone-vector mixing line ends at the root on
+                        # its Goldstone side (WP3.2 EWI-7, routed item (v)):
+                        # its current is the vector's, which only the
+                        # promoted copies of a vertex consume
+                        # (``models.ct_line_insertions``). A root vertex the
+                        # request's tree model does not hold because the
+                        # restriction makes every coupling of it vanish (a
+                        # Yukawa of a massless fermion) has no copy and
+                        # contributes nothing (WP3.2 EWI-5); any other closes
+                        # through its promoted entries
+                        # (``ct_sites.promoted_root_entry``, bound by the
+                        # catalogue, ``promoted_root_entries``).
                         absent = entries[0].vertex_name not in tree_vertices
                         if absent and restricted_to_zero(lowered, entries):
                             continue
-                        raise UnloweredCountertermError(
-                            f"the counterterm root vertex {entries[0].vertex_name} "
-                            "consumes a Goldstone-vector mixing line on its "
-                            "Goldstone side, which only vertex copies carrying "
-                            "the line momentum consume (leg 1 couples to the "
-                            "Goldstone); not lowered yet"
-                        )
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
-                    for term in closure.vertex_terms(entries, attachments):
+                    for term in closure.vertex_terms(
+                        entries, attachments, promoted if clone else frozenset()
+                    ):
                         line = program.clones.get(term.blocks[index].id)
                         if clone:
                             # The consuming copy (the root) carries the other
@@ -818,6 +820,53 @@ class _PlainTable:
                 b for b in self.table.currents(mask) if not _insertions(b.orders)
             )
         return found
+
+
+def promoted_root_entries(
+    program: CountertermBlocks | None,
+    ordinary: Iterable[Sequence[Any]],
+    read: Callable[[Sequence[Any]], Sequence[Any]],
+    native_model: Any,
+) -> list[Any]:
+    """The promoted root entries (``ct_sites.promoted_root_entry``) the
+    closure of ``program`` may read: every scalar leg, of the field a
+    scalar-vector mixing line's scalar side is read as, of the entries the
+    root reads (``read``: the vertex's own entries or its conjugate rule's,
+    ``SiteClosure.read_entries``) for each ordinary vertex that holds leg
+    1's current (``CountertermClosure.build``'s root vertices). The kernel
+    catalogue binds them with the closure's other entries."""
+
+    from .ct_sites import promoted_root_entry
+
+    if program is None:
+        return []
+    fields = {abs(line.field_id) for line in program.clones.values() if line.promoted}
+    if not fields:
+        return []
+    root = {
+        current.field
+        for current in program.blocks.block_table(native_model).currents(_ROOT_LEG)
+    }
+    by_name = {
+        str(record["name"]): record for record in model_data(native_model)["particles"]
+    }
+    out = []
+    for rows in ordinary:
+        names = rows[0].particle_names
+        if root.isdisjoint(names) or not any(
+            abs(int(by_name[n]["pdg_code"])) in fields for n in names
+        ):
+            continue
+        try:
+            entries = read(rows)
+        except NotImplementedError:
+            continue  # the closure refuses such a vertex itself
+        for entry in entries:
+            for leg, name in enumerate(entry.particle_names):
+                record = by_name[name]
+                if abs(int(record["pdg_code"])) in fields and int(record["spin"]) == 1:
+                    out.append(promoted_root_entry(entry, leg))
+    return out
 
 
 def counterterm_closure_entries(
@@ -1311,6 +1360,7 @@ __all__ = [
     "lowered_counterterm_model",
     "model_value",
     "program_propagated_currents",
+    "promoted_root_entries",
     "u1_leaking_structures",
     "u1_projected",
 ]

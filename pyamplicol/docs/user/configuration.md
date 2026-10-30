@@ -963,9 +963,11 @@ propagators, and the counterterm program; every counterterm term whose loop
 content (the UFO `loop_particles`) holds a vetoed particle is dropped, and so is
 its external-field renormalisation. With loop_sm, `particle_veto = ["t"]` gives
 massless five-flavour QCD (no top loop, no top decoupling term), the convention
-of NJet. A vetoed particle cannot be external. The veto is stored with the
-artifact's generation request and in its generation filters; it needs a
-one-loop request.
+of NJet. A vetoed vector boson takes its Faddeev-Popov ghosts with it (the ghosts
+of its colour, charge and mass: vetoing `w+` also vetoes `ghWp` and `ghWm`),
+whose loops without the boson would break the gauge cancellations. A vetoed
+particle cannot be external. The veto is stored with the artifact's generation
+request and in its generation filters; it needs a one-loop request.
 
 Anomalous vetoes. A veto can keep model counterterms from cancelling that
 cancel with every flavour admitted: vetoing `d s b` (or `t`) in a request with
