@@ -621,24 +621,89 @@ def _values(result):
 
 
 # The MS-MODEL acceptance list (m-sm PLAN §3.2): (shipped model,
-# restriction, process, corrections, extra fixed parameters, the required
-# fixture the public route is also checked against).
+# restriction, process, corrections, extra fixed parameters, the MadLoop
+# fixture the public route is also checked against: a required fixture or an
+# MS-REF one under ``msm/``, at its parameters).
+_MT173 = {"MT": "173", "ymt": "173"}
 PUBLIC_ROUTE = {
     "ee_mumu": ("loop_qcd_qed_sm_Gmu", None, "e- e+ > m- m+", ["QED"], {}, None),
-    "uu_ee": ("loop_qcd_qed_sm_Gmu", None, "u u~ > e- e+", ["QCD", "QED"], {}, None),
+    "uu_ee": (
+        "loop_qcd_qed_sm_Gmu",
+        None,
+        "u u~ > e- e+",
+        ["QCD", "QED"],
+        _MT173,
+        "msm/uux_emep_ew",
+    ),
     "uu_dd": ("loop_qcd_qed_sm", None, "u u~ > d d~", ["QCD", "QED"], {}, None),
     "gg_tt": (
         "loop_qcd_qed_sm_Gmu",
         None,
         "g g > t t~",
         ["QCD", "QED"],
-        {"MT": "173", "ymt": "173"},
+        _MT173,
         "gg_ttx_ew",
     ),
-    "ud_wg": ("loop_qcd_qed_sm_Gmu", None, "u d~ > w+ g", ["QCD", "QED"], {}, None),
-    "uu_zz": ("loop_qcd_qed_sm_Gmu", None, "u u~ > z z", ["QED"], {}, None),
+    "ud_wg": (
+        "loop_qcd_qed_sm_Gmu",
+        None,
+        "u d~ > w+ g",
+        ["QCD", "QED"],
+        _MT173,
+        "msm/udx_wpg_ew",
+    ),
+    "uu_zz": (
+        "loop_qcd_qed_sm_Gmu",
+        None,
+        "u u~ > z z",
+        ["QED"],
+        _MT173,
+        "msm/uux_zz_ew",
+    ),
     "uu_ag": ("loop_qcd_qed_sm_Gmu", "a0", "u u~ > a g", ["QCD", "QED"], {}, None),
 }
+
+
+def _madloop_sectors(reference, row):
+    """MadLoop's Born and Laurent coefficients of a fixture row by squared
+    order (``canonical_order``): an MS-REF fixture's per-sector record
+    (``sectors``: every split order), or a required fixture's one sector
+    (its Born and loop amplitude orders)."""
+
+    from pyamplicol.loops.orders import canonical_order
+
+    def order(record):
+        return canonical_order(
+            tuple(
+                (name, power)
+                for name, power in record.items()
+                if isinstance(power, int) and not isinstance(power, bool)
+            )
+        )
+
+    if "sectors" in row:
+        sectors = row["sectors"]
+        return (
+            {order(record): record["born"] for record in sectors["born"]},
+            {
+                order(record): (
+                    record["finite"],
+                    record["single_pole"],
+                    record["double_pole"],
+                )
+                for record in sectors["loop"]
+            },
+        )
+    born, loop = reference["born_orders"], reference["loop_orders"]
+    madloop = row["providers"]["madloop"]
+    return (
+        {order({name: 2 * power for name, power in born.items()}): madloop["born"]},
+        {
+            order(
+                {name: born.get(name, 0) + loop.get(name, 0) for name in {*born, *loop}}
+            ): (madloop["finite"], madloop["single_pole"], madloop["double_pole"])
+        },
+    )
 
 
 # u u~ > z z [virt=QED] on G_mu was refused at load ("a trace step above the
@@ -654,13 +719,14 @@ def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
     import) generates each request; its binary64 Born and virtual at two
     points are bitwise those of the tools view (the reference UFO with the
     explicit declaration and ``compatibility = "gmu_particle_anti"``). With a
-    required fixture, the public route also equals MadLoop at the fixture's
-    points (its metric: relative, Laurent floor |Born| alpha/2pi; 1e-8)."""
+    MadLoop fixture (generated at its parameters, asserted), the public
+    route's Born and every loop sector of the request equal MadLoop's
+    quadruple-precision values at the fixture's points (its metric:
+    relative, Laurent floor |Born| alpha/2pi; 1e-8)."""
 
     import json
 
     from pyamplicol import Runtime
-    from pyamplicol.loops.orders import canonical_order
     from pyamplicol.models.loading import compile_model_source
 
     name, restriction, expression, corrections, extra, fixture = PUBLIC_ROUTE[case]
@@ -706,43 +772,45 @@ def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
             / f"fixtures/loop/required/{fixture}.json"
         ).read_text()
     )
+    # The generation's parameters are the fixture's (a restriction's own
+    # zeros, e.g. MB and ymtau, are absent from the card).
+    defaults = compiled.parameter_defaults
+    for key, value in {
+        **reference["parameters"],
+        **reference["fixed_parameters"],
+    }.items():
+        have = fixed[key] if key in fixed else defaults.get(key, (0.0, 0.0))[0]
+        assert float(have) == float(value), (fixture, key, have, value)
     alpha = float(reference["derived_parameters"]["alpha"])
     points = [[[float(x) for x in p] for p in point] for point in reference["points"]]
     scales = [float(mu) ** 2 for mu in reference["mu_r"]]
     result = runs["public"].evaluate(points, mu_r2=scales)
-    # The fixture's squared orders: the Born squared, and the interference of
-    # the Born with the loop amplitude of the fixture's orders.
-    born_amplitude, loop_amplitude = (
-        reference["born_orders"],
-        reference["loop_orders"],
-    )
-    born_order = canonical_order(
-        tuple((name, 2 * power) for name, power in born_amplitude.items())
-    )
-    sector_order = canonical_order(
-        tuple(
-            (name, born_amplitude.get(name, 0) + loop_amplitude.get(name, 0))
-            for name in sorted({*born_amplitude, *loop_amplitude})
-        )
-    )
-    (b,) = [i for i, order in enumerate(result.born_orders) if order == born_order]
-    (v,) = [
-        i for i, sector in enumerate(result.sectors) if sector.order == sector_order
-    ]
+    sectors = [sector.order for sector in result.sectors]
     for k, row in enumerate(reference["rows"]):
-        madloop = row["providers"]["madloop"]
-        born = complex(result.born_values[k][b]).real
-        laurent = [complex(result.values[k][v][i]).real for i in range(3)]
-        floor = abs(born) * alpha / (2 * 3.141592653589793)
-        for key, ours, scale in (
-            ("born", born, 0.0),
-            ("finite", laurent[0], floor),
-            ("single_pole", laurent[1], floor),
-            ("double_pole", laurent[2], floor),
-        ):
-            theirs = madloop[key]
-            error = abs(ours - theirs) / max(abs(ours), abs(theirs), scale)
-            assert error <= 1e-8, (fixture, k, key, ours, theirs)
+        borns, loops = _madloop_sectors(reference, row)
+        if "sectors" in row:
+            # An MS-REF fixture has every split order of the request.
+            assert set(result.born_orders) <= set(borns), (fixture, borns)
+            assert set(sectors) <= set(loops), (fixture, sectors, loops)
+        floor = abs(row["born"]) * alpha / (2 * 3.141592653589793)
+        compared = []
+        for b, order in enumerate(result.born_orders):
+            if order in borns:
+                ours = complex(result.born_values[k][b]).real
+                theirs = borns[order]
+                error = abs(ours - theirs) / max(abs(ours), abs(theirs))
+                assert error <= 1e-8, (fixture, k, order, "born", ours, theirs)
+                compared.append(order)
+        for v, order in enumerate(sectors):
+            if order not in loops:
+                continue
+            for i, key in enumerate(("finite", "single_pole", "double_pole")):
+                ours = complex(result.values[k][v][i]).real
+                theirs = loops[order][i]
+                error = abs(ours - theirs) / max(abs(ours), abs(theirs), floor)
+                assert error <= 1e-8, (fixture, k, order, key, ours, theirs)
+            compared.append(order)
+        assert len(compared) >= 2, (fixture, compared)
 
 
 # ---------------------------------------------------------------- self-test
