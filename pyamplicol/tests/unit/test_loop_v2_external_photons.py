@@ -621,7 +621,10 @@ def _sectors(reference, row):
 
     madloop = row["providers"]["madloop"]
     if "sectors" in row:
-        born = {key(s): s["born"] for s in row["sectors"]["born"]}
+        born = {
+            key({"QCD": s["QCD"], "QED": s["QED"]}): s["born"]
+            for s in row["sectors"]["born"]
+        }
         virtual = {
             key({"QCD": s["QCD"], "QED": s["QED"]}): (
                 s["finite"],
