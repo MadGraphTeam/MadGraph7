@@ -263,10 +263,7 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     assert agreement["double"] <= 1e-8, agreement
 
     masses = {"WZ": "MZ", "WW": "MW", "WT": "MT", "WH": "MH"}
-    tiny = {
-        width: str(Fraction(GMU_PARAMETERS[mass]) / 10**152)
-        for width, mass in masses.items()
-    }
+    tiny = {width: f"{GMU_PARAMETERS[mass]}e-152" for width, mass in masses.items()}
     zero = dict.fromkeys(masses, "0")
     points = reference["zero"]["points"]
     scales = ["1000000"] * len(points)

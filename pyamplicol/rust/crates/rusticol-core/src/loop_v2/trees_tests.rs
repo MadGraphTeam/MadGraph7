@@ -137,6 +137,25 @@ fn plan_masses_read_inputs_or_outputs() {
 }
 
 #[test]
+fn complex_mass_master_guard_refuses_tiny_and_plane_zero_widths() {
+    // M^2 - i M Gamma at M = 91: a physical width passes in every carrier; a
+    // zero width only off the binary64 plane; 0 < |Im| / Re < 1e-150 nowhere.
+    let re = Rational::from(8281);
+    let physical = Rational::from((-227, 1));
+    let tiny = Rational::from((-1, 1)) / Rational::from(10).pow(160);
+    let zero = Rational::from(0);
+    for on_plane in [false, true] {
+        assert!(require_complex_mass_master(0, &re, &physical, on_plane).is_ok());
+        let error = require_complex_mass_master(3, &re, &tiny, on_plane).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::ModelParameter);
+        assert!(error.to_string().contains("complex-mass-master: plan mass 3"));
+    }
+    assert!(require_complex_mass_master(1, &re, &zero, false).is_ok());
+    let error = require_complex_mass_master(1, &re, &zero, true).unwrap_err();
+    assert!(error.to_string().contains("binary64 SymJIT parameter program"));
+}
+
+#[test]
 fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones() {
     // Generation records every output that reads the scale
     // (`native_trees._scale_outputs`); the batch-shared ones among them are

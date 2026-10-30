@@ -361,6 +361,60 @@ fn exact(value: &str) -> RusticolResult<Rational> {
     parse_rational(value).map_err(|error| invalid(error.message()))
 }
 
+/// The key of the complex-mass master refusal (M-SM MS-MASTERS).
+pub const COMPLEX_MASS_MASTER: &str = "complex-mass-master";
+/// The smallest |Im m²| / Re m² a complex pole mass may take at a batch's
+/// parameters.
+pub const COMPLEX_MASS_MASTER_RATIO: f64 = 1e-150;
+
+/// The complex-mass master guard (M-SM MS-MASTERS) on a pole mass's square
+/// `re + i im` (plan mass `index`) at a batch's parameters: refused, as a
+/// model-parameter error naming `complex-mass-master`, when
+///
+/// * `0 < |im| < 1e-150 re` in any carrier: below that the masters' complex
+///   branches are unreliable (DoubleFloat C0 non-finite at 1e-155 on CM01;
+///   oneloopmaster's SymJIT D0 off at 1e-150, STATUS "Open D0 limitations");
+/// * `im = 0` with the parameter program on its binary64 SymJIT plane (a
+///   width set to zero at run time on a pole mass generated complex): the
+///   plane then takes the side of the counterterms' branch cuts its signed
+///   zeros select, which the exact evaluator does not (CM01 at zero widths:
+///   the electroweak UV counterterm couplings' absorptive parts, an O(1)
+///   finite part), while its plane check certified the generation's widths
+///   only. The exact evaluators (double-double, arbitrary precision) take
+///   the zero-width limit there.
+fn require_complex_mass_master(
+    index: usize,
+    re: &Rational,
+    im: &Rational,
+    on_plane: bool,
+) -> RusticolResult<()> {
+    let ratio = if re.is_zero() {
+        f64::INFINITY
+    } else {
+        (im.abs() / re.abs()).to_f64()
+    };
+    let reason = if im.is_zero() {
+        on_plane.then_some(
+            "an exactly real pole mass (a zero width) on the binary64 SymJIT parameter \
+             program, whose side of the counterterms' branch cuts its plane check did not \
+             certify; double-double and arbitrary precision take the zero-width limit",
+        )
+    } else {
+        (ratio < COMPLEX_MASS_MASTER_RATIO).then_some(
+            "below 1e-150 the complex-mass branches of the master integrals are unreliable",
+        )
+    };
+    match reason {
+        None => Ok(()),
+        Some(reason) => Err(RusticolError::model_parameter(format!(
+            "{COMPLEX_MASS_MASTER}: plan mass {index} is a complex pole mass with \
+             |Im m^2| / Re m^2 = {ratio:e} at these model parameters: {reason}. Instead: \
+             fix a zero width at generation (a fixed parameter: the mass then propagates \
+             as a real mass), or give the width at least 1e-150 of its mass"
+        ))),
+    }
+}
+
 // ------------------------------------------------------------------ file form
 
 #[derive(Deserialize)]
@@ -2359,9 +2413,10 @@ impl TreeProgram {
             .plan_masses
             .iter()
             .any(|mass| matches!(mass, Some(MassSource::Complex(_))));
+        let on_plane = matches!(runtime.parameters, Kernel::Plane(_));
         let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
         let mut masses_imaginary = Vec::new();
-        for mass in &program.plan_masses {
+        for (index, mass) in program.plan_masses.iter().enumerate() {
             let (re, im) = match mass {
                 Some(MassSource::Input(index)) => {
                     (&values[*index] * &values[*index], Rational::from(0))
@@ -2380,7 +2435,9 @@ impl TreeProgram {
                 Some(MassSource::Complex(_)) => {
                     let value = derived_plan.next().expect("one value per output plan mass");
                     let (re, im) = (value.re.exact()?, value.im.exact()?);
-                    (&re * &re - &im * &im, Rational::from(2) * &re * &im)
+                    let squared = (&re * &re - &im * &im, Rational::from(2) * &re * &im);
+                    require_complex_mass_master(index, &squared.0, &squared.1, on_plane)?;
+                    squared
                 }
                 None => (Rational::from(0), Rational::from(0)),
             };
