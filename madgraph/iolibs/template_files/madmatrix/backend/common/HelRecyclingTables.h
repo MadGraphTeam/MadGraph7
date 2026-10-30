@@ -4,7 +4,8 @@
 // --hel_recycling (CPU only): the tabulated amplitude stage of the recycled
 // build. A fragment of namespace madmatrix, not a standalone header: it is
 // #included inside the namespace, after nParity and the process constants
-// (njampso, ndiagrams), by SigmaKin.cc and by HelRecyclingChunks.h.
+// (njampso, ndiagrams), by SigmaKin.cc and by HelRecyclingChunks.h, which also
+// include <immintrin.h> (x86) and <cstring> for it at file scope.
 //
 // A P1N group of the recycled block is the vertex evaluated once with one leg
 // left off, then, for each helicity row that shares it (a member), the dot
@@ -17,6 +18,88 @@
 // reads in order. The arithmetic is the one the straight-line code does, in
 // the same order.
 //==========================================================================
+
+// The rows mode stores every amplitude of every row into one table
+// (ampAll_sv[nHrRows][nParity][hrNamp]) and reads it back only once the whole
+// page is built, row by row in hr_row. A big table is long gone from the cache
+// by then: kept there it only pushes out the wavefunctions and the fold tables
+// that are read again, and every line of it is read from memory before it is
+// written over. A non-temporal store writes it around the cache instead. That
+// pays only when
+// - each store fills whole cache lines (cxtype_amp_sv a multiple of 64 bytes:
+//   simd_256 and simd_512). Half lines, filled one at a time far apart, are
+//   flushed to memory half written, which is much slower;
+// - the table is bigger than the cache share of one core
+//   (MGONGPU_HR_STREAM_MIN_MB, 4 by default, for the table of one call): a
+//   smaller one is still in the cache when hr_row reads it.
+// g g > t t~ g g g (30 MB per call at simd_256 in mixed precision), recycled
+// over plain with all cores busy: 0.84 -> 1.23 on 2x EPYC 7452 (128 threads),
+// 0.65 -> 0.94 on 2x EPYC 9655 (192 cores); at simd_128 (32 bytes) 1.15 -> 0.49
+// and for g g > u u~ g g (1.1 MB at simd_512) 1.60 -> 0.73, which is why both
+// conditions are there. MGONGPU_HR_TABLE_ENTRIES (nHrRows * hrNamp) comes from
+// HelRecycling.inc, or from the chunk translation unit itself, which does not
+// see HelRecycling.inc. x86 only (MGONGPU_HR_NO_STREAM, make HRNOSTREAM=1, turns
+// it off).
+#ifndef MGONGPU_HR_TABLE_ENTRIES
+#define MGONGPU_HR_TABLE_ENTRIES 0 // not the rows mode: there is no table to store
+#endif
+#ifndef MGONGPU_HR_STREAM_MIN_MB
+#define MGONGPU_HR_STREAM_MIN_MB 4
+#endif
+#if defined __x86_64__ and defined MGONGPU_CPPSIMD and !defined MGONGPU_HR_NO_STREAM
+#if defined __AVX512F__
+constexpr bool hrHasStream = sizeof( fptype_amp_sv ) == 32 || sizeof( fptype_amp_sv ) == 64; // _mm{256,512}_stream_si{256,512}
+#elif defined __AVX__
+constexpr bool hrHasStream = sizeof( fptype_amp_sv ) == 32;
+#else
+constexpr bool hrHasStream = false;
+#endif
+#else
+constexpr bool hrHasStream = false;
+#endif
+constexpr bool hrStreamStores = hrHasStream && sizeof( cxtype_amp_sv ) % 64 == 0 &&
+                                (size_t)( MGONGPU_HR_TABLE_ENTRIES ) * nParity * sizeof( cxtype_amp_sv ) > (size_t)MGONGPU_HR_STREAM_MIN_MB * 1024 * 1024;
+
+// One store into the amplitude table (see hrStreamStores).
+inline void
+hr_store( cxtype_amp_sv& dst, const cxtype_amp_sv& amp )
+{
+#if defined __x86_64__ and defined MGONGPU_CPPSIMD and !defined MGONGPU_HR_NO_STREAM
+  if constexpr( hrStreamStores )
+  {
+    // the real and the imaginary vector, each aligned to its own size
+    fptype_amp_sv* p = reinterpret_cast<fptype_amp_sv*>( &dst );
+    const fptype_amp_sv parts[2] = { amp.real(), amp.imag() };
+    for( int k = 0; k < 2; k++ )
+    {
+#if defined __AVX512F__
+      if constexpr( sizeof( fptype_amp_sv ) == 64 )
+      {
+        __m512i x;
+        std::memcpy( &x, &parts[k], 64 );
+        _mm512_stream_si512( reinterpret_cast<__m512i*>( p + k ), x );
+        continue;
+      }
+#endif
+      __m256i x;
+      std::memcpy( &x, &parts[k], 32 );
+      _mm256_stream_si256( reinterpret_cast<__m256i*>( p + k ), x );
+    }
+    return;
+  }
+#endif
+  dst = amp;
+}
+
+// After the last store of a page and before hr_row reads the table: the
+// non-temporal stores are not ordered with the others.
+inline void
+hr_store_fence()
+{
+#if defined __x86_64__ and defined MGONGPU_CPPSIMD and !defined MGONGPU_HR_NO_STREAM
+  if constexpr( hrStreamStores ) _mm_sfence();
+#endif
+}
 
 // One member of a P1N group: the wavefunction slot of its peeled leg, its
 // helicity row in the recycled tables, and how many fold entries follow.
@@ -57,7 +140,7 @@ hr_fold_amp( const cxtype_amp_sv& amp,
     const unsigned int kind = e >> 30;
     if( kind == 3 )
     {
-      tab[index] = amp;
+      hr_store( tab[index], amp );
       continue;
     }
     if( kind == 2 )

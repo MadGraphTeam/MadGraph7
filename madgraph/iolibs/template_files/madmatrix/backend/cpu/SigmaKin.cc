@@ -38,6 +38,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#if defined __x86_64__
+#include <immintrin.h> // the non-temporal stores of HelRecyclingTables.h
+#endif
 #include <vector>
 
 namespace madmatrix
@@ -378,24 +381,32 @@ namespace madmatrix
   // Apple M5 Pro, and still 1.2x-1.3x with every hardware thread of a 2x AMD EPYC
   // 7452 busy (64 cores, 128 threads); 16.6 MB at simd_256 1.3x on one thread
   // but 0.66x-0.75x with every thread busy, 33 MB at simd_512 0.60x-0.71x;
-  // g g > u u~ g g (0.6 MB at simd_512) 1.36x and more everywhere. Above
-  // MGONGPU_HR_MAX_TABLE_MB (make HRMAXMB=<n>, 0 for no limit) this build uses
-  // the plain helicity loop, which is compiled in the same library anyway. The
-  // size is per SIMD page of neppV events: in mixed precision a call makes two
-  // pages (nParity), which does not change the traffic per event, and the
-  // measurements above are all of that kind. It counts the wavefunction slots
-  // too (hrNwf: ~1 MB per page for g g > t t~ g g g at simd_128), which every
-  // page writes and reads as well.
-#ifndef MGONGPU_HR_MAX_TABLE_MB
-#define MGONGPU_HR_MAX_TABLE_MB 10
-#endif
+  // g g > u u~ g g (0.6 MB at simd_512) 1.36x and more everywhere. With the
+  // non-temporal table stores (hrStreamStores, HelRecyclingTables.h), which
+  // take the table out of the caches, the limit is 20 MB rather than 10: at
+  // simd_256 g g > t t~ g g g is then 1.45x on one thread and 1.23x with every
+  // thread of the EPYC 7452 busy, 1.54x and 0.94x on a 2x EPYC 9655 (192
+  // cores; 1.03x in FPTYPE=v), while simd_512 (33 MB) stays below plain with
+  // every core busy (0.57x). Above the limit (MGONGPU_HR_MAX_TABLE_MB, make
+  // HRMAXMB=<n>, 0 for no limit, which then holds whatever the stores) this
+  // build uses the plain helicity loop, which is compiled in the same library
+  // anyway. The size is per SIMD page of neppV events: in mixed precision a
+  // call makes two pages (nParity), which does not change the traffic per
+  // event, and the measurements above are all of that kind. It counts the
+  // wavefunction slots too (hrNwf: ~1 MB per page for g g > t t~ g g g at
+  // simd_128), which every page writes and reads as well.
   constexpr size_t hrWfBytes = (size_t)hrNwf * ( np4 * sizeof( fptype_momenta_sv ) + nw6 * sizeof( cxtype_amp_sv ) );
 #ifdef MGONGPU_HR_ROWS
   constexpr size_t hrPageTableBytes = hrWfBytes + (size_t)nHrRows * hrNamp * sizeof( cxtype_amp_sv );
 #else
   constexpr size_t hrPageTableBytes = hrWfBytes + (size_t)nHrRows * ( ( hrNtmp + njampso ) * sizeof( cxtype_amp_sv ) + ndiagrams * sizeof( fptype_amp_sv ) );
 #endif
-  constexpr bool hrUseRecycling = MGONGPU_HR_MAX_TABLE_MB <= 0 || hrPageTableBytes <= (size_t)MGONGPU_HR_MAX_TABLE_MB * 1024 * 1024;
+#ifdef MGONGPU_HR_MAX_TABLE_MB
+  constexpr int hrMaxTableMB = MGONGPU_HR_MAX_TABLE_MB;
+#else
+  constexpr int hrMaxTableMB = hrStreamStores ? 20 : 10;
+#endif
+  constexpr bool hrUseRecycling = hrMaxTableMB <= 0 || hrPageTableBytes <= (size_t)hrMaxTableMB * 1024 * 1024;
 
   // Say once that the limit took the plain build instead.
   inline void
@@ -404,9 +415,9 @@ namespace madmatrix
     static std::atomic<bool> said{ false }; // called from every thread of the helicity loop
     if( said.exchange( true ) ) return;
     printf( "INFO: --hel_recycling is not used by this build: its tables would be %.1f MB per SIMD page at\n"
-            "INFO: this SIMD width, more than MGONGPU_HR_MAX_TABLE_MB=%d (make HRMAXMB=<n>, 0 for no limit);\n"
+            "INFO: this SIMD width, more than the limit of %d MB (make HRMAXMB=<n>, 0 for no limit);\n"
             "INFO: the plain matrix element is faster there.\n",
-            hrPageTableBytes / ( 1024. * 1024. ), (int)MGONGPU_HR_MAX_TABLE_MB );
+            hrPageTableBytes / ( 1024. * 1024. ), hrMaxTableMB );
   }
 
   // Build every helicity row of the table at once, for one event page (two in
@@ -573,6 +584,7 @@ namespace madmatrix
 #endif
     calculate_all_jamps( allmomenta, allcouplings, iflavorVec, ampAll_sv, jampTmpAll_sv, jampAll_sv, numAll_sv,
                          storeChannelWeights, ievt00 );
+    hr_store_fence(); // the table is read below
 #if defined MGONGPU_CPP_HAS_BLAS and !defined MGONGPU_HR_NO_BLAS
     // The color matrix does not depend on the helicity: for a large-enough one
     // the jamps of every good helicity go to BLAS in one call (see sigmaKin).
