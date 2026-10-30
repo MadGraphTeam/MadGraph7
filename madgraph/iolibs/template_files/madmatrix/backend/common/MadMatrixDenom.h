@@ -5,10 +5,7 @@
 #ifndef MadMatrixDenom_H
 #define MadMatrixDenom_H 1
 
-// The propagator denominator of the helas routines, one copy for every backend.
-// Included at the end of mgOnGpuCxtypes.h (cpu, gpu) or mgOnGpuVectors.h (simd),
-// once the backend has defined the types, cxmake, fpamp_of_mom and fpdenom_bcast
-// (the broadcast of a scalar into fptype_denom_sv, the one piece that differs).
+// Propagator denominator of the helas routines; included by HelAmps after the backend's fpdenom_bcast.
 namespace madmatrix
 {
   // Squared propagator mass m2 = M^2 - i M W at denom precision: real mass and width, or complex mass (CMS).
@@ -35,7 +32,7 @@ namespace madmatrix
   }
 
   // Propagator coupling Ccoeff * COUP / ( P^2 - m2 ), the division at vertex precision; mass as in mass2.
-  template<typename C, typename... Mass>
+  template<typename C, typename... Mass> //look mom, I used variadic template for the 1st T in my life
   inline __host__ __device__
   cxtype_amp_sv denom( fptype ccoeff, const C& coup, const fptype_denom_sv P[4], const Mass&... mass )
   {

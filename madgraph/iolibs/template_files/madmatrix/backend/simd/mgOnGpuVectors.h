@@ -896,7 +896,6 @@ namespace madmatrix
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 
 #endif
 #ifndef MGONGPU_SIMD_DENOM64
-  // scalar broadcast into fptype_denom_sv, used by madmatrix::denom (MadMatrixDenom.h, included at the end)
   inline fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
 #endif
   template<typename T>
@@ -957,8 +956,5 @@ namespace madmatrix
   //==========================================================================
 
 } // end namespace madmatrix
-
-// madmatrix::denom, the propagator denominator: one copy for every backend
-#include "MadMatrixDenom.h"
 
 #endif // MGONGPUVECTORS_H
