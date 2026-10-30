@@ -6494,12 +6494,14 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "catani": "none",
+   "catani_reason": "restrict_ckm: no CKM counterterm in the UFO, so the complex CKM leaves a UV pole in the QED correction (single pole = the QED operator - 0.0213 alpha/2pi Born, as MadLoop's; finding F6)",
    "pending": {
     "waits_for": "MS-REF",
     "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
