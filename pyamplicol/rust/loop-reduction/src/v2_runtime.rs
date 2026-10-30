@@ -844,6 +844,7 @@ impl V2Runtime {
             momenta: incoming.clone(),
             scales: scales.to_vec(),
             masses: bound.masses,
+            masses_imaginary: bound.masses_imaginary,
             // The on-shell external invariants (as the Python binding's).
             leg_masses: bound.leg_masses,
             constants: bound.constants,
@@ -934,6 +935,7 @@ impl V2Runtime {
                 momenta: incoming,
                 scales: scales.to_vec(),
                 masses: bound.masses,
+                masses_imaginary: bound.masses_imaginary,
                 leg_masses: bound.leg_masses,
                 constants: bound.constants,
                 block_rows: twin_inputs.block_rows,
