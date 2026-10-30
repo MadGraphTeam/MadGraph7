@@ -2,10 +2,10 @@
 """The M-SM campaign manifest and the EW parts of the harness (m-sm/PLAN.md
 §1.4, §3.2 MS-VALIDATE, §4): ``tests/fixtures/loop/msm/manifest.json``
 (written by ``tools/loop_benchmark/msm_manifest.py``) holds PLAN §4.2's 70
-core rows in the M-QCD record type; ``tools/loop_benchmark/mqcd.py`` runs
-them with F_s per correction, rule 4's typed unpredicted reasons, rule 5's
-EW component form, the R2 rule and the EW reference formats. Fast: no
-generation."""
+core rows and MS-UFODB's SC10 in the M-QCD record type;
+``tools/loop_benchmark/mqcd.py`` runs them with F_s per correction, rule 4's
+typed unpredicted reasons, rule 5's EW component form, the R2 rule and the
+EW reference formats. Fast: no generation."""
 
 from __future__ import annotations
 
@@ -37,6 +37,8 @@ PLAN_ROWS = {
     "MP": "01 02",
     "SC": "01 02 03 04 05 06 07 08 09",
 }
+# MS-UFODB's row (the R2_ZZHH vertex of UFOmodeldb 6ca4b120).
+EXTRA_ROWS = {"SC10"}
 # PLAN §4.3 tiers: VJ02 is the default tier, joined after MS-GEN by TT01
 # (PLAN §3.2 item 3: generated in < 60 s; LL01 and DY01 are not); the 2->5
 # target and CM07 run in the campaign tier.
@@ -65,7 +67,7 @@ def test_rows_are_the_plan_rows(rows):
     expected = {f"{k}{n}" for k, ids in PLAN_ROWS.items() for n in ids.split()}
     assert len(expected) == 70
     core = _core(rows)
-    assert set(core) == expected
+    assert set(core) == expected | EXTRA_ROWS
     assert {n for n, r in core.items() if r.tier == "default"} == DEFAULT_TIER
     assert {n for n, r in core.items() if r.tier == "campaign"} == CAMPAIGN_TIER
 
@@ -157,6 +159,18 @@ def test_joint_requests_predict_every_sector(rows):
 
 
 @pytest.mark.loop_fast
+def test_relaxed_tolerances_name_a_rule_and_stay_below_attention(rows):
+    """Every relaxed tolerance names a rule the harness relaxes (rule 4 per
+    carrier: ``"4"`` binary64, ``"4dd"`` double-double) and is at most
+    ~1e-5 (the user's ruling of 2026-10-29 ~10:20)."""
+
+    for name, row in rows.items():
+        for rule, tolerance in row.relaxed.items():
+            assert rule in ("2", "4", "4dd", "5", "6"), name
+            assert 0 < tolerance <= mqcd.ATTENTION, name
+
+
+@pytest.mark.loop_fast
 def test_r2_rule_rows_compare_against_a_complete_insertion(rows):
     """PLAN §1.4 rule 1, the R2 rule: a row whose MadLoop export omits a UFO
     R2 coupling the engine inserts is compared against Recola (the primary
@@ -179,8 +193,8 @@ def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
     R2_AWWtb under R2_AWWcs) and drops vanishing ones (R2_AAu3 ~ MU^2), so an
     inserted coupling counts as called when its value class is; R2_G0tt_b
     (V_ttG02's b-loop R2, whose propagator label MadLoop's matching never
-    meets) is the omission, and a row that lists as omitted a coupling
-    MadLoop calls fails the structural check."""
+    meets) is the omission; a row that lists as omitted a coupling MadLoop
+    calls, or does not list one it omits, fails the structural check."""
 
     from types import SimpleNamespace as N
 
@@ -208,13 +222,23 @@ def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
     row = N(
         madloop_omitted_r2=("R2_G0tt_b",), madloop_r2_called=("R2_AWWcs", "R2_G0tt")
     )
-    checks = mqcd.rule_r2(row, slice_, reference, classes)
+    engine = mqcd.engine_r2(slice_, lambda rule: True)
+    checks = mqcd.rule_r2(row, slice_, reference, classes, engine)
     assert [c.coefficient for c in checks] == ["inserted", "omitted"]
     assert all(c.passed for c in checks)
     # A listed coupling MadLoop calls is no omission.
     called = N(madloop_omitted_r2=("R2_G0tt",), madloop_r2_called=row.madloop_r2_called)
-    inserted, omitted = mqcd.rule_r2(called, slice_, reference, classes)
+    inserted, omitted = mqcd.rule_r2(called, slice_, reference, classes, engine)
     assert inserted.passed and not omitted.passed and omitted.value == "R2_G0tt_b"
+    # An unlisted omission fails: the set found is the listed set.
+    unlisted = N(madloop_omitted_r2=(), madloop_r2_called=row.madloop_r2_called)
+    (omitted,) = mqcd.rule_r2(unlisted, slice_, reference, classes, engine)
+    assert not omitted.passed and omitted.value == "R2_G0tt_b"
+    # A vertex no tree of the request can hold (``mqcd.r2_reachability``)
+    # inserts nothing, so its couplings are no omission.
+    unreached = mqcd.engine_r2(slice_, lambda rule: rule is not rules["g0"])
+    (omitted,) = mqcd.rule_r2(unlisted, slice_, reference, classes, unreached)
+    assert omitted.passed and omitted.value == "none"
 
 
 @pytest.mark.loop_fast

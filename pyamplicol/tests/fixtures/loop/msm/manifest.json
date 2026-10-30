@@ -213,6 +213,7 @@
   "photon:initial",
   "quark-final-state",
   "r2-rule",
+  "r2-ufodb",
   "radiation-zero",
   "root-closure",
   "root-mixing",
@@ -392,12 +393,13 @@
    },
    {
     "job": 5,
-    "seconds": 1258,
+    "seconds": 1459,
     "rows": [
      "DY02",
      "DY03",
      "DY04",
-     "DY07"
+     "DY07",
+     "VH03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
    },
@@ -478,12 +480,13 @@
    },
    {
     "job": 13,
-    "seconds": 1209,
+    "seconds": 1363,
     "rows": [
      "PI04",
      "SC01",
      "SC02",
-     "SC07"
+     "SC07",
+     "VH02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
@@ -501,55 +504,54 @@
    },
    {
     "job": 15,
-    "seconds": 1247,
+    "seconds": 1379,
     "rows": [
      "SC09",
-     "ST01",
-     "ST02",
-     "ST03"
+     "SC10",
+     "ST01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
     "job": 16,
-    "seconds": 1232,
+    "seconds": 1335,
     "rows": [
+     "ST02",
+     "ST03",
      "ST04",
-     "TT01",
-     "TT02"
+     "TT01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
    },
    {
     "job": 17,
-    "seconds": 1375,
+    "seconds": 1324,
     "rows": [
+     "TT02",
      "TT03",
-     "TT04",
-     "TT05"
+     "TT04"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
    },
    {
     "job": 18,
-    "seconds": 1366,
+    "seconds": 1319,
     "rows": [
+     "TT05",
      "TT06",
      "TV01",
-     "TV02",
-     "TV03"
+     "VH01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    },
    {
     "job": 19,
-    "seconds": 1199,
+    "seconds": 1307,
     "rows": [
+     "TV02",
+     "TV03",
      "TV06",
-     "V301",
-     "VH01",
-     "VH02",
-     "VH03"
+     "V301"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
@@ -5264,7 +5266,7 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "relaxed": {
-    "4": 1e-14
+    "4dd": 1e-14
    },
    "madloop_omitted_r2": [
     "R2_G0tt_b"
@@ -5402,7 +5404,7 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "relaxed": {
-    "4": 1e-13
+    "4dd": 1e-13
    },
    "madloop_r2_called": [
     "R2_AAD",
@@ -11204,7 +11206,7 @@
    ],
    "notes": "the d s b veto leaves the axial Z-gluon R2 and the closed up-type loops' axial parts uncancelled: lowered by request ([U2], as test_loop_v2_epsilon_sign)",
    "relaxed": {
-    "4": 1e-12
+    "4dd": 1e-12
    }
   },
   {
@@ -11725,6 +11727,116 @@
     "R2_ttZ2Cm_b",
     "R2_ttZ2Cp",
     "R2_ttZ2Cp_b"
+   ]
+  },
+  {
+   "id": "SC10",
+   "class": "W-scheme",
+   "process": "z z > h h",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 2
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "N (MS-UFODB: R2_ZZHH on UFOmodeldb 6ca4b120; MadLoop QP + Recola)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/zz_hh_ew.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "2->2",
+    "r2-ufodb"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 6
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_G0G0boson1",
+    "R2_G0G0boson2",
+    "R2_HHHboson",
+    "R2_HHHt",
+    "R2_HHboson1",
+    "R2_HHboson2",
+    "R2_HHt1",
+    "R2_HHt2",
+    "R2_ZG0H",
+    "R2_ZG0Ht",
+    "R2_ZZD",
+    "R2_ZZH",
+    "R2_ZZHH",
+    "R2_ZZHHt",
+    "R2_ZZHt",
+    "R2_ZZU",
+    "R2_ZZboson1",
+    "R2_ZZboson2",
+    "R2_ZZboson3",
+    "R2_ZZl",
+    "R2_ZZt3",
+    "R2_ZZv"
    ]
   }
  ]

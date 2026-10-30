@@ -603,6 +603,30 @@ def test_rule4_holds_the_poles_and_the_sector_sets():
     assert all(c.passed for c in mqcd.rule4(unpredicted, 0, none))
 
 
+def test_rule4_relaxes_only_its_carrier():
+    """A row's relaxed rule 4 is per carrier (the user's ruling of ~10:20:
+    passing checks keep their tolerances): ``"4"`` relaxes the binary64
+    poles only, ``"4dd"`` the double-double ones only."""
+
+    off = {SECTOR: (Decimal("-3.000000000000003"), Decimal("0.5"))}  # 1e-15
+    dd = _point("double-double", 2.0, (1.0, -3.0, 0.5), (1e-28,) * 3, off)
+    wide = {SECTOR: (Decimal("-3.0000000003"), Decimal("0.5"))}  # 1e-10
+    b64 = _point("double", 2.0, (1.0, -3.0, 0.5), (1e-14,) * 3, wide)
+
+    def single(row, point):
+        (check,) = [
+            c for c in mqcd.rule4(row, 0, point) if c.coefficient == "single_pole"
+        ]
+        return check
+
+    assert not single(_row(), dd).passed
+    assert not single(_row(relaxed={"4": 1e-14}), dd).passed
+    assert single(_row(relaxed={"4dd": 1e-14}), dd).passed
+    assert not single(_row(), b64).passed
+    assert not single(_row(relaxed={"4dd": 1e-8}), b64).passed
+    assert single(_row(relaxed={"4": 1e-8}), b64).passed
+
+
 def test_rule4_reports_binary64_poles_outside_the_scope():
     """Rule 4 in binary64: the bands of rule 2; a pole outside the O1 scope
     is reported, not asserted."""
