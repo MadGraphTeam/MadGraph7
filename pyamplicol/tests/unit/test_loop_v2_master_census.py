@@ -223,17 +223,41 @@ GMU_PARAMETERS = {
 }
 
 
+def _madloop_rows(block) -> list[dict[str, list[Decimal]]]:
+    """A ``cms-ufo-standard-gmu.json`` block's MadLoop Born and full virtual
+    (finite, 1/eps, 1/eps^2) per point, keyed as ``_totals`` keys a result."""
+
+    return [
+        {"born": [Decimal(born)], "virtual": [Decimal(x) for x in full]}
+        for born, full in zip(block["born"], block["full"], strict=True)
+    ]
+
+
+def _totals(result) -> dict[str, list[Decimal]]:
+    """A result's Born and complete virtual (``PointResult.totals``)."""
+
+    born, *virtual = (_real(x) for x in result.totals[:4])
+    return {"born": [born], "virtual": virtual}
+
+
 @pytest.mark.loop_nightly
 def test_cm01_masters_avoid_the_known_complex_mass_defects(
     loop_gmu_ufo, loop_native, tmp_path
 ):
     """CM01 (e- e+ > mu- mu+ [QED] on the G_mu UFO under the complex-mass
-    scheme, every width; ``cms-ufo-standard-gmu.json``): at its four points no
-    master reaches a defect signature; its ZZ / WW boxes with complex masses
-    agree on the ``Float`` route, AP(40) = AP(60) and double-double = AP(60);
-    widths of 1e-152 of their masses (|Im m^2| / Re m^2 below SymJIT's 1e-150)
-    give the zero-width virtual in binary64 and double-double. Generation
-    about 5 min, 10 GB."""
+    scheme, widths free at run time; ``cms-ufo-standard-gmu.json``): at its
+    four points no master reaches a defect signature, and its ZZ / WW boxes
+    with complex masses agree on the ``Float`` route, AP(40) = AP(60) to
+    1e-30 (measured 1e-57), double-double = AP(60) to 1e-20 (2e-30).
+
+    The ``complex-mass-master`` guard (``TreeProgram::bind``): at zero widths
+    the binary64 SymJIT parameter program took the other side of the
+    electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
+    against MadLoop's 1.8e-3), so binary64 refuses an exactly real pole mass;
+    double-double and arbitrary precision equal MadLoop's zero-width
+    virtual (to 1e-8; double-double measured 1e-15). Widths of 1e-100 of their masses give it in both carriers;
+    1e-152 (below 1e-150, where the DoubleFloat C0 turned non-finite)
+    refuses in both. Generation about 5 min, 10 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -263,29 +287,42 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     assert agreement["double"] <= 1e-8, agreement
 
     masses = {"WZ": "MZ", "WW": "MW", "WT": "MT", "WH": "MH"}
-    tiny = {width: f"{GMU_PARAMETERS[mass]}e-152" for width, mass in masses.items()}
-    zero = dict.fromkeys(masses, "0")
-    points = reference["zero"]["points"]
+    zero_block = reference["zero"]
+    madloop = _madloop_rows(zero_block)
+    points = zero_block["points"]
     scales = ["1000000"] * len(points)
-    found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
-    assert found.tiny_widths, found.record()
-    for precision, tolerance in (
-        (Precision.double_double(), 1e-20),
-        (Precision.double(), 1e-12),
-    ):
-        runs = [
-            [
-                _values(result)
-                for result in executor.evaluate(
-                    points,
-                    scales,
-                    parameters={**GMU_PARAMETERS, **widths},
-                    precision=precision,
-                )
-            ]
-            for widths in (tiny, zero)
+
+    def evaluate(widths, precision):
+        return [
+            _totals(result)
+            for result in executor.evaluate(
+                points,
+                scales,
+                parameters={**GMU_PARAMETERS, **widths},
+                precision=precision,
+            )
         ]
+
+    zero = dict.fromkeys(masses, "0")
+    small = {width: f"{GMU_PARAMETERS[mass]}e-100" for width, mass in masses.items()}
+    tiny = {width: f"{GMU_PARAMETERS[mass]}e-152" for width, mass in masses.items()}
+    for widths, precision in (
+        (zero, Precision.double_double()),
+        (zero, Precision.arbitrary(32)),
+        (small, Precision.double_double()),
+        (small, Precision.double()),
+    ):
         difference = max(
-            _difference(a, b, 1 / 132.0) for a, b in zip(*runs, strict=True)
+            _difference(mine, theirs, 1 / 132.0)
+            for mine, theirs in zip(evaluate(widths, precision), madloop, strict=True)
         )
-        assert difference <= tolerance, (precision.arithmetic, difference)
+        assert difference <= 1e-8, (precision.arithmetic, widths, difference)
+    for widths, precision in (
+        (zero, Precision.double()),
+        (tiny, Precision.double()),
+        (tiny, Precision.double_double()),
+    ):
+        with pytest.raises(ValueError, match="complex-mass-master: plan mass"):
+            evaluate(widths, precision)
+    found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
+    assert found.bites()["tiny-width"], found.record()

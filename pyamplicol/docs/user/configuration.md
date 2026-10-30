@@ -1088,7 +1088,12 @@ width-carrying particle whose mass is not an external parameter
 scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
 masses in their native point inputs (the loop propagators read M^2 - i M W; the
 binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
-point inputs and relocate as any other artifact. An evaluation
+point inputs and relocate as any other artifact. A width changed at run time
+must stay at least 1e-150 of its mass; zero is accepted in double-double and
+arbitrary precision only (binary64, whose parameter program runs as a SymJIT
+plane, refuses it: `complex-mass-master`, a model-parameter error naming the
+plan mass). For a zero width, fix it at generation, which propagates the mass
+as a real one. An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
 value that is not a finite decimal number (a number, or ASCII decimal text:
 surrounding whitespace and underscores are ignored, fractions and non-ASCII
