@@ -250,14 +250,14 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     with complex masses agree on the ``Float`` route, AP(40) = AP(60) to
     1e-30 (measured 1e-57), double-double = AP(60) to 1e-20 (2e-30).
 
-    The ``complex-mass-master`` guard (``TreeProgram::bind``): at zero widths
-    the binary64 SymJIT parameter program took the other side of the
+    Widths changed at run time (``TreeProgram::bind``): at zero widths the
+    binary64 SymJIT parameter program took the other side of the
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
-    against MadLoop's 1.8e-3), so binary64 refuses an exactly real pole mass;
-    double-double and arbitrary precision equal MadLoop's zero-width
-    virtual (to 1e-8; double-double measured 1e-15). Widths of 1e-100 of their masses give it in both carriers;
-    1e-152 (below 1e-150, where the DoubleFloat C0 turned non-finite)
-    refuses in both. Generation about 5 min, 10 GB."""
+    against MadLoop's 1.8e-3), so a batch with an exactly real pole mass
+    evaluates its parameter program exactly; every carrier then equals
+    MadLoop's zero-width virtual (to 1e-8), as at widths of 1e-100 of the
+    masses; 1e-152 (below 1e-150, where the DoubleFloat C0 turned
+    non-finite) refuses with ``complex-mass-master``. Generation about 5 min, 10 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -307,6 +307,7 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     small = {width: f"{GMU_PARAMETERS[mass]}e-100" for width, mass in masses.items()}
     tiny = {width: f"{GMU_PARAMETERS[mass]}e-152" for width, mass in masses.items()}
     for widths, precision in (
+        (zero, Precision.double()),
         (zero, Precision.double_double()),
         (zero, Precision.arbitrary(32)),
         (small, Precision.double_double()),
@@ -318,7 +319,6 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
         )
         assert difference <= 1e-8, (precision.arithmetic, widths, difference)
     for widths, precision in (
-        (zero, Precision.double()),
         (tiny, Precision.double()),
         (tiny, Precision.double_double()),
     ):

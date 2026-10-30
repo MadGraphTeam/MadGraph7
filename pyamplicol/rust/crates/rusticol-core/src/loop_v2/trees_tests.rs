@@ -137,22 +137,21 @@ fn plan_masses_read_inputs_or_outputs() {
 }
 
 #[test]
-fn complex_mass_master_guard_refuses_tiny_and_plane_zero_widths() {
-    // M^2 - i M Gamma at M = 91: a physical width passes in every carrier; a
-    // zero width only off the binary64 plane; 0 < |Im| / Re < 1e-150 nowhere.
+fn complex_mass_master_guard_refuses_widths_below_1e150_of_the_mass() {
+    // M^2 - i M Gamma at M = 91: a physical width and a zero width pass, 0 <
+    // |Im| / Re < 1e-150 refuses.
     let re = Rational::from(8281);
     let physical = Rational::from((-227, 1));
     let tiny = Rational::from((-1, 1)) / Rational::from(10).pow(160);
-    let zero = Rational::from(0);
-    for on_plane in [false, true] {
-        assert!(require_complex_mass_master(0, &re, &physical, on_plane).is_ok());
-        let error = require_complex_mass_master(3, &re, &tiny, on_plane).unwrap_err();
-        assert_eq!(error.kind(), crate::RusticolErrorKind::ModelParameter);
-        assert!(error.to_string().contains("complex-mass-master: plan mass 3"));
-    }
-    assert!(require_complex_mass_master(1, &re, &zero, false).is_ok());
-    let error = require_complex_mass_master(1, &re, &zero, true).unwrap_err();
-    assert!(error.to_string().contains("binary64 SymJIT parameter program"));
+    assert!(require_complex_mass_master(0, &re, &physical).is_ok());
+    assert!(require_complex_mass_master(1, &re, &Rational::from(0)).is_ok());
+    let error = require_complex_mass_master(3, &re, &tiny).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::ModelParameter);
+    assert!(
+        error
+            .to_string()
+            .starts_with("complex-mass-master: plan mass 3")
+    );
 }
 
 #[test]

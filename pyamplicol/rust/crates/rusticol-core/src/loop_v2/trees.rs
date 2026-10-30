@@ -370,49 +370,26 @@ pub const COMPLEX_MASS_MASTER_RATIO: f64 = 1e-150;
 /// The complex-mass master guard (M-SM MS-MASTERS) on a pole mass's square
 /// `re + i im` (plan mass `index`) at a batch's parameters: refused, as a
 /// model-parameter error naming `complex-mass-master`, when
-///
-/// * `0 < |im| < 1e-150 re` in any carrier: below that the masters' complex
-///   branches are unreliable (DoubleFloat C0 non-finite at 1e-155 on CM01;
-///   oneloopmaster's SymJIT D0 off at 1e-150, STATUS "Open D0 limitations");
-/// * `im = 0` with the parameter program on its binary64 SymJIT plane (a
-///   width set to zero at run time on a pole mass generated complex): the
-///   plane then takes the side of the counterterms' branch cuts its signed
-///   zeros select, which the exact evaluator does not (CM01 at zero widths:
-///   the electroweak UV counterterm couplings' absorptive parts, an O(1)
-///   finite part), while its plane check certified the generation's widths
-///   only. The exact evaluators (double-double, arbitrary precision) take
-///   the zero-width limit there.
-fn require_complex_mass_master(
-    index: usize,
-    re: &Rational,
-    im: &Rational,
-    on_plane: bool,
-) -> RusticolResult<()> {
-    let ratio = if re.is_zero() {
-        f64::INFINITY
-    } else {
-        (im.abs() / re.abs()).to_f64()
-    };
-    let reason = if im.is_zero() {
-        on_plane.then_some(
-            "an exactly real pole mass (a zero width) on the binary64 SymJIT parameter \
-             program, whose side of the counterterms' branch cuts its plane check did not \
-             certify; double-double and arbitrary precision take the zero-width limit",
-        )
-    } else {
-        (ratio < COMPLEX_MASS_MASTER_RATIO).then_some(
-            "below 1e-150 the complex-mass branches of the master integrals are unreliable",
-        )
-    };
-    match reason {
-        None => Ok(()),
-        Some(reason) => Err(RusticolError::model_parameter(format!(
-            "{COMPLEX_MASS_MASTER}: plan mass {index} is a complex pole mass with \
-             |Im m^2| / Re m^2 = {ratio:e} at these model parameters: {reason}. Instead: \
-             fix a zero width at generation (a fixed parameter: the mass then propagates \
-             as a real mass), or give the width at least 1e-150 of its mass"
-        ))),
+/// `0 < |im| < 1e-150 re`, in any carrier: below that the masters' complex
+/// branches are unreliable (the DoubleFloat C0 non-finite at 1e-155 on CM01;
+/// oneloopmaster's SymJIT D0 off below 1e-150, its STATUS "Open D0
+/// limitations"). An exactly real pole mass (`im = 0`, a zero width) is the
+/// real-mass limit and passes (`bind` evaluates its parameter program
+/// exactly).
+fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> RusticolResult<()> {
+    if im.is_zero() || re.is_zero() {
+        return Ok(());
     }
+    let ratio = (im.abs() / re.abs()).to_f64();
+    if ratio >= COMPLEX_MASS_MASTER_RATIO {
+        return Ok(());
+    }
+    Err(RusticolError::model_parameter(format!(
+        "{COMPLEX_MASS_MASTER}: plan mass {index} is a complex pole mass with \
+         |Im m^2| / Re m^2 = {ratio:e} at these model parameters, below 1e-150, \
+         where the complex-mass branches of the master integrals are unreliable. \
+         Instead: give the width at least 1e-150 of its mass, or zero"
+    )))
 }
 
 // ------------------------------------------------------------------ file form
@@ -2291,6 +2268,26 @@ impl TreeProgram {
             .parameters
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
+        // A complex pole mass that is exactly real at these parameters (a
+        // width set to zero at run time on a mass generated complex) puts
+        // complex counterterm arguments on their branch cuts, where the
+        // binary64 plane's signed zeros select a side its plane check (at the
+        // generation's widths) did not certify: CM01 at zero widths took the
+        // other side of the electroweak UV counterterm couplings' cuts than
+        // the exact evaluator and MadLoop (M-SM MS-MASTERS). Such a batch
+        // takes the exact evaluator, the side the other carriers take.
+        if matches!(runtime.parameters, Kernel::Plane(_))
+            && program
+                .plan_masses
+                .iter()
+                .any(|mass| matches!(mass, Some(MassSource::Complex(o)) if outputs[*o].im == *zero))
+        {
+            let mut exact = exact_kernel(&program.saved, zero)?;
+            let _unlock = crate::licence::unlock();
+            exact
+                .evaluate_batch(&inputs, &mut outputs, points)
+                .map_err(|e| invalid(format!("parameter program: {e}")))?;
+        }
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
         // Values a batch shares (Born couplings, kernel constants, masses):
         // equal at every point unless they depend on the scale, which a
@@ -2413,7 +2410,6 @@ impl TreeProgram {
             .plan_masses
             .iter()
             .any(|mass| matches!(mass, Some(MassSource::Complex(_))));
-        let on_plane = matches!(runtime.parameters, Kernel::Plane(_));
         let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
         let mut masses_imaginary = Vec::new();
         for (index, mass) in program.plan_masses.iter().enumerate() {
@@ -2436,7 +2432,7 @@ impl TreeProgram {
                     let value = derived_plan.next().expect("one value per output plan mass");
                     let (re, im) = (value.re.exact()?, value.im.exact()?);
                     let squared = (&re * &re - &im * &im, Rational::from(2) * &re * &im);
-                    require_complex_mass_master(index, &squared.0, &squared.1, on_plane)?;
+                    require_complex_mass_master(index, &squared.0, &squared.1)?;
                     squared
                 }
                 None => (Rational::from(0), Rational::from(0)),
