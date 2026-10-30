@@ -4087,7 +4087,7 @@ R2_AZHHt = Coupling(name= 'R2_AZHHt',
                    order = {'QED':4})
 
 R2_ZZHH = Coupling(name= 'R2_ZZHH',
-                   value = '(-1/(16*cw**2))*((2+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)',
+                   value = '(-1/(16*cw**2))*((1+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)',
                    order = {'QED':4})
 
 R2_ZZHHe = Coupling(name= 'R2_ZZHHe',
