@@ -779,8 +779,25 @@ is an isolated photon, for which alpha(0) is the physical coupling. Choose
 Only requests with the electromagnetic correction convert photons (as in
 MG5_aMC: QCD corrections leave every photon at the model's coupling).
 
+The conversion counterterm and 1/alpha(0) are found by MG5_aMC's conventions
+(`eCoup_DGmua0_UV_EW` and the unique adjustable SLHA `SMINPUTS 1` parameter); a
+model that spells them otherwise names them:
+
+```toml
+[loop]
+alpha0_conversion_parameter = "dZe_Gmu_a0"   # default "eCoup_DGmua0_UV_EW"
+alpha0_inverse_parameter = "ainv0"            # default: the SMINPUTS 1 parameter
+```
+
+A named 1/alpha(0) whose inverse is the loops' alpha declares a model whose
+loops already couple with alpha(0): tagged photons then take neither the
+rescaling nor the conversion term (and no conversion counterterm is needed).
+Both names are recorded in the artifact's request only when set.
+
 Refusals (listed, typed): tagged photons on a model that cannot take the
-convention, `external-photon-scheme`. MG5_aMC's `loop_qcd_qed_sm` declares no
+convention, `external-photon-scheme`; also any on-shell external photon of an
+electroweak request on a model with several photon candidates (massless,
+neutral, colourless vectors: which one is the photon is ambiguous). MG5_aMC's `loop_qcd_qed_sm` declares no
 conversion (MG5_aMC refuses tagged photons there too): use `external_photons =
 "none"` or the G_mu model with `restriction = "a0"`; on the G_mu model's default
 card 1/alpha(0) is fixed (zero): use `restriction = "a0"` or `"none"`. A listed
