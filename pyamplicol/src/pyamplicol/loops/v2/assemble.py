@@ -4570,6 +4570,13 @@ class _NativePoint(_PointEvaluation):
         self.retest_families = None
 
     def counterterm_twin(self) -> None:
+        # A native point has no Python twin: the executor forms its
+        # counterterms at the IR regulator 0 (``counterterms_uv``).
+        if self.slice.pole_regulators is not None:
+            raise ValueError(
+                "a native point's counterterms at the IR regulator 0 are the "
+                "executor's (counterterms_uv), not a Python twin's"
+            )
         return None
 
     def _counterterms_uv(self) -> dict | None:
