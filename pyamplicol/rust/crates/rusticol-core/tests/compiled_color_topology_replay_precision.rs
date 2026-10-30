@@ -88,10 +88,43 @@ fn compiled_color_topology_replay_totals_in_double_double_and_arbitrary_precisio
     }
 }
 
+/// Absolute values: the 32- and 64-digit totals divided by the runtime's binary64 normalization
+/// factor N (applied exactly) equal the exact colour-summed |M|² / g_s⁴ of the built-in SM,
+/// 16 N_c²(N_c² − 1)(3 − tu/s² − su/t² − st/u²) at N_c = 3. Ratios between points cannot see a
+/// constant error, such as colour weights rounded to binary64 (64/3 in a full-colour contraction:
+/// 4.9e-17 before the exact weights). Observed: about 1e-31 at 32 digits and 6.6e-58 at 64 digits.
+#[test]
+fn compiled_color_topology_replay_totals_are_exact_at_working_precision() {
+    let Some(path) = std::env::var_os("RUSTICOL_COMPILED_COLOR_REPLAY_ARTIFACT") else {
+        return;
+    };
+    let mut runtime = NativeRuntime::load(PathBuf::from(path), None, None).unwrap();
+    let state: serde_json::Value =
+        serde_json::from_str(&runtime.exact_runtime_state_json().unwrap()).unwrap();
+    let normalization = Float::with_val(BITS, state["normalization_factor"].as_f64().unwrap());
+    let flat: Vec<i64> = POINTS.iter().flat_map(|point| momenta(*point)).collect();
+    let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
+    for (digits, tolerance) in [(32, 1e-27), (64, 1e-55)] {
+        let values = runtime
+            .evaluate_with_precision(&decimal, POINTS.len(), digits)
+            .unwrap()
+            .values;
+        for (point, value) in POINTS.iter().zip(&values) {
+            let stripped = Float::parse(value, Some(BITS)).unwrap() / &normalization;
+            let exact = Float::with_val(BITS, 16 * 9 * 8) * tree_level_shape(*point);
+            let difference = relative_difference(&stripped, &exact);
+            assert!(
+                difference <= tolerance,
+                "{digits} digits at {point:?}: |M|²/(N g⁴) differs from the exact colour sum by {difference:e}"
+            );
+        }
+    }
+}
+
 /// Resolved (per-helicity) evaluation of the same artifact in double-double and arbitrary
-/// precision: the components sum to the unresolved total of the same precision, agree with the
-/// binary64 components, are parity symmetric (pure QCD), and a helicity selector returns the
-/// selected component alone.
+/// precision: the components sum to the unresolved total of the same precision (observed: about
+/// 4e-32 at 32 digits, 5e-58 at 64 digits), agree with the binary64 components, are parity symmetric
+/// (pure QCD), and a helicity selector returns the selected component alone.
 #[test]
 fn compiled_color_topology_replay_resolved_in_double_double_and_arbitrary_precision() {
     let Some(path) = std::env::var_os("RUSTICOL_COMPILED_COLOR_REPLAY_ARTIFACT") else {
@@ -115,7 +148,7 @@ fn compiled_color_topology_replay_resolved_in_double_double_and_arbitrary_precis
     );
     let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
     let parse = |value: &String| Float::parse(value, Some(BITS)).unwrap();
-    for (digits, tolerance) in [(32, 1e-27), (64, 1e-58)] {
+    for (digits, tolerance) in [(32, 1e-27), (64, 1e-55)] {
         let totals = runtime
             .evaluate_with_precision(&decimal, POINTS.len(), digits)
             .unwrap()

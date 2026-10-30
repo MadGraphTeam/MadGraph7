@@ -1741,9 +1741,10 @@ struct GenericColorContractionEntryManifest {
     left_group_id: i64,
     right_group_id: i64,
     weight: Vec<f64>,
-    // Retained for Python arbitrary precision; native contraction keeps its f64 weight.
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    /// Exact rational weight [re_num, re_den, im_num, im_den], used by the native double-double and
+    /// arbitrary-precision contractions (binary64 uses `weight`).
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }
@@ -1776,8 +1777,8 @@ struct GenericRepeatedColorContractionEntryManifest {
     left_group_index: usize,
     right_group_index: usize,
     weight: Vec<f64>,
-    #[serde(default, rename = "exact_weight")]
-    _exact_weight: Option<[String; 4]>,
+    #[serde(default)]
+    exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }
@@ -2524,6 +2525,17 @@ struct ColorContractionEntry {
     weight_re: f64,
     weight_im: f64,
     symmetry_factor: f64,
+    /// The artifact's exact rational weight, used by the double-double and arbitrary-precision
+    /// contractions; `weight_re`/`weight_im` are its binary64 values.
+    exact: Option<ExactColorWeight>,
+}
+
+/// An exact rational colour weight (re_num/re_den, im_num/im_den), with |numerators| and
+/// denominators below 2^85 so that they convert exactly at 106 bits or more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct ExactColorWeight {
+    re: (i128, i128),
+    im: (i128, i128),
 }
 
 /// One color matrix shared by several disconnected contraction components.
@@ -2721,6 +2733,7 @@ struct CanonicalColorContractionEntry {
     weight_re_bits: u64,
     weight_im_bits: u64,
     symmetry_factor_bits: u64,
+    exact: Option<ExactColorWeight>,
 }
 
 fn color_component_root(parent: &mut [usize], mut index: usize) -> usize {
@@ -2829,6 +2842,7 @@ fn repeated_color_contraction_block(
             weight_re_bits: entry.weight_re.to_bits(),
             weight_im_bits: entry.weight_im.to_bits(),
             symmetry_factor_bits: entry.symmetry_factor.to_bits(),
+            exact: entry.exact,
         });
     }
     for component_entries in &mut entries_by_component {
@@ -2850,6 +2864,7 @@ fn repeated_color_contraction_block(
             weight_re: f64::from_bits(entry.weight_re_bits),
             weight_im: f64::from_bits(entry.weight_im_bits),
             symmetry_factor: f64::from_bits(entry.symmetry_factor_bits),
+            exact: entry.exact,
         })
         .collect::<Vec<_>>();
     let singleton_output_indices = component_group_indices

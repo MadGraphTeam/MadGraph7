@@ -3505,9 +3505,9 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
                     *full_value += T::from_f64_constant(normalization_factor * entry.symmetry_factor, binary_precision)
-                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
-                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
+                        * (weight_re * product_re - weight_im * product_im);
                 }
             }
         } else {
@@ -3760,9 +3760,9 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
                     *raw_sum += T::from_f64_constant(entry.symmetry_factor, binary_precision)
-                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
-                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
+                        * (weight_re * product_re - weight_im * product_im);
                 }
             }
             return Ok(raw_sums);
@@ -3957,10 +3957,10 @@ impl AmplitudeRuntime {
                     left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                 let product_im =
                     left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                let (weight_re, weight_im) = color_weight_generic::<T>(entry, binary_precision);
                 let contribution = normalization.clone()
                     * constant(entry.symmetry_factor)
-                    * (constant(entry.weight_re) * product_re
-                        - constant(entry.weight_im) * product_im);
+                    * (weight_re * product_re - weight_im * product_im);
                 for (helicity_index, weight) in &layout.members_by_group[entry.left_group_index] {
                     let Some(position) = layout.selected_positions[*helicity_index] else {
                         continue;
@@ -4065,9 +4065,9 @@ impl AmplitudeRuntime {
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
                     let coefficient = normalization_factor * entry.symmetry_factor;
+                    let (weight_re, weight_im) = color_weight_generic::<T>(&entry, binary_precision);
                     let contribution = T::from_f64_constant(coefficient, binary_precision)
-                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
-                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
+                        * (weight_re * product_re - weight_im * product_im);
                     for (helicity_index, weight) in left_weights {
                         full_values[(row * helicity_count + helicity_index) * color_count] +=
                             contribution.clone() * T::from_f64_constant(weight, binary_precision);
@@ -4527,12 +4527,19 @@ pub(crate) fn build_color_contraction_runtime(
                     "repeated colour contraction entry index is out of bounds",
                 ));
             }
+            let weight_re = entry.weight.first().copied().unwrap_or(0.0);
+            let weight_im = entry.weight.get(1).copied().unwrap_or(0.0);
             entries.push(ColorContractionEntry {
                 left_group_index: entry.left_group_index,
                 right_group_index: entry.right_group_index,
-                weight_re: entry.weight.first().copied().unwrap_or(0.0),
-                weight_im: entry.weight.get(1).copied().unwrap_or(0.0),
+                weight_re,
+                weight_im,
                 symmetry_factor: entry.symmetry_factor,
+                exact: parse_exact_color_weight(
+                    entry.exact_weight.as_ref(),
+                    weight_re,
+                    weight_im,
+                )?,
             });
         }
         let (walsh_block, c2k_walsh_block) = build_walsh_color_contraction_blocks(
@@ -4573,9 +4580,78 @@ pub(crate) fn build_color_contraction_runtime(
             weight_re,
             weight_im,
             symmetry_factor: entry.symmetry_factor,
+            exact: parse_exact_color_weight(entry.exact_weight.as_ref(), weight_re, weight_im)?,
         });
     }
     Ok(Some(ColorContractionRuntime::new(groups, entries)))
+}
+
+/// The artifact's exact colour weight [re_num, re_den, im_num, im_den], checked against its binary64
+/// value (`None` if the artifact has none).
+fn parse_exact_color_weight(
+    exact: Option<&[String; 4]>,
+    weight_re: f64,
+    weight_im: f64,
+) -> RusticolResult<Option<ExactColorWeight>> {
+    let Some(exact) = exact else {
+        return Ok(None);
+    };
+    const LIMIT: i128 = 1 << 85;
+    let part = |numerator: &str, denominator: &str, binary64: f64| {
+        let parse = |text: &str| {
+            text.parse::<i128>()
+                .ok()
+                .filter(|value| value.abs() < LIMIT)
+                .ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "exact colour weight component {text:?} is not an integer below 2^85"
+                    ))
+                })
+        };
+        let (numerator, denominator) = (parse(numerator)?, parse(denominator)?);
+        if denominator <= 0 {
+            return Err(RusticolError::artifact(
+                "exact colour weight has a non-positive denominator",
+            ));
+        }
+        let value = numerator as f64 / denominator as f64;
+        if (value - binary64).abs() > 4.0 * f64::EPSILON * binary64.abs() {
+            return Err(RusticolError::artifact(format!(
+                "exact colour weight {numerator}/{denominator} disagrees with its binary64 value {binary64:e}"
+            )));
+        }
+        Ok((numerator, denominator))
+    };
+    Ok(Some(ExactColorWeight {
+        re: part(&exact[0], &exact[1], weight_re)?,
+        im: part(&exact[2], &exact[3], weight_im)?,
+    }))
+}
+
+/// The colour weight of `entry` at the working precision: the artifact's exact rational when it has
+/// one, else the binary64 value.
+#[cfg(feature = "symbolica-runtime")]
+fn color_weight_generic<T>(entry: &ColorContractionEntry, binary_precision: Option<u32>) -> (T, T)
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    let Some(exact) = entry.exact else {
+        return (
+            T::from_f64_constant(entry.weight_re, binary_precision),
+            T::from_f64_constant(entry.weight_im, binary_precision),
+        );
+    };
+    // |n| < 2^85 splits into two binary64-exact halves, n = high · 2^32 + low.
+    let integer = |n: i128| {
+        let high = T::from_f64_constant((n >> 32) as f64, binary_precision);
+        let low = T::from_f64_constant((n & 0xffff_ffff) as f64, binary_precision);
+        high * T::from_f64_constant(4_294_967_296.0, binary_precision) + low
+    };
+    let rational = |(numerator, denominator): (i128, i128)| {
+        integer(numerator) / integer(denominator)
+    };
+    (rational(exact.re), rational(exact.im))
 }
 
 pub(crate) fn build_compiled_symmetric_group_color_contraction_runtime(
@@ -4827,6 +4903,7 @@ fn build_klein_four_walsh_color_contraction_block(
                     continue;
                 }
                 transformed_entries.push(ColorContractionEntry {
+                    exact: None,
                     left_group_index: character_index * coset_count + left_coset_index,
                     right_group_index: character_index * coset_count + right_coset_index,
                     weight_re: weight,
@@ -4983,6 +5060,7 @@ fn build_c2k_walsh_color_contraction_block(
                     continue;
                 }
                 transformed_entries.push(ColorContractionEntry {
+                    exact: None,
                     left_group_index: character_index * coset_count + left_coset_index,
                     right_group_index: character_index * coset_count + right_coset_index,
                     // The C2^k runtime deliberately applies the unnormalized
@@ -5167,6 +5245,65 @@ impl ColorReplayResolvedLayout {
             .len()
             .checked_mul(self.color_indices.len())
             .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))
+    }
+}
+
+#[cfg(test)]
+mod exact_color_weight_tests {
+    use super::*;
+
+    fn strings(parts: [&str; 4]) -> [String; 4] {
+        parts.map(str::to_owned)
+    }
+
+    #[test]
+    fn exact_weights_are_parsed_checked_and_exact_at_working_precision() {
+        let exact = parse_exact_color_weight(
+            Some(&strings(["64", "3", "0", "1"])),
+            64.0 / 3.0,
+            0.0,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(exact.re, (64, 3));
+        assert!(parse_exact_color_weight(None, 1.0, 0.0).unwrap().is_none());
+        for (parts, re) in [
+            (["64", "3", "0", "1"], 21.0),
+            (["64", "0", "0", "1"], 0.0),
+            (["6.4", "3", "0", "1"], 2.1),
+            (["1", "-3", "0", "1"], -1.0 / 3.0),
+        ] {
+            assert!(parse_exact_color_weight(Some(&strings(parts)), re, 0.0).is_err());
+        }
+        #[cfg(feature = "symbolica-runtime")]
+        {
+            let entry = ColorContractionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                weight_re: 64.0 / 3.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+                exact: Some(exact),
+            };
+            let (re, im) = color_weight_generic::<Float>(&entry, Some(200));
+            let reference = Float::with_val(200, 64) / Float::with_val(200, 3);
+            assert_eq!(re, reference);
+            assert_eq!(im, Float::with_val(200, 0));
+            let (re, _) = color_weight_generic::<DoubleFloat>(&entry, None);
+            let reference = DoubleFloat::from(64.0) / DoubleFloat::from(3.0);
+            assert_eq!(re, reference);
+            // Large numerators split into exact halves.
+            let large = ColorContractionEntry {
+                exact: Some(ExactColorWeight {
+                    re: ((1 << 70) + 1, 3),
+                    im: (0, 1),
+                }),
+                ..entry
+            };
+            let (re, _) = color_weight_generic::<Float>(&large, Some(200));
+            let numerator = Float::with_val(200, 2f64.powi(70)) + Float::with_val(200, 1);
+            assert_eq!(re, numerator / Float::with_val(200, 3));
+        }
     }
 }
 
