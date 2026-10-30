@@ -469,3 +469,39 @@ def test_multiparticle_artifact_records_its_skipped_members(loop_native, tmp_pat
     ]
     assert values[0].born_values == values[1].born_values
     assert values[0].values == values[1].values
+
+
+# ------------------------------------------------- plan export: trace steps
+
+
+@pytest.mark.loop_fast
+def test_trace_steps_stay_within_the_family_rank():
+    """A trace step's output rank is its largest source storage plus its
+    largest content degree, which the plan loader requires within the family
+    rank. Two rings of a family that peak at different positions (a bubble
+    with degree 1 at either propagator: rank 1) split into steps by source
+    storage; a step within the rank stays one step (plans the loader admits
+    are exported as before). u u~ > z z [virt=QED] on loop_qcd_qed_sm_Gmu
+    met it (its plan was refused at load: "a trace step above the family
+    rank")."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.plan_export import _trace_groups
+
+    degrees = {"a": 0, "b": 1, "c": 1}
+
+    def shape(content):
+        return SimpleNamespace(degree=degrees[content])
+
+    def edge(content, storage):
+        return content, SimpleNamespace(storage=storage)
+
+    bubble = [edge("a", 1), edge("b", 0), edge("c", 0), edge("a", 1)]
+    groups = _trace_groups(bubble, 1, shape)
+    assert [[c for c, _ in g] for g in groups] == [["b", "c"], ["a", "a"]]
+    assert all(
+        max(s.storage for _, s in g) + max(degrees[c] for c, _ in g) <= 1
+        for g in groups
+    )
+    assert _trace_groups(bubble, 2, shape) == [bubble]
