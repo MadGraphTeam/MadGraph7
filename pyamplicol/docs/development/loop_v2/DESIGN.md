@@ -745,6 +745,17 @@ The asymptotic class is Θ(n·n!) for trees plus Θ(S_n) for the loop program pl
 
 The 2→2 and 2→3 rows are dominated by the model preparation and the loop-kernel catalogue (≈ 6.5 s per process). **gg→ggggg FC generation with its plan takes 7.9 min and 5.8 GB** (generation, export and JSON; 8.0 min wall with the model load), within the former 10 min / 8 GB target that REQUIREMENTS_ADDENDUM H replaces by O(hours) below 150 GB. What is left is Python: the tree DAG (I2/I3), the seed table's class keys and combinations (I10) and the lowering of the leaves and contents (I11). The native per-point tree program (§5.5) is not part of these rows: at gg→ggggg the interaction program adds 166 s to the export (72 MB table, a few saved kernels; the first, per-stage lane took 390 s and an 18 GB peak and is removed). uu~→e⁻e⁺dd~g, uu~→e⁻e⁺ggg and gg→tt̄e⁻e⁺g (γ*/Z) generate in 10.2–10.5 s with a 0.3 GB peak and a 3.4–3.7 s plan export (WP3.1 third increment: the generator certifies the closed-quark (A, g, g) triangles, the Z runs on loop quark lines, and R2_GGZ has its Levi-Civita kernel).
 
+**Electroweak generation (M-SM MS-GEN, 2026-10-30).** G_μ UFO, QCD and QED corrections (the EW ladder's fixture requests), `LoopSlice.generate` and `export_plan(trees=True, born_squared=True)`, 8 pinned cores on the shared host (indicative), Python stages (oracles) → native stages (the catalogue's polynomial stage, §3.7, and the canonical stages' renaming); plans, tree programs and saved evaluators byte-identical in both lanes, also on the ten M-QCD default rows:
+
+| Process | Catalogue | Generation | Export (parameter program) | Peak RSS |
+|---|---|---|---|---|
+| g g > t t~ (2→2) | 130 → 18 s | 172 → 58 s | 24 → 22 s (5.5 → 3.3 s) | 5.9 → 6.5 GB |
+| u u~ > e- e+ g (2→3) | 202 → 27 s | 261 → 85 s | 88 → 65 s (58 → 35 s) | 8.8 → 9.3 GB |
+| g g > t t~ e- e+ (2→4) | 203 → 27 s | 266 → 88 s | 101 → 77 s (62 → 37 s) | 8.9 → 9.3 GB |
+| g g > t t~ e- e+ g (2→5, target) | 219 → 28 s | 291 → 92 s | 108 → 81 s (63 → 37 s) | 7.5-8.5 → 9.5 GB |
+
+The catalogue depends on the loop species, not the multiplicity, so it is constant from 2→3 up. What remains of the export is mostly the plan's kernel terms (`reference_executor.ExactKernel`: Python parses the catalogue kernels' exact strings, about 30 s at 2→3) and the parameter program's parse of its renamed text (about 20 s at 2→3).
+
 For comparison:
 
 - the inherited engine's artifact is 394 MB at 6 legs (assessment §2.1);
