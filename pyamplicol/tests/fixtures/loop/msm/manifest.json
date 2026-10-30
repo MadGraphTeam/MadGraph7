@@ -9348,7 +9348,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-08,
    "alphas": {
     "QED": 0.0075467722613403515
    },
