@@ -46,7 +46,7 @@ from __future__ import annotations
 import copy
 import json
 from collections import OrderedDict, defaultdict
-from collections.abc import Callable, Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -195,6 +195,19 @@ class _Object:
     storage: int
     leaf: int = -1
     step: int = -1
+
+
+def family_rank(trie_rank: int, steps: Iterable[Mapping[str, Any]]) -> int:
+    """The rank a family is written with: its trie's (the largest summed
+    degree of one ring) or, when larger, its largest step output rank (a
+    step's largest source storage ``rank_in`` plus its largest segment
+    ``degree``, ``_Exporter._step``), which can exceed every single ring's
+    where a trie node joins sources and segments of different degrees (EW
+    rings of degree-0 and degree-1 vertices: h h > h h, u u~ > z h,
+    w+ w- > w+ w- [virt=QED]); the native loader refuses a step above the
+    family rank. A family within its trie rank is written as before."""
+
+    return max([trie_rank, *(step["rank_in"] + step["degree"] for step in steps)])
 
 
 def _trace_groups(edges, rank: int, shape) -> list[list]:
@@ -560,15 +573,9 @@ class _Exporter:
                     self._step(steps, group, 0, shift, accumulator)
         if values:
             raise AssertionError("a trie object without a consumer")
-        # A step's rank is its largest source storage plus its largest
-        # segment degree (``_step``), which can exceed every single ring's
-        # summed degrees (``trie.rank``) where a trie node joins sources and
-        # segments of different degrees (EW rings of degree-0 and degree-1
-        # vertices): the family's rank bounds both.
-        rank = max([trie.rank, *(step["rank_in"] + step["degree"] for step in steps)])
         return {
             "sequence": [[mask, self._mass(mass)] for mask, mass in sequence],
-            "rank": rank,
+            "rank": family_rank(trie.rank, steps),
             "orders": [
                 self.orders.setdefault(order, len(self.orders))
                 for order in accumulators

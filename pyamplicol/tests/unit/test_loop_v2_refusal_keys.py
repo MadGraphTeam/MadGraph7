@@ -547,6 +547,28 @@ def test_trace_steps_stay_within_the_family_rank():
     assert _trace_groups(bubble, 2, shape) == [bubble]
 
 
+@pytest.mark.loop_fast
+def test_family_rank_bounds_every_step():
+    """A family is written with the largest of its trie rank and its steps'
+    output ranks (``plan_export.family_rank``; MS-VALIDATE's F1): a trie node
+    joining a degree-0 and a degree-1 ring (h h > h h [virt=QED]: its
+    storage-1 source and its degree-1 segment make a rank-2 step in a
+    rank-1 trie) raises the rank to what the loader requires, while a family
+    whose steps stay within the trie rank keeps it (its plan is written as
+    before). The rows that met it load and pass on the nightly tier (SC04,
+    SC06, SC07, TV03, V301, VH01-VH03, VV02 in
+    ``tests/unit/test_loop_v2_msm_nightly_*.py``)."""
+
+    from pyamplicol.loops.v2.plan_export import family_rank
+
+    within = [{"rank_in": 0, "degree": 1}, {"rank_in": 1, "degree": 0}]
+    assert family_rank(1, within) == 1
+    joined = [*within, {"rank_in": 1, "degree": 1}]
+    assert family_rank(1, joined) == 2
+    assert all(s["rank_in"] + s["degree"] <= family_rank(1, joined) for s in joined)
+    assert family_rank(3, []) == 3
+
+
 @pytest.mark.loop_nightly
 def test_split_trace_steps_equal_the_reference_executor(loop_native):
     """u u~ > z z [virt=QED] on the shipped loop_qcd_qed_sm_Gmu (widths
