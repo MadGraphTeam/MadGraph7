@@ -130,13 +130,15 @@ def test_transform_follows_mg5_on_the_gmu_records(cms):
 
 def test_zero_widths_at_the_card_keep_their_masses_real(gmu_raw):
     """A width zero at the card (here fixed by the request) gives no pole
-    mass, as MG5 skips a zero width; a request fixing a Yukawa input is
-    refused, since the scheme derives them from the masses."""
+    mass, as MG5 skips a zero width; a Yukawa tied to such a mass reads it
+    while the particle propagates with its line mass LMASS_M := M (step 4b);
+    a request fixing a Yukawa input is refused, since the scheme derives them
+    from the masses."""
 
     scheme = complex_mass_scheme(
         gmu_raw, fixed_parameters={"WZ": "0", "WW": "0", "WH": ("0", "0")}
     )
-    assert dict(scheme.masses) == {"MT": "CMASS_MT"}
+    assert dict(scheme.masses) == {"MT": "CMASS_MT"} and "MT" not in scheme.lines
     assert scheme.derived.record("particles", "Z")["fields"]["mass"]["name"] == "MZ"
     none = complex_mass_scheme(
         gmu_raw, fixed_parameters=dict.fromkeys(("WZ", "WW", "WH", "WT"), "0")
@@ -144,10 +146,75 @@ def test_zero_widths_at_the_card_keep_their_masses_real(gmu_raw):
     assert not none.masses and not none.propagators
     # No pole mass: MG5 ties the Yukawas and returns, parameters stay real.
     assert none.derived.record("parameters", "sw2")["fields"]["type"] == "real"
-    assert none.yukawas["ymt"] == "MT"
+    assert none.yukawas["ymt"] == "MT" and none.lines["MT"] == "LMASS_MT"
+    assert set(none.lines) <= set(none.yukawas.values())
+    line = none.derived.record("parameters", "LMASS_MT")
+    assert (line["fields"]["nature"], line["fields"]["type"]) == ("internal", "real")
+    assert none.derived.exact_value("parameters", line["id"])["expression"] == "MT"
+    for name in ("t", "t~"):
+        record = none.derived.record("particles", name)
+        assert record["fields"]["mass"]["name"] == "LMASS_MT"
+    ymt = none.derived.record("parameters", "ymt")
+    assert none.derived.exact_value("parameters", ymt["id"])["expression"] == "MT"
     with pytest.raises(ComplexMassSchemeUnsupported, match="cms-yukawa-input") as error:
         complex_mass_scheme(gmu_raw, fixed_parameters={"ymt": "172"})
     assert error.value.key == "cms-yukawa-input"
+
+
+def test_models_outside_the_transforms_assumptions_are_refused_typed(gmu_raw):
+    """``complex-mass-scheme``: a model the port of MG5_aMC's transform
+    cannot take is refused with the listed key (``apply_mass_scheme`` in the
+    loop preparation, so the dry run reports it as it does
+    ``cms-internal-mass``): an external CMSParam, a Yukawa input without one
+    PDG code, a pole-mass or line-mass name the model already declares."""
+
+    def variant(edit):
+        payload = json.loads(json.dumps(gmu_raw.to_dict()))
+        parameters = payload["collections"]["parameters"]
+        edit({record["name"]: record for record in parameters}, parameters)
+        return RawLoopModel.from_dict(payload)
+
+    def taken(name):
+        def edit(_named, parameters):
+            parameters.append(
+                {
+                    "id": len(parameters),
+                    "name": name,
+                    "ufo_type": "Parameter",
+                    "fields": {
+                        "name": name,
+                        "nature": "internal",
+                        "type": "real",
+                        "texname": name,
+                        "value": {"kind": "expression", "expression": "MT"},
+                        "value_source": {"kind": "test-variant", "exact": True},
+                    },
+                }
+            )
+
+        return edit
+
+    def external_cms(named, _parameters):
+        named["CMSParam"]["fields"].update(
+            nature="external", lhablock="TECHNICAL", lhacode=[99]
+        )
+
+    def two_codes(named, _parameters):
+        named["ymt"]["fields"]["lhacode"] = [6, 1]
+
+    cases = (
+        (external_cms, {}, "CMSParam is an external parameter"),
+        (two_codes, {}, "'ymt' has the LHA code"),
+        (taken("CMASS_MT"), {}, "pole-mass name 'CMASS_MT'"),
+        (taken("LMASS_MT"), {"WT": "0"}, "line-mass name 'LMASS_MT'"),
+    )
+    for edit, fixed, message in cases:
+        with pytest.raises(ComplexMassSchemeUnsupported, match=message) as error:
+            complex_mass_scheme(variant(edit), fixed_parameters=fixed)
+        assert error.value.key == "complex-mass-scheme"
+    # Each name is free at the other card: no refusal.
+    complex_mass_scheme(variant(taken("LMASS_MT")))
+    complex_mass_scheme(variant(taken("CMASS_MT")), fixed_parameters={"WT": "0"})
 
 
 def test_the_restriction_cards_ones_become_constants(loop_gmu_ufo):
