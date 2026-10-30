@@ -1722,8 +1722,9 @@ def _parameter_program(
             raise NativeExportUnsupported(
                 "mass-parameter", f"the loop mass {mass.mass!r} is no model parameter"
             )
-    # On-shell external photons of an electroweak request couple with
-    # alpha(0) (WP3.2 EWI-6b, ``LoopSlice.external_photons``): the output
+    # Tagged on-shell external photons of an electroweak request couple with
+    # alpha(0) (WP3.2 EWI-6b, ``LoopSlice.external_photons``: the tagged legs
+    # only since MS-PHOTON; no record without a tagged photon): the output
     # alpha(0) / alpha, with alpha the photon couplings' (``poles.qed_coupling``,
     # as ``_PointEvaluation._qed_alpha`` evaluates it) and 1/alpha(0) the
     # model's adjustable parameter (an input; added when the trees do not

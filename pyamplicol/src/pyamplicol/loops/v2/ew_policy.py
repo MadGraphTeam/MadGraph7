@@ -15,13 +15,17 @@ public generator, the tools, the tests and the artifacts all see them:
   m1): a model whose orders are spelt otherwise takes the same decisions.
 * ``external_photon_scheme`` is the external-photon convention of an
   electroweak request with on-shell external photons (WP3.2 EWI-6b). The
-  user's decision [U9] (2026-10-25): every on-shell external photon couples
-  with alpha(0), not with the loops' coupling (alpha_Gmu in a G_mu model),
-  together with the charge-renormalisation term of that change (MadLoop's
-  and OpenLoops' default; MASTER_PLAN §4.9 "external-photon conventions").
-  A model that cannot take the convention (no conversion counterterm, no
-  adjustable 1/alpha(0), loops that couple with alpha(0)) is refused
-  (``ExternalPhotonError``): without it the virtual would be wrong at
+  user's decision [U9] (2026-10-25): a tagged on-shell external photon
+  couples with alpha(0), not with the loops' coupling (alpha_Gmu in a G_mu
+  model), together with the charge-renormalisation term of that change
+  (MadLoop's and OpenLoops' default; MASTER_PLAN §4.9 "external-photon
+  conventions"). The tags are per leg since MS-PHOTON (m-sm/PLAN.md Q1 (a),
+  MG5_aMC's ``!a!``; ``photon_tags``, ``SliceRequest.external_photons``,
+  "final" by default); an untagged photon keeps the loops' coupling and its
+  gamma_gamma pole. A model that cannot take the convention for a tagged
+  photon (no conversion counterterm, no adjustable 1/alpha(0), loops that
+  couple with alpha(0)) is refused (``ExternalPhotonError``,
+  ``external-photon-scheme``): without it the virtual would be wrong at
   O(alpha) by the photon's light-fermion logarithms.
 * ``require_zero_widths`` refuses an electroweak request whose tree currents
   propagate a particle with a width that is not zero, coloured or not

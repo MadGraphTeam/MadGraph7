@@ -1708,8 +1708,9 @@ class LoopSlice:
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
-    # The alpha(0) convention of the on-shell external photons of an
-    # electroweak request (WP3.2 EWI-6b, ``ew_policy.ExternalPhotons``): the
+    # The alpha(0) convention of the tagged on-shell external photons of an
+    # electroweak request (WP3.2 EWI-6b, per leg since MS-PHOTON,
+    # ``ew_policy.ExternalPhotons``; None without a tagged photon): the
     # point's (alpha(0) / alpha)^n scales every output
     # (``_PointEvaluation.average``), the conversion is a field insertion.
     external_photons: ew_policy.ExternalPhotons | None = None
@@ -4053,8 +4054,9 @@ class _PointEvaluation:
     def average(self) -> Any:
         """The divisor of every output of this point: the slice's spin and
         colour average and symmetry factor (``Normalisation.average``),
-        divided by (alpha(0) / alpha)^n for n on-shell external photons of an
-        electroweak request (``LoopSlice.external_photons``, WP3.2 EWI-6b):
+        divided by (alpha(0) / alpha)^n for n tagged on-shell external photons
+        of an electroweak request (``LoopSlice.external_photons``, WP3.2
+        EWI-6b; per leg, MS-PHOTON):
         the Born, the loop lanes, the counterterm and field components, the
         correlators of Catani's operator and the stability budgets all take
         each photon's coupling e(0) instead of the loops' e. Without such
@@ -4987,7 +4989,8 @@ def _charged_fields(compiled) -> frozenset[str]:
 
 def _alpha0_field_rules(source, photons, process) -> tuple[Any, ...]:
     """The field-like term of the alpha(0) convention (WP3.2 EWI-6b) as an
-    external-field rule of each external photon species: coefficient
+    external-field rule of each tagged photon's species (the generation keeps
+    its insertions on the tagged legs only, MS-PHOTON): coefficient
     -(delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) (the model's conversion
     parameter ``photons.conversion``; the field component adds 2 Re of the
     coefficient times the Born per photon leg, MG5_aMC's
