@@ -1106,6 +1106,47 @@ pub struct ParameterSide<T> {
     checked: Option<(Vec<Rational>, bool)>,
 }
 
+impl<T: Carrier> ParameterSide<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// The plane application's `outputs` (row-major, `rows` rows of
+    /// `width` inputs and `per_row` outputs at `inputs`) at the external
+    /// parameter values `key`: checked against the exact evaluator (`build`
+    /// on first use) on the first row when `key` differs from the last
+    /// checked values, and replaced by the exact evaluator's rows when the
+    /// plane disagreed there. Returns whether the plane's rows were kept.
+    fn settle(
+        &mut self,
+        key: Vec<Rational>,
+        inputs: &[Complex<T>],
+        outputs: &mut [Complex<T>],
+        (rows, width, per_row): (usize, usize, usize),
+        build: impl FnOnce() -> RusticolResult<Kernel<T>>,
+    ) -> RusticolResult<bool> {
+        let plane = match &self.checked {
+            Some((checked, plane)) if *checked == key => *plane,
+            _ => {
+                if self.exact.is_none() {
+                    self.exact = Some(build()?);
+                }
+                let exact = self.exact.as_mut().expect("built above");
+                let plane = plane_side_agrees(exact, &inputs[..width], &outputs[..per_row])?;
+                self.checked = Some((key, plane));
+                plane
+            }
+        };
+        if !plane {
+            let exact = self.exact.as_mut().expect("built by the check");
+            let _unlock = crate::licence::unlock();
+            exact
+                .evaluate_batch(inputs, outputs, rows)
+                .map_err(|e| invalid(format!("parameter program: {e}")))?;
+        }
+        Ok(plane)
+    }
+}
+
 /// One kernel (or the parameter program) in carrier `T`: its exact
 /// evaluator in the carrier, or in binary64 its SymJIT plane application.
 pub enum Kernel<T> {
@@ -2333,27 +2374,13 @@ impl TreeProgram {
                     }
                 })
                 .collect();
-            let side = &mut runtime.parameter_side;
-            let plane = match &side.checked {
-                Some((checked, plane)) if *checked == key => *plane,
-                _ => {
-                    if side.exact.is_none() {
-                        side.exact = Some(exact_kernel(&program.saved, zero)?);
-                    }
-                    let exact = side.exact.as_mut().expect("built above");
-                    let plane =
-                        plane_side_agrees(exact, &inputs[..width], &outputs[..program.outputs])?;
-                    side.checked = Some((key, plane));
-                    plane
-                }
-            };
-            if !plane {
-                let exact = side.exact.as_mut().expect("built by the check");
-                let _unlock = crate::licence::unlock();
-                exact
-                    .evaluate_batch(&inputs, &mut outputs, points)
-                    .map_err(|e| invalid(format!("parameter program: {e}")))?;
-            }
+            runtime.parameter_side.settle(
+                key,
+                &inputs,
+                &mut outputs,
+                (points, width, program.outputs),
+                || exact_kernel(&program.saved, zero),
+            )?;
         }
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
         // Values a batch shares (Born couplings, kernel constants, masses):

@@ -17,12 +17,14 @@ counts the signatures of the defects recorded upstream (oneloopmaster
 * |Im m^2| / Re m^2 < 1e-150, where oneloopmaster's SymJIT masters fail (on
   no reducer's route); checked at row level against the zero-width value.
 
-None bites on CM01-CM10 at their widths (the census of all nine rows, and
-AP(40) against double-double on each: MS-MASTERS report). Below 1e-150 the
+None bites on CM01-CM10 at their widths (the census of all nine rows; AP(40)
+against double-double on CM01-CM04, CM07, CM08 and CM10, AP(32) against
+MadLoop CMS on CM05 and CM09 (MS-CMS); DESIGN risk 13). Below 1e-150 the
 double-double C0 turned non-finite on CM01, so double-double refuses such a
 width (``complex-mass-master``); binary64 and arbitrary precision evaluate
 it. CM10 runs in the default physics tier, CM01 (the G_mu UFO, ZZ / WW boxes
-with complex masses) nightly.
+with complex masses) nightly; ``tools/loop_benchmark/master_census_rows.py``
+reruns any row's census and carrier comparison.
 """
 
 from __future__ import annotations
@@ -258,11 +260,13 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     Widths changed at run time (``TreeProgram::bind``): at zero widths the
     binary64 SymJIT parameter program took the other side of the
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
-    against MadLoop's 1.8e-3), so a batch with an exactly real pole mass
-    evaluates its parameter program exactly; every carrier then equals
-    MadLoop's zero-width virtual (to 1e-8), as at widths of 1e-100 of the
-    masses; 1e-152 (below 1e-150, where the DoubleFloat C0 turned
-    non-finite) refuses with ``complex-mass-master``. Generation about 5 min, 10 GB."""
+    against MadLoop's 1.8e-3), so a binary64 batch at new parameter values
+    checks the plane against the exact evaluator once and takes the exact
+    evaluator where they disagree; every carrier then equals MadLoop's
+    zero-width virtual (to 1e-8), as at widths of 1e-100 and 1e-152 of the
+    masses in binary64 and arbitrary precision; double-double, whose C0
+    turned non-finite below 1e-150, refuses 1e-152 with
+    ``complex-mass-master``. Generation about 5 min, 10 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -317,17 +321,15 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
         (zero, Precision.arbitrary(32)),
         (small, Precision.double_double()),
         (small, Precision.double()),
+        (tiny, Precision.double()),
+        (tiny, Precision.arbitrary(32)),
     ):
         difference = max(
             _difference(mine, theirs, 1 / 132.0)
             for mine, theirs in zip(evaluate(widths, precision), madloop, strict=True)
         )
         assert difference <= 1e-8, (precision.arithmetic, widths, difference)
-    for widths, precision in (
-        (tiny, Precision.double()),
-        (tiny, Precision.double_double()),
-    ):
-        with pytest.raises(ValueError, match="complex-mass-master: plan mass"):
-            evaluate(widths, precision)
+    with pytest.raises(ValueError, match="complex-mass-master: plan mass"):
+        evaluate(tiny, Precision.double_double())
     found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
     assert found.bites()["tiny-width"], found.record()

@@ -162,12 +162,13 @@ fn the_complex_mass_master_guard_is_double_double_only() {
 }
 
 #[test]
-fn the_run_time_side_check_catches_a_plane_on_the_other_side_of_a_cut() {
+fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     // sqrt(-x) through SymJIT: a negated real takes a -0 imaginary part
     // where Symbolica's evaluator takes +0, so at x > 0 (on the cut) the
-    // plane gives -i sqrt(x) and the exact evaluator +i sqrt(x); off the
-    // cut (x < 0) they agree. `TreeProgram::bind` runs a batch whose
-    // parameters the plane disagrees at on the exact evaluator.
+    // plane and the exact evaluator give opposite imaginary parts; off the
+    // cut (x < 0) they agree. `TreeProgram::bind` settles a binary64 batch
+    // through `ParameterSide::settle`: checked once per parameter values,
+    // the exact evaluator's rows where the plane disagreed.
     use symbolica::atom::AtomCore;
     let _unlock = crate::licence::unlock();
     let x = symbolica::parse!("pyamplicol_trees_tests::x");
@@ -182,16 +183,41 @@ fn the_run_time_side_check_catches_a_plane_on_the_other_side_of_a_cut() {
     let mut plane = Kernel::Plane(Box::new(
         BinaryPlane::load(&bytes, (inputs, outputs)).expect("loads"),
     ));
-    let mut exact = Kernel::Exact(binary64.into_batch_evaluator());
-    for (x, agrees) in [(-4.0, true), (4.0, false)] {
-        let input = [Complex::new(x, 0.0)];
-        let mut row = [Complex::new(0.0, 0.0)];
-        plane.evaluate_batch(&input, &mut row, 1).expect("runs");
+    let mut exact = Kernel::Exact(binary64.clone().into_batch_evaluator());
+    let build = || Ok(Kernel::Exact(binary64.clone().into_batch_evaluator()));
+    let mut side = ParameterSide {
+        exact: None,
+        checked: None,
+    };
+    let rows = |kernel: &mut Kernel<f64>, x: f64| {
+        let input = [Complex::new(x, 0.0); 2];
+        let mut rows = [Complex::new(0.0, 0.0); 2];
+        kernel.evaluate_batch(&input, &mut rows, 2).expect("runs");
+        (input, rows)
+    };
+    for x in [-4.0, 4.0] {
+        let (input, mut got) = rows(&mut plane, x);
+        let (_, expected) = rows(&mut exact, x);
+        let on_cut = x > 0.0;
         assert_eq!(
-            plane_side_agrees(&mut exact, &input, &row).expect("runs"),
-            agrees,
-            "x = {x}: plane {row:?}"
+            got != expected,
+            on_cut,
+            "x = {x}: plane {got:?}, exact {expected:?}"
         );
+        let key = vec![Rational::from(x as i64)];
+        let kept = side
+            .settle(key.clone(), &input, &mut got, (2, 1, 1), build)
+            .expect("settles");
+        assert_eq!(kept, !on_cut, "x = {x}");
+        assert_eq!(got, expected, "x = {x}: the exact side");
+        assert_eq!(side.checked, Some((key.clone(), !on_cut)));
+        // The same values again: the recorded verdict, not a new check (rows
+        // that agree with the exact evaluator stay replaced on the cut).
+        let mut again = expected;
+        let kept = side
+            .settle(key, &input, &mut again, (2, 1, 1), || panic!("built once"))
+            .expect("settles");
+        assert_eq!((kept, again), (!on_cut, expected), "x = {x}");
     }
 }
 
