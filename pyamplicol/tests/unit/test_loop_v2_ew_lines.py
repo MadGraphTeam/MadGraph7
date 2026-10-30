@@ -181,7 +181,10 @@ def test_conjugate_rules_pair_open_vertices_at_their_orders():
     """A rule closed under conjugation reads itself; [d~ u W-] reads
     [u~ d W+] at the same orders and on the legs of its currents' tree
     particles (incoming field f -> tree particle anti(f)); a missing,
-    ambiguous or multi-colour conjugate, or a ghost leg, is refused."""
+    ambiguous or multi-colour conjugate is refused; a rule with a ghost leg
+    reads itself on its own legs, closed under conjugation or not (WP3.2
+    EWI-7: the ghost Lagrangian pairs no vertex with a Hermitian
+    conjugate)."""
 
     from pyamplicol.loops.v2.conventions import (
         FermionSignError,
@@ -208,8 +211,9 @@ def test_conjugate_rules_pair_open_vertices_at_their_orders():
     assert pairs["V_g"] == "V_g"
     assert pairs["V_dxuW"] == "V_uxdW" and pairs["V_uxdW"] == "V_dxuW"
     assert pairs["V_dxuWg"] is None and pairs["V_uxdWg"] is None
-    assert pairs["V_gh"] is None
+    assert pairs["V_gh"] == "V_gh" and pairs["V_ghx"] == "V_ghx"
     reading = TreeReading(data)
+    assert reading.vertex("V_gh", (2, 1, 3)) == ("V_gh", (2, 1, 3), None)
     # Loop in d~ (leg 1), loop out u~ (its anti on leg 2), the W- block (leg 3).
     assert reading.vertex("V_dxuW", (1, 2, 3)) == ("V_uxdW", (2, 1, 3), {0: 0})
     assert reading.vertex("V_g", (1, 2, 3)) == ("V_g", (2, 1, 3), None)
