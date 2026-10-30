@@ -43,7 +43,7 @@
       "loop_quark_flavours": 6
     },
     "ew-gmu-b-mass": {
-      "description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
+      "description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5) and this scheme's MH = 125 (the UFO's own restrict_with_b_mass.dat has MH = 120; before the UFOmodeldb issue-1 patch it also lacked SMINPUTS 1, which MG5 3.7.0 needs).",
       "madloop_model": "{reference}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3_b_mass",
       "parameters": {
         "aS": "0.118",
@@ -185,7 +185,8 @@
     },
     "ew-gmu-ckm": {
       "description": "The ew-gmu values on the loop_qcd_qed_sm_Gmu restriction ckm (restrict_ckm.dat): complex CKM from the card's Wolfenstein values (lamWS = 0.2253, AWS = 0.808, rhoWS = 0.132, etaWS = 0.341), massive b (MB = ymb = 4.7) and tau (MTA = ymtau = 1.777), all widths zero.",
-      "ir_single_pole_remnant": "not UV finite: the UFO's Wolfenstein CKM is truncated at O(lambda^3) (not unitary) against counterterms assuming unitarity; the EW sector's single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born at the card values, scaling as lambda^4 (a model property the engine on the same UFO reproduces; rule 4 on SC03 sees it)",
+      "ir_single_pole_remnant": "the EW counterterms omit the tau mass (a retained limitation of the UFOmodeldb issue-1 patch, whose exactly unitary CKM removed the O(lambda^3) Wolfenstein remnant of -2.1e-2 (alpha/2pi) Born): with MTA = 1.777 the EW sector's single pole of u d~ > e+ ve exceeds the IR prediction by MTA^2/(2 sw^2 (s - MW^2)) (alpha/2pi) Born (about 3e-5 at sqrt(s) = 500 GeV; a model property the engine on the same UFO reproduces; rule 4 on SC03 sees it)",
+      "tau_mass_counterterms_omitted": true,
       "restriction": "ckm",
       "madloop_model": "{reference}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3-ckm",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777", "lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"},
@@ -428,7 +429,8 @@
       "born_orders": {"QCD": 1, "QED": 2},
       "correction": "EW",
       "scheme": "ew-gmu",
-      "madloop": {"process": "g t > t t t~ QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"}
+      "madloop": {"process": "g t > t t t~ QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"},
+      "recola": {"process": "g t -> t t t~"}
     },
     {
       "name": "gb_ttxb_ew_mb",
@@ -437,7 +439,8 @@
       "born_orders": {"QCD": 1, "QED": 2},
       "correction": "EW",
       "scheme": "ew-gmu-b-mass",
-      "madloop": {"process": "g b > t t~ b QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"}
+      "madloop": {"process": "g b > t t~ b QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"},
+      "recola": {"process": "g b -> t t~ b"}
     },
     {
       "name": "emep_wpwm_ew",
@@ -1019,6 +1022,17 @@
       "corrections": ["QCD", "EW"],
       "scheme": "ew-gmu-b-mass",
       "madloop": {"process": "b b~ > w+ w- QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"}
+    },
+    {
+      "name": "bbx_wpwm_ew_mb_qed",
+      "role": "msm",
+      "msm_row": "SC04",
+      "pdgs": [5, -5, 24, -24],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-b-mass",
+      "madloop": {"process": "b b~ > w+ w- QCD=0 QED=2 [virt=QED] QED^2==6"},
+      "recola": {"process": "b b~ -> W+ W-"}
     },
     {
       "name": "wpwm_wpwm_ew",

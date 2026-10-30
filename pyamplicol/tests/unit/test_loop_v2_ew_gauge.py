@@ -1285,8 +1285,17 @@ def _ufo_coupling_ratio(path, numerator: str, denominator: str, card) -> float:
     couplings = modules[3]
 
     def value(coupling: str) -> complex:
-        source = getattr(couplings, coupling).value
-        return complex(eval(oracle._compiled(source, False), environment))
+        # A coupling the UFOmodeldb issue-1 patch splits by loop content
+        # (R2_G0tt_b = R2_G0tt_b_WG + R2_G0tt_b_G) is the sum of its pieces.
+        parts = (
+            (coupling,)
+            if hasattr(couplings, coupling)
+            else (f"{coupling}_WG", f"{coupling}_G")
+        )
+        return sum(
+            complex(eval(oracle._compiled(getattr(couplings, p).value, False), environment))
+            for p in parts
+        )
 
     ratio = value(numerator) / value(denominator)
     assert abs(ratio.imag) <= 1e-15 * abs(ratio.real), ratio
@@ -1340,7 +1349,10 @@ def test_goldstone_vector_mixings_equal_madloop(
     omitted = reference["omitted_r2"]
     assert omitted["madloop_amplitudes"][omitted["coupling"]] == 0
     assert omitted["madloop_amplitudes"][omitted["proportional_to"]] > 0
-    card = {**reference["parameters"], **reference["fixed_parameters"]}
+    # restrict_default.dat's diagonal CKM (its Wolfenstein inputs are zero):
+    # the patched UFO's CKM33 depends on them, the unpatched one's did not.
+    wolfenstein = {name: "0" for name in ("lamWS", "AWS", "rhoWS", "etaWS")}
+    card = {**wolfenstein, **reference["parameters"], **reference["fixed_parameters"]}
     ratio = _ufo_coupling_ratio(
         loop_gmu_ufo, omitted["coupling"], omitted["proportional_to"], card
     )

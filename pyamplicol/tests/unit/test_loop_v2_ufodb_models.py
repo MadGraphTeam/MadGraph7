@@ -3,9 +3,15 @@
 user 2026-10-30: https://github.com/mg5amcnlo/UFOmodeldb is the ground truth).
 
 * The shipped loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu are UFOmodeldb's
-  (commit 6ca4b120). MG5_aMC's online-database downloads differ from them in
-  one declaration, the R2_ZZHH coupling (UFOmodeldb's fix 1f13c48f /
-  6ca4b120); both have the same shipped ``[loop.model]`` profile.
+  (commit 6ca4b120) with the user's model patch of UFOmodeldb issue 1 /
+  mg5amcnlo#475 (user rule 2026-10-30 ~12:45; package MS-UFO-PATCH):
+  R2_G0tt_{d,s,b} split by loop content ([W+, G+, q] and [G+, q]; the
+  coefficient sum is kept), an exactly unitary CKM from the same Wolfenstein
+  inputs, the G_mu charge counterterm's b-mass term. UFOmodeldb's unpatched
+  models (``*_ufodb_unpatched_ufo``, controls) and MG5_aMC's online-database
+  downloads (which differ from those in one declaration, the R2_ZZHH
+  coupling: UFOmodeldb's fix 1f13c48f / 6ca4b120) have the same shipped
+  ``[loop.model]`` profile.
 * R2_ZZHH enters the R2 vertices Z Z H H and Z Z G0 G0 only. A counterterm
   vertex is a tree vertex inserted once (ADDENDUM J) and the bare loops use
   tree couplings only, so a request none of whose trees can hold such a
@@ -13,8 +19,10 @@ user 2026-10-30: https://github.com/mg5amcnlo/UFOmodeldb is the ground truth).
   only SC10 (z z > h h) can (``_reaches``, a necessary condition).
 * Recola (R2 terms of its own) equals MadLoop on the UFOmodeldb model for
   SC10 and not MadLoop on the MG5_aMC download: the fix is right.
-* A defect UFOmodeldb still has: with a massive b, the G_mu model's charge
-  counterterm omits its b-mass term (ST04's Recola offset, exactly).
+* The defect the patch fixes: with a massive b, UFOmodeldb's G_mu charge
+  counterterm omits its b-mass term (ST04's Recola offset, exactly); patched,
+  eCoup_a0_UV_EW + eCoup_DGmua0_UV_EW is the full G_mu charge counterterm
+  eCoup_Gmu_UV_EW, and unchanged at MB = 0.
 * SC10 equals MadLoop in quadruple precision on the UFOmodeldb model, and the
   difference to MadLoop on the MG5_aMC download is the R2_ZZHH term alone
   (nightly; the Python reference path of the slice: the native plan of this
@@ -37,6 +45,11 @@ FIXTURES = ROOT / "tests" / "fixtures" / "loop"
 CAMPAIGN = ROOT / "tools" / "loop_reference" / "msm_campaign.json"
 SPEC = ROOT / "tools" / "loop_reference" / "required_processes.json"
 MODELS = ("loop_qcd_qed_sm", "loop_qcd_qed_sm_Gmu")
+# UFOmodeldb's models without the issue-1 patch (conftest controls).
+UNPATCHED = {
+    "loop_qcd_qed_sm": "loop_qcd_qed_sm_ufodb_unpatched_ufo",
+    "loop_qcd_qed_sm_Gmu": "loop_gmu_ufodb_unpatched_ufo",
+}
 COUPLING = "R2_ZZHH"
 # The coupling's factor before (MG5_aMC's online database) and after
 # UFOmodeldb's fix.
@@ -52,11 +65,14 @@ def _shipped(name: str) -> Path:
     return path
 
 
-def _mg5_download(name: str, directory: Path) -> Path:
-    """The shipped model with R2_ZZHH as MG5_aMC's online database has it."""
+def _mg5_download(unpatched: Path, directory: Path) -> Path:
+    """MG5_aMC's online-database model: UFOmodeldb's unpatched model with
+    R2_ZZHH as the database has it."""
 
-    target = directory / name
-    shutil.copytree(_shipped(name), target)
+    target = directory / unpatched.name
+    shutil.copytree(
+        unpatched, target, ignore=shutil.ignore_patterns("__pycache__", "*.pkl")
+    )
     couplings = target / "CT_couplings.py"
     text = couplings.read_text(encoding="utf-8")
     assert text.count(UFODB_FACTOR) == 1
@@ -73,10 +89,13 @@ def _coupling(raw, name: str) -> dict:
 
 @pytest.mark.loop_fast
 @pytest.mark.parametrize("name", MODELS)
-def test_shipped_model_is_ufodb_and_the_mg5_download_shares_its_profile(tmp_path, name):
-    """The shipped model's R2_ZZHH is UFOmodeldb's; the MG5_aMC download's
-    declarations differ in that coupling record alone and take the same
-    shipped profile (by its second digest)."""
+def test_shipped_model_is_patched_ufodb_and_older_copies_share_its_profile(
+    request, tmp_path, name
+):
+    """The shipped model's R2_ZZHH is UFOmodeldb's; MG5_aMC's download
+    differs from UFOmodeldb's unpatched model in that coupling record alone;
+    the shipped (patched), unpatched and download declarations take the same
+    shipped profile, in that digest order."""
 
     from pyamplicol.loops.shipped_profiles import (
         shipped_loop_profile,
@@ -84,9 +103,12 @@ def test_shipped_model_is_ufodb_and_the_mg5_download_shares_its_profile(tmp_path
     )
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    ufodb = load_raw_loop_model(_shipped(name), restriction="full")
-    mg5 = load_raw_loop_model(_mg5_download(name, tmp_path), restriction="full")
-    assert UFODB_FACTOR in _coupling(ufodb, COUPLING)["fields"]["value"]["expression"]
+    unpatched = Path(request.getfixturevalue(UNPATCHED[name]))
+    shipped = load_raw_loop_model(_shipped(name), restriction="full")
+    ufodb = load_raw_loop_model(unpatched, restriction="full")
+    mg5 = load_raw_loop_model(_mg5_download(unpatched, tmp_path), restriction="full")
+    for raw in (shipped, ufodb):
+        assert UFODB_FACTOR in _coupling(raw, COUPLING)["fields"]["value"]["expression"]
     assert MG5_FACTOR in _coupling(mg5, COUPLING)["fields"]["value"]["expression"]
     a, b = ufodb.to_dict()["collections"], mg5.to_dict()["collections"]
     assert {key for key in a if a[key] != b[key]} == {"couplings"}
@@ -96,11 +118,12 @@ def test_shipped_model_is_ufodb_and_the_mg5_download_shares_its_profile(tmp_path
         if x != y
     ]
     assert changed == [(COUPLING, COUPLING)]
-    profile = shipped_loop_profile(ufodb)
-    assert profile is not None and shipped_loop_profile(mg5) is profile
-    assert profile.source_digests == (
-        source_declarations_digest(ufodb),
-        source_declarations_digest(mg5),
+    profile = shipped_loop_profile(shipped)
+    assert profile is not None
+    assert shipped_loop_profile(ufodb) is profile
+    assert shipped_loop_profile(mg5) is profile
+    assert profile.source_digests == tuple(
+        source_declarations_digest(raw) for raw in (shipped, ufodb, mg5)
     )
 
 
@@ -283,39 +306,178 @@ def test_recola_decides_the_r2_zzhh_fix():
         assert abs(download - recola) >= 1e-2 * abs(recola)
 
 
+def _oracle():
+    """``tests/unit/test_loop_v2_ew.py``'s oracle: the UFO's own Python
+    source evaluated in binary64."""
+
+    import importlib.util
+    import sys
+
+    name = "_ufodb_test_loop_v2_ew"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            name, Path(__file__).with_name("test_loop_v2_ew.py")
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def _source_values(ufo: Path, card: dict, tag: str):
+    """(CT parameter values by (name, epsilon power), the parameters'
+    namespace, a coupling evaluator) of a UFO at ``card`` (binary64)."""
+
+    oracle = _oracle()
+    modules = oracle._import_ufo(ufo, f"_pyamplicol_test_ufodb_{tag}")
+    values, environment = oracle._ufo_source_values(
+        modules, card, exact=False, wrap=None
+    )
+    scope = {**environment, **{k: v for (k, p), v in values.items() if p == 0}}
+
+    def coupling(source: str) -> complex:
+        return complex(eval(oracle._compiled(source, False), scope))
+
+    return values, environment, coupling, modules[3]
+
+
+# The UFO cards (decimal strings) of the checks below: restrict_ckm's
+# Wolfenstein inputs, massive d, s, b.
+CKM_CARD = {"lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"}
+MASS_CARD = {"MD": "0.3", "MS": "0.5", "MB": "4.5", "ymb": "4.5"}
+
+
 @pytest.mark.loop_fast
-def test_gmu_charge_counterterm_omits_its_b_mass_term():
-    """A UFOmodeldb defect (reported upstream): the G_mu model's CT couplings
-    renormalise the charge with eCoup_a0_UV_EW + eCoup_DGmua0_UV_EW, and
-    neither holds dMB_eCoup_UV_EW, the b-mass term only the unused
-    eCoup_Gmu_UV_EW adds. With MB = 4.5 that term is -2.37010e-5 at any
-    mu_R, so MadLoop (and the engine, on the same UFO) differ from Recola on
-    u d~ > t b~ (ST04, Born of order e^2) by -4 dMB_eCoup_UV_EW x Born =
-    +9.48039e-5 x Born at every point."""
+@pytest.mark.parametrize("name", MODELS)
+def test_the_issue_1_patch_changes_what_it_says(request, name):
+    """The shipped model against UFOmodeldb's unpatched one: the records that
+    differ are V_ttG02, the R2_G0tt couplings (R2_G0tt_{d,s,b} split into
+    _WG, label [W+, G+, q], and _G, label [G+, q]; each pair sums to the
+    unpatched coupling at massive quarks and a complex CKM), the CKM
+    parameters (now unitary to rounding; the unpatched one is off by
+    O(lambda^4)) and, for G_mu only, the two charge counterterms."""
+
+    import cmath
+
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    unpatched = Path(request.getfixturevalue(UNPATCHED[name]))
+    new = load_raw_loop_model(_shipped(name), restriction="full").to_dict()
+    old = load_raw_loop_model(unpatched, restriction="full").to_dict()
+
+    def plain(item):
+        # Record ids and source lines shift with the patch's added records.
+        if isinstance(item, dict):
+            return {
+                k: plain(v)
+                for k, v in item.items()
+                if k not in ("id", "value_source")
+            }
+        return [plain(v) for v in item] if isinstance(item, list) else item
+
+    def values(raw, collection):
+        return {r["name"]: plain(r["fields"]) for r in raw["collections"][collection]}
+
+    def changed(collection):
+        a, b = values(old, collection), values(new, collection)
+        return {k for k in a.keys() | b.keys() if a.get(k) != b.get(k)}
+
+    split = {f"R2_G0tt_{q}" for q in "dsb"}
+    pieces = {f"{c}_{part}" for c in split for part in ("WG", "G")}
+    assert changed("couplings") == split | pieces
+    assert changed("counterterm_vertices") == {"V_ttG02"}
+    ckm = {f"CKM{i}{j}" for i in "123" for j in "123"}
+    assert changed("parameters") == ckm | {"CKMc12", "CKMc13", "CKMc23", "CKMs13e"}
+    charge = {"eCoup_a0_UV_EW", "eCoup_DGmua0_UV_EW"}
+    assert changed("counterterm_parameters") == (charge if "Gmu" in name else set())
+    for key in ("vertices", "particles", "lorentz_structures", "propagators"):
+        assert values(old, key) == values(new, key), key
+    (vertex,) = [
+        r["fields"]
+        for r in new["collections"]["counterterm_vertices"]
+        if r["name"] == "V_ttG02"
+    ]
+    labels = [sorted(p["name"] for p in group[0]) for group in vertex["loop_particles"]]
+    expected = [["Z", "t"]]
+    for q in "dsb":
+        expected += [sorted(["W+", "G+", q]), sorted(["G+", q])]
+    assert labels == expected
+
+    card = {**CKM_CARD, **MASS_CARD}
+    _, env, coupling, couplings = _source_values(_shipped(name), card, f"new_{name}")
+    old_sources = {r["name"]: r for r in old["collections"]["couplings"]}
+    for c in split:
+        whole = old_sources[c]["fields"]["value"]["expression"]
+        parts = getattr(couplings, f"{c}_WG").value, getattr(couplings, f"{c}_G").value
+        assert coupling(whole) != 0
+        total = coupling(parts[0]) + coupling(parts[1])
+        assert abs(total - coupling(whole)) <= 1e-15 * abs(coupling(whole)), c
+
+    def unitarity(environment):
+        v = [[environment[f"CKM{i}{j}"] for j in "123"] for i in "123"]
+        return max(
+            abs(sum(v[i][k] * v[j][k].conjugate() for k in range(3)) - (i == j))
+            for i in range(3)
+            for j in range(3)
+        )
+
+    _, env_old, _, _ = _source_values(unpatched, card, f"old_{name}")
+    assert unitarity(env) <= 1e-15
+    assert 1e-4 < unitarity(env_old) < 1e-2
+    assert cmath.isclose(env["CKM12"], env["lamWS"] * env["CKMc13"])
+
+
+@pytest.mark.loop_fast
+def test_gmu_charge_counterterm_has_its_b_mass_term(loop_gmu_ufodb_unpatched_ufo):
+    """With a massive b (MB = 4.5), the patched G_mu model's charge
+    counterterms eCoup_a0_UV_EW + eCoup_DGmua0_UV_EW (what its 186 CT
+    couplings use) equal the full G_mu charge counterterm eCoup_Gmu_UV_EW in
+    both Laurent coefficients, while UFOmodeldb's unpatched model misses its
+    b-mass term dMB_eCoup_UV_EW (-2.37010e-5 at MB = 4.5, any mu_R): the
+    defect behind ST04's Recola offset (-4 dMB_eCoup_UV_EW x Born =
+    +9.48039e-5 x Born on ``required/udx_tbx_ew_mb.json``, MadLoop on the
+    unpatched model). At MB = 0 both counterterms are the unpatched ones
+    exactly."""
 
     import re
 
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    raw = load_raw_loop_model(_shipped("loop_qcd_qed_sm_Gmu"), restriction="full")
-    collections = raw.to_dict()["collections"]
-    parameters = {
-        r["name"]: json.dumps(r["fields"])
-        for r in collections["counterterm_parameters"]
-    }
-    assert "dMB_eCoup_UV_EW" in parameters["eCoup_Gmu_UV_EW"]
-    for name in ("eCoup_a0_UV_EW", "eCoup_DGmua0_UV_EW"):
-        assert "dMB_" not in parameters[name]
-    values = [
+    unpatched = Path(loop_gmu_ufodb_unpatched_ufo)
+    shipped = _shipped("loop_qcd_qed_sm_Gmu")
+    raw = load_raw_loop_model(unpatched, restriction="full")
+    sources = [
         r["fields"]["value_source"]["argument"]
-        for r in collections["couplings"]
+        for r in raw.to_dict()["collections"]["couplings"]
         if r["fields"]["value_source"]["file"] == "CT_couplings.py"
     ]
-    assert not any("eCoup_Gmu_UV_EW" in v for v in values)
-    assert sum("(eCoup_a0_UV_EW+eCoup_DGmua0_UV_EW)" in v for v in values) == 186
-    assert not any(re.search(r"\bdMB_eCoup_UV_EW\b", v) for v in values)
+    assert sum("(eCoup_a0_UV_EW+eCoup_DGmua0_UV_EW)" in v for v in sources) == 186
+    assert not any(re.search(r"\beCoup_Gmu_UV_EW\b", v) for v in sources)
 
+    a0, dg, gmu, b = (
+        "eCoup_a0_UV_EW",
+        "eCoup_DGmua0_UV_EW",
+        "eCoup_Gmu_UV_EW",
+        "dMB_eCoup_UV_EW",
+    )
     fixture = json.loads((FIXTURES / "required/udx_tbx_ew_mb.json").read_text())
+    card = {**fixture["parameters"], **fixture["fixed_parameters"]}
+    assert card["MB"] == "4.5"
+    new, _, _, _ = _source_values(shipped, card, "charge_new")
+    old, _, _, _ = _source_values(unpatched, card, "charge_old")
+    assert abs(old[b, 0] - -2.3700982771e-5) <= 1e-9 * abs(old[b, 0])
+    for power in (-1, 0):
+        full = new[gmu, power]
+        assert abs(new[a0, power] + new[dg, power] - full) <= 1e-13 * abs(full)
+        missing = full - old[a0, power] - old[dg, power]
+        assert abs(missing - (old[b, 0] if power == 0 else 0)) <= 1e-13 * abs(full)
+    zero = {**card, "MB": "0", "ymb": "0"}
+    new0, _, _, _ = _source_values(shipped, zero, "charge_new0")
+    old0, _, _, _ = _source_values(unpatched, zero, "charge_old0")
+    for key in ((a0, -1), (a0, 0), (dg, -1), (dg, 0)):
+        assert new0[key] == old0[key], key
+
     offsets = [
         (r["providers"]["madloop"]["finite"] - r["providers"]["recola"]["finite"])
         / r["providers"]["madloop"]["born"]
@@ -325,13 +487,16 @@ def test_gmu_charge_counterterm_omits_its_b_mass_term():
 
 
 @pytest.mark.loop_nightly
-def test_sc10_equals_madloop_on_both_models(loop_native, tmp_path):
-    """z z > h h [virt=QED] on the shipped (UFOmodeldb) G_mu model equals
-    MadLoop QP on it (``required/msm/zz_hh_ew.json``; binary64, its metric:
-    relative, Laurent floor |Born| alpha/2pi, 1e-8), and on the MG5_aMC
-    download (``zz_hh_ew_mg5.json``) likewise; the change between the models
-    is the R2 component alone and equals MadLoop's change to 1e-10 of it
-    (about 9 min)."""
+def test_sc10_equals_madloop_on_both_models(
+    loop_native, loop_gmu_ufodb_unpatched_ufo, tmp_path
+):
+    """z z > h h [virt=QED] on the shipped G_mu model (UFOmodeldb's with the
+    issue-1 patch, which SC10 does not reach) equals MadLoop QP on UFOmodeldb's
+    model (``required/msm/zz_hh_ew.json``; binary64, its metric: relative,
+    Laurent floor |Born| alpha/2pi, 1e-8), and on the MG5_aMC download
+    (``zz_hh_ew_mg5.json``) likewise; the change between the models is the R2
+    component alone and equals MadLoop's change to 1e-10 of it (about 9
+    min)."""
 
     import math
 
@@ -342,7 +507,7 @@ def test_sc10_equals_madloop_on_both_models(loop_native, tmp_path):
     assert reference["ufodb"]["points"] == reference["mg5"]["points"]
     ufos = {
         "ufodb": _shipped("loop_qcd_qed_sm_Gmu"),
-        "mg5": _mg5_download("loop_qcd_qed_sm_Gmu", tmp_path),
+        "mg5": _mg5_download(Path(loop_gmu_ufodb_unpatched_ufo), tmp_path),
     }
     first = reference["ufodb"]
     alpha = float(first["derived_parameters"]["alpha"])

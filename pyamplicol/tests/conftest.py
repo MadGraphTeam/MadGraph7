@@ -107,6 +107,15 @@ _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
         ("PYAMPLICOL_EW_NLO_UFO_REFERENCE",),
         _under(_WORKSPACE, f"{_UFODB}/loop_qcd_qed_sm"),
     ),
+    # Controls: UFOmodeldb 6ca4b120 without the issue-1 model patch.
+    "loop_gmu_ufodb_unpatched_ufo": (
+        ("PYAMPLICOL_EW_UFO_UNPATCHED_REFERENCE",),
+        _under(_WORKSPACE, "reference/models/ufodb-6ca4b120/loop_qcd_qed_sm_Gmu_py3"),
+    ),
+    "loop_qcd_qed_sm_ufodb_unpatched_ufo": (
+        ("PYAMPLICOL_EW_NLO_UFO_UNPATCHED_REFERENCE",),
+        _under(_WORKSPACE, "reference/models/ufodb-6ca4b120/loop_qcd_qed_sm"),
+    ),
     "sgluon_nlo_ufo": (
         ("PYAMPLICOL_SGLUON_UFO_REFERENCE",),
         _under(_WORKSPACE, "reference/models/bsm-candidates/sgluons_NLO_py3"),

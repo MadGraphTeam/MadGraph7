@@ -25,7 +25,7 @@
   "QED": 2
  },
  "scheme": "ew-gmu-b-mass",
- "scheme_description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
+ "scheme_description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5) and this scheme's MH = 125 (the UFO's own restrict_with_b_mass.dat has MH = 120; before the UFOmodeldb issue-1 patch it also lacked SMINPUTS 1, which MG5 3.7.0 needs).",
  "restriction": null,
  "complex_mass_scheme": false,
  "madloop_model": "loop_qcd_qed_sm_Gmu_py3_b_mass",
@@ -296,10 +296,10 @@
      {
       "QCD": 0,
       "QED": 6,
-      "finite": -0.07325941441535691,
+      "finite": -0.07331758197501138,
       "single_pole": 0.010192178279000715,
       "double_pole": 0.0,
-      "accuracy": 1.6503562695148415e-14,
+      "accuracy": 3.5614847481886624e-14,
       "born_sector": {
        "QCD": 0,
        "QED": 4
@@ -315,10 +315,10 @@
     ],
     "total": {
      "born": 0.6135564104600697,
-     "finite": 1.708245934455215,
+     "finite": 1.7081877668955605,
      "single_pole": 0.39674069086074076,
      "double_pole": 0.0,
-     "accuracy": 4.825940722447722e-15
+     "accuracy": 4.509610208160317e-15
     }
    },
    "providers": {
@@ -329,7 +329,7 @@
      "double_pole": 0.0,
      "accuracy": 4.3014952592571686e-15,
      "status": 328,
-     "seconds": 2.14490334,
+     "seconds": 2.15531279,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -386,10 +386,10 @@
      {
       "QCD": 0,
       "QED": 6,
-      "finite": -0.0005723296605369573,
+      "finite": -0.0005734183023280523,
       "single_pole": 0.00016183490849931654,
       "double_pole": 0.0,
-      "accuracy": 1.1489256383671087e-14,
+      "accuracy": 3.358633488731647e-14,
       "born_sector": {
        "QCD": 0,
        "QED": 4
@@ -405,10 +405,10 @@
     ],
     "total": {
      "born": 0.011483087026326954,
-     "finite": 0.03022369791640811,
+     "finite": 0.030222609274617018,
      "single_pole": 0.005545177553002546,
      "double_pole": 0.0,
-     "accuracy": 6.54724718581508e-16
+     "accuracy": 3.6374702557161116e-16
     }
    },
    "providers": {
@@ -419,7 +419,7 @@
      "double_pole": 0.0,
      "accuracy": 0.0,
      "status": 328,
-     "seconds": 2.14674597,
+     "seconds": 2.18253565,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -476,7 +476,7 @@
      {
       "QCD": 0,
       "QED": 6,
-      "finite": -0.005855909632993107,
+      "finite": -0.005948476996251635,
       "single_pole": 0.011053177418430035,
       "double_pole": 0.0,
       "accuracy": 0.0,
@@ -495,7 +495,7 @@
     ],
     "total": {
      "born": 0.9764084906445389,
-     "finite": 3.5153829584866423,
+     "finite": 3.515290391123384,
      "single_pole": 0.5453547279494603,
      "double_pole": 0.0,
      "accuracy": 0.0
@@ -509,7 +509,7 @@
      "double_pole": 0.0,
      "accuracy": 0.0,
      "status": 329,
-     "seconds": 4.79051662,
+     "seconds": 4.80419259,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -566,10 +566,10 @@
      {
       "QCD": 0,
       "QED": 6,
-      "finite": -0.08738877369106426,
+      "finite": -0.08744694125071872,
       "single_pole": 0.010192178279000715,
       "double_pole": 0.0,
-      "accuracy": 4.044870424778212e-14,
+      "accuracy": 5.5507728813879553e-14,
       "born_sector": {
        "QCD": 0,
        "QED": 4
@@ -585,10 +585,10 @@
     ],
     "total": {
      "born": 0.6135564104600697,
-     "finite": 1.158246551888162,
+     "finite": 1.1581883843285077,
      "single_pole": 0.39674069086074076,
      "double_pole": 0.0,
-     "accuracy": 5.2798499186329456e-14
+     "accuracy": 5.237207288463878e-14
     }
    },
    "providers": {
@@ -599,7 +599,7 @@
      "double_pole": 0.0,
      "accuracy": 5.2239904781365185e-14,
      "status": 328,
-     "seconds": 2.14978778,
+     "seconds": 2.15678266,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -683,12 +683,12 @@
    "generation": {
     "process_name": "bbx_wpwm_ew_mb",
     "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
-    "model": "${LOOP_REFERENCE_ROOT}/models/loop_qcd_qed_sm_Gmu_py3_b_mass",
+    "model": "${LOOP_REFERENCE_ROOT}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3_b_mass",
     "command": "b b~ > w+ w- QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
     "host": "itphlies",
-    "pid": 2551511,
+    "pid": 333462,
     "status": "compiled",
-    "graph_generation_s": 6.349902861984447,
+    "graph_generation_s": 7.442380183143541,
     "process": "Process: b b~ > w+ w- QCD=0 QED<=2 [ virt = QCD QED ] QCD^2<=99 QED^2<=99",
     "born": 4,
     "loops": 466,
@@ -715,7 +715,7 @@
     ],
     "UVCT_diagrams": 8,
     "attached_CT_vertices": 114,
-    "source_export_s": 201.39556083409116,
+    "source_export_s": 220.5257432849612,
     "subprocess_directories": [
      "P0_bbx_wpwm"
     ],
@@ -724,7 +724,7 @@
      "ALOHA_FLAG": "",
      "MATRIX_FLAG": ""
     },
-    "compile_s": 128.04630498006009,
+    "compile_s": 139.521498283837,
     "compile_jobs": 4
    },
    "version": "MadLoop/MG5_aMC 3.7.0",
@@ -762,7 +762,7 @@
     2,
     2
    ],
-   "initial_call_seconds": 2.17487087,
+   "initial_call_seconds": 2.21579381,
    "initialization_calls": 1,
    "squared_split_orders": {
     "born": [
@@ -785,12 +785,12 @@
      }
     ]
    },
-   "process_wall_seconds": 13.437387624988332,
+   "process_wall_seconds": 13.547890312038362,
    "evaluation_seconds": [
-    2.14490334,
-    2.14674597,
-    4.79051662,
-    2.14978778
+    2.15531279,
+    2.18253565,
+    4.80419259,
+    2.15678266
    ]
   }
  },
@@ -876,7 +876,7 @@
    "R2_txbW": "R2_bxtW",
    "R2_txbW2Cp": "R2_bxtW2Cp"
   },
-  "ufo_r2_couplings": 1217,
+  "ufo_r2_couplings": 1220,
   "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_bbx_wpwm)"
  },
  "mqcd_run": {
