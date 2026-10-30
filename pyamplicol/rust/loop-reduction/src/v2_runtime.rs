@@ -514,6 +514,18 @@ impl V2Runtime {
         if !trees.has_counterterms() {
             return Err(invalid("the tree program has no counterterm components"));
         }
+        // The split selections set the IR regulator by name: it must be a
+        // parameter the tree program binds (fail closed, as
+        // `plan_export._regulated`).
+        if let Some(regulators) = &record.pole_regulators
+            && !trees.parameter_names().iter().any(|name| *name == regulators.ir)
+        {
+            return Err(invalid(format!(
+                "the pole regulator {:?} is not a parameter of the tree program; \
+                 regenerate the artifact",
+                regulators.ir
+            )));
+        }
         let runtime = trees.runtime(&0.0)?;
         let executor = with_fourier(
             V2Executor::new(program, V2_LANES, threads)?,
