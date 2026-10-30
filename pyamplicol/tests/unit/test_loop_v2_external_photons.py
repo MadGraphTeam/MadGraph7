@@ -576,7 +576,11 @@ def test_listed_legs_must_be_on_shell_photons():
         assert "on-shell photons: legs [1]" in str(refused.value)
 
 
-ROW_TOLERANCE = 1e-9
+# Measured (binary64, points 0 and 1): MadLoop x the formula within
+# 1.9e-12 (LL08, 2->3; <= 6.4e-13 at 2->2), rule 4 within 1.5e-12, native =
+# Python inputs within 9.8e-13 (LL08; <= 1.8e-13 at 2->2).
+ROW_TOLERANCE = 1e-10
+ROW_NATIVE_TOLERANCE = 1e-11
 _GMU_OPTIONS = {"compatibility": "gmu_particle_anti", "scale_parameter": "MU_R"}
 
 
@@ -711,12 +715,12 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
     """m-sm/PLAN.md MS-PHOTON acceptance (PI01-PI04, PI01's "all" twin,
     VJ03, VV05, VV06, LL08): at the first two reference points the Born and
     every sector's Laurent coefficients equal raw MadLoop times MG5_aMC's
-    formula over the tagged legs (binary64, the fixtures' metric, 1e-9), with
+    formula over the tagged legs (binary64, the fixtures' metric, 1e-10), with
     Python and with native point inputs; rule 4 per leg: every sector is
     predicted and its poles are Catani's, an untagged photon adding
     -gamma_gamma/eps (a tagged one nothing); the native binder scales the
     tagged legs only (none without tags, so no 1/alpha(0) input), and native
-    = Python inputs within 1e-12 of each sector's virtual. Nightly: one EW
+    = Python inputs within 1e-11 of each sector's virtual. Nightly: one EW
     2->2 or 2->3 generation (about 1-8 min)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
@@ -798,7 +802,7 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
             for got, want in ((laurent[1], single), (laurent[2], double)):
                 error = abs(float(got) - float(want)) / size
                 worst["rule 4"] = max(worst["rule 4"], error)
-                assert error <= 1e-10, (sector, got, want)
+                assert error <= ROW_TOLERANCE, (sector, got, want)
         for component, sectors in python.components.items():
             for sector, laurent in sectors.items():
                 size = max(
@@ -812,7 +816,7 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
                 ):
                     error = abs(float(x) - float(y)) / size
                     worst["native-python"] = max(worst["native-python"], error)
-                    assert error <= 1e-12, (component, sector)
+                    assert error <= ROW_NATIVE_TOLERANCE, (component, sector)
     print(f"{name}: worst errors {worst}")
 
 
