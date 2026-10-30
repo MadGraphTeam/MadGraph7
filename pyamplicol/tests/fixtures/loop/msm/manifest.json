@@ -8830,6 +8830,8 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "inputs": "native",
+   "catani": "engine",
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -8956,14 +8958,16 @@
      "QED": 8
     }
    ],
-   "predicted_sectors": [
+   "predicted_sectors": [],
+   "unpredicted_sectors": [
     {
      "QCD": 2,
      "QED": 8
     }
    ],
-   "unpredicted_sectors": [],
-   "unpredicted_reasons": {},
+   "unpredicted_reasons": {
+    "QCD^2 QED^8": "uncorrected-exchange"
+   },
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-10,
@@ -9225,14 +9229,16 @@
      "QED": 6
     }
    ],
-   "predicted_sectors": [
+   "predicted_sectors": [],
+   "unpredicted_sectors": [
     {
      "QCD": 2,
      "QED": 6
     }
    ],
-   "unpredicted_sectors": [],
-   "unpredicted_reasons": {},
+   "unpredicted_reasons": {
+    "QCD^2 QED^6": "uncorrected-exchange"
+   },
    "reference_outliers": [],
    "vanishing": [],
    "reference_tolerance": 1e-12,
