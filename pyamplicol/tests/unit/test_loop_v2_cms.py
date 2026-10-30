@@ -17,10 +17,17 @@ dry run shows it:
 * real on-shell requests keep ``coloured-width`` and ``electroweak-width``,
   whose remedies name the complex-mass scheme.
 
+A mass that a Yukawa tie reads without a pole mass (a zero width at the
+card: every external top, EW-25) propagates with its real line mass
+``LMASS_M := M`` (``model_cms`` step 4b), so no coupling reads the loop
+line's mass: on loop_sm at zero widths the scheme equals real on-shell with
+ymt = MT (default physics tier), and CM04 (g g > t t~, Gamma_t = 0) equals
+MadLoop CMS.
+
 The CM rows of m-sm PLAN §4.2 with Python inputs (``LoopSlice.evaluate`` in
 binary64 and arbitrary precision; double-double runs in the native executor,
 MS-CMS-N) equal MadLoop CMS: CM10 (loop_sm with the top width) in the default
-physics tier, CM01, CM02 and CM05 (the G_mu UFO, every width) nightly.
+physics tier, CM01, CM02, CM04 and CM05 (the G_mu UFO) nightly.
 """
 
 from __future__ import annotations
@@ -28,6 +35,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import replace
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -186,22 +194,18 @@ def _laurent_errors(values, born, theirs, coupling: float) -> list[float]:
 
 
 @pytest.fixture(scope="module")
-def cm10(loop_sm_ufo, loop_native, tmp_path_factory):
-    """CM10's slice: u d~ > w+ b b~ QCD=0 [QCD] on loop_sm (no_b_mass) under
-    the complex-mass scheme with the top width (WW = WZ = WH = 0), the top
-    resonant in the Born and complex in the loops and counterterms."""
+def loop_sm_no_b_mass(loop_sm_ufo, tmp_path_factory):
+    """loop_sm at its no_b_mass restriction with the scalar declarations
+    of the M-QCD references, and its model cache."""
 
-    from pyamplicol.loops.model_cms import complex_mass_model
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import compile_model_source
     from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
 
-    root = tmp_path_factory.mktemp("cm10")
-    reference = _reference("udx_wpbbx_cms")
+    root = tmp_path_factory.mktemp("loop-sm")
     compiled = compile_model_source(
-        loop_sm_ufo, restriction=reference["restriction"], cache_dir=root
+        loop_sm_ufo, restriction="no_b_mass", cache_dir=root
     )
     compiled = replace(
         compiled,
@@ -211,6 +215,21 @@ def cm10(loop_sm_ufo, loop_native, tmp_path_factory):
         _serialized_path=None,
         _prepared_bundle=None,
     )
+    return compiled, root
+
+
+@pytest.fixture(scope="module")
+def cm10(loop_sm_no_b_mass, loop_native):
+    """CM10's slice: u d~ > w+ b b~ QCD=0 [QCD] on loop_sm (no_b_mass) under
+    the complex-mass scheme with the top width (WW = WZ = WH = 0), the top
+    resonant in the Born and complex in the loops and counterterms."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    compiled, root = loop_sm_no_b_mass
+    reference = _reference("udx_wpbbx_cms")
+    assert reference["restriction"] == "no_b_mass"
     fixed = reference["fixed_parameters"]
     model, scheme = complex_mass_model(compiled, fixed_parameters=fixed, cache_dir=root)
     fixed = {k: v for k, v in fixed.items() if k in model.parameter_defaults}
@@ -236,7 +255,7 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
     from pyamplicol.loops.v2.ew_policy import scheme_conventions
 
     reference, model, scheme, slice_ = cm10
-    assert dict(scheme.masses) == {"MT": "CMASS_MT"}
+    assert dict(scheme.masses) == {"MT": "CMASS_MT"} and "MT" not in scheme.lines
     parameters = {
         k: v
         for k, v in reference["parameters"].items()
@@ -290,6 +309,93 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
     error = abs(float(result.totals[1].real) - row["finite"]) / abs(row["finite"])
     assert set(result.stability.checks) == {"rotation-0", "reduction-rescaled"}
     assert 0 < estimate < 1e-6 and error <= 10 * estimate, (error, estimate)
+
+
+def _supplied_point(masses) -> list[list[str]]:
+    """The first regular point of ``tools/loop_reference/supplied_points``
+    (massive beams allowed), as decimal strings."""
+
+    from tools.loop_reference import supplied_points
+
+    with localcontext() as context:
+        context.prec = supplied_points.CONSTRUCTION_DIGITS
+        points, scales, _ = supplied_points.generate(
+            [Fraction(m) for m in masses], count=1
+        )
+        point = supplied_points.quantise(points[0], scales[0])
+    return [[supplied_points.text(x) for x in leg] for leg in point]
+
+
+@pytest.mark.loop_physics
+def test_a_zero_width_yukawa_mass_propagates_as_its_line_mass(
+    loop_sm_no_b_mass, loop_native
+):
+    """At zero widths the transform ties ymt := MT (MG5_aMC) and the top
+    propagates with its line mass LMASS_MT := MT (``model_cms`` step 4b), so
+    the top Yukawa vertices on QCD loop lines read no mass of the line they
+    emit, whose sign the tree reading of a fermion loop line flips
+    (``conventions.LeafWeights._require_mass_free_couplings``, which refused
+    this request before). t t~ > h h [QCD] on loop_sm then equals the real
+    on-shell virtual at the same card (ymt = MT = 173), binary64 and
+    arbitrary precision. About 20 s."""
+
+    from pyamplicol.loops.model_cms import complex_mass_model
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    compiled, root = loop_sm_no_b_mass
+    fixed = {"WT": "0", "WZ": "0", "WW": "0", "WH": "0"}
+    model, scheme = complex_mass_model(compiled, fixed_parameters=fixed, cache_dir=root)
+    assert not scheme.masses and scheme.yukawas["ymt"] == "MT"
+    assert dict(scheme.lines) == {"MT": "LMASS_MT", "MTA": "LMASS_MTA"}
+    derived = scheme.derived
+    line = derived.record("parameters", "LMASS_MT")
+    assert (line["fields"]["nature"], line["fields"]["type"]) == ("internal", "real")
+    assert derived.exact_value("parameters", line["id"])["expression"] == "MT"
+    assert derived.record("particles", "t")["fields"]["mass"]["name"] == "LMASS_MT"
+    assert derived.metadata["complex_mass_scheme"]["lines"] == dict(scheme.lines)
+    assert {p["mass"] for p in model.model["particles"] if p["pdg_code"] == 6} == {
+        "LMASS_MT"
+    }
+
+    born, loops = {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}
+    cms = LoopSlice.generate(
+        model,
+        SliceRequest(
+            "t t~ > h h",
+            born,
+            loops,
+            fixed_parameters={
+                k: v for k, v in fixed.items() if k in model.parameter_defaults
+            },
+        ),
+        loop_native,
+    )
+    real = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "t t~ > h h",
+            born,
+            loops,
+            fixed_parameters={
+                k: v for k, v in fixed.items() if k in compiled.parameter_defaults
+            },
+        ),
+        loop_native,
+    )
+    point = _supplied_point((173, 173, 125, 125))
+    for precision in (Precision.double(), Precision.arbitrary(32)):
+        ours, theirs = (
+            [
+                complex(x)
+                for x in s.evaluate(point, "250000", precision=precision).totals[:4]
+            ]
+            for s in (cms, real)
+        )
+        scale = max(abs(x) for x in theirs)
+        assert scale > 0 and theirs[1] != 0
+        assert (
+            max(abs(a - b) for a, b in zip(ours, theirs, strict=True)) <= 1e-13 * scale
+        )
 
 
 # ------------------------------------------- the G_mu UFO, every width (nightly)
@@ -359,6 +465,26 @@ CM01_WIDTHS = {
     "finite": {"WZ": "2.49877", "WW": "2.09291", "WT": "1.37758", "WH": "0.00407468"},
     "zero": {"WZ": "0", "WW": "0", "WT": "0", "WH": "0"},
 }
+# The small-width control (MadLoop double, every width x 0.001, the
+# UFO-standard reglog), m-sm PLAN §4.2 CM01.
+CM01_SMALL_WIDTHS = "electroweak-mumu-cms-small-width-control.json"
+
+
+def _cm01_blocks(reference: dict, convention: str) -> dict:
+    """CM01's reference blocks: finite and zero widths from the view's
+    fixture, the small widths from their control (UFO-standard reglog)."""
+
+    blocks = {block: reference[block] for block in ("finite", "zero")}
+    if convention == "ufo-standard":
+        control = json.loads((FIXTURES / CM01_SMALL_WIDTHS).read_text())
+        assert control["mu_r2"] == 1000000
+        blocks["small"] = {
+            "points": control["exact_points"],
+            "widths": control["widths"],
+            "born": [row["born"] for row in control["rows"]],
+            "full": [row["full"] for row in control["rows"]],
+        }
+    return blocks
 
 
 @pytest.mark.loop_nightly
@@ -376,8 +502,11 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
     Z-resonance points, at zero widths and at the widths x 0.001 (runtime
     widths, one generation), binary64 and arbitrary precision (32 digits) to
     1e-8; binary64 = AP(32) to 1e-9 at the small widths (the branch side of
-    the helpers on their cuts). ``"source"``: the G_mu source's reglog
-    override, a compatibility view ([U3]). Generation ~5 min, ~10 GB."""
+    the helpers on their cuts; ``electroweak-mumu-cms-small-width-control``);
+    AP(40) = AP(60) to 1e-30 at a Z-resonance point (the high-precision
+    carrier; double-double is the native executor's, MS-CMS-N). ``"source"``:
+    the G_mu source's reglog override, a compatibility view ([U3]).
+    Generation ~5 min, ~6 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
@@ -393,10 +522,7 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
         reglog_convention=convention,
     )
     assert set(scheme.masses) == {"MZ", "MW", "MT", "MH"}
-    for block in ("finite", "zero", "small"):
-        expected = reference.get(block)
-        if expected is None:
-            continue
+    for block, expected in _cm01_blocks(reference, convention).items():
         parameters = {
             **GMU_PARAMETERS,
             **(expected.get("widths") or CM01_WIDTHS[block]),
@@ -427,6 +553,25 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
                     max(abs(a - b) for a, b in zip(double, arbitrary, strict=True))
                     <= 1e-9 * scale
                 )
+        if block == "finite" and convention == "ufo-standard":
+            # Arbitrary precision against itself at more digits (§1.3).
+            point = expected["points"][1]
+            low, high = (
+                [
+                    Decimal(x)
+                    for x in slice_.evaluate(
+                        point,
+                        "1000000",
+                        parameters=parameters,
+                        precision=Precision.arbitrary(digits),
+                    ).totals[:4]
+                ]
+                for digits in (40, 60)
+            )
+            scale = max(abs(x) for x in high)
+            assert max(abs(a - b) for a, b in zip(low, high, strict=True)) <= (
+                Decimal("1e-30") * scale
+            ), [float(abs(a - b) / scale) for a, b in zip(low, high, strict=True)]
 
 
 def _sector_key(orders) -> tuple[tuple[str, int], ...]:
@@ -441,10 +586,10 @@ def _sector_key(orders) -> tuple[tuple[str, int], ...]:
 
 
 def _check_sectors(slice_, reference, model, carriers, points):
-    """Per point and per squared-order sector of a MadLoop CMS row: the Born
-    and the virtual's Laurent coefficients in the campaign metric (the
-    correction's coupling: alpha_s for a QCD sector, alpha_Gmu ~ 1/132 for
-    an EW one)."""
+    """Per point and per squared-order sector of a MadLoop CMS row: the Born,
+    the set of the virtual's sectors, their sum and each sector's Laurent
+    coefficients in the campaign metric (the correction's coupling: alpha_s
+    for a QCD sector, alpha_Gmu ~ 1/132 for an EW one and the sum)."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
@@ -471,6 +616,16 @@ def _check_sectors(slice_, reference, model, carriers, points):
                 _sector_key(dict(sector)): laurent
                 for sector, laurent in result.components["virtual"].items()
             }
+            expected = {_sector_key(sector) for sector in row["sectors"]["loop"]}
+            assert set(virtual) == expected, (carrier, k, sorted(virtual))
+            total = row["sectors"]["total"]
+            errors = _laurent_errors(
+                [complex(x).real for x in result.totals[1:4]],
+                row["born"],
+                [total["finite"], total["single_pole"], total["double_pole"]],
+                1 / 132.0,
+            )
+            assert max(errors) <= tolerance, (carrier, k, "total", errors)
             for sector in row["sectors"]["loop"]:
                 laurent = virtual[_sector_key(sector)]
                 qcd = sector["QCD"] > sector["born_sector"]["QCD"]
@@ -486,18 +641,24 @@ def _check_sectors(slice_, reference, model, carriers, points):
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
     "name,process",
-    [("uux_emep_cms", "u u~ > e- e+"), ("uux_emepg_cms", "u u~ > e- e+ g")],
-    ids=["CM02", "CM05"],
+    [
+        ("uux_emep_cms", "u u~ > e- e+"),
+        ("gg_ttx_cms", "g g > t t~"),
+        ("uux_emepg_cms", "u u~ > e- e+ g"),
+    ],
+    ids=["CM02", "CM04", "CM05"],
 )
-def test_cm02_cm05_joint_corrections_with_python_inputs_equal_madloop_cms(
+def test_cm_joint_corrections_with_python_inputs_equal_madloop_cms(
     loop_gmu_ufo, loop_native, tmp_path, name, process
 ):
-    """CM02 (u u~ > e- e+, at and off the Z pole) and CM05 (u u~ > e- e+ g)
-    [QCD QED] on the G_mu UFO under the complex-mass scheme with every width
+    """CM02 (u u~ > e- e+, at and off the Z pole), CM04 (g g > t t~ with
+    Gamma_t = 0, EW-25: the top on its line mass LMASS_MT := MT, the Yukawa
+    tie ymt := MT on its EW loop lines) and CM05 (u u~ > e- e+ g) [QCD QED]
+    on the G_mu UFO under the complex-mass scheme with every other width
     (``required/msm/<name>.json``, MadLoop CMS in quadruple precision), Python
-    inputs: every squared-order sector at the four points in binary64 and at
-    the first point in arbitrary precision (32 digits), to 1e-8.
-    Generation ~10 min (CM02) to ~25 min (CM05)."""
+    inputs: every squared-order sector and their sum at the four points in
+    binary64 and at the first point in arbitrary precision (32 digits), to
+    1e-8. About 3 min generation each (CM02, CM05: 176 s), 6 GB."""
 
     reference = _reference(name)
     model, _scheme, slice_ = _gmu_cms_slice(

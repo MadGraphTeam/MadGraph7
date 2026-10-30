@@ -705,16 +705,14 @@ def _ordered(parameters: list[Any], heads: Mapping[str, Any]) -> list[Any]:
         remaining = []
         for parameter in pending:
             expression = parameter.expression
-            reads = (
-                set()
+            symbols = (
+                frozenset()
                 if expression is None
-                else {
-                    name
-                    for name, head in heads.items()
-                    if head in expression.get_all_symbols(False)
-                }
-                - {parameter.name}
+                else set(expression.get_all_symbols(False))
             )
+            reads = {name for name, head in heads.items() if head in symbols} - {
+                parameter.name
+            }
             if reads <= placed:
                 ordered.append(parameter)
                 placed.add(parameter.name)
