@@ -309,38 +309,21 @@ def test_recola_decides_the_r2_zzhh_fix():
         assert abs(download - recola) >= 1e-2 * abs(recola)
 
 
-def _oracle():
-    """``tests/unit/test_loop_v2_ew.py``'s oracle: the UFO's own Python
-    source evaluated in binary64."""
-
-    import importlib.util
-    import sys
-
-    name = "_ufodb_test_loop_v2_ew"
-    if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            name, Path(__file__).with_name("test_loop_v2_ew.py")
-        )
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    return sys.modules[name]
-
-
 def _source_values(ufo: Path, card: dict, tag: str):
     """(CT parameter values by (name, epsilon power), the parameters'
-    namespace, a coupling evaluator) of a UFO at ``card`` (binary64)."""
+    namespace, a coupling evaluator) of a UFO at ``card`` (binary64; the
+    UFO's own Python source, ``tools/loop_reference/ufo_source_oracle.py``)."""
 
-    oracle = _oracle()
-    modules = oracle._import_ufo(ufo, f"_pyamplicol_test_ufodb_{tag}")
-    values, environment = oracle._ufo_source_values(
+    from tools.loop_reference import ufo_source_oracle as oracle
+
+    modules = oracle.import_ufo(ufo, f"_pyamplicol_test_ufodb_{tag}")
+    values, environment = oracle.ufo_source_values(
         modules, card, exact=False, wrap=None
     )
     scope = {**environment, **{k: v for (k, p), v in values.items() if p == 0}}
 
     def coupling(source: str) -> complex:
-        return complex(eval(oracle._compiled(source, False), scope))
+        return complex(eval(oracle.compiled(source, False), scope))
 
     return values, environment, coupling, modules[3]
 

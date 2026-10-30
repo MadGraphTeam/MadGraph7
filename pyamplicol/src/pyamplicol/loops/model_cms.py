@@ -61,6 +61,7 @@ from typing import Any
 
 from pyamplicol.models.loop_import import RawLoopModel
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .v2.refusals import LoopRequestUnsupportedValue
 
 # MG5_aMC's lookup of the NLOCT convention parameter (``get_parameter``).
@@ -743,7 +744,6 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
 
     import json
 
-    from symbolica import S
     from ufo_model_loader.common import JSONLook
     from ufo_model_loader.model import Model, Parameter, ParameterNature, ParameterType
     from ufo_model_loader.symbolica_processing import parse_python_expression_safe
@@ -755,9 +755,10 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
     if len(parameters) != len(model.parameters):
         raise ValueError("ambiguous tree model parameter names")
     raw = scheme.original
-    heads = {name: S(f"UFO::{name}") for name in parameters}
-    heads.update({alias: S(f"UFO::{alias}") for alias in scheme.masses.values()})
-    heads.update({alias: S(f"UFO::{alias}") for alias in scheme.lines.values()})
+    heads = {
+        name: symbol_registry.qualified(f"UFO::{name}")
+        for name in (*parameters, *scheme.masses.values(), *scheme.lines.values())
+    }
     renaming = [(heads[mass], heads[alias]) for mass, alias in scheme.masses.items()]
 
     def renamed(expression):

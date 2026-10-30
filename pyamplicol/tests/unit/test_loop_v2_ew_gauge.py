@@ -43,6 +43,8 @@ from unittest import mock
 
 import pytest
 
+from tools.loop_reference.ufo_source_oracle import coupling_ratio
+
 pytestmark = pytest.mark.loop_physics
 
 TOLERANCE = 1e-13
@@ -1261,55 +1263,6 @@ def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
     return slice_, evaluated
 
 
-def _ufo_coupling_ratio(path, numerator: str, denominator: str, card) -> float:
-    """The ratio of two UFO coupling values at ``card``, from the UFO's own
-    Python source (``test_loop_v2_ew._ufo_source_values``, binary64; the CT
-    parameters at their epsilon^0 coefficient)."""
-
-    import importlib.util
-    import sys
-    from pathlib import Path
-
-    name = "_ew_gauge_test_loop_v2_ew"
-    if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            name, Path(__file__).with_name("test_loop_v2_ew.py")
-        )
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    oracle = sys.modules[name]
-    modules = oracle._import_ufo(path, "_pyamplicol_test_ufo_gmu_ratio")
-    values, environment = oracle._ufo_source_values(
-        modules, card, exact=False, wrap=None
-    )
-    environment = {
-        **environment,
-        **{key: value for (key, power), value in values.items() if power == 0},
-    }
-    couplings = modules[3]
-
-    def value(coupling: str) -> complex:
-        # A coupling the UFOmodeldb issue-1 patch splits by loop content
-        # (R2_G0tt_b = R2_G0tt_b_WG + R2_G0tt_b_G) is the sum of its pieces.
-        parts = (
-            (coupling,)
-            if hasattr(couplings, coupling)
-            else (f"{coupling}_WG", f"{coupling}_G")
-        )
-        return sum(
-            complex(
-                eval(oracle._compiled(getattr(couplings, p).value, False), environment)
-            )
-            for p in parts
-        )
-
-    ratio = value(numerator) / value(denominator)
-    assert abs(ratio.imag) <= 1e-15 * abs(ratio.real), ratio
-    return ratio.real
-
-
 @pytest.mark.loop_nightly
 def test_goldstone_vector_mixings_equal_madloop(
     gmu, loop_gmu_ufo, loop_reference, loop_native
@@ -1361,7 +1314,7 @@ def test_goldstone_vector_mixings_equal_madloop(
     # the patched UFO's CKM33 depends on them, the unpatched one's did not.
     wolfenstein = {name: "0" for name in ("lamWS", "AWS", "rhoWS", "etaWS")}
     card = {**wolfenstein, **reference["parameters"], **reference["fixed_parameters"]}
-    ratio = _ufo_coupling_ratio(
+    ratio = coupling_ratio(
         loop_gmu_ufo, omitted["coupling"], omitted["proportional_to"], card
     )
     assert 0.5 < ratio < 1.0, ratio
