@@ -662,6 +662,7 @@ def _v2_request(backend, context, index):
     from pyamplicol.loops.model_cms import (
         require_native_pole_masses,
         require_stable_external_states,
+        scheme_metadata,
     )
     from pyamplicol.loops.v2.artifact import (
         born_amplitude_orders,
@@ -678,6 +679,11 @@ def _v2_request(backend, context, index):
     label = f"{entry.request.name!r} ({entry.request.expression})"
     _require_declared_corrections(compiled, context.corrections)
     fixed = require_real_fixed_parameters(context.preparation.fixed_parameters)
+    scheme = scheme_metadata(compiled)
+    if scheme is not None:
+        # The card's parameters of value 1 are constants of the complex-mass
+        # model (MG5_aMC's restriction): no request inputs.
+        fixed = {k: v for k, v in fixed.items() if k not in scheme.get("ones", ())}
     veto = particle_veto_codes(compiled, run.generation.particle_veto)
     pdgs = (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
     # Under the complex-mass scheme external states are stable (EW-25).

@@ -48,7 +48,7 @@ import ast
 import io
 import tokenize
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Any
@@ -123,6 +123,7 @@ class ComplexMassScheme:
     cms_parameter: str | None
     reglog_convention: str
     propagators: Mapping[int, str] = field(default_factory=dict)
+    ones: tuple[str, ...] = ()
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -134,6 +135,7 @@ class ComplexMassScheme:
             "cms_parameter": self.cms_parameter,
             "reglog_convention": self.reglog_convention,
             "propagators": {str(pdg): mass for pdg, mass in self.propagators.items()},
+            "ones": list(self.ones),
         }
 
 
@@ -257,6 +259,9 @@ class _Card:
         from .model_restrictions import prepare_loop_restrictions
 
         restriction = raw.metadata.get("restriction", {})
+        # Whether a restriction card decides the values (MG5_aMC restricts a
+        # model only with one).
+        self.restricted = restriction.get("card") is not None
         self.card = (
             raw
             if restriction.get("card") is None or restriction.get("applied", False)
@@ -569,6 +574,35 @@ def complex_mass_scheme(
                 fields["width"] = _reference(zero)
                 propagators[int(fields["pdg_code"])] = aliases[mass_name]["name"]
 
+    # 5. MG5_aMC restricts the transformed model by its restriction card, if
+    # any (``import_model``: CMS first, then ``restrict_model``), which fixes
+    # every parameter of value 1 there (``detect_special_parameters``' one
+    # parameters; zeros the loader's restriction already fixes): the external
+    # switches at 1 (the
+    # NLOCT TECHNICAL block of the G_mu UFO: epsUV, epsIR, LogSwitch,
+    # GfRedefinitionChoice) become the constant 1, which removes their dead
+    # branches (GfRedefinitionChoice's re() one: complex conjugates of the
+    # pole masses that would otherwise blow up the expanded couplings by two
+    # orders of magnitude). The masses and widths of step 2 stay inputs.
+    ones: list[str] = []
+    if masses and card.restricted:
+        kept = set(real)
+        for record in parameters:
+            fields = record["fields"]
+            if (
+                fields.get("nature") != "external"
+                or record["name"] in kept
+                or card.value(record) != (1, 0)
+            ):
+                continue
+            fields.update(nature="internal", type="real")
+            fields.pop("lhablock", None)
+            fields.pop("lhacode", None)
+            _set_value(
+                record, {"kind": "expression", "expression": "1.0"}, "restriction-one"
+            )
+            ones.append(record["name"])
+
     # [U3]: the UFO-standard principal reglog that MG5's model library writes.
     if reglog_convention == "ufo-standard":
         bound = raw.metadata.get("function_bindings", {}).get("reglog")
@@ -596,21 +630,11 @@ def complex_mass_scheme(
         cms_parameter,
         reglog_convention,
         MappingProxyType(propagators),
+        tuple(ones),
     )
     payload["metadata"][METADATA_KEY] = scheme.metadata()
     payload["name"] += "_cms"
-    return ComplexMassScheme(
-        raw,
-        RawLoopModel.from_dict(payload),
-        scheme.masses,
-        scheme.widths,
-        scheme.real,
-        scheme.internal_widths,
-        scheme.yukawas,
-        cms_parameter,
-        reglog_convention,
-        scheme.propagators,
-    )
+    return replace(scheme, derived=RawLoopModel.from_dict(payload))
 
 
 # ------------------------------------------------------- the tree model view
@@ -701,8 +725,17 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
         parameter.lhablock = parameter.lhacode = None
         parameter.expression = parse_python_expression_safe(source(name, derived=True))
         parameter.value = None
+    for name in scheme.ones:
+        if name not in parameters:
+            continue
+        parameter = parameters[name]
+        parameter.nature = ParameterNature.INTERNAL
+        parameter.parameter_type = ParameterType.REAL
+        parameter.lhablock = parameter.lhacode = None
+        parameter.expression = parse_python_expression_safe("1.0")
+        parameter.value = None
     if scheme.masses:
-        kept = set(scheme.real) | set(scheme.yukawas)
+        kept = set(scheme.real) | set(scheme.yukawas) | set(scheme.ones)
         for parameter in model.parameters:
             if parameter.nature == ParameterNature.EXTERNAL or parameter.name in kept:
                 continue
