@@ -1170,7 +1170,9 @@ Binary64 evaluation needs no Symbolica licence, with two exceptions:
   branch-cut argument, or a condition not decided by the parameters' signs,
   or any parameter changing sign. The parameter program is then checked once
   against its saved state ([licensing](symbolica-and-licensing.md#concurrent-processes-without-a-license)).
-  αs and the renormalisation scale do not trigger this in the shipped models.
+  On loop_sm's QCD processes αs and the renormalisation scale do not trigger
+  this; on the electroweak models almost every parameter does, the scale
+  included.
 
 Both exceptions use pyAmpliCol's own Symbolica key, which expires on
 2028-01-01; after that they need a personal licence. Double-double and
