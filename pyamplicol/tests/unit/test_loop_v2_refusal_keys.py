@@ -308,8 +308,18 @@ def test_model_refusals_fire_in_the_dry_run(tmp_path, key, change):
     "key,model,expression,orders,settings",
     [
         # loop_qcd_qed_sm has no alpha(0) input (MG5_aMC refuses tagged
-        # photons there too); the remedy names G_mu with restriction a0.
+        # photons there too): a final-state photon is tagged by default; the
+        # remedy names G_mu with restriction a0 (m-sm MS-PHOTON).
         ("external-photon-scheme", "loop_qcd_qed_sm", "u u~ > a g", ("QCD", "QED"), {}),
+        # A tag list naming a leg that is no on-shell photon (leg 4: the
+        # gluon; m-sm MS-PHOTON's photon_tags, which the dry run calls).
+        (
+            "external-photon-legs",
+            "loop_qcd_qed_sm",
+            "u u~ > a g",
+            ("QCD", "QED"),
+            {"loop": "external_photons = [4]"},
+        ),
         # The shipped N_c data are scheme-gated (MQ-NC): none covers the
         # QCD+QED models.
         (
@@ -341,7 +351,7 @@ def test_electroweak_refusals_fire_in_the_dry_run(
         return
     blocker = _single_blocker(plan, key)
     if key == "external-photon-scheme":
-        assert 'model.restriction = "a0"' in blocker
+        assert "restriction a0" in blocker
 
 
 @pytest.mark.loop_physics
@@ -436,11 +446,15 @@ def test_typed_electroweak_policy_classes_carry_their_keys():
     )
     from pyamplicol.loops.v2.refusals import LoopRequestUnsupported
 
-    for cls, key in (
-        (ExternalPhotonError, "external-photon-scheme"),
-        (ElectroweakGaugeError, "feynman-gauge"),
+    for error, key in (
+        # m-sm MS-PHOTON's class takes its key at each raise site.
+        (
+            ExternalPhotonError("external-photon-scheme", "why"),
+            "external-photon-scheme",
+        ),
+        (ExternalPhotonError("external-photon-legs", "why"), "external-photon-legs"),
+        (ElectroweakGaugeError("why"), "feynman-gauge"),
     ):
-        error = cls("why")
         assert isinstance(error, LoopRequestUnsupported) and error.key == key
         assert str(error).startswith(f"{key}: why. Rule: ")
 

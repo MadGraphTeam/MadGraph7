@@ -70,7 +70,7 @@ compares it with MadLoop.
 | `QCD^2==4`, `QED^2<=4` (squared orders) | every squared-order sector is a separate partial result: read it out (`result.for_order(...)`) |
 | `/ x` | `generation.particle_veto = ["x"]`; a vetoed vector boson takes its ghosts. A veto that removes a loop species of a requested correction is refused on these models (`veto-unlabelled-counterterms`: their electroweak counterterms are not split by loop content), so photon-only QED is not expressible |
 | `set complex_mass_scheme True` | not available yet (the complex-mass scheme is in progress); resonant widths are refused, see the recipes |
-| `!a!` (a tagged photon) | every on-shell external photon couples with alpha(0) with the conversion term, which needs `restriction = "a0"` on `loop_qcd_qed_sm_Gmu` |
+| `!a!` (a tagged photon) | `[loop] external_photons` (`"final"` by default, `"all"`, `"none"` or 1-based legs): a tagged photon couples with alpha(0) with the conversion term, which needs `restriction = "a0"` on `loop_qcd_qed_sm_Gmu`; an untagged one keeps the loops' coupling (MadLoop standalone's raw values: `"none"`). See [configuration](configuration.md#external-photons-alpha0-per-leg) |
 | `p p > e+ e-` with a multiparticle label | the same expression: one artifact entry per subprocess with a Born; members without one are skipped, see below |
 
 MG5_aMC syntax inside a process expression is refused with `madloop-syntax`.
@@ -85,7 +85,7 @@ request's limits, so compare sector by sector.
 | --- | --- |
 | a real on-shell virtual (widths zero) | `[loop.preparation] fixed_parameters = { WT = "0", WZ = "0", WW = "0", WH = "0" }`; a width that propagates in a tree current of an electroweak request is refused (the message names the parameters). Use `fixed_parameters`, not the `no_widths` restriction of `loop_qcd_qed_sm_Gmu`, which also changes MT and MH |
 | the parameters of a MadLoop run | the default values are the model's `restrict_default.dat` (on `loop_qcd_qed_sm_Gmu`: MT = ymt = 173.3 GeV); fix every parameter the run's `param_card.dat` sets differently, e.g. `fixed_parameters = { ..., MT = "173", ymt = "173" }`. A different top mass leaves the Born and the poles of `u u~ > z z` unchanged and moves only the electroweak finite part (through the counterterms), by about 1e-4 of the Born for 0.3 GeV |
-| external photons (alpha(0)) | `loop_qcd_qed_sm_Gmu` with `restriction = "a0"` (it sets `aEW0M1`); `loop_qcd_qed_sm` has no alpha(0) input, so on-shell photons with QED corrections are refused there (`external-photon-scheme`), as in MG5_aMC |
+| external photons (alpha(0)) | tagged photons: `loop_qcd_qed_sm_Gmu` with `restriction = "a0"` (it sets `aEW0M1`); `loop_qcd_qed_sm` has no alpha(0) input, so tagged photons with QED corrections are refused there (`external-photon-scheme`), as in MG5_aMC; untagged photons (`external_photons = "none"`) run on both |
 | massive b | `restriction = "with_b_mass"` (`loop_qcd_qed_sm`: `with_b_mass_no_widths` sets the widths too) |
 | non-diagonal CKM | `restriction = "ckm"` |
 | resonant W, Z, H, t (complex-mass scheme) | not available yet |
@@ -125,7 +125,8 @@ key with its remedy:
 | `scale-parameter` | no identifiable renormalisation-scale parameter (e.g. fixed) |
 | `veto-external-particle` | a `particle_veto` naming an external particle |
 | `tree-only-model` | a compiled model without its NLO UFO source |
-| `external-photon-scheme` | on-shell photons with QED corrections on a model without the alpha(0) convention |
+| `external-photon-scheme` | tagged on-shell photons with QED corrections on a model without the alpha(0) convention |
+| `external-photon-legs` | an `external_photons` leg list naming a leg that is no on-shell photon |
 | `feynman-gauge` | a model that cannot be taken in 't Hooft-Feynman gauge |
 | `veto-unlabelled-counterterms` | a veto of a loop species of a requested correction on these models |
 | `anomalous-veto` | a veto that breaks an anomaly-free multiplet (`generation.allow_anomalous_veto` overrides) |

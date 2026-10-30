@@ -772,6 +772,9 @@ def _v2_request(backend, context, index, born_dags=None):
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
         selection=selection,
+        external_photons=run.loop.external_photons,
+        alpha0_conversion=run.loop.alpha0_conversion_parameter,
+        alpha0_inverse=run.loop.alpha0_inverse_parameter,
     )
     if born_dags is not None:
         born_dags.append(dag)

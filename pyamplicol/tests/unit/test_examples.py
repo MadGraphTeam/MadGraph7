@@ -91,6 +91,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "generation.particle_veto",
         "generation.allow_anomalous_veto",
         "loop.alpha_s_parameter",
+        "loop.alpha0_inverse_parameter",
     }
 )
 _VIRTUAL_ONLY_SECTIONS = ("loop.model.", "loop.preparation")

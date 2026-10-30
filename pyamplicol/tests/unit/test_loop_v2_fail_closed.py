@@ -155,9 +155,12 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "interfering-colour-flows",
         # MQ-NC's declared-N_c guard (``test_loop_v2_nc_declaration.py``).
         "colour-declaration-coverage",
-        # m-sm MS-MODEL: the typed electroweak policy classes and the [U2]
-        # veto (``test_loop_v2_refusal_keys.py``).
+        # MS-PHOTON's external-photon guards (``test_loop_v2_external_photons.py``,
+        # ``test_loop_v2_ew_policy.py``).
         "external-photon-scheme",
+        "external-photon-legs",
+        # m-sm MS-MODEL: the typed electroweak gauge policy, the antiparticle
+        # metadata and the [U2] veto (``test_loop_v2_refusal_keys.py``).
         "feynman-gauge",
         "antiparticle-metadata",
         "anomalous-veto",
