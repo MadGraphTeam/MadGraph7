@@ -760,7 +760,7 @@ impl AmplitudeRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
-        let replay = self.color_topology_replay.as_mut().ok_or_else(|| {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
             RusticolError::integrity(
                 "color topology replay was requested without its amplitude gather",
             )
@@ -770,105 +770,29 @@ impl AmplitudeRuntime {
                 "color topology replay did not materialize every physical amplitude group",
             ));
         }
-        if !physics.has_contracted_color_axis() {
-            return Err(RusticolError::artifact(
-                "color topology replay resolved reduction requires contracted color",
-            ));
-        }
-        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
-        let color_indices = physics.selected_color_indices(selected_color_ids)?;
-        if color_indices.iter().any(|index| *index != 0) {
-            return Err(RusticolError::selector(
-                "color topology replay exposes one contracted color component",
-            ));
-        }
-        let mut selected_positions = vec![None; physics.manifest.helicities.len()];
-        for (position, index) in helicity_indices.iter().copied().enumerate() {
-            selected_positions[index] = Some(position);
-        }
-        let index_by_values = physics
-            .manifest
-            .helicities
-            .iter()
-            .map(|helicity| (helicity.values.clone(), helicity.index))
-            .collect::<BTreeMap<_, _>>();
-        let mut members_by_group = Vec::with_capacity(replay.physical_groups.len());
-        for (group, representative) in replay
-            .physical_groups
-            .iter()
-            .zip(&replay.physical_group_helicities)
-        {
-            let mut members = vec![representative.clone()];
-            if group.weight > 1.0 {
-                if group.weight.to_bits() != 2.0f64.to_bits() {
-                    return Err(RusticolError::artifact(
-                        "color topology replay has an unsupported helicity reuse weight",
-                    ));
-                }
-                let flipped = representative
-                    .iter()
-                    .map(|value| -*value)
-                    .collect::<Vec<_>>();
-                if flipped != *representative {
-                    members.push(flipped);
-                }
-            }
-            let mut indexed = Vec::with_capacity(members.len());
-            let mut total_weight = 0.0;
-            for member in members {
-                let index = index_by_values.get(&member).copied().ok_or_else(|| {
-                    RusticolError::artifact(
-                        "color topology replay physical helicity is absent from public metadata",
-                    )
-                })?;
-                let weight = physics.manifest.helicities[index].coefficient;
-                total_weight += weight;
-                indexed.push((index, weight));
-            }
-            if !total_weight.is_finite() || total_weight <= 0.0 {
-                return Err(RusticolError::artifact(
-                    "color topology replay physical helicity has no positive weight",
-                ));
-            }
-            for (_, weight) in &mut indexed {
-                *weight /= total_weight;
-            }
-            members_by_group.push(indexed);
-        }
-        let contraction = replay.color_contraction.as_mut().ok_or_else(|| {
-            RusticolError::integrity(
-                "color topology replay lost its authenticated color contraction",
-            )
-        })?;
-        let entries = contraction.logical_entries().collect::<Vec<_>>();
-        for entry in &entries {
-            if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
-            {
-                return Err(RusticolError::artifact(
-                    "color contraction mixes distinct replayed physical helicities",
-                ));
-            }
-        }
-        let component_count = helicity_indices
-            .len()
-            .checked_mul(color_indices.len())
-            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))?;
+        let layout = ColorReplayResolvedLayout::new(
+            replay,
+            physics,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let component_count = layout.component_count()?;
         let mut values = vec![0.0; batch_size * component_count];
         let group_count = replay.physical_groups.len();
         for row in 0..batch_size {
             let group_row = row * group_count;
-            for entry in &entries {
+            for entry in &layout.entries {
                 let left = replay.physical_group_scratch_f64[group_row + entry.left_group_index];
                 let right = replay.physical_group_scratch_f64[group_row + entry.right_group_index];
                 let product = left * right.conj();
                 let contribution = normalization_factor
                     * entry.symmetry_factor
                     * (entry.weight_re * product.re - entry.weight_im * product.im);
-                for (helicity_index, weight) in &members_by_group[entry.left_group_index] {
-                    let Some(position) = selected_positions[*helicity_index] else {
+                for (helicity_index, weight) in &layout.members_by_group[entry.left_group_index] {
+                    let Some(position) = layout.selected_positions[*helicity_index] else {
                         continue;
                     };
-                    values[row * component_count + position * color_indices.len()] +=
+                    values[row * component_count + position * layout.color_indices.len()] +=
                         contribution * weight;
                 }
             }
@@ -876,8 +800,8 @@ impl AmplitudeRuntime {
         Ok(ResolvedValues {
             values,
             point_count: batch_size,
-            helicity_indices,
-            color_indices,
+            helicity_indices: layout.helicity_indices,
+            color_indices: layout.color_indices,
         })
     }
 
@@ -3977,6 +3901,83 @@ impl AmplitudeRuntime {
         )
     }
 
+    /// Generic-precision counterpart of `reduce_color_topology_replay_f64_resolved`: the
+    /// physical groups routed by `gather_color_topology_replay_generic` are contracted per
+    /// physical helicity, times the normalization factor, in T.
+    #[cfg(feature = "symbolica-runtime")]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn reduce_color_topology_replay_generic_resolved<T>(
+        &self,
+        physical_values: &[Complex<T>],
+        covered_groups: &[bool],
+        batch_size: usize,
+        binary_precision: Option<u32>,
+        physics: &PhysicsRuntime,
+        normalization_factor: f64,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<ResolvedValues<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let group_count = replay.physical_groups.len();
+        if covered_groups.len() != group_count || covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        if physical_values.len() != batch_size * group_count {
+            return Err(RusticolError::integrity(
+                "color topology replay generic resolved shape is inconsistent",
+            ));
+        }
+        let layout = ColorReplayResolvedLayout::new(
+            replay,
+            physics,
+            selected_helicity_ids,
+            selected_color_ids,
+        )?;
+        let component_count = layout.component_count()?;
+        let constant = |value: f64| T::from_f64_constant(value, binary_precision);
+        let normalization = constant(normalization_factor);
+        let mut values = vec![T::new_zero(); batch_size * component_count];
+        for row in 0..batch_size {
+            let group_row = row * group_count;
+            for entry in &layout.entries {
+                let left = &physical_values[group_row + entry.left_group_index];
+                let right = &physical_values[group_row + entry.right_group_index];
+                // left · conj(right)
+                let product_re =
+                    left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
+                let product_im =
+                    left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
+                let contribution = normalization.clone()
+                    * constant(entry.symmetry_factor)
+                    * (constant(entry.weight_re) * product_re
+                        - constant(entry.weight_im) * product_im);
+                for (helicity_index, weight) in &layout.members_by_group[entry.left_group_index] {
+                    let Some(position) = layout.selected_positions[*helicity_index] else {
+                        continue;
+                    };
+                    values[row * component_count + position * layout.color_indices.len()] +=
+                        contribution.clone() * constant(*weight);
+                }
+            }
+        }
+        Ok(ResolvedValues {
+            values,
+            point_count: batch_size,
+            helicity_indices: layout.helicity_indices,
+            color_indices: layout.color_indices,
+        })
+    }
+
     #[cfg(feature = "symbolica-runtime")]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_resolved_generic<T>(
@@ -5051,6 +5052,122 @@ pub(crate) fn generic_root_group_id(
         "generic coherent group id for root {} must be an integer or string",
         root.root_id
     )))
+}
+
+/// The helicity bookkeeping of a resolved contracted-color topology replay, shared by the
+/// binary64 and generic-precision reductions: each physical group's public helicities with
+/// their normalized weights (a group of reuse weight 2 also stands for its parity flip), the
+/// output position of every selected helicity, and the contraction entries, which never mix
+/// groups of distinct helicities.
+struct ColorReplayResolvedLayout {
+    helicity_indices: Vec<usize>,
+    color_indices: Vec<usize>,
+    selected_positions: Vec<Option<usize>>,
+    members_by_group: Vec<Vec<(usize, f64)>>,
+    entries: Vec<ColorContractionEntry>,
+}
+
+impl ColorReplayResolvedLayout {
+    fn new(
+        replay: &ColorTopologyReplayAmplitudeRuntime,
+        physics: &PhysicsRuntime,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<Self> {
+        if !physics.has_contracted_color_axis() {
+            return Err(RusticolError::artifact(
+                "color topology replay resolved reduction requires contracted color",
+            ));
+        }
+        let helicity_indices = physics.selected_helicity_indices(selected_helicity_ids)?;
+        let color_indices = physics.selected_color_indices(selected_color_ids)?;
+        if color_indices.iter().any(|index| *index != 0) {
+            return Err(RusticolError::selector(
+                "color topology replay exposes one contracted color component",
+            ));
+        }
+        let mut selected_positions = vec![None; physics.manifest.helicities.len()];
+        for (position, index) in helicity_indices.iter().copied().enumerate() {
+            selected_positions[index] = Some(position);
+        }
+        let index_by_values = physics
+            .manifest
+            .helicities
+            .iter()
+            .map(|helicity| (helicity.values.clone(), helicity.index))
+            .collect::<BTreeMap<_, _>>();
+        let mut members_by_group = Vec::with_capacity(replay.physical_groups.len());
+        for (group, representative) in replay
+            .physical_groups
+            .iter()
+            .zip(&replay.physical_group_helicities)
+        {
+            let mut members = vec![representative.clone()];
+            if group.weight > 1.0 {
+                if group.weight.to_bits() != 2.0f64.to_bits() {
+                    return Err(RusticolError::artifact(
+                        "color topology replay has an unsupported helicity reuse weight",
+                    ));
+                }
+                let flipped = representative
+                    .iter()
+                    .map(|value| -*value)
+                    .collect::<Vec<_>>();
+                if flipped != *representative {
+                    members.push(flipped);
+                }
+            }
+            let mut indexed = Vec::with_capacity(members.len());
+            let mut total_weight = 0.0;
+            for member in members {
+                let index = index_by_values.get(&member).copied().ok_or_else(|| {
+                    RusticolError::artifact(
+                        "color topology replay physical helicity is absent from public metadata",
+                    )
+                })?;
+                let weight = physics.manifest.helicities[index].coefficient;
+                total_weight += weight;
+                indexed.push((index, weight));
+            }
+            if !total_weight.is_finite() || total_weight <= 0.0 {
+                return Err(RusticolError::artifact(
+                    "color topology replay physical helicity has no positive weight",
+                ));
+            }
+            for (_, weight) in &mut indexed {
+                *weight /= total_weight;
+            }
+            members_by_group.push(indexed);
+        }
+        let contraction = replay.color_contraction.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay lost its authenticated color contraction",
+            )
+        })?;
+        let entries = contraction.logical_entries().collect::<Vec<_>>();
+        for entry in &entries {
+            if members_by_group[entry.left_group_index] != members_by_group[entry.right_group_index]
+            {
+                return Err(RusticolError::artifact(
+                    "color contraction mixes distinct replayed physical helicities",
+                ));
+            }
+        }
+        Ok(Self {
+            helicity_indices,
+            color_indices,
+            selected_positions,
+            members_by_group,
+            entries,
+        })
+    }
+
+    fn component_count(&self) -> RusticolResult<usize> {
+        self.helicity_indices
+            .len()
+            .checked_mul(self.color_indices.len())
+            .ok_or_else(|| RusticolError::invalid_argument("resolved shape overflows usize"))
+    }
 }
 
 #[cfg(test)]

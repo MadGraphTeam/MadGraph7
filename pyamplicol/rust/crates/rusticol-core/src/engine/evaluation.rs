@@ -2601,10 +2601,86 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        let total_start = Instant::now();
+        let (physical_values, covered_groups, mut profile) =
+            self.gather_generic_color_topology_replay(batch, binary_precision)?;
+        let reduction_start = Instant::now();
+        let raw_sums = self
+            .amplitude_stage
+            .as_ref()
+            .expect("generic amplitude stage checked")
+            .reduce_color_topology_replay_generic(
+                &physical_values,
+                &covered_groups,
+                batch.len(),
+                binary_precision,
+            )?;
+        let factor = T::from_f64_constant(self.normalization_factor, binary_precision);
+        let values = raw_sums
+            .into_iter()
+            .map(|value| value * factor.clone())
+            .collect::<Vec<_>>();
+        profile.reduction_s += reduction_start.elapsed().as_secs_f64();
+        profile.total_s = total_start.elapsed().as_secs_f64();
+        Ok((values, profile))
+    }
+
+    /// Generic-precision counterpart of `run_resolved_f64_with_color_topology_replay_unprofiled`:
+    /// the physical groups of every replay relabelling, contracted per physical helicity in T.
+    #[cfg(feature = "symbolica-runtime")]
+    fn run_resolved_generic_with_color_topology_replay<T>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(ResolvedValues<T>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let physics = self.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("color topology replay requires resolved physics metadata")
+        })?;
+        let total_start = Instant::now();
+        let (physical_values, covered_groups, mut profile) =
+            self.gather_generic_color_topology_replay(batch, binary_precision)?;
+        let reduction_start = Instant::now();
+        let resolved = self
+            .amplitude_stage
+            .as_ref()
+            .expect("generic amplitude stage checked")
+            .reduce_color_topology_replay_generic_resolved(
+                &physical_values,
+                &covered_groups,
+                batch.len(),
+                binary_precision,
+                &physics,
+                self.normalization_factor,
+                selected_helicity_ids,
+                selected_color_ids,
+            )?;
+        profile.reduction_s += reduction_start.elapsed().as_secs_f64();
+        profile.total_s = total_start.elapsed().as_secs_f64();
+        Ok((resolved, profile))
+    }
+
+    /// Evaluates the materialized sectors at every replay relabelling and routes their summed
+    /// groups to the physical groups (row-major, one row per point), in T.
+    #[cfg(feature = "symbolica-runtime")]
+    #[allow(clippy::type_complexity)]
+    fn gather_generic_color_topology_replay<T>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<(Vec<Complex<T>>, Vec<bool>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
-        let total_start = Instant::now();
         let n_points = batch.len();
         let group_count = self
             .amplitude_stage
@@ -2650,25 +2726,7 @@ impl ExecutionRuntime {
             mapping_profile.reduction_s = gather_start.elapsed().as_secs_f64();
             profile.add_sector(&mapping_profile);
         }
-        let reduction_start = Instant::now();
-        let raw_sums = self
-            .amplitude_stage
-            .as_ref()
-            .expect("generic amplitude stage checked")
-            .reduce_color_topology_replay_generic(
-                &physical_values,
-                &covered_groups,
-                n_points,
-                binary_precision,
-            )?;
-        let factor = T::from_f64_constant(self.normalization_factor, binary_precision);
-        let values = raw_sums
-            .into_iter()
-            .map(|value| value * factor.clone())
-            .collect::<Vec<_>>();
-        profile.reduction_s += reduction_start.elapsed().as_secs_f64();
-        profile.total_s = total_start.elapsed().as_secs_f64();
-        Ok((values, profile))
+        Ok((physical_values, covered_groups, profile))
     }
 
     #[cfg(feature = "symbolica-runtime")]
@@ -2700,6 +2758,14 @@ impl ExecutionRuntime {
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
             return sum_runtime.run_resolved_generic(
+                batch,
+                binary_precision,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
+        }
+        if self.color_topology_replay_enabled {
+            return self.run_resolved_generic_with_color_topology_replay(
                 batch,
                 binary_precision,
                 selected_helicity_ids,
