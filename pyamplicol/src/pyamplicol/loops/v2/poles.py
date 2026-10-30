@@ -45,6 +45,27 @@ a finite term. Origins per component (``assemble.COMPONENTS``):
   Catani's operator (``tests/unit/test_loop_v2_poles.py``,
   ``rust/loop-reduction/tests/runtime_v2_reduce.rs``).
 
+**Models with pole regulators (M-SM MS-POLES).** MadLoop's electroweak UFOs
+(loop_qcd_qed_sm and its G_mu variant) do state the origin: their CT
+parameters are linear in two external parameters, ``epsUV`` and ``epsIR``
+(UFO/SLHA block TECHNICAL, codes 1 and 2, default 1), which multiply every
+1/eps_UV and 1/eps_IR of their pole coefficients (``(epsUV - epsIR)`` for a
+massless delta-Z, ``(epsUV + 2 epsIR)`` for a massive one); the finite parts
+do not read them. Where both are adjustable external parameters of the
+request (``pole_regulators``), the counterterm components' UV parts are the
+counterterm program at the point's parameters with the IR regulator at 0
+(``regulated_parameters``; MadLoop's evaluation at ``epsIR = 0``) and their
+IR parts the rest, ``CT(epsUV, epsIR) - CT(epsUV, 0)``, for ``r2``,
+``uv_local`` and the field factors alike (``split_sector``'s
+``counterterms_uv``): no remainder, so bare + counterterm UV poles = 0 is a
+test (of the model's counterterms and of the bare residues), and the
+``"ir"`` virtual is ``bare_IR + CT_IR``. An evaluation at ``(0, epsIR)``
+would count a pole term that reads neither regulator twice (the UFOs'
+``dMB_*`` massive-b corrections of the electroweak CT parameters are such
+terms, UV in MadLoop's ``epsIR = 0`` reading), so the IR part is the
+difference. ``"all"`` and ``"none"`` never form it: their values are
+bitwise unchanged.
+
 ``catani_poles`` is the IR-pole prediction of the renormalised virtual
 (Catani, Dittmaier, Trocsanyi, Phys. Lett. B500 (2001) 149): per ordered pair
 of coloured legs (j, k), (1/C_j) [C_j (mu^2/s_jk)^eps V^(S)_jk + Gamma_j]
@@ -84,7 +105,8 @@ g g > t t~ e- e+ g at O(alpha)) and of the MadLoop G_mu controls
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
@@ -97,6 +119,67 @@ from .families import Orders, add_orders
 ORIGINS = ("uv", "ir")
 # Components whose poles are ultraviolet by origin (local counterterms).
 LOCAL_UV = ("r2", "uv_local")
+# UFO/SLHA codes of a model's pole regulators (module docstring, "Models
+# with pole regulators"): the parameters that multiply the 1/eps_UV and
+# 1/eps_IR of its counterterm parameters (MadLoop's electroweak UFOs:
+# epsUV and epsIR).
+REGULATOR_CODES = {"uv": ("TECHNICAL", (1,)), "ir": ("TECHNICAL", (2,))}
+
+
+@dataclass(frozen=True)
+class PoleRegulators:
+    """The names of a model's UV and IR pole regulators (``pole_regulators``)."""
+
+    uv: str
+    ir: str
+
+    def record(self) -> dict[str, str]:
+        return {"uv": self.uv, "ir": self.ir}
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, str] | None) -> PoleRegulators | None:
+        return None if record is None else cls(str(record["uv"]), str(record["ir"]))
+
+
+def pole_regulators(
+    parameters: Iterable[Any], fixed: Container[str] = ()
+) -> PoleRegulators | None:
+    """The pole regulators of a model (``REGULATOR_CODES``): its real
+    external parameters at UFO/SLHA codes (TECHNICAL, 1) and (TECHNICAL, 2),
+    by code, not by name; None unless both exist once each and neither is
+    fixed (``fixed``: the request's and the preparation's fixed parameters,
+    which the counterterm program substitutes). ``parameters`` are the
+    compiled model's parameter records (``compiled.ir.parameters``)."""
+
+    externals = [
+        record
+        for record in parameters
+        if record.nature == "external" and str(record.parameter_type).lower() == "real"
+    ]
+    found: dict[str, str] = {}
+    for origin, (block, code) in REGULATOR_CODES.items():
+        names = [
+            record.name
+            for record in externals
+            if (record.lhablock or "").upper() == block
+            and tuple(record.lhacode or ()) == code
+        ]
+        if len(names) != 1 or names[0] in fixed:
+            return None
+        found[origin] = str(names[0])
+    return PoleRegulators(**found)
+
+
+def regulated_parameters(
+    values: Mapping[str, str], regulators: PoleRegulators
+) -> dict[str, str]:
+    """A point's complete parameter values with the IR regulator at 0: the
+    counterterm program there is the counterterms' UV part (module
+    docstring)."""
+
+    out = dict(values)
+    out[regulators.ir] = "0"
+    return out
 
 
 def pole_mode(poles: PoleSelection | str) -> PoleSelection:
@@ -153,30 +236,45 @@ def split_sector(
     bare_uv: Any,
     field_component: str,
     laurent: Callable[..., Any],
+    counterterms_uv: Mapping[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """UV and IR parts of every component of one sector (or output column).
 
     ``components`` maps ``bare``, ``r2``, ``uv_local`` and the field
     component to their combined Laurent values (``finite, single_pole,
     double_pole``); ``bare_uv`` is the bare loop's UV Laurent (finite part
-    unused, double pole zero). Returns ``{origin: {component: Laurent}}``
-    for those four components and the sums ``uv`` (UV_local plus fields) and
-    ``virtual`` (bare + uv + r2, the renormalised virtual): each part keeps
-    the combined finite part, and the two parts' poles add up to the
-    combined poles (to rounding).
+    unused, double pole zero). ``counterterms_uv`` maps ``r2``, ``uv_local``
+    and the field component to their UV Laurent values (finite parts
+    unused): the counterterm program with the IR regulator at 0 for a model
+    with pole regulators (module docstring); None (a model without them):
+    the local counterterms' poles are UV and the field factors carry what
+    makes the renormalised virtual UV finite. Returns ``{origin: {component:
+    Laurent}}`` for those four components and the sums ``uv`` (UV_local plus
+    fields) and ``virtual`` (bare + uv + r2, the renormalised virtual): each
+    part keeps the combined finite part, and the two parts' poles add up to
+    the combined poles (to rounding).
     """
 
     def poles(value) -> tuple[Any, Any]:
         return value.single_pole, value.double_pole
 
     ultraviolet: dict[str, tuple[Any, Any]] = {"bare": poles(bare_uv)}
-    for name in LOCAL_UV:
-        ultraviolet[name] = poles(components[name])
-    # The renormalised virtual is UV finite: the field factors carry the rest.
-    ultraviolet[field_component] = tuple(
-        -(ultraviolet["bare"][k] + ultraviolet["uv_local"][k] + ultraviolet["r2"][k])
-        for k in (0, 1)
-    )
+    if counterterms_uv is not None:
+        for name in (*LOCAL_UV, field_component):
+            ultraviolet[name] = poles(counterterms_uv[name])
+    else:
+        for name in LOCAL_UV:
+            ultraviolet[name] = poles(components[name])
+        # The renormalised virtual is UV finite: the field factors carry the
+        # rest.
+        ultraviolet[field_component] = tuple(
+            -(
+                ultraviolet["bare"][k]
+                + ultraviolet["uv_local"][k]
+                + ultraviolet["r2"][k]
+            )
+            for k in (0, 1)
+        )
     out: dict[str, dict[str, Any]] = {origin: {} for origin in ORIGINS}
     for name, (single, double) in ultraviolet.items():
         value = components[name]
