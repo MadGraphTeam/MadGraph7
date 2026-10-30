@@ -45,12 +45,8 @@ ROW_COUNTS = {
     "MP": 2,
     "SC": 9,
 }
-# Existing references that ew-validate (EWI-7) commits; pending until it integrates.
-EWI7_FIXTURES = {
-    "required/ttx_ttx_ew.json",
-    "required/udx_tbx_ew.json",
-    "required/ttx_zh_ew.json",
-}
+# ST04: ew-validate's workspace run committed by MS-REF (MadLoop double precision).
+ST04_FIXTURE = "required/udx_tbx_ew_mb.json"
 CMS_CONVENTIONS = ("CMSParam", "LogSwitch", "GfRedefinitionChoice")
 UNIVERSAL_POLE_TOLERANCE = 1e-10
 RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
@@ -101,10 +97,9 @@ def test_campaign_and_manifest_cover_every_row(campaign: dict, manifest: dict) -
                 ref["status"] == "committed" and (FIXTURES / ref["fixture"]).is_file()
             ), ref["run"]
         for ref in row["existing_references"]:
-            if ref["status"] != "committed":
-                assert ref["fixture"] in EWI7_FIXTURES, ref
-            else:
-                assert (FIXTURES / ref["fixture"]).is_file(), ref
+            assert (
+                ref["status"] == "committed" and (FIXTURES / ref["fixture"]).is_file()
+            ), ref
         # Oracle runs of another card (technical epsIR runs) are no rule 1 references.
         oracles = {
             f"required/msm/{r['run']}.json"
@@ -131,6 +126,15 @@ def test_every_run_process_and_scheme_is_specified(campaign: dict) -> None:
         assert bool(route.get("mass_scheme") == "complex-mass") == bool(
             schemes[route["scheme"]].get("complex_mass_scheme")
         ), code
+
+
+def _check_points(fixture: dict, spec: dict) -> None:
+    """Points on the scheme's mass shells, momentum conserving."""
+    masses = required_spec.masses(spec)
+    assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
+    for point in fixture["points"]:
+        shell, conservation = _shell_and_conservation(point, masses)
+        assert shell < Decimal("1e-25") and conservation < Decimal("1e-25")
 
 
 def _shell_and_conservation(
@@ -199,20 +203,20 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
     )
     assert settings["quadruple_precision_required"] is True
     assert settings["MadLoopParams_overrides"] == evaluation["madloop_params"]
+    # MadLoop's return code HTU: H = 3 (stability rescue succeeded), T = 2
+    # (quadruple precision used).
     statuses = [row["madloop_status"] for row in fixture["rows"]]
-    assert all(status // 100 == 3 for status in statuses), statuses
-    # The R2 couplings the export calls (the rule-1 R2 correction's input).
+    assert all(s // 100 == 3 and s // 10 % 10 == 2 for s in statuses), statuses
+    # The UFO R2 couplings the export inserts (the rule-1 R2 correction's input)
+    # and the merged names MG5 calls them by (madloop_ct_couplings.py).
     r2 = fixture["madloop_r2_couplings"]
     assert (
         r2["called"] == sorted(set(r2["called"]))
         and len(r2["called"]) <= r2["ufo_r2_couplings"]
+        and set(r2["called_as"]) <= set(r2["called"])
+        and all(r2["called_as"][n].lstrip("-") != n for n in r2["called_as"])
     )
-    # Points on the scheme's mass shells, momentum conserving.
-    masses = required_spec.masses(spec)
-    assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
-    for point in fixture["points"]:
-        shell, conservation = _shell_and_conservation(point, masses)
-        assert shell < Decimal("1e-25") and conservation < Decimal("1e-25")
+    _check_points(fixture, spec)
     # Every squared split order with MadLoop's accuracy; ROW = the primary sector.
     primary = tuple(
         spec["born_orders"][k] + spec["loop_orders"][k] for k in ("QCD", "QED")
@@ -253,9 +257,25 @@ def test_every_loop_sector_has_the_universal_double_pole(
     loop squared split order at every ok reference point (a joint QCD+QED sector
     gets both), with the factors recomputed here; the recorded violation is that
     of the printed sector values."""
-    run = _runs(campaign)[run_id]
-    fixture = _fixture(run_id)
-    spec = _spec(run)
+    _check_double_poles(_fixture(run_id), _spec(_runs(campaign)[run_id]))
+
+
+def test_st04_existing_reference_is_relocated_and_consistent() -> None:
+    """ST04's committed fixture (ew-validate's run, MadLoop double precision):
+    no host paths, the specified process and scheme, points on the mass shells
+    and the universal double pole in every loop sector."""
+    fixture = json.loads((FIXTURES / ST04_FIXTURE).read_text())
+    assert not re.search(r"/shared/|/home/|pyLoopAmpliCol", json.dumps(fixture))
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, fixture["name"])
+    assert fixture["pdgs"] == spec["pdgs"] and fixture["scheme"] == spec["scheme"]
+    assert fixture["madloop_model"] == Path(spec["madloop"]["model"]).name
+    assert fixture["parameters"] == spec["scheme_data"]["parameters"]
+    assert "recola" in fixture["excluded_providers"]
+    _check_points(fixture, spec)
+    _check_double_poles(fixture, spec)
+
+
+def _check_double_poles(fixture: dict, spec: dict) -> None:
     factors, couplings = _factors(fixture, spec)
     assert fixture["universal_double_pole_factor"] == pytest.approx(
         factors[spec["correction"]], rel=1e-15
@@ -405,22 +425,99 @@ def test_supplied_points_at_listed_energies() -> None:
         )
 
 
-def test_r2_name_list_reads_call_tokens(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    process = tmp_path / "SubProcesses" / "P1_xx"
+def _synthetic_export(tmp_path: Path, record: dict) -> Path:
+    export = tmp_path / "madloop-export"
+    process = export / "SubProcesses" / "P1_xx"
     process.mkdir(parents=True)
     (process / "helas_calls_ampb_1.f").write_text(
-        "      CALL FFV1_0(W(1,1),W(1,2),W(1,3),R2_G0TT,AMP(1))\n"
-        "C     R2_GOTT_B is not R2_G0tt_b\n"
+        "      CALL FFV1_0(W(1,1),W(1,2),W(1,3),R2_CCA2CP,AMPL(1,1))\n"
+        "      CALL VVV1_0(W(1,1),W(1,2),W(1,3),R2_AWWCS,AMPL(1,2))\n"
+        "      CALL FFS1_0(W(1,1),W(1,2),W(1,3),R2_G0TT,AMPL(1,3))\n"
+        "C     R2_G0TT_B is a comment\n"
     )
+    (tmp_path / "madloop-export.ct_couplings.json").write_text(json.dumps(record))
+    return export
+
+
+R2_RECORD = {
+    "subprocesses": {
+        "xx": {
+            "r2": ["R2_G0tt", "R2_uuA2Cp"],
+            "r2_called_as": {"R2_uuA2Cp": "R2_ccA2Cp"},
+            "ct_tokens": {
+                "ampb": {
+                    "R2_CCA2CP": ["R2_uuA2Cp"],
+                    "R2_AWWCS": ["c_UVvexveA1EW_1eps"],
+                    "R2_G0TT": ["R2_G0tt"],
+                },
+                "uvct": {},
+            },
+        }
+    }
+}
+
+
+def test_r2_name_list_is_the_ufo_couplings_behind_the_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The R2 list holds the UFO couplings MG5's merged call names stand for
+    (R2_CCA2CP calls R2_uuA2Cp), not the call names; a recorded name absent
+    from the sources is refused."""
+    export = _synthetic_export(tmp_path, R2_RECORD)
     monkeypatch.setattr(
         references,
         "ufo_r2_coupling_names",
-        lambda model: {"R2_G0tt", "R2_G0tt_b", "R2_AAU"},
+        lambda model: {"R2_G0tt", "R2_G0tt_b", "R2_uuA2Cp", "R2_ccA2Cp"},
     )
-    record = references.madloop_r2_couplings(tmp_path, "model")
-    assert record["called"] == ["R2_G0tt"] and record["ufo_r2_couplings"] == 3
+    record = references.madloop_r2_couplings(export, "model")
+    assert record["called"] == ["R2_G0tt", "R2_uuA2Cp"]
+    assert record["called_as"] == {"R2_uuA2Cp": "R2_ccA2Cp"}
+    assert record["ufo_r2_couplings"] == 4
+    stale = json.loads(json.dumps(R2_RECORD))
+    stale["subprocesses"]["xx"]["r2"].append("R2_G0tt_b")
+    _synthetic_export(tmp_path / "stale", stale)
+    with pytest.raises(RuntimeError, match="absent"):
+        references.madloop_r2_couplings(tmp_path / "stale" / "madloop-export", "model")
+
+
+def test_ct_amplitudes_are_classified_by_their_ufo_couplings(tmp_path: Path) -> None:
+    """madloop_ct_selection.py with the ct_couplings record: R2_AWWCS calls the
+    UV coupling c_UVvexveA1EW_1eps here, so its amplitude is 'uv', not 'r2'."""
+    from tools.loop_reference import madloop_ct_couplings, madloop_ct_selection
+
+    export = _synthetic_export(tmp_path, R2_RECORD)
+    process = export / "SubProcesses" / "P1_xx"
+    (process / "loop_matrix.f").write_text("      PARAMETER (NCTAMPS=3)\n")
+    groups = {"r2": re.compile("R2", re.I), "uv": re.compile("UV", re.I)}
+    tokens = R2_RECORD["subprocesses"][madloop_ct_couplings.subprocess_key(process)]
+    assert madloop_ct_selection.classify(process, groups) == {1: "r2", 2: "r2", 3: "r2"}
+    assert madloop_ct_selection.classify(process, groups, tokens["ct_tokens"]) == {
+        1: "r2",
+        2: "uv",
+        3: "r2",
+    }
+
+
+def test_coupling_renamings_compose_conversion_and_restriction() -> None:
+    """madloop_ct_couplings.Recorder: the conversion's identical-expression
+    renaming, then the restriction's merge (with its sign) or zero; the
+    resolved names must be the final interaction's couplings."""
+    from tools.loop_reference import madloop_ct_couplings
+
+    recorder = madloop_ct_couplings.Recorder()
+    recorder.original = {7: ["R2_a", "R2_b", "R2_c", "R2_d"]}
+    recorder.renamed = {"R2_d": "R2_a"}
+    recorder.merged = {"R2_b": ("GC_1", -1)}
+    recorder.zero = {"R2_c"}
+    interaction = {"id": 7, "couplings": {(0, 0): "R2_a", (0, 1): "-GC_1"}}
+    assert recorder.resolve(interaction) == [
+        ("R2_a", "R2_a"),
+        ("R2_b", "-GC_1"),
+        ("R2_d", "R2_a"),
+    ]
+    assert recorder.called("R2_b", particle=True) == "GC_1"
+    with pytest.raises(RuntimeError, match="not the renamed"):
+        recorder.resolve({"id": 7, "couplings": {(0, 0): "R2_a"}})
 
 
 @pytest.mark.parametrize(
