@@ -502,11 +502,16 @@ impl DirectRecurrenceExecutionRuntime {
         // allows it, rather than repeatedly running a few lanes.
         let minimum_tiled_points = (DIRECT_RUNTIME_ARENA_ALIGNMENT / size_of::<f64>()) as u32;
         let packed_singleton_capable = executors.packed_singleton_capable();
-        let tile_capacity = workspace_tile.min(
+        #[allow(unused_mut)]
+        let mut tile_capacity = workspace_tile.min(
             u32::try_from(cache_tile)
                 .unwrap_or(u32::MAX)
                 .max(minimum_tiled_points),
         );
+        #[cfg(feature = "pacman")]
+        if let Some(points) = super::direct_backend::pacman_gpu_tile_points()? {
+            tile_capacity = points.max(minimum_tiled_points);
+        }
         let momentum_plane_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
