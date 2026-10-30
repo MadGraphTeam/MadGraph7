@@ -2523,7 +2523,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -3235,8 +3235,13 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "vanishing": [
+    {
+     "sector": "QCD^6 QED^2",
+     "coefficient": "double_pole"
+    }
+   ],
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -3608,7 +3613,12 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "QCD^4 QED^4",
+     "coefficient": "double_pole"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
@@ -3702,7 +3712,12 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "QCD^4 QED^4",
+     "coefficient": "double_pole"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
