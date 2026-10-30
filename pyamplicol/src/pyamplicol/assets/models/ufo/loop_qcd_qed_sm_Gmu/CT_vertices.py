@@ -1099,8 +1099,17 @@ V_ttG02 = CTVertex(name = 'V_ttG02',
                    particles = [ P.t__tilde__, P.t, P.G0 ],
                    color = [ 'Identity(1,2)' ],
                    lorentz = [ L.FFS2 ],
-                   loop_particles = [[[P.Z,P.t]],[[P.W__plus__, P.d]],[[P.W__plus__, P.s]],[[P.W__plus__,P.b]]],
-                   couplings = {(0,0,0):C.R2_G0tt, (0,0,1):C.R2_G0tt_d, (0,0,2):C.R2_G0tt_s, (0,0,3):C.R2_G0tt_b},
+                   # Keep the mixed W/Goldstone and quark/Goldstone triangles
+                   # separate so restrictions and loop-particle vetoes retain
+                   # exactly the corresponding part of each R2 coefficient.
+                   loop_particles = [[[P.Z,P.t]],
+                                     [[P.W__plus__,P.G__plus__,P.d]],[[P.G__plus__,P.d]],
+                                     [[P.W__plus__,P.G__plus__,P.s]],[[P.G__plus__,P.s]],
+                                     [[P.W__plus__,P.G__plus__,P.b]],[[P.G__plus__,P.b]]],
+                   couplings = {(0,0,0):C.R2_G0tt,
+                                (0,0,1):C.R2_G0tt_d_WG, (0,0,2):C.R2_G0tt_d_G,
+                                (0,0,3):C.R2_G0tt_s_WG, (0,0,4):C.R2_G0tt_s_G,
+                                (0,0,5):C.R2_G0tt_b_WG, (0,0,6):C.R2_G0tt_b_G},
                    type = 'R2')
 
 V_ddG02 = CTVertex(name = 'V_ddG02',
