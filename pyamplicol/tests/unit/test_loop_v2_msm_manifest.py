@@ -44,7 +44,7 @@ EXTRA_ROWS = {"SC10"}
 # target and CM07 run in the campaign tier.
 DEFAULT_TIER = {"VJ02", "TT01"}
 CAMPAIGN_TIER = {"TV07", "CM07"}
-# PLAN §1.4: the known rows of MadLoop's R2 label matching.
+# PLAN §1.4: the known rows of MadLoop's R2 label matching (unpatched models).
 R2_RULE_ROWS = {"LL10", "TT04", "SC09", "TT05"}
 
 
@@ -174,32 +174,39 @@ def test_relaxed_tolerances_name_a_rule_and_stay_below_attention(rows):
 def test_r2_rule_rows_compare_against_a_complete_insertion(rows):
     """PLAN §1.4 rule 1, the R2 rule: a row whose MadLoop export omits a UFO
     R2 coupling the engine inserts is compared against Recola (the primary
-    provider) or against MadLoop plus the omitted component; the known rows
-    either list their omission or wait for their package."""
+    provider) or against MadLoop plus the omitted component. The known rows
+    of the unpatched models (R2_G0tt_b) are re-referenced on the shipped
+    patched models (MS-UFO-PATCH), whose MadLoop exports call V_ttG02's
+    split b-loop R2 couplings: none lists an omission, and the harness
+    finds the set structurally on every row with a call list."""
 
     for name, row in _core(rows).items():
         omitted = row.madloop_omitted_r2
-        if name in R2_RULE_ROWS:
-            assert row.status == "pending" or omitted, name
+        if name in R2_RULE_ROWS and row.status == "active":
+            assert not omitted, name
+            called = set(row.madloop_r2_called or ())
+            assert any(c.startswith("R2_G0tt_b_") for c in called), name
         if omitted:
             reference = mqcd.load_reference(row)
             assert reference.primary != "madloop" or row.reference.get("omitted_r2")
 
 
 @pytest.mark.loop_fast
-def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
+def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufodb_unpatched_ufo):
     """PLAN §1.4 rule 1, the R2 rule found structurally: MG5_aMC's export
     merges couplings of equal value under one name (V_R2AWW's R2_AWWud and
     R2_AWWtb under R2_AWWcs) and drops vanishing ones (R2_AAu3 ~ MU^2), so an
     inserted coupling counts as called when its value class is; R2_G0tt_b
     (V_ttG02's b-loop R2, whose propagator label MadLoop's matching never
     meets) is the omission; a row that lists as omitted a coupling MadLoop
-    calls, or does not list one it omits, fails the structural check."""
+    calls, or does not list one it omits, fails the structural check. On
+    the unpatched G_mu UFO (UFOmodeldb 6ca4b120), which still has the
+    single R2_G0tt_b coupling."""
 
     from types import SimpleNamespace as N
 
     names = ["R2_AWWcs", "R2_AWWud", "R2_AWWtb", "R2_AAu3", "R2_G0tt", "R2_G0tt_b"]
-    classes = mqcd.r2_value_classes(loop_gmu_ufo, "default", names)
+    classes = mqcd.r2_value_classes(loop_gmu_ufodb_unpatched_ufo, "default", names)
     assert classes["R2_AWWcs"] == classes["R2_AWWud"] == classes["R2_AWWtb"]
     assert classes["R2_AWWcs"] is not None and classes["R2_AAu3"] is None
     assert None not in (classes["R2_G0tt"], classes["R2_G0tt_b"])

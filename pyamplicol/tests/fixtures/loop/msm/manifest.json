@@ -1349,20 +1349,21 @@
    "scheme": "ew-gmu",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E required/emep_ttxh_ew.json (Recola primary: R2 rule)",
+   "reference_legend": "E required/emep_ttxh_ew.json (Recola primary: R2 rule) (re-referenced: emep_ttxh_ew, MS-UFO-PATCH)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/emep_ttxh_ew.json",
+    "path": "tests/fixtures/loop/required/msm/emep_ttxh_ew.json",
     "providers": [
-     "recola",
-     "madloop"
+     "madloop",
+     "recola"
     ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -1387,7 +1388,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-10,
+   "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -1395,9 +1396,6 @@
    "scale_parameter": "MU_R",
    "ignored_fixed_parameters": [
     "WTau"
-   ],
-   "madloop_omitted_r2": [
-    "R2_G0tt_b"
    ],
    "madloop_r2_called": [
     "R2_AAD",
@@ -1422,6 +1420,7 @@
     "R2_G0G0boson1",
     "R2_G0G0boson2",
     "R2_G0tt",
+    "R2_G0tt_b_WG",
     "R2_HHt1",
     "R2_HHt2",
     "R2_Htt",
@@ -5077,20 +5076,21 @@
    "scheme": "ew-gmu",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E required/ttx_ttx_ew (ew-validate; Recola primary: R2 rule, 7.7 %)",
+   "reference_legend": "E required/ttx_ttx_ew (ew-validate; Recola primary: R2 rule, 7.7 %) (re-referenced: ttx_ttx_ew, MS-UFO-PATCH)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/ttx_ttx_ew.json",
+    "path": "tests/fixtures/loop/required/msm/ttx_ttx_ew.json",
     "providers": [
-     "recola",
-     "madloop"
+     "madloop",
+     "recola"
     ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5126,9 +5126,6 @@
    ],
    "inputs": "native",
    "catani": "engine",
-   "madloop_omitted_r2": [
-    "R2_G0tt_b"
-   ],
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -5147,6 +5144,7 @@
     "R2_G0G0boson1",
     "R2_G0G0boson2",
     "R2_G0tt",
+    "R2_G0tt_b_WG",
     "R2_HHboson1",
     "R2_HHboson2",
     "R2_HHt1",
@@ -5210,23 +5208,21 @@
    "scheme": "ew-gmu",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E gt_tttx_ew (goldstone-mixing.json, MadLoop double) + its omitted R2_G0tt_b component",
+   "reference_legend": "E gt_tttx_ew (goldstone-mixing.json, MadLoop double) + its omitted R2_G0tt_b component (re-referenced: gt_tttx_ew, MS-UFO-PATCH)",
    "reference": {
-    "format": "madloop-components",
-    "path": "tests/fixtures/loop/goldstone-mixing.json",
-    "key": "gt_tttx_ew",
-    "omitted_r2": {
-     "component": "r2_g0tt",
-     "coupling": "R2_G0tt_b",
-     "proportional_to": "R2_G0tt",
-     "ratio": "0.8688964002350662"
-    }
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gt_tttx_ew.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -5265,12 +5261,15 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "relaxed": {
     "4dd": 1e-14
    },
-   "madloop_omitted_r2": [
-    "R2_G0tt_b"
-   ],
+   "extras_pending": {
+    "uv": "rule 5's EW form runs on the class's component row (MS-REF's component runs, one row per class: m-sm/PLAN.md \u00a71.4 rule 5)"
+   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -5289,6 +5288,7 @@
     "R2_G0G0boson1",
     "R2_G0G0boson2",
     "R2_G0tt",
+    "R2_G0tt_b_WG",
     "R2_GTT2Cm",
     "R2_GTT2Cmb",
     "R2_GTT2Cp",
@@ -5358,17 +5358,21 @@
    "scheme": "ew-gmu-b-mass",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E goldstone-mixing.json (gb_ttxb_ew_mb, MadLoop double)",
+   "reference_legend": "E goldstone-mixing.json (gb_ttxb_ew_mb, MadLoop double) (re-referenced: gb_ttxb_ew_mb, MS-UFO-PATCH)",
    "reference": {
-    "format": "madloop-components",
-    "path": "tests/fixtures/loop/goldstone-mixing.json",
-    "key": "gb_ttxb_ew_mb"
+    "format": "required",
+    "path": "tests/fixtures/loop/required/msm/gb_ttxb_ew_mb.json",
+    "providers": [
+     "madloop",
+     "recola"
+    ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -5397,12 +5401,15 @@
      "coefficient": "double_pole"
     }
    ],
-   "reference_tolerance": 1e-08,
+   "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
    "relaxed": {
     "4dd": 1e-13
    },
@@ -5430,7 +5437,8 @@
     "R2_G0bb",
     "R2_G0bb_t",
     "R2_G0tt",
-    "R2_G0tt_b",
+    "R2_G0tt_b_G",
+    "R2_G0tt_b_WG",
     "R2_GBB2Cm",
     "R2_GBB2Cmt",
     "R2_GBB2Cp",
@@ -6737,16 +6745,18 @@
    "reference_legend": "R commit ew-validate's workspace run udx_tbx_ew_mb (MadLoop)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/udx_tbx_ew_mb.json",
+    "path": "tests/fixtures/loop/required/msm/udx_tbx_ew_mb.json",
     "providers": [
-     "madloop"
+     "madloop",
+     "recola"
     ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -10935,8 +10945,6 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "catani": "none",
-   "catani_reason": "restrict_ckm: the UFO's O(lambda^3) Wolfenstein CKM is not unitary, so the QED correction keeps a UV pole ~lambda^4 (single pole = the QED operator - 0.0213 alpha/2pi Born, as MadLoop's; MS-REF scheme ew-gmu-ckm; finding F6)",
    "madloop_r2_called": [
     "R2_WWboson1",
     "R2_WWboson2",
@@ -11644,20 +11652,21 @@
    "scheme": "ew-gmu",
    "tier": "nightly",
    "status": "active",
-   "reference_legend": "E required/ttx_zh_ew (ew-validate; MadLoop + Recola; Recola primary: R2 rule, 2.5 %)",
+   "reference_legend": "E required/ttx_zh_ew (ew-validate; MadLoop + Recola; Recola primary: R2 rule, 2.5 %) (re-referenced: ttx_zh_ew, MS-UFO-PATCH)",
    "reference": {
     "format": "required",
-    "path": "tests/fixtures/loop/required/ttx_zh_ew.json",
+    "path": "tests/fixtures/loop/required/msm/ttx_zh_ew.json",
     "providers": [
-     "recola",
-     "madloop"
+     "madloop",
+     "recola"
     ]
    },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [],
@@ -11693,9 +11702,6 @@
    ],
    "inputs": "native",
    "catani": "engine",
-   "madloop_omitted_r2": [
-    "R2_G0tt_b"
-   ],
    "madloop_r2_called": [
     "R2_AZD",
     "R2_AZH",
@@ -11709,6 +11715,7 @@
     "R2_G0G0boson1",
     "R2_G0G0boson2",
     "R2_G0tt",
+    "R2_G0tt_b_WG",
     "R2_HHt1",
     "R2_HHt2",
     "R2_Htt",
