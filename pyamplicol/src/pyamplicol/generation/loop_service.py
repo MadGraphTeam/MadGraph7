@@ -939,8 +939,13 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
             # A listed key first (``refusals.keyed_error``).
             blockers = (str(keyed_error(e)),)
+    # Plain texts (a ``ListedBlocker`` is a ``str`` that also carries its key).
     result = _plan_result(
-        backend, processes, blockers, context=context, coverage=coverage
+        backend,
+        processes,
+        tuple(str(blocker) for blocker in blockers),
+        context=context,
+        coverage=coverage,
     )
     estimated = dict(result.estimated_coverage)
     estimated.update(
