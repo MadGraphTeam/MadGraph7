@@ -15,6 +15,17 @@ ANNOUNCEMENT:
        --allow-stdin option is given. A forced run (-f) only stops when input is waiting
        on stdin, which it would otherwise silently ignore. Running with a script file, or
        with stdin on /dev/null, is unchanged.
+   OM: energy units ("1 TeV", "500 MeV", ...) are now only accepted where the value is an
+       energy, and converted to GeV. The run_card entries carrying an energy are declared
+       as such (energy=True in their definition): the madevent and aMC@NLO run_cards now
+       accept units on them too (e.g. "set ptj 1 TeV"). A unit on any other numeric entry
+       is an error: on the mg7 run_card, "set etaj 2 TeV" or "set jet-eta_abs.max 4 TeV"
+       used to set an eta cut of 2000/4000; for the [cuts], the observable of the cut says
+       whether it is an energy. In the param_card, only the masses and the widths accept
+       a unit (e.g. "set mt 172.5 GeV"). The madevent energy shortcuts (lhc, lcc, lep,
+       ilc, ebeam, fixed_scale) take a unit too: "set lhc 500 GeV" is a 500 GeV collider
+       (a unit-less lhc/lcc value stays in TeV), where "set ebeam 6.5 TeV" used to set
+       6.5 GeV; a real extra argument ("set lhc 13 14") is now refused.
    OM: madevent MLM (ickkw=1) with use_syst: the <pdfrwt> entry of the incoming partons
        used the flavour class of the grouped subprocess instead of the event's flavour
        (pdg 1 for s s~, 2 for c c~), so the systematics (PDF and mu_F variations) of every

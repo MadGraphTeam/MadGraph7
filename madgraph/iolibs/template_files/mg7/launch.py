@@ -4371,20 +4371,23 @@ def build_selector_cmd(mother=None):
                     # custom function parameters are not run_card keys, so the
                     # generic editor rejects them
                     if rest and nlow.startswith("custom_functions.") and nlow.count(".") == 2:
+                        # the parameter name is matched as written by the
+                        # custom function: keep its case
                         try:
-                            run_card.set(nlow, run_card.evaluate(rest, masses), user=True)
+                            run_card.set(name, run_card.evaluate(rest, masses), user=True)
                         except _banner_mod.InvalidCmd as error:
                             self.invalid_set("invalid 'set %s %s': %s" % (name, rest, error))
                             return
-                        logger.info("modify parameter %s of the run_card.toml to %s", nlow, rest)
+                        logger.info("modify parameter %s of the run_card.toml to %s", name, rest)
                         self.modified_card.add("run")
                         return
 
                     if rest and run_card.is_cut_name(name):
                         try:
-                            cut, bound, val = run_card.set_cut(
-                                name, run_card.evaluate(rest, masses))
-                        except _banner_mod.InvalidRunCard as error:
+                            cut, bound, val = run_card.set_cut(name, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            # an unknown bound, a value that is not a number,
+                            # or a unit on a cut that is not an energy
                             self.invalid_set("invalid 'set %s %s': %s" % (name, rest, error))
                             return
                         logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
@@ -4402,10 +4405,9 @@ def build_selector_cmd(mother=None):
                                              % (nlow, rest))
                             return
                         try:
-                            cut, bound, val = run_card.set_lo_cut(
-                                nlow, run_card.evaluate(rest, masses))
-                        except _banner_mod.InvalidCmd:
-                            self.invalid_set("invalid 'set %s %s': not a number" % (nlow, rest))
+                            cut, bound, val = run_card.set_lo_cut(nlow, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
                             return
                         if val is None:
                             logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
@@ -4453,10 +4455,10 @@ def build_selector_cmd(mother=None):
                     # _LO_SCALAR_MAP, which also drives the LO -> MG7 run_card
                     # conversion and would silently pin those runs to seed 0.
                     if rest and nlow == 'iseed':
-                        value = run_card.evaluate(rest, masses)
                         try:
-                            value = int(value)
-                        except (TypeError, ValueError):
+                            value = int(run_card.evaluate(rest, masses, energy=False,
+                                                          name=nlow))
+                        except (TypeError, ValueError, _banner_mod.InvalidCmd):
                             value = None
                         if value is None:
                             self.invalid_set("invalid 'set iseed %s': not an integer" % rest)
@@ -4503,7 +4505,11 @@ def build_selector_cmd(mother=None):
                     if rest and nlow in run_card._LO_SCALAR_MAP \
                             and nlow not in [k.lower() for k in run_card.keys()]:
                         target = run_card._LO_SCALAR_MAP[nlow]
-                        run_card.set(target, rest, user=True)
+                        try:
+                            run_card.set(target, rest, user=True)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
+                            return
                         logger.info("set %s (mg7 %s) of the run_card.toml to %s",
                                     nlow, target, run_card[target])
                         self.modified_card.add("run")
@@ -4512,7 +4518,13 @@ def build_selector_cmd(mother=None):
                     if rest and nlow in [k.lower() for k in run_card.keys()]:
                         current = run_card[nlow]
                         if isinstance(current, (int, float)) and not isinstance(current, bool):
-                            resolved = run_card.evaluate(rest, masses)
+                            try:
+                                resolved = run_card.evaluate(
+                                    rest, masses, name=nlow,
+                                    energy=nlow in run_card.energy_parameter)
+                            except _banner_mod.InvalidCmd as error:
+                                self.invalid_set("invalid 'set %s %s': %s" % (name, rest, error))
+                                return
                             if not isinstance(resolved, str):
                                 prefix = "run_card " if start == 1 else ""
                                 line = "%s%s %s" % (prefix, name, resolved)

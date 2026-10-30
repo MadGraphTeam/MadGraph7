@@ -36,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import copy
 import types
 import unittest
 from unittest import mock
@@ -847,7 +848,7 @@ class MG7CmdTest(unittest.TestCase):
         from madgraph import InvalidCmd
         obj = self.cut_selector()
         obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
-        for line in ('pdf NNPDF', 'histograms 42', 'jet-pt.mni 20',
+        for line in ('pdf NNPDF', 'histograms 42', 'jet-pt.mni 20', 'jet-pt.min abc',
                      'mmll abc', 'ptj scan:[20, 30]', 'iseed xx',
                      'dynamical_scale_choice 99', 'sde_strategy 7', 'pdlabel1 none',
                      'custom_functions.bogus.x 1'):
@@ -857,6 +858,30 @@ class MG7CmdTest(unittest.TestCase):
         # madevent's -1/0 scale choices only warn, so ported scripts still run
         with self.assertLogs('madgraph7', level='WARNING'):
             obj.do_set('dynamical_scale_choice -1')
+        self.generic_do_set.assert_not_called()
+
+    def test_non_number_cut_bound_only_warns_interactively(self):
+        """set jet-pt.min abc is rejected through invalid_set: a warning,
+        not an exception, when nobody scripts the question"""
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts']['jet-pt'])
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
+            obj.do_set('jet-pt.min abc')
+        self.assertIn("invalid 'set jet-pt.min abc'", logs.output[0])
+        self.assertEqual(dict(obj.run_card['cuts']['jet-pt']), before)
+        self.assertNotIn('run', obj.modified_card)
+
+    def test_energy_unit_on_a_dimensionless_entry_is_refused(self):
+        """a unit converts an energy cut but stops a script on a dimensionless one"""
+        obj = self.cut_selector()
+        obj.do_set('jet-pt.min 1 TeV')
+        self.assertEqual(obj.run_card['cuts']['jet-pt']['min'], 1000.)
+        cuts = copy.deepcopy(obj.run_card['cuts'])
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        for line in ('jet-eta_abs.max 4 TeV', 'etaj 2 TeV', 'drjj 1 MeV',
+                     'iseed 1 GeV', 'nevents 1 TeV'):
+            self.assertRaises(madgraph.InvalidCmd, obj.do_set, line)
+        self.assertEqual(obj.run_card['cuts'], cuts)
         self.generic_do_set.assert_not_called()
 
     def test_unknown_lhaid_only_warns_in_scripted_runs(self):
@@ -876,6 +901,10 @@ class MG7CmdTest(unittest.TestCase):
         obj = self.cut_selector()
         obj.do_set('custom_functions.cut_parameters.pt_min 30')
         self.assertEqual(obj.run_card.custom_parameters('cut'), {'pt_min': 30.0})
+        # the name is matched as the custom function writes it: case kept
+        obj.do_set('custom_functions.cut_parameters.etaMax 2.5')
+        self.assertEqual(obj.run_card.custom_parameters('cut'),
+                         {'pt_min': 30.0, 'etaMax': 2.5})
         self.assertIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 

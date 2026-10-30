@@ -6519,10 +6519,34 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 return args[:i] + [' '.join(args[i:])]
         return args
 
+    # the shortcuts taking an energy, and the unit of their unit-less value
+    # in GeV ("set lhc 13" is 13 TeV, "set lep 200" is 200 GeV)
+    energy_shortcuts = {'ebeam': 1., 'lhc': 1e3, 'lcc': 1e3, 'lep': 1., 'ilc': 1.,
+                        'fixed_scale': 1.}
+
+    def join_energy_units(self, args):
+        """Turn a value given with an energy unit ("13TeV", or "13" "TeV" as
+        two tokens) into one value in the unit of the shortcut args[0]
+        ("set lhc 500 GeV" -> "0.5")."""
+        joined = [args[0]]
+        for token in args[1:]:
+            if len(joined) > 1 and token.lower() in banner_mod.energy_units and \
+                    banner_mod.parse_energy_unit('%s %s' % (joined[-1], token)) is not None:
+                token = '%s %s' % (joined.pop(), token)
+            energy = banner_mod.parse_energy_unit(token)
+            if energy is not None:
+                token = '%.12g' % (energy / self.energy_shortcuts[args[0]])
+            joined.append(token)
+        return joined
+
+    def _scripted(self):
+        """True when the question is answered from a command file."""
+        mother = getattr(self, 'mother_interface', None)
+        return bool(mother is not None and getattr(mother, 'inputfile', None))
+
     def invalid_set(self, text):
         """Reject a set command: an error in a scripted run, a warning interactively."""
-        mother = getattr(self, 'mother_interface', None)
-        if mother is not None and getattr(mother, 'inputfile', None):
+        if self._scripted():
             raise InvalidCmd(text)
         logger.warning(text)
 
@@ -6551,6 +6575,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         # special shortcut:
         if args[0] in self.special_shortcut:
             targettypes , cmd = self.special_shortcut[args[0]]
+            if args[0] in self.energy_shortcuts:
+                args = self.join_energy_units(args)
             if len(args) != len(targettypes) +1:
                 if len(targettypes) == 1 and args[len(targettypes)].startswith('scan'):
                     args = args[:len(targettypes)] + [' '.join(args[len(targettypes):])]
@@ -6560,8 +6586,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         self.invalid_set('shortcut %s requires %s argument' % (args[0], len(targettypes)))
                         return
                     else:
-                        self.invalid_set('shortcut %s requires %s argument: additional argument will be ignored'
-                                         % (args[0], len(targettypes)))
+                        self.invalid_set('shortcut %s takes %s argument(s), got %s: %s'
+                                         % (args[0], len(targettypes), len(args) - 1,
+                                            ' '.join(args[1:])))
+                        return
             values ={}
             for i, argtype in enumerate(targettypes):           
                 try:  
@@ -6818,6 +6846,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if any(t.startswith('scan') for t in args):
                 index = [i for i,t in enumerate(args) if t.startswith('scan')][0]
                 args = args[:index] + [' '.join(args[index:])]
+            # a value with an energy unit ("1 TeV") arrives as two tokens
+            elif len(args) > start + 2 and args[-1].lower() in banner_mod.energy_units \
+                    and banner_mod.parse_energy_unit(' '.join(args[-2:])) is not None:
+                args = args[:-2] + [' '.join(args[-2:])]
                 
             if args[start] in self.conflict and card == '':
                 text  = 'ambiguous name (present in more than one card). Please specify which card to edit'
@@ -6840,14 +6872,19 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                                     (args[start+1], args[start], bname))
                     return
             elif args[start+1] == 'scale':
-                self.modified_card.add('param')
-                self.setP(args[start], None, args[-1])
+                if self.setP(args[start], None, args[-1]):
+                    self.modified_card.add('param')
                 return
             else:
                 try:
                     key = tuple([int(i) for i in args[start+1:-1]])
                 except ValueError:
                     if args[start+1:-1] == ['all']:
+                        # refused once, before any entry changes
+                        error = self.check_param_value(args[start], args[-1])
+                        if error:
+                            self.invalid_set('Invalid input: %s' % error)
+                            return
                         for key in self.param_card[args[start]].param_dict:
                             if (args[start], key) in self.restricted_value:
                                 continue
@@ -6868,7 +6905,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
                 if args[-1].lower() == 'default' or args[-1].startswith('scan') or \
                         args[-1].lower().split()[:1] in (['auto'], ['auto@nlo']):
-                    self.setP(args[start], key, args[-1])
+                    if not self.setP(args[start], key, args[-1]):
+                        return
+                elif banner_mod.parse_energy_unit(args[-1]) is not None:
+                    # only the masses and widths are energies
+                    if not self.setP(args[start], key, args[-1]):
+                        return
                 else:
                     try:
                         value = float(args[-1])
@@ -6891,6 +6933,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 return
             
             all_var = self.pname2block[args[start]]
+            # all the entries or none of them: refuse a bad value once
+            value = ' '.join(args[start+1:])
+            for bname, lhaid in all_var:
+                error = self.check_param_value(bname, value)
+                if error:
+                    self.invalid_set('Invalid input: %s' % error)
+                    return
             for bname, lhaid in all_var:
                 new_line = 'param_card %s %s %s' % (bname,
                    ' '.join([ str(i) for i in lhaid]), ' '.join(args[start+1:]))
@@ -7154,10 +7203,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     def setR(self, name, value):
 
         with misc.TMP_variable(banner_mod.RunCard, 'allow_scan', True):
-            if self.mother_interface.inputfile:
-                self.run_card.set(name, value, user=True, raiseerror=True)
-            else:
-                self.run_card.set(name, value, user=True)
+            try:
+                self.run_card.set(name, value, user=True, raiseerror=self._scripted())
+            except InvalidCmd as error:
+                # e.g. a value of the wrong type, or a unit on an entry that
+                # is not an energy
+                self.invalid_set("invalid 'set %s %s': %s" % (name, value, error))
+                return
             new_value = self.run_card.get(name)
             logger.info('modify parameter %s of the run_card.dat to %s' % (name, new_value),'$MG:BOLD')        
 
@@ -7203,40 +7255,58 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         if default and name.lower() in self.reweight_card.user_set:
             self.reweight_card.user_set.remove(name.lower())
 
+    def check_param_value(self, block, value):
+        """Why ``value`` can not be set in the param_card block ``block``, or
+        None when it can."""
+        if not isinstance(value, str):
+            return None
+        value = value.lower()
+        if value == 'default':
+            return None
+        elif value.split()[:1] in (['auto'], ['auto@nlo']):
+            if block != 'decay':
+                return '\'Auto\' value only valid for DECAY'
+            try:
+                param_card_mod.format_auto_width(value)
+            except param_card_mod.InvalidParam as error:
+                return str(error)
+        elif value.startswith('scan'):
+            if ':' not in value:
+                return '\'scan\' mode requires a \':\' before the definition.'
+            tag = value.split(':')[0][4:].strip()
+            if tag and not tag.isdigit():
+                return 'scan tag need to be integer and not "%s"' % tag
+        elif banner_mod.parse_energy_unit(value) is not None:
+            # "1 TeV": only the masses and the widths are energies
+            if block not in ('mass', 'decay'):
+                return 'block %s is not an energy: \'%s\' can not carry a unit' % (block, value)
+        else:
+            try:
+                float(value)
+            except ValueError:
+                return '\'%s\' is not valid input.' % value
+        return None
+
     def setP(self, block, lhaid, value):
+        """Set one entry of the param_card (its scale when lhaid is None).
+        Returns whether it was set: a rejected value goes to invalid_set."""
+        error = self.check_param_value(block, value)
+        if error:
+            self.invalid_set('Invalid input: %s' % error)
+            return False
         if isinstance(value, str):
             value = value.lower()
             if value == 'default':
                 default = param_card_mod.ParamCard(self.paths['param_default'])
                 value = default[block].param_dict[lhaid].value
-
             elif value.split()[:1] in (['auto'], ['auto@nlo']):
-                if block != 'decay':
-                    self.invalid_set('Invalid input: \'Auto\' value only valid for DECAY')
-                    return
-                try:
-                    value = param_card_mod.format_auto_width(value)
-                except param_card_mod.InvalidParam as error:
-                    self.invalid_set('Invalid input: %s' % error)
-                    return
+                value = param_card_mod.format_auto_width(value)
             elif value.startswith('scan'):
-                if ':' not in value:
-                    self.invalid_set('Invalid input: \'scan\' mode requires a \':\' before the definition.')
-                    return
-                tag = value.split(':')[0]
-                tag = tag[4:].strip()
-                if tag and not tag.isdigit():
-                    self.invalid_set('Invalid input: scan tag need to be integer and not "%s"' % tag)
-                    return
-                
-                
                 pass
+            elif banner_mod.parse_energy_unit(value) is not None:
+                value = banner_mod.parse_energy_unit(value)
             else:
-                try:
-                    value = float(value)
-                except ValueError:
-                    self.invalid_set('Invalid input: \'%s\' is not valid input.'% value)
-                    return
+                value = float(value)
 
         if lhaid:
             logger.info('modify param_card information BLOCK %s with id %s set to %s' %\
@@ -7246,6 +7316,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             logger.info('modify param_card information scale of BLOCK %s set to %s' %\
                         (block, value), '$MG:BOLD')
             self.param_card[block].scale = value            
+        return True
 
     def setO(self, block, lhaid, value):
         if isinstance(value, str):
