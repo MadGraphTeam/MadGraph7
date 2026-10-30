@@ -884,6 +884,23 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(obj.run_card['cuts'], cuts)
         self.generic_do_set.assert_not_called()
 
+    def test_collider_and_scale_shortcuts_go_through_invalid_set(self):
+        """set lhc/fixed_scale/e_cm with a value that is not a number warn
+        interactively (nothing raised) and stop a launch script"""
+        lines = ('lhc abc', 'lep abc', 'fixed_scale abc', 'e_cm abc', 'e_cm scan:[1,2]')
+        obj = self.cut_selector()
+        beam = dict(obj.run_card['beam'])
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
+            for line in lines:
+                obj.do_set(line)
+        self.assertEqual(len(logs.output), len(lines), logs.output)
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        for line in lines:
+            self.assertRaises(madgraph.InvalidCmd, obj.do_set, line)
+        self.assertEqual(dict(obj.run_card['beam']), beam)
+        self.assertNotIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
     def test_unknown_lhaid_only_warns_in_scripted_runs(self):
         from madgraph.various import banner as banner_mod
         obj = self.histogram_selector()

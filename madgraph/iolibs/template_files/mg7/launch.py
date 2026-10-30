@@ -4352,12 +4352,20 @@ def build_selector_cmd(mother=None):
                             % (rest or "(no value)"))
                         return
                     if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
-                        ecm = run_card.set_collider(nlow, rest, masses)
+                        try:
+                            ecm = run_card.set_collider(nlow, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
+                            return
                         logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
                         self.modified_card.add("run")
                         return
                     if nlow == "fixed_scale" and rest:
-                        val = run_card.set_fixed_scale(rest, masses)
+                        try:
+                            val = run_card.set_fixed_scale(rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
+                            return
                         logger.info("set fixed scales to %s GeV", val)
                         self.modified_card.add("run")
                         return
@@ -4490,8 +4498,12 @@ def build_selector_cmd(mother=None):
 
                     # quantities the card stores per beam: set both beams
                     if rest and nlow in ("e_cm", "beam.e_cm", "beam.pdf"):
-                        value = rest if nlow == "beam.pdf" else run_card.evaluate(rest, masses)
-                        run_card.set(nlow, value, user=True)
+                        try:
+                            value = rest if nlow == "beam.pdf" else run_card.evaluate(rest, masses)
+                            run_card.set(nlow, value, user=True)
+                        except _banner_mod.InvalidCmd as error:
+                            self.invalid_set("invalid 'set %s %s': %s" % (nlow, rest, error))
+                            return
                         logger.info("set %s of the run_card.toml to %s (both beams)",
                                     nlow, run_card["beam." + nlow.split(".")[-1]])
                         self.modified_card.add("run")
