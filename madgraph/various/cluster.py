@@ -1048,7 +1048,8 @@ class CondorCluster(Cluster):
 
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
-                'requirement': requirement, 'walltime': walltime, 'vacatetime': ''}
+                'requirement': requirement, 'walltime': walltime, 'vacatetime': '',
+                'dmtcp_path': ''}
 
         if self.checkpointing:
 
