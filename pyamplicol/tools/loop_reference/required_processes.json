@@ -175,6 +175,7 @@
     },
     "ew-gmu-ckm": {
       "description": "The ew-gmu values on the loop_qcd_qed_sm_Gmu restriction ckm (restrict_ckm.dat): complex CKM from the card's Wolfenstein values (lamWS = 0.2253, AWS = 0.808, rhoWS = 0.132, etaWS = 0.341), massive b (MB = ymb = 4.7) and tau (MTA = ymtau = 1.777), all widths zero.",
+      "ir_single_pole_remnant": "not UV finite: the UFO's Wolfenstein CKM is truncated at O(lambda^3) (not unitary) against counterterms assuming unitarity; the EW sector's single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born at the card values, scaling as lambda^4 (a model property the engine on the same UFO reproduces; rule 4 on SC03 sees it)",
       "restriction": "ckm",
       "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-ckm",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "MB": "4.7", "ymb": "4.7", "MTA": "1.777", "ymtau": "1.777", "lamWS": "0.2253", "AWS": "0.808", "rhoWS": "0.132", "etaWS": "0.341"},
@@ -185,7 +186,8 @@
       "loop_quark_flavours": 6
     },
     "ew-gmu-mm": {
-      "description": "The ew-gmu values on the massive-muon copy loop_qcd_qed_sm_Gmu_massive_muon_py3 (MM = ymm = 0.105658).",
+      "description": "The ew-gmu values on the massive-muon copy loop_qcd_qed_sm_Gmu_massive_muon_py3 (MM = ymm = 0.105658). The copy changes only the restriction card: its muon counterterms are the massless muon's (CT_parameters.py has no MM), so the IR single pole exceeds the massive-muon one by 3/2 Q^2 (alpha/2pi) Born per muon leg up to O(m_mu^2/M_W^2) Yukawa terms (massless_field_counterterms; the on-shell field renormalisation's IR pole; a model property the engine on the same UFO reproduces, seen by rule 4 on SC02 and LL02).",
+      "massless_field_counterterms": [13],
       "restriction": "default",
       "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_massive_muon_py3",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173", "MM": "0.105658", "ymm": "0.105658"},
@@ -1096,7 +1098,8 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > e- e+ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_emep_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
     },
     {
       "name": "pp_ttx_ew_ga",
@@ -1109,7 +1112,8 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_ttx_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
     },
     {
       "name": "pp_ttx_ew_aa",
@@ -1122,7 +1126,52 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_ttx_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
+    },
+    {
+      "name": "emep_mummp_ew_ctl",
+      "role": "msm",
+      "msm_row": "LL01",
+      "pdgs": [11, -11, 13, -13],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "e- e+ > mu- mu+ QCD=0 QED<=4 [virt=QED]"},
+      "note": "R2 name list of the existing control fixtures electroweak-mumu-control.json and electroweak-mumu-scale-control.json (its MadLoop command; a --no-compile export, no reference run)"
+    },
+    {
+      "name": "emep_mummp_ew_mm_ctl",
+      "role": "msm",
+      "msm_row": "LL02",
+      "pdgs": [11, -11, 13, -13],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-mm",
+      "madloop": {"process": "e- e+ > mu- mu+ QCD=0 QED<=4 [virt=QED]"},
+      "note": "R2 name list of the existing control fixture electroweak-massive-mumu-control.json (its MadLoop command; a --no-compile export, no reference run)"
+    },
+    {
+      "name": "emep_uux_ew_ctl",
+      "role": "msm",
+      "msm_row": "SC01",
+      "pdgs": [11, -11, 2, -2],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "e- e+ > u u~ QCD=0 QED<=4 [virt=QED]"},
+      "note": "R2 name list of the existing control fixture electroweak-eeuu-control.json (its MadLoop command; a --no-compile export, no reference run)"
+    },
+    {
+      "name": "emep_mummp_ew_cms_ctl",
+      "role": "msm",
+      "msm_row": "CM01",
+      "pdgs": [11, -11, 13, -13],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-cms",
+      "madloop": {"process": "e- e+ > mu- mu+ QCD=0 QED<=4 [virt=QED]"},
+      "note": "R2 name list of the existing control fixtures cms-ufo-standard-gmu.json and cms-source-gmu.json (its MadLoop command of the real-mass controls under the complex-mass scheme; a --no-compile export, no reference run)"
     },
     {
       "name": "uux_ddxssx",

@@ -167,8 +167,19 @@
     "electroweak-mumu-control.json",
     "electroweak-mumu-scale-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ],
+    "electroweak-mumu-scale-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
    ]
   },
   {
@@ -183,9 +194,15 @@
    "existing_fixtures": [
     "electroweak-massive-mumu-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-massive-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_mm_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
-   ]
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
   },
   {
    "row": "LL03",
@@ -255,6 +272,9 @@
    "sectors": [
     "e^6",
     "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
    ]
   },
   {
@@ -298,7 +318,10 @@
     "s^2e^4",
     "e^6"
    ],
-   "helicity_reference": "uux_emep_ew"
+   "helicity_reference": "uux_emep_ew",
+   "components": [
+    "required/msm/components/uux_emep_ew.json"
+   ]
   },
   {
    "row": "DY02",
@@ -447,6 +470,9 @@
    "sectors": [
     "s^4e^2",
     "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/udx_wpg_ew.json"
    ]
   },
   {
@@ -685,6 +711,9 @@
    "sectors": [
     "s^6",
     "s^4e^2"
+   ],
+   "components": [
+    "required/msm/components/gg_ttx_ew_tech.json"
    ]
   },
   {
@@ -706,6 +735,9 @@
     "s^4e^2",
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ttx_ew.json"
    ]
   },
   {
@@ -757,6 +789,11 @@
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gt_tttx_ew/madloop-export"
+    ]
+   },
    "sectors": [
     "s^2e^6"
    ],
@@ -774,6 +811,11 @@
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gb_ttxb_ew_mb/madloop-export"
+    ]
+   },
    "sectors": [
     "s^2e^6"
    ],
@@ -887,6 +929,9 @@
    "sectors": [
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/ub_dt_ew.json"
    ]
   },
   {
@@ -962,6 +1007,9 @@
     "s^4e^2",
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ddx_ew.json"
    ]
   },
   {
@@ -1074,7 +1122,10 @@
     "s^4e^2",
     "s^2e^4"
    ],
-   "note": "untagged photon [MS-PHOTON]"
+   "note": "untagged photon [MS-PHOTON]",
+   "components": [
+    "required/msm/components/ag_uux_ew.json"
+   ]
   },
   {
    "row": "PI04",
@@ -1112,6 +1163,14 @@
     "cms-ufo-standard-gmu.json",
     "cms-source-gmu.json"
    ],
+   "existing_r2_exports": {
+    "cms-ufo-standard-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ],
+    "cms-source-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
    ],
@@ -1172,7 +1231,10 @@
     "s^6",
     "s^4e^2"
    ],
-   "note": "EW-25: external top stable (WT = 0)"
+   "note": "EW-25: external top stable (WT = 0)",
+   "components": [
+    "required/msm/components/gg_ttx_cms.json"
+   ]
   },
   {
    "row": "CM05",
@@ -1284,7 +1346,10 @@
    "sectors": [
     "per Born subprocess"
    ],
-   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles); P0_gg_emep is MG5's loop-squared member (sqrvirt), skipped (typed loop-induced on the pyAmpliCol side)"
+   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles); P0_gg_emep is MG5's loop-squared member (sqrvirt), skipped (typed loop-induced on the pyAmpliCol side)",
+   "components": [
+    "required/msm/components/pp_emep_ew_P2_uux_emep.json"
+   ]
   },
   {
    "row": "MP02",
@@ -1322,6 +1387,11 @@
    "existing_fixtures": [
     "electroweak-eeuu-control.json"
    ],
+   "existing_r2_exports": {
+    "electroweak-eeuu-control.json": [
+     "runs/msm/emep_uux_ew_ctl/madloop-export"
+    ]
+   },
    "sectors": [
     "e^6"
    ]
@@ -1341,7 +1411,8 @@
    "sectors": [
     "s^2e^4",
     "e^6"
-   ]
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
   },
   {
    "row": "SC03",
@@ -1359,7 +1430,10 @@
     "s^2e^4",
     "e^6"
    ],
-   "note": "[EWI-7]"
+   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
+   "components": [
+    "required/msm/components/udx_epve_ew_ckm.json"
+   ]
   },
   {
    "row": "SC04",
@@ -1391,6 +1465,9 @@
    "existing_fixtures": [
     "epsilon-sign.json"
    ],
+   "existing_r2_exports": {
+    "epsilon-sign.json": "QCD-only loop_sm reference: no EW R2"
+   },
    "note": "regression"
   },
   {
@@ -1748,7 +1825,8 @@
     "generator": "exact"
    },
    "binding": false,
-   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1"
+   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1",
+   "components": "required/msm/components/gg_ttx_ew_tech.json"
   },
   {
    "id": "gg_ttx_ew_tech_ir0",
@@ -1962,7 +2040,10 @@
    "export": "runs/msm/udx_epvea_cms/madloop-export",
    "points": {
     "generator": "exact"
-   }
+   },
+   "export_parameters": [
+    "MDL_ECOUP_DGMUA0_UV_EW_FIN_"
+   ]
   },
   {
    "id": "udx_wpbbx_cms",
@@ -1991,7 +2072,8 @@
     -2,
     11,
     -11
-   ]
+   ],
+   "components": "required/msm/components/pp_emep_ew_P2_uux_emep.json"
   },
   {
    "id": "pp_emep_ew_P3_ddx_emep",
@@ -2189,7 +2271,11 @@
    "points": {
     "generator": "supplied",
     "family": "regular"
-   }
+   },
+   "madloop_params": {
+    "MLReductionLib": "1"
+   },
+   "note": "CutTools only: MadLoop's quadruple-precision Ninja stage mis-evaluates the e^6 sector at m_mu^2/s ~ 1e-9 (3 of 4 points, wrong single pole, undetected by its own test)"
   },
   {
    "id": "udx_epve_ew_ckm",
@@ -2198,6 +2284,7 @@
    "points": {
     "generator": "exact"
    },
+   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
    "components": "required/msm/components/udx_epve_ew_ckm.json"
   },
   {

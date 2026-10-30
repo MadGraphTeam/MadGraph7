@@ -779,8 +779,8 @@
    "R2_AAboson1",
    "R2_AAboson2",
    "R2_AAboson3",
+   "R2_AAl",
    "R2_AAt3",
-   "R2_AWWcs",
    "R2_AZD",
    "R2_AZU",
    "R2_AZboson1",
@@ -788,9 +788,9 @@
    "R2_AZboson3",
    "R2_AZl",
    "R2_AZt3",
-   "R2_DDZ_V2",
-   "R2_DDZ_V3",
    "R2_UUA",
+   "R2_UUZ_V2",
+   "R2_UUZ_V5",
    "R2_ZZD",
    "R2_ZZU",
    "R2_ZZboson1",
@@ -799,27 +799,37 @@
    "R2_ZZl",
    "R2_ZZt3",
    "R2_ZZv",
-   "R2_ccA2Cp_s",
-   "R2_ccZ2Cp_s",
    "R2_eeACm",
    "R2_eeACp",
    "R2_eeZCm",
    "R2_eeZCp",
+   "R2_llACp",
    "R2_llZCp",
    "R2_ttA2Cm",
    "R2_ttA2Cm_b",
    "R2_ttA2Cp",
+   "R2_ttA2Cp_b",
    "R2_ttZ2Cm",
    "R2_ttZ2Cm_b",
-   "R2_ttZ2Cp"
+   "R2_ttZ2Cp",
+   "R2_ttZ2Cp_b"
   ],
+  "called_as": {
+   "R2_AAl": "-R2_AAboson2",
+   "R2_UUZ_V2": "-R2_DDZ_V2",
+   "R2_UUZ_V5": "R2_DDZ_V3",
+   "R2_llACp": "-R2_AWWcs",
+   "R2_ttA2Cp_b": "R2_ccA2Cp_s",
+   "R2_ttZ2Cp_b": "R2_ccZ2Cp_s"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_emep_ttx)"
  },
  "mqcd_run": {
   "id": "emep_ttx_ew",
   "process": "emep_ttx_ew",
   "export": "runs/msm/emep_ttx_ew/madloop-export",
+  "components": "required/msm/components/emep_ttx_ew.json",
   "points": {
    "generator": "exact"
   }
