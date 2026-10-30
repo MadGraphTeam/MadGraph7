@@ -2337,6 +2337,7 @@
     "reason": "reference not yet produced (PLAN \u00a74.2 legend: N, S ~2 min)"
    },
    "extras_pending": {
+    "ward": "the photon Ward identity with an external W: its absorptive self-energy (W -> f f') is not renormalised in the real-mass scheme (c = i residual 4e-4 of the scale, m1 2026-10-30); under CMS: CM09",
     "sp": "MS-REF (special points S1-S4)"
    }
   },
@@ -3139,7 +3140,12 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "QCD^2 QED^2",
+     "coefficient": "born"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
@@ -3247,6 +3253,10 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "ward_parameters": {
+    "MW": "180",
+    "MZ": "200"
+   },
    "pending": {
     "waits_for": "MS-REF",
     "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~4-6 min)"
@@ -4077,7 +4087,11 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "notes": "the required 2->5 target (EWI-9): the joint request's s^6e^6 sector against gg_ttxemepg_ew, its s^8e^4 sector (variant @qcd) against gg_ttxemepg_qcd at loop_sm's derived MW"
+   "notes": "the required 2->5 target (EWI-9): the joint request's s^6e^6 sector against gg_ttxemepg_ew, its s^8e^4 sector (variant @qcd) against gg_ttxemepg_qcd at loop_sm's derived MW",
+   "ward_parameters": {
+    "MW": "180",
+    "MZ": "200"
+   }
   },
   {
    "id": "ST01",
@@ -4352,6 +4366,9 @@
    "pending": {
     "waits_for": "MS-REF",
     "reason": "reference not yet produced (PLAN \u00a74.2 legend: N ~1-2 min)"
+   },
+   "extras_pending": {
+    "ward": "the gluon Ward identity with an external top beside an external W: no parameter point closes t -> b W at the W's own mass; under CMS"
    }
   },
   {
