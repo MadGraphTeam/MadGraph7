@@ -227,10 +227,15 @@ class NativeTrees:
         return tuple(self.program["parameters"]["names"])
 
 
-# The SymJIT optimisation level of the plane applications: always -O2, the
-# default ``jit_optimization_level`` (``evaluators.symbolica_settings``) and a
-# portable level (O0 and O3 SymJIT is target-specific), whatever the run's
-# ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
+# The SymJIT optimisation level of the plane applications: -O2, the default
+# ``jit_optimization_level`` (``evaluators.symbolica_settings``), whatever the
+# run's ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
+# A plane whose -O2 code fails the plane check at a probe row is compiled at
+# level 0 instead and kept if that passes (``loop_v2::trees::
+# compile_plane_application_checked``: SymJIT's AVX/AVX-512 complex-product
+# defect, ``upstream/symjit-simd-complex-times-alias``). Both are storage-v4
+# IR recompiled at load at their stored level, so both are portable; the
+# fallback is decided by the generating host's SIMD code (DESIGN §15 risk 13).
 _PLANE_OPTIMIZATION_LEVEL = 2
 # Plane applications by saved state (SHA-256): the generation and staged
 # validation of a run export the same kernels repeatedly.
@@ -294,20 +299,29 @@ def _request_points(
     slice_: Any, parameters: Mapping[str, Any]
 ) -> list[tuple[float, ...]]:
     """The parameter program's real points (the plane check's real-axis
-    rows): one, its inputs at the request's parameter values in binary64,
-    each external parameter's value fixed at generation
+    rows): its inputs at the request's parameter values in binary64, each
+    external parameter's value fixed at generation
     (``LoopSlice.fixed_parameters``), else its default (the batch's values
-    without a caller's, ``batch_parameters``)."""
+    without a caller's, ``batch_parameters``); with a recorded IR pole
+    regulator (``ir_regulator``, ``_parameter_program``) also those values
+    with it at 0, the values of the split pole selections' regulated pass
+    (``plan_export._regulated``), which the runtime then takes as certified
+    too (``loop_v2::trees::TreeProgram::certify_parameters``)."""
 
     fixed = slice_.fixed_parameters
-    return [
-        tuple(
-            float(Fraction(fixed.get(name, default)))
-            for name, default in zip(
-                parameters["names"], parameters["defaults"], strict=True
-            )
+    point = tuple(
+        float(Fraction(fixed.get(name, default)))
+        for name, default in zip(
+            parameters["names"], parameters["defaults"], strict=True
         )
-    ]
+    )
+    points = [point]
+    regulator = parameters.get("ir_regulator")
+    if regulator is not None and point[regulator] != 0.0:
+        points.append(
+            tuple(0.0 if index == regulator else x for index, x in enumerate(point))
+        )
+    return points
 
 
 def certified_values(trees: NativeTrees, fixed: Mapping[str, Any]) -> list[str]:
@@ -1873,16 +1887,30 @@ def _parameter_program(
     if photon_record is not None:
         # Likewise: an older native would leave the photons at alpha.
         record["photons"] = photon_record
+    regulators = slice_.pole_regulators
+    if regulators is not None and regulators.ir in index:
+        # A model with pole regulators: the split pole selections' regulated
+        # pass binds the IR regulator at 0 (``plan_export._regulated``, the
+        # SDK's ``V2Runtime``); the plane check certifies those values too
+        # (``_request_points``), so that pass needs no exact evaluation.
+        # Written only when present: an older native refuses the record.
+        record["ir_regulator"] = index[regulators.ir]
     state = bytes(evaluator.save())
     # The inputs whose change can move a branch side of the binary64
-    # parameter program, from the plane check's real point: the run-time
-    # side check compares their values and the other inputs' signs with the
-    # certified ones (``loop_v2::trees::Parameters::key``), so a change of
-    # aS or of the scale (in the shipped models) needs no exact evaluation.
+    # parameter program, from the plane check's real points (each one's;
+    # their union): the run-time side check compares their values and the
+    # other inputs' signs with the certified ones
+    # (``loop_v2::trees::Parameters::key``), so a change of aS or of the
+    # scale (in the shipped models) needs no exact evaluation.
     from pyamplicol.loops.native import load_loop_native
 
-    record["side_inputs"] = load_loop_native().v2_parameter_side_inputs(
-        state, list(_request_points(slice_, record)[0])
+    side_inputs = load_loop_native().v2_parameter_side_inputs
+    record["side_inputs"] = sorted(
+        {
+            int(input_)
+            for point in _request_points(slice_, record)
+            for input_ in side_inputs(state, list(point))
+        }
     )
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():

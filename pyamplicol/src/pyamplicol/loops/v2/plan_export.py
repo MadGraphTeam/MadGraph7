@@ -1422,14 +1422,12 @@ class NativeExecutor:
                 if self.inputs == "native" and arithmetic != "exact"
                 else None
             )
-            # The values the plane check certified (a slice without the
-            # record certifies none: every parameter set is then checked).
-            fixed = getattr(self.slice, "fixed_parameters", None)
+            # The values the plane check certified (``LoopSlice`` and the
+            # stored process's view both carry ``fixed_parameters``).
             trees, certified = None, None
             if native_trees is not None:
                 trees = native_trees.executor_argument()
-                if fixed is not None:
-                    certified = certified_values(native_trees, fixed)
+                certified = certified_values(native_trees, self.slice.fixed_parameters)
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,

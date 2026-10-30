@@ -195,7 +195,9 @@ def test_plane_check_needs_a_real_point_for_branch_cuts_of_its_inputs(
 def test_the_parameter_programs_real_point_is_the_requests_values():
     """The parameter program's real point: each external parameter's value
     fixed at generation, else its default (the batch's values without a
-    caller's, ``batch_parameters``), in binary64."""
+    caller's, ``batch_parameters``), in binary64; with a recorded IR pole
+    regulator also those values with it at 0, the split pole selections'
+    regulated pass (M-SM MS-MASTERS: the runtime certifies that key too)."""
 
     from types import SimpleNamespace
 
@@ -207,6 +209,18 @@ def test_the_parameter_programs_real_point_is_the_requests_values():
         "defaults": ["22797/250", "2.4952", "4.7", "91.188"],
     }
     assert _request_points(slice_, record) == [(91.188, 0.0, 0.0, 91.188)]
+    regulated = {
+        "names": [*record["names"], "epsIR"],
+        "defaults": [*record["defaults"], "1"],
+        "ir_regulator": 4,
+    }
+    assert _request_points(slice_, regulated) == [
+        (91.188, 0.0, 0.0, 91.188, 1.0),
+        (91.188, 0.0, 0.0, 91.188, 0.0),
+    ]
+    # A regulator fixed at 0 already: one point.
+    fixed = SimpleNamespace(fixed_parameters={"WZ": "0", "MB": "0", "epsIR": "0"})
+    assert _request_points(fixed, regulated) == [(91.188, 0.0, 0.0, 91.188, 0.0)]
 
 
 @pytest.mark.loop_fast

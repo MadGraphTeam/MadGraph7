@@ -75,7 +75,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
-| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses and parameter changes that can move a branch side | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. The first batch at model-parameter values that can move a branch side of the artifact's parameter program checks that program once against its saved Symbolica state under the package key. These are a changed value of a parameter that feeds a branch-cut argument or a condition not decided by the parameters' signs, or any parameter changing sign (for example a width set to zero). On loop_sm, `g g > g g` and `g g > t t~` have no such parameter. `u u~ > d d~` has `Gf`, `MZ` and `aEWM1`, which enter `MW` through the square root of a difference. A change of αs or of the renormalisation scale therefore needs no Symbolica on loop_sm's QCD processes. On the G_mu model under the complex-mass scheme, almost every parameter can move a side, the scale included. |
+| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses and parameter changes that can move a branch side | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. The first batch at model-parameter values that can move a branch side of the artifact's parameter program checks that program once against its saved Symbolica state under the package key. These are a changed value of a parameter that feeds a branch-cut argument or a condition not decided by the parameters' signs, or any parameter changing sign (for example a width set to zero). The `"uv"`, `"ir"` and `"split"` pole selections on a model with pole regulators also evaluate the counterterms with the IR regulator at 0; the generation certifies those values as well, so these selections need no key at the generation's parameter values. On loop_sm, `g g > g g` and `g g > t t~` have no such parameter. `u u~ > d d~` has `Gf`, `MZ` and `aEWM1`, which enter `MW` through the square root of a difference. A change of αs or of the renormalisation scale therefore needs no Symbolica on loop_sm's QCD processes. On the G_mu model under the complex-mass scheme, almost every parameter can move a side, the scale included. |
 | Virtual evaluation in double-double or arbitrary precision | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
@@ -159,7 +159,13 @@ to the personal license or to the restricted mode, as the Python side does.
   electroweak models almost every parameter can move a side: the G_mu
   complex-mass-scheme row CM05 records all of them but `WH`, the scale
   included. Such evaluations need the package key, which is checked once per
-  new set of values (a new scale too).
+  new set of values (a new scale too). The `"uv"`, `"ir"` and `"split"` pole
+  selections on a model with pole regulators evaluate the counterterms a
+  second time with the IR regulator at 0. The generation's plane check
+  certifies those values too (`ir_regulator` in the parameter record), so at
+  the generation's parameter values these selections need no Symbolica. An
+  artifact generated before that record needs the key for them; regenerate
+  it.
 - Double-double and arbitrary-precision virtual evaluation decode saved
   Symbolica evaluator states natively under the package key, so they also
   run in concurrent unlicensed processes.

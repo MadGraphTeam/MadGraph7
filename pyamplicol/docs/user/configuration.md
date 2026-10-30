@@ -1153,8 +1153,10 @@ check, arithmetic, model-parameter change, per-order partial, exact flavour
 member, correlated, resolved and catalogue call reads the stored programs, and a
 load takes a small fraction of the generation time. A process whose programs
 cannot be stored natively is refused at generation with the reason, never stored
-for a regeneration at load. The SymJIT IR is always compiled at
--O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+for a regeneration at load. The SymJIT IR is compiled at -O2,
+whatever `evaluator.jit.optimization_level` says (a program whose -O2 code fails
+the generation's plane check is kept at level 0 instead: a SymJIT SIMD defect,
+see the portability guide). The
 artifact holds no absolute path, user or host name of the generating host; a
 copy moved to another directory, user or machine loads without regeneration and,
 with the same pyAmpliCol build (Python package and native extension), gives
@@ -1172,7 +1174,11 @@ Binary64 evaluation needs no Symbolica licence, with two exceptions:
   against its saved state ([licensing](symbolica-and-licensing.md#concurrent-processes-without-a-license)).
   On loop_sm's QCD processes αs and the renormalisation scale do not trigger
   this; on the electroweak models almost every parameter does, the scale
-  included.
+  included. The `"uv"`, `"ir"` and `"split"` pole selections of a model with
+  pole regulators also evaluate the counterterms with the IR regulator at 0;
+  the generation certifies those values too, so these selections need no
+  licence at the generation's parameter values (an artifact generated before
+  this certification needs the key for them; regenerate it).
 
 Both exceptions use pyAmpliCol's own Symbolica key, which expires on
 2028-01-01; after that they need a personal licence. Double-double and

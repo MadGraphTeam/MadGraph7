@@ -828,8 +828,10 @@ impl V2Executor {
     /// Born components (an observable column set's plan). `certified`
     /// (exact texts, one per external parameter of the tree program) are the
     /// values the generation's plane check certified the binary64 parameter
-    /// program at (`native_trees.certified_values`): a batch at them takes
-    /// the plane without `TreeProgram::bind`'s run-time side check.
+    /// program at (`native_trees.certified_values`): a batch at them (or at
+    /// them with a recorded IR pole regulator at 0, the split selections'
+    /// regulated pass, `TreeProgram::certify_parameters`) takes the plane
+    /// without `TreeProgram::bind`'s run-time side check.
     #[new]
     #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None, certified=None))]
     #[allow(clippy::too_many_arguments)]

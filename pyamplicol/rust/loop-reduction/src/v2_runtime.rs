@@ -127,8 +127,11 @@ struct NativeTreesRecord {
 /// The external parameter values the generation's plane check certified a
 /// tree program's binary64 parameter program at (`native_trees.
 /// _request_points`): each parameter's value fixed at generation, else its
-/// default. A batch at them takes the plane without `TreeProgram::bind`'s
-/// run-time side check, so it touches no Symbolica state.
+/// default. A batch at them, or at them with a recorded IR pole regulator at
+/// 0 (the split selections' regulated pass below,
+/// `TreeProgram::certify_parameters`), takes the plane without
+/// `TreeProgram::bind`'s run-time side check, so it touches no Symbolica
+/// state.
 fn generation_values(
     trees: &TreeProgram,
     fixed: &BTreeMap<String, String>,

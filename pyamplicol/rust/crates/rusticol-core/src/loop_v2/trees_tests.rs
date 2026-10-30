@@ -189,7 +189,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     let mut exact = Kernel::Exact(binary64.clone().into_batch_evaluator());
     let build = || Ok(Kernel::Exact(binary64.clone().into_batch_evaluator()));
     let mut side = ParameterSide {
-        certified: None,
+        certified: Vec::new(),
         exact: None,
         checked: Vec::new(),
     };
@@ -250,7 +250,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     // Certified values (the generation's plane check): the plane's rows are
     // kept without a check, even on the cut.
     let key = vec![Rational::from(4)];
-    side.certified = Some(key.clone());
+    side.certified = vec![key.clone()];
     side.checked.clear();
     let (input, mut got) = rows(&mut plane, 4.0);
     let plane_rows = got;
@@ -260,7 +260,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     .expect("settles");
     assert!(got == plane_rows && side.checked.is_empty());
     // Alternating value sets (a split pole selection) keep both verdicts.
-    side.certified = None;
+    side.certified = Vec::new();
     for x in [-4.0, 4.0, -4.0, 4.0] {
         let (input, mut got) = rows(&mut plane, x);
         let key = vec![Rational::from(x as i64)];
@@ -295,6 +295,7 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         scale: Some(0),
         scale_outputs,
         side_inputs: None,
+        ir_regulator: None,
         photons: None,
     };
     let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
@@ -484,27 +485,7 @@ fn parameter_keys_keep_side_values_and_other_signs() {
     // the other inputs' signs (the scale's 1 unless it is a side input,
     // then mu_R^2); without it (an older artifact), every value but the
     // scale's, zeroed.
-    let parameters = |side_inputs: Option<Vec<usize>>| Parameters {
-        names: vec!["MU_R".into(), "aS".into(), "MT".into(), "WT".into()],
-        defaults: vec![Rational::from(91); 4],
-        saved: Vec::new(),
-        plane: None,
-        outputs: 1,
-        model: Vec::new(),
-        counterterm_model: Vec::new(),
-        couplings: Vec::new(),
-        counterterm_couplings: Vec::new(),
-        finite: Vec::new(),
-        constants: Vec::new(),
-        positive: Vec::new(),
-        masses: Vec::new(),
-        derived_masses: Vec::new(),
-        plan_masses: Vec::new(),
-        scale: Some(0),
-        scale_outputs: Some(Vec::new()),
-        side_inputs,
-        photons: None,
-    };
+    let parameters = |side_inputs: Option<Vec<usize>>| parameter_record(side_inputs, None);
     let r = |n: i64| Rational::from(n);
     let values = [r(91), r(3), r(173), r(0)];
     let mu2 = r(8281);
@@ -529,6 +510,168 @@ fn parameter_keys_keep_side_values_and_other_signs() {
     assert_ne!(
         p.key(&[r(91), r(3), r(173), r(1)], None),
         p.key(&values, None)
+    );
+}
+
+/// A parameter record of external parameters MU_R (the scale), aS, MT and
+/// WT (input 3: the IR regulator of `certified_keys_include_the_regulated_pass`).
+fn parameter_record(side_inputs: Option<Vec<usize>>, ir_regulator: Option<usize>) -> Parameters {
+    Parameters {
+        names: vec!["MU_R".into(), "aS".into(), "MT".into(), "WT".into()],
+        defaults: vec![Rational::from(91); 4],
+        saved: Vec::new(),
+        plane: None,
+        outputs: 1,
+        model: Vec::new(),
+        counterterm_model: Vec::new(),
+        couplings: Vec::new(),
+        counterterm_couplings: Vec::new(),
+        finite: Vec::new(),
+        constants: Vec::new(),
+        positive: Vec::new(),
+        masses: Vec::new(),
+        derived_masses: Vec::new(),
+        plan_masses: Vec::new(),
+        scale: Some(0),
+        scale_outputs: Some(Vec::new()),
+        side_inputs,
+        ir_regulator,
+        photons: None,
+    }
+}
+
+#[test]
+fn certified_keys_include_the_regulated_pass() {
+    // `Parameters::certified_keys` (`TreeProgram::certify_parameters`): the
+    // request's key and, with a recorded IR regulator, the key with it at 0
+    // (the split pole selections' regulated pass, whose values the plane
+    // check's second real point certified); once each.
+    let r = |n: i64| Rational::from(n);
+    let values = [r(91), r(3), r(173), r(1)];
+    let side = Some(vec![2]);
+    assert_eq!(
+        parameter_record(side.clone(), None).certified_keys(&values),
+        vec![vec![r(1), r(1), r(173), r(1)]]
+    );
+    let regulated = parameter_record(side.clone(), Some(3));
+    assert_eq!(
+        regulated.certified_keys(&values),
+        vec![
+            vec![r(1), r(1), r(173), r(1)],
+            vec![r(1), r(1), r(173), r(0)]
+        ]
+    );
+    // The regulated pass's points (regulator 0, any aS) have a certified
+    // key; a point with a negative regulator does not.
+    let keys = regulated.certified_keys(&values);
+    let pass = regulated.key(&[r(91), r(5), r(173), r(0)], Some(&r(8281)));
+    assert!(keys.contains(&pass));
+    let negative = regulated.key(&[r(91), r(3), r(173), r(-1)], Some(&r(8281)));
+    assert!(!keys.contains(&negative));
+    // A regulator already at 0: one key.
+    assert_eq!(
+        regulated.certified_keys(&[r(91), r(3), r(173), r(0)]).len(),
+        1
+    );
+    // The regulator as a side input: its values 1 and 0.
+    let keyed = parameter_record(Some(vec![2, 3]), Some(3));
+    assert_eq!(
+        keyed.certified_keys(&values),
+        vec![
+            vec![r(1), r(1), r(173), r(1)],
+            vec![r(1), r(1), r(173), r(0)]
+        ]
+    );
+}
+
+#[test]
+fn a_probe_row_mismatch_falls_back_to_level_zero() {
+    // `level_zero_fallback` (`compile_plane_application_checked`): SymJIT's
+    // optimised SIMD code gave NaN where level 0 is right (CM05, M-SM
+    // MS-MASTERS, DESIGN risk 13): a plane that fails the check at a probe
+    // row (here the optimised one, "O2") is compiled again at level 0 and
+    // kept if that one passes; refused with the first mismatch when both
+    // fail; never recompiled for a program without a real point, or when
+    // the first compilation was already at level 0.
+    let row = PlaneMismatch {
+        output: 7,
+        probe: PlaneProbe::Row {
+            row: 0,
+            real_axis: true,
+            imaginary: false,
+            plane: f64::NAN,
+            exact: 1.0,
+        },
+    };
+    let fails = |bad: &'static [&'static str], mismatch: PlaneMismatch| {
+        move |plane: &&str| -> RusticolResult<Option<PlaneMismatch>> {
+            Ok(bad.contains(plane).then(|| mismatch.clone()))
+        }
+    };
+    // The optimised plane fails, level 0 passes: level 0 is kept.
+    assert_eq!(
+        level_zero_fallback("O2", 2, || Ok("O0"), fails(&["O2"], row.clone())).unwrap(),
+        Ok("O0")
+    );
+    // Both fail: refused, with the optimised plane's mismatch.
+    let mut seen = Vec::new();
+    let verdict = level_zero_fallback(
+        "O2",
+        2,
+        || Ok("O0"),
+        |plane: &&str| {
+            seen.push(*plane);
+            Ok(Some(PlaneMismatch {
+                output: seen.len(),
+                ..row.clone()
+            }))
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        verdict,
+        Err(PlaneMismatch {
+            output: 1,
+            ..row.clone()
+        })
+    );
+    assert_eq!(seen, ["O2", "O0"]);
+    // A passing plane is kept without a recompilation.
+    assert_eq!(
+        level_zero_fallback(
+            "O2",
+            2,
+            || panic!("no recompilation"),
+            fails(&[], row.clone())
+        )
+        .unwrap(),
+        Ok("O2")
+    );
+    // No real point to certify a side: no level certifies it.
+    let no_point = PlaneMismatch {
+        output: 3,
+        probe: PlaneProbe::NoRealPoint,
+    };
+    assert_eq!(
+        level_zero_fallback(
+            "O2",
+            2,
+            || panic!("no recompilation"),
+            fails(&["O2"], no_point.clone())
+        )
+        .unwrap(),
+        Err(no_point)
+    );
+    // Already at level 0: refused as it is.
+    assert_eq!(
+        level_zero_fallback(
+            "O0",
+            0,
+            || panic!("no recompilation"),
+            fails(&["O0"], row.clone())
+        )
+        .unwrap(),
+        Err(row)
     );
 }
 
