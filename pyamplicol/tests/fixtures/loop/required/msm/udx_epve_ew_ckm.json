@@ -778,33 +778,51 @@
  "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-SM acceptance values: m-sm/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "madloop_r2_couplings": {
   "called": [
-   "R2_QQCpcb",
-   "R2_QQCpcd",
-   "R2_QQCpcs",
-   "R2_QQCplv",
-   "R2_QQCptd",
-   "R2_QQCpub",
    "R2_WWboson1",
    "R2_WWboson2",
    "R2_WWboson3",
+   "R2_WWcb1",
    "R2_WWcb3",
+   "R2_WWcd1",
+   "R2_WWcs1",
    "R2_WWl",
    "R2_WWtau3",
+   "R2_WWtb1",
    "R2_WWtb3",
+   "R2_WWtd1",
    "R2_WWtd3",
+   "R2_WWts1",
    "R2_WWts3",
+   "R2_WWub1",
    "R2_WWub3",
-   "R2_cxsW",
-   "R2_cxsW2Cp",
+   "R2_WWud1",
+   "R2_WWus1",
+   "R2_uxdW",
+   "R2_uxdW2Cp",
    "R2_vlW"
   ],
+  "called_as": {
+   "R2_WWcb1": "R2_QQCpcb",
+   "R2_WWcd1": "R2_QQCpcd",
+   "R2_WWcs1": "R2_QQCpcs",
+   "R2_WWtb1": "R2_QQCplv",
+   "R2_WWtd1": "R2_QQCptd",
+   "R2_WWts1": "R2_QQCpcb",
+   "R2_WWub1": "R2_QQCpub",
+   "R2_WWud1": "R2_QQCpcs",
+   "R2_WWus1": "R2_QQCpcd",
+   "R2_uxdW": "R2_cxsW",
+   "R2_uxdW2Cp": "R2_cxsW2Cp"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_udx_epve)"
  },
  "mqcd_run": {
   "id": "udx_epve_ew_ckm",
   "process": "udx_epve_ew_ckm",
   "export": "runs/msm/udx_epve_ew_ckm/madloop-export",
+  "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
+  "components": "required/msm/components/udx_epve_ew_ckm.json",
   "points": {
    "generator": "exact"
   }

@@ -811,38 +811,96 @@
    "R2_AWW",
    "R2_AWWcs",
    "R2_AWWlv",
+   "R2_AWWtb",
+   "R2_AWWud",
    "R2_DDA",
    "R2_DDCm",
    "R2_LLCm",
    "R2_LLCp0",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCplv",
+   "R2_QQCpud",
    "R2_QQq",
    "R2_UUA",
    "R2_UUCm",
    "R2_WWboson1",
    "R2_WWboson2",
    "R2_WWboson3",
+   "R2_WWcs1",
    "R2_WWl",
+   "R2_WWtb1",
    "R2_WWtb3",
-   "R2_bbA2Cm",
-   "R2_bbA2Cp",
-   "R2_bxtW",
-   "R2_bxtW2Cp",
-   "R2_ccA2Cm",
-   "R2_ccA2Cp",
-   "R2_ccA2Cp_s",
+   "R2_WWud1",
+   "R2_ddA2Cm",
+   "R2_ddA2Cp",
+   "R2_ddA2Cp_u",
    "R2_eeACm",
    "R2_eeACp",
+   "R2_llACp",
+   "R2_uuA2Cm",
+   "R2_uuA2Cp",
+   "R2_uuA2Cp_d",
+   "R2_uxdW",
+   "R2_uxdW2Cp",
    "R2_vlW"
   ],
+  "called_as": {
+   "R2_AWWtb": "R2_AWWcs",
+   "R2_AWWud": "R2_AWWcs",
+   "R2_QQCplv": "R2_QQCpcs",
+   "R2_QQCpud": "R2_QQCpcs",
+   "R2_WWcs1": "R2_QQCpcs",
+   "R2_WWtb1": "R2_QQCpcs",
+   "R2_WWud1": "R2_QQCpcs",
+   "R2_ddA2Cm": "R2_bbA2Cm",
+   "R2_ddA2Cp": "R2_bbA2Cp",
+   "R2_ddA2Cp_u": "-R2_AWWlv",
+   "R2_llACp": "-R2_AWWcs",
+   "R2_uuA2Cm": "R2_ccA2Cm",
+   "R2_uuA2Cp": "R2_ccA2Cp",
+   "R2_uuA2Cp_d": "R2_ccA2Cp_s",
+   "R2_uxdW": "R2_bxtW",
+   "R2_uxdW2Cp": "R2_bxtW2Cp"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_udx_epvea)"
+ },
+ "export_parameters": {
+  "source": "MadLoop export's Source/MODEL at the run's param_card (setpara2, update_as_param2 per mu_R), double precision; [real, imaginary] per fixture row (madloop_parameters.py)",
+  "mu_r": [
+   "1000",
+   "700",
+   "1400",
+   "500"
+  ],
+  "values": {
+   "MDL_ECOUP_DGMUA0_UV_EW_FIN_": [
+    [
+     0.032366201594586336,
+     0.015705031197834216
+    ],
+    [
+     0.030461263640244995,
+     0.01570503119783423
+    ],
+    [
+     0.03416324045311622,
+     0.015705031197834216
+    ],
+    [
+     0.028664224781715066,
+     0.015705031197834243
+    ]
+   ]
+  }
  },
  "mqcd_run": {
   "id": "udx_epvea_cms",
   "process": "udx_epvea_cms",
   "export": "runs/msm/udx_epvea_cms/madloop-export",
+  "export_parameters": [
+   "MDL_ECOUP_DGMUA0_UV_EW_FIN_"
+  ],
   "points": {
    "generator": "exact"
   }

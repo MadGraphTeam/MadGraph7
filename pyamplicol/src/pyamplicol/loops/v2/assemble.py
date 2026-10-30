@@ -154,14 +154,15 @@ from .families import (
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .generator_input import NativeGeneration
 from .poles import (
-    EXTERNAL_PHOTON_CONVENTION,
     ORIGINS,
+    UNTAGGED_PHOTON_CONVENTION,
     catani_poles,
     colour_casimir,
     coupling_value,
     dressed_born,
     exact_charge,
     has_poles,
+    photon_gamma,
     pole_mode,
     qed_catani_poles,
     qed_coupling,
@@ -1413,6 +1414,24 @@ class SliceRequest:
     # generation prunes its recursion; None (the default) keeps every
     # helicity and flow (the request record then has no entry).
     selection: Any = None
+    # The on-shell external photons that couple with alpha(0) (MG5_aMC's
+    # ``!a!`` tags; m-sm/PLAN.md Q1 (a), ``ew_policy.photon_tags``): "final"
+    # (the default: final-state photons, isolated photons; initial ones are
+    # PDF photons and keep the loops' coupling), "all", "none", or the
+    # 1-based labels of the tagged legs (initial legs allowed). Only a request
+    # that takes the electromagnetic correction converts its tagged photons;
+    # the request record names it only when it is not the default.
+    external_photons: str | tuple[int, ...] = "final"
+    # The model's names of the tagged photons' conversion counterterm
+    # (delta Z_e of the loops' scheme - delta Z_e^alpha(0)) and of its
+    # adjustable 1/alpha(0) (genericity audit 2 G2-m5; ``[loop]
+    # alpha0_conversion_parameter``, ``alpha0_inverse_parameter``): MG5_aMC's
+    # ``eCoup_DGmua0_UV_EW`` and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default. A named 1/alpha(0) whose inverse is the loops'
+    # alpha declares loops that couple with alpha(0): tagged photons then
+    # take neither a rescaling nor a conversion. Recorded only when set.
+    alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
+    alpha0_inverse: str | None = None
 
     def __post_init__(self) -> None:
         if self.selection is not None and self.accuracy != "lc":
@@ -1420,6 +1439,17 @@ class SliceRequest:
                 "helicity and colour-flow selection is a leading-colour option "
                 "(accuracy='lc')"
             )
+        object.__setattr__(
+            self,
+            "external_photons",
+            ew_policy.photon_tag_option(self.external_photons),
+        )
+        if not isinstance(self.alpha0_conversion, str) or not self.alpha0_conversion:
+            raise ValueError("alpha0_conversion names a counterterm parameter")
+        if self.alpha0_inverse is not None and (
+            not isinstance(self.alpha0_inverse, str) or not self.alpha0_inverse
+        ):
+            raise ValueError("alpha0_inverse names a model parameter or is None")
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
@@ -1694,8 +1724,9 @@ class LoopSlice:
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
-    # The alpha(0) convention of the on-shell external photons of an
-    # electroweak request (WP3.2 EWI-6b, ``ew_policy.ExternalPhotons``): the
+    # The alpha(0) convention of the tagged on-shell external photons of an
+    # electroweak request (WP3.2 EWI-6b, per leg since MS-PHOTON,
+    # ``ew_policy.ExternalPhotons``; None without a tagged photon): the
     # point's (alpha(0) / alpha)^n scales every output
     # (``_PointEvaluation.average``), the conversion is a field insertion.
     external_photons: ew_policy.ExternalPhotons | None = None
@@ -1884,8 +1915,9 @@ class LoopSlice:
         )
         photons = None
         if electroweak:
-            # On-shell external photons couple with alpha(0) (WP3.2 EWI-6b,
-            # [U9]); a model that cannot take that convention is refused.
+            # Tagged on-shell external photons couple with alpha(0) (WP3.2
+            # EWI-6b, [U9]; per leg, MS-PHOTON: ``request.external_photons``);
+            # a model that cannot take that convention is refused.
             photons = ew_policy.external_photon_scheme(
                 compiled, request, process, fixed, structure.perturbative_species_orders
             )
@@ -1894,6 +1926,11 @@ class LoopSlice:
             # species take 't Hooft-Feynman gauge with explicit Goldstones
             # and ghosts; QCD-only requests keep the model's gauge.
             compiled = ew_policy.feynman_gauge_model(compiled, request)
+        else:
+            # A tag list naming a leg that is no on-shell photon is refused
+            # for every request; without the electromagnetic correction the
+            # tags convert nothing (as in MG5_aMC).
+            ew_policy.photon_tags(compiled, request, process, fixed)
         # A fermion line that changes colour representation (a vertex joining
         # a coloured and a colour-singlet fermion that a tree or a loop of the
         # request can use) has no sign in the blocks' conventions: refused
@@ -2074,12 +2111,13 @@ class LoopSlice:
         )
         field_rules = prepare_external_field_rules(prepared.counterterms.source)
         source_field_rules = field_rules
-        if photons is not None:
-            # alpha(0)'s field-like term on each external photon (EWI-6b).
-            field_rules = (
-                *field_rules,
-                *_alpha0_field_rules(prepared.counterterms.source, photons, process),
+        alpha0_rules: tuple[Any, ...] = ()
+        if photons is not None and photons.conversion is not None:
+            # alpha(0)'s field-like term on each tagged photon (EWI-6b).
+            alpha0_rules = _alpha0_field_rules(
+                prepared.counterterms.source, photons, process
             )
+            field_rules = (*field_rules, *alpha0_rules)
         insertions = external_field_insertions(
             table.legs,
             field_rules,
@@ -2088,6 +2126,16 @@ class LoopSlice:
             blocks.born_orders,
             forbidden=request.particle_veto,
         )
+        if alpha0_rules:
+            # The conversion is per tagged leg, not per species: an untagged
+            # photon of the same species takes none (MS-PHOTON).
+            ours = {id(rule) for rule in alpha0_rules}
+            tagged = set(photons.legs)
+            insertions = tuple(
+                insertion
+                for insertion in insertions
+                if id(insertion.rule) not in ours or insertion.leg + 1 in tagged
+            )
         # LC and NLC: every source field factor an external leg takes and
         # every counterterm rule a site closes needs declared N_c data (the
         # recursion's rules are checked in ``counterterm_program_blocks``;
@@ -4045,8 +4093,9 @@ class _PointEvaluation:
     def average(self) -> Any:
         """The divisor of every output of this point: the slice's spin and
         colour average and symmetry factor (``Normalisation.average``),
-        divided by (alpha(0) / alpha)^n for n on-shell external photons of an
-        electroweak request (``LoopSlice.external_photons``, WP3.2 EWI-6b):
+        divided by (alpha(0) / alpha)^n for n tagged on-shell external photons
+        of an electroweak request (``LoopSlice.external_photons``, WP3.2
+        EWI-6b; per leg, MS-PHOTON):
         the Born, the loop lanes, the counterterm and field components, the
         correlators of Catani's operator and the stability budgets all take
         each photon's coupling e(0) instead of the loops' e. Without such
@@ -4061,7 +4110,8 @@ class _PointEvaluation:
         slice_ = self.slice
         average = slice_.normalisation.average
         photons = getattr(slice_, "external_photons", None)
-        if photons is None:
+        if photons is None or photons.conversion is None:
+            # No tagged photon, or loops that couple with alpha(0) already.
             return average
         values = _kernel_parameters(slice_.compiled, self.parameters)
         inverse = values.get(photons.alpha0_inverse)
@@ -4258,12 +4308,13 @@ class _PointEvaluation:
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
         zero (``ZERO``, a compile-time zero or a value bound to 0); a derived
-        mass is the slice's one mass evaluator's (``_model_masses``). On-shell
-        external photons couple with alpha(0) (``LoopSlice.external_photons``,
-        WP3.2 EWI-6b): the Born is the alpha(0) one (``average``) and the
-        photons add no gamma_gamma (``poles.qed_catani_poles``, convention
-        "alpha0"). No prediction for a massless charged vector or an external
-        photon of a slice without that convention.
+        mass is the slice's one mass evaluator's (``_model_masses``). Tagged
+        on-shell external photons couple with alpha(0) (``LoopSlice.
+        external_photons``, WP3.2 EWI-6b): the Born is the alpha(0) one
+        (``average``) and they add no gamma_gamma. Untagged ones keep the
+        loops' coupling (MS-PHOTON, per leg): each adds -gamma_gamma/eps
+        (``poles.qed_catani_poles``, convention "loop-coupling";
+        ``_photon_gamma``). No prediction for a massless charged vector.
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -4277,17 +4328,13 @@ class _PointEvaluation:
         mass_of = _model_masses(
             compiled, self.parameters, numbers.precision.working_digits
         )
-        convention = getattr(slice_, "external_photons", None)
+        _tagged, untagged = ew_policy.slice_photon_tags(slice_)
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
         spins: dict[int, int] = {}
-        photons = 0
         for leg in slice_.families.legs:
             record = records[leg.field]
             if ew_policy.is_photon(record, parameters, fixed):
-                if convention is None:
-                    return None
-                photons += 1
                 continue
             charge = exact_charge(record.charge)
             if charge == 0:
@@ -4305,6 +4352,7 @@ class _PointEvaluation:
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         zero = numbers.real(0)
+        gamma_photon = self._photon_gamma(abelian, mass_of) if untagged else None
         out = {}
         for sector, _pairs in slice_.sectors:
             prediction = qed_catani_poles(
@@ -4317,18 +4365,54 @@ class _PointEvaluation:
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
-                photons=photons,
-                convention=(
-                    EXTERNAL_PHOTON_CONVENTION
-                    if convention is None
-                    else convention.convention
-                ),
+                photons=len(untagged),
+                gamma_photon=gamma_photon,
+                convention=UNTAGGED_PHOTON_CONVENTION,
             )
             if prediction is None:
                 return None
             single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
+
+    def _photon_gamma(self, abelian: str, mass_of: Callable[[str], Any]) -> Fraction:
+        """gamma_gamma of an untagged on-shell external photon
+        (``poles.photon_gamma``): -2/3 sum_f N_c^f Q_f^2 over the fermion
+        species perturbative in the electromagnetic correction, not vetoed,
+        that are massless at this point (a compile-time zero, a value bound
+        to 0, or a runtime value 0), each species once."""
+
+        slice_ = self.slice
+        compiled = slice_.compiled
+        parameters = {record.name: record for record in compiled.ir.parameters}
+        veto = set(slice_.request.particle_veto)
+        orders = slice_.prepared.structure.perturbative_species_orders
+        perturbative = {
+            abs(int(pdg)) for pdg, found in orders.items() if abelian in set(found)
+        }
+        light: dict[int, tuple[Fraction, int]] = {}
+        for record in compiled.ir.particles:
+            pdg = abs(int(record.pdg_code))
+            if (
+                pdg in light
+                or pdg in veto
+                or pdg not in perturbative
+                or int(record.spin) != ew_policy.FERMION_SPIN
+                or int(record.ghost_number) != 0
+            ):
+                continue
+            charge = exact_charge(record.charge)
+            if charge == 0:
+                continue
+            name = str(record.mass)
+            if not (
+                name == ZERO
+                or ew_policy.is_zero(name, parameters, slice_.request.fixed_parameters)
+                or mass_of(name) == 0
+            ):
+                continue
+            light[pdg] = (charge, abs(int(record.color)))
+        return photon_gamma(light.values())
 
     def _qed_alpha(self) -> Any:
         """alpha of the model's photon couplings at this point's parameters
@@ -4980,7 +5064,8 @@ def _charged_fields(compiled) -> frozenset[str]:
 
 def _alpha0_field_rules(source, photons, process) -> tuple[Any, ...]:
     """The field-like term of the alpha(0) convention (WP3.2 EWI-6b) as an
-    external-field rule of each external photon species: coefficient
+    external-field rule of each tagged photon's species (the generation keeps
+    its insertions on the tagged legs only, MS-PHOTON): coefficient
     -(delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) (the model's conversion
     parameter ``photons.conversion``; the field component adds 2 Re of the
     coefficient times the Born per photon leg, MG5_aMC's

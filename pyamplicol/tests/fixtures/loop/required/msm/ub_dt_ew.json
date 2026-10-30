@@ -778,22 +778,34 @@
  "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-SM acceptance values: m-sm/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
  "madloop_r2_couplings": {
   "called": [
-   "R2_QQCpcs",
    "R2_WWboson1",
    "R2_WWboson2",
    "R2_WWboson3",
+   "R2_WWcs1",
    "R2_WWl",
+   "R2_WWtb1",
    "R2_WWtb3",
+   "R2_WWud1",
    "R2_bxtW",
-   "R2_bxtW2Cp"
+   "R2_bxtW2Cp",
+   "R2_uxdW",
+   "R2_uxdW2Cp"
   ],
+  "called_as": {
+   "R2_WWcs1": "R2_QQCpcs",
+   "R2_WWtb1": "R2_QQCpcs",
+   "R2_WWud1": "R2_QQCpcs",
+   "R2_uxdW": "R2_bxtW",
+   "R2_uxdW2Cp": "R2_bxtW2Cp"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_ub_dt)"
  },
  "mqcd_run": {
   "id": "ub_dt_ew",
   "process": "ub_dt_ew",
   "export": "runs/msm/ub_dt_ew/madloop-export",
+  "components": "required/msm/components/ub_dt_ew.json",
   "points": {
    "generator": "exact"
   }

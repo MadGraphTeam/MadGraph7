@@ -1,0 +1,294 @@
+{
+ "reference": "gg_ttx_ew_tech.json",
+ "process": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2<=99 QED^2<=99",
+ "points": 4,
+ "groups": {
+  "r2": "R2",
+  "uv": "UV"
+ },
+ "definition": "per loop squared split order and point: the Born x CT interference of the export's CT amplitudes whose calls pass an R2 coupling (r2), a UV coupling (uv), by the UFO couplings the call names stand for (ct_couplings.json), neither (rest) and all (ct), evaluated by madloop_ct_selection.py in double precision (CTModeRun 1); bare = the reference's sector value (quadruple precision) - ct",
+ "sectors": {
+  "QCD^2=6,QED^2=0": {
+   "born_sector": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "ct_amplitude_counts": {
+    "rest": 0,
+    "r2": 42,
+    "uv": 72
+   },
+   "rows": [
+    {
+     "ct": {
+      "finite": -0.4072599812159427,
+      "single_pole": -0.21401143615540402,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.07274875628513067,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.3345112249308119,
+      "single_pole": -0.21401143615540402,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.9215837337881885,
+      "single_pole": 0.08154581417239132,
+      "double_pole": -0.1132556435790493
+     },
+     "total": {
+      "finite": 0.5143237525722457,
+      "single_pole": -0.1324656219830127,
+      "double_pole": -0.1132556435790493
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.3807472994572394,
+      "single_pole": -0.21854293662155017,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.0748043465757557,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.3059429528814839,
+      "single_pole": -0.21854293662155017,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.756171865233049,
+      "single_pole": 0.4437858944533555,
+      "double_pole": -0.1128330148218295
+     },
+     "total": {
+      "finite": 0.3754245657758096,
+      "single_pole": 0.22524295783180528,
+      "double_pole": -0.1128330148218295
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.46811559019470605,
+      "single_pole": -0.2166533295760197,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.07383196107335485,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.3942836291213507,
+      "single_pole": -0.2166533295760197,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 1.0673405246159575,
+      "single_pole": 0.06741434050304201,
+      "double_pole": -0.11345355140621383
+     },
+     "total": {
+      "finite": 0.5992249344212516,
+      "single_pole": -0.1492389890729777,
+      "double_pole": -0.11345355140621383
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.3111954774667989,
+      "single_pole": -0.21401143615540402,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.07274875628513067,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.23844672118166838,
+      "single_pole": -0.21401143615540402,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.699709200826472,
+      "single_pole": 0.23855147423103154,
+      "double_pole": -0.1132556435790493
+     },
+     "total": {
+      "finite": 0.38851372335967316,
+      "single_pole": 0.024540038075627525,
+      "double_pole": -0.1132556435790493
+     }
+    }
+   ]
+  },
+  "QCD^2=4,QED^2=2": {
+   "born_sector": {
+    "QCD": 4,
+    "QED": 0
+   },
+   "ct_amplitude_counts": {
+    "rest": 0,
+    "r2": 42,
+    "uv": 72
+   },
+   "rows": [
+    {
+     "ct": {
+      "finite": -0.09168342894338645,
+      "single_pole": -0.013973073920334594,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.0269599794462374,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.06472344949714902,
+      "single_pole": -0.013973073920334594,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.05923251777515436,
+      "single_pole": 0.01688868003243431,
+      "double_pole": -7.584304825660454e-37
+     },
+     "total": {
+      "finite": -0.03245091116823209,
+      "single_pole": 0.002915606112099715,
+      "double_pole": -7.584304825660454e-37
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.07779174537719921,
+      "single_pole": -0.013124455782750332,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.026360153904785237,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.051431591472413975,
+      "single_pole": -0.013124455782750332,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": -0.0037125002739692436,
+      "single_pole": 0.017933117651055985,
+      "double_pole": -6.10305714282659e-37
+     },
+     "total": {
+      "finite": -0.08150424565116846,
+      "single_pole": 0.004808661868305655,
+      "double_pole": -6.10305714282659e-37
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.0992767445169095,
+      "single_pole": -0.013658597018325919,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.02681793360241314,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.07245881091449631,
+      "single_pole": -0.013658597018325919,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.06071775085267358,
+      "single_pole": 0.01700566443234431,
+      "double_pole": 3.0099050254867137e-37
+     },
+     "total": {
+      "finite": -0.03855899366423592,
+      "single_pole": 0.003347067414018391,
+      "double_pole": 3.0099050254867137e-37
+     }
+    },
+    {
+     "ct": {
+      "finite": -0.0723126353601151,
+      "single_pole": -0.013973073920334594,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.0269599794462374,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "uv": {
+      "finite": -0.04535265591387772,
+      "single_pole": -0.013973073920334594,
+      "double_pole": 0.0
+     },
+     "rest": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "bare": {
+      "finite": 0.03581983587943252,
+      "single_pole": 0.01688868003243431,
+      "double_pole": -7.584304825660454e-37
+     },
+     "total": {
+      "finite": -0.03649279948068258,
+      "single_pole": 0.002915606112099715,
+      "double_pole": -7.584304825660454e-37
+     }
+    }
+   ]
+  }
+ }
+}

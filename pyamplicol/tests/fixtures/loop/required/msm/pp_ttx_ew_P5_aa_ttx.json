@@ -28,6 +28,7 @@
  "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
  "restriction": null,
  "complex_mass_scheme": false,
+ "tagged_photon_legs": [],
  "madloop_model": "loop_qcd_qed_sm_Gmu_py3",
  "gauge": "Feynman",
  "parameter_overrides": {},
@@ -1099,19 +1100,23 @@
    "R2_AAH",
    "R2_AAHt",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCptb",
    "R2_QQq",
    "R2_QQt",
    "R2_TTC0",
    "R2_UUA",
    "R2_UUCm",
-   "R2_ccA2Cp_s",
    "R2_ttA2Cm",
    "R2_ttA2Cm_b",
-   "R2_ttA2Cp"
+   "R2_ttA2Cp",
+   "R2_ttA2Cp_b"
   ],
+  "called_as": {
+   "R2_QQCptb": "R2_QQCpcs",
+   "R2_ttA2Cp_b": "R2_ccA2Cp_s"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P5_aa_ttx/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P5_aa_ttx)"
  },
  "mqcd_run": {
   "id": "pp_ttx_ew_P5_aa_ttx",

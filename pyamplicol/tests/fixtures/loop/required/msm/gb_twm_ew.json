@@ -808,13 +808,13 @@
    "R2_GBB2Cm",
    "R2_GBB2Cp",
    "R2_GBB2Cpt",
-   "R2_GCC2Cps",
    "R2_GQQ",
    "R2_GTT2Cm",
    "R2_GTT2Cmb",
    "R2_GTT2Cp",
+   "R2_GTT2Cpb",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCptb",
    "R2_QQq",
    "R2_QQt",
    "R2_TTC0",
@@ -822,8 +822,12 @@
    "R2_bxtW",
    "R2_bxtW2Cp"
   ],
+  "called_as": {
+   "R2_GTT2Cpb": "R2_GCC2Cps",
+   "R2_QQCptb": "R2_QQCpcs"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_gb_twm)"
  },
  "mqcd_run": {
   "id": "gb_twm_ew",

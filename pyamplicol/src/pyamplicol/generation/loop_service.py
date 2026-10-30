@@ -726,6 +726,9 @@ def _v2_request(backend, context, index):
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
         selection=selection,
+        external_photons=run.loop.external_photons,
+        alpha0_conversion=run.loop.alpha0_conversion_parameter,
+        alpha0_inverse=run.loop.alpha0_inverse_parameter,
     )
     if set(context.corrections) - {correction_orders(compiled, fixed).strong}:
         # An electroweak correction ([U8], ``ew_policy.require_zero_widths``):

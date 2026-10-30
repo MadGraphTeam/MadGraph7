@@ -163,6 +163,10 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "interfering-colour-flows",
         # MQ-NC's declared-N_c guard (``test_loop_v2_nc_declaration.py``).
         "colour-declaration-coverage",
+        # MS-PHOTON's external-photon guards (``test_loop_v2_external_photons.py``,
+        # ``test_loop_v2_ew_policy.py``).
+        "external-photon-scheme",
+        "external-photon-legs",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")

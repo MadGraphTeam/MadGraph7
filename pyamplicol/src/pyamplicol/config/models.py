@@ -1526,6 +1526,25 @@ class LoopConfig:
     alpha_s_parameter: str | None = field(
         default=None, metadata=_setting("str", nullable=True)
     )
+    # The on-shell external photons that couple with alpha(0) in requests
+    # with the electromagnetic correction (MG5_aMC's ``!a!`` tags; the v2
+    # ``SliceRequest.external_photons``): "final" (final-state photons,
+    # isolated photons), "all", "none", or a list of 1-based leg labels
+    # (initial legs allowed).
+    external_photons: str | tuple[int, ...] = field(
+        default="final",
+        metadata=_setting("choice_or_list_int", choices=("final", "all", "none")),
+    )
+    # The tagged photons' conversion counterterm and adjustable 1/alpha(0)
+    # parameter (``SliceRequest.alpha0_conversion`` / ``alpha0_inverse``):
+    # MG5_aMC's eCoup_DGmua0_UV_EW and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default.
+    alpha0_conversion_parameter: str = field(
+        default="eCoup_DGmua0_UV_EW", metadata=_setting("str")
+    )
+    alpha0_inverse_parameter: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
 
     def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
         # The removed engine switch is refused with its reason, as in TOML,
@@ -1546,6 +1565,13 @@ class LoopConfig:
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
         )
+        from pyamplicol.loops.v2.ew_policy import photon_tag_option
+
+        try:
+            tags = photon_tag_option(self.external_photons)
+        except ValueError as exc:
+            raise ConfigurationError(f"loop.{exc}") from exc
+        object.__setattr__(self, "external_photons", tags)
 
 
 @dataclass(frozen=True, slots=True)

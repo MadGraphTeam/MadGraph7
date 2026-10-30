@@ -831,10 +831,8 @@
   "called": [
    "R2_3Gg",
    "R2_3Gq",
-   "R2_DDZ_V2",
-   "R2_DDZ_V3",
-   "R2_GCC2Cps",
    "R2_GGGZaxialDown",
+   "R2_GGGZaxialUp",
    "R2_GGGZvecDown",
    "R2_GGGZvecUp",
    "R2_GGHt",
@@ -843,6 +841,7 @@
    "R2_GGZZdown",
    "R2_GGZZup",
    "R2_GGZdown",
+   "R2_GGZup",
    "R2_GGg_1",
    "R2_GGg_2",
    "R2_GGq",
@@ -851,19 +850,31 @@
    "R2_GTT2Cm",
    "R2_GTT2Cmb",
    "R2_GTT2Cp",
+   "R2_GTT2Cpb",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCptb",
    "R2_QQq",
    "R2_QQt",
    "R2_TTC0",
    "R2_UUCm",
-   "R2_ccZ2Cp_s",
+   "R2_UUZ_V2",
+   "R2_UUZ_V5",
    "R2_ttZ2Cm",
    "R2_ttZ2Cm_b",
-   "R2_ttZ2Cp"
+   "R2_ttZ2Cp",
+   "R2_ttZ2Cp_b"
   ],
+  "called_as": {
+   "R2_GGGZaxialUp": "-R2_GGGZaxialDown",
+   "R2_GGZup": "-R2_GGZdown",
+   "R2_GTT2Cpb": "R2_GCC2Cps",
+   "R2_QQCptb": "R2_QQCpcs",
+   "R2_UUZ_V2": "-R2_DDZ_V2",
+   "R2_UUZ_V5": "R2_DDZ_V3",
+   "R2_ttZ2Cp_b": "R2_ccZ2Cp_s"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_gg_ttxz)"
  },
  "mqcd_run": {
   "id": "gg_ttxz_ew",

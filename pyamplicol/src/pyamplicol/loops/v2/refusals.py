@@ -471,6 +471,42 @@ LOOP_ADMISSION_REFUSALS = (
         "MQ-NC (a guard)",
         "none (kept as the guard of declared N_c data)",
     ),
+    LoopAdmissionRefusal(
+        "external-photon-scheme",
+        "tagged on-shell external photons (loop.external_photons; MG5_aMC's "
+        "!a!) in a request with the electromagnetic correction where the "
+        "alpha(0) convention cannot be applied: a model without the conversion "
+        "counterterm delta Z_e^Gmu - delta Z_e^alpha(0) (eCoup_DGmua0_UV_EW) or "
+        "without an adjustable 1/alpha(0) (SMINPUTS 1), loops that already "
+        "couple with that parameter, 1/alpha(0) fixed to zero, a particle_veto "
+        "of an electromagnetically perturbative species, or a request without "
+        "the electromagnetic correction; and any on-shell external photon of an "
+        "electroweak request on a model with several photon candidates "
+        "(massless, neutral, colourless vectors: ambiguous)",
+        "a tagged photon couples with alpha(0) and takes the conversion term "
+        "(MG5_aMC's alpha(0) formula over the tagged legs), which needs the "
+        "model's conversion counterterm and its adjustable 1/alpha(0); MG5_aMC "
+        "refuses tagged photons on such a model too",
+        'leave the photons untagged (loop.external_photons = "none", or a leg '
+        "list without them: they keep the loops' coupling and their "
+        "gamma_gamma pole), or a model that declares the conversion with an "
+        "adjustable 1/alpha(0) (MG5_aMC's loop_qcd_qed_sm_Gmu under its "
+        "restriction a0)",
+        "MS-PHOTON (a guard)",
+        "none (the model must declare the conversion)",
+    ),
+    LoopAdmissionRefusal(
+        "external-photon-legs",
+        "a loop.external_photons leg list naming a leg that is not an on-shell "
+        "external photon of the process (a massless, neutral, colourless "
+        "physical vector) or no leg of the process",
+        "only on-shell external photons can couple with alpha(0) (MG5_aMC's "
+        "!a! tags photons only)",
+        "list the 1-based labels of the process's on-shell photons (initial "
+        'legs allowed), or "final", "all" or "none"',
+        "MS-PHOTON (a guard)",
+        "none",
+    ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
 
