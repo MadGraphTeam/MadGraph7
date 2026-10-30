@@ -1480,9 +1480,9 @@ def _qed_catani(loop_qcd_qed_sm_ufo, loop_native, veto) -> None:
     scheme, widths zero), ``veto`` the vetoed particles: the renormalised
     virtual's single and double poles equal the QED Catani operator's
     prediction (EWI-6) per sector to 1e-12. This is the UV check too: the
-    external-field factors' UV part is the remainder that makes the
-    renormalised virtual UV finite by construction (``poles``), so only the
-    total poles test the bare loops and the counterterms together."""
+    total poles test the bare loops and the counterterms together (the
+    "uv" split by the model's pole regulators epsUV and epsIR, ``poles``,
+    tests the UV poles alone: ``test_loop_v2_ew_pole_split``)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import compile_model_source

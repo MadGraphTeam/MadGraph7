@@ -39,6 +39,7 @@ from typing import Any
 
 from .families import Orders
 from .native_trees import NativeTrees
+from .poles import PoleRegulators
 
 SCHEMA = 2
 # Member-name prefix of the certified-scaleless companion's members (its plan
@@ -248,6 +249,13 @@ class NativeProcess:
             "trees": _trees_record(trees),
             "scaleless": None,
         }
+        regulators = slice_.pole_regulators
+        if regulators is not None:
+            # The model's pole regulators (``poles.pole_regulators``): the
+            # split selections evaluate the counterterms at the IR regulator
+            # 0 too. Absent for a model without them (loop_sm records keep
+            # their bytes).
+            record["pole_regulators"] = regulators.record()
         if exported.fourier is not None:
             # The certified seed FFT of the plan's seeds (design §7.3): its
             # structural record, certified again by the native loader.
@@ -416,6 +424,7 @@ class _ProcessView:
         self.scaleless: _ProcessView | None = None
         self.scale_parameter = record["scale_parameter"]
         self.alpha_s_parameter = record["alpha_s_parameter"]
+        self.pole_regulators = PoleRegulators.from_record(record.get("pole_regulators"))
         self.blocks = SimpleNamespace(
             process=SimpleNamespace(
                 legs=tuple(

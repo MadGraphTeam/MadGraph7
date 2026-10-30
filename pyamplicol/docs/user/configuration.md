@@ -847,7 +847,23 @@ the field factors' UV part is the quantity to compare with a field
 renormalisation of your own (for loop_sm in Feynman gauge it equals the
 textbook constants of the external legs). An incomplete ultraviolet
 renormalisation shows in the `"ir"` (and `"all"`) poles, which then miss
-Catani's operator. In Python:
+Catani's operator. A model that writes its counterterms with pole regulators
+(MadLoop's electroweak UFOs `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu`:
+`epsUV` and `epsIR` in block `TECHNICAL`, codes 1 and 2) states the origin
+itself: as long as both stay adjustable (not in `fixed_parameters`; the
+complex-mass scheme keeps them), every counterterm component's UV part is its
+value at `epsIR = 0` (MadLoop's reading of that card setting) and its IR part
+the rest, so for these models the bare and counterterm UV poles cancel as a
+check, not by construction (UV finiteness then also needs consistent inputs,
+e.g. the top Yukawa `ymt` at the top mass `MT`). An electroweak process
+records which definition its `"uv"` and `"ir"` parts use in its conventions
+(`Runtime.inspect()["conventions"]["pole_split"]`: `"regulators"`, or
+`"remainder"` with a regulator fixed); an electroweak artifact without that
+entry predates this split and uses the remainder: regenerate it. This costs
+one more pass of the tree program per point in `"uv"` and `"ir"`, also for
+correlated and resolved outputs (g g > t t~ with QCD and QED corrections:
+about 3.1 against 2.1 ms per point under `"all"`, binary64, one thread). In
+Python:
 
 ```python
 result = runtime.evaluate(points, mu_r2=scales, poles="uv")

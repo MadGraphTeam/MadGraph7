@@ -636,10 +636,20 @@ def complex_mass_scheme(
     # GfRedefinitionChoice) become the constant 1, which removes their dead
     # branches (GfRedefinitionChoice's re() one: complex conjugates of the
     # pole masses that would otherwise blow up the expanded couplings by two
-    # orders of magnitude). The masses and widths of step 2 stay inputs.
+    # orders of magnitude). The masses and widths of step 2 stay inputs, and
+    # so do the model's pole regulators (``poles.model_pole_regulators``:
+    # epsUV and epsIR, read only by the counterterms' pole coefficients, so
+    # they have no dead branch): at the card's 1 every value is MG5's, and
+    # the "uv" and "ir" selections split the counterterms' poles by them
+    # (DESIGN §12.4) under the scheme too.
     ones: list[str] = []
     if masses and card.restricted:
+        from .v2.poles import model_pole_regulators
+
         kept = set(real)
+        regulators = model_pole_regulators(raw)
+        if regulators is not None:
+            kept.update((regulators.uv, regulators.ir))
         for record in parameters:
             fields = record["fields"]
             if (

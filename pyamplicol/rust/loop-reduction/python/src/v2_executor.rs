@@ -730,6 +730,36 @@ where
     ))
 }
 
+/// The observable columns' native interferences of a batch, per point and
+/// column (`evaluate`'s `columns`, with poles), or None without columns.
+type ExportedColumns = Option<Vec<Vec<Values>>>;
+
+fn tree_columns_with<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+    executor: &Executor,
+    trees: &mut Trees,
+    inputs: &Bound<'_, PyDict>,
+    zero: T,
+    bits: u32,
+) -> PyResult<ExportedColumns>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut batch = batch(inputs, &zero)?;
+    let out = trees.fill(executor, inputs, &mut batch, true, &zero)?;
+    Ok(out.columns.map(|points| {
+        points
+            .iter()
+            .map(|columns| {
+                columns
+                    .iter()
+                    .map(|values| T::export(values, bits))
+                    .collect()
+            })
+            .collect()
+    }))
+}
+
 /// Per plan mass and per leg, the bound squared masses (exact fractions),
 /// and the imaginary parts of the plan's (empty: every plan mass real).
 type BoundMasses = (Vec<String>, Vec<Option<String>>, Vec<String>);
@@ -907,6 +937,31 @@ impl V2Executor {
             }
             Carriers::Arbitrary(_) => {
                 tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
+            }
+            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+        }
+    }
+
+    /// The observable columns' native interferences of a batch (needs a
+    /// tree program; `inputs` as for `tree_inputs`): per point and column
+    /// what `evaluate` returns in `columns` (with poles), without dressing
+    /// or reducing the loops; None when the program has no columns. The
+    /// split selections of a model with pole regulators read them at the IR
+    /// regulator 0 (`native_observables.StoredColumns`).
+    fn tree_columns(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedColumns> {
+        let bits = self.bits()?;
+        let executor = &self.executor;
+        let trees = self
+            .trees
+            .as_mut()
+            .ok_or_else(|| error("the executor has no tree program"))?;
+        match self.carrier {
+            Carriers::Double => tree_columns_with(executor, trees, inputs, 0.0, bits),
+            Carriers::DoubleDouble => {
+                tree_columns_with(executor, trees, inputs, DoubleFloat::from(0.0), bits)
+            }
+            Carriers::Arbitrary(_) => {
+                tree_columns_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
             }
             Carriers::Exact => Err(error("the exact carrier has no native trees")),
         }

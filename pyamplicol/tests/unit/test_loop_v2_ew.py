@@ -1621,8 +1621,10 @@ LADDER = [
     # EWI-1). The veto cannot act on loop_qcd_qed_sm's unlabelled
     # counterterms, so it is refused before any tree (WP3.2 EWI-5 interim):
     # generated without the guard its single pole misses the QED Catani
-    # operator's, which the "uv" identity cannot see (it holds by
-    # construction, ``loops.v2.poles``; ``test_loop_v2_ew_leptons``).
+    # operator's (``test_loop_v2_ew_leptons``); the "uv" identity is no
+    # substitute: it holds by construction for a model without pole
+    # regulators and, with loop_qcd_qed_sm's epsUV and epsIR, tests the
+    # UV poles only (bare + counterterms, ``loops.v2.poles``).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",
@@ -1670,8 +1672,9 @@ LADDER = [
     ),
     # Lifted by EWI-4b: the full QED corrections (Z, W, H, Goldstones and
     # ghosts in the loops, 't Hooft-Feynman gauge) generate and evaluate
-    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
-    # identity of ``loops.v2.poles``, no evidence). Their poles against
+    # (``poles="uv"``: bare + uv = 0 with the counterterms' UV parts from
+    # the UFO's own regulators, MS-POLES, so a check of UV finiteness, not
+    # an identity). Their poles against
     # Catani: ``test_loop_v2_catani_scope.
     # test_joint_request_predicts_its_cross_order_sector`` (QCD and QED
     # corrections); the finite part is EWI-7's.
@@ -1748,10 +1751,11 @@ LADDER = [
     # (EWI-4b): its trees join the top line and the top pair through a Z or
     # photon on one side and a G0 on the other, with the gluon at leg 1; the
     # request generates with the mixings admitted and lowered and evaluates
-    # (``poles="uv"`` exercises the pole split only: its bare + uv = 0 is an
-    # identity of ``loops.v2.poles``, blind to every counterterm, the
-    # mixings' sign included; their values against MadLoop: ``test_loop_v2_ew_gauge.
-    # test_goldstone_vector_mixings_equal_madloop``, and the O6 test
+    # (``poles="uv"``: bare + uv = 0 with the counterterms' UV parts from
+    # the UFO's own regulators, MS-POLES, a check of UV finiteness, blind to
+    # the finite parts and the mixings' sign; their values against MadLoop:
+    # ``test_loop_v2_ew_gauge.test_goldstone_vector_mixings_equal_madloop``,
+    # and the O6 test
     # ``test_loop_v2_ew_gauge.test_goldstone_vector_mixings_equal_the_site_oracle``).
     _rung(
         "gmu_gt_tttx_mixing",
@@ -1856,12 +1860,12 @@ def test_electroweak_ladder_reaches_its_blocker(
     """Each rung stops at its named blocker, never in the CT lowering
     (WP3.2 EWI-3); a rung whose blockers are lifted generates, evaluates,
     exports its native point inputs (EWI-N) and is a plain test. Its
-    ``poles="uv"`` check is the pole split's identity
-    (``poles.split_sector`` takes the field factors' UV part as the
-    remainder, so bare + uv = 0 always): the uv mode exercised, never
-    evidence of UV renormalisation (coordinator DECISIONS 2026-10-28 ~05:20
-    (1)); a rung's values are tested against providers and Catani in the
-    tests its comment names."""
+    ``poles="uv"`` check is UV finiteness: on the electroweak UFOs the
+    counterterms' UV parts are their values at the IR regulator 0
+    (``epsIR``, MS-POLES), not a remainder, so bare + uv = 0 tests the
+    counterterms' poles (before MS-POLES it was the pole split's identity,
+    coordinator DECISIONS 2026-10-28 ~05:20 (1)); a rung's values are tested
+    against providers and Catani in the tests its comment names."""
 
     import re
 
@@ -1877,8 +1881,15 @@ def test_electroweak_ladder_reaches_its_blocker(
         slice_ = LoopSlice.generate(ladder_models(model), request, loop_native)
         _check_admitted_loops(slice_, request)
         if point is not None:
+            # The top Yukawa at the top mass: the counterterms renormalise
+            # the Yukawa through the mass, so with ymt != MT the UV poles do
+            # not cancel (g t > t t t~: 0.7 % of the bare UV pole at the
+            # card's ymt = 173.3), which the pole split shows since MS-POLES.
             result = slice_.evaluate(
-                point, "1000000", parameters={"aS": "0.118", "MT": "173"}, poles=poles
+                point,
+                "1000000",
+                parameters={"aS": "0.118", "MT": "173", "ymt": "173"},
+                poles=poles,
             )
     except Exception as error:
         if blocker is LIFTED:
@@ -1888,9 +1899,8 @@ def test_electroweak_ladder_reaches_its_blocker(
         raise AssertionError(f"stopped before its blocker: {error!r}") from error
     if poles == "uv":
         # Bare UV poles + counterterm UV poles = 0 per sector and coefficient
-        # (REQUIREMENTS_ADDENDUM I): an identity of the pole split (the field
-        # factors' UV part is the remainder), the API's uv mode exercised;
-        # it tests neither the counterterms nor the finite part.
+        # (REQUIREMENTS_ADDENDUM I): the counterterms' UV parts at epsIR = 0
+        # (MS-POLES), so a test of their poles, not of the finite part.
         for sector, bare in result.components["bare"].items():
             counterterms = result.components["uv"][sector]
             for index in (1, 2):
