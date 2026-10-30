@@ -869,7 +869,14 @@ pub mod v2 {
             let masses: Vec<Complex<T>> = batch
                 .masses
                 .iter()
-                .map(|m| Complex::new(data.cast(m), data.zero.clone()))
+                .enumerate()
+                .map(|(i, m)| {
+                    let im = batch
+                        .masses_imaginary
+                        .get(i)
+                        .map_or_else(|| data.zero.clone(), |im| data.cast(im));
+                    Complex::new(data.cast(m), im)
+                })
                 .collect();
             let scales: Vec<Complex<T>> = data
                 .scales
@@ -1052,6 +1059,7 @@ pub mod v2 {
                 momenta: vec![momentum(1), momentum(2)],
                 scales: vec![Rational::from(1); 2],
                 masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
                 leg_masses: Vec::new(),
                 constants: vec![Complex::new(2.0, 0.0)],
                 block_rows: vec![Vec::new(); 2],
@@ -1088,6 +1096,7 @@ pub mod v2 {
                 momenta: vec![[1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec()],
                 scales: vec![Rational::from(1)],
                 masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
                 leg_masses: Vec::new(),
                 constants: vec![Complex::new(2.0, 0.0)],
                 block_rows: vec![Vec::new()],

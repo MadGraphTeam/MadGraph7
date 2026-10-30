@@ -1212,18 +1212,17 @@ couplings for each point. All three arithmetic modes are checked, together with
 global Gf bits beyond binary64, source snapshot retention across an update,
 empty batches and rejection of mixed frames or missing source collections.
 
-`model_cms.prepare_gmu_complex_mass_declarations` provides a bounded cold
-declaration view for the external-mass Gmu source. The result retains the original
-raw object and one derived immutable raw model. Every structural/scalar consumer
-uses that same derived model; there is no competing runtime definition override.
-The transformation appends `CMASS_MZ/MW/MT/MH = sqrt(M**2-i*M*width)` declarations,
-retains real external mass/width inputs, continues dependent internal parameter
-types and expressions, enables the source CMSParam branch, and converts all
-source Yukawa inputs to enforced internal mass aliases. Existing exact source
-name tokens are rewritten without parsing numeric lexemes through binary64.
-Alias definitions are appended after rewriting, so their real inputs cannot
-accidentally become self-references. The original Gmu antiparticle metadata
-repair is checked before aliasing; its diagnostic is retained.
+`model_cms.complex_mass_scheme` (M-SM MS-CMS, a port of MG5_aMC's
+`Model.change_mass_to_complex_scheme`; DESIGN §6.8) replaces the former
+bounded G_mu-only declaration view. It retains the original raw object and one
+derived immutable raw model (`complex_mass_model` applies the same decisions to
+the compiled tree payload), generic in the model: per nonzero width at the card
+an external mass gets `CMASS_M = sqrt(M**2 - i*M*width)`, real mass and width
+inputs are kept, dependent internal parameters become complex and read the pole
+masses, CMSParam is enabled, Yukawa inputs become mass ties, and the
+restriction card's parameters of value 1 become constants (MG5_aMC restricts
+after its transform). Existing exact source name tokens are rewritten without
+parsing numeric lexemes through binary64.
 
 Pole-mass references cover the complete covariant multiplet, including ghosts
 whose original width metadata is ZERO. The actual optimized MadLoop ee-to-mumu

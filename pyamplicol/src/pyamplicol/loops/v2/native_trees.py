@@ -1693,12 +1693,23 @@ def _parameter_program(
     # program on the inputs, checked real and positive per point, which the
     # native binder reads exactly (its carrier value's rational): its legs'
     # invariants and its propagators take its square, the value its sources
-    # take (DESIGN §11.1), as ``assemble._model_masses`` binds them.
+    # take (DESIGN §11.1), as ``assemble._model_masses`` binds them. A loop
+    # propagator's mass of complex type (a complex-mass scheme's pole mass,
+    # sqrt(M^2 - i M Gamma) of MG5_aMC's ``CMASS_<M>``) is such an output too,
+    # bound to the square of its carrier value's exact complex rational
+    # (``["complex", o]``, not checked real); an external leg's mass stays
+    # real and positive (stable external states).
     exact_masses, derived_masses = [], []
+    complex_types = {
+        record.name
+        for record in slice_.compiled.ir.parameters
+        if record.nature == "internal" and record.parameter_type == "complex"
+    }
 
-    def derived_mass(name: str) -> int:
+    def derived_mass(name: str, complex_value: bool = False) -> int:
         o = output(("derived-mass", name), lambda name=name: derived_value(name))
-        positive.append(o)
+        if not complex_value:
+            positive.append(o)
         return o
 
     for pdg, name in masses:
@@ -1716,6 +1727,8 @@ def _parameter_program(
             plan_masses.append(None)
         elif mass.mass in index:
             plan_masses.append(index[mass.mass])
+        elif mass.mass in complex_types:
+            plan_masses.append(["complex", derived_mass(mass.mass, True)])
         elif mass.mass in derived:
             plan_masses.append(["output", derived_mass(mass.mass)])
         else:
@@ -1758,12 +1771,21 @@ def _parameter_program(
                 symbol = symbols.qualified(f"pyamplicol_v2_parameters::e{len(inputs)}")
                 inputs.append(symbol)
                 symbol_of[name] = symbol
-        ratio = output(
-            ("photon-ratio", photons.alpha0_inverse),
-            lambda: (
-                1 / (symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {}))
-            ),
-        )
+
+        def photon_ratio() -> Any:
+            value = 1 / (
+                symbol_of[photons.alpha0_inverse] * base(("expr", coupling), {})
+            )
+            if value.contains(Expression.I):
+                # A complex-mass scheme's alpha (complex pole masses, real
+                # by construction, e.g. the G_mu UFO's Gfbar, up to the
+                # carrier's rounding): its real part, as MG5_aMC assigns the
+                # tagged photons' rescaling to a double-precision function
+                # (``rescale_alpha_tagged.inc``).
+                value = plans[0].program.library.predicates["real_part"](value)
+            return value
+
+        ratio = output(("photon-ratio", photons.alpha0_inverse), photon_ratio)
         positive.append(ratio)
         photon_record = [ratio, sorted(int(leg) for leg in photons.legs)]
     # The helpers in the order of their names, not the library's (which

@@ -349,7 +349,8 @@ def require_zero_coloured_widths(
     longer follows the colour-correlated Borns (O(Gamma), not O(Gamma^2)).
     Fixing the width to zero is the legacy engine's convention (its
     propagators carry no width); a resonant coloured particle needs the
-    complex-mass scheme (WP3.2)."""
+    complex-mass scheme (``loops.model_cms``: its model propagates the
+    particle with its complex pole mass and width zero, which passes here)."""
 
     from .refusals import LoopRequestUnsupported
 
@@ -362,8 +363,9 @@ def require_zero_coloured_widths(
         "coloured-width",
         f"{process}: tree currents propagate coloured particles whose width "
         f"is not fixed to zero: {named}; fix it in [loop.preparation] "
-        f"fixed_parameters ({fixed}) or take a restriction whose widths are "
-        'zero (model.restriction = "no_widths")',
+        f"fixed_parameters ({fixed}), take a restriction whose widths are "
+        'zero (model.restriction = "no_widths"), or take the complex-mass '
+        'scheme ([loop.model.scheme] mass_scheme = "complex-mass")',
     )
 
 
@@ -754,7 +756,7 @@ class GeneratedProcess:
             if not mass.massless
         }
         squares = {
-            mass.mass: float(value)
+            mass.mass: _threshold_size(value)
             for mass, value in _mass_values(
                 slice_.compiled, parameters, lines, digits
             ).items()
@@ -771,6 +773,20 @@ class GeneratedProcess:
         if not light:
             return {}
         return {"threshold": repr(threshold), "squared_masses": light}
+
+
+def _threshold_size(square: Any) -> float:
+    """A squared mass's size as the binary64 fast engine's threshold reads
+    it (``v2_reduce::squared_mass_reaches_fast_threshold``): |re| + |im| in
+    binary64, the value of a real (non-negative) square; a complex-mass
+    scheme's pole mass squared is complex."""
+
+    if isinstance(square, int | Fraction):
+        return float(square)
+    from .reference_executor import exact
+
+    value = exact(square)
+    return abs(float(value.real)) + abs(float(value.imag))
 
 
 def _order_text(order: Orders) -> str:

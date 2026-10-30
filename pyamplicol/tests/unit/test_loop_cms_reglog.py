@@ -8,7 +8,7 @@ from decimal import Decimal, localcontext
 
 import pytest
 
-from pyamplicol.loops.model_cms import prepare_gmu_complex_mass_declarations
+from pyamplicol.loops.model_cms import complex_mass_scheme
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
 pytestmark = pytest.mark.loop_fast
@@ -19,9 +19,7 @@ def declarations(loop_gmu_ufo):
     path = str(loop_gmu_ufo)
     raw = load_raw_loop_model(path, restriction="full")
     return {
-        convention: prepare_gmu_complex_mass_declarations(
-            raw, reglog_convention=convention
-        )
+        convention: complex_mass_scheme(raw, reglog_convention=convention)
         for convention in ("source", "ufo-standard")
     }
 
@@ -37,26 +35,21 @@ def test_explicit_reserved_convention_preserves_original_and_other_helpers(
     for index, record in enumerate(raw.collections["functions"]):
         if index != selected:
             assert standard.derived.collections["functions"][index] == record
-    diagnostic = standard.diagnostics[-1]
-    assert diagnostic["profile"] == "gmu-ufo-standard-reglog"
-    assert diagnostic["raw"] == raw.collections["functions"][selected]["fields"]["expr"]
-    assert diagnostic["derived"] == "(0.0 if z==0.0 else cmath.log(z))"
-    metadata = standard.derived.metadata["complex_mass_derivation"]
+    helper = standard.derived.collections["functions"][selected]["fields"]
+    assert helper["expr"] == "(0.0 if z==0.0 else cmath.log(z))"
+    assert helper["expression_source"]["operation"] == "select-ufo-standard-reglog"
+    assert raw.collections["functions"][selected]["fields"]["expr"] != helper["expr"]
+    metadata = standard.derived.metadata["complex_mass_scheme"]
     assert metadata["reglog_convention"] == "ufo-standard"
-    assert metadata["physical_certification"] is False
+    assert source.derived.metadata["complex_mass_scheme"]["reglog_convention"] == (
+        "source"
+    )
     assert (
         RawLoopModel.from_dict(standard.derived.to_dict()).to_dict()
         == standard.derived.to_dict()
     )
     with pytest.raises(ValueError, match="reglog_convention"):
-        prepare_gmu_complex_mass_declarations(raw, reglog_convention="automatic")
-    for field, value in (("expr", "cmath.log(z)+1"), ("arguments", "x")):
-        changed = raw.to_dict()
-        changed["collections"]["functions"][selected]["fields"][field] = value
-        with pytest.raises(NotImplementedError, match="recognized Gmu helper"):
-            prepare_gmu_complex_mass_declarations(
-                RawLoopModel.from_dict(changed), reglog_convention="ufo-standard"
-            )
+        complex_mass_scheme(raw, reglog_convention="automatic")
 
 
 @pytest.fixture(scope="module")
