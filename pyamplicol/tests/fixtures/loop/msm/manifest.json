@@ -350,34 +350,34 @@
  },
  "nightly_jobs": {
   "budget_seconds": 1500,
-  "measurement": "DEFAULT_SECONDS per id until a nightly run measures them",
+  "measurement": "MEASURED_SECONDS per id (the campaign records), DEFAULT_SECONDS without one",
   "jobs": [
    {
     "job": 1,
-    "seconds": 1319,
+    "seconds": 1461,
     "rows": [
      "DY05",
-     "LL01",
-     "LL02",
-     "LL03"
+     "LL01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 1282,
+    "seconds": 1288,
     "rows": [
+     "LL02",
+     "LL03",
      "LL10",
      "SC01",
-     "SC05",
-     "SC09"
+     "SC05"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
    },
    {
     "job": 3,
-    "seconds": 1072,
+    "seconds": 1286,
     "rows": [
+     "SC09",
      "ST02",
      "TT01"
     ],
@@ -385,20 +385,20 @@
    },
    {
     "job": 4,
-    "seconds": 1309,
+    "seconds": 1267,
     "rows": [
      "TT04",
      "TT05",
-     "VJ03"
+     "TT06"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1300,
+    "seconds": 1182,
     "rows": [
-     "TT06",
      "TV06",
+     "VJ03",
      "VV06"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
