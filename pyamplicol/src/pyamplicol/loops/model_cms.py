@@ -62,6 +62,8 @@ CMS_PARAMETER_NAMES = ("CMSParam", "mdl_CMSParam")
 # The UFO-standard reglog that MG5_aMC's model library writes ([U3]).
 UFO_STANDARD_REGLOG = "(0.0 if z==0.0 else cmath.log(z))"
 CMASS_PREFIX = "CMASS_"
+# The line mass of a Yukawa-tied mass without a pole mass (step 4b).
+LINE_MASS_PREFIX = "LMASS_"
 METADATA_KEY = "complex_mass_scheme"
 # The mass schemes of ``[loop.model.scheme] mass_scheme`` (the loop model
 # declaration): real on-shell masses (every width zero in the trees of an
@@ -111,7 +113,8 @@ class ComplexMassScheme:
     widths MG5 leaves real (its ``mass_widths``); ``internal_widths`` took
     ``re()``; ``yukawas`` maps each former Yukawa input to its mass (the pole
     mass where there is one); ``cms_parameter`` is the enabled convention
-    parameter, if the model has one."""
+    parameter, if the model has one; ``lines`` maps each Yukawa-tied mass
+    without a pole mass to the line mass its particles propagate with."""
 
     original: RawLoopModel
     derived: RawLoopModel
@@ -124,6 +127,7 @@ class ComplexMassScheme:
     reglog_convention: str
     propagators: Mapping[int, str] = field(default_factory=dict)
     ones: tuple[str, ...] = ()
+    lines: Mapping[str, str] = field(default_factory=dict)
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -136,6 +140,7 @@ class ComplexMassScheme:
             "reglog_convention": self.reglog_convention,
             "propagators": {str(pdg): mass for pdg, mass in self.propagators.items()},
             "ones": list(self.ones),
+            "lines": dict(self.lines),
         }
 
 
@@ -574,6 +579,48 @@ def complex_mass_scheme(
                 fields["width"] = _reference(zero)
                 propagators[int(fields["pdg_code"])] = aliases[mass_name]["name"]
 
+    # 4b. A mass a Yukawa tie reads without a pole mass (a zero width at the
+    # card) propagates as its own line mass LMASS_M := M: the couplings keep
+    # reading M, as MG5's, and the tree reading of a fermion loop line, which
+    # flips the sign of the line's mass parameter in the whole segment kernel
+    # (``loops.v2.conventions``, module docstring), leaves them unchanged. A
+    # pole mass splits them already (the tie in the real mass and width, step
+    # 3; the line in CMASS_M).
+    lines: dict[str, str] = {}
+    created_lines: dict[str, dict[str, Any]] = {}
+    for mass_name in dict.fromkeys(yukawas.values()):
+        if mass_name in masses.values() or mass_name.lower() == "zero":
+            continue
+        mass = by_name.get(mass_name)
+        if mass is None or card.value(mass) == (0, 0):
+            continue  # a massless line: no mass sign to flip
+        alias = LINE_MASS_PREFIX + mass_name
+        if alias in by_name:
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                f"the line-mass name {alias!r} is already a model parameter",
+            )
+        record = {
+            "id": len(parameters),
+            "name": alias,
+            "ufo_type": "Parameter",
+            "fields": {
+                "name": alias,
+                "nature": "internal",
+                "type": "real",
+                "texname": alias,
+            },
+        }
+        _set_value(record, {"kind": "expression", "expression": mass_name}, "line-mass")
+        parameters.append(record)
+        lines[mass_name] = alias
+        created_lines[mass_name] = record
+    for record in collections["particles"]:
+        fields = record["fields"]
+        line = created_lines.get(fields["mass"]["name"])
+        if line is not None:
+            fields["mass"] = _reference(line)
+
     # 5. MG5_aMC restricts the transformed model by its restriction card, if
     # any (``import_model``: CMS first, then ``restrict_model``), which fixes
     # every parameter of value 1 there (``detect_special_parameters``' one
@@ -631,6 +678,7 @@ def complex_mass_scheme(
         reglog_convention,
         MappingProxyType(propagators),
         tuple(ones),
+        MappingProxyType(lines),
     )
     payload["metadata"][METADATA_KEY] = scheme.metadata()
     payload["name"] += "_cms"
@@ -695,6 +743,7 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
     raw = scheme.original
     heads = {name: S(f"UFO::{name}") for name in parameters}
     heads.update({alias: S(f"UFO::{alias}") for alias in scheme.masses.values()})
+    heads.update({alias: S(f"UFO::{alias}") for alias in scheme.lines.values()})
     renaming = [(heads[mass], heads[alias]) for mass, alias in scheme.masses.items()]
 
     def renamed(expression):
@@ -765,6 +814,16 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
             if alias is not None:
                 particle.mass = parameters[alias]
                 particle.width = parameters["ZERO"]
+    for mass, alias in scheme.lines.items():
+        created = Parameter(
+            None, None, alias, ParameterNature.INTERNAL, ParameterType.REAL, None, mass
+        )
+        model.parameters.append(created)
+        parameters[alias] = created
+    for particle in model.particles:
+        alias = scheme.lines.get(particle.mass.name)
+        if alias is not None:
+            particle.mass = parameters[alias]
     model.parameters = _ordered(model.parameters, heads)
     model.name_to_position["parameters"] = {
         parameter.name: index for index, parameter in enumerate(model.parameters)

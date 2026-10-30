@@ -40,8 +40,8 @@ loops on the continued model for the Ward identity:
 * nightly: CM08 (``u d~ > e+ ve b b~`` [QCD], every width) and CM09 (``u d~ >
   e+ ve a`` [QCD QED], a tagged photon, MG5_aMC's formula with the real part
   of the complex conversion) on the G_mu UFO equal MadLoop CMS with native
-  inputs; CM07 (the [U4] acceptance process) is a strict xfail on the
-  transform's Yukawa tie at Gamma_t = 0 (owner MS-CMS).
+  inputs, and CM07 (the [U4] acceptance process, Gamma_t = 0: the top on its
+  line mass, ``model_cms`` step 4b) does too.
 """
 
 from __future__ import annotations
@@ -56,7 +56,6 @@ import pytest
 
 from pyamplicol.loops.v2 import plan_export, ward
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
-from pyamplicol.loops.v2.conventions import FermionSignError
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 
 from .loop_v2_ufo_variants import complex_mass_ufo
@@ -798,26 +797,46 @@ def test_cms_tagged_photon_equals_madloop_with_the_mg5_conversion(
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
 
 
+def test_a_zero_width_yukawa_mass_propagates_as_its_line_mass(loop_gmu_ufo):
+    """At Gamma_t = 0 (CM07) the transform ties ymt := MT, as MG5_aMC does,
+    and the top propagates with its line mass LMASS_MT := MT (real;
+    ``model_cms`` step 4b), so no coupling reads the mass parameter whose
+    sign the tree reading of a top loop line flips (``conventions``,
+    ``LeafWeights._require_mass_free_couplings``); with the card's width the
+    top has its pole mass (the tie in MT and WT) and no line mass."""
+
+    from pyamplicol.loops.model_cms import complex_mass_scheme
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    raw = load_raw_loop_model(str(loop_gmu_ufo), restriction="default")
+    scheme = complex_mass_scheme(raw, fixed_parameters={"WT": "0"})
+    assert dict(scheme.lines) == {"MT": "LMASS_MT"} and "MT" not in scheme.masses
+    assert scheme.yukawas["ymt"] == "MT"
+    derived = scheme.derived
+    line = derived.record("parameters", "LMASS_MT")
+    assert (line["fields"]["nature"], line["fields"]["type"]) == ("internal", "real")
+    assert derived.exact_value("parameters", line["id"])["expression"] == "MT"
+    assert derived.record("particles", "t")["fields"]["mass"]["name"] == "LMASS_MT"
+    assert derived.metadata["complex_mass_scheme"]["lines"] == {"MT": "LMASS_MT"}
+    ymt = derived.record("parameters", "ymt")
+    assert derived.exact_value("parameters", ymt["id"])["expression"] == "MT"
+    default = complex_mass_scheme(raw)
+    assert not default.lines and default.masses["MT"] == "CMASS_MT"
+    assert default.derived.record("particles", "t")["fields"]["mass"]["name"] == (
+        "CMASS_MT"
+    )
+
+
 @pytest.mark.loop_nightly
-@pytest.mark.xfail(
-    strict=True,
-    raises=FermionSignError,
-    reason=(
-        "CM07 has Gamma_t = 0, so the top line's mass is MT itself, and the "
-        "complex-mass transform ties the Yukawa to it (ymt := MT, as MG5_aMC "
-        "does): the top Yukawa vertices of the EW loops read the loop line's "
-        "mass, which LeafWeights._require_mass_free_couplings refuses (owner: "
-        "M-SM MS-CMS, the transform's Yukawa ties and that guard)"
-    ),
-)
 def test_cms_acceptance_process_equals_madloop(loop_gmu_ufo, loop_native, tmp_path):
     """CM07 ([U4], the complex-mass acceptance): g g > t t~ e- e+ g
     QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6 on the G_mu UFO under the
     complex-mass scheme with Gamma_Z, Gamma_W > 0 and Gamma_t = 0 (complex Z,
-    W and H masses in the trees, loops and counterterms), native inputs: Born
-    and the EW sector equal MadLoop CMS in quadruple precision
+    W and H masses in the trees, loops and counterterms; the top on its line
+    mass LMASS_MT := MT, the Yukawa tie ymt := MT), native inputs: Born and
+    the EW sector equal MadLoop CMS in quadruple precision
     (``required/msm/gg_ttxemepg_cms.json``) at its three points,
-    double-double to 1e-10, binary64 to 1e-6. Generation about 20-30 min."""
+    double-double to 1e-10, binary64 to 1e-6. About 10 min, 7 GB."""
 
     reference = _madloop_rows("gg_ttxemepg_cms")
     executor, parameters = _gmu_cms_slice(
