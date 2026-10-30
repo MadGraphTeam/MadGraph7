@@ -1575,17 +1575,45 @@ class MadgraphProcess:
         self.event_generator_config = cfg
         self.event_generator = None
 
+    def me_layout(self) -> tuple[list[str], list[int]]:
+        """The matrix elements in the order they are loaded into a context
+        (after the custom functions), and the position of the first one of every
+        subprocess (merge group) in it. The compiled functions refer to a matrix
+        element by its position, so a run that integrates only some of the
+        subprocesses still loads them at their position in the full list, which
+        is also the order data.json of a gridpack lists them in."""
+        if self.merged_subprocess_data is None:
+            groups = [[i] for i in range(len(self.subprocess_data))]
+        else:
+            groups = [meta["subprocesses"] for meta in self.merged_subprocess_data]
+        paths = []
+        offsets = []
+        for group in groups:
+            offsets.append(len(paths))
+            paths.extend(self.subprocess_data[i]["me_path"] for i in group)
+        return paths, offsets
+
     def init_subprocesses(self) -> None:
         self.backends = self.compile_matrix_elements()
+        self.me_paths, me_offsets = self.me_layout()
+        metas = (
+            self.subprocess_data if self.merged_subprocess_data is None
+            else self.merged_subprocess_data
+        )
+        selection = self.run_card["phasespace"]["subprocess_selection"]
+        if any(subproc_id >= len(metas) for subproc_id in selection):
+            raise ValueError(
+                f"subprocess_selection {list(selection)} names a subprocess beyond "
+                f"the {len(metas)} of this process"
+            )
+        self.selected_subprocess_ids = sorted(selection) or list(range(len(metas)))
         self.subprocesses = []
-        if self.merged_subprocess_data is None:
-            for subproc_id, meta in enumerate(self.subprocess_data):
-                self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
-        else:
-            for subproc_id, meta in enumerate(self.merged_subprocess_data):
-                self.subprocesses.append(
-                    MadgraphSubprocess(self, meta, subproc_id, self.subprocess_data)
-                )
+        for subproc_id in self.selected_subprocess_ids:
+            unmerged = None if self.merged_subprocess_data is None else self.subprocess_data
+            self.subprocesses.append(MadgraphSubprocess(
+                self, metas[subproc_id], subproc_id, unmerged,
+                me_index=len(self.custom_function_paths) + me_offsets[subproc_id],
+            ))
 
     def compile_matrix_elements(self) -> list[str]:
         """Build the matrix-element library of every subprocess, and return the
@@ -1678,7 +1706,10 @@ class MadgraphProcess:
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
-        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
+        for subproc, phasespace in zip(self.subprocesses, phasespaces):
+            # the global index, not the position in a selection: the names have
+            # to stay unique when the gridpacks of several selections are merged
+            i = subproc.subproc_id
             for integrand, channel in zip(
                 subproc.build_integrands(phasespace), phasespace.channels
             ):
@@ -2295,11 +2326,16 @@ class MadgraphProcess:
         del writer  # closes the file (writes the closing tag)
 
     def build_lhe_completer(self):
-        all_mcdata = (
-            [subproc.build_multi_channel_data() for subproc in self.subprocesses]
-            if self.merged_subprocess_data is None else
-            [build_multi_channel_data(meta, self) for meta in self.subprocess_data]
+        # always over every subprocess, also when only some are integrated
+        selected = (
+            {} if self.merged_subprocess_data is not None
+            else {subproc.subproc_id: subproc for subproc in self.subprocesses}
         )
+        all_mcdata = [
+            selected[i].build_multi_channel_data() if i in selected
+            else build_multi_channel_data(meta, self)
+            for i, meta in enumerate(self.subprocess_data)
+        ]
         subproc_args = [
             ms.SubprocArgs(
                 topologies = [topo[0] for topo in mcdata.topologies],
@@ -2429,10 +2465,22 @@ class MadgraphProcess:
                 shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
                             gridpack_subprocesses_json)
 
-        matrix_elements = []
-        for subproc in self.subprocess_data:
-            me_path = subproc["me_path"]
-            matrix_elements.append(me_path)
+        # every matrix element in loading order, and the ones this run loaded:
+        # the gridpack of a subprocess selection only needs its own
+        matrix_elements = list(self.me_paths)
+        _, me_offsets = self.me_layout()
+        metas = (
+            self.subprocess_data if self.merged_subprocess_data is None
+            else self.merged_subprocess_data
+        )
+        matrix_element_indices = [
+            me_offsets[subproc.subproc_id] + k
+            for subproc in self.subprocesses
+            for k in range(
+                1 if self.merged_subprocess_data is None
+                else len(metas[subproc.subproc_id]["subprocesses"])
+            )
+        ]
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)
@@ -2510,6 +2558,7 @@ class MadgraphProcess:
 
         data = {
             "matrix_elements": matrix_elements,
+            "matrix_element_indices": matrix_element_indices,
             # loaded before the matrix elements, as in the run
             "custom_functions": gridpack_custom_paths,
             "me_parameters": me_parameters(self.run_card),
@@ -2906,7 +2955,8 @@ class MadgraphSubprocess:
         process: MadgraphProcess,
         meta: dict,
         subproc_id: int,
-        unmerged_meta: dict | None = None
+        unmerged_meta: dict | None = None,
+        me_index: int = 0,
     ):
         self.process = process
         self.meta = meta
@@ -3090,11 +3140,12 @@ class MadgraphSubprocess:
             self.matrix_elements = [None] * len(all_api_paths)
         else:
             self.matrix_elements = []
-            for api_paths in all_api_paths:
+            for position, api_paths in enumerate(all_api_paths):
                 for context, api_path in zip(self.process.contexts, api_paths):
                     mat = context.load_matrix_element(
                         api_path, self.process.param_card_path,
-                        me_parameters(self.process.run_card)
+                        me_parameters(self.process.run_card),
+                        index=me_index + position,
                     )
                 self.matrix_elements.append(mat)
 

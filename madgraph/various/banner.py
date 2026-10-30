@@ -7119,6 +7119,12 @@ class RunCardMG7(RunCard):
         # -------------------------- [phasespace] ----------------------
         self.add_toml_param('phasespace', 'merge_subprocesses', False,
             comment="merge subprocesses with the same diagram topologies into shared channels")
+        # Only these subprocesses (merge groups under merge_subprocesses) are
+        # surveyed and trained. They keep their global index, so that the
+        # gridpacks of several such runs can be merged; cluster mode sets it.
+        self.add_toml_param('phasespace', 'subprocess_selection', [], typelist=int,
+            comment="indices of the subprocesses (merge groups) to integrate; empty selects all",
+            hidden=True)
         self.add_toml_param('phasespace', 'mode', "multichannel",
             allowed=['auto', 'multichannel', 'flat', 'both'],
             comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
@@ -8157,6 +8163,11 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard(
                     "Invalid device '%s': the device index must be a non-negative integer"
                     % entry)
+
+        selection = self['phasespace']['subprocess_selection']
+        if any(index < 0 for index in selection) or len(set(selection)) != len(selection):
+            raise InvalidRunCard(
+                "subprocess_selection must list distinct non-negative subprocess indices")
 
         # me_frame lists external particles by their (one based) position; the
         # number of external particles is only known to the run directory, so

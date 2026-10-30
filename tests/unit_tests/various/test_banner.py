@@ -1616,6 +1616,17 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertEqual(
                 tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
 
+    def test_subprocess_selection(self):
+        card = bannermod.RunCardMG7()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [])
+        card.set("phasespace.subprocess_selection", [3, 1])
+        card.check_validity()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [3, 1])
+        for invalid in ([1, 1], [-1]):
+            card.set("phasespace.subprocess_selection", invalid)
+            with self.assertRaises(bannermod.InvalidRunCard):
+                card.check_validity()
+
     def test_gzip_configuration(self):
         card = bannermod.RunCardMG7()
         card.set("run.use_pigz", "auto")
