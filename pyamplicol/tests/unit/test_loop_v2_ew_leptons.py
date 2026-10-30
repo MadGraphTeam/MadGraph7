@@ -1374,11 +1374,13 @@ def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
 
 
 def _without_r2_g0tt_b(loop_gmu_ufo, directory: Path) -> Path:
-    """The G_mu UFO with the coupling R2_G0tt_b (the G0 t t~ R2 of the b
-    loops: CT vertex V_ttG02, loop particles [W+, b]) set to zero, every
-    other coupling unchanged: the model MadLoop evaluates in 't Hooft-Feynman
-    gauge. Pickled model caches are not copied (they would shadow the
-    edit)."""
+    """The G_mu UFO with the G0 t t~ R2 couplings of the b loops set to zero
+    (CT vertex V_ttG02; UFOmodeldb's R2_G0tt_b, label [W+, b], is split by
+    the issue-1 patch into R2_G0tt_b_WG, [W+, G+, b], and R2_G0tt_b_G,
+    [G+, b], which vanishes at MB = 0), every other coupling unchanged: the
+    model MadLoop evaluated in 't Hooft-Feynman gauge before the patch
+    (``required/emep_ttxh_ew``'s MadLoop). Pickled model caches are not
+    copied (they would shadow the edit)."""
 
     target = directory / "loop_qcd_qed_sm_Gmu_without_r2_g0tt_b"
     shutil.copytree(
@@ -1388,11 +1390,12 @@ def _without_r2_g0tt_b(loop_gmu_ufo, directory: Path) -> Path:
     import re
 
     text, count = re.subn(
-        r"(R2_G0tt_b = Coupling\(name = 'R2_G0tt_b',\n\s*value = )'[^']*'",
+        r"(R2_G0tt_b(_WG|_G)? = Coupling\(name = 'R2_G0tt_b(_WG|_G)?',\n\s*value = )"
+        r"'[^']*'",
         r"\g<1>'0'",
         path.read_text(),
     )
-    assert count == 1
+    assert count in (1, 2), count
     path.write_text(text)
     return target
 
