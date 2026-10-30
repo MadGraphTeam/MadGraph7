@@ -101,7 +101,7 @@ carry a `ValueError` message instead of a code; they are marked below.
 | External-state eligibility | supported | a particle can be named in a process only if it has positive spin, zero ghost number, is not a Goldstone, is propagating and is not a compiler auxiliary; names resolve exactly, then case-insensitively when unique. |
 | Particle identity | supported | antiname must exist and be involutive, non-self-conjugate pairs use opposite-signed PDG codes, names and PDG codes are unique, self-conjugate particles are neutral. |
 | Mass | conditional | `ZERO` or a model parameter; the massless or massive class (helicities, gauge, Weyl projection) is fixed once at compile time from the restricted default and cannot be changed by a runtime card. |
-| Complex masses and widths | rejected | mass and width values must be real; there is no complex-mass scheme. |
+| Complex masses and widths | rejected | mass and width values must be real; one-loop requests take the complex-mass scheme with real mass and width inputs (`[loop.model.scheme] mass_scheme = "complex-mass"`, see the configuration guide). |
 | Width | supported | `ZERO` or a parameter; enters only the fixed-width denominator of massive propagators and can be overridden at runtime. |
 | Goldstone bosons | conditional | must be propagating scalars; matched to the unique massive vector with identical colour, quantum numbers and mass and then absorbed into its unitary-gauge propagator; an ambiguous match is an error, an unmatched Goldstone stays an internal scalar. |
 | Propagating flag | supported | non-propagating particles cannot be external but are compiled normally. |

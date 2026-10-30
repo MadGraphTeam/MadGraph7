@@ -597,23 +597,23 @@ def test_both_reglog_conventions_agree_at_real_masses(gmu, gmu_ufo):
 
 def test_model_cms_reglog_conventions_agree_at_real_masses(gmu, gmu_plan):
     """[U3] through ``loops.model_cms`` and the production lowering: the
-    model's reglog record under each convention of
-    ``prepare_gmu_complex_mass_declarations`` ("source": the G_mu override,
-    unchanged; "ufo-standard": the principal log), bound in the real-mass
+    model's reglog record under each convention of ``complex_mass_scheme``
+    ("source": the G_mu override, unchanged; "ufo-standard": the principal
+    log), bound in the real-mass
     G_mu model, gives the same CT values at the fixture card in binary64
     (``coefficient_plan``, every helper a scalar-library function) and the
     same structural zeros. The transform's own model enables CMSParam,
     where the conventions differ (eCoup_Gmu_UV_EW and eCoup_DGmua0_UV_EW at
-    zero widths): WP3.2 EWI-10."""
+    zero widths): the complex-mass rows (m-sm MS-CMS)."""
 
-    from pyamplicol.loops.model_cms import prepare_gmu_complex_mass_declarations
+    from pyamplicol.loops.model_cms import complex_mass_scheme
     from pyamplicol.loops.scalar_frontend import lower_scalar_program
     from pyamplicol.loops.v2.ct_recursion import coefficient_plan
     from pyamplicol.models.loop_import import RawLoopModel
 
     reglog = gmu.raw.metadata["function_bindings"]["reglog"]
     records = {
-        convention: prepare_gmu_complex_mass_declarations(
+        convention: complex_mass_scheme(
             gmu.raw, reglog_convention=convention
         ).derived.to_dict()["collections"]["functions"][reglog]
         for convention in ("source", "ufo-standard")
