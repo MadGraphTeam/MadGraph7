@@ -189,8 +189,12 @@ public:
     // them still loads fine, it just can't be parameter-reweighted in place
     // and set_parameter()/get_parameter() will throw UMAMI_ERROR_NOT_IMPLEMENTED
     // if called anyway).
-    bool supports_set_parameter() const noexcept { return bool(_functions.set_parameter); }
-    bool supports_get_parameter() const noexcept { return bool(_functions.get_parameter); }
+    bool supports_set_parameter() const noexcept {
+        return bool(_functions.set_parameter);
+    }
+    bool supports_get_parameter() const noexcept {
+        return bool(_functions.get_parameter);
+    }
 
     // Directly sets/reads physics parameters according to whatever
     // convention the library has implemented.
@@ -272,12 +276,16 @@ public:
     /// `param_card`. Every entry of `parameters` is then passed to each
     /// process instance through `umami_set_parameter` (real value, e.g.
     /// `{"bwcutoff": 15.}`, the window of the `$`-excluded propagators);
-    /// a library that rejects one of them is an error. Caches by `file`:
-    /// loading the same file twice returns the same @ref MatrixElementApi.
+    /// a library that rejects one of them is an error. The matrix element is
+    /// placed at position `index` (default: after the last loaded one), which
+    /// is what the compiled functions refer to it by; positions left empty
+    /// below `index` can be filled later, and an empty one is an error to
+    /// access. Loading into an occupied position is an error.
     const MatrixElementApi& load_matrix_element(
         const std::string& file,
         const std::string& param_card,
-        const std::unordered_map<std::string, double>& parameters = {}
+        const std::unordered_map<std::string, double>& parameters = {},
+        int index = -1
     );
     /// Add a matrix element from the UMAMI entry points in `functions`,
     /// without a shared library. `name` identifies it in error messages, and

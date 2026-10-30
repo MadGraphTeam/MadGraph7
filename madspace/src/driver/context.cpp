@@ -162,39 +162,52 @@ void MatrixElementApi::throw_error(const std::string& message) const {
     );
 }
 
-void MatrixElementApi::set_parameter(const std::string& name, double real, double imag) const {
+void MatrixElementApi::set_parameter(
+    const std::string& name, double real, double imag
+) const {
     if (!_functions.set_parameter) {
         check_umami_status(UMAMI_ERROR_NOT_IMPLEMENTED);
     }
-    check_umami_status(_functions.set_parameter(process_instance(), name.c_str(), real, imag));
+    check_umami_status(
+        _functions.set_parameter(process_instance(), name.c_str(), real, imag)
+    );
 }
 
-std::pair<double, double> MatrixElementApi::get_parameter(const std::string& name) const {
+std::pair<double, double>
+MatrixElementApi::get_parameter(const std::string& name) const {
     if (!_functions.get_parameter) {
         check_umami_status(UMAMI_ERROR_NOT_IMPLEMENTED);
     }
     double real = 0.0, imag = 0.0;
-    check_umami_status(_functions.get_parameter(process_instance(), name.c_str(), &real, &imag));
+    check_umami_status(
+        _functions.get_parameter(process_instance(), name.c_str(), &real, &imag)
+    );
     return {real, imag};
 }
 
 const MatrixElementApi& Context::load_matrix_element(
     const std::string& file,
     const std::string& param_card,
-    const std::unordered_map<std::string, double>& parameters
+    const std::unordered_map<std::string, double>& parameters,
+    int index
 ) {
-    _param_card_paths.push_back(param_card);
-    _matrix_elements.push_back(
-        std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
-            file,
-            param_card,
-            *_thread_pool,
-            _device,
-            _matrix_elements.size(),
-            parameters
-        ))
+    std::size_t slot = index < 0 ? _matrix_elements.size() : index;
+    if (slot < _matrix_elements.size() && _matrix_elements[slot]) {
+        throw std::invalid_argument(
+            "Matrix element index " + std::to_string(slot) + " is already loaded"
+        );
+    }
+    // construct first, so that a failing load leaves the context untouched
+    auto api = std::unique_ptr<MatrixElementApi>(
+        new MatrixElementApi(file, param_card, *_thread_pool, _device, slot, parameters)
     );
-    return *_matrix_elements.back().get();
+    if (slot >= _matrix_elements.size()) {
+        _matrix_elements.resize(slot + 1);
+        _param_card_paths.resize(slot + 1);
+    }
+    _param_card_paths[slot] = param_card;
+    _matrix_elements[slot] = std::move(api);
+    return *_matrix_elements[slot];
 }
 
 const MatrixElementApi& Context::add_matrix_element(
@@ -345,7 +358,13 @@ const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     if (index >= _matrix_elements.size()) {
         throw std::runtime_error("Matrix element index out of bounds");
     }
-    return *_matrix_elements.at(index).get();
+    if (!_matrix_elements[index]) {
+        throw std::runtime_error(
+            "Matrix element index " + std::to_string(index) +
+            " is not loaded in this context"
+        );
+    }
+    return *_matrix_elements[index];
 }
 
 void Context::save_globals(const std::string& file) const {

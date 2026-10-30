@@ -382,6 +382,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file"),
             py::arg("param_card"),
             py::arg("parameters") = std::unordered_map<std::string, double>{},
+            py::arg("index") = -1,
             py::return_value_policy::reference_internal,
             pydoc::doc("Context::load_matrix_element")
         )
@@ -1961,57 +1962,50 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"goodjet", PartonLineScheme::goodjet},
         }
     );
-    mlm
-        .def(
-            py::init<
-                std::vector<Topology>,
-                nested_vector3<std::size_t>,
-                nested_vector2<std::size_t>,
-                double,
-                JetScaleScheme,
-                ScaleScheme,
-                std::unordered_map<int, int>,
-                double,
-                double,
-                double,
-                bool,
-                std::vector<int>,
-                int,
-                PartonLineScheme,
-                AlphasScheme,
-                bool,
-                ClusteringMeasure,
-                ClusteringHistory,
-                bool>(),
-            py::arg("topologies"),
-            py::arg("permutations"),
-            py::arg("diagram_indices"),
-            py::arg("cm_energy"),
-            py::arg("jet_scale_scheme") = JetScaleScheme::production,
-            py::arg("scale_scheme") = ScaleScheme::clustering_mean,
-            py::arg("pdg_color_types") = std::unordered_map<int, int>{},
-            py::arg("xqcut") = 0.,
-            py::arg("bw_cutoff") = 15.,
-            py::arg("jet_radius") = 1.0,
-            py::arg("hadronic") = true,
-            py::arg("external_pdg_ids") = std::vector<int>{},
-            py::arg("max_jet_flavor") = 4,
-            py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
-            py::arg("alphas_scheme") = AlphasScheme::per_vertex,
-            py::arg("pdf_reweighting") = true,
-            py::arg("clustering_measure") = ClusteringMeasure::fxfx,
-            py::arg("clustering_history") = ClusteringHistory::all_diagrams,
-            py::arg("clustering_mean_pdf_ladder") = true
-        )
-        .def_property_readonly(
-            "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
-        )
-        .def_property_readonly(
-            "clustering_measure", &MLMClustering::clustering_measure
-        )
-        .def_property_readonly(
-            "clustering_history", &MLMClustering::clustering_history
-        )
+    mlm.def(
+           py::init<
+               std::vector<Topology>,
+               nested_vector3<std::size_t>,
+               nested_vector2<std::size_t>,
+               double,
+               JetScaleScheme,
+               ScaleScheme,
+               std::unordered_map<int, int>,
+               double,
+               double,
+               double,
+               bool,
+               std::vector<int>,
+               int,
+               PartonLineScheme,
+               AlphasScheme,
+               bool,
+               ClusteringMeasure,
+               ClusteringHistory,
+               bool>(),
+           py::arg("topologies"),
+           py::arg("permutations"),
+           py::arg("diagram_indices"),
+           py::arg("cm_energy"),
+           py::arg("jet_scale_scheme") = JetScaleScheme::production,
+           py::arg("scale_scheme") = ScaleScheme::clustering_mean,
+           py::arg("pdg_color_types") = std::unordered_map<int, int>{},
+           py::arg("xqcut") = 0.,
+           py::arg("bw_cutoff") = 15.,
+           py::arg("jet_radius") = 1.0,
+           py::arg("hadronic") = true,
+           py::arg("external_pdg_ids") = std::vector<int>{},
+           py::arg("max_jet_flavor") = 4,
+           py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
+           py::arg("alphas_scheme") = AlphasScheme::per_vertex,
+           py::arg("pdf_reweighting") = true,
+           py::arg("clustering_measure") = ClusteringMeasure::fxfx,
+           py::arg("clustering_history") = ClusteringHistory::all_diagrams,
+           py::arg("clustering_mean_pdf_ladder") = true
+    )
+        .def_property_readonly("pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs)
+        .def_property_readonly("clustering_measure", &MLMClustering::clustering_measure)
+        .def_property_readonly("clustering_history", &MLMClustering::clustering_history)
         .def_property_readonly(
             "diagram_start_states", &MLMClustering::diagram_start_states
         )
@@ -3736,9 +3730,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "is_scale", &Variation::is_scale, pydoc::doc("Variation::is_scale")
         )
         .def_property_readonly(
-            "is_emission",
-            &Variation::is_emission,
-            pydoc::doc("Variation::is_emission")
+            "is_emission", &Variation::is_emission, pydoc::doc("Variation::is_emission")
         );
     py::classh<PdfGroupInfo>(m, "PdfGroupInfo", pydoc::doc("PdfGroupInfo"))
         .def_readonly(
@@ -3883,10 +3875,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 int particle_flags =
                     (momenta.empty() ? ParticleRecord::f_none
                                      : ParticleRecord::f_particle_data) |
-                    (alphas_scales.empty() ? ParticleRecord::f_none
-                                           : ParticleRecord::f_alphas_scales) |
-                    (ladder_lead.empty() ? ParticleRecord::f_none
-                                         : ParticleRecord::f_pdf_ladder);
+                    (alphas_scales.empty()
+                         ? ParticleRecord::f_none
+                         : ParticleRecord::f_alphas_scales) |
+                    (ladder_lead.empty()
+                         ? ParticleRecord::f_none
+                         : ParticleRecord::f_pdf_ladder);
                 DataLayout layout(
                     EventRecord::layout(
                         EventRecord::f_weight | EventRecord::f_subproc_index |
@@ -3921,7 +3915,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                         particle.py() = p.at(2);
                         particle.pz() = p.at(3);
                     }
-                    for (std::size_t j = 0; !alphas_scales.empty() && j < particle_count;
+                    for (std::size_t j = 0;
+                         !alphas_scales.empty() && j < particle_count;
                          ++j) {
                         auto& row = alphas_scales.at(i);
                         buffer.particle(i, j).alphas_scale() =
@@ -3933,8 +3928,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                         auto& lead = ladder_lead.at(i);
                         particle.ladder_lead_q() = j < 2 ? lead.at(j) : 0.;
                         bool has_step = !ladder.empty() && j < ladder.at(i).size();
-                        auto step = has_step ? ladder.at(i).at(j)
-                                             : std::vector<double>(4, 0.);
+                        auto step =
+                            has_step ? ladder.at(i).at(j) : std::vector<double>(4, 0.);
                         particle.ladder_x() = step.at(0);
                         particle.ladder_pdg() = step.at(1);
                         particle.ladder_q() = step.at(2);
