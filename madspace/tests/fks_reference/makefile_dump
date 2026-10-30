@@ -1,0 +1,10 @@
+# Links fks_kinematics_dump against the objects of test_soft_col_limits.
+# Used from the P* directory as 'make -f makefile_dump fks_kinematics_dump'.
+include makefile
+
+DUMP = $(subst test_soft_col_limits.o,fks_kinematics_dump.o,$(TEST))
+
+fks_kinematics_dump: $(DUMP) mint_module.o
+	$(FC) $(LDFLAGS) -o $@ $(DUMP) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
+
+fks_kinematics_dump.o: mint_module.o
