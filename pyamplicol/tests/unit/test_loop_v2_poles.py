@@ -884,6 +884,27 @@ def test_pole_regulators_are_found_by_code_and_need_both_adjustable():
 
 
 @pytest.mark.loop_fast
+def test_regulated_points_need_the_regulator_bound():
+    """``plan_export._regulated``: the native lanes' points at the IR
+    regulator 0 (shallow copies, the originals unchanged) fail closed when
+    the tree program does not bind the regulator (it would change nothing,
+    so the counterterms' UV part would silently be all of them)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.plan_export import _regulated
+    from pyamplicol.loops.v2.poles import PoleRegulators
+
+    trees = SimpleNamespace(program={"parameters": {"names": ["xUV", "xIR", "MU_R"]}})
+    point = SimpleNamespace(parameters={"xIR": "1", "MU_R": "91"}, scale=2)
+    (twin,) = _regulated([point], PoleRegulators("xUV", "xIR"), trees)
+    assert twin.parameters == {"xIR": "0", "MU_R": "91"} and twin.scale == 2
+    assert point.parameters["xIR"] == "1"
+    with pytest.raises(ValueError, match="not a parameter of the tree program"):
+        _regulated([point], PoleRegulators("xUV", "yIR"), trees)
+
+
+@pytest.mark.loop_fast
 def test_pole_regulators_are_read_only_by_pole_coefficients():
     """``poles.model_pole_regulators``, the structural guard: the parameters
     at the regulator codes count only when nothing but the pole coefficients
