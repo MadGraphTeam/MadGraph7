@@ -183,8 +183,27 @@ def test_complete_gmu_scalar_source_coverage(loop_gmu_ufo):
     configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     program = lower_scalar_program(raw)
-    assert len(program.definitions) == 197 + 107 + 1809
+    # The UFOmodeldb issue-1 patch adds CKMc12, CKMc13, CKMc23, CKMs13e and
+    # splits R2_G0tt_{d,s,b} into six couplings.
+    assert len(program.definitions) == 201 + 107 + 1812
     assert len(program.library.helpers) == 16
+
+
+def test_conditional_decided_by_its_bindings_forms_only_the_taken_branch(source):
+    """Python's conditional is lazy: bound to an exact number (a fixed
+    parameter), ``0 if m == 0 else mu**2/m**2`` is 0 at m = 0 (no 0^-2, an
+    infinite coefficient no evaluator accepts) and the other branch
+    otherwise; a free ``m`` keeps the native conditional."""
+
+    library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
+    text = "( 0 if m == 0 else mu**2/m**2 )"
+    zero = library.lower(text, locals={"m": library.lower("complex(0,0)")})
+    assert zero.value == library.zero
+    half = library.lower(text, locals={"m": library.lower("complex(0.5,0)")})
+    assert half.value == library.lower("4*mu**2").value
+    free = library.lower(text).value
+    assert free.get_name() == "symbolica::if"
+    assert library.decided_number(library.lower("1 if 2 < 1 else 0").value) == 0
 
 
 def test_namespace_alias_keeps_record_identity(source):

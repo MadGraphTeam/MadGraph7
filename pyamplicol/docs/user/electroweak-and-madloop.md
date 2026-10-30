@@ -4,20 +4,46 @@
 
 pyAmpliCol ships H.-S. Shao's two NLO UFO models with QCD and QED
 counterterms (arXiv:1804.10017) as [UFOmodeldb](https://github.com/mg5amcnlo/UFOmodeldb)
-ships them (commit 6ca4b120), with all their restriction cards:
+ships them (commit 6ca4b120), with all their restriction cards, and with the
+model patch of [UFOmodeldb issue 1](https://github.com/mg5amcnlo/UFOmodeldb/issues/1)
+(V. Hirschi, [gist](https://gist.github.com/ValentinHirschi/81a26a3c9a03ca38cd2f6d6cf6a2b75f),
+also posted on mg5amcnlo#475):
 
-- `loop_qcd_qed_sm` (alpha(M_Z) input scheme), as downloaded;
-- `loop_qcd_qed_sm_Gmu` (G_mu input scheme), as the mechanical Python-3
-  conversion of its Python-2 download (package-relative imports and
-  `.iteritems()` -> `.items()` only; no declaration changes; source checksums
-  and the conversion in `src/pyamplicol/assets/models/PROVENANCE.toml`).
+- `loop_qcd_qed_sm` (alpha(M_Z) input scheme), as downloaded and patched;
+- `loop_qcd_qed_sm_Gmu` (G_mu input scheme), patched, as the mechanical
+  Python-3 conversion of its Python-2 download (package-relative imports and
+  `.iteritems()` -> `.items()` only; no declaration changes). The patch's
+  four `eCoup_*_UV_EW.value[k] += '...'` statements are folded into those
+  counterterms' constructors (same strings): the model loader certifies no
+  value written after its constructor. Source checksums, the patch and the
+  conversion are in `src/pyamplicol/assets/models/PROVENANCE.toml`.
 
-The copies MG5_aMC's online model database downloads (`import model
-loop_qcd_qed_sm`) differ from these in one coupling, `R2_ZZHH` (UFOmodeldb's
-fix of the R2 vertices Z Z H H and Z Z G0 G0). They take the same shipped
-`[loop.model]` profile, so pointing `model.source` at such a download works
-too and reproduces MadLoop on it; only processes whose trees hold one of those
-two vertices (e.g. `z z > h h`) differ between the two.
+The patch (1) splits the G0 t t~ R2 couplings `R2_G0tt_{d,s,b}` by loop
+content, `[W+, G+, q]` and `[G+, q]`, keeping their sum (MadLoop, which inserts
+an R2 coupling only for a loop of exactly its label, now inserts them: its
+finite part of, e.g., `t t~ > z h` moves by up to 8 % and of `t t~ > t t~` by
+up to 2.5 %; pyAmpliCol, which inserts every R2 vertex once, is unchanged); (2) makes the CKM
+matrix of the `ckm` restriction exactly unitary (standard parametrisation from
+the same four Wolfenstein inputs; it was truncated at O(lambda^3)); (3)
+restores the bottom-mass term of the G_mu charge counterterm (with a massive b,
+e.g. `u d~ > t b~` moves by 9.5e-5 x Born and now equals Recola); (4) adds the
+missing `SMINPUTS 1` line to the G_mu `restrict_with_b_mass.dat`.
+
+**Retained limitation.** The electroweak counterterms of both models omit the
+tau mass. With a massive tau (the `ckm` restriction has MTA = 1.777) the single
+pole of, e.g., `u d~ > e+ ve` keeps a residual
+MTA^2 / (2 sw^2 (s - MW^2)) x (alpha/2pi) x Born (about 3e-5 x (alpha/2pi) x Born
+at sqrt(s) = 500 GeV); MadLoop has the same. Fix `MTA` and `ymtau` to zero to
+remove it.
+
+UFOmodeldb's unpatched models and the copies MG5_aMC's online model database
+downloads (`import model loop_qcd_qed_sm`; they differ from UFOmodeldb's in
+one coupling, `R2_ZZHH`, UFOmodeldb's fix of the R2 vertices Z Z H H and
+Z Z G0 G0) take the same shipped `[loop.model]` profile, so pointing
+`model.source` at such a copy works too and reproduces MadLoop on it. An
+unpatched G_mu copy carries the defects the patch fixes (with a massive b, or
+on the `ckm` restriction); `z z > h h`-type processes differ between the
+download and UFOmodeldb's model.
 
 A request with electroweak (`QED`) or joint (`QCD`, `QED`) corrections runs
 on them with no `[loop.model]` section and no compatibility setting:
