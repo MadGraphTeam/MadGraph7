@@ -84,6 +84,10 @@ def _under(root: Path | None, *relative: str | Path) -> tuple[Path, ...]:
     return () if root is None else tuple(root / part for part in relative)
 
 
+# The QCD+QED loop UFOs as UFOmodeldb ships them (the ground truth, user
+# 2026-10-30; README.txt there): MG5_aMC's online-database copies one level up
+# differ only in the R2_ZZHH coupling.
+_UFODB = "reference/models/ufodb-6ca4b120"
 # fixture name -> (overriding environment variables, default candidates)
 _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
     "loop_sm_ufo": (
@@ -96,11 +100,11 @@ _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
     ),
     "loop_gmu_ufo": (
         ("PYAMPLICOL_EW_UFO_REFERENCE", "PYAMPLICOL_EW_UFO"),
-        _under(_WORKSPACE, "reference/models/loop_qcd_qed_sm_Gmu_py3"),
+        _under(_WORKSPACE, f"{_UFODB}/loop_qcd_qed_sm_Gmu_py3"),
     ),
     "loop_qcd_qed_sm_ufo": (
         ("PYAMPLICOL_EW_NLO_UFO_REFERENCE",),
-        _under(_WORKSPACE, "reference/models/loop_qcd_qed_sm"),
+        _under(_WORKSPACE, f"{_UFODB}/loop_qcd_qed_sm"),
     ),
     "sgluon_nlo_ufo": (
         ("PYAMPLICOL_SGLUON_UFO_REFERENCE",),
