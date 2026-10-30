@@ -497,7 +497,12 @@ mod tests {
         let digest = Sha256::digest(text.as_bytes());
         let expected: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
         assert_eq!(
-            signature(&header, &["{\"x\":1}"], &["l".to_owned()], &["é".to_owned()]),
+            signature(
+                &header,
+                &["{\"x\":1}"],
+                &["l".to_owned()],
+                &["é".to_owned()]
+            ),
             expected
         );
     }

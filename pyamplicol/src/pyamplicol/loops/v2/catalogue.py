@@ -94,8 +94,8 @@ from ...models.expressions import _imaginary_unit_for, _minkowski_square_express
 from ...models.external import CompiledUFOModel
 from ...models.prepared_catalog import (
     PreparedContractKind,
-    PreparedKernelCatalogError,
     PreparedKernelCatalog,
+    PreparedKernelCatalogError,
     PreparedKernelInput,
     PreparedKernelSpec,
     TreeKernelVariant,
@@ -1454,7 +1454,10 @@ class _CatalogueBuilder:
                     [_portable(output) for output in item.outputs],
                     [row.to_canonical_string() for row in item.rows],
                     [
-                        [[value.to_canonical_string() for value in block] for block in blocks]
+                        [
+                            [value.to_canonical_string() for value in block]
+                            for block in blocks
+                        ]
                         for _form, blocks, _context in item.variants
                     ],
                     [self._input_item(d) for d in item.available[: item.own_inputs]],

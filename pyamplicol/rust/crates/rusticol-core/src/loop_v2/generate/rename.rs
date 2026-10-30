@@ -31,7 +31,11 @@ fn rename(text: &str, variables: &HashMap<&str, &str>, heads: &HashMap<&str, &st
         let end = rest.find(|c: char| !is_name(c)).unwrap_or(rest.len());
         let token = &rest[..end];
         let call = rest[end..].starts_with('(');
-        let renamed = if call { heads.get(token) } else { variables.get(token) };
+        let renamed = if call {
+            heads.get(token)
+        } else {
+            variables.get(token)
+        };
         out.push_str(renamed.copied().unwrap_or(token));
         rest = &rest[end..];
     }
@@ -98,7 +102,10 @@ mod tests {
         ];
         let out = rename_symbols(&texts, &variables, &heads, Some(2)).unwrap();
         // e12 is a head only where it is called; e123 and ns::ff are other names
-        assert_eq!(out[0], "c::c1(c::c0,c::c1(ns::e12,2))*ns::e12+ns::e123-c::c3^2*𝑖");
+        assert_eq!(
+            out[0],
+            "c::c1(c::c0,c::c1(ns::e12,2))*ns::e12+ns::e123-c::c3^2*𝑖"
+        );
         // a run with braces is one token; a variable called is not renamed
         assert_eq!(out[1], "UFO::{}::x+ns::e1(3)+ns::ff(c::c3)");
         assert!(rename_symbols(&texts, &pairs(&[("a.b", "c")]), &[], None).is_err());

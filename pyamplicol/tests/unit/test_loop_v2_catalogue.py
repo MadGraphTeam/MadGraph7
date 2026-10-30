@@ -888,7 +888,9 @@ def _assert_identical(oracle, native):
     assert native == oracle
 
 
-def test_native_polynomial_stage_equals_the_python_oracle(compiled, catalogue, loop_native):
+def test_native_polynomial_stage_equals_the_python_oracle(
+    compiled, catalogue, loop_native
+):
     """The segments' polynomial stage in Rust (M-SM MS-GEN, HANDOFF §0.4)
     gives the Python stage's catalogue byte for byte on loop_sm: every
     kernel's exact outputs, inputs, layout and signature, every segment's
@@ -962,7 +964,10 @@ def test_native_stages_give_the_oracle_plans_on_an_ew_rung(loop_gmu_ufo, loop_na
     )
 
     def lane(native: bool):
-        with native_catalogue_polynomials(native), assemble.text_canonical_stage(native):
+        with (
+            native_catalogue_polynomials(native),
+            assemble.text_canonical_stage(native),
+        ):
             slice_ = LoopSlice.generate(compiled, request, loop_native)
             exported = export_plan(slice_, forward=False, trees=True, born_squared=True)
         return exported.json(), programs_digest(exported.trees)

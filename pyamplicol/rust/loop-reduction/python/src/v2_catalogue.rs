@@ -21,7 +21,12 @@ type RefusalTuple = (String, String);
 type InputItem = (String, String);
 /// A job: (outputs as Symbolica text with namespaces, rows, per variant the
 /// blocks, own available inputs), the variables canonical strings.
-type JobItem = (Vec<String>, Vec<String>, Vec<Vec<Vec<String>>>, Vec<InputItem>);
+type JobItem = (
+    Vec<String>,
+    Vec<String>,
+    Vec<Vec<Vec<String>>>,
+    Vec<InputItem>,
+);
 
 /// Per job, per variant, the lowered candidate (None with no refusal: the
 /// variant lowers to zero) or the oracle's refusal. `q` are the four
