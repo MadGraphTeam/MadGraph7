@@ -12276,6 +12276,35 @@
       },
       "ufo_r2_couplings": 1217,
       "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_udx_epvea)"
+     },
+     "export_parameters": {
+      "source": "MadLoop export's Source/MODEL at the run's param_card (setpara2, update_as_param2 per mu_R), double precision; [real, imaginary] per fixture row (madloop_parameters.py)",
+      "mu_r": [
+       "1000",
+       "700",
+       "1400",
+       "500"
+      ],
+      "values": {
+       "MDL_ECOUP_DGMUA0_UV_EW_FIN_": [
+        [
+         0.032366201594586336,
+         0.015705031197834216
+        ],
+        [
+         0.030461263640244995,
+         0.01570503119783423
+        ],
+        [
+         0.03416324045311622,
+         0.015705031197834216
+        ],
+        [
+         0.028664224781715066,
+         0.015705031197834243
+        ]
+       ]
+      }
      }
     }
    ],

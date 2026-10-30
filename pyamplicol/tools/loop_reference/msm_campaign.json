@@ -1999,7 +1999,10 @@
    "export": "runs/msm/udx_epvea_cms/madloop-export",
    "points": {
     "generator": "exact"
-   }
+   },
+   "export_parameters": [
+    "MDL_ECOUP_DGMUA0_UV_EW_FIN_"
+   ]
   },
   {
    "id": "udx_wpbbx_cms",

@@ -405,6 +405,28 @@ def test_complex_mass_gmu_alpha_is_the_ufo_formula() -> None:
     assert abs(alpha / float(references.derived_parameters(real)["alpha"]) - 1) > 1e-4
 
 
+def test_cm09_records_the_exports_photon_conversion_parameter() -> None:
+    """CM09 (u d~ > e+ ve a under CMS) records the export's complex
+    eCoup_DGmua0_UV_EW finite part per mu_R (madloop_parameters.py): its real
+    part runs with the parameter's 1/eps coefficient, e^2 (27 + 11 Nc) /
+    (216 pi^2) per ln mu_R^2 at the complex-mass G_mu alpha; the imaginary part
+    (the complex masses) does not run."""
+    fixture = _fixture("udx_epvea_cms")
+    record = fixture["export_parameters"]
+    values = record["values"]["MDL_ECOUP_DGMUA0_UV_EW_FIN_"]
+    assert record["mu_r"] == fixture["mu_r"] and len(values) == len(fixture["rows"])
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, "udx_epvea_cms")
+    alpha = float(Decimal(references.derived_parameters(spec["scheme_data"])["alpha"]))
+    slope = 4 * math.pi * alpha * (27 + 11 * 3) / (216 * math.pi**2)
+    mu = [float(m) for m in record["mu_r"]]
+    for i in range(1, len(mu)):
+        assert values[i][0] - values[0][0] == pytest.approx(
+            slope * math.log(mu[i] ** 2 / mu[0] ** 2), rel=1e-12
+        )
+        assert values[i][1] == pytest.approx(values[0][1], rel=1e-13)
+    assert values[0][1] != 0.0
+
+
 def test_supplied_points_at_listed_energies() -> None:
     from tools.loop_reference import supplied_points
 
