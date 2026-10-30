@@ -12,10 +12,13 @@ shipped copy of loop_sm (``assets/models/ufo/loop_sm``), the MG5_aMC 3.7.0
 directory itself and every restriction of either have the same digest: a
 restriction lives in the source's metadata, not in its declarations. The
 same holds for H.-S. Shao's QCD+QED loop models loop_qcd_qed_sm and
-loop_qcd_qed_sm_Gmu (MG5_aMC's online model database; the G_mu download's
-Python-3 conversion changes no declaration), whose digests are those after
-the Goldstone-flag source repair. A modified copy (e.g. a massive-muon
-variant) has other declarations and therefore no profile.
+loop_qcd_qed_sm_Gmu (as UFOmodeldb ships them, the shipped copies; the G_mu
+model's Python-3 conversion changes no declaration), whose digests are those
+after the Goldstone-flag source repair. Their profiles also accept MG5_aMC's
+online-database downloads, whose declarations differ only in the value of the
+R2_ZZHH coupling (UFOmodeldb's fix 1f13c48f / 6ca4b120): the scheme is the
+same. A modified copy (e.g. a massive-muon variant) has other declarations
+and therefore no profile.
 
 An explicit ``[loop.model]`` or a declaration in the model's own metadata
 always wins (``models.loop_declaration.resolve_loop_model_declaration``). Like every
@@ -92,14 +95,22 @@ SHIPPED_LOOP_PROFILES = (
         ("e2512823936595ee4848974146d20b1290de6ecd7cf48c5d03bb47e1466b1a77",),
         LoopModelDeclaration(LOOP_SM_SCHEME, ("QCD",), True, True),
     ),
+    # UFOmodeldb (commit 6ca4b120; the shipped copy) first, then MG5_aMC's
+    # online-database download (R2_ZZHH before UFOmodeldb's fix).
     ShippedLoopProfile(
-        "MG5_aMC model database loop_qcd_qed_sm (alpha(MZ) scheme)",
-        ("1b9f65500b248fb8ecf4a28dae1258a1f48613403482a72a0c794d7cb3964f16",),
+        "UFOmodeldb loop_qcd_qed_sm (alpha(MZ) scheme)",
+        (
+            "580c029a2ae2ce1bfc58722897edfc9da0b809c5038d382404918b412d17b1e4",
+            "1b9f65500b248fb8ecf4a28dae1258a1f48613403482a72a0c794d7cb3964f16",
+        ),
         LoopModelDeclaration(LOOP_QCD_QED_SM_SCHEME, ("QCD", "QED"), True, True),
     ),
     ShippedLoopProfile(
-        "MG5_aMC model database loop_qcd_qed_sm_Gmu (G_mu scheme)",
-        ("588cb07a2e1691f8ee1038613f5fe8c4b768d68ad3c1df42b2ea28c8b2daeb6f",),
+        "UFOmodeldb loop_qcd_qed_sm_Gmu (G_mu scheme)",
+        (
+            "b580d14a07e550b3ab9ba0800b486eccd35117defe4c948c052c2d9c08029f48",
+            "588cb07a2e1691f8ee1038613f5fe8c4b768d68ad3c1df42b2ea28c8b2daeb6f",
+        ),
         LoopModelDeclaration(LOOP_QCD_QED_SM_GMU_SCHEME, ("QCD", "QED"), True, True),
     ),
 )

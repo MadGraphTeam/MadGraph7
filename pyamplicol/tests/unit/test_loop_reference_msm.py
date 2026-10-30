@@ -28,7 +28,8 @@ FIXTURES = ROOT / "tests" / "fixtures" / "loop"
 CAMPAIGN = ROOT / "tools" / "loop_reference" / "msm_campaign.json"
 MANIFEST = FIXTURES / "required" / "msm_references.json"
 LAURENT = ("finite", "single_pole", "double_pole")
-# §4.2: 70 core rows (the decay rows XX01/XX02 wait for the user's Q3).
+# §4.2: 70 core rows (the decay rows XX01/XX02 wait for the user's Q3) and
+# SC10 (z z > h h, the R2_ZZHH row of MS-UFODB).
 ROW_COUNTS = {
     "LL": 7,
     "DY": 7,
@@ -43,7 +44,7 @@ ROW_COUNTS = {
     "PI": 4,
     "CM": 9,
     "MP": 2,
-    "SC": 9,
+    "SC": 10,
 }
 # ST04: ew-validate's workspace run committed by MS-REF (MadLoop double precision).
 ST04_FIXTURE = "required/udx_tbx_ew_mb.json"
