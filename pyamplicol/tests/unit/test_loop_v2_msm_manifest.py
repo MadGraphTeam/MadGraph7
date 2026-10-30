@@ -275,12 +275,14 @@ def test_rule4_asserts_the_typed_reasons():
 @pytest.mark.loop_fast
 def test_photon_conversion_is_mg5s_formula():
     """VJ03's reference: raw MadLoop G_mu x (alpha(0)/alpha_Gmu)^n, the
-    virtual minus 2 n DGmua0 Born (``test_loop_v2_external_photons``'s
-    formula, MadLoop's DGmua0 at MU_R = 1000 GeV)."""
+    virtual of the electromagnetic correction minus 2 n DGmua0 Born
+    (``test_loop_v2_external_photons``'s formula, MadLoop's DGmua0 at MU_R =
+    1000 GeV); with MS-REF's top-up the QCD sector is scaled only."""
 
     row = mqcd.rows(mqcd.load_manifest(MANIFEST))["VJ03"]
     reference = mqcd.load_reference(row)
-    raw = json.loads((ROOT / row.reference["path"]).read_text())["rows"][0]
+    parts = row.reference.get("parts") or [row.reference]
+    raw = json.loads((ROOT / parts[0]["path"]).read_text())["rows"][0]
     madloop = raw["providers"]["madloop"]
     values = json.loads(
         (ROOT / "tests/fixtures/loop/madloop-ct-parameters.json").read_text()
@@ -288,8 +290,10 @@ def test_photon_conversion_is_mg5s_formula():
     pole, finite = float(values["-1"]["double"][0]), float(values["0"]["double"][0])
     alpha = float(Fraction("0.00754677226134035151919702202521"))
     r = 1 / 137.035999 / alpha
-    (born,) = reference.born[0]["madloop"].values()
-    (laurent,) = reference.virtual[0]["madloop"].values()
+    born = sum(reference.born[0]["madloop"].values())
+    virtual = reference.virtual[0]["madloop"]
+    electroweak = mqcd.sector_key({"QCD": 2, "QED": 4})
+    laurent = virtual.get(electroweak, virtual.get(mqcd.TOTAL))
     assert born == pytest.approx(r * madloop["born"], rel=1e-15)
     assert laurent[0] == pytest.approx(
         r * (madloop["finite"] - 2 * finite * madloop["born"]), rel=1e-14
@@ -297,6 +301,12 @@ def test_photon_conversion_is_mg5s_formula():
     assert laurent[1] == pytest.approx(
         r * (madloop["single_pole"] - 2 * pole * madloop["born"]), rel=1e-14
     )
+    for part in parts[1:]:
+        topup = json.loads((ROOT / part["path"]).read_text())
+        values = topup["rows"][part["rows"][0]]["providers"]["madloop"]
+        laurent = virtual[mqcd.sector_key(part["sector"])]
+        for k, name in enumerate(mqcd.LAURENT):
+            assert laurent[k] == pytest.approx(r * values[name], rel=1e-15)
 
 
 @pytest.mark.loop_fast

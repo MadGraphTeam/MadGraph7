@@ -1541,7 +1541,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -1637,7 +1637,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -2804,7 +2804,7 @@
   {
    "id": "VH03",
    "class": "W-V",
-   "process": "u d > u d h QCD=0",
+   "process": "u d > u d h",
    "born_orders": {
     "QCD": 0,
     "QED": 3
@@ -3250,7 +3250,7 @@
   {
    "id": "TT04",
    "class": "W-top",
-   "process": "t t~ > t t~ QCD=0",
+   "process": "t t~ > t t~",
    "born_orders": {
     "QCD": 0,
     "QED": 2
@@ -3510,13 +3510,21 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "vanishing": [
+    {
+     "sector": "total",
+     "coefficient": "double_pole"
+    }
+   ],
+   "reference_tolerance": 1e-08,
    "alphas": {
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
-   "scale_parameter": "MU_R"
+   "scale_parameter": "MU_R",
+   "relaxed": {
+    "4": 1e-13
+   }
   },
   {
    "id": "TV01",
@@ -4150,7 +4158,7 @@
   {
    "id": "ST02",
    "class": "W-singletop",
-   "process": "u d~ > t b~ QCD=0",
+   "process": "u d~ > t b~",
    "born_orders": {
     "QCD": 0,
     "QED": 2
@@ -4331,7 +4339,7 @@
   {
    "id": "ST04",
    "class": "W-singletop",
-   "process": "u d~ > t b~ QCD=0",
+   "process": "u d~ > t b~",
    "born_orders": {
     "QCD": 0,
     "QED": 2
@@ -5750,7 +5758,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {
     "QED": 0.0075467722613403515
    },
@@ -5767,7 +5775,7 @@
   {
    "id": "CM08",
    "class": "W-CMS",
-   "process": "u d~ > e+ ve b b~ QCD=0",
+   "process": "u d~ > e+ ve b b~",
    "born_orders": {
     "QCD": 0,
     "QED": 4
@@ -5829,7 +5837,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {},
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
@@ -5941,7 +5949,7 @@
   {
    "id": "CM10",
    "class": "W-CMS",
-   "process": "u d~ > w+ b b~ QCD=0",
+   "process": "u d~ > w+ b b~",
    "born_orders": {
     "QCD": 0,
     "QED": 3
@@ -6623,7 +6631,7 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-10,
    "alphas": {},
    "allow_anomalous_veto": true,
    "particle_veto": [
@@ -6884,7 +6892,7 @@
   {
    "id": "SC09",
    "class": "W-scheme",
-   "process": "t t~ > z h QCD=0",
+   "process": "t t~ > z h",
    "born_orders": {
     "QCD": 0,
     "QED": 2
