@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -381,3 +383,404 @@ def test_external_photon_ward_identity(gmu_a0, loop_native):
                 )
             ):
                 assert abs(complex(x) - complex(y)) <= 1e-12 * size[k], (part, k)
+
+
+# ------------------------------------------------------------------ per leg
+#
+# MS-PHOTON (m-sm/PLAN.md §3.2, Q1 (a)): the alpha(0) convention per tagged
+# leg (``SliceRequest.external_photons``, MG5_aMC's ``!a!``; default
+# "final"). The rows' references are raw MadLoop G_mu (MadLoop standalone
+# converts no photon) times MG5_aMC's formula over the tagged legs: Born and
+# virtual times (alpha(0)/alpha_Gmu)^n_tag, the virtual of the
+# electromagnetic correction minus 2 n_tag DGmua0 Born; untagged photons are
+# raw MadLoop, with -gamma_gamma/eps each in the IR poles (rule 4 per leg).
+# DGmua0 at a reference point's MU_R is MadLoop's 1000 GeV value shifted by
+# its IR pole's logarithm, pole x ln(MU_R^2 / 1000^2): the UFO's
+# eCoup_DGmua0_UV_EW depends on MU_R only through it (checked on the UFO's
+# own expressions at 500, 700 and 1400 GeV: 2e-15).
+
+
+@pytest.mark.loop_fast
+def test_photon_tag_option_values():
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.ew_policy import photon_tag_option
+
+    assert photon_tag_option("final") == "final"
+    assert photon_tag_option([3, 1]) == (1, 3)
+    assert photon_tag_option(()) == ()
+    for bad in ("initial", [0], [1, 1], [True], 3, b"all", {"1": 1}):
+        with pytest.raises(ValueError, match="external_photons"):
+            photon_tag_option(bad)
+    request = SliceRequest("a u > a u", {"QED": 2}, {"QCD": 2, "QED": 2})
+    assert request.external_photons == "final"
+    listed = SliceRequest(
+        "a u > a u", {"QED": 2}, {"QCD": 2, "QED": 2}, external_photons=[3, 1]
+    )
+    assert listed.external_photons == (1, 3)
+
+
+@pytest.mark.loop_fast
+def test_request_records_name_non_default_tags_only():
+    """The request record names the tags only when they are not the default
+    "final": the records of every other request keep their bytes, and a
+    record written before the field existed restores the default."""
+
+    from pyamplicol.loops.v2.artifact import request_from_record, request_record
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    plain = SliceRequest("u u~ > a g", {"QCD": 1, "QED": 1}, {"QCD": 3, "QED": 1})
+    record = request_record(plain)
+    assert "external_photons" not in record
+    assert request_from_record(json.loads(json.dumps(record))) == plain
+    for option in ("all", "none", (1, 3)):
+        tagged = SliceRequest(
+            "a u > a u", {"QED": 2}, {"QCD": 2, "QED": 2}, external_photons=option
+        )
+        record = json.loads(json.dumps(request_record(tagged)))
+        assert record["external_photons"] == (
+            option if isinstance(option, str) else list(option)
+        )
+        assert request_from_record(record) == tagged
+
+
+@pytest.mark.loop_fast
+def test_loop_external_photons_configuration():
+    """``loop.external_photons`` in TOML, overrides and Python: a choice or a
+    list of 1-based leg labels (initial legs allowed), "final" by default."""
+
+    from pyamplicol.config.errors import ConfigurationError
+    from pyamplicol.config.models import LoopConfig
+    from pyamplicol.config.registry import FIELD_REGISTRY
+    from pyamplicol.config.resolver import parse_override
+
+    assert FIELD_REGISTRY["loop.external_photons"].default == "final"
+    assert LoopConfig().external_photons == "final"
+    assert LoopConfig(external_photons=[3, 1]).external_photons == (1, 3)
+    assert parse_override("loop.external_photons=none").value == "none"
+    assert parse_override("loop.external_photons=all").value == "all"
+    assert parse_override("loop.external_photons=[1, 3]").value == (1, 3)
+    for bad in ("initial", "[1.5]", "3"):
+        with pytest.raises(ConfigurationError, match=r"loop\.external_photons"):
+            LoopConfig(
+                external_photons=parse_override(f"loop.external_photons={bad}").value
+            )
+    with pytest.raises(ConfigurationError, match=r"loop\.external_photons"):
+        LoopConfig(external_photons=[0])
+
+
+@pytest.mark.loop_fast
+def test_photon_refusals_are_listed():
+    from pyamplicol.loops.v2.ew_policy import ExternalPhotonError
+    from pyamplicol.loops.v2.refusals import (
+        LoopRequestUnsupported,
+        listed_refusal_keys,
+    )
+
+    assert {"external-photon-scheme", "external-photon-legs"} <= set(
+        listed_refusal_keys()
+    )
+    error = ExternalPhotonError("external-photon-legs", "x")
+    assert isinstance(error, LoopRequestUnsupported) and error.key == (
+        "external-photon-legs"
+    )
+
+
+def _leg(label, pdg, side):
+    return SimpleNamespace(label=label, pdg=pdg, side=side)
+
+
+def _photon_model():
+    def record(name, pdg, spin, charge=0.0, mass="ZERO", color=1):
+        return SimpleNamespace(
+            name=name,
+            pdg_code=pdg,
+            spin=spin,
+            color=color,
+            charge=charge,
+            mass=mass,
+            ghost_number=0,
+            goldstoneboson=False,
+        )
+
+    return SimpleNamespace(
+        ir=SimpleNamespace(
+            particles=(
+                record("a", 22, 3),
+                record("u", 2, 2, 2 / 3, color=3),
+                record("Z", 23, 3, mass="MZ"),
+            ),
+            parameters=(SimpleNamespace(name="MZ", nature="external", value="91"),),
+        )
+    )
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    ("option", "tagged", "untagged"),
+    [
+        ("final", (3,), (1,)),
+        ("all", (1, 3), ()),
+        ("none", (), (1, 3)),
+        ((1,), (1,), (3,)),
+        ((1, 3), (1, 3), ()),
+    ],
+)
+def test_photon_tags_per_leg(option, tagged, untagged):
+    """a u > a u: "final" tags the final photon (leg 3) and leaves the
+    initial one (a PDF photon) untagged; a list tags exactly its legs."""
+
+    from pyamplicol.loops.v2 import ew_policy
+
+    process = SimpleNamespace(
+        legs=(_leg(1, 22, "initial"), _leg(2, 2, "initial"), _leg(3, 22, "final"),
+              _leg(4, 2, "final"))
+    )  # fmt: skip
+    request = SimpleNamespace(process="a u > a u", external_photons=option)
+    found = ew_policy.photon_tags(_photon_model(), request, process, {})
+    assert found == (tagged, untagged)
+
+
+@pytest.mark.loop_fast
+def test_listed_legs_must_be_on_shell_photons():
+    from pyamplicol.loops.v2 import ew_policy
+
+    process = SimpleNamespace(
+        legs=(_leg(1, 22, "initial"), _leg(2, 2, "initial"), _leg(3, 23, "final"),
+              _leg(4, 2, "final"))
+    )  # fmt: skip
+    for option, named in (((2,), "2 (u, initial)"), ((3,), "3 (Z, final)"),
+                          ((1, 7), "7 (the process has 4 legs)")):  # fmt: skip
+        request = SimpleNamespace(process="a u > z u", external_photons=option)
+        with pytest.raises(ew_policy.ExternalPhotonError) as refused:
+            ew_policy.photon_tags(_photon_model(), request, process, {})
+        assert refused.value.key == "external-photon-legs"
+        assert named in str(refused.value)
+        assert "on-shell photons: legs [1]" in str(refused.value)
+
+
+ROW_TOLERANCE = 1e-9
+_GMU_OPTIONS = {"compatibility": "gmu_particle_anti", "scale_parameter": "MU_R"}
+
+
+@dataclass(frozen=True)
+class _PhotonRow:
+    """A photon row of m-sm/PLAN.md §4.2: its MadLoop fixtures (each serving
+    the sectors it lists, at shared points), process, corrections, Born
+    amplitude orders, model (``gmu`` = G0, ``gmu_a0`` = Ga) and tags."""
+
+    fixtures: tuple[str, ...]
+    process: str
+    corrections: tuple[str, ...]
+    born: tuple[tuple[str, int], ...]
+    model: str
+    option: Any
+    tagged: tuple[int, ...]
+    untagged: tuple[int, ...]
+
+    @property
+    def loop_orders(self) -> tuple[dict[str, int], ...]:
+        born = dict(self.born)
+        return tuple({**born, name: born.get(name, 0) + 2} for name in self.corrections)
+
+
+PHOTON_ROWS = {
+    # Two initial (PDF) photons, untagged by default: raw MadLoop.
+    "PI01": _PhotonRow(("msm/aa_emep_ew",), "a a > e- e+", ("QED",),
+                       (("QCD", 0), ("QED", 2)), "gmu", "final", (), (1, 2)),
+    # Its "all" twin on Ga: both photons tagged (one MadLoop job serves both).
+    "PI01-all": _PhotonRow(("msm/aa_emep_ew",), "a a > e- e+", ("QED",),
+                           (("QCD", 0), ("QED", 2)), "gmu_a0", "all", (1, 2), ()),
+    "PI02": _PhotonRow(("msm/aa_wpwm_ew",), "a a > w+ w-", ("QED",),
+                       (("QCD", 0), ("QED", 2)), "gmu", "final", (), (1, 2)),
+    "PI03": _PhotonRow(("msm/ag_uux_ew",), "a g > u u~", ("QCD", "QED"),
+                       (("QCD", 1), ("QED", 1)), "gmu", "final", (), (1,)),
+    # The initial photon untagged, the final one tagged.
+    "PI04": _PhotonRow(("msm/au_au_ew_a0",), "a u > a u", ("QCD", "QED"),
+                       (("QCD", 0), ("QED", 2)), "gmu_a0", "final", (3,), (1,)),
+    "VJ03": _PhotonRow(("uux_ag_ew", "msm/uux_ag_ew_qcd"), "u u~ > a g",
+                       ("QCD", "QED"), (("QCD", 1), ("QED", 1)), "gmu_a0", "final",
+                       (3,), ()),
+    "VV05": _PhotonRow(("msm/udx_wpa_ew_a0",), "u d~ > w+ a", ("QCD", "QED"),
+                       (("QCD", 0), ("QED", 2)), "gmu_a0", "final", (4,), ()),
+    "VV06": _PhotonRow(("uux_aa_ew", "msm/uux_aa_ew_qcd"), "u u~ > a a",
+                       ("QCD", "QED"), (("QCD", 0), ("QED", 2)), "gmu_a0", "final",
+                       (3, 4), ()),
+    "LL08": _PhotonRow(("msm/emep_mummpa_ew_a0",), "e- e+ > mu- mu+ a", ("QED",),
+                       (("QCD", 0), ("QED", 3)), "gmu_a0", "final", (5,), ()),
+}  # fmt: skip
+
+
+def _sectors(reference, row):
+    """(Born per squared order, MadLoop virtual (finite, single, double) per
+    squared order) of a fixture row: its ``sectors`` record, else the
+    fixture's one sector (an older fixture: Born orders twice, plus its loop
+    orders)."""
+
+    def key(orders):
+        return tuple(sorted((k, int(v)) for k, v in orders.items() if int(v)))
+
+    madloop = row["providers"]["madloop"]
+    if "sectors" in row:
+        born = {key(s): s["born"] for s in row["sectors"]["born"]}
+        virtual = {
+            key({"QCD": s["QCD"], "QED": s["QED"]}): (
+                s["finite"],
+                s["single_pole"],
+                s["double_pole"],
+            )
+            for s in row["sectors"]["loop"]
+        }
+        return born, virtual
+    orders = reference["born_orders"]
+    loops = reference["loop_orders"]
+    born = {key({k: 2 * v for k, v in orders.items()}): madloop["born"]}
+    sector = key({k: orders.get(k, 0) + loops.get(k, 0) for k in {*orders, *loops}})
+    return born, {
+        sector: (madloop["finite"], madloop["single_pole"], madloop["double_pole"])
+    }
+
+
+def _converted(row: _PhotonRow, born, virtual, mu):
+    """MG5_aMC's formula over the row's tagged legs on raw MadLoop values."""
+
+    n = len(row.tagged)
+    if not n:
+        return born, virtual
+    pole, finite = _conversion()
+    finite += pole * math.log((float(mu) / 1000) ** 2)
+    r = (1 / float(ALPHA0_INVERSE) / float(Fraction(ALPHA_GMU))) ** n
+    total = sum(born.values())
+    (born_order,) = born
+    corrected = tuple(
+        sorted({**dict(born_order), "QED": dict(born_order).get("QED", 0) + 2}.items())
+    )
+    out = {}
+    for sector, (fin, single, double) in virtual.items():
+        if sector == corrected:
+            fin -= 2 * n * finite * total
+            single -= 2 * n * pole * total
+        out[sector] = (r * fin, r * single, r * double)
+    return {k: r * v for k, v in born.items()}, out
+
+
+@pytest.fixture(scope="module")
+def photon_models(request, gmu_a0):
+    def model(name):
+        return gmu_a0 if name == "gmu_a0" else request.getfixturevalue("gmu_default")
+
+    return model
+
+
+@pytest.fixture(scope="module")
+def gmu_default(loop_gmu_ufo, tmp_path_factory):
+    from pyamplicol.models.loading import compile_model_source
+
+    return compile_model_source(
+        loop_gmu_ufo,
+        require_supported=False,
+        cache_dir=tmp_path_factory.mktemp("gmu-default"),
+    )
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", sorted(PHOTON_ROWS))
+def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
+    photon_models, loop_native, name
+):
+    """m-sm/PLAN.md MS-PHOTON acceptance (PI01-PI04, PI01's "all" twin,
+    VJ03, VV05, VV06, LL08): at the first two reference points the Born and
+    every sector's Laurent coefficients equal raw MadLoop times MG5_aMC's
+    formula over the tagged legs (binary64, the fixtures' metric, 1e-9), with
+    Python and with native point inputs; rule 4 per leg: every sector is
+    predicted and its poles are Catani's, an untagged photon adding
+    -gamma_gamma/eps (a tagged one nothing); the native binder scales the
+    tagged legs only (none without tags, so no 1/alpha(0) input), and native
+    = Python inputs within 1e-12 of each sector's virtual. Nightly: one EW
+    2->2 or 2->3 generation (about 1-8 min)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from tools import loop_v2_generate
+
+    row = PHOTON_ROWS[name]
+    compiled = photon_models(row.model)
+    references = [_reference(fixture) for fixture in row.fixtures]
+    first = references[0]
+    externals = loop_v2_generate._external_parameters(compiled)
+    fixed = {
+        k: v for k, v in first.get("fixed_parameters", {}).items() if k in externals
+    }
+    request = SliceRequest(
+        row.process,
+        dict(row.born),
+        row.loop_orders,
+        corrections=row.corrections,
+        fixed_parameters=fixed,
+        external_photons=row.option,
+        **_GMU_OPTIONS,
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    photons = slice_.external_photons
+    assert (() if photons is None else photons.legs) == row.tagged
+    from pyamplicol.loops.v2.ew_policy import scheme_conventions
+
+    conventions = scheme_conventions(slice_)
+    assert conventions["tagged_photon_legs"] == list(row.tagged)
+    assert conventions["untagged_photon_legs"] == list(row.untagged)
+    parameters = {k: v for k, v in first["parameters"].items() if k in externals}
+    if row.tagged:
+        parameters["aEW0M1"] = ALPHA0_INVERSE
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    record = native.exported.trees.program["parameters"]
+    if row.tagged:
+        assert record["photons"][1] == list(row.tagged)
+    else:
+        assert record.get("photons") is None and "aEW0M1" not in record["names"]
+    alpha = float(Fraction(ALPHA_GMU))
+    for index in (0, 1):
+        point = first["points"][index]
+        mu = first["mu_r"][index]
+        born, virtual = {}, {}
+        for reference in references:
+            assert reference["points"][index] == point
+            assert reference["mu_r"][index] == mu
+            b, v = _sectors(reference, reference["rows"][index])
+            born.update(b)
+            virtual.update(v)
+        born, virtual = _converted(row, born, virtual, mu)
+        scale = str(Fraction(mu) ** 2)
+        python = slice_.evaluate(point, scale, parameters=parameters)
+        (mine,) = native.evaluate([point], [scale], parameters=parameters)
+        floor = sum(abs(x) for x in born.values()) * alpha / (2 * math.pi)
+        for result in (python, mine):
+            assert set(result.born) == set(born)
+            for order, value in born.items():
+                got = float(result.born[order])
+                assert abs(got - value) <= ROW_TOLERANCE * abs(value), (order, got)
+            assert set(result.components["virtual"]) == set(virtual)
+            for sector, want in virtual.items():
+                got = [
+                    float(x) for x in result.components["virtual"][sector].coefficients
+                ]
+                for k, (x, y) in enumerate(zip(got, want, strict=True)):
+                    error = abs(x - y) / max(abs(x), abs(y), floor)
+                    assert error <= ROW_TOLERANCE, (index, sector, k, x, y, error)
+        # Rule 4 per leg: every sector predicted, poles = Catani's.
+        assert set(python.ir_poles) == set(virtual)
+        for sector, (single, double) in python.ir_poles.items():
+            laurent = python.components["virtual"][sector].coefficients
+            size = max(abs(float(single)), abs(float(double)), floor)
+            assert abs(float(laurent[1]) - float(single)) <= 1e-10 * size
+            assert abs(float(laurent[2]) - float(double)) <= 1e-10 * size
+        for component, sectors in python.components.items():
+            for sector, laurent in sectors.items():
+                size = max(
+                    abs(float(x))
+                    for x in python.components["virtual"][sector].coefficients
+                )
+                for x, y in zip(
+                    mine.components[component][sector].coefficients,
+                    laurent.coefficients,
+                    strict=True,
+                ):
+                    assert abs(float(x) - float(y)) <= 1e-12 * size, (component, sector)
