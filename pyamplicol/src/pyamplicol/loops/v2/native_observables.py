@@ -1140,6 +1140,20 @@ def _plan_class():
         def _local(self, column):
             return self.evaluation.column_locals[self.plan.index[column.key]]
 
+        def _local_uv(self, column):
+            # The native interferences at the IR regulator 0 (a model with
+            # pole regulators, ``StoredColumns._evaluations``), or None.
+            found = getattr(self.evaluation, "column_locals_uv", None)
+            if found is None:
+                if self.slice.pole_regulators is not None:
+                    raise ValueError(
+                        "the uv and ir pole selections of a model with pole "
+                        "regulators need the columns' interferences at the IR "
+                        "regulator 0"
+                    )
+                return None
+            return found[self.plan.index[column.key]][1]
+
     class _StoredPlan(ColumnPlan):
         def __init__(self, view: _ColumnPlanView):
             self.observables = view.observables
@@ -1447,6 +1461,26 @@ class StoredColumns:
         # The native report of the latest batch (stages and counts, as
         # ``plan_export.NativeExecutor.last_report``).
         self.last_report = output["report"]
+        # A model with pole regulators: the split selections also form every
+        # column's interferences with the IR regulator at 0, the
+        # counterterms' UV parts (``poles``): one more pass of the tree
+        # program, no loop dressing or reduction.
+        regulated = None
+        if splits(mode) and view.pole_regulators is not None:
+            from .plan_export import _regulated
+
+            regulators = view.pole_regulators
+            regulated = native.tree_columns(
+                {
+                    **inputs,
+                    "parameters": batch_parameters(
+                        process.trees,
+                        _regulated(evaluations, regulators, process.trees),
+                    ),
+                }
+            )
+            if regulated is None:
+                raise ValueError("the stored tree program forms no observable columns")
         extra = None
         if splits(mode) and self.set.companion_overlay_json is not None:
             twin = self._executor(arithmetic, digits, len(evaluations), True)
@@ -1501,6 +1535,10 @@ class StoredColumns:
                 evaluation.column_locals = self._locals(
                     output["columns"][index], numbers, evaluation.poles
                 )
+                if regulated is not None:
+                    evaluation.column_locals_uv = self._locals(
+                        regulated[index], numbers, True
+                    )
                 evaluation.set_lanes(
                     read(lanes, orders, 0),
                     read(checks, orders, 0),

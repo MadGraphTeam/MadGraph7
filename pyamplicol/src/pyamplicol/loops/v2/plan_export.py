@@ -43,6 +43,7 @@ slice's assembly turns into the six components and 19 totals.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Hashable, Mapping, Sequence
@@ -2022,6 +2023,23 @@ class NativeExecutor:
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]
+        # A model with pole regulators: in the "uv" and "ir" selections the
+        # native trees also form the counterterm and field components with
+        # the IR regulator at 0, the counterterms' UV parts (``poles``).
+        regulated = None
+        regulators = self.slice.pole_regulators
+        if (
+            splits(mode)
+            and regulators is not None
+            and self.inputs == "native"
+            and output.get("counterterms") is not None
+        ):
+            # (block rows, Born, amplitudes, |A0|^2, counterterms) per batch.
+            regulated = native.tree_inputs(
+                self._inputs(
+                    _regulated(evaluations, regulators, exported.trees), arithmetic
+                )
+            )[4]
         # The certified-scaleless families carry part of the bare UV and IR
         # poles; only the "uv" and "ir" selections dress them (schedule B).
         twin = self.scaleless if splits(mode) else None
@@ -2081,6 +2099,15 @@ class NativeExecutor:
                         )
                     }
                     evaluation.native_counterterms = True
+                if regulated is not None:
+                    evaluation.counterterms_uv = {
+                        key: numbers.real(Decimal(str(re)))
+                        for key, (re, _im) in zip(
+                            exported.trees.counterterm_outputs,
+                            regulated[index],
+                            strict=True,
+                        )
+                    }
                 if output.get("born") is not None:
                     evaluation.born = {
                         order: numbers.real(Decimal(str(re)))
@@ -2105,6 +2132,27 @@ class NativeExecutor:
                     read(lanes), read(checks), scaleless, scaleless_check
                 )
         return failed
+
+
+def _regulated(evaluations: Sequence[Any], regulators: Any, trees: Any) -> list[Any]:
+    """Shallow copies of native point evaluations with the IR regulator at 0
+    (``poles.regulated_parameters``): their native tree inputs (of the tree
+    program ``trees``, which must bind the regulator: fail closed, as the
+    SDK's ``V2Runtime``) are the counterterms' UV parts."""
+
+    from .poles import regulated_parameters
+
+    if regulators.ir not in trees.program["parameters"]["names"]:
+        raise ValueError(
+            f"the pole regulator {regulators.ir!r} is not a parameter of the "
+            "tree program; regenerate the process"
+        )
+    out = []
+    for evaluation in evaluations:
+        twin = copy.copy(evaluation)
+        twin.parameters = regulated_parameters(evaluation.parameters, regulators)
+        out.append(twin)
+    return out
 
 
 def _born_row(evaluation, row) -> Mapping:

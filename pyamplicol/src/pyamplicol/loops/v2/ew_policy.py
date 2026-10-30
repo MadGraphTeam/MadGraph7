@@ -864,7 +864,14 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
       is, "mixed" otherwise, "none" without such photons; with photons the
       1-based ``tagged_photon_legs`` (alpha(0) and the conversion term) and
       ``untagged_photon_legs`` (the loops' coupling, gamma_gamma in the IR
-      poles) and the request's ``external_photons_option``.
+      poles) and the request's ``external_photons_option``;
+    * ``pole_split``: how the "uv" and "ir" selections split the
+      counterterms' poles by origin (``poles.split_sector``): "regulators"
+      with the model's pole regulators ``pole_regulators`` (UV and IR names,
+      ``LoopSlice.pole_regulators``: the counterterms' UV parts at the IR
+      regulator 0, bare + counterterm UV = 0 a check), else "remainder"
+      (the field factors' UV part is what makes the renormalised virtual UV
+      finite: a model without them, or with one in ``fixed_parameters``).
     """
 
     from pyamplicol.loops.model_cms import COMPLEX_MASS, convention_record
@@ -929,7 +936,17 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
             for name, (block, lha) in codes.items()
         },
         **_photon_conventions(slice_),
+        **_pole_split(slice_),
     }
+
+
+def _pole_split(slice_: Any) -> dict[str, object]:
+    """``scheme_conventions``' pole-split entries (MS-POLES)."""
+
+    regulators = slice_.pole_regulators
+    if regulators is None:
+        return {"pole_split": "remainder"}
+    return {"pole_split": "regulators", "pole_regulators": regulators.record()}
 
 
 def _photon_conventions(slice_: Any) -> dict[str, object]:

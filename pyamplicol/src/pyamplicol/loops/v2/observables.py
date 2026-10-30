@@ -1732,6 +1732,8 @@ class _Assembly:
             if split is None
             else {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
         )
+        # A model with pole regulators: the counterterms' own UV parts.
+        local_uv = None if split is None else self._local_uv(column)
 
         def bare_of(lanes, direct, swapped):
             a = lanes.get(direct, [zero] * width)
@@ -1753,11 +1755,23 @@ class _Assembly:
                     for power in LAURENT_POWERS[:width]
                 ]
             if origins is not None:
+                counterterms_uv = None
+                if local_uv is not None:
+                    counterterms_uv = {
+                        name: laurent(
+                            [
+                                local_uv.get((name, sector, power), zero)
+                                for power in LAURENT_POWERS
+                            ]
+                        )
+                        for name in ("r2", "uv_local", FIELD_COMPONENT)
+                    }
                 parts = split_sector(
                     {name: laurent(value) for name, value in values.items()},
                     laurent(bare_of(ultraviolet, direct, swapped)),
                     FIELD_COMPONENT,
                     Laurent,
+                    counterterms_uv,
                 )
                 for origin, part in parts.items():
                     for name in COMPONENTS:
@@ -1808,6 +1822,17 @@ class _Assembly:
             poles=evaluation.mode,
             pole_origins=origins,
         )
+
+    def _local_uv(self, column: Column) -> dict | None:
+        """The UV parts of one column's counterterm and field interferences
+        (``_local`` of the point's counterterm twin at the IR regulator 0,
+        ``assemble._PointEvaluation.counterterm_twin``), or None for a model
+        without pole regulators."""
+
+        twin = self.evaluation.counterterm_twin()
+        if twin is None:
+            return None
+        return type(self)(self.plan, twin)._local(column)[1]
 
     def _local(self, column: Column):
         """Born, counterterm and field interferences of one column, complex

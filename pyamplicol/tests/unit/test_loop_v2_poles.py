@@ -783,6 +783,197 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
 
 
 @pytest.mark.loop_fast
+def test_regulated_counterterms_split_without_a_remainder():
+    """A model with pole regulators (MS-POLES): the counterterm components'
+    UV parts are given (the counterterm program at the IR regulator 0), so no
+    component takes a remainder, bare + counterterm UV poles are a sum, not
+    zero by construction, and the IR parts are the rest."""
+
+    from pyamplicol.loops.v2.assemble import Laurent
+
+    q = Fraction
+    values = {
+        "bare": Laurent(q(7), q(5), q(-2)),
+        "r2": Laurent(q(1), q(0), q(0)),
+        "uv_local": Laurent(q(0), q(-4), q(0)),
+        FIELD_COMPONENT: Laurent(q(1, 2), q(0), q(0)),
+    }
+    # e.g. a massless delta-Z (epsUV - epsIR): UV part -1, IR part +1.
+    given = {
+        "r2": Laurent(q(9), q(0), q(0)),
+        "uv_local": Laurent(q(9), q(-2), q(0)),
+        FIELD_COMPONENT: Laurent(q(9), q(-1), q(0)),
+    }
+    bare_uv = Laurent(q(7), q(3), q(0))
+    parts = split_sector(values, bare_uv, FIELD_COMPONENT, Laurent, given)
+    for name, whole in values.items():
+        u, i = parts["uv"][name], parts["ir"][name]
+        # Every part keeps the combined finite part (not the given ones).
+        assert u.finite == i.finite == whole.finite
+        assert u.single_pole + i.single_pole == whole.single_pole
+        assert u.double_pole + i.double_pole == whole.double_pole
+    assert parts["uv"]["uv_local"] == Laurent(q(0), q(-2), q(0))
+    assert parts["ir"]["uv_local"] == Laurent(q(0), q(-2), q(0))
+    assert parts["uv"][FIELD_COMPONENT] == Laurent(q(1, 2), q(-1), q(0))
+    assert parts["ir"][FIELD_COMPONENT] == Laurent(q(1, 2), q(1), q(0))
+    # bare_UV + CT_UV = 3 - 2 - 1 + 0 = 0 here, from the parts themselves.
+    assert parts["uv"]["virtual"] == Laurent(q(17, 2), q(0), q(0))
+    # A UV part that does not cancel the bare one stays visible.
+    leaky = dict(given, uv_local=Laurent(q(9), q(-1), q(0)))
+    leaked = split_sector(values, bare_uv, FIELD_COMPONENT, Laurent, leaky)
+    assert leaked["uv"]["virtual"].single_pole == 1
+    assert leaked["ir"]["virtual"].single_pole == values["bare"].single_pole - 3 + (
+        -4 + 1
+    ) + (0 + 1)
+    # Without regulators the remainder definition is unchanged.
+    assert split_sector(values, bare_uv, FIELD_COMPONENT, Laurent)["uv"][
+        "virtual"
+    ] == Laurent(q(17, 2), q(0), q(0))
+
+
+@pytest.mark.loop_fast
+def test_pole_regulators_are_found_by_code_and_need_both_adjustable():
+    """``poles.pole_regulators``: the real external parameters at UFO/SLHA
+    (TECHNICAL, 1) and (TECHNICAL, 2), whatever their names; none when one
+    is missing, duplicated, complex or fixed; the regulated point sets the IR
+    one to 0 and keeps every other value."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.poles import (
+        PoleRegulators,
+        pole_regulators,
+        regulated_parameters,
+    )
+
+    def record(name, block, code, nature="external", kind="real"):
+        return SimpleNamespace(
+            name=name,
+            nature=nature,
+            parameter_type=kind,
+            lhablock=block,
+            lhacode=(code,),
+        )
+
+    model = [
+        record("MU_R", "LOOP", 666),
+        record("xUV", "technical", 1),
+        record("xIR", "TECHNICAL", 2),
+        record("LogSwitch", "TECHNICAL", 3),
+        record("ee", None, 0, nature="internal"),
+    ]
+    found = pole_regulators(model)
+    assert found == PoleRegulators("xUV", "xIR")
+    assert PoleRegulators.from_record(found.record()) == found
+    assert PoleRegulators.from_record(None) is None
+    assert pole_regulators(model, fixed={"xIR": "1"}) is None
+    assert pole_regulators(model[:2]) is None
+    assert pole_regulators([*model, record("yIR", "TECHNICAL", 2)]) is None
+    assert (
+        pole_regulators([model[1], record("xIR", "TECHNICAL", 2, kind="complex")])
+        is None
+    )
+    assert pole_regulators([record("MU_R", "LOOP", 1)]) is None
+    values = {"xUV": "1.5", "xIR": "1", "MU_R": "91"}
+    assert regulated_parameters(values, found) == {
+        "xUV": "1.5",
+        "xIR": "0",
+        "MU_R": "91",
+    }
+    assert values["xIR"] == "1"
+
+
+@pytest.mark.loop_fast
+def test_regulated_points_need_the_regulator_bound():
+    """``plan_export._regulated``: the native lanes' points at the IR
+    regulator 0 (shallow copies, the originals unchanged) fail closed when
+    the tree program does not bind the regulator (it would change nothing,
+    so the counterterms' UV part would silently be all of them)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.plan_export import _regulated
+    from pyamplicol.loops.v2.poles import PoleRegulators
+
+    trees = SimpleNamespace(program={"parameters": {"names": ["xUV", "xIR", "MU_R"]}})
+    point = SimpleNamespace(parameters={"xIR": "1", "MU_R": "91"}, scale=2)
+    (twin,) = _regulated([point], PoleRegulators("xUV", "xIR"), trees)
+    assert twin.parameters == {"xIR": "0", "MU_R": "91"} and twin.scale == 2
+    assert point.parameters["xIR"] == "1"
+    with pytest.raises(ValueError, match="not a parameter of the tree program"):
+        _regulated([point], PoleRegulators("xUV", "yIR"), trees)
+
+
+@pytest.mark.loop_fast
+def test_pole_regulators_are_read_only_by_pole_coefficients():
+    """``poles.model_pole_regulators``, the structural guard: the parameters
+    at the regulator codes count only when nothing but the pole coefficients
+    of Laurent values reads them (a model using those codes otherwise has
+    none, so no lane sets them to 0); ``pole_regulators`` with the raw
+    model requires the same pair."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.poles import (
+        PoleRegulators,
+        model_pole_regulators,
+        pole_regulators,
+    )
+
+    def raw(parameter="xUV", coupling="g", finite="g"):
+        values = {
+            ("parameters", 0): {"kind": "expression", "expression": "1.0"},
+            ("parameters", 1): {"kind": "expression", "expression": "1.0"},
+            ("parameters", 2): {"kind": "expression", "expression": f"2*{parameter}"},
+            ("counterterm_parameters", 0): {
+                "kind": "laurent",
+                "terms": ((-1, "g*(xUV - xIR)"), (0, finite)),
+            },
+            ("couplings", 0): {"kind": "expression", "expression": coupling},
+        }
+
+        def external(index, name, code):
+            fields = {"nature": "external", "type": "real", "lhablock": "TECHNICAL"}
+            return {"id": index, "name": name, "fields": {**fields, "lhacode": [code]}}
+
+        collections = {
+            "parameters": [
+                external(0, "xUV", 1),
+                external(1, "xIR", 2),
+                {"id": 2, "name": "g", "fields": {"nature": "internal"}},
+            ],
+            "counterterm_parameters": [{"id": 0, "name": "dZ", "fields": {}}],
+            "couplings": [{"id": 0, "name": "GC", "fields": {}}],
+        }
+        return SimpleNamespace(
+            collections=collections,
+            exact_value=lambda collection, index: values[collection, index],
+        )
+
+    found = PoleRegulators("xUV", "xIR")
+    assert model_pole_regulators(raw(parameter="1")) == found
+    assert model_pole_regulators(None) is None
+    # A tree parameter, a coupling or a finite part reads one: none.
+    assert model_pole_regulators(raw()) is None
+    assert model_pole_regulators(raw(parameter="1", coupling="xIR*g")) is None
+    assert model_pole_regulators(raw(parameter="1", finite="xIR")) is None
+    # Attribute access and longer names are not reads.
+    assert model_pole_regulators(raw(parameter="1", coupling="a.xIR + xIRb")) == found
+    compiled = [
+        SimpleNamespace(
+            name=name,
+            nature="external",
+            parameter_type="real",
+            lhablock="TECHNICAL",
+            lhacode=(code,),
+        )
+        for name, code in (("xUV", 1), ("xIR", 2))
+    ]
+    assert pole_regulators(compiled, (), raw(parameter="1")) == found
+    assert pole_regulators(compiled, (), raw()) is None
+
+
+@pytest.mark.loop_fast
 def test_catani_takes_the_masses_from_the_model():
     """The legs' masses are the model's runtime values, not the p^2 of the
     given momenta: with rounded massless momenta (p^2 = -1e-17 relative) the
