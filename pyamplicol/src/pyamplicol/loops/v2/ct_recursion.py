@@ -140,11 +140,17 @@ _PREFIX = "PYAMPLICOL_CT_"
 class UnloweredCountertermError(NotImplementedError):
     """A request admits a counterterm rule its lowered model does not hold."""
 
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "unlowered-counterterm"
+
 
 class AnomalousVetoError(UnloweredCountertermError):
     """A request reaches a Levi-Civita counterterm cell that cancels with
     every flavour admitted but not under its ``particle_veto`` ([U2]: refused
     by default; ``allow_anomalous_veto`` lowers it)."""
+
+    # The listed admission refusal (``refusals.LOOP_ADMISSION_REFUSALS``).
+    refusal_key = "anomalous-veto"
 
 
 # The override of an anomalous veto, as the refusals name it.
@@ -156,6 +162,9 @@ ANOMALOUS_VETO_OVERRIDE = (
 
 class CountertermCouplingError(NotImplementedError):
     """A CT coupling coefficient the tree model cannot express exactly."""
+
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "counterterm-coupling"
 
 
 # --------------------------------------------------------------------- structures

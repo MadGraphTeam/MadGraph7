@@ -167,6 +167,11 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         # ``test_loop_v2_ew_policy.py``).
         "external-photon-scheme",
         "external-photon-legs",
+        # m-sm MS-MODEL: the typed electroweak gauge policy, the antiparticle
+        # metadata and the [U2] veto (``test_loop_v2_refusal_keys.py``).
+        "feynman-gauge",
+        "antiparticle-metadata",
+        "anomalous-veto",
     ]
     with pytest.raises(ValueError, match="unknown loop admission refusal"):
         LoopRequestUnsupported("lc-downgrade", "a projection")

@@ -7692,6 +7692,11 @@ class GenerationBackend:
                     )
                 )
                 if compiled is None:
+                    # A Python-2 UFO compiles in no cache: its listed refusal
+                    # (models.source_refusals) is found without importing it.
+                    from ..models.source_refusals import refuse_python2_source
+
+                    refuse_python2_source(Path(source_input))
                     raise ModelError(
                         "dry-run does not compile external model sources; call "
                         "ModelSource.compile() first and pass the returned "

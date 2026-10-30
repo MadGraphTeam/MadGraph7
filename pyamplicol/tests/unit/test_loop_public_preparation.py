@@ -37,8 +37,10 @@ def gmu_source(loop_gmu_ufo, tmp_path_factory):
         loop_gmu_ufo, restriction="full", cache_dir=cache, require_supported=False
     )
     assert compiled.raw_loop_model is not None
-    assert not compiled.supported
-    assert tuple(issue.code for issue in compiled.issues) == ("unknown-functions",)
+    # The NLO UFO scalar helpers (arg, crecms, grreglog, recms, regsqrt) are
+    # registered: the tree model of the G_mu source is supported (MS-MODEL).
+    assert compiled.supported
+    assert compiled.issues == ()
     reference = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/real_mass_ew_quarks.json"
@@ -140,12 +142,10 @@ def test_loop_model_resolution_retains_shared_exclusions(
 
 
 @pytest.mark.parametrize("planning", (True, False))
-def test_default_tree_resolution_still_rejects_actual_gmu_registry_issues(
-    gmu_source, planning
-):
+def test_default_tree_resolution_accepts_the_gmu_source(gmu_source, planning):
     backend = GenerationBackend(
         resolve_config(_configuration(gmu_source, tree=True)), None
     )
     resolver = backend._resolve_model_for_plan if planning else backend._resolve_model
-    with pytest.raises(ModelError, match="unknown-functions"):
-        resolver(_compiled_model_from_payload(gmu_source.compiled))
+    resolved = resolver(_compiled_model_from_payload(gmu_source.compiled))
+    assert resolved.compiled.supported

@@ -10,7 +10,12 @@ after the structural source repairs) have one of its recorded digests
 (``source_declarations_digest``), never to a model by name or path. The
 shipped copy of loop_sm (``assets/models/ufo/loop_sm``), the MG5_aMC 3.7.0
 directory itself and every restriction of either have the same digest: a
-restriction lives in the source's metadata, not in its declarations.
+restriction lives in the source's metadata, not in its declarations. The
+same holds for H.-S. Shao's QCD+QED loop models loop_qcd_qed_sm and
+loop_qcd_qed_sm_Gmu (MG5_aMC's online model database; the G_mu download's
+Python-3 conversion changes no declaration), whose digests are those after
+the Goldstone-flag source repair. A modified copy (e.g. a massive-muon
+variant) has other declarations and therefore no profile.
 
 An explicit ``[loop.model]`` or a declaration in the model's own metadata
 always wins (``models.loop_declaration.resolve_loop_model_declaration``). Like every
@@ -58,11 +63,44 @@ LOOP_SM_SCHEME = LoopSchemeDeclaration(
     finite_restoration="source-UFO-local-rules",
     model_convention="loop_sm lhv=1 supplied QCD rules",
 )
+
+
+# H.-S. Shao's NLOCT models with QCD and QED corrections (arXiv:1804.10017),
+# as MadLoop uses them: complete UV and R2 counterterms of both, MadLoop's
+# conventions, on-shell electroweak renormalisation in the model's input
+# scheme (alpha(MZ) for loop_qcd_qed_sm, G_mu for loop_qcd_qed_sm_Gmu), real
+# on-shell masses. The declaration the electroweak tests state in their cards.
+def _qcd_qed_scheme(inputs: str) -> LoopSchemeDeclaration:
+    return LoopSchemeDeclaration(
+        dimensional_regularization="HV",
+        external_states="physical-four-dimensional",
+        gamma5="source-UFO-four-dimensional-prescription",
+        renormalization=(
+            "source-UFO on-shell electroweak and mass-dependent QCD decoupling"
+        ),
+        mass_scheme="real-on-shell",
+        finite_restoration="source-UFO-local-rules",
+        model_convention=(f"loop_qcd_qed_sm{inputs} lhv=1 supplied QCD and QED rules"),
+    )
+
+
+LOOP_QCD_QED_SM_SCHEME = _qcd_qed_scheme("")
+LOOP_QCD_QED_SM_GMU_SCHEME = _qcd_qed_scheme("_Gmu")
 SHIPPED_LOOP_PROFILES = (
     ShippedLoopProfile(
         "MG5_aMC 3.7.0 models/loop_sm",
         ("e2512823936595ee4848974146d20b1290de6ecd7cf48c5d03bb47e1466b1a77",),
         LoopModelDeclaration(LOOP_SM_SCHEME, ("QCD",), True, True),
+    ),
+    ShippedLoopProfile(
+        "MG5_aMC model database loop_qcd_qed_sm (alpha(MZ) scheme)",
+        ("1b9f65500b248fb8ecf4a28dae1258a1f48613403482a72a0c794d7cb3964f16",),
+        LoopModelDeclaration(LOOP_QCD_QED_SM_SCHEME, ("QCD", "QED"), True, True),
+    ),
+    ShippedLoopProfile(
+        "MG5_aMC model database loop_qcd_qed_sm_Gmu (G_mu scheme)",
+        ("588cb07a2e1691f8ee1038613f5fe8c4b768d68ad3c1df42b2ea28c8b2daeb6f",),
+        LoopModelDeclaration(LOOP_QCD_QED_SM_GMU_SCHEME, ("QCD", "QED"), True, True),
     ),
 )
 
@@ -100,6 +138,8 @@ def shipped_loop_profile(raw: RawLoopModel) -> ShippedLoopProfile | None:
 
 
 __all__ = [
+    "LOOP_QCD_QED_SM_GMU_SCHEME",
+    "LOOP_QCD_QED_SM_SCHEME",
     "LOOP_SM_SCHEME",
     "SHIPPED_LOOP_PROFILES",
     "ShippedLoopProfile",
