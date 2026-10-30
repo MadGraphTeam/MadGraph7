@@ -1359,7 +1359,29 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
 
     # AV - overload export_cpp.UFOModelConverterCPP method (improve formatting)
     def write_set_parameters(self, params):
-        res = self.super_write_set_parameters_donotfixMajorana(params)
+        # Independent, SLHA-card-level parameters (self.params_ext_names) get
+        # an inline check for a runtime override (e.g. set by name via the
+        # UMAMI set_parameter interface) ahead of their normal SLHA-driven
+        # assignment; every other parameter/coupling is unaffected. NB: this
+        # must NOT be folded into super_write_set_parameters_donotfixMajorana,
+        # since write_hardcoded_parameters() calls that method directly and
+        # requires each parameter's expr to remain a single plain assignment.
+        res_strings = []
+        for param in params:
+            # 'aS' is excluded here even though it is SLHA-card-level: its
+            # assignment is entirely commented out below (by name-matching on
+            # a plain "  aS = ..." line), since this backend always retrieves
+            # alphaS event-by-event (as G) rather than from the param card.
+            # Wrapping it in an override check would break that name-match.
+            if param.name in self.params_ext_names and param.name != 'aS':
+                res_strings.append(
+                    'if (m_param_overrides.find("%s") != m_param_overrides.end())\n'
+                    '%s = m_param_overrides["%s"];\nelse\n%s' %
+                    (param.name, param.name, param.name, param.expr))
+            else:
+                res_strings.append(param.expr)
+        res = "\n".join(res_strings)
+        res = res.replace('ABS(','std::abs(') # for SMEFT #614 and #616
         res = res.replace('(','( ')
         res = res.replace(')',' )')
         res = res.replace('+',' + ')
@@ -1598,6 +1620,31 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         replace_dict['set_independent_couplings'] = self.write_set_parameters(self.coups_indep)
         replace_dict['set_dependent_parameters'] = self.write_set_parameters(self.params_dep)
         replace_dict['set_dependent_couplings'] = self.write_set_parameters(list(self.coups_dep.values()))
+        # NB: unlike the plain (mg7_v5) backend, dependent (aS-dependent) parameters
+        # and couplings are NOT persistent members of this Parameters class at all
+        # (their declarations are commented out above): they are recomputed fresh
+        # every event batch by computeDependentCouplings(), bypassing the Parameters
+        # singleton entirely. Only independent parameters/couplings (and never 'aS',
+        # whose declaration is likewise commented out) can be registered here.
+        # Two separate calls/maps, not one combined list into one map: model
+        # parameters (mdl_*) always stay plain cxsmpl<double> (registered
+        # into m_complex_model_params below), while independent couplings
+        # (GC_*) are cxtype -- FPTYPE-templated, so possibly cxsmpl<float>
+        # -- and go into m_complex_params instead. A single combined
+        # registration into one map only compiled by accident at FPTYPE=m/d
+        # (where cxtype happens to also be cxsmpl<double>) and failed to
+        # compile at FPTYPE=f -- see write_register_parameters()'s own doc
+        # comment.
+        replace_dict['register_parameters'] = \
+                               self.write_register_parameters(
+                                   [p for p in self.params_indep if p.name != 'aS'],
+                                   [n for n in self.params_ext_names if n != 'aS'],
+                                   complex_map_name='m_complex_model_params') + \
+                               '\n' + \
+                               self.write_register_parameters(self.coups_indep, [])
+        replace_dict['register_slha_keys'] = \
+                               self.write_register_slha_keys(
+                                   [e for e in self.params_ext_slha if e[0] != 'aS'])
         print_params_indep = [ line.replace('std::cout','//std::cout') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)'
                                if '"aS =' in line else
                                line for line in self.write_print_parameters(self.params_indep).split('\n') ]
@@ -1985,6 +2032,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
         # hardcoded per-process like the rest of calculate_jamps.
         self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
+        replace_dict['refreshExternalMasses_lines'] = \
+                               self.get_refresh_external_masses_lines(self.matrix_elements[0])
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
         replace_dict['hel_amps_cc'] = '#include \"HelAmps_%s.cc\"' % self.model_name # AV
@@ -2655,6 +2704,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for part in matrix_element.get_external_wavefunctions():
             initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
         return '\n'.join(initProc_lines)
+
+    # Companion to get_initProc_lines: the same external-mass list, but pushed into an
+    # arbitrary "masses" vector instead of m_masses, for CPPProcess::refreshExternalMasses()
+    # (called after umami_set_parameter() overrides a mass so UMAMI_META_MASSES stays in sync;
+    # see madgraph/iolibs/template_files/madmatrix/umami.cc).
+    def get_refresh_external_masses_lines(self, matrix_element):
+        """Get refreshExternalMasses_lines for function definition for CPPProcess::refreshExternalMasses"""
+        lines = ['    // Set external particle masses for this matrix element']
+        for part in matrix_element.get_external_wavefunctions():
+            lines.append('    masses.push_back( m_pars->%s );' % part.get('mass'))
+        return '\n'.join(lines)
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix helicity order and improve formatting)
     def get_helicity_matrix(self, matrix_element):
@@ -3386,10 +3446,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # part of the call key, but the leg number and the mass are wf's own:
             # argument is whichever wavefunction first had this key.
             if argument.get('offshell') and str(wf.get('mass')).upper() != 'ZERO':
-                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), cHel[ihel][%%d],' \
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), hel_sv[%%d],' \
                     % (wf.get('number_external') - 1)
             else:
-                call = call + 'm_pars->%s, cHel[ihel][%d],'
+                call = call + 'm_pars->%s, hel_sv[%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'

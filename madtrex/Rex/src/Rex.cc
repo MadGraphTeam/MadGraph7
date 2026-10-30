@@ -8,12 +8,16 @@
  *
  ***/
 //
-// *R*apid *e*vent e*x*traction Version 1.0.0
+// *R*apid *e*vent e*x*traction Version 1.1.0
 // Rex is a C++ library for parsing and manipulating Les Houches Event-format (LHE) files.
-// It is designed to fast and lightweight, in comparison to internal parsers in programs like MadGraph.
-// Currently, Rex is in development and may not contain all features necessary for full LHE parsing.
+// It is designed to fast and lightweight, and generic, allowing usage as an LHE parser
+// and parton-level event manipulator for whatever purpose the user desires.
+// Rex functionality is generalised through std::function-based interfaces
+// which can be generated from customisable constructors for full generality
+// and flexibility, while still providing a simple interface for typical use cases.
 //
-// Copyright © 2023-2026 CERN, CERN Author Zenny Wettersten.
+// Copyright © 2023-2025 CERN, CERN Author Zenny Wettersten.
+// Copyright © 2025-2026 Zenny Wettersten.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
 // All rights not expressly granted are reserved.
 //
@@ -39,6 +43,20 @@ namespace REX
         std::cout << "\n\033[1;33mWarning: ";
         std::cout << message;
         std::cout << "\033[0m\n";
+    }
+
+    void verbosity::print(const std::string &msg, bool force) const
+    {
+        if (!force && !this->is_verbose())
+            return;
+        std::cout << msg << std::endl;
+    }
+
+    void verbosity::warn(const std::string &msg, bool force) const
+    {
+        if (!force && !this->is_verbose())
+            return;
+        REX::warning(msg);
     }
 
     // Explicit instantiation of templated functions and structs/classes
@@ -684,6 +702,11 @@ namespace REX
 
     size_t event::n_wgts() const { return wgts_.size(); }
 
+    int &event::helicity() { return helicity_; }
+    const int &event::helicity() const { return helicity_; }
+    int &event::flavor() { return flavor_; }
+    const int &event::flavor() const { return flavor_; }
+
     event &event::set_n(size_t n_particles)
     {
         if (n_particles != this->n_)
@@ -843,6 +866,30 @@ namespace REX
         this->wgts_.push_back(w);
         if (!id.empty())
             this->weight_ids->push_back(id);
+        return *this;
+    }
+
+    event &event::set_helicity(int h)
+    {
+        this->helicity_ = h;
+        return *this;
+    }
+
+    event &event::set_helicity(event_hash_fn hash_fn)
+    {
+        this->helicity_ = hash_fn(*this);
+        return *this;
+    }
+
+    event &event::set_flavor(int f)
+    {
+        this->flavor_ = f;
+        return *this;
+    }
+
+    event &event::set_flavor(event_hash_fn hash_fn)
+    {
+        this->flavor_ = hash_fn(*this);
         return *this;
     }
 
@@ -2227,6 +2274,8 @@ namespace REX
             if (this->comparator(*ev, e))
             {
                 e.set_indices(*ev);
+                if(this->helicity_index) e.set_helicity(this->helicity_index);
+                if(this->flavor_index) e.set_flavor(this->flavor_index);
                 return true;
             }
         }
@@ -2663,6 +2712,350 @@ namespace REX
         return sorter;
     }
 
+    // Mirrors REX::tea::reweightor::calc_norm()'s IDWTUP-driven branches
+    // (see teaRex.cc), generalised to work from a bare initNode + event
+    // list instead of a reweightor's own accumulated processes/xSec_
+    // members. |idWgt_| == 3/4 are the "properly unweighted" LHEF
+    // conventions, where the physical per-event weight isn't event::weight()
+    // itself but is derived from the header cross section (or, for ==4,
+    // implicitly uniform); anything else is treated as a weighted sample
+    // and calibrated by matching the summed raw weight to the header xSec_
+    double weight_norm(const initNode &init, const std::vector<std::shared_ptr<event>> &evts, verbosity *verbose)
+    {
+        double accumulated = 0.0;
+        size_t n = 0;
+        for (const auto &ev : evts)
+        {
+            if (!ev)
+                continue;
+            accumulated += ev->weight_;
+            ++n;
+        }
+        if (n == 0)
+            throw std::runtime_error("weight_norm: no valid events given, cannot calculate normalisation");
+
+        double xSec = std::accumulate(init.xSec_.begin(), init.xSec_.end(), 0.0);
+        if (xSec == 0.0)
+            xSec = accumulated / double(n); // mirrors reweightor::calc_xSec_from_weights()'s fallback estimate
+
+        if (std::abs(init.idWgt_) == 3)
+            return xSec / double(n);
+        if (std::abs(init.idWgt_) == 4)
+            return 1.0 / double(n);
+
+        if (verbose && (std::abs(init.idWgt_) > 2 || init.idWgt_ == 0))
+            verbose->warn("weight_norm: idWgt is not set to a value defined in the LHE standard. Assuming weighted events.");
+        if (accumulated == 0.0)
+            throw std::runtime_error("weight_norm: total weight is zero, cannot calculate normalisation");
+        return xSec / accumulated;
+    }
+
+    void histogram::place(std::shared_ptr<event> e, size_t index)
+    {
+        double bw = e ? e->weight() : 1.0;
+        this->entries.push_back(entry{std::move(e), index, bw});
+    }
+
+    histogram::histogram(const std::vector<std::shared_ptr<event>> &evts, const std::vector<size_t> &indices)
+    {
+        if (evts.size() != indices.size())
+            throw std::invalid_argument("histogram::histogram: events and indices must be the same size");
+        this->entries.reserve(evts.size());
+        for (size_t i = 0; i < evts.size(); ++i)
+            this->place(evts[i], indices[i]);
+        this->sync_wgts();
+    }
+
+    histogram::histogram(const std::vector<std::shared_ptr<event>> &evts, eventSorter sorter)
+    {
+        this->entries.reserve(evts.size());
+        bool unmatched = false;
+        for (size_t i = 0; i < evts.size(); ++i)
+        {
+            size_t idx = sorter.position(evts[i]);
+            if (idx == npos)
+            {
+                idx = sorter.size();
+                unmatched = true;
+            }
+            this->place(evts[i], idx);
+        }
+        this->n_bins = sorter.size() + (unmatched ? 1 : 0);
+        this->sync_wgts();
+    }
+
+    histogram::histogram(const std::vector<std::shared_ptr<event>> &evts, event_hash_fn hash)
+    {
+        if (!hash)
+            throw std::invalid_argument("histogram::histogram: hash function is not callable");
+        this->entries.reserve(evts.size());
+        for (size_t i = 0; i < evts.size(); ++i)
+        {
+            size_t idx = evts[i] ? hash(*evts[i]) : npos;
+            this->place(evts[i], idx);
+        }
+        this->sync_wgts();
+    }
+
+    histogram::histogram(const std::vector<std::shared_ptr<event>> &evts, std::vector<eventBelongs> e_sets)
+        : histogram(evts, eventSorter(std::move(e_sets))) {}
+
+    histogram::histogram(const std::vector<std::shared_ptr<event>> &evts, std::vector<event_bool_fn> comps)
+        : histogram(evts, eventSorter(std::move(comps))) {}
+
+    histogram &histogram::add_event(std::shared_ptr<event> e, size_t index)
+    {
+        this->place(std::move(e), index);
+        return *this;
+    }
+
+    histogram &histogram::add_event(std::shared_ptr<event> e, eventSorter sorter)
+    {
+        size_t idx = sorter.position(e);
+        bool unmatched = (idx == npos);
+        if (unmatched)
+            idx = sorter.size();
+        this->place(std::move(e), idx);
+        size_t want = sorter.size() + (unmatched ? 1 : 0);
+        if (this->n_bins == npos || want > this->n_bins)
+            this->n_bins = want;
+        return *this;
+    }
+
+    histogram &histogram::add_event(std::shared_ptr<event> e, event_hash_fn hash)
+    {
+        if (!hash)
+            throw std::invalid_argument("histogram::add_event: hash function is not callable");
+        size_t idx = e ? hash(*e) : npos;
+        this->place(std::move(e), idx);
+        return *this;
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, const std::vector<size_t> &indices)
+    {
+        if (evts.size() != indices.size())
+            throw std::invalid_argument("histogram::add_events: events and indices must be the same size");
+        this->entries.reserve(this->entries.size() + evts.size());
+        for (size_t i = 0; i < evts.size(); ++i)
+            this->place(evts[i], indices[i]);
+        this->rebuild();
+        return *this;
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, eventSorter sorter)
+    {
+        this->entries.reserve(this->entries.size() + evts.size());
+        bool unmatched = false;
+        for (size_t i = 0; i < evts.size(); ++i)
+        {
+            size_t idx = sorter.position(evts[i]);
+            if (idx == npos)
+            {
+                idx = sorter.size();
+                unmatched = true;
+            }
+            this->place(evts[i], idx);
+        }
+        size_t want = sorter.size() + (unmatched ? 1 : 0);
+        if (this->n_bins == npos || want > this->n_bins)
+            this->n_bins = want;
+        this->rebuild();
+        return *this;
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, event_hash_fn hash)
+    {
+        if (!hash)
+            throw std::invalid_argument("histogram::add_events: hash function is not callable");
+        this->entries.reserve(this->entries.size() + evts.size());
+        for (size_t i = 0; i < evts.size(); ++i)
+        {
+            size_t idx = evts[i] ? hash(*evts[i]) : npos;
+            this->place(evts[i], idx);
+        }
+        this->rebuild();
+        return *this;
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, const eventBelongs &e_set)
+    {
+        return this->add_events(evts, eventSorter(e_set));
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, event_bool_fn comp)
+    {
+        return this->add_events(evts, eventSorter(comp));
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, cevent_bool_fn comp)
+    {
+        return this->add_events(evts, eventSorter(comp));
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, std::vector<eventBelongs> e_sets)
+    {
+        return this->add_events(evts, eventSorter(std::move(e_sets)));
+    }
+
+    histogram &histogram::add_events(const std::vector<std::shared_ptr<event>> &evts, std::vector<event_bool_fn> comps)
+    {
+        return this->add_events(evts, eventSorter(std::move(comps)));
+    }
+
+    // Recomputes nominal (per-bin unweighted counts) and mult[0] (the base
+    // sample's own deviation from that unweighted assumption) from the
+    // current entries. Already-synced mult[k>=1] rows are left untouched,
+    // only grown (never shrunk) to match a bin count that has grown since
+    // they were last computed.
+    void histogram::rebuild()
+    {
+        size_t nb = 0;
+        if (this->n_bins != npos)
+        {
+            nb = this->n_bins;
+        }
+        else
+        {
+            for (const auto &en : this->entries)
+                if (en.index != npos)
+                    nb = std::max(nb, en.index + 1);
+        }
+
+        this->nominal.assign(nb, 0);
+        std::vector<double> sum_base(nb, 0.0);
+        double total_base = 0.0;
+        size_t n_valid = 0;
+        for (const auto &en : this->entries)
+        {
+            if (en.index == npos || en.index >= nb)
+                continue;
+            ++this->nominal[en.index];
+            sum_base[en.index] += en.base_weight;
+            total_base += en.base_weight;
+            ++n_valid;
+        }
+
+        if (this->mult.empty())
+            this->mult.emplace_back();
+        this->mult[0].assign(nb, 0.0);
+        for (size_t k = 1; k < this->mult.size(); ++k)
+            if (this->mult[k].size() < nb)
+                this->mult[k].resize(nb, 0.0);
+
+        if (n_valid == 0)
+            return;
+        double w_bar = total_base / double(n_valid);
+        if (w_bar == 0.0)
+            return;
+        for (size_t b = 0; b < nb; ++b)
+            if (this->nominal[b] > 0)
+                this->mult[0][b] = (sum_base[b] / double(this->nominal[b])) / w_bar;
+    }
+
+    histogram &histogram::normalise(const initNode &init)
+    {
+        std::vector<std::shared_ptr<event>> evts;
+        evts.reserve(this->entries.size());
+        for (const auto &en : this->entries)
+            if (en.evt)
+                evts.push_back(en.evt);
+        return this->set_norm(weight_norm(init, evts, &this->verbose));
+    }
+
+    histogram &histogram::set_norm(double norm)
+    {
+        if (norm != this->norm)
+        {
+            this->norm = norm;
+            // Every already-synced row was computed with the old norm, and
+            // there's no way to retroactively rescale it without redoing
+            // the per-event division -- so just redo it: drop back to the
+            // base-sample row and re-sync from scratch.
+            this->n_wgts_synced = 0;
+            this->mult.resize(1);
+            this->sync_wgts();
+        }
+        return *this;
+    }
+
+    // Appends, per synced-past bin, one mult row for every event::wgts_
+    // column beyond n_wgts_synced. All events are assumed to share the
+    // same wgts_ length at any given time (as they do after a normal
+    // reweighting iteration appends one weight per event); the minimum
+    // length actually observed is used as the new sync point, so a
+    // straggler with fewer weights than the rest simply caps how far this
+    // call advances rather than being skipped
+    bool histogram::sync_wgts()
+    {
+        this->rebuild();
+        if (this->entries.empty())
+            return true;
+        size_t min_n = npos;
+        for (const auto &en : this->entries)
+        {
+            if (!en.evt)
+                continue;
+            min_n = std::min(min_n, en.evt->n_wgts());
+        }
+        if (min_n == npos) // no valid (non-null) events to sync from
+            return true;
+        if (min_n < this->n_wgts_synced)
+        {
+            this->verbose.warn("histogram::sync_wgts: an event now has fewer weights (" + std::to_string(min_n) +
+                               ") than were already synced into this histogram (" + std::to_string(this->n_wgts_synced) +
+                               "). Refusing to sync -- histogram is left unmodified.");
+            return false;
+        }
+        if (min_n == this->n_wgts_synced)
+            return true; // nothing new to append
+
+        size_t nb = this->bins();
+        for (size_t k = this->n_wgts_synced; k < min_n; ++k)
+        {
+            std::vector<double> sum(nb, 0.0);
+            for (const auto &en : this->entries)
+            {
+                if (!en.evt || en.index == npos || en.index >= nb)
+                    continue;
+                if (en.base_weight == 0.0)
+                    continue; // nothing to normalise this event's ratio against
+                double w_new = en.evt->wgts()[k] * this->norm;
+                sum[en.index] += w_new / en.base_weight;
+            }
+            std::vector<double> row(nb, 0.0);
+            for (size_t b = 0; b < nb; ++b)
+                if (this->nominal[b] > 0)
+                    row[b] = sum[b] / double(this->nominal[b]);
+            this->mult.push_back(std::move(row));
+        }
+        this->n_wgts_synced = min_n;
+        return true;
+    }
+
+    size_t histogram::size() const { return this->entries.size(); }
+    size_t histogram::bins() const { return this->nominal.size(); }
+    size_t histogram::rows() const { return this->mult.size(); }
+    const std::vector<size_t> &histogram::counts() const { return this->nominal; }
+
+    std::vector<double> histogram::heights(size_t row) const
+    {
+        if (row >= this->mult.size())
+            throw std::out_of_range("histogram::heights: no such weight set");
+        std::vector<double> out(this->nominal.size(), 0.0);
+        for (size_t b = 0; b < out.size(); ++b)
+            out[b] = double(this->nominal[b]) * this->mult[row][b];
+        return out;
+    }
+
+    std::vector<std::vector<double>> histogram::heights() const
+    {
+        std::vector<std::vector<double>> out;
+        out.reserve(this->mult.size());
+        for (size_t row = 0; row < this->mult.size(); ++row)
+            out.push_back(this->heights(row));
+        return out;
+    }
+
     process::process(std::vector<std::shared_ptr<event>> evs, bool filter_partons)
     {
         this->filter = filter_partons;
@@ -2672,6 +3065,20 @@ namespace REX
     process::process(std::vector<event> evs, bool filter_partons)
     {
         this->filter = filter_partons;
+        this->add_event(evs);
+    }
+
+    process::process(std::vector<std::shared_ptr<event>> evs, bool filter_partons, bool column_major)
+    {
+        this->filter = filter_partons;
+        this->column_major = column_major;
+        this->add_event(evs);
+    }
+
+    process::process(std::vector<event> evs, bool filter_partons, bool column_major)
+    {
+        this->filter = filter_partons;
+        this->column_major = column_major;
         this->add_event(evs);
     }
 
@@ -2703,6 +3110,11 @@ namespace REX
             this->icol_.push_back(prtcl.icol_);
         }
         this->wgts_.push_back(ev.wgts_);
+        // -1 ("no fixed helicity") is kept too: skipping such events would
+        // leave helicity_ shorter than the event count for a process mixing
+        // events with and without helicities, failing validate()
+        this->helicity_.push_back(ev.helicity_);
+        if(ev.flavor_ != -1) this->flavor_.push_back(ev.flavor_);
         this->add_extra(ev.extra);
         this->events.push_back(std::make_shared<event>(ev));
         return *this;
@@ -2736,6 +3148,8 @@ namespace REX
             this->icol_.push_back(prtcl.icol_);
         }
         this->wgts_.push_back(ev->wgts_);
+        this->helicity_.push_back(ev->helicity_);
+        if(ev->flavor_ != -1) this->flavor_.push_back(ev->flavor_);
         this->add_extra(ev->extra);
         this->events.push_back(ev);
         return *this;
@@ -2770,6 +3184,8 @@ namespace REX
             this->icol_.push_back(prtcl.icol_);
         }
         this->wgts_.push_back(ev.wgts_);
+        this->helicity_.push_back(ev.helicity_);
+        if(ev.flavor_ != -1) this->flavor_.push_back(ev.flavor_);
         this->add_extra(ev.extra);
         this->events.push_back(std::make_shared<event>(ev));
         return *this;
@@ -2804,8 +3220,268 @@ namespace REX
             this->icol_.push_back(prtcl.icol_);
         }
         this->wgts_.push_back(ev->wgts_);
+        this->helicity_.push_back(ev->helicity_);
+        if(ev->flavor_ != -1) this->flavor_.push_back(ev->flavor_);
         this->add_extra(ev->extra);
         this->events.push_back(ev);
+        return *this;
+    }
+
+    process &process::add_event_umami_filtered(const std::vector<event> &evs)
+    {
+        for (const auto &ev : evs)
+        {
+            auto ev_view = ev.view();
+            auto summed_n = (this->n_summed.empty() ? 0 : this->n_summed.back()) + ev_view.size();
+            this->n_.push_back(ev_view.size());
+            this->n_summed.push_back(summed_n);
+            this->proc_id_.push_back(ev.proc_id_);
+            this->weight_.push_back(ev.weight_);
+            this->scale_.push_back(ev.scale_);
+            auto muF = (ev.muF_ == 0.0) ? ev.scale_ : ev.muF_;
+            auto muR = (ev.muR_ == 0.0) ? ev.scale_ : ev.muR_;
+            auto muPS = (ev.muPS_ == 0.0) ? ev.scale_ : ev.muPS_;
+            this->muF_.push_back(muF);
+            this->muR_.push_back(muR);
+            this->muPS_.push_back(muPS);
+            this->alphaEW_.push_back(ev.alphaEW_);
+            this->alphaS_.push_back(ev.alphaS_);
+            this->wgts_.push_back(ev.wgts_);
+            this->helicity_.push_back(ev.helicity_);
+            if(ev.flavor_ != -1) this->flavor_.push_back(ev.flavor_);
+            this->add_extra(ev.extra);
+            this->events.push_back(std::make_shared<event>(ev));
+        }
+        auto n_sum = this->n_summed.empty() ? 0 : this->n_summed.back();
+        auto n_prt = this->n_.empty() ? 0 : this->n_[0];
+        auto n_evt = this->n_.size();
+        if(n_sum == 0) return *this;
+        if(n_prt == 0) return *this;
+        if (n_evt == 0) return *this;
+        for (size_t i = 0; i < this->n_.size(); ++i)
+        {
+            if (this->n_[i] != n_prt)
+            {
+                throw std::runtime_error("process::add_event_umami_filtered: all events must have the same number of particles");
+            }
+        }
+        this->umami_momenta_ = std::vector<double>(n_sum * 4, 0.0);
+        this->umami_mass_ = std::vector<double>(n_sum, 0.0);
+        this->umami_vtim_ = std::vector<double>(n_sum, 0.0);
+        this->umami_spin_ = std::vector<double>(n_sum, 0);
+        this->umami_pdg_ = std::vector<long int>(n_sum, 0);
+        this->umami_status_ = std::vector<short int>(n_sum, 0);
+        this->umami_mother_ = std::vector<short int>(n_sum * 2, 0);
+        this->umami_icol_ = std::vector<short int>(n_sum * 2, 0);
+        for (size_t i = 0; i < evs.size(); ++i)
+        {
+            auto ev_view = evs[i].view();
+            for(size_t j = 0; j < ev_view.size(); ++j)
+            {
+                this->umami_momenta_[j * n_evt + i] = ev_view[j].E();
+                this->umami_momenta_[n_sum + j * n_evt + i] = ev_view[j].px();
+                this->umami_momenta_[2 * n_sum + j * n_evt + i] = ev_view[j].py();
+                this->umami_momenta_[3 * n_sum + j * n_evt + i] = ev_view[j].pz();
+                this->umami_mass_[j * n_evt + i] = ev_view[j].mass();
+                this->umami_vtim_[j * n_evt + i] = ev_view[j].vtim();
+                this->umami_spin_[j * n_evt + i] = ev_view[j].spin();
+                this->umami_pdg_[j * n_evt + i] = ev_view[j].pdg();
+                this->umami_status_[j * n_evt + i] = ev_view[j].status();
+                this->umami_mother_[j * n_evt + i] = ev_view[j].mother()[0];
+                this->umami_mother_[n_sum + j * n_evt + i] = ev_view[j].mother()[1];
+                this->umami_icol_[j * n_evt + i] = ev_view[j].icol()[0];
+                this->umami_icol_[n_sum + j * n_evt + i] = ev_view[j].icol()[1];
+            }
+        }
+        return *this;
+    }
+
+    process &process::add_event_umami_filtered(std::vector<std::shared_ptr<event>> evs)
+    {
+        for (const auto &ev : evs)
+        {
+            auto ev_view = ev->view();
+            auto summed_n = (this->n_summed.empty() ? 0 : this->n_summed.back()) + ev_view.size();
+            this->n_.push_back(ev_view.size());
+            this->n_summed.push_back(summed_n);
+            this->proc_id_.push_back(ev->proc_id_);
+            this->weight_.push_back(ev->weight_);
+            this->scale_.push_back(ev->scale_);
+            auto muF = (ev->muF_ == 0.0) ? ev->scale_ : ev->muF_;
+            auto muR = (ev->muR_ == 0.0) ? ev->scale_ : ev->muR_;
+            auto muPS = (ev->muPS_ == 0.0) ? ev->scale_ : ev->muPS_;
+            this->muF_.push_back(muF);
+            this->muR_.push_back(muR);
+            this->muPS_.push_back(muPS);
+            this->alphaEW_.push_back(ev->alphaEW_);
+            this->alphaS_.push_back(ev->alphaS_);
+            this->wgts_.push_back(ev->wgts_);
+            this->helicity_.push_back(ev->helicity_);
+            if(ev->flavor_ != -1) this->flavor_.push_back(ev->flavor_);
+            this->add_extra(ev->extra);
+            this->events.push_back(ev);
+        }
+        auto n_sum = this->n_summed.empty() ? 0 : this->n_summed.back();
+        auto n_prt = this->n_.empty() ? 0 : this->n_[0];
+        auto n_evt = this->n_.size();
+        if(n_sum == 0) return *this;
+        if(n_prt == 0) return *this;
+        if (n_evt == 0) return *this;
+        for (size_t i = 0; i < this->n_.size(); ++i)
+        {
+            if (this->n_[i] != n_prt)
+            {
+                throw std::runtime_error("process::add_event_umami_filtered: all events must have the same number of particles");
+            }
+        }
+        this->umami_momenta_ = std::vector<double>(n_sum * 4, 0.0);
+        this->umami_mass_ = std::vector<double>(n_sum, 0.0);
+        this->umami_vtim_ = std::vector<double>(n_sum, 0.0);
+        this->umami_spin_ = std::vector<double>(n_sum, 0);
+        this->umami_pdg_ = std::vector<long int>(n_sum, 0);
+        this->umami_status_ = std::vector<short int>(n_sum, 0);
+        this->umami_mother_ = std::vector<short int>(n_sum * 2, 0);
+        this->umami_icol_ = std::vector<short int>(n_sum * 2, 0);
+        for (size_t i = 0; i < evs.size(); ++i)
+        {
+            auto ev_view = evs[i]->view();
+            for(size_t j = 0; j < ev_view.size(); ++j)
+            {
+                this->umami_momenta_[j * n_evt + i] = ev_view[j].E();
+                this->umami_momenta_[n_sum + j * n_evt + i] = ev_view[j].px();
+                this->umami_momenta_[2 * n_sum + j * n_evt + i] = ev_view[j].py();
+                this->umami_momenta_[3 * n_sum + j * n_evt + i] = ev_view[j].pz();
+                this->umami_mass_[j * n_evt + i] = ev_view[j].mass();
+                this->umami_vtim_[j * n_evt + i] = ev_view[j].vtim();
+                this->umami_spin_[j * n_evt + i] = ev_view[j].spin();
+                this->umami_pdg_[j * n_evt + i] = ev_view[j].pdg();
+                this->umami_status_[j * n_evt + i] = ev_view[j].status();
+                this->umami_mother_[j * n_evt + i] = ev_view[j].mother()[0];
+                this->umami_mother_[n_sum + j * n_evt + i] = ev_view[j].mother()[1];
+                this->umami_icol_[j * n_evt + i] = ev_view[j].icol()[0];
+                this->umami_icol_[n_sum + j * n_evt + i] = ev_view[j].icol()[1];
+            }
+        }
+        return *this;
+    }
+
+    // Transpose the row-major parton data (momenta_ etc., laid out as
+    // [event][parton][E,px,py,pz]) into the column-major UMAMI layout
+    // (umami_momenta_ etc., laid out as [E,px,py,pz][parton][event])
+    process &process::to_umami()
+    {
+        this->validate();
+        if (this->column_major)
+            return *this;
+
+        size_t n_evt = this->n_.size();
+        if (n_evt == 0)
+        {
+            this->column_major = true;
+            return *this;
+        }
+
+        size_t n_prt = this->n_[0];
+        for (size_t i = 0; i < n_evt; ++i)
+        {
+            if (this->n_[i] != n_prt)
+                throw std::runtime_error("process::to_umami(): all events must have the same number of partons to convert to the UMAMI column-major layout");
+        }
+
+        size_t n_sum = this->n_summed.back();
+        this->umami_momenta_ = std::vector<double>(n_sum * 4, 0.0);
+        this->umami_mass_ = std::vector<double>(n_sum, 0.0);
+        this->umami_vtim_ = std::vector<double>(n_sum, 0.0);
+        this->umami_spin_ = std::vector<double>(n_sum, 0.0);
+        this->umami_pdg_ = std::vector<long int>(n_sum, 0);
+        this->umami_status_ = std::vector<short int>(n_sum, 0);
+        this->umami_mother_ = std::vector<short int>(n_sum * 2, 0);
+        this->umami_icol_ = std::vector<short int>(n_sum * 2, 0);
+
+        for (size_t i = 0; i < n_evt; ++i)
+        {
+            size_t begin = (i == 0) ? 0 : this->n_summed[i - 1];
+            for (size_t j = 0; j < n_prt; ++j)
+            {
+                size_t idx = begin + j;  // row-major index: [event][parton]
+                size_t k = j * n_evt + i; // column-major index: [parton][event]
+                this->umami_momenta_[k] = this->momenta_[idx][0];
+                this->umami_momenta_[n_sum + k] = this->momenta_[idx][1];
+                this->umami_momenta_[2 * n_sum + k] = this->momenta_[idx][2];
+                this->umami_momenta_[3 * n_sum + k] = this->momenta_[idx][3];
+                this->umami_mass_[k] = this->mass_[idx];
+                this->umami_vtim_[k] = this->vtim_[idx];
+                this->umami_spin_[k] = this->spin_[idx];
+                this->umami_pdg_[k] = this->pdg_[idx];
+                this->umami_status_[k] = this->status_[idx];
+                this->umami_mother_[k] = this->mother_[idx][0];
+                this->umami_mother_[n_sum + k] = this->mother_[idx][1];
+                this->umami_icol_[k] = this->icol_[idx][0];
+                this->umami_icol_[n_sum + k] = this->icol_[idx][1];
+            }
+        }
+
+        this->column_major = true;
+        return *this;
+    }
+
+    // Transpose the column-major UMAMI parton data (umami_momenta_ etc.,
+    // laid out as [E,px,py,pz][parton][event]) back into the row-major
+    // LHEF layout (momenta_ etc., laid out as [event][parton][E,px,py,pz])
+    process &process::from_umami()
+    {
+        this->validate();
+        if (!this->column_major)
+            return *this;
+
+        size_t n_evt = this->n_.size();
+        if (n_evt == 0)
+        {
+            this->column_major = false;
+            return *this;
+        }
+
+        size_t n_prt = this->n_[0];
+        for (size_t i = 0; i < n_evt; ++i)
+        {
+            if (this->n_[i] != n_prt)
+                throw std::runtime_error("process::from_umami(): all events must have the same number of partons to convert from the UMAMI column-major layout");
+        }
+
+        size_t n_sum = this->n_summed.back();
+        this->momenta_ = vecArr4<double>(n_sum);
+        this->mass_ = std::vector<double>(n_sum, 0.0);
+        this->vtim_ = std::vector<double>(n_sum, 0.0);
+        this->spin_ = std::vector<double>(n_sum, 0.0);
+        this->pdg_ = std::vector<long int>(n_sum, 0);
+        this->status_ = std::vector<short int>(n_sum, 0);
+        this->mother_ = vecArr2<short int>(n_sum);
+        this->icol_ = vecArr2<short int>(n_sum);
+
+        for (size_t i = 0; i < n_evt; ++i)
+        {
+            size_t begin = (i == 0) ? 0 : this->n_summed[i - 1];
+            for (size_t j = 0; j < n_prt; ++j)
+            {
+                size_t idx = begin + j;  // row-major index: [event][parton]
+                size_t k = j * n_evt + i; // column-major index: [parton][event]
+                this->momenta_[idx][0] = this->umami_momenta_[k];
+                this->momenta_[idx][1] = this->umami_momenta_[n_sum + k];
+                this->momenta_[idx][2] = this->umami_momenta_[2 * n_sum + k];
+                this->momenta_[idx][3] = this->umami_momenta_[3 * n_sum + k];
+                this->mass_[idx] = this->umami_mass_[k];
+                this->vtim_[idx] = this->umami_vtim_[k];
+                this->spin_[idx] = this->umami_spin_[k];
+                this->pdg_[idx] = this->umami_pdg_[k];
+                this->status_[idx] = this->umami_status_[k];
+                this->mother_[idx][0] = this->umami_mother_[k];
+                this->mother_[idx][1] = this->umami_mother_[n_sum + k];
+                this->icol_[idx][0] = this->umami_icol_[k];
+                this->icol_[idx][1] = this->umami_icol_[n_sum + k];
+            }
+        }
+
+        this->column_major = false;
         return *this;
     }
 
@@ -2835,6 +3511,10 @@ namespace REX
 
     process &process::add_event(const std::vector<event> &evs)
     {
+        if (this->column_major)
+        {
+            return this->add_event_umami_filtered(evs);
+        }
         for (const auto &ev : evs)
         {
             this->add_event(ev);
@@ -2844,6 +3524,10 @@ namespace REX
 
     process &process::add_event(std::vector<std::shared_ptr<event>> evs)
     {
+        if (this->column_major)
+        {
+            return this->add_event_umami_filtered(evs);
+        }
         for (auto ev : evs)
         {
             this->add_event(ev);
@@ -3123,6 +3807,45 @@ namespace REX
         return *this;
     }
 
+    process &process::set_helicity(const std::vector<int> &helicity)
+    {
+        this->helicity_ = helicity;
+        return *this;
+    }
+
+    process &process::set_flavor(const std::vector<int> &flavor)
+    {
+        this->flavor_ = flavor;
+        return *this;
+    }
+
+    process &process::set_device_data(const std::string &name, void *ptr, std::size_t stride, std::any tag)
+    {
+        this->device_data[name] = devptr{ptr, stride, std::move(tag)};
+        return *this;
+    }
+
+    process::devptr &process::get_device_data(const std::string &name)
+    {
+        auto it = this->device_data.find(name);
+        if (it == this->device_data.end())
+            throw std::out_of_range("process::get_device_data: no device data registered under name '" + name + "'");
+        return it->second;
+    }
+
+    const process::devptr &process::get_device_data(const std::string &name) const
+    {
+        auto it = this->device_data.find(name);
+        if (it == this->device_data.end())
+            throw std::out_of_range("process::get_device_data: no device data registered under name '" + name + "'");
+        return it->second;
+    }
+
+    bool process::has_device_data(const std::string &name) const
+    {
+        return this->device_data.find(name) != this->device_data.end();
+    }
+
     process &process::add_extra(const std::string &key, const std::any &value)
     {
         auto it = this->extra.find(key);
@@ -3192,6 +3915,8 @@ namespace REX
         check_event_size(this->alphaEW_, "alphaEW");
         check_event_size(this->alphaS_, "alphaS");
         check_event_size(this->wgts_, "wgts");
+        check_mu_size(this->helicity_, "helicity");
+        check_mu_size(this->flavor_, "flavor");
 
         size_t summed_n = this->n_summed.empty() ? 0 : this->n_summed.back();
 
@@ -3213,14 +3938,50 @@ namespace REX
             }
         };
 
-        check_particle_size(this->momenta_, "momenta");
-        check_particle_size(this->mass_, "mass");
-        check_particle_size(this->vtim_, "vtim");
-        check_particle_size(this->spin_, "spin");
-        check_particle_size(this->pdg_, "pdg");
-        check_particle_size(this->status_, "status");
-        check_particle_size(this->mother_, "mother");
-        check_particle_size(this->icol_, "icol");
+        if(this->column_major)
+        {
+            // umami_momenta_/umami_mother_/umami_icol_ are flat std::vectors
+            // (not vecArrN, whose size() divides by the stride automatically),
+            // storing 4 and 2 components per particle respectively -- their
+            // raw .size() is summed_n times that stride, not summed_n itself
+            auto check_strided_particle_size = [summed_n](const auto &vec, const char *name, size_t stride)
+            {
+                if (vec.size() != summed_n * stride)
+                {
+                    std::ostringstream oss;
+                    oss << "process::validate() failed: '" << name
+                        << "' has size " << vec.size() << ", expected " << (summed_n * stride);
+                    throw std::runtime_error(oss.str());
+                }
+            };
+            check_strided_particle_size(this->umami_momenta_, "umami_momenta", 4);
+            check_particle_size(this->umami_mass_, "umami_mass");
+            check_particle_size(this->umami_vtim_, "umami_vtim");
+            check_particle_size(this->umami_spin_, "umami_spin");
+            check_particle_size(this->umami_pdg_, "umami_pdg");
+            check_particle_size(this->umami_status_, "umami_status");
+            check_strided_particle_size(this->umami_mother_, "umami_mother", 2);
+            check_strided_particle_size(this->umami_icol_, "umami_icol", 2);
+        }
+        else
+        {
+            check_particle_size(this->momenta_, "momenta");
+            check_particle_size(this->mass_, "mass");
+            check_particle_size(this->vtim_, "vtim");
+            check_particle_size(this->spin_, "spin");
+            check_particle_size(this->pdg_, "pdg");
+            check_particle_size(this->status_, "status");
+            check_particle_size(this->mother_, "mother");
+            check_particle_size(this->icol_, "icol");
+        }
+        // check_particle_size(this->momenta_, "momenta");
+        // check_particle_size(this->mass_, "mass");
+        // check_particle_size(this->vtim_, "vtim");
+        // check_particle_size(this->spin_, "spin");
+        // check_particle_size(this->pdg_, "pdg");
+        // check_particle_size(this->status_, "status");
+        // check_particle_size(this->mother_, "mother");
+        // check_particle_size(this->icol_, "icol");
     }
 
     process &process::add_extra(const std::unordered_map<std::string, std::any> &extras)
@@ -3255,6 +4016,10 @@ namespace REX
             {
                 ev->set_muPS(this->muPS_[idx]);
             }
+        if (this->helicity_.size() > idx)
+            ev->set_helicity(this->helicity_[idx]);
+        if (this->flavor_.size() > idx)
+            ev->set_flavor(this->flavor_[idx]);
         size_t begin;
         if (idx == 0)
         {
@@ -3811,6 +4576,44 @@ namespace REX
         return *this;
     }
 
+    process &process::transpose_helicity()
+    {
+        this->validate();
+        if (this->helicity_.empty())
+            return *this;
+        if (this->helicity_.size() != this->events.size())
+        {
+            if (!this->events.empty())
+                warning("process::transpose_helicity() - Number of events does not match number of helicity values. Overwriting process::events vector.");
+            this->transpose();
+            return *this;
+        }
+        for (size_t i = 0; i < this->events.size(); ++i)
+        {
+            this->events[i]->set_helicity(this->helicity_[i]);
+        }
+        return *this;
+    }
+
+    process &process::transpose_flavor()
+    {
+        this->validate();
+        if (this->flavor_.empty())
+            return *this;
+        if (this->flavor_.size() != this->events.size())
+        {
+            if (!this->events.empty())
+                warning("process::transpose_flavor() - Number of events does not match number of flavor values. Overwriting process::events vector.");
+            this->transpose();
+            return *this;
+        }
+        for (size_t i = 0; i < this->events.size(); ++i)
+        {
+            this->events[i]->set_flavor(this->flavor_[i]);
+        }
+        return *this;
+    }
+
     process &process::transpose_E()
     {
         this->validate();
@@ -4084,6 +4887,7 @@ namespace REX
         this->nProc_ = proc_ids.size();
         std::sort(proc_ids.begin(), proc_ids.end());
         this->lProc_ = proc_ids;
+        this->pad_proc_arrays();
     }
 
     lhe::lhe(std::vector<event> evs)
@@ -4105,6 +4909,7 @@ namespace REX
         this->nProc_ = proc_ids.size();
         std::sort(proc_ids.begin(), proc_ids.end());
         this->lProc_ = proc_ids;
+        this->pad_proc_arrays();
     }
 
     lhe::lhe(const initNode &i, std::vector<std::shared_ptr<event>> evts) : initNode(i), events(std::move(evts))
@@ -4121,6 +4926,7 @@ namespace REX
         this->nProc_ = proc_ids.size();
         std::sort(proc_ids.begin(), proc_ids.end());
         this->lProc_ = proc_ids;
+        this->pad_proc_arrays();
     }
 
     lhe::lhe(const initNode &i, std::vector<event> evts) : initNode(i)
@@ -4142,6 +4948,7 @@ namespace REX
         this->nProc_ = proc_ids.size();
         std::sort(proc_ids.begin(), proc_ids.end());
         this->lProc_ = proc_ids;
+        this->pad_proc_arrays();
     }
 
     lhe &lhe::set_events(std::vector<std::shared_ptr<event>> evs)
@@ -4201,7 +5008,12 @@ namespace REX
         }
         if (this->header.type() != typeid(std::shared_ptr<xmlNode>))
         {
-            throw std::runtime_error("lhe::extract_weight_ids() - Header is not of type std::shared_ptr<xmlNode>");
+            // No XML header to pull pre-existing <initrwgt> weight ids from
+            // (eg an lhe sourced from madtrex's internal binary EventFile
+            // format, which carries no header at all) -- nothing to extract,
+            // not an error: weight_ids is left as the (possibly just-created)
+            // empty vector ensured above
+            return;
         }
         auto xml_header = std::any_cast<std::shared_ptr<xmlNode>>(this->header);
         auto id_puller = [&](std::shared_ptr<xmlNode> node)
@@ -4442,6 +5254,12 @@ namespace REX
         return *this;
     }
 
+    lhe &lhe::set_max_batch(std::size_t n)
+    {
+        this->max_batch = n;
+        return *this;
+    }
+
     void lhe::sort_events()
     {
         if (this->events.empty())
@@ -4452,33 +5270,87 @@ namespace REX
         {
             this->set_sorter();
         }
-        this->process_order.clear();
-        this->process_order.reserve(this->events.size());
-        for (auto ev : this->events)
+        this->process_order.assign(this->events.size(), npos);
+        // The first event on this thread, so that a classifier initialising
+        // itself lazily does so once, then the rest in chunks across
+        // sort_threads threads
+        this->process_order[0] = this->event_hash(*this->events[0]);
+        size_t n_rest = this->events.size() - 1;
+        size_t n_threads = std::max<size_t>(1, std::min(this->sort_threads, n_rest / sort_chunk));
+        if (n_threads <= 1)
         {
-            this->process_order.push_back(this->event_hash(*ev));
+            for (size_t ind = 1; ind < this->events.size(); ++ind)
+                this->process_order[ind] = this->event_hash(*this->events[ind]);
+        }
+        else
+        {
+            std::vector<std::thread> workers;
+            std::vector<std::exception_ptr> errors(n_threads);
+            size_t per_thread = (n_rest + n_threads - 1) / n_threads;
+            for (size_t t = 0; t < n_threads; ++t)
+            {
+                size_t begin = 1 + t * per_thread;
+                size_t end = std::min(this->events.size(), begin + per_thread);
+                workers.emplace_back([this, begin, end, &errors, t]
+                                     {
+                    try {
+                        for (size_t ind = begin; ind < end; ++ind)
+                            this->process_order[ind] = this->event_hash(*this->events[ind]);
+                    } catch (...) {
+                        errors[t] = std::current_exception();
+                    } });
+            }
+            for (auto &worker : workers)
+                worker.join();
+            for (auto &error : errors)
+                if (error)
+                    std::rethrow_exception(error);
         }
         if (this->process_order.size() != this->events.size())
         {
             throw std::runtime_error("lhe::sort_events() failed: process_order size does not match events size");
         }
         this->sorted_events.clear();
+        this->process_group.clear();
         for (size_t j = 0; j < this->sorter.size(); ++j)
         {
             this->sorted_events.push_back({});
+            this->process_group.push_back(j);
         }
-        this->sorted_events.push_back({});
+        this->sorted_events.push_back({}); // catch-all "unsorted" bucket
+        this->process_group.push_back(npos);
+
+        // active_bucket[k] = index into sorted_events currently receiving events
+        // whose sorter class is k (k == npos is the catch-all bucket). Only grows
+        // beyond the identity mapping seeded below when max_batch is set and a
+        // bucket has filled up: the class's active bucket is then switched to a
+        // freshly appended one, which process_group records as still belonging to
+        // class k, so downstream consumers can recognise/recombine the batches
+        std::unordered_map<size_t, size_t> active_bucket;
+        for (size_t j = 0; j < this->sorter.size(); ++j)
+        {
+            active_bucket[j] = j;
+        }
+        active_bucket[npos] = this->sorter.size();
+
         for (size_t ind = 0; ind < this->events.size(); ++ind)
         {
-            size_t sort_ind = this->process_order[ind];
-            if (sort_ind == npos)
-                sort_ind = this->sorted_events.size() - 1; // If an event does not belong to any set in the sorter, returns npos; compensate by adding an additional "unsorted" vector at the end
-            this->sorted_events[sort_ind].push_back(this->events[ind]);
+            size_t class_id = this->process_order[ind];
+            size_t &bucket = active_bucket[class_id];
+            if (this->max_batch != npos && this->sorted_events[bucket].size() >= this->max_batch)
+            {
+                this->sorted_events.push_back({});
+                this->process_group.push_back(class_id);
+                bucket = this->sorted_events.size() - 1;
+            }
+            this->sorted_events[bucket].push_back(this->events[ind]);
         }
-        // If all events were successfully sorted, remove the empty "unsorted" vector
-        if (this->sorted_events.back().empty())
+        // If all events were successfully sorted, remove the empty catch-all bucket
+        // (which, if unused, is still at its original seeded position)
+        if (this->sorted_events[this->sorter.size()].empty())
         {
-            this->sorted_events.pop_back(); // Remove empty last set
+            this->sorted_events.erase(this->sorted_events.begin() + this->sorter.size());
+            this->process_group.erase(this->process_group.begin() + this->sorter.size());
         }
     }
 
@@ -4511,11 +5383,11 @@ namespace REX
         {
             throw std::runtime_error("lhe::events_to_processes() called with no events");
         }
-        this->sort_events(); // Overrides previous sorting (if one exists)
+        this->sort_events(); // Overrides previous sorting (if one exists); also (re)populates process_group
         this->processes.clear();
-        for (auto ev_set : this->sorted_events)
+        for (const auto &ev_set : this->sorted_events)
         {
-            this->processes.push_back(std::make_shared<process>(ev_set, this->filter_processes));
+            this->processes.push_back(std::make_shared<process>(ev_set, this->filter_processes, this->column_major));
         }
     }
 
@@ -4623,6 +5495,30 @@ namespace REX
         {
             initrwgt = xmlNode::parse("<initrwgt>\n</initrwgt>\n");
         }
+        // Replace, not accumulate: a re-run of append_weight_ids() (eg
+        // write_weights() called a second time after more weight_ids were
+        // added -- would otherwise leave the *previous* call's <weightgroup name=
+        // 'tearex_reweighting'> node sitting alongside the new one, stale
+        // and listing an incomplete/outdated set of ids. Only removes a
+        // weightgroup matching this exact name -- any other pre-existing
+        // <weightgroup> under <initrwgt> (eg from an upstream tool, already
+        // present in the loaded file's own header) is left untouched.
+        // Uses remove_inserted_child(), not remove_child(): the previous
+        // weightgroup was itself added via add_child() (right below, on
+        // the prior call), so it's only ever emitted through the inserts_
+        // mechanism, which remove_child()'s suppressed_ flag has no effect
+        // on -- see remove_inserted_child()'s own doc comment
+        for (auto &child : initrwgt->get_children("weightgroup"))
+        {
+            for (auto &attr : child->attrs())
+            {
+                if (attr.name() == "name" && attr.value() == "tearex_reweighting")
+                {
+                    initrwgt->remove_inserted_child(child.get());
+                    break;
+                }
+            }
+        }
         initrwgt->add_child(wgt_node, true);
         if (this->header.type() == typeid(REX::xmlNode))
         {
@@ -4634,24 +5530,161 @@ namespace REX
         }
     }
 
+    lhe &lhe::add_histogram(const std::string &name, std::shared_ptr<histogram> h)
+    {
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::add_histogram(const std::string &name, histogram h)
+    {
+        this->histograms[name] = std::make_shared<histogram>(std::move(h));
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, const std::vector<size_t> &indices)
+    {
+        auto h = std::make_shared<histogram>(this->events, indices);
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, eventSorter sorter)
+    {
+        auto h = std::make_shared<histogram>(this->events, std::move(sorter));
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, event_hash_fn hash)
+    {
+        auto h = std::make_shared<histogram>(this->events, hash);
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, const eventBelongs &e_set)
+    {
+        auto h = std::make_shared<histogram>(this->events, e_set);
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, event_bool_fn comp)
+    {
+        auto h = std::make_shared<histogram>(this->events, comp);
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, cevent_bool_fn comp)
+    {
+        auto h = std::make_shared<histogram>(this->events, comp);
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, std::vector<eventBelongs> e_sets)
+    {
+        auto h = std::make_shared<histogram>(this->events, std::move(e_sets));
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    lhe &lhe::make_histogram(const std::string &name, std::vector<event_bool_fn> comps)
+    {
+        auto h = std::make_shared<histogram>(this->events, std::move(comps));
+        h->normalise(*this);
+        this->histograms[name] = std::move(h);
+        return *this;
+    }
+
+    bool lhe::has_histogram(const std::string &name) const
+    {
+        return this->histograms.find(name) != this->histograms.end();
+    }
+
+    histogram &lhe::hist(const std::string &name)
+    {
+        auto it = this->histograms.find(name);
+        if (it == this->histograms.end())
+            throw std::out_of_range("lhe::hist: no histogram named '" + name + "'");
+        return *it->second;
+    }
+
+    const histogram &lhe::hist(const std::string &name) const
+    {
+        auto it = this->histograms.find(name);
+        if (it == this->histograms.end())
+            throw std::out_of_range("lhe::hist: no histogram named '" + name + "'");
+        return *it->second;
+    }
+
+    lhe &lhe::remove_histogram(const std::string &name)
+    {
+        this->histograms.erase(name);
+        return *this;
+    }
+
+    bool lhe::sync_histograms()
+    {
+        bool ok = true;
+        for (auto &kv : this->histograms)
+        {
+            if (kv.second && !kv.second->sync_wgts())
+                ok = false;
+        }
+        return ok;
+    }
+
+    bool lhe::sync_histogram(const std::string &name)
+    {
+        auto it = this->histograms.find(name);
+        if (it == this->histograms.end())
+            throw std::out_of_range("lhe::sync_histogram: no histogram named '" + name + "'");
+        return it->second ? it->second->sync_wgts() : true;
+    }
+
+    void print_lhe_header(const std::any &header, std::ostream &os)
+    {
+        if (header.type() == typeid(std::string))
+        {
+            os << std::any_cast<std::string>(header);
+        }
+        else if (header.type() == typeid(std::shared_ptr<xmlNode>))
+        {
+            std::any_cast<std::shared_ptr<xmlNode>>(header)->write(os);
+        }
+        else if (header.type() == typeid(xmlNode))
+        {
+            std::any_cast<xmlNode>(header).write(os);
+        }
+        else if (header.has_value())
+        {
+            warning("print_lhe_header() - Header is of unknown type, cannot print.");
+        }
+    }
+
+    void lhe::pad_proc_arrays()
+    {
+        if (this->xSec_.size() < this->nProc_)
+            this->xSec_.resize(this->nProc_, 0.0);
+        if (this->xSecErr_.size() < this->nProc_)
+            this->xSecErr_.resize(this->nProc_, 0.0);
+        if (this->xMax_.size() < this->nProc_)
+            this->xMax_.resize(this->nProc_, 0.0);
+    }
+
     void lhe::print_header(std::ostream &os) const
     {
-        if (this->header.type() == typeid(std::string))
-        {
-            os << std::any_cast<std::string>(this->header);
-        }
-        else if (this->header.type() == typeid(std::shared_ptr<xmlNode>))
-        {
-            std::any_cast<std::shared_ptr<xmlNode>>(this->header)->write(os);
-        }
-        else if (this->header.type() == typeid(xmlNode))
-        {
-            std::any_cast<xmlNode>(this->header).write(os);
-        }
-        else if (this->header.has_value())
-        {
-            warning("lhe::print_header() - Header is of unknown type, cannot print.");
-        }
+        print_lhe_header(this->header, os);
     }
 
     void lhe::print(std::ostream &os, bool include_ids)
@@ -5087,6 +6120,13 @@ namespace REX
 
     std::shared_ptr<xmlNode> xmlNode::parse_element(const std::shared_ptr<const std::string> &doc, size_t &pos)
     {
+        std::vector<std::string_view> ancestors;
+        return parse_element(doc, pos, ancestors);
+    }
+
+    std::shared_ptr<xmlNode> xmlNode::parse_element(const std::shared_ptr<const std::string> &doc, size_t &pos,
+                                                    std::vector<std::string_view> &ancestors)
+    {
         const std::string &s = *doc;
         const size_t N = s.size();
         if (pos >= N || s[pos] != '<')
@@ -5147,6 +6187,26 @@ namespace REX
             // Check for closing tag of this node
             if (lt + 1 < N && s[lt + 1] == '/')
             {
+                // A closing tag for one of the enclosing elements instead
+                // means this element is never closed: it is not an element
+                // at all but text that happens to look like a start tag --
+                // eg "<run>" or "<set>@<member>" in the comments of an MG7
+                // run card embedded unescaped in an LHE header. Give up on
+                // it so the caller keeps it as content; otherwise this
+                // closing tag would end this element instead, and every
+                // later sibling of the enclosing element (<initrwgt>, say)
+                // would end up nested inside it. A closing tag naming no
+                // open element at all still just ends this one, as before.
+                size_t close_beg = lt + 2;
+                while (close_beg < N && is_space(s[close_beg]))
+                    ++close_beg;
+                size_t close_end = close_beg;
+                while (close_end < N && !is_space(s[close_end]) && s[close_end] != '>')
+                    ++close_end;
+                std::string_view close_name(s.data() + close_beg, close_end - close_beg);
+                if (close_name != node->name_view_ &&
+                    std::find(ancestors.begin(), ancestors.end(), close_name) != ancestors.end())
+                    return nullptr;
                 node->content_end_ = lt;
                 // find end of closing tag
                 size_t gt = s.find('>', lt + 2);
@@ -5175,7 +6235,9 @@ namespace REX
 
             // Child node
             size_t child_pos = lt;
-            auto child = parse_element(doc, child_pos);
+            ancestors.push_back(node->name_view_);
+            auto child = parse_element(doc, child_pos, ancestors);
+            ancestors.pop_back();
             if (!child)
             {
                 // If parse failed, avoid infinite loop by moving cursor forward
@@ -5542,6 +6604,36 @@ namespace REX
         return false;
     }
 
+    bool xmlNode::remove_inserted_child(const xmlNode *child) noexcept
+    {
+        bool found = false;
+        for (auto it = inserts_.begin(); it != inserts_.end();)
+        {
+            if (it->node == child)
+            {
+                it = inserts_.erase(it);
+                found = true;
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        for (auto it = children_.begin(); it != children_.end(); ++it)
+        {
+            if (it->get() == child)
+            {
+                children_.erase(it);
+                break;
+            }
+        }
+        if (found)
+        {
+            modified_ = true;
+        }
+        return found;
+    }
+
     const xmlNode *xmlNode::nth_in_doc_child(size_t ordinal) const noexcept
     {
         size_t seen = 0;
@@ -5847,7 +6939,8 @@ namespace REX
         std::string buf;
         while (buf.empty())
         {
-            std::getline(in, buf);
+            if (!std::getline(in, buf))
+                throw std::runtime_error("load_lhef: empty or unreadable stream");
         }
         if (buf.find("LesHouchesEvents") == npos)
         {
@@ -5876,7 +6969,8 @@ namespace REX
         }
         while (buf.find("init") == npos)
         {
-            std::getline(in, buf);
+            if (!std::getline(in, buf))
+                throw std::runtime_error("load_lhef: malformed LHEF file, no init block found");
         }
         if (buf.find("</init") != npos || buf.find("/>") != npos)
         {
@@ -5934,6 +7028,284 @@ namespace REX
         if (!stream)
             throw std::ios_base::failure("load_lhef: could not open file for reading");
         return load_lhef(stream);
+    }
+
+    // -------------------- streaming eventSource / eventSink (LHE-XML) --------------------
+
+    namespace
+    {
+        // Resumable counterpart to load_lhef()'s scanning loop: the same
+        // line-by-line, one-<event>-block-at-a-time parse, but split across
+        // read_init()/pull(n) calls instead of running to completion in one
+        // go. `content` always holds either nothing, or the not-yet-flushed
+        // lines of the event currently being accumulated, so a pull() call
+        // can stop after n events and resume correctly on the next call
+        struct lheStreamState
+        {
+            std::shared_ptr<std::istream> in;
+            bool started = false;
+            bool exhausted = false;
+            std::string content;
+            initNode cached_init;
+            std::any cached_header;
+
+            void ensure_started()
+            {
+                if (started)
+                    return;
+                started = true;
+                std::string buf;
+                while (buf.empty())
+                {
+                    if (!std::getline(*in, buf))
+                        throw std::runtime_error("open_lhe_source: empty or unreadable stream");
+                }
+                if (buf.find("LesHouchesEvents") == npos)
+                    throw std::runtime_error("open_lhe_source: not a valid LHEF file");
+                std::getline(*in, buf);
+                if (buf.find("header") != npos)
+                {
+                    std::string hdr_content;
+                    if (buf.find("</header") != npos || buf.find("/>") != npos)
+                    {
+                        cached_header = xmlNode::parse(buf);
+                    }
+                    else
+                    {
+                        hdr_content += buf + "\n";
+                        while (std::getline(*in, buf))
+                        {
+                            hdr_content += buf + "\n";
+                            if (buf.find("/header") != npos)
+                                break;
+                        }
+                        cached_header = xmlNode::parse(hdr_content);
+                    }
+                }
+                while (buf.find("init") == npos)
+                {
+                    if (!std::getline(*in, buf))
+                        throw std::runtime_error("open_lhe_source: malformed LHEF file, no init block found");
+                }
+                if (buf.find("</init") != npos || buf.find("/>") != npos)
+                    throw std::runtime_error("open_lhe_source: malformed init block");
+                std::string init_content = buf + "\n";
+                while (std::getline(*in, buf))
+                {
+                    init_content += buf + "\n";
+                    if (buf.find("/init") != npos)
+                        break;
+                }
+                cached_init = xml_to_init(xmlNode::parse(init_content));
+            }
+
+            initNode read_init()
+            {
+                ensure_started();
+                return cached_init;
+            }
+
+            std::any read_header()
+            {
+                ensure_started();
+                return cached_header;
+            }
+
+            std::vector<std::shared_ptr<event>> pull(size_t n)
+            {
+                ensure_started();
+                std::vector<std::shared_ptr<event>> events;
+                if (exhausted || n == 0)
+                    return events;
+                std::string buf;
+                while (std::getline(*in, buf))
+                {
+                    if (buf.find("<event") != npos)
+                    {
+                        if (!content.empty())
+                        {
+                            auto curr_event = xml_to_event(xmlNode::parse(content));
+                            if (curr_event)
+                                events.push_back(curr_event);
+                        }
+                        content.clear();
+                        content += buf + "\n";
+                        if (events.size() >= n)
+                            return events;
+                    }
+                    else if (buf.find("</LesHouchesEvents") != npos)
+                    {
+                        if (!content.empty())
+                        {
+                            auto curr_event = xml_to_event(xmlNode::parse(content));
+                            if (curr_event)
+                                events.push_back(curr_event);
+                        }
+                        content.clear();
+                        exhausted = true;
+                        return events;
+                    }
+                    else
+                    {
+                        content += buf + "\n";
+                    }
+                }
+                // Stream ended without a closing tag: mirrors load_lhef()'s
+                // behaviour on a truncated file (whatever is left pending in
+                // `content` is not flushed).
+                exhausted = true;
+                return events;
+            }
+        };
+
+        eventSource make_lhe_source(std::shared_ptr<std::istream> in)
+        {
+            auto state = std::make_shared<lheStreamState>();
+            state->in = std::move(in);
+            eventSource src;
+            src.read_init = [state]()
+            { return state->read_init(); };
+            src.read_header = [state]()
+            { return state->read_header(); };
+            src.pull = [state](size_t n)
+            { return state->pull(n); };
+            // Forward-only: rewind is intentionally left null. Re-open the
+            // file via open_lhe_source() again for a second pass.
+            return src;
+        }
+    } // namespace
+
+    eventSource open_lhe_source(const std::string &filename)
+    {
+        auto stream = std::make_shared<std::ifstream>(filename);
+        if (!*stream)
+            throw std::ios_base::failure("open_lhe_source: could not open file for reading");
+        return make_lhe_source(stream);
+    }
+
+    eventSource open_lhe_source(std::istream &in)
+    {
+        // Non-owning: caller-supplied stream must outlive the source.
+        std::shared_ptr<std::istream> shared_in(&in, [](std::istream *) {});
+        return make_lhe_source(shared_in);
+    }
+
+    eventSink open_lhe_sink(const std::string &filename, bool include_ids)
+    {
+        auto out = std::make_shared<std::ofstream>(filename);
+        if (!*out)
+            throw std::ios_base::failure("open_lhe_sink: could not open file for writing");
+        eventSink sink;
+        sink.write_open = [out](const initNode &init, const std::any &header)
+        {
+            *out << "<LesHouchesEvents version=\"3.0\">\n";
+            print_lhe_header(header, *out);
+            init.print_init(*out);
+        };
+        sink.write_event = [out, include_ids](std::shared_ptr<event> ev)
+        {
+            if (ev)
+                ev->print(*out, include_ids);
+        };
+        sink.write_close = [out]()
+        {
+            *out << "\n</LesHouchesEvents>";
+            // Explicit close rather than relying on the shared_ptr<ofstream>
+            // eventually going out of scope: a caller that reads the file
+            // back right after write_close() returns (the natural thing to
+            // do -- and the only viable timing from a GC'd binding, where
+            // "this eventSink is unreachable" isn't scope-bound) must see a
+            // complete file, not whatever ofstream's own internal buffer
+            // happened to have flushed to the OS on its own.
+            out->close();
+        };
+        return sink;
+    }
+
+    std::vector<size_t> split_source(
+        eventSource &src,
+        size_t n_shards,
+        const std::function<eventSink(size_t)> &make_sink,
+        size_t batch_size
+    )
+    {
+        if (n_shards == 0)
+            throw std::runtime_error("split_source: n_shards must be > 0");
+        if (!src.read_init)
+            throw std::runtime_error("split_source: eventSource has no read_init set");
+        if (!src.pull)
+            throw std::runtime_error("split_source: eventSource has no pull set");
+        if (!make_sink)
+            throw std::runtime_error("split_source: make_sink is not set");
+        if (batch_size == 0 || batch_size == npos)
+            batch_size = 1;
+
+        initNode init = src.read_init();
+        std::any header = src.read_header ? src.read_header() : std::any{};
+
+        std::vector<eventSink> sinks;
+        sinks.reserve(n_shards);
+        for (size_t i = 0; i < n_shards; ++i)
+        {
+            eventSink sink = make_sink(i);
+            if (!sink.write_open || !sink.write_event || !sink.write_close)
+                throw std::runtime_error(
+                    "split_source: make_sink(" + std::to_string(i) +
+                    ") returned an incomplete eventSink (missing write_open/write_event/write_close)");
+            sink.write_open(init, header);
+            sinks.push_back(std::move(sink));
+        }
+
+        std::vector<size_t> counts(n_shards, 0);
+        size_t next_shard = 0;
+        std::vector<std::shared_ptr<event>> batch;
+        while (!(batch = src.pull(batch_size)).empty())
+        {
+            for (auto &ev : batch)
+            {
+                sinks[next_shard].write_event(ev);
+                ++counts[next_shard];
+                next_shard = (next_shard + 1) % n_shards;
+            }
+        }
+
+        for (auto &sink : sinks)
+            sink.write_close();
+
+        return counts;
+    }
+
+    lhe lhe::open_streaming(std::shared_ptr<eventSource> src, std::size_t batch_size)
+    {
+        if (!src || !src->read_init)
+            throw std::runtime_error("lhe::open_streaming: eventSource has no read_init set");
+        if (!src->pull)
+            throw std::runtime_error("lhe::open_streaming: eventSource has no pull set");
+        initNode init = src->read_init();
+        lhe doc(init);
+        if (src->read_header)
+        {
+            auto header = src->read_header();
+            if (header.has_value())
+                doc.set_header(header);
+        }
+        doc.source = src;
+        doc.batch_size = (batch_size == 0 || batch_size == npos) ? 1 : batch_size;
+        return doc;
+    }
+
+    std::size_t lhe::pull_batch()
+    {
+        if (!this->streaming())
+            throw std::runtime_error("lhe::pull_batch: lhe is not in streaming mode (no source set); use open_streaming() first");
+        this->events.clear();
+        this->sorted_events.clear();
+        this->processes.clear();
+        this->process_group.clear();
+        this->process_order.clear();
+        this->events = this->source->pull(this->batch_size);
+        this->events_pulled_total += this->events.size();
+        return this->events.size();
     }
 
     void write_lhef(lhe &doc, std::ostream &out, bool include_weight_ids)
@@ -6164,6 +7536,17 @@ namespace REX
         return get(block, {i1}, fallback);
     }
 
+    double slha::get(const std::string &block,
+                     const std::vector<int> &indices,
+                     double fallback) const
+    {
+        auto itb = blocks_.find(upper(block));
+        if (itb == blocks_.end())
+            return fallback;
+        auto itv = itb->second.entries.find(indices);
+        return (itv == itb->second.entries.end()) ? fallback : itv->second;
+    }
+
     void slha::set(const std::string &block,
                    std::initializer_list<int> indices,
                    double value)
@@ -6178,6 +7561,13 @@ namespace REX
                    double value)
     {
         set(block, {i1}, value);
+    }
+
+    void slha::set(const std::string &block,
+                   const std::vector<int> &indices,
+                   double value)
+    {
+        blocks_[upper(block)].entries[indices] = value;
     }
 
     double slha::get_decay(int pid, double fallback) const
@@ -6225,7 +7615,7 @@ namespace REX
         return to_slha(content);
     }
 
-    slha to_slha(lhe &doc)
+    slha to_slha(const lhe &doc)
     {
         if (doc.header.type() == typeid(slha))
             return std::any_cast<slha>(doc.header);

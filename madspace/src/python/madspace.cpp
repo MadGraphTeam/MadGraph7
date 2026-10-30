@@ -337,7 +337,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             &MatrixElementApi::helicity_count,
             pydoc::doc("MatrixElementApi::helicity_count")
         )
-        .def("index", &MatrixElementApi::index, pydoc::doc("MatrixElementApi::index"));
+        .def("index", &MatrixElementApi::index, pydoc::doc("MatrixElementApi::index"))
+        .def("file_name", &MatrixElementApi::file_name)
+        .def("supported_inputs", &MatrixElementApi::supported_inputs)
+        .def("required_inputs", &MatrixElementApi::required_inputs)
+        .def("supported_outputs", &MatrixElementApi::supported_outputs)
+        .def("supports_set_parameter", &MatrixElementApi::supports_set_parameter)
+        .def("supports_get_parameter", &MatrixElementApi::supports_get_parameter)
+        .def(
+            "set_parameter",
+            &MatrixElementApi::set_parameter,
+            py::arg("name"),
+            py::arg("real"),
+            py::arg("imag") = 0.0
+        )
+        .def("get_parameter", &MatrixElementApi::get_parameter, py::arg("name"));
 
     py::classh<Tensor>(m, "Tensor", py::dynamic_attr(), pydoc::doc("Tensor"))
         .def(
@@ -2363,6 +2377,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
                 bool,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -2373,6 +2388,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdf2") = std::monostate{},
             py::arg("input_momentum_fraction") = true,
             py::arg("decay") = false,
+            py::arg("matrix_element_output") = false,
             pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
         .def(
@@ -2395,6 +2411,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "running_coupling",
             &DifferentialCrossSection::running_coupling,
             pydoc::doc("DifferentialCrossSection::running_coupling")
+        )
+        .def(
+            "matrix_element_output",
+            &DifferentialCrossSection::matrix_element_output,
+            pydoc::doc("DifferentialCrossSection::matrix_element_output")
         );
 
     py::classh<Unweighter, FunctionGenerator>(m, "Unweighter", pydoc::doc("Unweighter"))

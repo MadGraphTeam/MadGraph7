@@ -2181,6 +2181,20 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             raise self.ConfigurationError('''Can\'t load Reweight module.
             The variable mg5_path might not be correctly configured.''')
 
+        # the reweighting backend (madgraph/various/reweight_backend.py): this
+        # is the classic module; MadtRex runs from the MG7 output's launcher
+        backend = [a.split('=', 1)[1] for a in line.split()
+                   if a.startswith(('--backend=', '--reweight-backend='))]
+        if backend:
+            line = ' '.join(a for a in line.split()
+                            if not a.startswith(('--backend=', '--reweight-backend=')))
+            if backend[-1].lower() == 'madtrex':
+                raise self.InvalidCmd('--backend=madtrex: MadtRex needs an MG7 output; '
+                                      'this reweighting uses the classic module')
+            if backend[-1].lower() not in ('classic', 'auto'):
+                raise self.InvalidCmd('--backend=%s: expected classic, madtrex or auto'
+                                      % backend[-1])
+
         # plugin option
         plugin = False
         reweight_mode = None

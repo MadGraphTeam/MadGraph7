@@ -8,12 +8,16 @@
  *
  ***/
 //
-// *R*apid *e*vent e*x*traction Version 1.0.0
+// *R*apid *e*vent e*x*traction Version 1.1.0
 // Rex is a C++ library for parsing and manipulating Les Houches Event-format (LHE) files.
-// It is designed to fast and lightweight, in comparison to internal parsers in programs like MadGraph.
-// Currently, Rex is in development and may not contain all features necessary for full LHE parsing.
+// It is designed to fast and lightweight, and generic, allowing usage as an LHE parser
+// and parton-level event manipulator for whatever purpose the user desires.
+// Rex functionality is generalised through std::function-based interfaces
+// which can be generated from customisable constructors for full generality
+// and flexibility, while still providing a simple interface for typical use cases.
 //
-// Copyright © 2023-2026 CERN, CERN Author Zenny Wettersten.
+// Copyright © 2023-2025 CERN, CERN Author Zenny Wettersten.
+// Copyright © 2025-2026 Zenny Wettersten.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
 // All rights not expressly granted are reserved.
 //
@@ -52,6 +56,8 @@
 #include <type_traits>
 #include <cassert>
 #include <variant>
+#include <atomic>
+#include <thread>
 
 // Define pi
 constexpr double pi = 3.141592653589793;
@@ -94,6 +100,41 @@ namespace REX
 
     // generic warning function for printing warnings without throwing
     void warning(std::string message);
+
+    // Generic verbosity-gated output helper. Objects that want an opt-out
+    // "quiet mode" hold one of these (typically as a member) and route their
+    // diagnostic output through it
+    class verbosity
+    {
+    public:
+        verbosity() : verbose_(std::make_shared<std::atomic<bool>>(true)) {}
+        verbosity(bool verbose) : verbose_(std::make_shared<std::atomic<bool>>(verbose)) {}
+        verbosity(const verbosity &) = default;
+        verbosity(verbosity &&) = default;
+        verbosity &operator=(const verbosity &) = default;
+        verbosity &operator=(verbosity &&) = default;
+
+        bool is_verbose() const noexcept { return this->verbose_->load(std::memory_order_relaxed); }
+        void set_verbose(bool v) noexcept { this->verbose_->store(v, std::memory_order_relaxed); }
+        operator bool() const noexcept { return this->is_verbose(); }
+        verbosity &operator=(bool v) noexcept
+        {
+            this->set_verbose(v);
+            return *this;
+        }
+
+        // Shares this object's underlying flag with another verbosity, so
+        // toggling either one toggles both
+        void link(const verbosity &parent) { this->verbose_ = parent.verbose_; }
+        // Detaches from whatever's currently shared, keeping the current value
+        void unlink() { this->verbose_ = std::make_shared<std::atomic<bool>>(this->is_verbose()); }
+
+        void print(const std::string &msg, bool force = false) const;
+        void warn(const std::string &msg, bool force = false) const;
+
+    private:
+        std::shared_ptr<std::atomic<bool>> verbose_;
+    };
 
     // free functions / callables that take (ostream&, args...), map to string
     template <class F, class... Args,
@@ -1120,6 +1161,11 @@ namespace REX
         double m2() const;    // mass squared
     };
 
+    struct event; // forward declaration for hash function type
+
+    using event_hash_fn = std::function<size_t(event &)>;        // hash function type
+    using cevent_hash_fn = std::function<size_t(const event &)>; // hash function type
+
     struct event
     {
     public:
@@ -1149,6 +1195,13 @@ namespace REX
         vecArr2<short int> mother_ = {}, icol_ = {};            // mother and color indices
         std::vector<double> wgts_ = {};                         // additional weights, if any; note that wgt ids are not stored at the event level, so custom writers need to handle this at the LHEF level
 
+        // Not part of the LHEF standard: event-level indices identifying which
+        // helicity/flavor (channel) configuration this event was generated with
+        // or should be evaluated at. Left at -1 (unset) unless explicitly assigned,
+        // eg by a generator/reweighter that fixes helicities or flavor channels
+        int helicity_ = -1;
+        int flavor_ = -1;
+
         // Self-returning setters
         event &set_n(size_t n);
         event &set_proc_id(long int id);
@@ -1172,6 +1225,10 @@ namespace REX
         event &set_icol(const std::vector<std::array<short int, 2>> &c);
         event &set_wgts(const std::vector<double> &w);
         event &add_wgt(double w, const std::string &id = "");
+        event &set_helicity(int h);
+        event &set_helicity(event_hash_fn hash_fn);
+        event &set_flavor(int f);
+        event &set_flavor(event_hash_fn hash_fn);
 
         std::vector<size_t> indices = {};                                  // indices of particles for ordered views without modifying underlying data
         event &set_indices();                                              // Default indexing is sequential by storage order
@@ -1272,6 +1329,10 @@ namespace REX
         std::vector<double> &wgts();
         const std::vector<double> &wgts() const;
         size_t n_wgts() const;
+        int &helicity();
+        const int &helicity() const;
+        int &flavor();
+        const int &flavor() const;
 
         // IDs for various additional weights, shared between events (and the LHE struct)
         std::shared_ptr<std::vector<std::string>> weight_ids = nullptr;
@@ -1606,7 +1667,7 @@ namespace REX
             }
             if (it->second.type() != typeid(T))
             {
-                throw std::bad_any_cast("event::get: Parameter '" + name + "' is not of requested type");
+                throw std::runtime_error("event::get: Parameter '" + name + "' is not of requested type");
             }
             return std::any_cast<const T &>(it->second);
         }
@@ -1741,7 +1802,7 @@ namespace REX
     // sort particle-level fields using exclusively the fields specified in the configuration.
     // Additionally, the status_filter variable allows for defining which particle statuses to extract for comparison.
     // For doubles, relative tolerances can be set independently for each field by the user.
-    // However, for integers, only exact equality is supported.
+    // However, for integers, only exact equality is supported
     struct eventComparatorConfig
     {
         // Status filter: only compare particles with one of these statuses
@@ -2161,6 +2222,8 @@ namespace REX
         std::vector<std::shared_ptr<event>> events = {};
         event_equal_fn comparator = external_legs_comparator;
         cevent_equal_fn const_comparator = external_legs_const_comparator;
+        event_hash_fn helicity_index = nullptr;
+        event_hash_fn flavor_index = nullptr;
         // Default constructors
         eventBelongs() = default;
         eventBelongs(const eventBelongs &) = default;
@@ -2220,8 +2283,7 @@ namespace REX
 
     eventBelongs all_events_belong();
 
-    using event_hash_fn = std::function<size_t(event &)>;        // hash function type
-    using cevent_hash_fn = std::function<size_t(const event &)>; // hash function type
+
 
     // Struct to sort events by their belonging to sets of events
     struct eventSorter
@@ -2279,8 +2341,75 @@ namespace REX
         cevent_hash_fn get_const_hash() const;
     };
 
-    eventSorter make_sample_sorter(std::vector<event> sample, event_equal_fn comp = external_legs_comparator);
+    eventSorter make_sample_sorter(const std::vector<event> &sample, event_equal_fn comp = external_legs_comparator);
     eventSorter make_sample_sorter(std::vector<std::shared_ptr<event>> sample, event_equal_fn comp = external_legs_comparator);
+
+    struct initNode; // forward declaration -- histogram::normalise() only needs the type by reference
+
+    double weight_norm(const initNode &init, const std::vector<std::shared_ptr<event>> &evts, verbosity *verbose = nullptr);
+
+        struct histogram
+    {
+        struct entry
+        {
+            std::shared_ptr<event> evt = nullptr;
+            size_t index = npos;
+            double base_weight = 1.0;
+        };
+
+        std::vector<entry> entries = {};
+        std::vector<size_t> nominal = {};
+        std::vector<std::vector<double>> mult = {};
+        size_t n_wgts_synced = 0;
+        double norm = 1.0;
+        size_t n_bins = npos;
+        verbosity verbose;
+
+        // Default constructors
+        histogram() = default;
+        histogram(const histogram &) = default;
+        histogram(histogram &&) noexcept = default;
+        histogram &operator=(const histogram &) = default;
+        histogram &operator=(histogram &&) noexcept = default;
+
+        // Construct from events + explicit bin indices
+        histogram(const std::vector<std::shared_ptr<event>> &evts, const std::vector<size_t> &indices);
+
+        // Construct from events + an eventSorter/event_hash_fn classifying them into bins
+        histogram(const std::vector<std::shared_ptr<event>> &evts, eventSorter sorter);
+        histogram(const std::vector<std::shared_ptr<event>> &evts, event_hash_fn hash);
+        histogram(const std::vector<std::shared_ptr<event>> &evts, std::vector<eventBelongs> e_sets);
+        histogram(const std::vector<std::shared_ptr<event>> &evts, std::vector<event_bool_fn> comps);
+
+        histogram &add_event(std::shared_ptr<event> e, size_t index);
+        histogram &add_event(std::shared_ptr<event> e, eventSorter sorter);
+        histogram &add_event(std::shared_ptr<event> e, event_hash_fn hash);
+
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, const std::vector<size_t> &indices);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, eventSorter sorter);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, event_hash_fn hash);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, const eventBelongs &e_set);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, event_bool_fn comp);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, cevent_bool_fn comp);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, std::vector<eventBelongs> e_sets);
+        histogram &add_events(const std::vector<std::shared_ptr<event>> &evts, std::vector<event_bool_fn> comps);
+
+        void rebuild();
+        histogram &normalise(const initNode &init);
+        histogram &set_norm(double norm);
+
+        bool sync_wgts();
+
+        size_t size() const;                               // number of events held (entries.size())
+        size_t bins() const;                               // number of bins (nominal.size())
+        size_t rows() const;                               // number of weight sets currently held (mult.size(), >= 1)
+        const std::vector<size_t> &counts() const;         // alias for nominal
+        std::vector<double> heights(size_t row) const;     // nominal[b]*mult[row][b] per bin -- weight set `row`'s bin heights, on row 0's scale (see mult above)
+        std::vector<std::vector<double>> heights() const;  // heights(row) for every row -- the full, immediately-plottable 2D array
+
+    private:
+        void place(std::shared_ptr<event> e, size_t index);
+    };
 
     struct process
     {
@@ -2292,6 +2421,8 @@ namespace REX
         process &operator=(process &&) noexcept = default;
         explicit process(std::vector<std::shared_ptr<event>> evts, bool filter_partons = false);
         explicit process(std::vector<event> evts, bool filter_partons = false);
+        explicit process(std::vector<std::shared_ptr<event>> evts, bool filter_partons = false, bool column_major = false);
+        explicit process(std::vector<event> evts, bool filter_partons = false, bool column_major = false);
 
         process &add_event(const event &e);
         process &add_event(std::shared_ptr<event> e);
@@ -2299,8 +2430,19 @@ namespace REX
         process &add_event_raw(std::shared_ptr<event> e);
         process &add_event_filtered(const event &e);
         process &add_event_filtered(std::shared_ptr<event> e);
+        process &add_event_umami_filtered(const std::vector<event> &evts);
+        process &add_event_umami_filtered(std::vector<std::shared_ptr<event>> evts);
         process &add_event(const std::vector<event> &evts);
         process &add_event(std::vector<std::shared_ptr<event>> evts);
+
+        // Transpose parton-level data between the row-major LHEF layout
+        // (momenta_ etc., stored as [event][parton][E,px,py,pz]) and the
+        // column-major UMAMI layout (umami_momenta_ etc., stored as
+        // [E,px,py,pz][parton][event]). Requires every event to have the
+        // same number of partons. Updates column_major to reflect the
+        // resulting layout
+        process &to_umami();
+        process &from_umami();
 
         // LHEF data, vectorised
         // Note that vecors of vectors are not contiguous in memory
@@ -2321,6 +2463,42 @@ namespace REX
         vecArr2<short int> mother_ = {}, icol_ = {};
         std::vector<std::vector<double>> wgts_ = {}; // additional weights, if any; note that wgt ids are not stored at the event level, so custom
         std::unordered_map<std::string, std::vector<std::any>> extra;
+
+        // Not part of the LHEF standard: event-level indices identifying which
+        // helicity/flavor (channel) configuration each event has
+        std::vector<int> helicity_ = {};
+        std::vector<int> flavor_ = {};
+
+        // Alternate representation of particle-level data
+        // matching the UMAMI column-major format to simplify
+        // interfacing with UMAMI scattering amplitudes;
+        // if  "column_major" is true, data is stored here in
+        // column-major order, otherwise it is stored in the
+        // standard LHEF row-major order in the above vectors.
+        // Compare: Above, momenta_ is stored as [event][parton][E,px,py,pz],
+        // while below it is stored as [E,px,py,pz][parton][event]
+        bool column_major = false;
+        std::vector<double> umami_momenta_ = {}; // column-major momenta, if column_major is true
+        std::vector<double> umami_mass_ = {}, umami_vtim_ = {}, umami_spin_ = {};
+        std::vector<long int> umami_pdg_ = {};
+        std::vector<short int> umami_status_ = {}, umami_mother_ = {}, umami_icol_ = {};
+
+        // Generic, opaque handle to an externally-owned, process-wide buffer.
+        // Rex never allocates, interprets, or frees the pointee: this exists
+        // purely so that off-CPU (eg GPU-resident) functions have a standard
+        // place to stash and retrieve raw pointers/handles (device buffers,
+        // streams, contexts, ...) alongside the SoA process data
+        struct devptr
+        {
+            void *ptr = nullptr;   // opaque pointer, meaning defined by the owner
+            std::size_t stride = 0; // caller-defined stride between per-event slots
+            std::any tag;          // opaque context the owner can use to interpret/manage lifetime
+        };
+        std::unordered_map<std::string, devptr> device_data = {};
+        process &set_device_data(const std::string &name, void *ptr, std::size_t stride = 0, std::any tag = {});
+        devptr &get_device_data(const std::string &name);
+        const devptr &get_device_data(const std::string &name) const;
+        bool has_device_data(const std::string &name) const;
 
         bool filter = false; // whether to extract data using raw data or event_view
 
@@ -2376,36 +2554,50 @@ namespace REX
         const vecArr4<double> &momentum() const { return momenta_; }
         vecArr4<double> &momenta() { return momenta_; }
         const vecArr4<double> &momenta() const { return momenta_; }
+        std::vector<double> &umami_momenta() { return umami_momenta_; }
+        const std::vector<double> &umami_momenta() const { return umami_momenta_; }
         std::vector<double> &mUP() { return mass_; }
         const std::vector<double> &mUP() const { return mass_; }
         std::vector<double> &m() { return mass_; }
         const std::vector<double> &m() const { return mass_; }
         std::vector<double> &mass() { return mass_; }
         const std::vector<double> &mass() const { return mass_; }
+        std::vector<double> &umami_mass() { return umami_mass_; }
+        const std::vector<double> &umami_mass() const { return umami_mass_; }
         std::vector<double> &vtim() { return vtim_; }
         const std::vector<double> &vtim() const { return vtim_; }
+        std::vector<double> &umami_vtim() { return umami_vtim_; }
+        const std::vector<double> &umami_vtim() const { return umami_vtim_; }
         std::vector<double> &vTimUP() { return vtim_; }
         const std::vector<double> &vTimUP() const { return vtim_; }
         std::vector<double> &vTim() { return vtim_; }
         const std::vector<double> &vTim() const { return vtim_; }
         std::vector<double> &spin() { return spin_; }
         const std::vector<double> &spin() const { return spin_; }
+        std::vector<double> &umami_spin() { return umami_spin_; }
+        const std::vector<double> &umami_spin() const { return umami_spin_; }
         std::vector<double> &spinUP() { return spin_; }
         const std::vector<double> &spinUP() const { return spin_; }
         std::vector<long int> &idUP() { return pdg_; }
         const std::vector<long int> &idUP() const { return pdg_; }
         std::vector<long int> &pdg() { return pdg_; }
         const std::vector<long int> &pdg() const { return pdg_; }
+        std::vector<long int> &umami_pdg() { return umami_pdg_; }
+        const std::vector<long int> &umami_pdg() const { return umami_pdg_; }
         std::vector<long int> &id() { return pdg_; }
         const std::vector<long int> &id() const { return pdg_; }
         std::vector<short int> &status() { return status_; }
         const std::vector<short int> &status() const { return status_; }
+        std::vector<short int> &umami_status() { return umami_status_; }
+        const std::vector<short int> &umami_status() const { return umami_status_; }
         std::vector<short int> &iSt() { return status_; }
         const std::vector<short int> &iSt() const { return status_; }
         std::vector<short int> &iStUP() { return status_; }
         const std::vector<short int> &iStUP() const { return status_; }
         vecArr2<short int> &mother() { return mother_; }
         const vecArr2<short int> &mother() const { return mother_; }
+        std::vector<short int> &umami_mother() { return umami_mother_; }
+        const std::vector<short int> &umami_mother() const { return umami_mother_; }
         vecArr2<short int> &moth() { return mother_; }
         const vecArr2<short int> &moth() const { return mother_; }
         vecArr2<short int> &mothUP() { return mother_; }
@@ -2416,11 +2608,20 @@ namespace REX
         const vecArr2<short int> &iCol() const { return icol_; }
         vecArr2<short int> &icol() { return icol_; }
         const vecArr2<short int> &icol() const { return icol_; }
+        std::vector<short int> &umami_icol() { return umami_icol_; }
+        const std::vector<short int> &umami_icol() const { return umami_icol_; }
 
         std::vector<std::vector<double>> &wgtUP() { return wgts_; }
         const std::vector<std::vector<double>> &wgtUP() const { return wgts_; }
         std::vector<std::vector<double>> &wgts() { return wgts_; }
         const std::vector<std::vector<double>> &wgts() const { return wgts_; }
+
+        std::vector<int> &helicity() { return helicity_; }
+        const std::vector<int> &helicity() const { return helicity_; }
+        std::vector<int> &flavor() { return flavor_; }
+        const std::vector<int> &flavor() const { return flavor_; }
+
+        std::size_t size() const { return n_.size(); }
 
         std::vector<double> &get_muF()
         {
@@ -2496,6 +2697,8 @@ namespace REX
         process &set_icol(const vecArr2<short int> &icol);
         process &set_wgts(const std::vector<std::vector<double>> &wgts);
         process &append_wgts(const std::vector<double> &wgts);
+        process &set_helicity(const std::vector<int> &helicity);
+        process &set_flavor(const std::vector<int> &flavor);
         process &add_extra(const std::string &name, const std::any &value);
         process &add_extra(const std::unordered_map<std::string, std::any> &values);
         process &add_extra(const std::string &name, const std::vector<std::any> &values);
@@ -2556,6 +2759,8 @@ namespace REX
         process &transpose_iColUP();
         process &transpose_wgts();
         process &transpose_extra();
+        process &transpose_helicity();
+        process &transpose_flavor();
 
         // Specific momentum component transpositions
         process &transpose_E();
@@ -2705,6 +2910,63 @@ namespace REX
         }
     };
 
+    struct eventSource
+    {
+        std::function<initNode()> read_init = nullptr;   // called once, eagerly, before any pull()
+        std::function<std::any()> read_header = nullptr; // optional
+        // Pulls up to n events, advancing the source; returns fewer (or an
+        // empty vector) once exhausted. Not required to be safe to call
+        // again after returning fewer than n events
+        std::function<std::vector<std::shared_ptr<event>>(size_t)> pull = nullptr;
+        // Present only if the source supports rewinding to the start of the
+        // event stream (init/header are not re-read) for a second pass.
+        // Left null for forward-only sources
+        std::function<void()> rewind = nullptr;
+        bool seekable() const noexcept { return static_cast<bool>(rewind); }
+    };
+
+    // Opens filename for streaming, reusing load_lhef()'s header/init scan
+    // and per-event xml_to_event() parse, one <event> block at a time
+    eventSource open_lhe_source(const std::string &filename);
+    eventSource open_lhe_source(std::istream &in); // caller retains ownership; must outlive the source
+
+    struct eventSink
+    {
+        // Opening tag + header + init, written exactly once before any
+        // write_event() call
+        std::function<void(const initNode &, const std::any &)> write_open = nullptr;
+        std::function<void(std::shared_ptr<event>)> write_event = nullptr;
+        std::function<void()> write_close = nullptr; // closing tag, exactly once
+    };
+
+    eventSink open_lhe_sink(const std::string &filename, bool include_ids = false);
+
+    // Splits every event pulled from src across n_shards independent
+    // destinations, each obtained once, up front, via make_sink(shard_index)
+    // -- so a caller wanting eg per-shard binary EventFile output can defer
+    // even opening the underlying file until it actually receives its first
+    // event, if it wants shard file "shape" (eg a fixed particle count) to
+    // fall out of whatever landed there rather than being fixed in advance.
+    // src's init (and header, if it provides one) is written to every shard
+    // via its own write_open(), so each resulting shard is independently a
+    // complete, valid event source in its own right -- not just a fragment
+    // that only makes sense read back alongside its siblings. Events are
+    // distributed round-robin, in pulled order (shard 0, 1, ..., n_shards-1,
+    // 0, 1, ...), by streaming src in batch_size chunks via its own pull(),
+    // so memory use stays O(batch_size) regardless of the source's total
+    // size. Every shard's write_close() is called exactly once, after src is
+    // exhausted (or immediately, with zero events written, if src already
+    // was). Returns the number of events written to each shard, in shard
+    // order. Throws if n_shards == 0, if src is missing read_init/pull, or
+    // if any eventSink returned by make_sink is missing write_open/
+    // write_event/write_close
+    std::vector<size_t> split_source(
+        eventSource &src,
+        size_t n_shards,
+        const std::function<eventSink(size_t)> &make_sink,
+        size_t batch_size = 10000
+    );
+
     // Data-driven LHE struct
     // Contains both the object oriented event representation
     // and the data-oriented SoA process representation,
@@ -2731,6 +2993,23 @@ namespace REX
         std::any header;
 
         bool filter_processes = true;
+        bool column_major = false; // whether to store the process data in column-major order (for UMAMI compatibility)
+
+        // Maximum number of events per REX::process built by events_to_processes().
+        // Left at npos (unset) by default. If set, sort_events() stops filling a
+        // sorter class's bucket once it reaches max_batch events and spills any
+        // further events of that same class into a freshly appended bucket instead
+        // NOTE: BATCH_SIZE HAS TO DO WITH STREAMING, MAX_BATCH HAS TO DO WITH PROCESS SPLITTING,
+        // THEY HAVE NO RELATION TO EACH OTHER
+        std::size_t max_batch = npos;
+
+        // Threads sort_events() classifies the events with (each a chunk of at
+        // least sort_chunk events); 1, the default, classifies them in order on
+        // the calling thread. The sorter's classifiers must then be safe to
+        // call concurrently on different events, as eventBelongs' are (they
+        // only write to the event they classify).
+        std::size_t sort_threads = 1;
+        static constexpr std::size_t sort_chunk = 4096;
 
         eventSorter sorter;
         event_hash_fn event_hash = nullptr; // hash function for events (ie sorter)
@@ -2740,10 +3019,41 @@ namespace REX
         std::vector<std::shared_ptr<event>> events = {};                // vector of events
         std::vector<std::vector<std::shared_ptr<event>>> sorted_events; // vector of vectors of events, sorted according to the processes scheme
         std::vector<std::shared_ptr<process>> processes = {};           // vector of processes
+        std::vector<size_t> process_group = {};
 
         std::shared_ptr<std::vector<std::string>> weight_ids = std::make_shared<std::vector<std::string>>(); // weight ids for the <rwgt> block, if any
 
         std::vector<std::string> weight_context = {}; // context strings for each weight, if any
+
+        // Streaming mode: when source is set, events/sorted_events/processes
+        // hold only the current batch, refreshed by pull_batch(). All other
+        // lhe machinery (sort_events, events_to_processes, transpose, ...)
+        // is unaware of and unaffected by streaming -- it always just
+        // operates on whatever is currently in `events`, batch or not.
+        // NOTE: BATCH_SIZE HAS TO DO WITH STREAMING, MAX_BATCH HAS TO DO WITH PROCESS SPLITTING,
+        // THEY HAVE NO RELATION TO EACH OTHER
+        std::shared_ptr<eventSource> source = nullptr;
+        std::size_t batch_size = npos;         // events requested per pull_batch(); npos is invalid for streaming use
+        std::size_t events_pulled_total = 0;   // running count across all batches pulled so far
+        bool streaming() const noexcept { return static_cast<bool>(source); }
+
+        // Builds a streaming lhe: reads init (and header, if the source
+        // provides one) eagerly, but pulls no events yet -- call
+        // pull_batch() to fetch the first batch
+        static lhe open_streaming(std::shared_ptr<eventSource> src, std::size_t batch_size = 10000);
+
+        // Discards whatever events/sorted_events/processes/process_group the
+        // lhe currently holds and replaces them with up to batch_size fresh
+        // events pulled from source. Returns the number of events pulled
+        // (0 means the source is exhausted). Throws if not in streaming mode
+        std::size_t pull_batch();
+
+        // Named histograms owned by this lhe (composition, not inheritance:
+        // an lhe *has* histograms of its events, it isn't one). Keyed by a
+        // user-chosen name (eg an observable), built against this->events
+        // via make_histogram() and re-synced to newly appended reweighted
+        // weights via sync_histogram(s)()
+        std::unordered_map<std::string, std::shared_ptr<histogram>> histograms = {};
 
         // Self-returning setting functions
         lhe &set_events(std::vector<std::shared_ptr<event>> evts);
@@ -2758,6 +3068,7 @@ namespace REX
         void extract_hash();
         lhe &set_hash(event_hash_fn hash);
         lhe &set_filter(bool v);
+        lhe &set_max_batch(std::size_t n);
         lhe &set_weight_ids(const std::vector<std::string> &ids);
         lhe &set_weight_ids(std::vector<std::string> &&ids);
         lhe &set_weight_ids(std::shared_ptr<std::vector<std::string>> ids);
@@ -2778,12 +3089,62 @@ namespace REX
         void sync_weight_ids();
         void append_weight_ids(bool include = false);
 
+        // Histogram management, built against this->events. Each
+        // make_histogram() overload builds the histogram, then calls
+        // histogram::normalise(*this) on it
+        lhe &add_histogram(const std::string &name, std::shared_ptr<histogram> h);
+        lhe &add_histogram(const std::string &name, histogram h);
+        lhe &make_histogram(const std::string &name, const std::vector<size_t> &indices);
+        lhe &make_histogram(const std::string &name, eventSorter sorter);
+        lhe &make_histogram(const std::string &name, event_hash_fn hash);
+        lhe &make_histogram(const std::string &name, const eventBelongs &e_set);
+        lhe &make_histogram(const std::string &name, event_bool_fn comp);
+        lhe &make_histogram(const std::string &name, cevent_bool_fn comp);
+        lhe &make_histogram(const std::string &name, std::vector<eventBelongs> e_sets);
+        lhe &make_histogram(const std::string &name, std::vector<event_bool_fn> comps);
+        bool has_histogram(const std::string &name) const;
+        histogram &hist(const std::string &name);
+        const histogram &hist(const std::string &name) const;
+        lhe &remove_histogram(const std::string &name);
+        bool sync_histograms();
+        bool sync_histogram(const std::string &name);
+
         void print_header(std::ostream &os = std::cout) const;
         void print(std::ostream &os = std::cout, bool include_ids = false);
+
+        // Called by every lhe constructor that derives nProc_/lProc_ from
+        // the actual distinct event::proc_id_ values present in events (see
+        // eg lhe(const initNode&, vector<shared_ptr<event>>)) -- pads
+        // xSec_/xSecErr_/xMax_ up to nProc_ with 0.0 wherever they're
+        // currently shorter than that, so initNode::validate_init() (which
+        // requires all four the same length) doesn't fail the moment such
+        // an lhe is printed. Needed whenever the source initNode's own
+        // literal header declared fewer processes than events actually
+        // carry -- in particular NPRUP=0 with an otherwise-empty init block
+        // (eg MadGraph7's own events.lhe, which always leaves its <init>
+        // block a zeroed-out stub and stores real per-process xSec/xMax
+        // information nowhere in the XML at all): nProc_/lProc_ end up
+        // correctly derived from events here, but xSec_/xSecErr_/xMax_ have
+        // nothing to derive from and would otherwise stay at the stub's
+        // original (too-short) length. A padded 0.0 is a safe placeholder:
+        // downstream code already treats an all-zero xSec_ as "no real
+        // header cross section available" and estimates one from event
+        // weights instead (see reweightor::calc_xSec_from_weights()) --
+        // this only makes that fallback reachable/consistent for xMax_ too,
+        // it doesn't change what value ends up used for xSec_/xSecErr_.
+        // Never *shortens* any of the three, so a genuinely-populated init
+        // block (real per-process data already the right length) is left
+        // untouched
+        void pad_proc_arrays();
     };
 
+    // Free-function core of lhe::print_header(), factored out so eventSink
+    // implementations (eg open_lhe_sink()) can print a std::any header
+    // without needing an lhe object to hang it off of
+    void print_lhe_header(const std::any &header, std::ostream &os = std::cout);
+
     // Classes for XML handling
-    // xmlDoc: Owns the entire XML text buffer. Nodes keep this alive via shared_ptr.
+    // xmlDoc: Owns the entire XML text buffer. Nodes keep this alive via shared_ptr
     class xmlDoc
     {
     public:
@@ -2821,7 +3182,7 @@ namespace REX
         xmlNode();
         ~xmlNode();
 
-        // Parse from an owning string (keeps only one owned copy).
+        // Parse from an owning string (keeps only one owned copy)
         static std::shared_ptr<xmlNode> parse(std::string xml);
 
         // Parse from an already-shared buffer.
@@ -2869,6 +3230,20 @@ namespace REX
         bool remove_child(const xmlNode *child) noexcept;
         bool remove_child(std::string_view name) noexcept;
 
+        // Actually erases a child previously added via add_child()/
+        // insert_child_*() (as opposed to remove_child()'s suppressed_
+        // flag, which only ever affects a genuinely in-doc child -- one
+        // write_impl() reaches via the doc-buffer-walking loop over
+        // children_, checking is_in_doc()/suppressed_ as it goes. A child
+        // added via add_child()/insert_child_*() is instead always emitted
+        // through the separate inserts_ mechanism, which has no notion of
+        // suppressed_ at all, so remove_child() is a silent no-op on it --
+        // this is the one that actually works for such a child, dropping
+        // its entry from both inserts_ and children_. Returns false (no-op)
+        // if child isn't found in inserts_ at all (eg it's a genuinely
+        // in-doc child -- use remove_child() for those instead)
+        bool remove_inserted_child(const xmlNode *child) noexcept;
+
         // Insert new children relative to existing ones
         bool insert_child_before(size_t anchor_in_doc_ordinal, std::shared_ptr<xmlNode> child) noexcept;
         bool insert_child_after(size_t anchor_in_doc_ordinal, std::shared_ptr<xmlNode> child) noexcept;
@@ -2878,7 +3253,7 @@ namespace REX
         bool replace_child(std::string_view anchor_name, std::shared_ptr<xmlNode> child, bool add_nl = false) noexcept;
 
         // Insert at specific location in this node's content
-        // (rel_offset is in bytes relative to content_start(); clamped to [0, content_len]).
+        // (rel_offset is in bytes relative to content_start(); clamped to [0, content_len])
         bool insert_child_at_content_offset(size_t rel_offset, std::shared_ptr<xmlNode> child) noexcept;
 
         // Convenience: explicit start/end of content
@@ -2893,13 +3268,18 @@ namespace REX
         // Internal constructor used by parser.
         explicit xmlNode(std::shared_ptr<const std::string> doc);
 
-        // Recursive element parser. Expects 'pos' at '<' for a normal element.
+        // Recursive element parser. Expects 'pos' at '<' for a normal element
         static std::shared_ptr<xmlNode> parse_element(const std::shared_ptr<const std::string> &doc, size_t &pos);
+        // ancestors: names of the elements enclosing this one, innermost
+        // last; returns nullptr for an element that is never closed (see the
+        // definition), so the caller can treat its start tag as text.
+        static std::shared_ptr<xmlNode> parse_element(const std::shared_ptr<const std::string> &doc, size_t &pos,
+                                                      std::vector<std::string_view> &ancestors);
 
-        // Top-level scanner to locate the first element (skips XML decl, comments, etc.).
+        // Top-level scanner to locate the first element (skips XML decl, comments, etc.)
         static size_t find_first_element_start(const std::string &s, size_t pos);
 
-        // Helpers for parsing attributes and skipping markup we don't turn into nodes.
+        // Helpers for parsing attributes and skipping markup we don't turn into nodes
         static void parse_attributes(xmlNode &node, size_t &cur);
         static bool skip_comment(const std::string &s, size_t &pos); // <!-- ... -->
         static bool skip_pi(const std::string &s, size_t &pos);      // <? ... ?>
@@ -2925,7 +3305,7 @@ namespace REX
         size_t prolog_end_ = 0;   // byte offset of first '<' of the root element
 
         // Child nodes may be “suppressed” for serialization by a parent;
-        // this flag is *only* consulted by the parent’s writer loop.
+        // this flag is *only* consulted by the parent’s writer loop
         bool suppressed_ = false;
 
         bool self_closing_ = false;
@@ -3055,7 +3435,7 @@ namespace REX
         template <class F>
         lheReader &set_event_translator(F &&f)
         {
-            // Accepts any callable returning event-like; adapt to shared_ptr<event>.
+            // Accepts any callable returning event-like; adapt to shared_ptr<event>
             event_tx_ = [fn = std::forward<F>(f)](const EventRaw &r) -> std::shared_ptr<event>
             {
                 auto out = fn(r);
@@ -3350,7 +3730,7 @@ namespace REX
     std::shared_ptr<xmlNode> load_xml(const std::string &filename);
 
     /// Minimal SLHA container: BLOCK entries with integer indices -> double values,
-    /// and DECAY widths keyed by PDG id. Comments are discarded.
+    /// and DECAY widths keyed by PDG id. Comments are discarded
     class slha
     {
     public:
@@ -3374,6 +3754,10 @@ namespace REX
         double get(const std::string &block,
                    int index,
                    double fallback = 0.0) const;
+        // indices known only at run time (multi-index blocks of a reweight card)
+        double get(const std::string &block,
+                   const std::vector<int> &indices,
+                   double fallback = 0.0) const;
 
         // Set
         void set(const std::string &block,
@@ -3381,6 +3765,9 @@ namespace REX
                  double value);
         void set(const std::string &block,
                  int index,
+                 double value);
+        void set(const std::string &block,
+                 const std::vector<int> &indices,
                  double value);
 
         // -------- DECAY: Get / Set --------
