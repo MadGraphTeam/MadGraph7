@@ -464,6 +464,12 @@ class VirtualPoleParts:
       uv_local + r2)``: the bare-plus-counterterm UV cancellation holds by
       construction, and the field UV part is what to compare with a
       textbook field renormalisation (design §12.4).
+    * A model that does state the origin, with pole regulators (MadLoop's
+      electroweak UFOs: ``epsUV`` and ``epsIR`` at UFO/SLHA TECHNICAL 1 and
+      2): the UV parts of ``r2``, ``uv_local`` and ``uv_external_fields``
+      are their values with the IR regulator at 0 (MadLoop's ``epsIR = 0``
+      reading) and their IR parts the rest, so the bare-plus-counterterm UV
+      cancellation is a check, not a construction.
     * ``uv``: ``uv_local + uv_external_fields``.
     """
 

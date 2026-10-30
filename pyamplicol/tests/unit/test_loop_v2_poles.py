@@ -783,6 +783,107 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
 
 
 @pytest.mark.loop_fast
+def test_regulated_counterterms_split_without_a_remainder():
+    """A model with pole regulators (MS-POLES): the counterterm components'
+    UV parts are given (the counterterm program at the IR regulator 0), so no
+    component takes a remainder, bare + counterterm UV poles are a sum, not
+    zero by construction, and the IR parts are the rest."""
+
+    from pyamplicol.loops.v2.assemble import Laurent
+
+    q = Fraction
+    values = {
+        "bare": Laurent(q(7), q(5), q(-2)),
+        "r2": Laurent(q(1), q(0), q(0)),
+        "uv_local": Laurent(q(0), q(-4), q(0)),
+        FIELD_COMPONENT: Laurent(q(1, 2), q(0), q(0)),
+    }
+    # e.g. a massless delta-Z (epsUV - epsIR): UV part -1, IR part +1.
+    given = {
+        "r2": Laurent(q(9), q(0), q(0)),
+        "uv_local": Laurent(q(9), q(-2), q(0)),
+        FIELD_COMPONENT: Laurent(q(9), q(-1), q(0)),
+    }
+    bare_uv = Laurent(q(7), q(3), q(0))
+    parts = split_sector(values, bare_uv, FIELD_COMPONENT, Laurent, given)
+    for name, whole in values.items():
+        u, i = parts["uv"][name], parts["ir"][name]
+        # Every part keeps the combined finite part (not the given ones).
+        assert u.finite == i.finite == whole.finite
+        assert u.single_pole + i.single_pole == whole.single_pole
+        assert u.double_pole + i.double_pole == whole.double_pole
+    assert parts["uv"]["uv_local"] == Laurent(q(0), q(-2), q(0))
+    assert parts["ir"]["uv_local"] == Laurent(q(0), q(-2), q(0))
+    assert parts["uv"][FIELD_COMPONENT] == Laurent(q(1, 2), q(-1), q(0))
+    assert parts["ir"][FIELD_COMPONENT] == Laurent(q(1, 2), q(1), q(0))
+    # bare_UV + CT_UV = 3 - 2 - 1 + 0 = 0 here, from the parts themselves.
+    assert parts["uv"]["virtual"] == Laurent(q(17, 2), q(0), q(0))
+    # A UV part that does not cancel the bare one stays visible.
+    leaky = dict(given, uv_local=Laurent(q(9), q(-1), q(0)))
+    leaked = split_sector(values, bare_uv, FIELD_COMPONENT, Laurent, leaky)
+    assert leaked["uv"]["virtual"].single_pole == 1
+    assert leaked["ir"]["virtual"].single_pole == values["bare"].single_pole - 3 + (
+        -4 + 1
+    ) + (0 + 1)
+    # Without regulators the remainder definition is unchanged.
+    assert split_sector(values, bare_uv, FIELD_COMPONENT, Laurent)["uv"][
+        "virtual"
+    ] == Laurent(q(17, 2), q(0), q(0))
+
+
+@pytest.mark.loop_fast
+def test_pole_regulators_are_found_by_code_and_need_both_adjustable():
+    """``poles.pole_regulators``: the real external parameters at UFO/SLHA
+    (TECHNICAL, 1) and (TECHNICAL, 2), whatever their names; none when one
+    is missing, duplicated, complex or fixed; the regulated point sets the IR
+    one to 0 and keeps every other value."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.poles import (
+        PoleRegulators,
+        pole_regulators,
+        regulated_parameters,
+    )
+
+    def record(name, block, code, nature="external", kind="real"):
+        return SimpleNamespace(
+            name=name,
+            nature=nature,
+            parameter_type=kind,
+            lhablock=block,
+            lhacode=(code,),
+        )
+
+    model = [
+        record("MU_R", "LOOP", 666),
+        record("xUV", "technical", 1),
+        record("xIR", "TECHNICAL", 2),
+        record("LogSwitch", "TECHNICAL", 3),
+        record("ee", None, 0, nature="internal"),
+    ]
+    found = pole_regulators(model)
+    assert found == PoleRegulators("xUV", "xIR")
+    assert PoleRegulators.from_record(found.record()) == found
+    assert PoleRegulators.from_record(None) is None
+    assert pole_regulators(model, fixed={"xIR": "1"}) is None
+    assert pole_regulators(model[:2]) is None
+    assert pole_regulators([*model, record("yIR", "TECHNICAL", 2)]) is None
+    assert (
+        pole_regulators([model[1], record("xIR", "TECHNICAL", 2, kind="complex")])
+        is None
+    )
+    assert pole_regulators([record("MU_R", "LOOP", 1)]) is None
+    values = {"xUV": "1.5", "xIR": "1", "MU_R": "91"}
+    assert regulated_parameters(values, found) == {
+        "xUV": "1.5",
+        "xIR": "0",
+        "MU_R": "91",
+    }
+    assert values["xIR"] == "1"
+
+
+@pytest.mark.loop_fast
 def test_catani_takes_the_masses_from_the_model():
     """The legs' masses are the model's runtime values, not the p^2 of the
     given momenta: with rounded massless momenta (p^2 = -1e-17 relative) the

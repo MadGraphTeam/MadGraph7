@@ -847,7 +847,14 @@ the field factors' UV part is the quantity to compare with a field
 renormalisation of your own (for loop_sm in Feynman gauge it equals the
 textbook constants of the external legs). An incomplete ultraviolet
 renormalisation shows in the `"ir"` (and `"all"`) poles, which then miss
-Catani's operator. In Python:
+Catani's operator. A model that writes its counterterms with pole regulators
+(MadLoop's electroweak UFOs `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu`:
+`epsUV` and `epsIR` in block `TECHNICAL`, codes 1 and 2) states the origin
+itself: as long as both stay adjustable (not in `fixed_parameters`), every
+counterterm component's UV part is its value at `epsIR = 0` (MadLoop's
+reading of that card setting) and its IR part the rest, so for these models
+the bare and counterterm UV poles cancel as a check, not by construction.
+In Python:
 
 ```python
 result = runtime.evaluate(points, mu_r2=scales, poles="uv")
