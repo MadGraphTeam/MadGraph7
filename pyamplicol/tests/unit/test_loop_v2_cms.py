@@ -251,6 +251,8 @@ def test_electroweak_width_policy_in_the_dry_run(
     plan = Generator(resolve_config(card)).plan(
         ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="p"),))
     )
+    if key == "complex-mass-scheme" and NATIVE_POLE_MASSES:
+        key = None  # stored artifacts take native pole masses (MS-CMS-N)
     if key is None:
         assert plan.unsupported_features == ()
         return
@@ -259,7 +261,7 @@ def test_electroweak_width_policy_in_the_dry_run(
     if key == "electroweak-width":
         assert "complex-mass" in blocker and "WZ" in blocker, blocker
     else:
-        assert NATIVE_POLE_MASSES or "MS-CMS-N" in blocker, blocker
+        assert "MS-CMS-N" in blocker, blocker
 
 
 # ----------------------------------------------------- CM rows, Python inputs
