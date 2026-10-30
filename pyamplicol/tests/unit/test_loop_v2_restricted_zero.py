@@ -52,14 +52,20 @@ UP, DOWN = ("u", "c", "t"), ("d", "s", "b")
 # elements and the top's charged-Goldstone Yukawas of the two off-diagonal
 # elements it has (complexconjugate(CKM31) ymt and complexconjugate(CKM32)
 # ymt; the b is massless there). The prepared native model keeps them, as
-# the conjugate is only zero with the helper inlined.
+# the conjugate is only zero with the helper inlined. The shipped model's
+# exactly unitary CKM (UFOmodeldb issue-1 patch) writes CKM13 itself as
+# complexconjugate(CKMs13e), so the W- vertex of CKM13 joins them.
 DIAGONAL_W = {(f"{up}~", down, "W+") for up, down in zip(UP, DOWN, strict=True)}
-PRODUCTION = {
-    ((f"{up}~", down, "W+"), QED1)
-    for up in UP
-    for down in DOWN
-    if (f"{up}~", down, "W+") not in DIAGONAL_W
-} | {(("t~", "d", "G+"), QED1), (("t~", "s", "G+"), QED1)}
+PRODUCTION = (
+    {
+        ((f"{up}~", down, "W+"), QED1)
+        for up in UP
+        for down in DOWN
+        if (f"{up}~", down, "W+") not in DIAGONAL_W
+    }
+    | {(("t~", "d", "G+"), QED1), (("t~", "s", "G+"), QED1)}
+    | {(("b~", "u", "W-"), QED1)}
+)
 
 
 def _request(compiled, process, born, loops, *, corrections=("QCD", "QED")):

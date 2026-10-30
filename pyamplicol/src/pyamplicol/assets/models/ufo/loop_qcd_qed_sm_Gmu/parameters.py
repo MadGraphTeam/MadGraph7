@@ -419,58 +419,86 @@ G = Parameter(name = 'G',
               value = '2*cmath.sqrt(aS)*cmath.sqrt(cmath.pi)',
               texname = 'G')
 
+# Exactly unitary CKM matrix in the standard parametrisation.  The existing
+# Wolfenstein inputs are retained, with s12 = lamWS, s23 = AWS*lamWS**2 and
+# s13*exp(i*delta) = AWS*lamWS**3*(rhoWS+i*etaWS).  This agrees with the
+# previous matrix through O(lamWS**3), and remains regular at lamWS = 0.
+CKMc12 = Parameter(name = 'CKMc12',
+                   nature = 'internal',
+                   type = 'real',
+                   value = 'cmath.sqrt(1 - lamWS**2)',
+                   texname = 'c_{12}')
+
+CKMc23 = Parameter(name = 'CKMc23',
+                   nature = 'internal',
+                   type = 'real',
+                   value = 'cmath.sqrt(1 - AWS**2*lamWS**4)',
+                   texname = 'c_{23}')
+
+CKMc13 = Parameter(name = 'CKMc13',
+                   nature = 'internal',
+                   type = 'real',
+                   value = 'cmath.sqrt(1 - AWS**2*lamWS**6*(rhoWS**2 + etaWS**2))',
+                   texname = 'c_{13}')
+
+CKMs13e = Parameter(name = 'CKMs13e',
+                    nature = 'internal',
+                    type = 'complex',
+                    value = 'AWS*lamWS**3*(rhoWS + complex(0,1)*etaWS)',
+                    texname = 's_{13}exp(i delta)')
+
 CKM11 = Parameter(name = 'CKM11',
                   nature = 'internal',
                   type = 'complex',
-                  value = '1 - lamWS**2/2.',
+                  value = 'CKMc12*CKMc13',
                   texname = '\\text{CKM11}')
 
 CKM12 = Parameter(name = 'CKM12',
                   nature = 'internal',
                   type = 'complex',
-                  value = 'lamWS',
+                  value = 'lamWS*CKMc13',
                   texname = '\\text{CKM12}')
 
 CKM13 = Parameter(name = 'CKM13',
                   nature = 'internal',
                   type = 'complex',
-                  value = 'AWS*lamWS**3*(-(etaWS*complex(0,1)) + rhoWS)',
+                  value = 'complexconjugate(CKMs13e)',
                   texname = '\\text{CKM13}')
 
 CKM21 = Parameter(name = 'CKM21',
                   nature = 'internal',
                   type = 'complex',
-                  value = '-lamWS',
+                  value = '-lamWS*CKMc23 - CKMc12*AWS*lamWS**2*CKMs13e',
                   texname = '\\text{CKM21}')
 
 CKM22 = Parameter(name = 'CKM22',
                   nature = 'internal',
                   type = 'complex',
-                  value = '1 - lamWS**2/2.',
+                  value = 'CKMc12*CKMc23 - AWS*lamWS**3*CKMs13e',
                   texname = '\\text{CKM22}')
 
 CKM23 = Parameter(name = 'CKM23',
                   nature = 'internal',
                   type = 'complex',
-                  value = 'AWS*lamWS**2',
+                  value = 'AWS*lamWS**2*CKMc13',
                   texname = '\\text{CKM23}')
 
 CKM31 = Parameter(name = 'CKM31',
                   nature = 'internal',
                   type = 'complex',
-                  value = 'AWS*lamWS**3*(1 - etaWS*complex(0,1) - rhoWS)',
+                  value = 'AWS*lamWS**3 - CKMc12*CKMc23*CKMs13e',
                   texname = '\\text{CKM31}')
 
 CKM32 = Parameter(name = 'CKM32',
                   nature = 'internal',
                   type = 'complex',
-                  value = '-(AWS*lamWS**2)',
+                  value = '-CKMc12*AWS*lamWS**2 - lamWS*CKMc23*CKMs13e',
                   texname = '\\text{CKM32}')
 
 CKM33 = Parameter(name = 'CKM33',
                   nature = 'internal',
                   type = 'complex',
-                  value = '1',
+                  value = 'CKMc23*CKMc13',
                   texname = '\\text{CKM33}')
 
 

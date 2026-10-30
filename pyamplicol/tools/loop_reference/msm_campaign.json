@@ -282,18 +282,19 @@
    "class": "W-lep",
    "process": "e- e+ > t t~ h",
    "restriction_code": "G0",
-   "reference_kind": "E",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "emep_ttxh_ew"
+   ],
    "existing_fixtures": [
     "required/emep_ttxh_ew.json"
    ],
    "sectors": [
     "e^8"
    ],
-   "note": "Recola primary: MadLoop's export omits R2 couplings the UFO-complete insertion has (R2 rule, \u00a71.4)",
-   "primary_provider": "recola"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]"
   },
   {
    "row": "DY01",
@@ -764,28 +765,31 @@
    "class": "W-top",
    "process": "t t~ > t t~ QCD=0",
    "restriction_code": "G0",
-   "reference_kind": "E",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "ttx_ttx_ew"
+   ],
    "existing_fixtures": [
     "required/ttx_ttx_ew.json"
    ],
    "sectors": [
     "e^6"
    ],
-   "note": "Recola primary: MadLoop's export omits R2 couplings the UFO-complete insertion has (R2 rule, \u00a71.4) (7.7 %); root mixing; ew-validate's fixture [EWI-7]",
-   "primary_provider": "recola"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; root mixing; ew-validate's fixture's points [EWI-7]"
   },
   {
    "row": "TT05",
    "class": "W-top",
    "process": "g t > t t t~",
    "restriction_code": "G0",
-   "reference_kind": "E",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "gt_tttx_ew"
+   ],
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
@@ -797,17 +801,19 @@
    "sectors": [
     "s^2e^6"
    ],
-   "note": "gt_tttx_ew (MadLoop double) + its omitted R2_G0tt_b component (goldstone-mixing.json omitted_r2)"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; goldstone-mixing.json gt_tttx_ew (MadLoop double on the unpatched model, R2_G0tt_b omitted) stays the components control"
   },
   {
    "row": "TT06",
    "class": "W-top",
    "process": "g b > t t~ b (massive b)",
    "restriction_code": "Gb",
-   "reference_kind": "E",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "gb_ttxb_ew_mb"
+   ],
    "existing_fixtures": [
     "goldstone-mixing.json"
    ],
@@ -819,7 +825,7 @@
    "sectors": [
     "s^2e^6"
    ],
-   "note": "gb_ttxb_ew_mb (MadLoop double); binary64 point 0 outside the O1 scope (DD asserted) [EWI-7]"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; goldstone-mixing.json gb_ttxb_ew_mb (MadLoop double on the unpatched model) stays the components control; binary64 point 0 outside the O1 scope (DD asserted) [EWI-7]"
   },
   {
    "row": "TV01",
@@ -975,17 +981,19 @@
    "class": "W-singletop",
    "process": "u d~ > t b~ QCD=0 (massive b)",
    "restriction_code": "Gb",
-   "reference_kind": "R",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "udx_tbx_ew_mb"
+   ],
    "existing_fixtures": [
     "required/udx_tbx_ew_mb.json"
    ],
    "sectors": [
     "e^6"
    ],
-   "note": "ew-validate's workspace run udx_tbx_ew_mb (MadLoop; Recola differs by 9.48e-5 x Born: the G_mu UFO omits dMB_eCoup_UV_EW in its charge counterterm; not a provider here) [EWI-7]"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]: the unpatched model omitted dMB_eCoup_UV_EW (Recola - MadLoop = 9.48e-5 x Born on required/udx_tbx_ew_mb.json, ew-validate's run, whose points this run re-evaluates) [EWI-7]"
   },
   {
    "row": "JJ01",
@@ -1430,7 +1438,7 @@
     "s^2e^4",
     "e^6"
    ],
-   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
+   "note": "UFOmodeldb issue-1 patch: exactly unitary CKM, the O(lambda^3) remnant (-2.1e-2 (alpha/2pi) Born) is gone; the EW counterterms omit the tau mass (MTA = 1.777 on restrict_ckm), a retained model limitation: the e^6 single pole exceeds the IR prediction by MTA^2/(2 sw^2 (s - MW^2)) (alpha/2pi) Born (scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
    "components": [
     "required/msm/components/udx_epve_ew_ckm.json"
    ]
@@ -1444,7 +1452,8 @@
    "tier": "n",
    "extras": [],
    "runs": [
-    "bbx_wpwm_ew_mb"
+    "bbx_wpwm_ew_mb",
+    "bbx_wpwm_ew_mb_qed"
    ],
    "existing_fixtures": [],
    "sectors": [
@@ -1526,18 +1535,19 @@
    "class": "W-scheme",
    "process": "t t~ > z h QCD=0",
    "restriction_code": "G0",
-   "reference_kind": "E",
+   "reference_kind": "N",
    "tier": "n",
    "extras": [],
-   "runs": [],
+   "runs": [
+    "ttx_zh_ew"
+   ],
    "existing_fixtures": [
     "required/ttx_zh_ew.json"
    ],
    "sectors": [
     "e^6"
    ],
-   "note": "Recola primary: MadLoop's export omits R2 couplings the UFO-complete insertion has (R2 rule, \u00a71.4) (2.5 %); root mixing; ew-validate's fixture [EWI-7]",
-   "primary_provider": "recola"
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; root mixing; ew-validate's fixture's points [EWI-7]"
   },
   {
    "row": "SC10",
@@ -1583,6 +1593,20 @@
     "generator": "exact"
    },
    "components": "required/msm/components/emep_ttx_ew.json"
+  },
+  {
+   "id": "emep_ttxh_ew",
+   "process": "emep_ttxh_ew",
+   "export": "runs/msm/emep_ttxh_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/emep_ttxh_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
   },
   {
    "id": "uux_emep_ew",
@@ -1875,6 +1899,46 @@
    }
   },
   {
+   "id": "ttx_ttx_ew",
+   "process": "ttx_ttx_ew",
+   "export": "runs/msm/ttx_ttx_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/ttx_ttx_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "gt_tttx_ew",
+   "process": "gt_tttx_ew",
+   "export": "runs/msm/gt_tttx_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "gb_ttxb_ew_mb",
+   "process": "gb_ttxb_ew_mb",
+   "export": "runs/msm/gb_ttxb_ew_mb/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
    "id": "gg_ttxh_ew",
    "process": "gg_ttxh_ew",
    "export": "runs/msm/gg_ttxh_ew/madloop-export",
@@ -1918,6 +1982,20 @@
     "generator": "supplied",
     "family": "regular"
    }
+  },
+  {
+   "id": "udx_tbx_ew_mb",
+   "process": "udx_tbx_ew_mb",
+   "export": "runs/msm/udx_tbx_ew_mb/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/udx_tbx_ew_mb.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
   },
   {
    "id": "uux_ddx_ew",
@@ -2302,7 +2380,7 @@
    "points": {
     "generator": "exact"
    },
-   "note": "not UV finite in the model: the e^6 single pole exceeds the IR prediction by ~-2.1e-2 (alpha/2pi) Born, ~lambda^4 (the UFO's O(lambda^3) Wolfenstein CKM is not unitary; scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
+   "note": "UFOmodeldb issue-1 patch: exactly unitary CKM, the O(lambda^3) remnant (-2.1e-2 (alpha/2pi) Born) is gone; the EW counterterms omit the tau mass (MTA = 1.777 on restrict_ckm), a retained model limitation: the e^6 single pole exceeds the IR prediction by MTA^2/(2 sw^2 (s - MW^2)) (alpha/2pi) Born (scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
    "components": "required/msm/components/udx_epve_ew_ckm.json"
   },
   {
@@ -2313,6 +2391,21 @@
     "generator": "supplied",
     "family": "regular"
    }
+  },
+  {
+   "id": "bbx_wpwm_ew_mb_qed",
+   "process": "bbx_wpwm_ew_mb_qed",
+   "export": "runs/msm/bbx_wpwm_ew_mb_qed/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "bbx_wpwm_ew_mb"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)",
+   "binding": false,
+   "note": "control: the e^6 sector alone ([virt=QED]) at the joint run's points, MadLoop and Recola"
   },
   {
    "id": "wpwm_wpwm_ew",
@@ -2340,6 +2433,20 @@
     "generator": "supplied",
     "family": "regular"
    }
+  },
+  {
+   "id": "ttx_zh_ew",
+   "process": "ttx_zh_ew",
+   "export": "runs/msm/ttx_zh_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/ttx_zh_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
   },
   {
    "id": "zz_hh_ew",

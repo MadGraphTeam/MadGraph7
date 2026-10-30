@@ -1437,17 +1437,29 @@ R2_G0tt = Coupling(name = 'R2_G0tt',
                   value = '(-MT/(4*MW*sw)*((1+lhv)/(36.*cw**2)+1./(64.0*cw**2*sw**2))*R2SFF)',
                   order = {'QED':3})
 
-R2_G0tt_d = Coupling(name = 'R2_G0tt_d',
-                    value = '(-MT/(4*MW*sw)*(SCKM31/(32.0*sw**2))*(1+MD**2/MW**2)*R2SFF)',
-                    order = {'QED':3})
+R2_G0tt_d_WG = Coupling(name = 'R2_G0tt_d_WG',
+                       value = '(-MT/(4*MW*sw)*(SCKM31/(32.0*sw**2))*R2SFF)',
+                       order = {'QED':3})
 
-R2_G0tt_s = Coupling(name = 'R2_G0tt_s',
-                    value = '(-MT/(4*MW*sw)*(SCKM32/(32.0*sw**2))*(1+MS**2/MW**2)*R2SFF)',
-                    order = {'QED':3})
+R2_G0tt_d_G = Coupling(name = 'R2_G0tt_d_G',
+                      value = '(-MT/(4*MW*sw)*(SCKM31/(32.0*sw**2))*(MD**2/MW**2)*R2SFF)',
+                      order = {'QED':3})
 
-R2_G0tt_b = Coupling(name = 'R2_G0tt_b',
-                    value = '(-MT/(4*MW*sw)*(SCKM33/(32.0*sw**2))*(1+MB**2/MW**2)*R2SFF)',
-                    order = {'QED':3})
+R2_G0tt_s_WG = Coupling(name = 'R2_G0tt_s_WG',
+                       value = '(-MT/(4*MW*sw)*(SCKM32/(32.0*sw**2))*R2SFF)',
+                       order = {'QED':3})
+
+R2_G0tt_s_G = Coupling(name = 'R2_G0tt_s_G',
+                      value = '(-MT/(4*MW*sw)*(SCKM32/(32.0*sw**2))*(MS**2/MW**2)*R2SFF)',
+                      order = {'QED':3})
+
+R2_G0tt_b_WG = Coupling(name = 'R2_G0tt_b_WG',
+                       value = '(-MT/(4*MW*sw)*(SCKM33/(32.0*sw**2))*R2SFF)',
+                       order = {'QED':3})
+
+R2_G0tt_b_G = Coupling(name = 'R2_G0tt_b_G',
+                      value = '(-MT/(4*MW*sw)*(SCKM33/(32.0*sw**2))*(MB**2/MW**2)*R2SFF)',
+                      order = {'QED':3})
 
 R2_G0dd = Coupling(name = 'R2_G0dd',
                   value = '(-MD/(4*MW*sw)*((1+lhv)/(72.*cw**2)-1./(64.0*cw**2*sw**2))*R2SFF)',

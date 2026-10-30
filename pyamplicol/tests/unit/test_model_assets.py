@@ -266,7 +266,9 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
     assert len(records) == 134
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 82
+    # The UFOmodeldb issue-1 model patch (user rule 2026-10-30 ~12:45) changes
+    # three loop_qcd_qed_sm modules and one loop_qcd_qed_sm_Gmu card.
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 78
 
     record_paths = set()
     for entry in records:
