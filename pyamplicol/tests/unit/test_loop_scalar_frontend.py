@@ -237,3 +237,33 @@ def test_native_component_access_preserves_extremes(
         assert Decimal(values[width * row + 2][0]) == Decimal(original[row][1])
         assert Decimal(values[width * row + 4][0]) == 0
         assert Decimal(values[width * row + 6][0]) == 1
+
+
+def test_fixed_condition_lowers_only_the_taken_branch(source):
+    """A conditional whose test reads only exact numbers (a parameter fixed at
+    generation) is decided at lowering, as Python evaluates only the taken
+    branch: '0 if MB == 0 else 1/MB' at MB = 0 must not build 1/0, which made
+    the evaluator refuse 'infinity coefficients' (EW counterterm parameters
+    of loop_qcd_qed_sm with a massless b)."""
+    from symbolica import E, S
+
+    library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
+    fixed = {
+        name: library.lower(f"complex({value},0)")
+        for name, value in (("zero", "0"), ("two", "2"), ("half", "0.5"))
+    }
+    text = "0 if m == 0 else 1/m"
+    at_zero = library.lower(text, locals={"m": fixed["zero"]})
+    assert at_zero.value == E("0")
+    library.evaluator((at_zero,), ())  # no infinity coefficient
+    assert library.lower(text, locals={"m": fixed["two"]}).value == E("1/2")
+    for test, expected in (("m != 2", "4"), ("m <= 1/2", "4"), ("m < 1/2", "5")):
+        lowered = library.lower(f"4 if {test} else 5", locals={"m": fixed["half"]})
+        assert lowered.value == E(expected), test
+    # Free symbols and complex orderings stay native run-time conditionals.
+    free = library.lower(text)
+    assert free.value.contains(S("UFO::m"))
+    assert library.decided(library.lower("m == 0").value) is None
+    imaginary = library.lower("complex(0,1)")
+    ordered = library.lower("4 if m < 0 else 5", locals={"m": imaginary})
+    assert ordered.value != E("4") and ordered.value != E("5")
