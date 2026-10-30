@@ -65,6 +65,7 @@ This is the Python reference path of the slice (gate S1); the native executor
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import math
 from collections import defaultdict
@@ -754,9 +755,7 @@ def _renamed_text(
 
     from symbolica import E
 
-    from ..native import load_loop_native
-
-    native = load_loop_native()
+    native = _loop_native()
     variable_names = [(repr(old), repr(new)) for old, new in variables.items()]
     head_names = [(repr(old), repr(new)) for old, new in heads.items()]
     renamed: list[Any] = []
@@ -773,6 +772,17 @@ def _renamed_text(
 # Expressions per native rename call (the parameter program's outputs reach
 # megabytes each on the electroweak UFOs).
 _RENAME_CHUNK = 256
+
+
+@functools.cache
+def _loop_native() -> Any:
+    """The loop extension, verified once per process: ``load_loop_native``
+    checks the native build identity on every call (0.2 s in a source
+    checkout), and a generation's export renames a few hundred stages."""
+
+    from ..native import load_loop_native
+
+    return load_loop_native()
 
 
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:

@@ -608,6 +608,7 @@ class _CatalogueBuilder:
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
         self.native_polynomials = NATIVE_CATALOGUE_POLYNOMIALS
         self._deferred: list[_DeferredPolynomials] = []
+        self._native: Any = None
         self._input_items: dict[PreparedKernelInput, tuple[str, str]] = {}
         self._shared_items: list[tuple[str, str]] | None = None
         self._reading_signs: dict[int, int] = {}
@@ -1435,8 +1436,12 @@ class _CatalogueBuilder:
         deferred, self._deferred = self._deferred, []
         if not deferred:
             return
-        from ..native import load_loop_native
+        if self._native is None:
+            # Verified once per catalogue: the identity check costs 0.2 s
+            # per call in a source checkout.
+            from ..native import load_loop_native
 
+            self._native = load_loop_native()
         shared = self.parameter_descriptors
         (kind,) = {item.contract_kind for item in deferred}
         jobs = []
@@ -1465,7 +1470,7 @@ class _CatalogueBuilder:
             )
         if self._shared_items is None:
             self._shared_items = [self._input_item(d) for d in shared]
-        results = load_loop_native().loop_catalogue_polynomials(
+        results = self._native.loop_catalogue_polynomials(
             jobs,
             [component.to_canonical_string() for component in self.q],
             self._shared_items,
