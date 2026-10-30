@@ -411,12 +411,12 @@
    },
    {
     "job": 7,
-    "seconds": 1485,
+    "seconds": 1490,
     "rows": [
      "DY08",
      "JJ01",
      "JJ02",
-     "PI01"
+     "MP01@P5"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
    },
@@ -444,51 +444,37 @@
    },
    {
     "job": 10,
-    "seconds": 1200,
+    "seconds": 1379,
     "rows": [
      "MP01@P2",
-     "MP01@P3"
+     "MP01@P3",
+     "MP01@P4"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
    },
    {
     "job": 11,
-    "seconds": 1200,
+    "seconds": 1377,
     "rows": [
-     "MP01@P4",
-     "MP01@P5"
+     "MP02@P0",
+     "MP02@P2",
+     "MP02@P3",
+     "MP02@P4"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
    },
    {
     "job": 12,
-    "seconds": 1200,
+    "seconds": 1304,
     "rows": [
-     "MP02@P0",
-     "MP02@P2"
+     "MP02@P5",
+     "MP02@P6",
+     "PI01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
    },
    {
     "job": 13,
-    "seconds": 1200,
-    "rows": [
-     "MP02@P3",
-     "MP02@P4"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
-   },
-   {
-    "job": 14,
-    "seconds": 1200,
-    "rows": [
-     "MP02@P5",
-     "MP02@P6"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
-   },
-   {
-    "job": 15,
     "seconds": 1320,
     "rows": [
      "PI01@all",
@@ -496,39 +482,39 @@
      "PI03",
      "PI04"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
    {
-    "job": 16,
+    "job": 14,
     "seconds": 1343,
     "rows": [
      "SC01",
      "SC02",
      "SC03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
    },
    {
-    "job": 17,
+    "job": 15,
     "seconds": 1286,
     "rows": [
      "SC04",
      "SC05",
      "SC06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
-    "job": 18,
+    "job": 16,
     "seconds": 1200,
     "rows": [
      "SC07",
      "SC08"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
    },
    {
-    "job": 19,
+    "job": 17,
     "seconds": 1492,
     "rows": [
      "SC09",
@@ -536,30 +522,30 @@
      "ST02",
      "TT02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
    },
    {
-    "job": 20,
+    "job": 18,
     "seconds": 1467,
     "rows": [
      "ST03",
      "ST04",
      "TT01"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    },
    {
-    "job": 21,
+    "job": 19,
     "seconds": 1375,
     "rows": [
      "TT03",
      "TT04",
      "TT05"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
    {
-    "job": 22,
+    "job": 20,
     "seconds": 1322,
     "rows": [
      "TT06",
@@ -567,38 +553,38 @@
      "TV02",
      "VJ02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_22.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
    },
    {
-    "job": 23,
+    "job": 21,
     "seconds": 1467,
     "rows": [
      "TV03",
      "TV06",
      "VJ01"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_23.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
    },
    {
-    "job": 24,
+    "job": 22,
     "seconds": 1200,
     "rows": [
      "V301",
      "VH01"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_24.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_22.py"
    },
    {
-    "job": 25,
+    "job": 23,
     "seconds": 1200,
     "rows": [
      "VH02",
      "VH03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_25.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_23.py"
    },
    {
-    "job": 26,
+    "job": 24,
     "seconds": 1376,
     "rows": [
      "VJ03",
@@ -607,25 +593,25 @@
      "VV05",
      "VV05@zero"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_26.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_24.py"
    },
    {
-    "job": 27,
+    "job": 25,
     "seconds": 1284,
     "rows": [
      "VV02",
      "VV03",
      "VV06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_27.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_25.py"
    },
    {
-    "job": 28,
+    "job": 26,
     "seconds": 823,
     "rows": [
      "VV07"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_28.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_26.py"
    }
   ]
  },
@@ -9967,7 +9953,12 @@
        3
       ]
      },
-     "vanishing": [],
+     "vanishing": [
+      {
+       "sector": "QCD^2 QED^4",
+       "coefficient": "double_pole"
+      }
+     ],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P0_ga_ttx of p p > t t~ (its single-process generation, tools route)"
@@ -10435,7 +10426,12 @@
        3
       ]
      },
-     "vanishing": [],
+     "vanishing": [
+      {
+       "sector": "QED^6",
+       "coefficient": "double_pole"
+      }
+     ],
      "extras": [],
      "extras_pending": {},
      "notes": "MadLoop SubProcesses/P5_aa_ttx of p p > t t~ (its single-process generation, tools route)"
