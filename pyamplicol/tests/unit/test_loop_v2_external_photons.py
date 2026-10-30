@@ -737,6 +737,7 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
     else:
         assert record.get("photons") is None and "aEW0M1" not in record["names"]
     alpha = float(Fraction(ALPHA_GMU))
+    worst = {"python": 0.0, "native": 0.0, "rule 4": 0.0, "native-python": 0.0}
     for index in (0, 1):
         point = first["points"][index]
         mu = first["mu_r"][index]
@@ -752,11 +753,13 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
         python = slice_.evaluate(point, scale, parameters=parameters)
         (mine,) = native.evaluate([point], [scale], parameters=parameters)
         floor = sum(abs(x) for x in born.values()) * alpha / (2 * math.pi)
-        for result in (python, mine):
+        for lane, result in (("python", python), ("native", mine)):
             assert set(result.born) == set(born)
             for order, value in born.items():
                 got = float(result.born[order])
-                assert abs(got - value) <= ROW_TOLERANCE * abs(value), (order, got)
+                error = abs(got - value) / abs(value)
+                worst[lane] = max(worst[lane], error)
+                assert error <= ROW_TOLERANCE, (order, got)
             assert set(result.components["virtual"]) == set(virtual)
             for sector, want in virtual.items():
                 got = [
@@ -764,14 +767,17 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
                 ]
                 for k, (x, y) in enumerate(zip(got, want, strict=True)):
                     error = abs(x - y) / max(abs(x), abs(y), floor)
+                    worst[lane] = max(worst[lane], error)
                     assert error <= ROW_TOLERANCE, (index, sector, k, x, y, error)
         # Rule 4 per leg: every sector predicted, poles = Catani's.
         assert set(python.ir_poles) == set(virtual)
         for sector, (single, double) in python.ir_poles.items():
             laurent = python.components["virtual"][sector].coefficients
             size = max(abs(float(single)), abs(float(double)), floor)
-            assert abs(float(laurent[1]) - float(single)) <= 1e-10 * size
-            assert abs(float(laurent[2]) - float(double)) <= 1e-10 * size
+            for got, want in ((laurent[1], single), (laurent[2], double)):
+                error = abs(float(got) - float(want)) / size
+                worst["rule 4"] = max(worst["rule 4"], error)
+                assert error <= 1e-10, (sector, got, want)
         for component, sectors in python.components.items():
             for sector, laurent in sectors.items():
                 size = max(
@@ -783,7 +789,10 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
                     laurent.coefficients,
                     strict=True,
                 ):
-                    assert abs(float(x) - float(y)) <= 1e-12 * size, (component, sector)
+                    error = abs(float(x) - float(y)) / size
+                    worst["native-python"] = max(worst["native-python"], error)
+                    assert error <= 1e-12, (component, sector)
+    print(f"{name}: worst errors {worst}")
 
 
 @pytest.mark.loop_fast
