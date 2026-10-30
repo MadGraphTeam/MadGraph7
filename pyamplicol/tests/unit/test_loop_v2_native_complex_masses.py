@@ -697,7 +697,9 @@ def _tagged_photon_conversion(loop_gmu_ufo, reference, points):
     (MG5 assigns it to a double-precision function,
     ``rescale_alpha_tagged.inc``). The values are the transformed model's
     (``model_cms.complex_mass_scheme``, which equals MG5_aMC's own CMS model
-    to 1e-12, ``test_loop_model_cms``)."""
+    to 1e-12, ``test_loop_model_cms``); the complex finite part equals the
+    MadLoop export's own value per MU_R (``export_parameters``, double
+    precision) to 1e-12."""
 
     from pyamplicol.loops.model_cms import complex_mass_scheme
     from pyamplicol.loops.model_restrictions import prepare_loop_restrictions
@@ -721,8 +723,10 @@ def _tagged_photon_conversion(loop_gmu_ufo, reference, points):
     )
     photons = len(reference["tagged_photon_legs"])
     alpha0 = 1 / float(reference["parameters"]["aEW0M1"])
+    exported = reference["export_parameters"]
+    assert exported["mu_r"] == reference["mu_r"]
     out = []
-    for mu in reference["mu_r"][: len(points)]:
+    for index, mu in enumerate(reference["mu_r"][: len(points)]):
         parameters = {
             name: value
             for name, value in reference["parameters"].items()
@@ -735,6 +739,8 @@ def _tagged_photon_conversion(loop_gmu_ufo, reference, points):
                 plan, arithmetic="double", parameters=parameters
             ).values.to_decimal()
         )
+        theirs = complex(*exported["values"]["MDL_ECOUP_DGMUA0_UV_EW_FIN_"][index])
+        assert abs(finite - theirs) <= 1e-12 * abs(theirs), (mu, finite, theirs)
         out.append(((alpha0 / alpha.real) ** photons, pole.real, finite.real))
     return out
 
