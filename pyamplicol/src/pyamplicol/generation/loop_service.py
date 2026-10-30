@@ -693,15 +693,10 @@ def _loop_orders_record(request) -> object:
     return orders[0] if len(orders) == 1 else orders
 
 
-def _v2_request(backend, context, index):
-    """The slice request of one expanded process (``_v2_request_born``)."""
-
-    return _v2_request_born(backend, context, index)[0]
-
-
-def _v2_request_born(backend, context, index):
+def _v2_request(backend, context, index, born_dags=None):
     """The slice request of one expanded process (``loops.v2.assemble``),
-    checked before any loop generation, with its Born DAG.
+    checked before any loop generation; its Born DAG is appended to
+    ``born_dags`` when a list is given (the dry run's policy checks read it).
 
     The Born bounds are the process's coupling-order limits. The loop orders
     follow its Born amplitude orders (``v2_loop_orders``), read from the Born
@@ -762,7 +757,7 @@ def _v2_request_born(backend, context, index):
         if _leading_colour(run)
         else None
     )
-    return SliceRequest(
+    request = SliceRequest(
         process,
         dict(limits),
         v2_loop_orders(born, context.corrections, limits),
@@ -777,7 +772,10 @@ def _v2_request_born(backend, context, index):
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
         selection=selection,
-    ), dag
+    )
+    if born_dags is not None:
+        born_dags.append(dag)
+    return request
 
 
 def _born_members(backend, context):
@@ -800,7 +798,7 @@ def _born_members(backend, context):
     requests, dags, kept, skipped = [], [], [], []
     for index, entry in enumerate(context.expanded):
         try:
-            request, dag = _v2_request_born(backend, context, index)
+            request = _v2_request(backend, context, index, dags)
         except LoopRequestUnsupported as error:
             if error.key != "loop-induced" or entry.source_expansion_size <= 1:
                 raise
@@ -816,7 +814,6 @@ def _born_members(backend, context):
             )
             continue
         requests.append(request)
-        dags.append(dag)
         kept.append(index)
     sources = {context.expanded[index].source_request.name for index in kept}
     empty = sorted(
