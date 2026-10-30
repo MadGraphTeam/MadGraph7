@@ -24,6 +24,7 @@
 #else
 #include "mgOnGpuCxtypes.h"
 #endif
+#include "MadMatrixDenom.h"
 
 #include "Parameters.h"
 
