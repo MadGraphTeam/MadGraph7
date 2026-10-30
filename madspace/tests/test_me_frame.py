@@ -37,9 +37,7 @@ def momenta():
         )
     # last particle balances the rest, its mass is whatever comes out
     p[:, N_PARTICLES - 1] = p[:, 0] + p[:, 1] - p[:, 2:-1].sum(dim=1)
-    # the masses above leave only ~9 GeV of headroom at the low end of
-    # e1 + e2, so say so rather than let a changed seed or mass look like a
-    # kernel bug
+    # little headroom at low e1 + e2: fail here, not as a kernel bug
     assert (p[:, N_PARTICLES - 1, 0] > 0).all(), "balancing leg has no energy"
     total = p[:, :2].sum(dim=1)
     assert (total[:, 0] ** 2 - (total[:, 1:] ** 2).sum(dim=1) > 0).all()
@@ -226,8 +224,7 @@ def matrix_element_graph(me_frame, incoming_count=2):
 
 
 def test_matrix_element_emits_the_boost():
-    """The masks are only half the story: what matters is how many
-    boost_to_frame calls end up in front of the matrix element."""
+    """The number of boost_to_frame calls in front of the matrix element."""
     # no frame asked for: the momenta go in untouched
     assert matrix_element_graph([]).count("boost_to_frame") == 0
     # the rest frame of the incoming system is one boost away from the lab

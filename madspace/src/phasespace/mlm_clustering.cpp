@@ -816,18 +816,9 @@ MLMClustering::MLMClustering(
                 continue;
             }
 
-            // for the t-channel part, one of the initial state particles has to be
-            // involved in the clustering. find_t_vertices collects the t-channel
-            // propagators on the way back from beam 1 (index 0 of the incoming
-            // legs), so t_propagator_masses/pdg_ids start at the propagator next
-            // to that beam. The k-th mask accumulated from beam 1 (mask 1) is
-            // therefore propagator k, and the k-th from beam 2 (mask 2), walking
-            // the children in reverse, is propagator t_count - 1 - k. Getting
-            // this backwards swaps the flavour and mass of the two ends of every
-            // chain with two or more t-channel propagators: in g g > t t~ g the
-            // gluon line left after the beam emits the jet was read as the top,
-            // so the beam's parton line stopped at the jet and mu_R picked up
-            // the jet's own scale.
+            // t-channel lines: find_t_vertices collects the propagators from beam 1
+            // on, so the k-th mask accumulated from beam 1 (mask 1) is propagator
+            // k, and the k-th from beam 2 (mask 2) is propagator t_count - 1 - k.
             auto& t_masses = topo.t_propagator_masses();
             auto& t_pdg_ids = topo.t_propagator_pdg_ids();
             std::size_t t_count = t_masses.size();

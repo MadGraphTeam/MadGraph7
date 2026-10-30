@@ -110,8 +110,7 @@ public:
         // MLM veto can never trip on it.
         double cm_energy,
         JetScaleScheme jet_scale_scheme = JetScaleScheme::production,
-        // Left at the existing definition by default: unlike
-        // jet_scale_scheme, this one moves the cross section.
+        // Unlike jet_scale_scheme, this choice changes the cross section.
         ScaleScheme scale_scheme = ScaleScheme::clustering_mean,
         // Signed color representation per pdg id, as exported in the
         // subprocess metadata. Used to follow a parton line through the
@@ -119,8 +118,8 @@ public:
         // that is not listed.
         std::unordered_map<int, int> pdg_color_types = {},
         // Generation-level merging cut, the counterpart of madevent's xqcut.
-        // A clustering that emitted a jet below this scale drops the event.
-        // Zero disables it.
+        // A clustering that emitted a jet below this scale sets xqcut_weight
+        // to 0. Zero disables it.
         double xqcut = 0,
         double bw_cutoff = 15,
         // D of the final-state kt measure; 1 as madevent's run_card d and FxFx.

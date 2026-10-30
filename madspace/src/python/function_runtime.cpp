@@ -621,7 +621,7 @@ std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
     ProducerStream producer_stream(args);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
-    // a Python matrix element called from a worker thread needs the GIL
+    // release the GIL so that Python matrix elements on worker threads can take it
     py::gil_scoped_release release;
     return runtime->run(inputs);
 }

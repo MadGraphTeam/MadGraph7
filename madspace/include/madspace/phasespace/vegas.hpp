@@ -82,7 +82,7 @@ public:
     );
     /// Global name of the VEGAS grid.
     const std::string& grid_name() const { return _grid_name; }
-    /// Register the grid global on @p context.
+    /// Define the grid global on @p context and fill it with a uniform grid.
     void initialize_globals(ContextPtr context) const;
     /// Number of dimensions.
     std::size_t dimension() const { return _dimension; }
@@ -106,8 +106,8 @@ private:
     std::string _grid_name;
 };
 
-/// Register the VEGAS grid global named @p grid_name on @p context; see
-/// @ref VegasMapping::initialize_globals.
+/// Fill the already defined VEGAS grid global @p grid_name on @p context with a
+/// uniform grid.
 void initialize_vegas_grid(ContextPtr context, const std::string& grid_name);
 
 } // namespace madspace

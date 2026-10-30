@@ -14,20 +14,19 @@ namespace madspace {
  * (Sec. 3.2.6 of [1], matching the choices in [2]):
  *
  * @f[
- *   \mu = \sum_i m_i, \qquad
  *   \mu = E_\mathrm{T} = \sum_i \frac{E_i\,p_{\mathrm{T},i}}{|\vec p_i|},
- * @f]
- * @f[
+ *   \qquad
  *   \mu = H_\mathrm{T} = \sum_i \sqrt{m_i^2 + p_{\mathrm{T},i}^2},
  * @f]
  *
- * with @ref DynamicalScaleType selecting @f$E_\mathrm{T}@f$
- * (`transverse_energy`), @f$H_\mathrm{T}@f$ (`transverse_mass`),
+ * with sums over the outgoing particles, and @ref DynamicalScaleType selecting
+ * @f$E_\mathrm{T}@f$ (`transverse_energy`), @f$H_\mathrm{T}@f$ (`transverse_mass`),
  * @f$H_\mathrm{T}/2@f$ (`half_transverse_mass`) or @f$\sqrt{\hat s}@f$
  * (`partonic_energy`). The dynamical scale is multiplied by `scale_factor`,
  * e.g. @f$H_\mathrm{T}/4@f$ is `half_transverse_mass` with `scale_factor = 0.5`.
  * A @ref CustomFunction of type CustomFunction::scale replaces the dynamical
- * choice, like `user_dynamical_scale` in MadGraph5.
+ * choice (also multiplied by `scale_factor`), like `user_dynamical_scale` in
+ * MadGraph5.
  *
  * `batch` is the leading batch dimension.
  *
@@ -117,8 +116,8 @@ public:
      * @param ren_scale            Fixed renormalization-scale value.
      * @param fact_scale1          Fixed factorization scale for the first beam.
      * @param fact_scale2          Fixed factorization scale for the second beam.
-     * @param scale_factor         Factor on the dynamical scale; fixed scales are
-     *                             left alone.
+     * @param scale_factor         Factor on the dynamical or custom scale; fixed
+     *                             scales are left alone.
      * @param custom_scale         Optional user-supplied function that replaces
      *                             the dynamical scale choice.
      * @param min_scale            Floor on mu_R and mu_F. The scales are clamped

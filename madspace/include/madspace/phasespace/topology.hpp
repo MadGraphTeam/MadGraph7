@@ -232,8 +232,9 @@ public:
     /// A decay has no `t`-channel chain and a root virtuality fixed by the
     /// mass of the decaying particle.
     bool is_decay() const { return _incoming_masses.size() == 1; }
-    /// For each propagator, the outgoing momenta summed to form it and the
-    /// energy window `(indices, e_min, e_max)`.
+    /// For each propagator, a tuple `(factors, mass, width)`. `factors` has one
+    /// entry per external particle (incoming first): +1 or -1 for the momenta
+    /// summed to form the propagator momentum, 0 otherwise.
     /// @param only_decays  Restrict the result to the `s`-channel decay nodes.
     std::vector<std::tuple<std::vector<int>, double, double>>
     propagator_momentum_terms(bool only_decays = false) const;

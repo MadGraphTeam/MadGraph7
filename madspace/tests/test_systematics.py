@@ -522,7 +522,8 @@ def test_mlm_pdf_ladder_follows_alpsfact_and_muf(grids, ref):
     last entry's scale, a variation is
         f(x_N-1, k S) prod_i<N-1 f_i(x_i, Q_i) / f_i(x_i+1, Q_i),
         Q_i = min(alpsfact q_i, k S),
-    relative to the same at k = alpsfact = 1. A beam with no step has only
+    relative to the same at k = alpsfact = 1, with every scale floored at
+    ladder_min_scale. A beam with no step has only
     its leading density, at k S. An event without a ladder (the 2 -> 1
     sample) keeps the plain beam ratio."""
     grid, alpha_s = grids

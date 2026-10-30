@@ -1440,9 +1440,8 @@ void op_histogram(
         thrust::device_pointer_cast(static_cast<double*>(square_weights_tmp.data()));
     auto square_values_ptr =
         thrust::device_pointer_cast(static_cast<double*>(square_values.data()));
-    // one sort of the bin indices, carrying the weights AND the squared weights along:
-    // sorting the indices again for the squared weights (as before) left these in the
-    // event order, so the squared weights of the wrong events were summed in each bin
+    // one sort of the bin indices carries weights and squared weights along, so both
+    // stay matched to the same events within each bin
     thrust::sort_by_key(
         policy,
         indices_ptr,
@@ -1570,12 +1569,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     }
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     gpu_device.activate();
-
-    // cudaMemPool_t pool;
-    // check_error(cudaDeviceGetMemPool(&pool, 0));
-    // uint64_t thresh = UINT64_MAX;
-    // check_error(cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold,
-    // &thresh));
 
     Function function = sort_breadth_first(function_arg);
 

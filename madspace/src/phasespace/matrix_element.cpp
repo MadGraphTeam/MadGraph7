@@ -171,8 +171,7 @@ MatrixElement::MatrixElement(
             return std::vector<me_int_t>();
         }
         if (incoming_count == 0) {
-            // an empty list would build an all-zero mask, which the kernel
-            // reads as "no frame" and passes through
+            // an all-zero mask would be read by the kernel as "no frame"
             throw std::invalid_argument(
                 "a process needs at least one incoming particle to define the "
                 "frame me_frame is reached from"
@@ -183,8 +182,7 @@ MatrixElement::MatrixElement(
             incoming.push_back(static_cast<me_int_t>(i));
         }
         auto mask = particle_mask(particle_count, incoming, "incoming_count");
-        // asking for the rest frame of the incoming system is the reference
-        // frame itself: one boost gets there
+        // the frame is the reference frame itself: one boost suffices
         if (mask == _frame_mask) {
             mask.clear();
         }
@@ -268,20 +266,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
             matrix_args.push_back(random.at(random_index));
             ++random_index;
         } else if (input == momenta_in && !_frame_mask.empty()) {
-            // Evaluate the matrix element in the frame the run card asked for
-            // (me_frame). Only the matrix element sees the boosted momenta:
-            // everything else -- cuts, scales, momentum fractions, the event
-            // that gets written out -- keeps using the momenta as generated.
-            //
-            // madevent defines that frame as a single boost away from the rest
-            // frame of the incoming system, because that is the frame its
-            // matrix element is handed the momenta in. madspace generates them
-            // in the lab frame instead, so it has to go through that rest frame
-            // rather than boost straight there: two boosts along different
-            // directions do not compose into the boost between the end frames,
-            // and the Wigner rotation left over would rotate the polarisation
-            // axes (it drops out only for a Lorentz invariant matrix element,
-            // which is exactly the case where none of this matters).
+            // Only the matrix element sees the me_frame boosted momenta. Go via
+            // the incoming rest frame, as madevent does, since successive boosts
+            // along different directions leave a Wigner rotation.
             Value momenta = args.at(arg_index);
             if (!_reference_mask.empty()) {
                 momenta = fb.boost_to_frame(momenta, _reference_mask);

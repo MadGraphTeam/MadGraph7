@@ -40,7 +40,7 @@ class MatrixElement : public FunctionGenerator {
 public:
     /// A quantity the matrix element can be asked to consume.
     enum MatrixElementInput {
-        momenta_in,           ///< Final-state momenta.
+        momenta_in,           ///< Momenta of all external particles.
         alpha_s_in,           ///< Strong coupling.
         flavor_in,            ///< Flavour assignment.
         random_color_in,      ///< Random number for the color draw.
@@ -85,18 +85,12 @@ public:
      * @param me_frame               One-based indices of the external particles
      *                               whose momentum sum defines the rest frame
      *                               the matrix element is evaluated in (the run
-     *                               card's me_frame). Empty means no boost, so
-     *                               the matrix element sees the momenta in the
-     *                               frame they are generated in.
+     *                               card's me_frame). Empty means no boost.
      * @param incoming_count         How many of the external particles are
-     *                               incoming. The frame is reached the way
-     *                               madevent reaches it, starting from the rest
-     *                               frame of the incoming system (the partonic
-     *                               centre of mass of a collision, the decaying
-     *                               particle's rest frame of a decay): boosts do
-     *                               not commute, so going there straight from
-     *                               the lab frame would leave a Wigner rotation
-     *                               behind and rotate the polarisation axes.
+     *                               incoming. The me_frame boost starts from the
+     *                               rest frame of the incoming system, as in
+     *                               madevent, to avoid a Wigner rotation of the
+     *                               polarisation axes.
      */
     MatrixElement(
         std::size_t matrix_element_index,

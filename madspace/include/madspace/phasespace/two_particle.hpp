@@ -17,11 +17,11 @@ namespace madspace {
  * sampled uniformly,
  *
  * @f[
- *   \phi = 2\pi\,r_\phi, \qquad \cos\theta = 2\,r_{\cos\theta} - 1.
+ *   \phi = \pi\,(2 r_\phi - 1), \qquad \cos\theta = 2\,r_{\cos\theta} - 1.
  * @f]
  *
  * The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat
- * in @f$(\phi, \cos\theta)@f$.
+ * in @f$(\phi, \cos\theta)@f$ unless a bound narrows the @f$\cos\theta@f$ range.
  *
  * `batch` is the leading batch dimension. The masses are inputs here. They are
  * supplied on the forward call and recovered by the inverse.
@@ -101,7 +101,7 @@ private:
  * Same two-particle phase space as @ref TwoBodyDecay. The polar angle is traded
  * for the Mandelstam invariant @f$t = (p_\mathrm{in,1} - p_1)^2 < 0@f$, which
  * is linear in @f$\cos\theta@f$ [1]. The azimuth is uniform,
- * @f$\phi = 2\pi\,r_\phi@f$. @f$|t|@f$ is drawn with an @ref Invariant (from
+ * @f$\phi = \pi\,(2 r_\phi - 1)@f$. @f$|t|@f$ is drawn with an @ref Invariant (from
  * @p invariant_power / @p mass / @p width) so a t-channel propagator pole is
  * flattened (Sec. 2.2.4 of [1]). The momenta are built in the scattering
  * center-of-mass frame and boosted out.
