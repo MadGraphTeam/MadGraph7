@@ -39,6 +39,10 @@ public generator, the tools, the tests and the artifacts all see them:
   currents no tree of the request completes (g g > g g on loop_qcd_qed_sm:
   a Higgs from the R2 g g H vertex), whose widths enter no amplitude.
 
+* ``gauge_closed_veto`` adds to a ``particle_veto`` the Faddeev-Popov
+  ghosts of the vector bosons it removes (``resolve_request``; any
+  correction): a ghost loop without its boson breaks the gauge
+  cancellations it exists for.
 * ``feynman_gauge_model`` is the gauge scope of an electroweak request
   (WP3.2 EWI-4b, DESIGN §6.8): Born, blocks, loop lines and counterterms
   all take the 't Hooft-Feynman gauge (xi = 1) with explicit Goldstones and
@@ -62,9 +66,11 @@ natively (A4's ``dag_input.NativeDag``) is asked directly. The two share
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any, NamedTuple
 
 from pyamplicol.api.errors import GenerationError
@@ -528,10 +534,158 @@ def require_zero_widths(
     )
 
 
+# The regularisation parameter of MG5_aMC's NLOCT loop models (``lhv``):
+# lambda_HV, recognised by its declared TeX name; the model's R2 rules depend
+# on it (lambda_HV = 1: 't Hooft-Veltman, 0: four-dimensional helicity).
+HV_TEXNAME = r"\lambda_{HV}"
+
+
+def gauge_ghost_partners(compiled: Any) -> dict[int, frozenset[int]]:
+    """|PDG| of every Faddeev-Popov ghost -> the |PDG| codes of the vector
+    bosons it can be the ghost of: the vectors (spin 3, no ghost number) of
+    the ghost's colour, |charge| and mass parameter, the ghost's mass being
+    its boson's in the 't Hooft-Feynman gauge of electroweak loops (MG5_aMC's
+    loop models: ghWp, ghWm with MW, ghZ with MZ, ghA massless and colourless,
+    ghG massless with colour 8). A structural reading, never names."""
+
+    vectors: dict[tuple[object, ...], set[int]] = defaultdict(set)
+    ghosts: dict[int, tuple[object, ...]] = {}
+    for record in compiled.model["particles"]:
+        spin = int(record["spin"])
+        number = int(record.get("ghost_number", 0) or 0)
+        key = (
+            int(record["color"]),
+            abs(Fraction(str(record.get("charge", 0) or 0))),
+            str(record["mass"]),
+        )
+        if spin == 3 and not number:
+            vectors[key].add(abs(int(record["pdg_code"])))
+        elif number:
+            ghosts[abs(int(record["pdg_code"]))] = key
+    return {
+        ghost: frozenset(vectors[key]) for ghost, key in ghosts.items() if vectors[key]
+    }
+
+
+def gauge_closed_veto(compiled: Any, veto: Iterable[int]) -> tuple[int, ...]:
+    """``veto`` (|PDG| codes, ``particle_veto``) with the Faddeev-Popov
+    ghosts of its vector bosons (``gauge_ghost_partners``; a ghost that could
+    belong to several vectors only when all of them are vetoed). A ghost
+    compensates the unphysical polarisations of its boson in the loops where
+    that boson runs; with the boson vetoed its ghost loops are left alone and
+    break the gauge cancellations: vetoing the W keeps W ghost loops in the
+    photon self-energy, ghWp ghWp~ A, which MadLoop's photon-only control
+    excludes (``mixed-uudd-bare-control.json``: its QED^6 bare sector of
+    u u~ > d d~ misses by 1.2 % of the single pole with them)."""
+
+    vetoed = {abs(int(pdg)) for pdg in veto}
+    added = {
+        ghost
+        for ghost, partners in gauge_ghost_partners(compiled).items()
+        if partners <= vetoed
+    }
+    return tuple(sorted(vetoed | added))
+
+
+# SLHA codes of the electroweak inputs the loops' coupling may depend on.
+SMINPUTS_ALPHA_INVERSE = ("SMINPUTS", (1,))
+SMINPUTS_FERMI = ("SMINPUTS", (2,))
+
+
+def scheme_conventions(slice_: Any) -> dict[str, object] | None:
+    """The conventions an electroweak request's virtual is defined in (WP3.2
+    EWI-7; requirements EW-14 and EW-18), None for a request that is not
+    electroweak (``electroweak``). v2 makes no private gamma-five or scheme
+    choice: four-dimensional numerators with d-dimensional denominators plus
+    the model's R2 and UV rules define the result, so the record states the
+    model's conventions as the generation found them:
+
+    * ``regularisation`` "HV" ('t Hooft-Veltman: external states and the
+      reduced numerators four-dimensional, the rational terms the model's
+      R2), with ``lambda_HV`` the value of the model's HV parameter (the one
+      declared with TeX name ``HV_TEXNAME``, MG5_aMC's ``lhv``; None if the
+      model declares none);
+    * ``gamma5``: the model's R2 rules at their own reading point (NLOCT,
+      GMP-type), with four-dimensional Dirac traces in the loops;
+      "generation-complete": a ``particle_veto`` that breaks the
+      cancellation of the Levi-Civita counterterm cells is refused unless
+      overridden ([U2], ``ct_recursion``), every other cell is complete;
+    * ``gauge``: the gauge of Born, loops and counterterms (``LoopSlice.
+      compiled``; 't Hooft-Feynman for every electroweak request, DESIGN
+      §6.8);
+    * ``uv_scheme``: the model's UV counterterm vertices and external-field
+      factors, inserted once (REQUIREMENTS_ADDENDUM J);
+    * ``mass_scheme`` "real-on-shell" (no width in any propagator,
+      ``require_zero_widths``; the complex-mass scheme is WP3.2 EWI-10);
+    * ``ew_input_scheme``: "G_mu" when the loops' electromagnetic coupling
+      (``poles.qed_coupling``) depends on the Fermi constant (SLHA SMINPUTS
+      2), "alpha" when it depends on an input 1/alpha (SMINPUTS 1: alpha(M_Z)
+      in MG5_aMC's ``loop_qcd_qed_sm``), else "model"; ``alpha_inputs`` the
+      external parameters it depends on, with their SLHA codes;
+    * ``external_photons``: "alpha(0)" when the request has on-shell
+      external photons (``external_photon_scheme``, [U9]), else "none".
+    """
+
+    from .poles import qed_coupling
+
+    compiled, request = slice_.compiled, slice_.request
+    species = slice_.prepared.structure.perturbative_species_orders
+    if not electroweak(compiled, request, species):
+        return None
+    fixed = request.fixed_parameters
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    lambda_hv = None
+    raw = compiled.raw_loop_model
+    if raw is not None:
+        for record in raw.collections["parameters"]:
+            fields = record["fields"]
+            if str(fields.get("texname", "")).strip() == HV_TEXNAME:
+                value = fields.get("value")
+                if isinstance(value, Mapping):
+                    value = value.get("expression")
+                lambda_hv = None if value is None else str(value)
+                break
+    coupling = qed_coupling(compiled, lambda r: is_photon(r, parameters, fixed))
+    inputs = sorted({name for _symbol, name in coupling[1]}) if coupling else []
+
+    def code(name: str) -> tuple[str, tuple[int, ...]]:
+        record = parameters[name]
+        return (record.lhablock or "").upper(), tuple(record.lhacode)
+
+    codes = {name: code(name) for name in inputs}
+    scheme = (
+        "G_mu"
+        if SMINPUTS_FERMI in codes.values()
+        else "alpha"
+        if SMINPUTS_ALPHA_INVERSE in codes.values()
+        else "model"
+    )
+    return {
+        "regularisation": "HV",
+        "lambda_HV": lambda_hv,
+        "gamma5": (
+            "the model's R2 rules at their reading point (NLOCT, GMP-type), "
+            "four-dimensional Dirac traces in the loops; generation-complete"
+        ),
+        "gauge": str(compiled.ir.gauge),
+        "uv_scheme": ("the model's UV counterterm vertices and external-field factors"),
+        "mass_scheme": "real-on-shell",
+        "ew_input_scheme": scheme,
+        "alpha_inputs": {
+            name: f"{block} {' '.join(map(str, lha))}".strip()
+            for name, (block, lha) in codes.items()
+        },
+        "external_photons": (
+            "alpha(0)" if slice_.external_photons is not None else "none"
+        ),
+    }
+
+
 __all__ = [
     "ADJOINT",
     "ALPHA0_CONVERSION",
     "ALPHA0_INVERSE_CODE",
+    "HV_TEXNAME",
     "CorrectionOrders",
     "ElectroweakGaugeError",
     "ElectroweakWidthError",
@@ -542,10 +696,13 @@ __all__ = [
     "external_photon_scheme",
     "external_photons",
     "feynman_gauge_model",
+    "gauge_closed_veto",
+    "gauge_ghost_partners",
     "is_photon",
     "is_zero",
     "propagated_species",
     "propagating_widths",
     "require_feynman_gauge",
     "require_zero_widths",
+    "scheme_conventions",
 ]
