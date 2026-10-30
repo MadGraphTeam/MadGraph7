@@ -165,8 +165,8 @@ def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
     R2_AWWtb under R2_AWWcs) and drops vanishing ones (R2_AAu3 ~ MU^2), so an
     inserted coupling counts as called when its value class is; R2_G0tt_b
     (V_ttG02's b-loop R2, whose propagator label MadLoop's matching never
-    meets) is the omission, and a row that does not list it fails the
-    structural check."""
+    meets) is the omission, and a row that lists as omitted a coupling
+    MadLoop calls fails the structural check."""
 
     from types import SimpleNamespace as N
 
@@ -197,9 +197,10 @@ def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
     checks = mqcd.rule_r2(row, slice_, reference, classes)
     assert [c.coefficient for c in checks] == ["inserted", "omitted"]
     assert all(c.passed for c in checks)
-    unlisted = N(madloop_omitted_r2=None, madloop_r2_called=row.madloop_r2_called)
-    (check,) = mqcd.rule_r2(unlisted, slice_, reference, classes)
-    assert not check.passed and check.value == "R2_G0tt_b"
+    # A listed coupling MadLoop calls is no omission.
+    called = N(madloop_omitted_r2=("R2_G0tt",), madloop_r2_called=row.madloop_r2_called)
+    inserted, omitted = mqcd.rule_r2(called, slice_, reference, classes)
+    assert inserted.passed and not omitted.passed and omitted.value == "R2_G0tt_b"
 
 
 @pytest.mark.loop_fast
