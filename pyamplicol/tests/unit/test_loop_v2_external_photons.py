@@ -821,3 +821,76 @@ def test_an_ambiguous_photon_is_refused():
             ew_policy.external_photon_scheme(ambiguous, request, process, {}, {})
         assert refused.value.key == "external-photon-scheme"
         assert "|PDG| [22, 9000032]" in str(refused.value)
+
+
+@pytest.mark.loop_nightly
+def test_untagged_photon_request_on_the_alpha_mz_model_generates(
+    loop_qcd_qed_sm_ufo, loop_native, tmp_path_factory
+):
+    """MS-PHOTON: loop_qcd_qed_sm (alpha(M_Z) input, no alpha(0) parameter
+    and no conversion counterterm, where MG5_aMC refuses tagged photons)
+    generates u u~ > a g [QCD QED] with its photon untagged
+    (``external_photons = "none"``): the IR poles of both sectors equal
+    Catani's, the QED one with the untagged photon's -gamma_gamma/eps, the
+    UV poles of the bare loops and the counterterms cancel, and the native
+    point inputs (no photon scaling) equal the Python inputs within 1e-12 of
+    each sector's virtual. The default tag ("final") is refused on this model
+    (``external-photon-scheme``, naming "none" as the remedy). Nightly: one
+    EW 2->2 generation (about 2-4 min)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.ew_policy import ExternalPhotonError
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(
+        loop_qcd_qed_sm_ufo,
+        require_supported=False,
+        cache_dir=tmp_path_factory.mktemp("qcd-qed"),
+    )
+    fixed = {"MB": "0", "ymb": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
+    options = {"corrections": ("QCD", "QED"), "fixed_parameters": fixed}
+    loops = ({"QCD": 3, "QED": 1}, {"QCD": 1, "QED": 3})
+    born = {"QCD": 1, "QED": 1}
+    with pytest.raises(ExternalPhotonError) as refused:
+        LoopSlice.generate(
+            compiled,
+            SliceRequest("u u~ > a g", born, loops, **options, **_GMU_OPTIONS),
+            loop_native,
+        )
+    assert refused.value.key == "external-photon-scheme"
+    assert 'loop.external_photons = "none"' in str(refused.value)
+    request = SliceRequest(
+        "u u~ > a g", born, loops, external_photons="none", **options, **_GMU_OPTIONS
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert slice_.external_photons is None
+    reference = _reference("uux_ag_ew")
+    point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
+    result = slice_.evaluate(point, scale)
+    sectors = set(result.components["virtual"])
+    assert len(sectors) == 2 and set(result.ir_poles) == sectors
+    for sector, (single, double) in result.ir_poles.items():
+        laurent = result.components["virtual"][sector].coefficients
+        size = max(abs(float(single)), abs(float(double)))
+        assert abs(float(laurent[1]) - float(single)) <= 1e-10 * size, sector
+        assert abs(float(laurent[2]) - float(double)) <= 1e-10 * size, sector
+    uv = slice_.evaluate(point, scale, poles="uv")
+    for sector, bare in uv.components["bare"].items():
+        counterterms = uv.components["uv"][sector]
+        for index in (1, 2):
+            total = float(bare.coefficients[index]) + float(
+                counterterms.coefficients[index]
+            )
+            assert abs(total) <= 1e-10 * max(abs(float(bare.coefficients[1])), 1e-300)
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    assert native.exported.trees.program["parameters"].get("photons") is None
+    (mine,) = native.evaluate([point], [scale])
+    for sector, laurent in result.components["virtual"].items():
+        size = max(abs(float(x)) for x in laurent.coefficients)
+        for x, y in zip(
+            mine.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(x) - float(y)) <= 1e-12 * size, sector
