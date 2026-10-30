@@ -2142,8 +2142,7 @@
    "extras": [
     "ward",
     "joint",
-    "ap",
-    "nc"
+    "ap"
    ],
    "features": [
     "2->3",
@@ -2180,9 +2179,6 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "notes": "the s^2e^6 sector of the existing reference; the s^4e^4 top-up (MS-REF) extends the request to both sectors",
-   "extras_pending": {
-    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -2426,9 +2422,7 @@
      3
     ]
    },
-   "extras": [
-    "nc"
-   ],
+   "extras": [],
    "features": [
     "2->4"
    ],
@@ -2465,9 +2459,6 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "extras_pending": {
-    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   },
    "madloop_r2_called": [
     "R2_3Gg",
     "R2_3Gq",
@@ -10668,9 +10659,7 @@
      3
     ]
    },
-   "extras": [
-    "nc"
-   ],
+   "extras": [],
    "features": [
     "2->2",
     "quark-final-state"
@@ -10696,10 +10685,7 @@
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
-   "scale_parameter": "MU_R",
-   "extras_pending": {
-    "nc": "Q4 (a, recommended, pending with the user): EW LC/NLC is M-FINAL (typed colour-declaration-coverage refusal)"
-   }
+   "scale_parameter": "MU_R"
   },
   {
    "id": "SC02",
