@@ -956,14 +956,8 @@ impl Parameters {
     /// pole regulator, theirs with it at 0 (the plane check's second real
     /// point, `native_trees._request_points`), once each.
     fn certified_keys(&self, values: &[Rational]) -> Vec<Vec<Rational>> {
-        let mut sets = vec![values.to_vec()];
-        if let Some(index) = self.ir_regulator {
-            let mut regulated = values.to_vec();
-            regulated[index] = Rational::from(0);
-            sets.push(regulated);
-        }
         let mut keys: Vec<Vec<Rational>> = Vec::new();
-        for set in sets {
+        for set in self.certified_sets(values) {
             let scale = self.scale.map(|index| &set[index] * &set[index]);
             let key = self.key(&set, scale.as_ref());
             if !keys.contains(&key) {
@@ -971,6 +965,97 @@ impl Parameters {
             }
         }
         keys
+    }
+
+    /// The sign patterns (`signs`) of the value sets the generation's plane
+    /// check certified (`certified_keys`), once each: those at which the
+    /// generation found the side inputs.
+    fn certified_patterns(&self, values: &[Rational]) -> Vec<Vec<i8>> {
+        let mut patterns: Vec<Vec<i8>> = Vec::new();
+        for set in self.certified_sets(values) {
+            let pattern = self.signs(&set);
+            if !patterns.contains(&pattern) {
+                patterns.push(pattern);
+            }
+        }
+        patterns
+    }
+
+    /// The request's values `values` and, with a recorded IR pole
+    /// regulator, theirs with it at 0 (the plane check's real points,
+    /// `native_trees._request_points`).
+    fn certified_sets(&self, values: &[Rational]) -> Vec<Vec<Rational>> {
+        let mut sets = vec![values.to_vec()];
+        if let Some(index) = self.ir_regulator {
+            let mut regulated = values.to_vec();
+            regulated[index] = Rational::from(0);
+            sets.push(regulated);
+        }
+        sets
+    }
+
+    /// The signs (-1, 0, 1) of external parameter values `values`, the
+    /// scale's 1 (mu_R^2 > 0 at every point).
+    fn signs(&self, values: &[Rational]) -> Vec<i8> {
+        values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                if self.scale == Some(index) || (!value.is_zero() && !value.is_negative()) {
+                    1
+                } else if value.is_zero() {
+                    0
+                } else {
+                    -1
+                }
+            })
+            .collect()
+    }
+
+    /// `bind`'s run-time side check: the batch's points (rows, one per
+    /// mu_R^2 of `scales`) grouped by parameter key at external values
+    /// `values`. At a sign pattern the generation analysed (`patterns`, the
+    /// certified sets' `certified_patterns`) the key is `key`: one per batch,
+    /// or one per mu_R^2 when the scale is a side input. At any other
+    /// pattern (a width set to 0, a parameter changing sign) an argument the
+    /// generation's signs decided may sit on a cut through any input, so the
+    /// key is every value with the point's mu_R^2, marked by one more entry
+    /// (never a certified key): each new value set is checked. In an artifact
+    /// written before the side record, one key per batch (`key`).
+    fn side_groups(
+        &self,
+        values: &[Rational],
+        scales: &[Rational],
+        patterns: &[Vec<i8>],
+    ) -> Vec<(Vec<Rational>, Vec<usize>)> {
+        let Some(side) = &self.side_inputs else {
+            return vec![(self.key(values, None), (0..scales.len()).collect())];
+        };
+        let analysed = patterns.contains(&self.signs(values));
+        let keyed = self
+            .scale
+            .is_some_and(|index| side.binary_search(&index).is_ok());
+        if analysed && !keyed {
+            return vec![(self.key(values, None), (0..scales.len()).collect())];
+        }
+        let mut groups: Vec<(Vec<Rational>, Vec<usize>)> = Vec::new();
+        for (row, scale) in scales.iter().enumerate() {
+            let key = if analysed {
+                self.key(values, Some(scale))
+            } else {
+                let mut key = values.to_vec();
+                if let Some(index) = self.scale {
+                    key[index] = scale.clone();
+                }
+                key.push(Rational::from(1));
+                key
+            };
+            match groups.iter_mut().find(|(known, _)| *known == key) {
+                Some((_, rows)) => rows.push(row),
+                None => groups.push((key, vec![row])),
+            }
+        }
+        groups
     }
 
     /// What `bind`'s run-time side check compares of a point's external
@@ -1304,6 +1389,8 @@ pub struct TreeRuntime<T> {
 /// Symbolica state, DESIGN §3.7).
 pub struct ParameterSide<T> {
     certified: Vec<Vec<Rational>>,
+    /// The certified value sets' sign patterns (`Parameters::side_groups`).
+    patterns: Vec<Vec<i8>>,
     exact: Option<Kernel<T>>,
     checked: Vec<(Vec<Rational>, bool)>,
 }
@@ -2496,6 +2583,7 @@ impl TreeProgram {
             "external parameter count",
         )?;
         runtime.parameter_side.certified = self.parameters.certified_keys(values);
+        runtime.parameter_side.patterns = self.parameters.certified_patterns(values);
         Ok(())
     }
 
@@ -2613,31 +2701,18 @@ impl TreeProgram {
         // couplings' cuts: finite part 3.9e-5 against MadLoop's 1.8e-3,
         // M-SM MS-MASTERS). The sides are decided by the values of the
         // inputs generation found able to move one (`side_inputs`) and the
-        // signs of the others (`Parameters::key`): each new key other than the
-        // certified ones is checked once, on its first point, against the
-        // exact evaluator; on a disagreement its points, and later ones at
-        // that key, evaluate the parameter program exactly, the side DD, AP
-        // and MadLoop take. A change of a parameter that moves no side (aS
-        // and the scale on loop_sm's QCD processes) keeps a certified key.
+        // signs of the others (`Parameters::key`), at the sign patterns it
+        // analysed (elsewhere every value: `Parameters::side_groups`): each
+        // new key other than the certified ones is checked once, on its
+        // first point, against the exact evaluator; on a disagreement its
+        // points, and later ones at that key, evaluate the parameter program
+        // exactly, the side DD, AP and MadLoop take. A change of a parameter
+        // that moves no side (aS and the scale on loop_sm's QCD processes
+        // and on the electroweak models) keeps a certified key.
         if matches!(runtime.parameters, Kernel::Plane(_)) {
-            let mut groups: Vec<(Vec<Rational>, Vec<usize>)> = Vec::new();
-            let keyed = program.scale.is_some_and(|index| {
-                program
-                    .side_inputs
-                    .as_ref()
-                    .is_some_and(|side| side.binary_search(&index).is_ok())
-            });
-            if keyed {
-                for (row, scale) in scales.iter().enumerate() {
-                    let key = self.parameters.key(values, Some(scale));
-                    match groups.iter_mut().find(|(known, _)| *known == key) {
-                        Some((_, rows)) => rows.push(row),
-                        None => groups.push((key, vec![row])),
-                    }
-                }
-            } else {
-                groups.push((self.parameters.key(values, None), (0..points).collect()));
-            }
+            let groups =
+                self.parameters
+                    .side_groups(values, scales, &runtime.parameter_side.patterns);
             runtime.parameter_side.settle(
                 groups,
                 &inputs,
@@ -2936,6 +3011,7 @@ impl TreeProgram {
             columns,
             parameter_side: ParameterSide {
                 certified: Vec::new(),
+                patterns: Vec::new(),
                 exact: None,
                 checked: Vec::new(),
             },

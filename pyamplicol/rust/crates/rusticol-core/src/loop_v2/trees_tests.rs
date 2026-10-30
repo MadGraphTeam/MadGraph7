@@ -190,6 +190,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     let build = || Ok(Kernel::Exact(binary64.clone().into_batch_evaluator()));
     let mut side = ParameterSide {
         certified: Vec::new(),
+        patterns: Vec::new(),
         exact: None,
         checked: Vec::new(),
     };
@@ -472,11 +473,122 @@ fn side_inputs_are_those_that_can_move_an_argument_onto_a_cut() {
     // A difference of masses under a cut: both masses.
     assert_eq!(side("log({c}^2-{b}^2)+{a}", positive), vec![1, 2]);
     assert_eq!(side("sqrt({c}-{b})*sqrt({d})", positive), vec![1, 2]);
-    // A cut argument whose input is zero or negative at the point.
+    // A cut argument whose input is zero at the point.
     assert_eq!(side("sqrt({a})", [0.0, 1.0, 1.0, 1.0]), vec![0]);
-    assert_eq!(side("log(-{d})", positive), vec![3]);
     // A product with an unknown-sign sum stays unknown.
     assert_eq!(side("log({a}*({b}-{c}))", positive), vec![0, 1, 2]);
+}
+
+#[test]
+fn a_cut_side_the_signs_decide_marks_nothing() {
+    // `engine::real_axis_side_inputs`: a negative real argument whose zero
+    // imaginary part has a sign bit decided by the operands' signs sits on
+    // the cut on the same side at every point of the same signs (the
+    // electroweak counterterms' log(-MZ^2/mu_R^2), M-SM MS-MASTERS round 4),
+    // so it marks nothing; a zero of undecided sign bit marks its inputs.
+    use symbolica::atom::AtomCore;
+    let _unlock = crate::licence::unlock();
+    let names = ["a", "b", "c", "d"];
+    let inputs: Vec<_> = names
+        .iter()
+        .map(|n| symbolica::parse!(&format!("pyamplicol_trees_tests::{n}")))
+        .collect();
+    let side = |text: &str, point: [f64; 4]| -> Vec<usize> {
+        let mut source = text.to_owned();
+        for n in names {
+            source = source.replace(&format!("{{{n}}}"), &format!("pyamplicol_trees_tests::{n}"));
+        }
+        let evaluator = symbolica::parse!(&source)
+            .evaluator(&inputs)
+            .build()
+            .expect("an evaluator");
+        let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
+        crate::engine::real_axis_side_inputs(&binary64, &point).expect("analysed")
+    };
+    let point = [0.118, 91.188, 1000.0, 80.4];
+    let none = Vec::<usize>::new();
+    // log(-b^2/c^2) and its positive counterpart: none (the scale c drops
+    // out of the key).
+    assert_eq!(side("log(-{b}^2/{c}^2)", point), none);
+    assert_eq!(side("log({c}^2/{b}^2)", point), none);
+    assert_eq!(side("log(-{d})*sqrt(-{b}*{c})", point), none);
+    // A zero regulator times -i (the UFO's vep*complex(0,-1)) keeps the
+    // side.
+    assert_eq!(
+        side("log(-({b}^2-1𝑖*{a})/{c}^2)", [0.0, 91.188, 1000.0, 80.4]),
+        none
+    );
+    // A difference of masses under the cut: undecided, every input of the
+    // argument.
+    assert_eq!(side("log(-({b}^2-{d}^2)/{c}^2)", point), vec![1, 2, 3]);
+    // A power with a slot exponent of a positive base: an exactly zero
+    // imaginary part whose sign follows the exponent's value; negated
+    // under a log, it marks base and exponent.
+    assert_eq!(side("log(-{b}^{a})", point), vec![0, 1]);
+    // A negative input under the cut: decided, none.
+    assert_eq!(side("log({d})", [0.118, 91.188, 1000.0, -80.4]), none);
+    // An exactly zero argument (log(0), a zero width): its input.
+    assert_eq!(side("log({d}^2)", [0.118, 91.188, 1000.0, 0.0]), vec![3]);
+}
+
+#[test]
+fn side_groups_key_every_value_at_a_pattern_the_generation_did_not_analyse() {
+    // `Parameters::side_groups` (`TreeProgram::bind`): at the certified
+    // sign pattern one key per batch (the scale no side input) or per
+    // mu_R^2 (a side input); at another pattern every value and each
+    // point's mu_R^2, marked by one more entry; without the side record one
+    // key per batch.
+    let r = |n: i64| Rational::from(n);
+    let values = [r(91), r(3), r(173), r(1)];
+    let scales = [r(8281), r(4), r(8281)];
+    let record = parameter_record(Some(vec![2]), None);
+    let patterns = record.certified_patterns(&values);
+    assert_eq!(patterns, vec![vec![1, 1, 1, 1]]);
+    // A new aS or MT at the certified pattern: one sign key for the batch.
+    let groups = record.side_groups(&[r(91), r(5), r(170), r(1)], &scales, &patterns);
+    assert_eq!(
+        groups,
+        vec![(vec![r(1), r(1), r(170), r(1)], vec![0, 1, 2])]
+    );
+    // The scale a side input: one key per mu_R^2.
+    let keyed = parameter_record(Some(vec![0, 2]), None);
+    let groups = keyed.side_groups(&values, &scales, &patterns);
+    assert_eq!(
+        groups,
+        vec![
+            (vec![r(8281), r(1), r(173), r(1)], vec![0, 2]),
+            (vec![r(4), r(1), r(173), r(1)], vec![1]),
+        ]
+    );
+    // WT set to 0 (a pattern the generation did not analyse): every value,
+    // per mu_R^2, never a certified key.
+    let zero = [r(91), r(3), r(173), r(0)];
+    let groups = record.side_groups(&zero, &scales, &patterns);
+    assert_eq!(
+        groups,
+        vec![
+            (vec![r(8281), r(3), r(173), r(0), r(1)], vec![0, 2]),
+            (vec![r(4), r(3), r(173), r(0), r(1)], vec![1]),
+        ]
+    );
+    let certified = record.certified_keys(&values);
+    assert!(groups.iter().all(|(key, _)| !certified.contains(key)));
+    // Nothing certified: every value too.
+    assert_eq!(record.side_groups(&values, &scales[..1], &[])[0].0.len(), 5);
+    // The regulated pass's pattern is certified too.
+    let regulated = parameter_record(Some(vec![2]), Some(3));
+    let patterns = regulated.certified_patterns(&values);
+    assert_eq!(patterns, vec![vec![1, 1, 1, 1], vec![1, 1, 1, 0]]);
+    assert_eq!(
+        regulated.side_groups(&zero, &scales, &patterns),
+        vec![(vec![r(1), r(1), r(173), r(0)], vec![0, 1, 2])]
+    );
+    // An artifact without the side record: one key per batch.
+    let old = parameter_record(None, None);
+    assert_eq!(
+        old.side_groups(&zero, &scales, &[]),
+        vec![(vec![r(0), r(3), r(173), r(0)], vec![0, 1, 2])]
+    );
 }
 
 #[test]

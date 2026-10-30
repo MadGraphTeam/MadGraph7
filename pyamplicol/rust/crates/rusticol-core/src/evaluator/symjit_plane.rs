@@ -961,22 +961,36 @@ pub(crate) fn real_axis_sensitive_outputs(
 ///
 /// An abstract interpretation of the program in the signs of the real and
 /// imaginary parts of every value (each exactly zero, positive, negative or
-/// unknown), with the inputs' signs from `point` (real: zero imaginary
-/// parts) and the constants' own, along the instructions' forward jumps
-/// (a branch whose condition the signs decide is the only one taken). A
-/// `log`, `sqrt` or a power with a slot exponent whose argument may lie on
-/// the negative real axis (a zero or unknown imaginary part with a real
-/// part not known positive), `arg` or any function this rule does not know,
-/// a predicate (`truth`, `equal`, `less`, `less_equal`) or a selection
-/// (`Join`, `IfElse`) the signs do not decide marks every input its
-/// arguments depend on. `exp`, `sin`, `cos`, `conj`, `abs`, `real_part` and
-/// `imaginary_part` are continuous. So `sqrt(4 pi aS)` and `log(mu_R^2 /
-/// m^2)` at positive inputs, or the complex-mass scheme's `log(mu_R^2 / (m^2
-/// - i m w))` at a positive width, mark nothing, while `log(m1^2 - m2^2)`
-/// marks both masses. The sign rules are exact for finite values (a
-/// product of two positive values is positive, a sum of a positive and a
-/// zero one positive, ...); a product that underflows to zero is outside
-/// them.
+/// unknown; an exact zero also records whether its sign bit follows from
+/// the operands' signs alone), with the inputs' signs from `point` (real:
+/// zero imaginary parts) and the constants' own, along the instructions'
+/// forward jumps (a branch whose condition the signs decide is the only one
+/// taken). Per path a value depends on the inputs of its last write (Symbolica
+/// reuses its temporaries); where paths meet at a label they stay apart
+/// until the selections (`Join`) that follow, so a selection on a branch's
+/// condition reads, on each path, the operand that path's branch chose (the
+/// other operand's slot may still hold an unrelated earlier value). A
+/// `log`, `sqrt` or a power with a slot exponent marks every input
+/// its argument depends on unless the signs decide the argument's side of
+/// the cut: a known nonzero imaginary part, or an exactly zero one with a
+/// positive real part (off the cut) or with a negative real part and a
+/// zero whose sign bit the signs decide (on the cut, on the side that
+/// zero's sign takes in the plane and in the exact evaluator alike at every
+/// point of the same signs, so the generation's real-point check certified
+/// it). `arg` or any function this rule does not know, a predicate
+/// (`truth`, `equal`, `less`, `less_equal`) or a selection (`Join`,
+/// `IfElse`) the signs do not decide marks every input its arguments depend
+/// on. `exp`, `sin`, `cos`, `conj`, `abs`, `real_part` and `imaginary_part`
+/// are continuous. So `sqrt(4 pi aS)`, `log(mu_R^2 / m^2)` and `log(-m^2 /
+/// mu_R^2)` at positive inputs, or the complex-mass scheme's `log(mu_R^2 /
+/// (m^2 - i m w))` at a positive width, mark nothing, while `log(m1^2 -
+/// m2^2)` marks both masses, and so does `log(-m1^(m2))` (a power with a
+/// slot exponent of a positive base has an exactly zero imaginary part
+/// whose sign follows the exponent's value). The sign rules are exact for
+/// finite values (a product of two positive values is positive, a sum of a
+/// positive and a zero one positive, a product of a zero and a value of
+/// unknown sign a zero of unknown sign, ...); a product that underflows to
+/// zero is outside them.
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -985,7 +999,6 @@ pub(crate) fn real_axis_side_inputs(
     evaluator: &symbolica::evaluate::ExpressionEvaluator<symbolica::domains::float::Complex<f64>>,
     point: &[f64],
 ) -> RusticolResult<Vec<usize>> {
-    use symbolica::evaluate::{Instruction as I, Slot};
     let exported = evaluator.export_instructions();
     if point.len() != exported.input_count {
         return Err(RusticolError::invalid_argument(format!(
@@ -995,25 +1008,33 @@ pub(crate) fn real_axis_side_inputs(
         )));
     }
     let program = InlinedProgram::of(&exported)?;
-    let inputs = exported.input_count;
+    side_inputs_of(&program, exported.input_count, exported.output_count, point)
+}
+
+/// [`real_axis_side_inputs`] of an inlined program of `inputs` inputs and
+/// `outputs` outputs.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn side_inputs_of(
+    program: &InlinedProgram,
+    inputs: usize,
+    outputs: usize,
+    point: &[f64],
+) -> RusticolResult<Vec<usize>> {
+    use symbolica::evaluate::{Instruction as I, Slot};
     let words = inputs.div_ceil(64).max(1);
-    let slots = program.temporaries + exported.output_count;
+    let slots = program.temporaries + outputs;
     let index = |slot: &Slot| -> Option<usize> {
         match *slot {
             Slot::Temp(i) if i < program.temporaries => Some(i),
-            Slot::Out(i) if i < exported.output_count => Some(program.temporaries + i),
+            Slot::Out(i) if i < outputs => Some(program.temporaries + i),
             _ => None,
         }
     };
-    // Per slot the inputs its value depends on (over every path).
-    let mut depends = vec![vec![0_u64; words]; slots];
-    // Per slot its signs on the current path (`None`: unreachable).
     let unknown = Signs::UNKNOWN;
-    let mut state: Option<Vec<Signs>> = Some(vec![unknown; slots]);
-    let mut pending: std::collections::BTreeMap<usize, Vec<Signs>> =
-        std::collections::BTreeMap::new();
-    let mut side = vec![0_u64; words];
-    let read = |slot: &Slot, state: &[Signs]| -> Signs {
+    let read = |slot: &Slot, path: &SidePath| -> Signs {
         match *slot {
             Slot::Param(i) => Signs {
                 re: Sign::of(point.get(i).copied().unwrap_or(f64::NAN)),
@@ -1023,10 +1044,11 @@ pub(crate) fn real_axis_side_inputs(
                 re: Sign::of(c.re),
                 im: Sign::of(c.im),
             }),
-            _ => index(slot).map_or(unknown, |i| state[i]),
+            _ => index(slot).map_or(unknown, |i| path.signs[i]),
         }
     };
-    let deps = |slots: &[Slot], depends: &[Vec<u64>]| -> Vec<u64> {
+    // The inputs `slots`' values depend on, on `path`.
+    let deps = |slots: &[Slot], path: &SidePath| -> Vec<u64> {
         let mut out = vec![0_u64; words];
         for slot in slots {
             match *slot {
@@ -1034,7 +1056,7 @@ pub(crate) fn real_axis_side_inputs(
                 Slot::Const(_) | Slot::Param(_) => {}
                 _ => {
                     if let Some(k) = index(slot) {
-                        for (o, d) in out.iter_mut().zip(&depends[k]) {
+                        for (o, d) in out.iter_mut().zip(path.depends(k, words)) {
                             *o |= d;
                         }
                     } else {
@@ -1045,99 +1067,137 @@ pub(crate) fn real_axis_side_inputs(
         }
         out
     };
+    // A condition's truth on `path`: its signs', else the branch taken.
+    let truth = |slot: &Slot, path: &SidePath| -> Option<bool> {
+        read(slot, path)
+            .truth()
+            .or_else(|| index(slot).and_then(|k| path.fact(k)))
+    };
     let mark = |side: &mut Vec<u64>, d: &[u64]| {
         for (s, d) in side.iter_mut().zip(d) {
             *s |= d;
         }
     };
-    let merge = |into: &mut Vec<Signs>, from: &[Signs]| {
-        for (a, b) in into.iter_mut().zip(from) {
-            *a = a.join(*b);
-        }
+    let write = |path: &mut SidePath, slot: &Slot, value: Signs, dependence: &[u64]| {
+        let Some(k) = index(slot) else {
+            return Err(RusticolError::serialization(
+                "a Symbolica instruction writes outside its temporaries and outputs",
+            ));
+        };
+        path.signs[k] = value;
+        path.depends[k * words..(k + 1) * words].copy_from_slice(dependence);
+        path.facts.retain(|&(fact, _)| fact != k);
+        Ok(())
     };
+    // The paths reaching the current instruction (`None`: unreachable),
+    // kept apart from a label where several meet until the next
+    // instruction other than a label or a selection, so that a selection on
+    // a branch's condition reads each operand on the path that takes it,
+    // and the paths waiting at each label.
+    let mut current: Option<Vec<SidePath>> = Some(vec![SidePath::new(slots, words)]);
+    let mut pending: std::collections::BTreeMap<usize, Vec<SidePath>> =
+        std::collections::BTreeMap::new();
+    let mut side = vec![0_u64; words];
     for row in &program.rows {
         match row {
             I::Label(label) => {
-                if let Some(arriving) = pending.remove(label) {
-                    match &mut state {
-                        Some(current) => merge(current, &arriving),
-                        None => state = Some(arriving),
+                if let Some(mut arriving) = pending.remove(label) {
+                    match &mut current {
+                        Some(paths) => paths.append(&mut arriving),
+                        None => current = Some(arriving),
+                    }
+                    if let Some(paths) = &mut current
+                        && paths.len() > SidePath::KEPT
+                    {
+                        *paths = vec![SidePath::merge(std::mem::take(paths))];
                     }
                 }
                 continue;
             }
-            I::Goto(label) => {
-                if let Some(current) = state.take() {
-                    match pending.get_mut(label) {
-                        Some(waiting) => merge(waiting, &current),
+            I::Join(o, condition, yes, no) => {
+                let Some(paths) = &mut current else { continue };
+                for path in paths.iter_mut() {
+                    let (value, dependence) = match truth(condition, path) {
+                        Some(true) => (read(yes, path), deps(&[*yes], path)),
+                        Some(false) => (read(no, path), deps(&[*no], path)),
                         None => {
-                            pending.insert(*label, current);
+                            mark(&mut side, &deps(&[*condition], path));
+                            (
+                                read(yes, path).join(read(no, path)),
+                                deps(&[*condition, *yes, *no], path),
+                            )
                         }
-                    }
-                }
-                continue;
-            }
-            I::IfElse(condition, label) => {
-                let Some(current) = &state else { continue };
-                let jump = match read(condition, current).truth() {
-                    Some(true) => false,
-                    Some(false) => true,
-                    None => {
-                        mark(&mut side, &deps(&[*condition], &depends));
-                        let copy = current.clone();
-                        match pending.get_mut(label) {
-                            Some(waiting) => merge(waiting, &copy),
-                            None => {
-                                pending.insert(*label, copy);
-                            }
-                        }
-                        false
-                    }
-                };
-                if jump {
-                    let current = state.take().expect("reachable");
-                    match pending.get_mut(label) {
-                        Some(waiting) => merge(waiting, &current),
-                        None => {
-                            pending.insert(*label, current);
-                        }
-                    }
+                    };
+                    write(path, o, value, &dependence)?;
                 }
                 continue;
             }
             _ => {}
         }
-        let Some(current) = &state else { continue };
+        let Some(paths) = current.take() else {
+            continue;
+        };
+        let mut path = SidePath::merge(paths);
+        match row {
+            I::Goto(label) => {
+                pending.entry(*label).or_default().push(path);
+                continue;
+            }
+            I::IfElse(condition, label) => {
+                match truth(condition, &path) {
+                    Some(true) => {}
+                    Some(false) => {
+                        pending.entry(*label).or_default().push(path);
+                        continue;
+                    }
+                    None => {
+                        mark(&mut side, &deps(&[*condition], &path));
+                        let mut jump = path.clone();
+                        if let Some(k) = index(condition) {
+                            jump.facts.push((k, false));
+                            path.facts.push((k, true));
+                        }
+                        pending.entry(*label).or_default().push(jump);
+                    }
+                }
+                current = Some(vec![path]);
+                continue;
+            }
+            _ => {}
+        }
         let (destination, value, dependence) = match row {
             I::Add(o, args, _) => (
                 o,
                 args.iter()
-                    .map(|a| read(a, current))
-                    .fold(Signs::ZERO, Signs::add),
-                deps(args, &depends),
+                    .map(|a| read(a, &path))
+                    .reduce(Signs::add)
+                    .unwrap_or(Signs::ZERO),
+                deps(args, &path),
             ),
             I::Mul(o, args, _) => (
                 o,
                 args.iter()
-                    .map(|a| read(a, current))
-                    .fold(Signs::ONE, Signs::mul),
-                deps(args, &depends),
+                    .map(|a| read(a, &path))
+                    .reduce(Signs::mul)
+                    .unwrap_or(Signs::ONE),
+                deps(args, &path),
             ),
-            I::Pow(o, base, exponent, _) => (
-                o,
-                read(base, current).powi(*exponent),
-                deps(&[*base], &depends),
-            ),
+            I::Pow(o, base, exponent, _) => {
+                (o, read(base, &path).powi(*exponent), deps(&[*base], &path))
+            }
             I::Powf(o, base, exponent, _) => {
-                let (b, e) = (read(base, current), read(exponent, current));
-                let dependence = deps(&[*base, *exponent], &depends);
-                if !b.off_cut() {
+                let (b, e) = (read(base, &path), read(exponent, &path));
+                let dependence = deps(&[*base, *exponent], &path);
+                if !b.side_decided() {
                     mark(&mut side, &dependence);
                 }
-                let value = if b.re == Sign::Pos && b.im == Sign::Zero && e.im == Sign::Zero {
+                // exp(e log b) at a positive real b: the imaginary part
+                // e * (+-0) + Im(e) * log(b) is a zero whose sign follows
+                // the exponent's value.
+                let value = if b.re == Sign::Pos && b.im.is_zero() && e.im.is_zero() {
                     Signs {
                         re: Sign::Pos,
-                        im: Sign::Zero,
+                        im: Sign::FreeZero,
                     }
                 } else {
                     unknown
@@ -1146,8 +1206,8 @@ pub(crate) fn real_axis_side_inputs(
             }
             I::Fun(o, call, _) => {
                 let (symbol, _tags, args) = &**call;
-                let a: Vec<Signs> = args.iter().map(|s| read(s, current)).collect();
-                let dependence = deps(args, &depends);
+                let a: Vec<Signs> = args.iter().map(|s| read(s, &path)).collect();
+                let dependence = deps(args, &path);
                 let name = if symbol.get_namespace() == "symbolica" {
                     symbol.get_stripped_name()
                 } else {
@@ -1173,13 +1233,19 @@ pub(crate) fn real_axis_side_inputs(
                         re: Sign::Any,
                         im: x.im,
                     },
-                    ("exp", [x]) if x.im == Sign::Zero => Signs {
+                    // On the cut, on the side the zero's sign decides (+-i pi
+                    // for log; the sign is not tracked).
+                    ("sqrt" | "log", [x]) if x.side_decided() => unknown,
+                    // e^a (cos(+-0) + i sin(+-0)): the zero's sign.
+                    ("exp", [x]) if x.im.is_zero() => Signs {
                         re: Sign::Pos,
-                        im: Sign::Zero,
+                        im: x.im,
                     },
-                    ("sin" | "cos", [x]) if x.im == Sign::Zero => Signs {
+                    // sin(a) cosh(+-0) + i cos(a) sinh(+-0) (and cos's):
+                    // a zero whose sign follows cos(a) (sin(a)).
+                    ("sin" | "cos", [x]) if x.im.is_zero() => Signs {
                         re: Sign::Any,
-                        im: Sign::Zero,
+                        im: Sign::FreeZero,
                     },
                     ("exp" | "sin" | "cos", [_]) => unknown,
                     ("conj", [x]) => Signs {
@@ -1214,46 +1280,95 @@ pub(crate) fn real_axis_side_inputs(
                         decided(x.re.less(y.re, true), &mut side)
                     }
                     _ => {
-                        // On a cut (`sqrt`, `log`), `arg` or unknown.
+                        // On a cut the signs do not decide (`sqrt`, `log`),
+                        // `arg` or unknown.
                         mark(&mut side, &dependence);
                         unknown
                     }
                 };
                 (o, value, dependence)
             }
-            I::Assign(o, value) => (o, read(value, current), deps(&[*value], &depends)),
-            I::Join(o, condition, yes, no) => {
-                let (y, n) = (read(yes, current), read(no, current));
-                match read(condition, current).truth() {
-                    Some(true) => (o, y, deps(&[*yes], &depends)),
-                    Some(false) => (o, n, deps(&[*no], &depends)),
-                    None => {
-                        let dependence = deps(&[*condition, *yes, *no], &depends);
-                        mark(&mut side, &deps(&[*condition], &depends));
-                        (o, y.join(n), dependence)
-                    }
-                }
+            I::Assign(o, value) => (o, read(value, &path), deps(&[*value], &path)),
+            I::Join(..) | I::IfElse(..) | I::Goto(_) | I::Label(_) => {
+                unreachable!("handled above")
             }
-            I::IfElse(..) | I::Goto(_) | I::Label(_) => unreachable!("handled above"),
         };
-        let Some(k) = index(destination) else {
-            return Err(RusticolError::serialization(
-                "a Symbolica instruction writes outside its temporaries and outputs",
-            ));
-        };
-        let current = state.as_mut().expect("reachable");
-        current[k] = value;
-        for (d, e) in depends[k].iter_mut().zip(&dependence) {
-            *d |= e;
-        }
+        write(&mut path, destination, value, &dependence)?;
+        current = Some(vec![path]);
     }
     Ok((0..inputs)
         .filter(|&i| side[i / 64] & (1 << (i % 64)) != 0)
         .collect())
 }
 
+/// One control-flow path's state in [`real_axis_side_inputs`]: per slot
+/// its signs and the inputs its value depends on (written on this path:
+/// a write replaces them), and the truth of the conditions of the branches
+/// this path took that the signs do not decide (a slot's fact lapses when
+/// the slot is written).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+#[derive(Clone)]
+struct SidePath {
+    signs: Vec<Signs>,
+    /// `words` bit words per slot.
+    depends: Vec<u64>,
+    facts: Vec<(usize, bool)>,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl SidePath {
+    /// The most paths kept apart at a label (more are merged).
+    const KEPT: usize = 8;
+
+    fn new(slots: usize, words: usize) -> Self {
+        Self {
+            signs: vec![Signs::UNKNOWN; slots],
+            depends: vec![0; slots * words],
+            facts: Vec::new(),
+        }
+    }
+
+    fn depends(&self, slot: usize, words: usize) -> &[u64] {
+        &self.depends[slot * words..(slot + 1) * words]
+    }
+
+    fn fact(&self, slot: usize) -> Option<bool> {
+        self.facts
+            .iter()
+            .find(|&&(fact, _)| fact == slot)
+            .map(|&(_, truth)| truth)
+    }
+
+    /// One path for several: per slot the signs' join and the dependences'
+    /// union, and the facts all of them hold.
+    fn merge(mut paths: Vec<Self>) -> Self {
+        let mut merged = paths.pop().expect("a path");
+        for path in paths {
+            for (a, b) in merged.signs.iter_mut().zip(&path.signs) {
+                *a = a.join(*b);
+            }
+            for (a, b) in merged.depends.iter_mut().zip(&path.depends) {
+                *a |= b;
+            }
+            merged.facts.retain(|fact| path.facts.contains(fact));
+        }
+        merged
+    }
+}
+
 /// The sign of a binary64 part ([`real_axis_side_inputs`]): exactly zero
-/// (either signed zero), positive, negative, or unknown.
+/// with its sign bit decided by the operands' signs (an input's, a
+/// constant's, a product of such a zero and values of known sign, a sum of
+/// such zeros: the same at every point of the same signs, in SymJIT's and
+/// Symbolica's arithmetic alike, though they may choose different bits),
+/// exactly zero with a sign bit that may change with the values (a product
+/// with a factor of unknown sign), positive, negative, or unknown.
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -1261,6 +1376,7 @@ pub(crate) fn real_axis_side_inputs(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Sign {
     Zero,
+    FreeZero,
     Pos,
     Neg,
     Any,
@@ -1293,7 +1409,9 @@ impl Sign {
 
     fn add(self, other: Self) -> Self {
         match (self, other) {
-            (Self::Zero, x) | (x, Self::Zero) => x,
+            (Self::Zero, Self::Zero) => Self::Zero,
+            (a, b) if a.is_zero() && b.is_zero() => Self::FreeZero,
+            (z, x) | (x, z) if z.is_zero() => x,
             (a, b) if a == b => a,
             _ => Self::Any,
         }
@@ -1301,7 +1419,10 @@ impl Sign {
 
     fn mul(self, other: Self) -> Self {
         match (self, other) {
-            (Self::Zero, _) | (_, Self::Zero) => Self::Zero,
+            (Self::Zero, x) | (x, Self::Zero) if x != Self::Any && x != Self::FreeZero => {
+                Self::Zero
+            }
+            (z, _) | (_, z) if z.is_zero() => Self::FreeZero,
             (Self::Any, _) | (_, Self::Any) => Self::Any,
             (a, b) if a == b => Self::Pos,
             _ => Self::Neg,
@@ -1309,18 +1430,30 @@ impl Sign {
     }
 
     fn join(self, other: Self) -> Self {
-        if self == other { self } else { Self::Any }
+        if self == other {
+            self
+        } else if self.is_zero() && other.is_zero() {
+            Self::FreeZero
+        } else {
+            Self::Any
+        }
+    }
+
+    /// Exactly zero (either sign bit).
+    fn is_zero(self) -> bool {
+        matches!(self, Self::Zero | Self::FreeZero)
     }
 
     fn known_nonzero(self) -> bool {
         matches!(self, Self::Pos | Self::Neg)
     }
 
-    /// `self < other` (`or_equal`: `<=`) when the signs decide it.
+    /// `self < other` (`or_equal`: `<=`) when the signs decide it (a zero's
+    /// sign bit does not order it).
     fn less(self, other: Self, or_equal: bool) -> Option<bool> {
         let rank = |s: Self| match s {
             Self::Neg => Some(0),
-            Self::Zero => Some(1),
+            Self::Zero | Self::FreeZero => Some(1),
             Self::Pos => Some(2),
             Self::Any => None,
         };
@@ -1386,23 +1519,36 @@ impl Signs {
         }
     }
 
+    /// Exactly zero (either sign bits).
+    fn is_zero(self) -> bool {
+        self.re.is_zero() && self.im.is_zero()
+    }
+
     /// Nonzero (`Some(true)`), zero (`Some(false)`) or undecided.
     fn truth(self) -> Option<bool> {
         if self.re.known_nonzero() || self.im.known_nonzero() {
             Some(true)
-        } else if self.re == Sign::Zero && self.im == Sign::Zero {
+        } else if self.is_zero() {
             Some(false)
         } else {
             None
         }
     }
 
-    /// `self == other` when the signs decide it.
+    /// `self == other` when the signs decide it (a zero's sign bit does
+    /// not: -0 == +0).
     fn equal(self, other: Self) -> Option<bool> {
-        let differ = |a: Sign, b: Sign| a != Sign::Any && b != Sign::Any && a != b;
+        let class = |s: Sign| match s {
+            Sign::Zero | Sign::FreeZero => Some(0),
+            Sign::Pos => Some(1),
+            Sign::Neg => Some(-1),
+            Sign::Any => None,
+        };
+        let differ =
+            |a: Sign, b: Sign| matches!((class(a), class(b)), (Some(x), Some(y)) if x != y);
         if differ(self.re, other.re) || differ(self.im, other.im) {
             Some(false)
-        } else if self == Self::ZERO && other == Self::ZERO {
+        } else if self.is_zero() && other.is_zero() {
             Some(true)
         } else {
             None
@@ -1413,14 +1559,21 @@ impl Signs {
     /// `sqrt` and a power with a slot exponent: a known nonzero imaginary
     /// part, or a zero one with a positive real part.
     fn off_cut(self) -> bool {
-        self.im.known_nonzero() || (self.im == Sign::Zero && self.re == Sign::Pos)
+        self.im.known_nonzero() || (self.im.is_zero() && self.re == Sign::Pos)
+    }
+
+    /// The side of that cut decided by the signs: off it, or on it (a
+    /// negative real part) with an exactly zero imaginary part whose sign
+    /// bit the operands' signs decide.
+    fn side_decided(self) -> bool {
+        self.off_cut() || (self.im == Sign::Zero && self.re == Sign::Neg)
     }
 
     /// The sign of |self|.
     fn magnitude(self) -> Sign {
         if self.re.known_nonzero() || self.im.known_nonzero() {
             Sign::Pos
-        } else if self == Self::ZERO {
+        } else if self.is_zero() {
             Sign::Zero
         } else {
             Sign::Any
@@ -1443,9 +1596,11 @@ impl Signs {
             self
         };
         let (mut result, mut square, mut k) = (Self::ONE, base, n.unsigned_abs());
+        let mut first = true;
         while k > 0 {
             if k & 1 == 1 {
-                result = result.mul(square);
+                result = if first { square } else { result.mul(square) };
+                first = false;
             }
             square = square.mul(square);
             k >>= 1;
@@ -2284,6 +2439,53 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
 mod tests {
     use super::*;
     use crate::RusticolErrorKind;
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn side_inputs_read_a_selection_operand_on_the_path_that_chose_it() {
+        // `real_axis_side_inputs` on inputs a, b, s, m (Symbolica's lowering
+        // of `if(a - b, m^2, m)` reusing the temporary that held s^2): the
+        // selection on the undecided a - b reads m^2 on the branch that wrote
+        // it, not the stale s^2 left in the slot on the other path, so the
+        // later cut log(sel - b) marks a, b (the branch) and b, m (its
+        // argument), not s; when the condition's slot is written between the
+        // branch and the selection, the branch's fact lapses and s counts.
+        use symbolica::atom::Symbol;
+        use symbolica::evaluate::{Instruction as I, Slot};
+        let (p, t, c) = (Slot::Param, Slot::Temp, Slot::Const);
+        let log = |o: Slot, x: Slot| I::Fun(o, Box::new((Symbol::LOG, Vec::new(), vec![x])), false);
+        let program = |lapse: bool| {
+            let mut rows = vec![
+                I::Mul(t(2), vec![p(2), p(2)], 0),
+                I::Assign(Slot::Out(0), t(2)),
+                I::Mul(t(3), vec![c(0), p(1)], 0),
+                I::Add(t(0), vec![p(0), t(3)], 0),
+                I::IfElse(t(0), 1),
+                I::Mul(t(2), vec![p(3), p(3)], 0),
+                I::Goto(2),
+                I::Label(1),
+                I::Label(2),
+            ];
+            if lapse {
+                rows.push(I::Assign(t(0), t(0)));
+            }
+            rows.extend([
+                I::Join(t(4), t(0), t(2), p(3)),
+                I::Add(t(5), vec![t(4), t(3)], 0),
+                log(Slot::Out(1), t(5)),
+            ]);
+            InlinedProgram {
+                rows,
+                constants: vec![symbolica::domains::float::Complex::new(-1.0, 0.0)],
+                temporaries: 6,
+                next_label: 3,
+            }
+        };
+        let point = [2.0, 1.0, 1000.0, 91.188];
+        let side = |lapse: bool| side_inputs_of(&program(lapse), 4, 2, &point).unwrap();
+        assert_eq!(side(false), vec![0, 1, 3]);
+        assert_eq!(side(true), vec![0, 1, 2, 3]);
+    }
 
     const MODEL: &str = "
 ([('fun', ('temp', 0), 'square', [], [('param', 0)], False),

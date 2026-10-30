@@ -1135,6 +1135,77 @@ def test_binary64_ew_pole_split_needs_no_key(tmp_path):
 
 
 @pytest.mark.loop_physics
+def test_binary64_ew_scales_need_no_key(tmp_path):
+    """The electroweak counterterms read the scale through logarithms such
+    as log(-MZ^2/mu_R^2): on the cut, on the side the parameters' signs
+    decide, so the generation's analysis (``engine::real_axis_side_inputs``)
+    records no side input for the scale or aS, and a new scale keeps the
+    certified key (DESIGN §12.1 (e)). The shipped EW self-test artifact
+    evaluates MadLoop's second and third points at their own scales
+    (mu_R^2 = 4.9e5 and 1.96e6) in binary64 with the native key disabled
+    while the permit is held, for every pole selection, bitwise equal to the
+    keyed run. Controls: a changed side input (aEWM1) and a width set
+    nonzero (a sign pattern the generation did not analyse, keyed on every
+    value) need the key."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    point = {
+        "schema": portability.SCHEMA,
+        "kind": "points",
+        "legs": 4,
+        "points": [
+            [[float(c).hex() for c in p] for p in expected["points"][k]] for k in (1, 2)
+        ],
+        "mu_r2": [float(expected["mu_r2"][k]).hex() for k in (1, 2)],
+    }
+    for poles in ("all", "none", "uv", "ir"):
+        results = []
+        for name, env in (("off", NO_NATIVE_KEY), ("keyed", None)):
+            scratch = tmp_path / f"{poles}-{name}"
+            scratch.mkdir()
+            permit, (run,) = _held_evaluations(
+                artifact,
+                selftest.NAME,
+                scratch,
+                4,
+                [("double", None)],
+                env,
+                point=point,
+                poles=poles,
+            )
+            assert permit["verified"], permit
+            output = run.stdout[-2000:] + run.stderr[-2000:]
+            assert run.returncode == 0, (poles, name, output)
+            assert RESTRICTED not in output, (poles, name, output)
+            record = json.loads((scratch / "0-double.json").read_text())
+            results.append(record["results"])
+        assert results[0] == results[1], poles
+        assert len(_leaves(results[0])) > 0
+    for parameters in ({"aEWM1": "130"}, {"WZ": "2.4952"}):
+        scratch = tmp_path / f"control-{next(iter(parameters))}"
+        scratch.mkdir()
+        permit, (run,) = _held_evaluations(
+            artifact,
+            selftest.NAME,
+            scratch,
+            4,
+            [("double", None)],
+            NO_NATIVE_KEY,
+            point=point,
+            parameters=parameters,
+        )
+        assert permit["verified"], permit
+        output = run.stdout[-2000:] + run.stderr[-2000:]
+        assert run.returncode != 0, (parameters, output)
+        assert RESTRICTED in output, (parameters, output)
+
+
+@pytest.mark.loop_physics
 def test_unlicensed_extended_precision_loop_evaluations_run_concurrently(
     loop_artifact, tmp_path
 ):
