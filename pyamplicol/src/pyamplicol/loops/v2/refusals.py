@@ -270,7 +270,9 @@ LOOP_ADMISSION_REFUSALS = (
         "MG5_aMC's set complex_mass_scheme True), a restriction with every width "
         'at zero (model.restriction = "no_widths"), or the width fixed to zero '
         'in [loop.preparation] fixed_parameters (e.g. WT = "0")',
-        "none: lifted by the complex-mass scheme (M-SM MS-CMS)",
+        "none (a guard of the real on-shell scheme; a resonant particle takes "
+        "the complex-mass scheme, whose stored artifacts need the native pole "
+        "masses of M-SM MS-CMS-N)",
         "none",
     ),
     LoopAdmissionRefusal(
@@ -284,7 +286,9 @@ LOOP_ADMISSION_REFUSALS = (
         "loop-side or the counterterm trees mixes two schemes ([U8])",
         'the complex-mass scheme ([loop.model.scheme] mass_scheme = "complex-mass"), '
         "or the widths fixed to zero in [loop.preparation] fixed_parameters",
-        "none: lifted by the complex-mass scheme (M-SM MS-CMS)",
+        "none (a guard of the real on-shell scheme; a resonant particle takes "
+        "the complex-mass scheme, whose stored artifacts need the native pole "
+        "masses of M-SM MS-CMS-N)",
         "none",
     ),
     LoopAdmissionRefusal(
@@ -304,8 +308,9 @@ LOOP_ADMISSION_REFUSALS = (
         "change_mass_to_complex_scheme, loops.model_cms) cannot take: no raw "
         "UFO records, an external CMSParam, an internal width without a source "
         "expression, a Yukawa input without one PDG code, no ZERO parameter, "
-        "a CMASS_ name already taken; or a public-route request with complex "
-        "pole masses while stored artifacts' native point inputs take none "
+        "a CMASS_ or LMASS_ name already taken; or a public-route request with "
+        "complex pole masses while stored artifacts' native point inputs take "
+        "none "
         "(model_cms.NATIVE_POLE_MASSES, until M-SM MS-CMS-N)",
         "the complex-mass scheme is MG5_aMC's transform of the model's own "
         "records; a model outside its assumptions has no such transform",

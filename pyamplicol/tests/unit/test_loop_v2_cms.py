@@ -337,7 +337,7 @@ def test_a_zero_width_yukawa_mass_propagates_as_its_line_mass(
     (``conventions.LeafWeights._require_mass_free_couplings``, which refused
     this request before). t t~ > h h [QCD] on loop_sm then equals the real
     on-shell virtual at the same card (ymt = MT = 173), binary64 and
-    arbitrary precision. About 20 s."""
+    arbitrary precision, and at a run-time MT = ymt = 172. About 20 s."""
 
     from pyamplicol.loops.model_cms import complex_mass_model
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
@@ -382,20 +382,32 @@ def test_a_zero_width_yukawa_mass_propagates_as_its_line_mass(
         ),
         loop_native,
     )
-    point = _supplied_point((173, 173, 125, 125))
-    for precision in (Precision.double(), Precision.arbitrary(32)):
+    # At the card, and at a run-time top mass: the line mass is derived, so
+    # the top's sources take its value at the point's parameters too
+    # (``symbolica_exact._particle_mass``; 2e-4 off with the card's value).
+    for mt, precision in (
+        ("173", Precision.double()),
+        ("173", Precision.arbitrary(32)),
+        ("172", Precision.double()),
+    ):
+        point = _supplied_point((mt, mt, 125, 125))
         ours, theirs = (
             [
                 complex(x)
-                for x in s.evaluate(point, "250000", precision=precision).totals[:4]
+                for x in s.evaluate(
+                    point, "250000", parameters=parameters, precision=precision
+                ).totals[:4]
             ]
-            for s in (cms, real)
+            for s, parameters in (
+                (cms, {"MT": mt}),
+                (real, {"MT": mt, "ymt": mt}),
+            )
         )
         scale = max(abs(x) for x in theirs)
         assert scale > 0 and theirs[1] != 0
         assert (
             max(abs(a - b) for a, b in zip(ours, theirs, strict=True)) <= 1e-13 * scale
-        )
+        ), (mt, precision.arithmetic, ours, theirs)
 
 
 # ------------------------------------------- the G_mu UFO, every width (nightly)
@@ -477,7 +489,7 @@ def _cm01_blocks(reference: dict, convention: str) -> dict:
     blocks = {block: reference[block] for block in ("finite", "zero")}
     if convention == "ufo-standard":
         control = json.loads((FIXTURES / CM01_SMALL_WIDTHS).read_text())
-        assert control["mu_r2"] == 1000000
+        assert Fraction(control["mu_r2"]) == 1000000
         blocks["small"] = {
             "points": control["exact_points"],
             "widths": control["widths"],
