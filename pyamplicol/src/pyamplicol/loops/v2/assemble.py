@@ -3775,6 +3775,16 @@ class _PointEvaluation:
             working = numbers.precision.working_digits
             return [[_decimal_string(x, working), "0"] for x in values]
 
+        def complex_values(values):
+            # A complex-mass scheme's squared pole masses are complex.
+            working = numbers.precision.working_digits
+            return [
+                [_decimal_string(x.real, working), _decimal_string(x.imag, working)]
+                if isinstance(x, rx.Complex)
+                else [_decimal_string(x, working), "0"]
+                for x in values
+            ]
+
         for (family, loop_order), numerator in sorted(numerators.items()):
             sequence = numerator.sequence
             n = len(sequence)
@@ -3794,7 +3804,10 @@ class _PointEvaluation:
                     (
                         n,
                         batch(real(x for v in vectors for x in v), lane),
-                        batch(real(masses[mass] for _mask, mass in sequence), lane),
+                        batch(
+                            complex_values(masses[mass] for _mask, mass in sequence),
+                            lane,
+                        ),
                         batch(real([self.scale]), lane),
                         batch(real(matrix), lane),
                         batch([numbers.strings(c) for c in coefficients], lane),
@@ -4804,8 +4817,12 @@ def _definition_value(
 
 
 def _model_masses(
-    compiled, parameters: Mapping[str, str], digits: int
-) -> Callable[[str], Fraction]:
+    compiled,
+    parameters: Mapping[str, str],
+    digits: int,
+    *,
+    pole_masses: bool = False,
+) -> Callable[[str], Any]:
     """The model's mass parameters at ``parameters``, by name, as exact
     values: an external parameter its exact value; a derived one (loop_sm's
     MW, an internal mass of any model) its resolved definition at ``digits``
@@ -4815,7 +4832,13 @@ def _model_masses(
     legs' on-shell invariants (``_leg_masses``) and Catani's massive emitters
     (``_PointEvaluation._qcd_poles``, ``_qed_poles``) take the same values,
     so a derived mass's legs are on the shell its propagators and sources
-    take (DESIGN §11.1). A derived mass must be real and positive."""
+    take (DESIGN §11.1). A derived mass must be real and positive, except,
+    with ``pole_masses``, a complex-mass scheme's pole mass (an internal
+    parameter of complex type, ``model_cms``: sqrt(M^2 - i M Gamma) with a
+    positive real part), an exact ``rx.Complex``: loop propagators and the
+    kernel constants take it; external states are stable
+    (``model_cms.require_stable_external_states``), so legs and Catani's
+    emitters never read one."""
 
     values = _kernel_parameters(compiled, parameters)
     definitions = {
@@ -4823,10 +4846,16 @@ def _model_masses(
         for record in compiled.ir.parameters
         if record.nature == "internal"
     }
-    found: dict[str, Fraction] = {}
+    complex_typed = {
+        record.name
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+        and str(getattr(record, "parameter_type", "real")) == "complex"
+    }
+    found: dict[str, Any] = {}
     substitutions: list[dict] = []
 
-    def mass(name: str) -> Fraction:
+    def mass(name: str) -> Any:
         if name == ZERO:
             return Fraction(0)
         if name in values:
@@ -4850,15 +4879,32 @@ def _model_masses(
             real, imaginary = _definition_value(
                 definitions[name], substitutions[0], digits
             )
-            if imaginary != 0 or real <= 0:
+            if real <= 0 or (imaginary != 0 and name not in complex_typed):
                 raise ValueError(
                     f"the derived mass {name!r} is not real and positive ({real}, "
                     f"{imaginary})"
                 )
-            found[name] = Fraction(real)
-        return found[name]
+            found[name] = (
+                Fraction(real)
+                if imaginary == 0
+                else rx.Complex(Fraction(real), Fraction(imaginary))
+            )
+        value = found[name]
+        if isinstance(value, rx.Complex) and not pole_masses:
+            raise ValueError(
+                f"the mass {name!r} is a complex pole mass ({value!r}): an "
+                "external state or a Catani emitter of that mass is unstable "
+                "(cms-external-width)"
+            )
+        return value
 
     return mass
+
+
+def _squared(value: Any) -> Any:
+    """A mass's square: a ``Fraction``, or an ``rx.Complex`` for a pole mass."""
+
+    return value * value if isinstance(value, rx.Complex) else value**2
 
 
 def _constant_parameters(
@@ -4877,7 +4923,7 @@ def _constant_parameters(
     }
     derived = sorted({str(record.mass) for record in compiled.ir.particles} & internal)
     if derived:
-        mass_of = _model_masses(compiled, parameters, digits)
+        mass_of = _model_masses(compiled, parameters, digits, pole_masses=True)
         for name in derived:
             try:
                 values[name] = mass_of(name)
@@ -4888,13 +4934,15 @@ def _constant_parameters(
 
 def _mass_values(
     compiled, parameters: Mapping[str, str], masses: Iterable[Any], digits: int
-) -> dict[Any, Fraction]:
-    """Squared real loop masses per mass id (widths are not part of the
-    slice), a derived mass at ``digits`` decimal digits (``_model_masses``)."""
+) -> dict[Any, Any]:
+    """Squared loop masses per mass id, a derived mass at ``digits`` decimal
+    digits (``_model_masses``): real (widths are not part of the slice), or
+    a complex-mass scheme's complex pole mass squared (an ``rx.Complex``,
+    M^2 - i M Gamma to the working digits; ``model_cms``)."""
 
-    mass_of = _model_masses(compiled, parameters, digits)
+    mass_of = _model_masses(compiled, parameters, digits, pole_masses=True)
     return {
-        mass: Fraction(0) if mass.massless else mass_of(mass.mass) ** 2
+        mass: Fraction(0) if mass.massless else _squared(mass_of(mass.mass))
         for mass in masses
     }
 
