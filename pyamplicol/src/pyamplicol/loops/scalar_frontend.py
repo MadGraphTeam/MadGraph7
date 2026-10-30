@@ -108,6 +108,9 @@ class ScalarFunctionLibrary:
             record = records[record_id]
             fields = record["fields"]
             if not fields.get("expression_source", {}).get("exact", False):
+                from pyamplicol.models.source_refusals import refuse_value_writes
+
+                refuse_value_writes(raw.name, fields["expression_source"])
                 raise ValueError(f"source helper {name!r} lacks a certified body")
             arguments = fields["arguments"]
             if isinstance(arguments, str):

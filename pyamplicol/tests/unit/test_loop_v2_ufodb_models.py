@@ -615,3 +615,32 @@ def test_patched_rows_equal_madloop_and_recola(run, loop_native):
                 want = values[key]
                 scale = max(abs(found), abs(want), floor if k else 0.0)
                 assert abs(found - want) <= 1e-9 * scale, (run, index, provider, key)
+
+
+@pytest.mark.loop_fast
+def test_a_model_writing_values_after_their_constructors_is_a_listed_refusal(tmp_path):
+    """The UFOmodeldb issue-1 patch as published extends the G_mu charge
+    counterterms by module-level ``X.value[k] += '...'``; ufo-model-loader then
+    certifies no value of the model, which one-loop requests need: the
+    listed refusal ``ufo-value-writes`` (naming the fold tool), not an
+    untyped error. The shipped model has the appends folded."""
+
+    from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
+    from pyamplicol.models.loop_import import load_raw_loop_model
+    from pyamplicol.models.source_refusals import (
+        ModelSourceUnsupported,
+        listed_model_source_refusal_keys,
+    )
+
+    assert "ufo-value-writes" in listed_model_source_refusal_keys()
+    shipped = _shipped("loop_qcd_qed_sm_Gmu")
+    ScalarFunctionLibrary(load_raw_loop_model(shipped, restriction="full"))
+    target = tmp_path / "loop_qcd_qed_sm_Gmu_written"
+    shutil.copytree(shipped, target, ignore=shutil.ignore_patterns("__pycache__"))
+    with (target / "CT_parameters.py").open("a", encoding="utf-8") as stream:
+        stream.write("\neCoup_a0_UV_EW.value[0] += ''\n")
+    raw = load_raw_loop_model(target, restriction="full")
+    with pytest.raises(ModelSourceUnsupported) as caught:
+        ScalarFunctionLibrary(raw)
+    assert caught.value.key == "ufo-value-writes"
+    assert "fold_ufo_value_appends.py" in str(caught.value)

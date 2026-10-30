@@ -69,7 +69,8 @@ def test_active_bindings_roundtrip_and_laurent(source):
 @pytest.mark.parametrize(
     "change,match",
     [
-        ("gate.expr='0'", "certified body"),
+        # A value written after its constructor: the listed refusal.
+        ("gate.expr='0'", "ufo-value-writes"),
         (
             "gate=Function(name='gate',arguments=('long'),expression='long')",
             "argument string",

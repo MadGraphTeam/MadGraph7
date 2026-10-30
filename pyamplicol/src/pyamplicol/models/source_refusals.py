@@ -12,6 +12,11 @@ code raised. The rules read the source's code, never a model name:
   failed on a Python-2-only name (``dict.iteritems``, ``xrange``,
   ``unicode``, ...). MG5_aMC 3 converts such a model when it imports it;
   pyAmpliCol does not rewrite a user's model.
+* ``ufo-value-writes``: the UFO writes a declared value after its constructor
+  (e.g. the module-level ``eCoup_a0_UV_EW.value[-1] += '...'`` of the
+  UFOmodeldb issue-1 patch of loop_qcd_qed_sm_Gmu). ufo-model-loader then
+  certifies none of the model's values as its exact source, and the one-loop
+  engine reads exact values only (raised where it first needs one).
 """
 
 from __future__ import annotations
@@ -40,6 +45,15 @@ MODEL_SOURCE_REFUSALS = (
         "convert the model to Python 3 (MG5_aMC 3: 'convert model <path>', "
         "which edits it in place) or select a UFO model pyAmpliCol ships by "
         "its name (model.source)",
+    ),
+    ModelSourceRefusal(
+        "ufo-value-writes",
+        "a UFO model that writes a declared value after its constructor, for "
+        "one-loop requests",
+        "write the value in its constructor (tools/developer/"
+        "fold_ufo_value_appends.py folds module-level string appends to "
+        "Laurent terms, as in the shipped loop_qcd_qed_sm_Gmu) or select a UFO "
+        "model pyAmpliCol ships by its name (model.source)",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in MODEL_SOURCE_REFUSALS}
@@ -144,6 +158,25 @@ def refuse_python2_source(source: Path) -> None:
         raise _refusal(source, evidence)
 
 
+# ufo-model-loader's reason for a value it does not certify because the model
+# writes values after their constructors (``ufo_model_loader.raw``).
+_VALUE_WRITES = "model contains potentially dynamic value writes"
+
+
+def refuse_value_writes(model: str, source: dict) -> None:
+    """Raise ``ufo-value-writes`` when ``source`` (a raw record's
+    ``value_source`` or ``expression_source``) is uncertified because the UFO
+    ``model`` writes values after their constructors; return otherwise."""
+
+    if not source.get("exact", False) and source.get("reason") == _VALUE_WRITES:
+        raise ModelSourceUnsupported(
+            "ufo-value-writes",
+            f"the UFO model {model!r} writes declared values after their "
+            "constructors, so none of its values is certified as its exact "
+            "source, which one-loop requests need",
+        )
+
+
 def refuse_python2_ufo(source: Path, error: BaseException) -> None:
     """Raise ``ufo-python2`` (from ``error``) when the UFO directory
     ``source``, whose import raised ``error``, is Python-2 code; return
@@ -163,4 +196,5 @@ __all__ = [
     "python2_source_evidence",
     "refuse_python2_source",
     "refuse_python2_ufo",
+    "refuse_value_writes",
 ]

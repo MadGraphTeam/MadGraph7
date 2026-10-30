@@ -171,6 +171,7 @@ key with its remedy:
 | `complex-mass-scheme`, `cms-internal-mass`, `cms-yukawa-input`, `cms-external-width` | a complex-mass request outside the transform's assumptions (see [Configuration](configuration.md)) |
 | `complex-fixed-parameter` | a complex value in `[loop.preparation] fixed_parameters` |
 | `ufo-python2` | a Python-2 UFO |
+| `ufo-value-writes` | a UFO that writes declared values after their constructors (e.g. the UFOmodeldb issue-1 patch of `loop_qcd_qed_sm_Gmu` as published; the shipped copy has them folded) |
 | `process-aliases`, `process-group-analysis` | permutation aliases or numerical process-group analysis of a one-loop request |
 | `direct-r2`, `fft-basis-trace`, `colour-selectors`, `relation-discovery`, `evaluator-backend`, `evaluator-tuning`, `covariant-multiplets` | settings the one-loop engine does not take (each message names the setting) |
 | `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness` | internal: an engine condition met during generation |
