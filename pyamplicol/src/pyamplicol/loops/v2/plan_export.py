@@ -1574,14 +1574,11 @@ class NativeExecutor:
                 return found.constant(key)
 
             working = evaluation.numbers.precision.working_digits
-            # A complex-mass scheme's pole mass squared complex (an [re, im]
-            # pair), as the native lane binds a ["complex", o] plan mass.
+            # A complex-mass scheme's pole mass squared is complex (an
+            # [re, im] pair), as the native lane binds a ["complex", o] plan
+            # mass.
             masses = _mass_values(
-                slice_.compiled,
-                evaluation.parameters,
-                exported.masses,
-                working,
-                poles=True,
+                slice_.compiled, evaluation.parameters, exported.masses, working
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],

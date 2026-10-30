@@ -337,7 +337,8 @@ def require_zero_coloured_widths(
     longer follows the colour-correlated Borns (O(Gamma), not O(Gamma^2)).
     Fixing the width to zero is the legacy engine's convention (its
     propagators carry no width); a resonant coloured particle needs the
-    complex-mass scheme (WP3.2)."""
+    complex-mass scheme (``loops.model_cms``: its model propagates the
+    particle with its complex pole mass and width zero, which passes here)."""
 
     from .refusals import LoopRequestUnsupported
 
@@ -350,8 +351,9 @@ def require_zero_coloured_widths(
         "coloured-width",
         f"{process}: tree currents propagate coloured particles whose width "
         f"is not fixed to zero: {named}; fix it in [loop.preparation] "
-        f"fixed_parameters ({fixed}) or take a restriction whose widths are "
-        'zero (model.restriction = "no_widths")',
+        f"fixed_parameters ({fixed}), take a restriction whose widths are "
+        'zero (model.restriction = "no_widths"), or take the complex-mass '
+        'scheme ([loop.model.scheme] mass_scheme = "complex-mass")',
     )
 
 
@@ -744,7 +746,7 @@ class GeneratedProcess:
         squares = {
             mass.mass: _threshold_size(value)
             for mass, value in _mass_values(
-                slice_.compiled, parameters, lines, digits, poles=True
+                slice_.compiled, parameters, lines, digits
             ).items()
         }
         for leg, value in zip(

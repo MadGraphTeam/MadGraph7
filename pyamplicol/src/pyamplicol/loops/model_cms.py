@@ -48,12 +48,14 @@ import ast
 import io
 import tokenize
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import Any
 
 from pyamplicol.models.loop_import import RawLoopModel
+
+from .v2.refusals import LoopRequestUnsupportedValue
 
 # MG5_aMC's lookup of the NLOCT convention parameter (``get_parameter``).
 CMS_PARAMETER_NAMES = ("CMSParam", "mdl_CMSParam")
@@ -61,18 +63,43 @@ CMS_PARAMETER_NAMES = ("CMSParam", "mdl_CMSParam")
 UFO_STANDARD_REGLOG = "(0.0 if z==0.0 else cmath.log(z))"
 CMASS_PREFIX = "CMASS_"
 METADATA_KEY = "complex_mass_scheme"
-RAW_REFUSALS = ("cms-internal-mass", "cms-yukawa-input")
+# The mass schemes of ``[loop.model.scheme] mass_scheme`` (the loop model
+# declaration): real on-shell masses (every width zero in the trees of an
+# electroweak request and in coloured trees, [U8]) or MG5_aMC's complex-mass
+# scheme (``set complex_mass_scheme True``).
+REAL_ON_SHELL = "real-on-shell"
+COMPLEX_MASS = "complex-mass"
+MASS_SCHEMES = (REAL_ON_SHELL, COMPLEX_MASS)
+# The model parameters of the NLOCT UFOs' complex-mass conventions that a
+# virtual's conventions record lists where the model declares them
+# (m-sm PLAN §1.2: CMSParam, the G_mu UFO's LogSwitch and
+# GfRedefinitionChoice); UFO conventions looked up by name as MG5_aMC does.
+CONVENTION_PARAMETERS = (*CMS_PARAMETER_NAMES, "LogSwitch", "GfRedefinitionChoice")
+# Whether the native point inputs of stored artifacts take complex pole masses
+# (M-SM MS-CMS-N: complex plan masses through the native trees and executor).
+# Until they do, the public route refuses a complex-mass request with a pole
+# mass (``require_native_pole_masses``, ``complex-mass-scheme``), whose
+# artifact could not be stored; the integration of MS-CMS-N sets it True.
+NATIVE_POLE_MASSES = False
+REFUSAL_KEYS = (
+    "mass-scheme",
+    "complex-mass-scheme",
+    "cms-internal-mass",
+    "cms-yukawa-input",
+    "cms-external-width",
+    "complex-fixed-parameter",
+)
 
 
-class ComplexMassSchemeUnsupported(ValueError):
-    """A model or request the complex-mass transform refuses; ``key`` names
-    the rule (``cms-internal-mass``, ``cms-yukawa-input``)."""
+class ComplexMassSchemeUnsupported(LoopRequestUnsupportedValue):
+    """A request or model the mass-scheme policy refuses
+    (``refusals.LOOP_ADMISSION_REFUSALS``): ``key`` is one of
+    ``REFUSAL_KEYS``; a ``ValueError`` too."""
 
     def __init__(self, key: str, message: str) -> None:
-        if key not in RAW_REFUSALS:
+        if key not in REFUSAL_KEYS:
             raise ValueError(f"unknown complex-mass refusal {key!r}")
-        super().__init__(f"{key}: {message}")
-        self.key = key
+        super().__init__(key, message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +123,7 @@ class ComplexMassScheme:
     cms_parameter: str | None
     reglog_convention: str
     propagators: Mapping[int, str] = field(default_factory=dict)
+    ones: tuple[str, ...] = ()
 
     def metadata(self) -> dict[str, Any]:
         return {
@@ -107,16 +135,8 @@ class ComplexMassScheme:
             "cms_parameter": self.cms_parameter,
             "reglog_convention": self.reglog_convention,
             "propagators": {str(pdg): mass for pdg, mass in self.propagators.items()},
+            "ones": list(self.ones),
         }
-
-
-@dataclass(frozen=True, slots=True)
-class CMSModelDeclarations:
-    original: RawLoopModel
-    derived: RawLoopModel
-    mass_aliases: Any
-    tied_yukawas: Any
-    diagnostics: tuple[Any, ...]
 
 
 def _rename_expression(expression, replacements):
@@ -187,232 +207,6 @@ def _set_value(record, value, operation):
     }
 
 
-def prepare_gmu_complex_mass_declarations(
-    raw: RawLoopModel, *, reglog_convention: str = "source"
-) -> CMSModelDeclarations:
-    """Continue the external-mass Gmu source without changing its original data.
-
-    Real external masses and widths remain independent inputs. Pole masses are
-    shared by every species using the corresponding mass, including covariant
-    multiplet partners. Yukawa inputs become internal mass aliases. The source's
-    Gfbar and recms definitions are retained, with CMSParam enabled. The default
-    preserves the bound source reglog too. Explicit ``ufo-standard`` selects the
-    reserved principal-log convention used by UFO 2.0 and MadGraph's exporter,
-    only for the recognized Gmu helper bodies. Its discrepancy with the original
-    source is retained in diagnostics. No other logarithm or CT formula changes.
-    """
-    from .covariant_model import _repair
-
-    if reglog_convention not in {"source", "ufo-standard"}:
-        raise ValueError("reglog_convention must be source or ufo-standard")
-    if "complex_mass_derivation" in raw.metadata:
-        raise ValueError("complex-mass declarations are already derived")
-    if tuple(raw.metadata.get("gauge", ())) != (1,) or raw.collections["propagators"]:
-        raise NotImplementedError(
-            "Gmu CMS declarations require the source Feynman gauge"
-        )
-    profile = {
-        "CMSParam": "0.0",
-        "sw2": "1 - MW**2/MZ**2",
-        "aEW": "cmath.sqrt(2.)*Gfbar*MW**2*(1-MW**2/MZ**2)/cmath.pi",
-    }
-    for name, expression in profile.items():
-        record = raw.record("parameters", name)
-        value = raw.exact_value("parameters", record["id"])
-        if (
-            record["fields"]["nature"] != "internal"
-            or value["kind"] != "expression"
-            or _source_tokens(value["expression"]) != _source_tokens(expression)
-        ):
-            raise NotImplementedError(f"source {name} differs from the Gmu CMS profile")
-    # Verify the source's actual bound helper, rather than registry ordering.
-    for name, expression in {
-        "recms": "(z if cms else z.real)",
-        "crecms": "(z.conjugate() if cms else z.real)",
-    }.items():
-        record = raw.collections["functions"][raw.metadata["function_bindings"][name]]
-        if _source_tokens(record["fields"]["expr"]) != _source_tokens(expression):
-            raise NotImplementedError(f"source {name} differs from the Gmu CMS profile")
-
-    payload = raw.to_dict()
-    collections = payload["collections"]
-    parameters = collections["parameters"]
-    by_name = {record["name"]: record for record in parameters}
-    if len(by_name) != len(parameters):
-        raise ValueError("ambiguous source parameter names")
-    mass_widths = {"MZ": "WZ", "MW": "WW", "MT": "WT", "MH": "WH"}
-    aliases = {mass: f"CMASS_{mass}" for mass in mass_widths}
-    for mass, width in mass_widths.items():
-        for name in (mass, width):
-            fields = by_name[name]["fields"]
-            if fields["nature"] != "external" or fields["type"] != "real":
-                raise NotImplementedError(
-                    "Gmu CMS requires real external masses and widths"
-                )
-        if aliases[mass] in by_name:
-            raise ValueError("complex pole-mass alias already exists")
-    species = {
-        record["fields"]["pdg_code"]: record for record in collections["particles"]
-    }
-    for pdg, mass in {23: "MZ", 24: "MW", 6: "MT", 25: "MH"}.items():
-        fields = species[pdg]["fields"]
-        if (
-            fields["mass"]["name"] != mass
-            or fields["width"]["name"] != mass_widths[mass]
-        ):
-            raise NotImplementedError(
-                "source particle mass/width pair differs from Gmu"
-            )
-
-    # Reuse the existing exact source-profile repair before mass names change.
-    # This leaves the original anti-constructor evidence available for its guard.
-    repaired = [dict(record["fields"]) for record in collections["particles"]]
-    diagnostics = _repair(raw, repaired, "gmu_particle_anti")
-    for diagnostic in diagnostics:
-        collections["particles"][diagnostic["particle_id"]]["fields"][
-            diagnostic["field"]
-        ] = diagnostic["derived"]
-
-    if reglog_convention == "ufo-standard":
-        helper_id = raw.metadata["function_bindings"]["reglog"]
-        helper = collections["functions"][helper_id]
-        fields = helper["fields"]
-        principal = "(0.0 if z==0.0 else cmath.log(z))"
-        continued = (
-            "(0.0 if z.imag==0.0 and z.real==0.0 else "
-            "(cmath.log(z)-2*math.pi*1j if "
-            "(z.real<0.0 and z.imag>0.0) else cmath.log(z)))"
-        )
-        if (
-            helper["name"] != "reglog"
-            or fields.get("arguments") not in ("z", ["z"])
-            or not fields.get("expression_source", {}).get("exact", False)
-            or _source_tokens(fields["expr"])
-            not in {_source_tokens(principal), _source_tokens(continued)}
-        ):
-            raise NotImplementedError(
-                "source reglog differs from the recognized Gmu helper profile"
-            )
-        diagnostic = {
-            "profile": "gmu-ufo-standard-reglog",
-            "function_id": helper_id,
-            "function": "reglog",
-            "raw": fields["expr"],
-            "derived": principal,
-            "reason": (
-                "explicit UFO 2.0 reserved principal-log convention; legacy "
-                "source overwrites reglog with reglogm semantics, whereas "
-                "MadGraph emits its reserved principal implementation"
-            ),
-        }
-        fields["expr"] = principal
-        fields["expression_source"] = {
-            "kind": "derived-complex-mass-declaration",
-            "exact": True,
-            "operation": "select-ufo-standard-reglog",
-            "declaration": [helper_id, "reglog"],
-        }
-        diagnostics = (*diagnostics, MappingProxyType(diagnostic))
-
-    tied = {}
-    for record in parameters:
-        fields = record["fields"]
-        if (fields.get("lhablock") or "").lower() != "yukawa":
-            continue
-        code = fields.get("lhacode")
-        if (
-            fields["nature"] != "external"
-            or not isinstance(code, (list, tuple))
-            or len(code) != 1
-            or code[0] not in species
-        ):
-            raise NotImplementedError("unsupported source Yukawa declaration")
-        mass = species[code[0]]["fields"]["mass"]["name"]
-        tied[record["name"]] = aliases.get(mass, mass)
-        fields.update(nature="internal", type="complex")
-        fields.pop("lhablock", None)
-        fields.pop("lhacode", None)
-        _set_value(
-            record, {"kind": "expression", "expression": mass}, "tie-yukawa-mass"
-        )
-
-    for collection in ("parameters", "counterterm_parameters", "couplings"):
-        for record in collections[collection]:
-            fields = record["fields"]
-            if collection == "parameters" and fields["nature"] == "external":
-                continue
-            if record["name"] not in tied:
-                raw.exact_value(collection, record["id"])
-            if collection != "couplings":
-                fields["type"] = "complex"
-            value = _replace_value(fields["value"], aliases)
-            if record["name"] == "CMSParam":
-                value = {"kind": "expression", "expression": "1"}
-            if value != fields["value"]:
-                _set_value(
-                    record,
-                    value,
-                    "enable-cms"
-                    if record["name"] == "CMSParam"
-                    else "continue-mass-dependencies",
-                )
-
-    alias_records = {}
-    for mass, width in mass_widths.items():
-        name = aliases[mass]
-        record = {
-            "id": len(parameters),
-            "name": name,
-            "ufo_type": "Parameter",
-            "fields": {
-                "name": name,
-                "nature": "internal",
-                "type": "complex",
-                "texname": name,
-            },
-        }
-        # Appended after the rewrite: the real input names must not self-replace.
-        _set_value(
-            record,
-            {
-                "kind": "expression",
-                "expression": f"cmath.sqrt({mass}**2-complex(0,1)*{mass}*{width})",
-            },
-            "pole-mass-from-real-inputs",
-        )
-        parameters.append(record)
-        alias_records[mass] = record
-    for record in collections["particles"]:
-        mass = record["fields"]["mass"]["name"]
-        if mass in alias_records:
-            alias = alias_records[mass]
-            record["fields"]["mass"] = {
-                "kind": "reference",
-                "collection": "parameters",
-                "id": alias["id"],
-                "name": alias["name"],
-            }
-
-    metadata = {
-        "profile": "gmu-external-mass-cms",
-        "mass_aliases": aliases,
-        "mass_widths": mass_widths,
-        "tied_yukawas": tied,
-        "reglog_convention": reglog_convention,
-        "diagnostics": [dict(diagnostic) for diagnostic in diagnostics],
-        "physical_certification": False,
-    }
-    payload["metadata"]["complex_mass_derivation"] = metadata
-    payload["name"] += "_cms_declarations"
-    return CMSModelDeclarations(
-        raw,
-        RawLoopModel.from_dict(payload),
-        MappingProxyType(aliases),
-        MappingProxyType(tied),
-        diagnostics,
-    )
-
-
 # ------------------------------------------------------------ the MG5_aMC port
 
 
@@ -465,6 +259,9 @@ class _Card:
         from .model_restrictions import prepare_loop_restrictions
 
         restriction = raw.metadata.get("restriction", {})
+        # Whether a restriction card decides the values (MG5_aMC restricts a
+        # model only with one).
+        self.restricted = restriction.get("card") is not None
         self.card = (
             raw
             if restriction.get("card") is None or restriction.get("applied", False)
@@ -590,8 +387,9 @@ def complex_mass_scheme(
     if cms_parameter is not None:
         record = parameters[by_name[cms_parameter]["id"]]
         if record["fields"].get("nature") == "external":
-            raise NotImplementedError(
-                f"the model's {cms_parameter} is an external parameter"
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                f"the model's {cms_parameter} is an external parameter",
             )
         _set_value(record, {"kind": "expression", "expression": "1.0"}, "enable-cms")
 
@@ -615,7 +413,10 @@ def complex_mass_scheme(
         if width["fields"].get("nature") != "external":
             source = raw.exact_value("parameters", width["id"])
             if source.get("kind") != "expression":
-                raise NotImplementedError(f"the internal width {width_name!r}")
+                raise ComplexMassSchemeUnsupported(
+                    "complex-mass-scheme",
+                    f"the internal width {width_name!r} has no source expression",
+                )
             body = source["expression"]
             continued = (
                 f"re({body})"
@@ -644,7 +445,10 @@ def complex_mass_scheme(
             )
         alias = CMASS_PREFIX + mass_name
         if alias in by_name:
-            raise ValueError(f"the pole-mass name {alias!r} is a model parameter")
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                f"the pole-mass name {alias!r} is already a model parameter",
+            )
         masses[mass_name] = alias
         widths[mass_name] = width_name
 
@@ -662,11 +466,16 @@ def complex_mass_scheme(
             continue
         code = fields.get("lhacode")
         if not isinstance(code, (list, tuple)) or len(code) != 1:
-            raise NotImplementedError(f"the Yukawa input {record['name']!r}")
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                f"the Yukawa input {record['name']!r} has the LHA code {code!r}, "
+                "not one PDG code",
+            )
         particle = species.get(int(code[0]))
         if particle is None:
-            raise ValueError(
-                f"the Yukawa input {record['name']!r} names no particle PDG {code[0]}"
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                f"the Yukawa input {record['name']!r} names no particle PDG {code[0]}",
             )
         if record["name"] in fixed:
             raise ComplexMassSchemeUnsupported(
@@ -753,7 +562,10 @@ def complex_mass_scheme(
             aliases[mass_name] = record
         zero = by_name.get("ZERO")
         if zero is None:
-            raise NotImplementedError("the model has no ZERO parameter")
+            raise ComplexMassSchemeUnsupported(
+                "complex-mass-scheme",
+                "the model has no ZERO parameter for the pole-mass particles' widths",
+            )
         for record in collections["particles"]:
             fields = record["fields"]
             mass_name = fields["mass"]["name"]
@@ -761,6 +573,35 @@ def complex_mass_scheme(
                 fields["mass"] = _reference(aliases[mass_name])
                 fields["width"] = _reference(zero)
                 propagators[int(fields["pdg_code"])] = aliases[mass_name]["name"]
+
+    # 5. MG5_aMC restricts the transformed model by its restriction card, if
+    # any (``import_model``: CMS first, then ``restrict_model``), which fixes
+    # every parameter of value 1 there (``detect_special_parameters``' one
+    # parameters; zeros the loader's restriction already fixes): the external
+    # switches at 1 (the
+    # NLOCT TECHNICAL block of the G_mu UFO: epsUV, epsIR, LogSwitch,
+    # GfRedefinitionChoice) become the constant 1, which removes their dead
+    # branches (GfRedefinitionChoice's re() one: complex conjugates of the
+    # pole masses that would otherwise blow up the expanded couplings by two
+    # orders of magnitude). The masses and widths of step 2 stay inputs.
+    ones: list[str] = []
+    if masses and card.restricted:
+        kept = set(real)
+        for record in parameters:
+            fields = record["fields"]
+            if (
+                fields.get("nature") != "external"
+                or record["name"] in kept
+                or card.value(record) != (1, 0)
+            ):
+                continue
+            fields.update(nature="internal", type="real")
+            fields.pop("lhablock", None)
+            fields.pop("lhacode", None)
+            _set_value(
+                record, {"kind": "expression", "expression": "1.0"}, "restriction-one"
+            )
+            ones.append(record["name"])
 
     # [U3]: the UFO-standard principal reglog that MG5's model library writes.
     if reglog_convention == "ufo-standard":
@@ -789,21 +630,11 @@ def complex_mass_scheme(
         cms_parameter,
         reglog_convention,
         MappingProxyType(propagators),
+        tuple(ones),
     )
     payload["metadata"][METADATA_KEY] = scheme.metadata()
     payload["name"] += "_cms"
-    return ComplexMassScheme(
-        raw,
-        RawLoopModel.from_dict(payload),
-        scheme.masses,
-        scheme.widths,
-        scheme.real,
-        scheme.internal_widths,
-        scheme.yukawas,
-        cms_parameter,
-        reglog_convention,
-        scheme.propagators,
-    )
+    return replace(scheme, derived=RawLoopModel.from_dict(payload))
 
 
 # ------------------------------------------------------- the tree model view
@@ -894,8 +725,17 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
         parameter.lhablock = parameter.lhacode = None
         parameter.expression = parse_python_expression_safe(source(name, derived=True))
         parameter.value = None
+    for name in scheme.ones:
+        if name not in parameters:
+            continue
+        parameter = parameters[name]
+        parameter.nature = ParameterNature.INTERNAL
+        parameter.parameter_type = ParameterType.REAL
+        parameter.lhablock = parameter.lhacode = None
+        parameter.expression = parse_python_expression_safe("1.0")
+        parameter.value = None
     if scheme.masses:
-        kept = set(scheme.real) | set(scheme.yukawas)
+        kept = set(scheme.real) | set(scheme.yukawas) | set(scheme.ones)
         for parameter in model.parameters:
             if parameter.nature == ParameterNature.EXTERNAL or parameter.name in kept:
                 continue
@@ -999,3 +839,170 @@ def complex_mass_model(
         _prepared_bundle=None,
     )
     return transformed, scheme
+
+
+# --------------------------------------------------------- the request policy
+
+
+def require_mass_scheme(value: str) -> str:
+    """``value``, a loop model declaration's ``mass_scheme``, if it names a
+    scheme v2 serves (``MASS_SCHEMES``), else refused (``mass-scheme``): a
+    misspelt complex-mass request must never be computed real on-shell."""
+
+    if value not in MASS_SCHEMES:
+        raise ComplexMassSchemeUnsupported(
+            "mass-scheme",
+            f"the loop model declares mass_scheme = {value!r}, which v2 does not "
+            "implement",
+        )
+    return value
+
+
+def scheme_metadata(compiled: Any) -> Mapping[str, Any] | None:
+    """The complex-mass scheme of a model ``complex_mass_model`` derived
+    (``ComplexMassScheme.metadata``, recorded in its source options), else
+    None (a real on-shell model)."""
+
+    source = getattr(compiled, "source", None) or {}
+    return source.get("options", {}).get(METADATA_KEY)
+
+
+def require_real_fixed_parameters(
+    fixed: Mapping[str, tuple[Any, Any]],
+) -> dict[str, str]:
+    """The real parts of ``fixed`` (``[loop.preparation] fixed_parameters``:
+    name -> (real, imaginary)); a fixed parameter with an imaginary part is
+    refused (``complex-fixed-parameter``) in either mass scheme: external
+    parameters are real (MG5_aMC's too), and the complex-mass scheme derives
+    its complex pole masses from real masses and widths
+    (``complex_mass_scheme``)."""
+
+    complex_parameters = sorted(
+        name for name, (_real, imaginary) in fixed.items() if Decimal(imaginary) != 0
+    )
+    if complex_parameters:
+        raise ComplexMassSchemeUnsupported(
+            "complex-fixed-parameter",
+            "v2 virtuals take real fixed parameters; "
+            + ", ".join(repr(name) for name in complex_parameters)
+            + " complex",
+        )
+    return {name: str(real) for name, (real, _imaginary) in fixed.items()}
+
+
+def apply_mass_scheme(
+    compiled: Any,
+    mass_scheme: str,
+    *,
+    fixed_parameters: Mapping[str, Any] | None = None,
+    cache_dir: Any = None,
+) -> Any:
+    """The model a request of ``mass_scheme`` (``require_mass_scheme``) is
+    generated on: ``compiled`` itself in the real on-shell scheme, MG5_aMC's
+    complex-mass model of it (``complex_mass_model``, at the card of the
+    request's real ``fixed_parameters``) in the complex-mass scheme. The
+    transform's refusals are typed (``cms-internal-mass``,
+    ``cms-yukawa-input``, ``complex-mass-scheme``)."""
+
+    if require_mass_scheme(mass_scheme) == REAL_ON_SHELL:
+        return compiled
+    if scheme_metadata(compiled) is not None:
+        return compiled
+    if compiled.raw_loop_model is None:
+        raise ComplexMassSchemeUnsupported(
+            "complex-mass-scheme",
+            "the model carries no raw UFO records to transform",
+        )
+    model, _scheme = complex_mass_model(
+        compiled, fixed_parameters=fixed_parameters, cache_dir=cache_dir
+    )
+    return model
+
+
+def require_stable_external_states(compiled: Any, pdgs: Any, process: str) -> None:
+    """Refuse (``cms-external-width``) a complex-mass request with an
+    external particle of a complex pole mass (a nonzero width at the card,
+    ``ComplexMassScheme.propagators``, particle or antiparticle): external
+    states are stable (requirements EW-25); MG5_aMC computes them with the
+    complex mass, which no on-shell external state has."""
+
+    record = scheme_metadata(compiled)
+    if not record:
+        return
+    propagators = {int(pdg): mass for pdg, mass in record["propagators"].items()}
+    unstable = sorted(
+        {int(pdg) for pdg in pdgs if int(pdg) in propagators},
+        key=lambda pdg: (abs(pdg), pdg),
+    )
+    if unstable:
+        named = ", ".join(f"PDG {pdg} ({propagators[pdg]})" for pdg in unstable)
+        widths = sorted(
+            {
+                record["widths"][m.removeprefix(CMASS_PREFIX)]
+                for m in (propagators[pdg] for pdg in unstable)
+            }
+        )
+        raise ComplexMassSchemeUnsupported(
+            "cms-external-width",
+            f"{process}: external particles with a complex pole mass under the "
+            f"complex-mass scheme: {named}; fix their widths to zero in "
+            "[loop.preparation] fixed_parameters ("
+            + ", ".join(f'{width} = "0"' for width in widths)
+            + ")",
+        )
+
+
+def require_native_pole_masses(compiled: Any, process: str) -> None:
+    """Refuse (``complex-mass-scheme``) a public-route request with complex
+    pole masses while the native point inputs of stored artifacts take none
+    (``NATIVE_POLE_MASSES``); ``LoopSlice.generate`` with Python inputs
+    serves it meanwhile."""
+
+    record = scheme_metadata(compiled)
+    if record and record["masses"] and not NATIVE_POLE_MASSES:
+        raise ComplexMassSchemeUnsupported(
+            "complex-mass-scheme",
+            f"{process}: the native point inputs of stored artifacts take no "
+            "complex pole masses in this build (M-SM MS-CMS-N); "
+            "loops.v2.assemble.LoopSlice.generate on model_cms.complex_mass_model "
+            "evaluates the request with Python inputs",
+        )
+
+
+def convention_record(compiled: Any) -> dict[str, Any] | None:
+    """The complex-mass conventions of a request's virtual (m-sm PLAN §1.2),
+    None for a real on-shell model: the pole masses and the widths they
+    take, the internal widths' real parts, the Yukawa ties, the reglog
+    convention, and the values of the model's NLOCT convention parameters
+    (``CONVENTION_PARAMETERS`` it declares: CMSParam, LogSwitch,
+    GfRedefinitionChoice) as the derived model defines them."""
+
+    record = scheme_metadata(compiled)
+    if record is None:
+        return None
+    raw = compiled.raw_loop_model
+    conventions: dict[str, str] = {}
+    if raw is not None:
+        named = _named(raw, "parameters")
+        card = None
+        for name in CONVENTION_PARAMETERS:
+            parameter = named.get(name)
+            if parameter is None:
+                continue
+            if parameter["fields"].get("nature") == "external":
+                card = card or _Card(raw, {})
+                real, imaginary = card.value(parameter)
+                conventions[name] = (
+                    str(real) if imaginary == 0 else f"({real},{imaginary})"
+                )
+            else:
+                value = raw.exact_value("parameters", parameter["id"])
+                conventions[name] = str(value.get("expression", value))
+    return {
+        "pole_masses": dict(record["masses"]),
+        "widths": dict(record["widths"]),
+        "internal_widths": list(record["internal_widths"]),
+        "yukawas": dict(record["yukawas"]),
+        "reglog_convention": record["reglog_convention"],
+        "parameters": conventions,
+    }
