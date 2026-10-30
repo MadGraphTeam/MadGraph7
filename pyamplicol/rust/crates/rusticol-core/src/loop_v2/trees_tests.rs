@@ -155,6 +155,47 @@ fn complex_mass_master_guard_refuses_widths_below_1e150_of_the_mass() {
 }
 
 #[test]
+fn the_complex_mass_master_guard_is_double_double_only() {
+    assert!(<DoubleFloat as TreeCarrier>::COMPLEX_MASS_MASTER_GUARD);
+    assert!(!<f64 as TreeCarrier>::COMPLEX_MASS_MASTER_GUARD);
+    assert!(!<Float as TreeCarrier>::COMPLEX_MASS_MASTER_GUARD);
+}
+
+#[test]
+fn the_run_time_side_check_catches_a_plane_on_the_other_side_of_a_cut() {
+    // sqrt(-x) through SymJIT: a negated real takes a -0 imaginary part
+    // where Symbolica's evaluator takes +0, so at x > 0 (on the cut) the
+    // plane gives -i sqrt(x) and the exact evaluator +i sqrt(x); off the
+    // cut (x < 0) they agree. `TreeProgram::bind` runs a batch whose
+    // parameters the plane disagrees at on the exact evaluator.
+    use symbolica::atom::AtomCore;
+    let _unlock = crate::licence::unlock();
+    let x = symbolica::parse!("pyamplicol_trees_tests::x");
+    let evaluator = symbolica::parse!("sqrt(-pyamplicol_trees_tests::x)")
+        .evaluator(&[x])
+        .build()
+        .expect("an evaluator");
+    let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
+    let (bytes, inputs, outputs) =
+        crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(&binary64, 2, false)
+            .expect("a plane application");
+    let mut plane = Kernel::Plane(Box::new(
+        BinaryPlane::load(&bytes, (inputs, outputs)).expect("loads"),
+    ));
+    let mut exact = Kernel::Exact(binary64.into_batch_evaluator());
+    for (x, agrees) in [(-4.0, true), (4.0, false)] {
+        let input = [Complex::new(x, 0.0)];
+        let mut row = [Complex::new(0.0, 0.0)];
+        plane.evaluate_batch(&input, &mut row, 1).expect("runs");
+        assert_eq!(
+            plane_side_agrees(&mut exact, &input, &row).expect("runs"),
+            agrees,
+            "x = {x}: plane {row:?}"
+        );
+    }
+}
+
+#[test]
 fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones() {
     // Generation records every output that reads the scale
     // (`native_trees._scale_outputs`); the batch-shared ones among them are

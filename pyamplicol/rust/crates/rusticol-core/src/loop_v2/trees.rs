@@ -270,7 +270,6 @@ fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
 /// that output over the rows: a part that cancels to rounding, e.g. the zero
 /// imaginary part of a real coupling, against its output's size, and a small
 /// output not against a large one's).
-#[cfg(any(test, feature = "python-generation-bridge"))]
 fn first_mismatch(
     expected: &[Complex<f64>],
     got: &[Complex<f64>],
@@ -364,18 +363,20 @@ fn exact(value: &str) -> RusticolResult<Rational> {
 /// The key of the complex-mass master refusal (M-SM MS-MASTERS).
 pub const COMPLEX_MASS_MASTER: &str = "complex-mass-master";
 /// The smallest |Im m²| / Re m² a complex pole mass may take at a batch's
-/// parameters.
+/// parameters in a carrier that guards it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]).
 pub const COMPLEX_MASS_MASTER_RATIO: f64 = 1e-150;
 
 /// The complex-mass master guard (M-SM MS-MASTERS) on a pole mass's square
 /// `re + i im` (plan mass `index`) at a batch's parameters: refused, as a
 /// model-parameter error naming `complex-mass-master`, when
-/// `0 < |im| < 1e-150 re`, in any carrier: below that the masters' complex
-/// branches are unreliable (the DoubleFloat C0 non-finite at 1e-155 on CM01;
-/// oneloopmaster's SymJIT D0 off below 1e-150, its STATUS "Open D0
-/// limitations"). An exactly real pole mass (`im = 0`, a zero width) is the
-/// real-mass limit and passes (`bind` evaluates its parameter program
-/// exactly).
+/// `0 < |im| < 1e-150 re`. Only double-double calls it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]): its C0 turned non-finite
+/// there (CM01 at 1e-155, 1e-160 and 1e-300 of the masses, intermittently),
+/// while binary64 and arbitrary precision equal the zero-width value. A
+/// deliberate refusal of unphysical widths, with no upstream track (no CM
+/// row reaches it). An exactly real pole mass (`im = 0`, a zero width) is
+/// the real-mass limit and passes.
 fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> RusticolResult<()> {
     if im.is_zero() || re.is_zero() {
         return Ok(());
@@ -387,9 +388,37 @@ fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> Ru
     Err(RusticolError::model_parameter(format!(
         "{COMPLEX_MASS_MASTER}: plan mass {index} is a complex pole mass with \
          |Im m^2| / Re m^2 = {ratio:e} at these model parameters, below 1e-150, \
-         where the complex-mass branches of the master integrals are unreliable. \
-         Instead: give the width at least 1e-150 of its mass, or zero"
+         where the double-double complex-mass master integrals are unreliable. \
+         Instead: evaluate in binary64 or arbitrary precision, give the width \
+         at least 1e-150 of its mass, or zero"
     )))
+}
+
+/// Whether a binary64 parameter program's plane application agrees with its
+/// exact evaluator `exact` at one row `inputs`, where the plane gave
+/// `plane`, by the plane check's criterion ([`first_mismatch`]).
+fn plane_side_agrees<T: Carrier>(
+    exact: &mut Kernel<T>,
+    inputs: &[Complex<T>],
+    plane: &[Complex<T>],
+) -> RusticolResult<bool>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let mut expected = plane.to_vec();
+    {
+        let _unlock = crate::licence::unlock();
+        exact
+            .evaluate_batch(inputs, &mut expected, 1)
+            .map_err(|e| invalid(format!("parameter program: {e}")))?;
+    }
+    let binary64 = |values: &[Complex<T>]| -> Vec<Complex<f64>> {
+        values
+            .iter()
+            .map(|z| Complex::new(z.re.to_f64(), z.im.to_f64()))
+            .collect()
+    };
+    Ok(first_mismatch(&binary64(&expected), &binary64(plane), plane.len()).is_none())
 }
 
 // ------------------------------------------------------------------ file form
@@ -1063,6 +1092,18 @@ pub struct TreeRuntime<T> {
     /// The metric runtime of each distinct column interference
     /// (`Columns::programs`).
     columns: Vec<InterferenceRuntime<T>>,
+    /// The run-time side check of a binary64 parameter program's plane
+    /// application (`TreeProgram::bind`).
+    parameter_side: ParameterSide<T>,
+}
+
+/// The run-time side check of a binary64 parameter program's plane
+/// application (`TreeProgram::bind`, M-SM MS-MASTERS): its exact evaluator,
+/// built on first use, and the external parameter values (the scale's entry
+/// zeroed) last checked, with whether the plane agreed there.
+pub struct ParameterSide<T> {
+    exact: Option<Kernel<T>>,
+    checked: Option<(Vec<Rational>, bool)>,
 }
 
 /// One kernel (or the parameter program) in carrier `T`: its exact
@@ -2268,25 +2309,51 @@ impl TreeProgram {
             .parameters
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
-        // A complex pole mass that is exactly real at these parameters (a
-        // width set to zero at run time on a mass generated complex) puts
-        // complex counterterm arguments on their branch cuts, where the
-        // binary64 plane's signed zeros select a side its plane check (at the
-        // generation's widths) did not certify: CM01 at zero widths took the
-        // other side of the electroweak UV counterterm couplings' cuts than
-        // the exact evaluator and MadLoop (M-SM MS-MASTERS). Such a batch
-        // takes the exact evaluator, the side the other carriers take.
-        if matches!(runtime.parameters, Kernel::Plane(_))
-            && program
-                .plan_masses
+        // The plane application's side of a branch cut at real inputs is
+        // certified at generation only at the request's parameter values
+        // (the plane check's real point): elsewhere an argument on a cut can
+        // take the other side than the exact evaluator through a signed zero
+        // (CM01 with its widths set to zero at run time on masses generated
+        // complex took the other side of the electroweak UV counterterm
+        // couplings' cuts: finite part 3.9e-5 against MadLoop's 1.8e-3,
+        // M-SM MS-MASTERS). So each new set of parameter values (the scale
+        // aside: it enters through logarithms of positive ratios) is checked
+        // once on the batch's first point against the exact evaluator; on a
+        // disagreement the batch, and later ones at these values, evaluate
+        // the parameter program exactly, the side DD, AP and MadLoop take.
+        if matches!(runtime.parameters, Kernel::Plane(_)) {
+            let key: Vec<Rational> = values
                 .iter()
-                .any(|mass| matches!(mass, Some(MassSource::Complex(o)) if outputs[*o].im == *zero))
-        {
-            let mut exact = exact_kernel(&program.saved, zero)?;
-            let _unlock = crate::licence::unlock();
-            exact
-                .evaluate_batch(&inputs, &mut outputs, points)
-                .map_err(|e| invalid(format!("parameter program: {e}")))?;
+                .enumerate()
+                .map(|(index, value)| {
+                    if program.scale == Some(index) {
+                        Rational::from(0)
+                    } else {
+                        value.clone()
+                    }
+                })
+                .collect();
+            let side = &mut runtime.parameter_side;
+            let plane = match &side.checked {
+                Some((checked, plane)) if *checked == key => *plane,
+                _ => {
+                    if side.exact.is_none() {
+                        side.exact = Some(exact_kernel(&program.saved, zero)?);
+                    }
+                    let exact = side.exact.as_mut().expect("built above");
+                    let plane =
+                        plane_side_agrees(exact, &inputs[..width], &outputs[..program.outputs])?;
+                    side.checked = Some((key, plane));
+                    plane
+                }
+            };
+            if !plane {
+                let exact = side.exact.as_mut().expect("built by the check");
+                let _unlock = crate::licence::unlock();
+                exact
+                    .evaluate_batch(&inputs, &mut outputs, points)
+                    .map_err(|e| invalid(format!("parameter program: {e}")))?;
+            }
         }
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
         // Values a batch shares (Born couplings, kernel constants, masses):
@@ -2432,7 +2499,9 @@ impl TreeProgram {
                     let value = derived_plan.next().expect("one value per output plan mass");
                     let (re, im) = (value.re.exact()?, value.im.exact()?);
                     let squared = (&re * &re - &im * &im, Rational::from(2) * &re * &im);
-                    require_complex_mass_master(index, &squared.0, &squared.1)?;
+                    if T::COMPLEX_MASS_MASTER_GUARD {
+                        require_complex_mass_master(index, &squared.0, &squared.1)?;
+                    }
                     squared
                 }
                 None => (Rational::from(0), Rational::from(0)),
@@ -2574,6 +2643,10 @@ impl TreeProgram {
             average: cast(zero, &self.average),
             interference,
             columns,
+            parameter_side: ParameterSide {
+                exact: None,
+                checked: None,
+            },
         })
     }
 
@@ -4092,6 +4165,11 @@ fn plane_propagator<T: Clone>(
 /// masses are carrier values (binary64 ones in binary64, as the tree
 /// runtime's own source records).
 pub trait TreeCarrier: Carrier + PartialOrd {
+    /// Whether `TreeProgram::bind` refuses a complex pole mass with
+    /// 0 < |Im m²| < 1e-150 Re m² (`require_complex_mass_master`): the
+    /// carrier whose masters failed there (double-double).
+    const COMPLEX_MASS_MASTER_GUARD: bool = false;
+
     /// The carrier value's exact rational (a finite value).
     fn exact(&self) -> RusticolResult<Rational>;
 
@@ -4147,6 +4225,8 @@ impl TreeCarrier for f64 {
 }
 
 impl TreeCarrier for DoubleFloat {
+    const COMPLEX_MASS_MASTER_GUARD: bool = true;
+
     fn exact(&self) -> RusticolResult<Rational> {
         // The unevaluated sum of its two binary64 parts.
         let parts = self.into_inner();

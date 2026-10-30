@@ -14,13 +14,15 @@ counts the signatures of the defects recorded upstream (oneloopmaster
 * a real negative squared mass;
 * complex-mass boxes on the ``Float`` route, checked at row level as AP(40)
   against AP(60) and double-double;
-* |Im m^2| / Re m^2 < 1e-150, which only oneloopmaster's SymJIT masters
-  mishandle (the reducers take its native and interpreted routes); checked at
-  row level against the zero-width value.
+* |Im m^2| / Re m^2 < 1e-150, where oneloopmaster's SymJIT masters fail (on
+  no reducer's route); checked at row level against the zero-width value.
 
-None bites on CM01-CM10 (the census of all nine rows: MS-MASTERS report), so
-no master signature is refused. CM10 runs in the default physics tier, CM01
-(the G_mu UFO, ZZ / WW boxes with complex masses) nightly.
+None bites on CM01-CM10 at their widths (the census of all nine rows, and
+AP(40) against double-double on each: MS-MASTERS report). Below 1e-150 the
+double-double C0 turned non-finite on CM01, so double-double refuses such a
+width (``complex-mass-master``); binary64 and arbitrary precision evaluate
+it. CM10 runs in the default physics tier, CM01 (the G_mu UFO, ZZ / WW boxes
+with complex masses) nightly.
 """
 
 from __future__ import annotations
