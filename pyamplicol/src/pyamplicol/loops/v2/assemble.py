@@ -712,11 +712,12 @@ def _check_canonical_block(block: list[Any]) -> None:
 
 
 # A stage with function definitions is renamed on Symbolica's portable text
-# (``_renamed_text``: one pass per expression, linear in its size), not by
-# ``replace_multiple`` with a rule per symbol, whose cost grows with the
-# rules times the expression (46 s of the 2->3 electroweak parameter
-# program, M-SM MS-GEN). Both give the same expressions; the
-# ``replace_multiple`` passes stay the oracle (``text_canonical_stage(False)``).
+# (``_renamed_text``: one native pass per expression, linear in its size and
+# in parallel; the renamed text, on short canonical names, parses faster
+# than the original), not by ``replace_multiple`` with a rule per symbol and
+# repeated call passes (46 s of the 2->3 electroweak parameter program, M-SM
+# MS-GEN). Both give the same expressions; the ``replace_multiple`` passes
+# stay the oracle (``text_canonical_stage(False)``).
 TEXT_CANONICAL_STAGE = True
 
 
@@ -745,32 +746,33 @@ def _renamed_text(
     heads: Mapping[Any, Any],
 ) -> list[Any]:
     """``expressions`` with every symbol of ``variables`` and every call of a
-    function of ``heads`` renamed (old -> new symbol), on their portable
-    text (``repr``: every namespace but the default one) parsed back: a
-    token is a symbol's whole printed name (no name character, ``:``, ``{``
-    or ``}`` around it), a head when a ``(`` follows it and a variable
-    otherwise."""
-
-    import re
+    function of ``heads`` renamed (old -> new symbol): their portable text
+    (``repr``: every namespace but the default one) renamed natively in
+    parallel (``loop_v2::generate::rename``: a token is a maximal run of
+    name characters, ``:``, ``{`` and ``}``, a head when a ``(`` follows it
+    and a variable otherwise) and parsed back, a chunk at a time."""
 
     from symbolica import E
 
-    variable_names = {repr(old): repr(new) for old, new in variables.items()}
-    head_names = {repr(old): repr(new) for old, new in heads.items()}
-    names = sorted({*variable_names, *head_names}, key=len, reverse=True)
-    if not names:
-        return list(expressions)
-    pattern = re.compile(
-        r"(?<![\w:{}])(" + "|".join(map(re.escape, names)) + r")(?![\w:{}])(\()?"
-    )
+    from ..native import load_loop_native
 
-    def substitute(match: re.Match[str]) -> str:
-        name, call = match.group(1), match.group(2)
-        if call:
-            return head_names.get(name, name) + call
-        return variable_names.get(name, name)
+    native = load_loop_native()
+    variable_names = [(repr(old), repr(new)) for old, new in variables.items()]
+    head_names = [(repr(old), repr(new)) for old, new in heads.items()]
+    renamed: list[Any] = []
+    for start in range(0, len(expressions), _RENAME_CHUNK):
+        texts = native.loop_rename_symbols(
+            [repr(e) for e in expressions[start : start + _RENAME_CHUNK]],
+            variable_names,
+            head_names,
+        )
+        renamed.extend(E(text) for text in texts)
+    return renamed
 
-    return [E(pattern.sub(substitute, repr(expression))) for expression in expressions]
+
+# Expressions per native rename call (the parameter program's outputs reach
+# megabytes each on the electroweak UFOs).
+_RENAME_CHUNK = 256
 
 
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:

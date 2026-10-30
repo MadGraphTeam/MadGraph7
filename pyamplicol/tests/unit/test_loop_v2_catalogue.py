@@ -929,3 +929,45 @@ def test_native_polynomial_stage_equals_the_python_oracle_on_the_ew_ufo(
     )
     _assert_identical(oracle, native)
     assert len(native.segments) > 1000
+
+
+@pytest.mark.loop_nightly
+def test_native_stages_give_the_oracle_plans_on_an_ew_rung(loop_gmu_ufo, loop_native):
+    """g g > t t~ with QCD and QED corrections on the G_mu UFO (the EW
+    ladder's first rung, ``tools/loop_v2_generate._fixture_request``)
+    generated and exported with the native stages (catalogue polynomials,
+    text canonical stages) and with their Python oracles: the same plan v4
+    JSON and the same native tree programs, saved evaluators included
+    (``snapshot.programs_digest``). About 5 min, 7 GB."""
+
+    import argparse
+    import json
+    from pathlib import Path
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.catalogue import native_catalogue_polynomials
+    from pyamplicol.loops.v2.plan_export import export_plan
+    from pyamplicol.loops.v2.snapshot import programs_digest
+    from pyamplicol.models.loading import compile_model_source
+    from tools import loop_v2_generate
+
+    root = Path(__file__).resolve().parents[2]
+    reference = json.loads(
+        (root / "tests/fixtures/loop/required/gg_ttx_ew.json").read_text()
+    )
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    request, _ = loop_v2_generate._fixture_request(
+        reference, compiled, argparse.Namespace()
+    )
+
+    def lane(native: bool):
+        with native_catalogue_polynomials(native), assemble.text_canonical_stage(native):
+            slice_ = LoopSlice.generate(compiled, request, loop_native)
+            exported = export_plan(slice_, forward=False, trees=True, born_squared=True)
+        return exported.json(), programs_digest(exported.trees)
+
+    oracle = lane(False)
+    native = lane(True)
+    assert native[1] == oracle[1]
+    assert native[0] == oracle[0]

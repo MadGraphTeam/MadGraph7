@@ -8,6 +8,7 @@ use super::*;
 use rusticol_core::loop_v2::generate::catalogue::{
     CandidateError, PolynomialJob, SignatureHeader, polynomial_candidates,
 };
+use rusticol_core::loop_v2::generate::rename::rename_symbols;
 
 /// (loop_in, out, (q0, q1, q2, q3) exponents, block indices).
 type EntryTuple = (i64, i64, (i64, i64, i64, i64), Vec<i64>);
@@ -97,6 +98,23 @@ fn loop_catalogue_polynomials(
         .collect())
 }
 
+/// `texts` (Symbolica's portable text) with the old names of `variables`
+/// and of the called `heads` renamed, (old, new) pairs; the native half of
+/// `assemble._canonical_stage`'s text renaming. The GIL is released.
+#[pyfunction]
+#[pyo3(signature = (texts, variables, heads, threads=None))]
+fn loop_rename_symbols(
+    py: Python<'_>,
+    texts: Vec<String>,
+    variables: Vec<(String, String)>,
+    heads: Vec<(String, String)>,
+    threads: Option<usize>,
+) -> PyResult<Vec<String>> {
+    py.detach(|| rename_symbols(&texts, &variables, &heads, threads))
+        .map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(loop_catalogue_polynomials, module)?)
+    module.add_function(wrap_pyfunction!(loop_catalogue_polynomials, module)?)?;
+    module.add_function(wrap_pyfunction!(loop_rename_symbols, module)?)
 }

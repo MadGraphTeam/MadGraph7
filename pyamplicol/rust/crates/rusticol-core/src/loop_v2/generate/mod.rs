@@ -21,7 +21,9 @@
 //!   by the seed stage, the LC/NLC prune rebuild and plan lowering;
 //! - [`catalogue`]: the loop-kernel catalogue's polynomial stage (monomial
 //!   coefficients, canonical strings and inputs of every segment;
-//!   `catalogue.py`).
+//!   `catalogue.py`);
+//! - [`rename`]: symbol renaming on Symbolica's portable text (the canonical
+//!   stages of `assemble._canonical_stage`).
 
 pub mod arena;
 pub mod catalogue;
@@ -30,6 +32,7 @@ pub mod cycles;
 pub mod families;
 pub mod networks;
 pub mod orders;
+pub mod rename;
 pub mod schedules;
 pub mod seeds;
 
