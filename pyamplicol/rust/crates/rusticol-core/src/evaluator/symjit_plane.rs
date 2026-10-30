@@ -965,32 +965,45 @@ pub(crate) fn real_axis_sensitive_outputs(
 /// the operands' signs alone), with the inputs' signs from `point` (real:
 /// zero imaginary parts) and the constants' own, along the instructions'
 /// forward jumps (a branch whose condition the signs decide is the only one
-/// taken). Per path a value depends on the inputs of its last write (Symbolica
-/// reuses its temporaries); where paths meet at a label they stay apart
-/// until the selections (`Join`) that follow, so a selection on a branch's
-/// condition reads, on each path, the operand that path's branch chose (the
-/// other operand's slot may still hold an unrelated earlier value). A
-/// `log`, `sqrt` or a power with a slot exponent marks every input
-/// its argument depends on unless the signs decide the argument's side of
-/// the cut: a known nonzero imaginary part, or an exactly zero one with a
-/// positive real part (off the cut) or with a negative real part and a
-/// zero whose sign bit the signs decide (on the cut, on the side that
-/// zero's sign takes in the plane and in the exact evaluator alike at every
-/// point of the same signs, so the generation's real-point check certified
-/// it). `arg` or any function this rule does not know, a predicate
-/// (`truth`, `equal`, `less`, `less_equal`) or a selection (`Join`,
-/// `IfElse`) the signs do not decide marks every input its arguments depend
-/// on. `exp`, `sin`, `cos`, `conj`, `abs`, `real_part` and `imaginary_part`
-/// are continuous. So `sqrt(4 pi aS)`, `log(mu_R^2 / m^2)` and `log(-m^2 /
-/// mu_R^2)` at positive inputs, or the complex-mass scheme's `log(mu_R^2 /
-/// (m^2 - i m w))` at a positive width, mark nothing, while `log(m1^2 -
-/// m2^2)` marks both masses, and so does `log(-m1^(m2))` (a power with a
-/// slot exponent of a positive base has an exactly zero imaginary part
-/// whose sign follows the exponent's value). The sign rules are exact for
-/// finite values (a product of two positive values is positive, a sum of a
-/// positive and a zero one positive, a product of a zero and a value of
-/// unknown sign a zero of unknown sign, ...); a product that underflows to
-/// zero is outside them.
+/// taken). Per path a value depends on the inputs of its last write
+/// (Symbolica reuses its temporaries); where paths meet at a label they stay
+/// apart until the selections (`Join`) that follow, so a selection on a
+/// branch's condition reads, on each path, the operand that path's branch
+/// chose (the other operand's slot may still hold an unrelated earlier
+/// value). Per value it also keeps the inputs whose values can change its
+/// signs: none for an input or a constant (the point fixes their signs) or
+/// a value of fixed signs; a product's other factors' when its real factors
+/// of fixed sign are all but one, or all its factors are real (so
+/// `(b - d) / c^2` keeps b and d, not c); the argument's for `conj`, `abs`,
+/// `real_part`, `imaginary_part`, a real base's power or 1 / z; every input
+/// it depends on otherwise (a sum of mixed signs).
+///
+/// A `log` or `sqrt` whose argument's side of the cut on the negative real
+/// axis the signs do not decide marks the inputs that can change the
+/// argument's signs. The signs decide it off the axis (a known nonzero
+/// imaginary part, or an exactly zero one with a positive real part) and on
+/// it with a negative real part and an exactly zero imaginary part whose
+/// sign bit the signs decide: at every point of the same signs the plane
+/// and the exact evaluator then take the side the generation's real-point
+/// check certified (they may sign such a zero differently, but each the
+/// same way every time). A power with a slot exponent on an undecided base
+/// marks every input of base and exponent. A branch or selection on a
+/// condition the signs do not decide marks the inputs that can change the
+/// condition's signs; a predicate (`truth`, `equal`, `less`, `less_equal`)
+/// the signs do not decide marks those of its arguments when it tests one
+/// against an exact zero (`truth` included), else every input they depend
+/// on; `arg` or a function this rule does not know marks every input of its
+/// arguments. `exp`, `sin`, `cos`, `conj`, `abs`, `real_part` and
+/// `imaginary_part` are continuous. So `sqrt(4 pi aS)`, `log(mu_R^2 / m^2)`
+/// and `log(-m^2 / mu_R^2)` at positive inputs, or the complex-mass
+/// scheme's `log(mu_R^2 / (m^2 - i m w))` at a positive width, mark nothing,
+/// while `log(m1^2 - m2^2)` marks both masses, and so does `log(-m1^(m2))`
+/// (a power with a slot exponent of a positive base has an exactly zero
+/// imaginary part whose sign follows the exponent's value). The sign rules
+/// are exact for finite values (a product of two positive values is
+/// positive, a sum of a positive and a zero one positive, a product of a
+/// zero and a value of unknown sign a zero of unknown sign, ...); a product
+/// that underflows to zero is outside them.
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -1067,6 +1080,34 @@ fn side_inputs_of(
         }
         out
     };
+    // The inputs whose values can change `slots`' signs (a zero's bit
+    // included) at the point's signs, on `path`: none for an input or a
+    // constant, whose signs the point fixes.
+    let sign_deps = |slots: &[Slot], path: &SidePath| -> Vec<u64> {
+        let mut out = vec![0_u64; words];
+        for slot in slots {
+            match *slot {
+                Slot::Const(_) | Slot::Param(_) => {}
+                _ => {
+                    if let Some(k) = index(slot) {
+                        for (o, d) in out.iter_mut().zip(path.sign_depends(k, words)) {
+                            *o |= d;
+                        }
+                    } else {
+                        out.iter_mut().for_each(|o| *o = u64::MAX);
+                    }
+                }
+            }
+        }
+        out
+    };
+    let zero_constant = |slot: &Slot| match *slot {
+        Slot::Const(i) => program
+            .constants
+            .get(i)
+            .is_some_and(|c| c.re == 0.0 && c.im == 0.0),
+        _ => false,
+    };
     // A condition's truth on `path`: its signs', else the branch taken.
     let truth = |slot: &Slot, path: &SidePath| -> Option<bool> {
         read(slot, path)
@@ -1078,7 +1119,13 @@ fn side_inputs_of(
             *s |= d;
         }
     };
-    let write = |path: &mut SidePath, slot: &Slot, value: Signs, dependence: &[u64]| {
+    // A value, the inputs it depends on and those that can change its signs
+    // (fixed signs: none).
+    let write = |path: &mut SidePath,
+                 slot: &Slot,
+                 value: Signs,
+                 dependence: &[u64],
+                 sign_dependence: &[u64]| {
         let Some(k) = index(slot) else {
             return Err(RusticolError::serialization(
                 "a Symbolica instruction writes outside its temporaries and outputs",
@@ -1086,6 +1133,12 @@ fn side_inputs_of(
         };
         path.signs[k] = value;
         path.depends[k * words..(k + 1) * words].copy_from_slice(dependence);
+        let signs = &mut path.sign_depends[k * words..(k + 1) * words];
+        if value.fixed() {
+            signs.fill(0);
+        } else {
+            signs.copy_from_slice(sign_dependence);
+        }
         path.facts.retain(|&(fact, _)| fact != k);
         Ok(())
     };
@@ -1117,18 +1170,25 @@ fn side_inputs_of(
             I::Join(o, condition, yes, no) => {
                 let Some(paths) = &mut current else { continue };
                 for path in paths.iter_mut() {
-                    let (value, dependence) = match truth(condition, path) {
-                        Some(true) => (read(yes, path), deps(&[*yes], path)),
-                        Some(false) => (read(no, path), deps(&[*no], path)),
+                    let (value, dependence, sign_dependence) = match truth(condition, path) {
+                        Some(true) => (
+                            read(yes, path),
+                            deps(&[*yes], path),
+                            sign_deps(&[*yes], path),
+                        ),
+                        Some(false) => {
+                            (read(no, path), deps(&[*no], path), sign_deps(&[*no], path))
+                        }
                         None => {
-                            mark(&mut side, &deps(&[*condition], path));
+                            mark(&mut side, &sign_deps(&[*condition], path));
                             (
                                 read(yes, path).join(read(no, path)),
                                 deps(&[*condition, *yes, *no], path),
+                                sign_deps(&[*condition, *yes, *no], path),
                             )
                         }
                     };
-                    write(path, o, value, &dependence)?;
+                    write(path, o, value, &dependence, &sign_dependence)?;
                 }
                 continue;
             }
@@ -1151,7 +1211,7 @@ fn side_inputs_of(
                         continue;
                     }
                     None => {
-                        mark(&mut side, &deps(&[*condition], &path));
+                        mark(&mut side, &sign_deps(&[*condition], &path));
                         let mut jump = path.clone();
                         if let Some(k) = index(condition) {
                             jump.facts.push((k, false));
@@ -1165,7 +1225,9 @@ fn side_inputs_of(
             }
             _ => {}
         }
-        let (destination, value, dependence) = match row {
+        // The inputs that can change the value's signs, when fewer than
+        // those it depends on (`None`: all of them).
+        let (destination, value, dependence, sign_dependence) = match row {
             I::Add(o, args, _) => (
                 o,
                 args.iter()
@@ -1173,17 +1235,38 @@ fn side_inputs_of(
                     .reduce(Signs::add)
                     .unwrap_or(Signs::ZERO),
                 deps(args, &path),
+                None,
             ),
-            I::Mul(o, args, _) => (
-                o,
-                args.iter()
-                    .map(|a| read(a, &path))
-                    .reduce(Signs::mul)
-                    .unwrap_or(Signs::ONE),
-                deps(args, &path),
-            ),
+            I::Mul(o, args, _) => {
+                let factors: Vec<Signs> = args.iter().map(|a| read(a, &path)).collect();
+                // Real factors of fixed signs scale both parts by a sign the
+                // point fixes: with at most one other factor, or only real
+                // ones, the product's signs follow the other factors' signs.
+                let rest: Vec<Slot> = args
+                    .iter()
+                    .zip(&factors)
+                    .filter(|(_, f)| !(f.fixed() && f.im == Sign::Zero))
+                    .map(|(a, _)| *a)
+                    .collect();
+                let real = factors.iter().all(|f| f.im == Sign::Zero);
+                (
+                    o,
+                    factors.into_iter().reduce(Signs::mul).unwrap_or(Signs::ONE),
+                    deps(args, &path),
+                    (real || rest.len() <= 1).then(|| sign_deps(&rest, &path)),
+                )
+            }
             I::Pow(o, base, exponent, _) => {
-                (o, read(base, &path).powi(*exponent), deps(&[*base], &path))
+                let b = read(base, &path);
+                // A real base's powers, and 1 / z = conj(z) / |z|^2, take
+                // signs that follow the base's.
+                (
+                    o,
+                    b.powi(*exponent),
+                    deps(&[*base], &path),
+                    (b.im == Sign::Zero || exponent.unsigned_abs() == 1)
+                        .then(|| sign_deps(&[*base], &path)),
+                )
             }
             I::Powf(o, base, exponent, _) => {
                 let (b, e) = (read(base, &path), read(exponent, &path));
@@ -1202,7 +1285,7 @@ fn side_inputs_of(
                 } else {
                     unknown
                 };
-                (o, value, dependence)
+                (o, value, dependence, None)
             }
             I::Fun(o, call, _) => {
                 let (symbol, _tags, args) = &**call;
@@ -1213,87 +1296,141 @@ fn side_inputs_of(
                 } else {
                     symbol.get_name()
                 };
-                let decided = |value: Option<bool>, side: &mut Vec<u64>| match value {
-                    Some(true) => Signs::ONE,
-                    Some(false) => Signs::ZERO,
-                    None => {
-                        mark(side, &dependence);
-                        Signs {
-                            re: Sign::Any,
-                            im: Sign::Zero,
+                let predicate = match (name, a.as_slice()) {
+                    ("pyamplicol_scalar_v1::truth", [x]) => Some(x.truth()),
+                    ("pyamplicol_scalar_v1::equal", [x, y]) => Some(if args[0] == args[1] {
+                        Some(true)
+                    } else {
+                        x.equal(*y)
+                    }),
+                    ("pyamplicol_scalar_v1::less", [x, y]) => Some(x.re.less(y.re, false)),
+                    ("pyamplicol_scalar_v1::less_equal", [x, y]) => Some(x.re.less(y.re, true)),
+                    _ => None,
+                };
+                if let Some(truth) = predicate {
+                    // A predicate the signs decide is constant at the
+                    // point's signs. Another one depends on, and marks, the
+                    // inputs that can change its arguments' signs when it
+                    // tests one against an exact zero, else every input its
+                    // arguments depend on.
+                    let none = vec![0_u64; words];
+                    let (value, inputs) = match truth {
+                        Some(true) => (Signs::ONE, none),
+                        Some(false) => (Signs::ZERO, none),
+                        None => {
+                            let tested = if name == "pyamplicol_scalar_v1::truth"
+                                || args.iter().any(zero_constant)
+                            {
+                                sign_deps(args, &path)
+                            } else {
+                                dependence
+                            };
+                            mark(&mut side, &tested);
+                            (
+                                Signs {
+                                    re: Sign::Any,
+                                    im: Sign::Zero,
+                                },
+                                tested,
+                            )
                         }
-                    }
-                };
-                let value = match (name, a.as_slice()) {
-                    ("sqrt", [x]) if x.off_cut() => Signs {
-                        re: Sign::Pos,
-                        im: x.im,
-                    },
-                    ("log", [x]) if x.off_cut() => Signs {
-                        re: Sign::Any,
-                        im: x.im,
-                    },
-                    // On the cut, on the side the zero's sign decides (+-i pi
-                    // for log; the sign is not tracked).
-                    ("sqrt" | "log", [x]) if x.side_decided() => unknown,
-                    // e^a (cos(+-0) + i sin(+-0)): the zero's sign.
-                    ("exp", [x]) if x.im.is_zero() => Signs {
-                        re: Sign::Pos,
-                        im: x.im,
-                    },
-                    // sin(a) cosh(+-0) + i cos(a) sinh(+-0) (and cos's):
-                    // a zero whose sign follows cos(a) (sin(a)).
-                    ("sin" | "cos", [x]) if x.im.is_zero() => Signs {
-                        re: Sign::Any,
-                        im: Sign::FreeZero,
-                    },
-                    ("exp" | "sin" | "cos", [_]) => unknown,
-                    ("conj", [x]) => Signs {
-                        re: x.re,
-                        im: x.im.neg(),
-                    },
-                    ("abs", [x]) => Signs {
-                        re: x.magnitude(),
-                        im: Sign::Zero,
-                    },
-                    ("pyamplicol_scalar_v1::real_part", [x]) => Signs {
-                        re: x.re,
-                        im: Sign::Zero,
-                    },
-                    ("pyamplicol_scalar_v1::imaginary_part", [x]) => Signs {
-                        re: x.im,
-                        im: Sign::Zero,
-                    },
-                    ("pyamplicol_scalar_v1::truth", [x]) => decided(x.truth(), &mut side),
-                    ("pyamplicol_scalar_v1::equal", [x, y]) => decided(
-                        if args[0] == args[1] {
-                            Some(true)
-                        } else {
-                            x.equal(*y)
-                        },
-                        &mut side,
-                    ),
-                    ("pyamplicol_scalar_v1::less", [x, y]) => {
-                        decided(x.re.less(y.re, false), &mut side)
-                    }
-                    ("pyamplicol_scalar_v1::less_equal", [x, y]) => {
-                        decided(x.re.less(y.re, true), &mut side)
-                    }
-                    _ => {
-                        // On a cut the signs do not decide (`sqrt`, `log`),
-                        // `arg` or unknown.
-                        mark(&mut side, &dependence);
-                        unknown
-                    }
-                };
-                (o, value, dependence)
+                    };
+                    (o, value, inputs.clone(), Some(inputs))
+                } else {
+                    // The parts of `conj`, `abs`, `real_part` and
+                    // `imaginary_part` take signs that follow the argument's.
+                    let follows = Some(sign_deps(args, &path));
+                    let (value, sign_dependence) = match (name, a.as_slice()) {
+                        ("sqrt", [x]) if x.off_cut() => (
+                            Signs {
+                                re: Sign::Pos,
+                                im: x.im,
+                            },
+                            None,
+                        ),
+                        ("log", [x]) if x.off_cut() => (
+                            Signs {
+                                re: Sign::Any,
+                                im: x.im,
+                            },
+                            None,
+                        ),
+                        // On the cut, on the side the zero's sign decides
+                        // (+-i pi for log; the sign is not tracked).
+                        ("sqrt" | "log", [x]) if x.side_decided() => (unknown, None),
+                        // On the cut on a side the signs do not decide: the
+                        // inputs that can change the argument's signs.
+                        ("sqrt" | "log", [_]) => {
+                            mark(&mut side, &sign_deps(args, &path));
+                            (unknown, None)
+                        }
+                        // e^a (cos(+-0) + i sin(+-0)): the zero's sign.
+                        ("exp", [x]) if x.im.is_zero() => (
+                            Signs {
+                                re: Sign::Pos,
+                                im: x.im,
+                            },
+                            None,
+                        ),
+                        // sin(a) cosh(+-0) + i cos(a) sinh(+-0) (and cos's):
+                        // a zero whose sign follows cos(a) (sin(a)).
+                        ("sin" | "cos", [x]) if x.im.is_zero() => (
+                            Signs {
+                                re: Sign::Any,
+                                im: Sign::FreeZero,
+                            },
+                            None,
+                        ),
+                        ("exp" | "sin" | "cos", [_]) => (unknown, None),
+                        ("conj", [x]) => (
+                            Signs {
+                                re: x.re,
+                                im: x.im.neg(),
+                            },
+                            follows,
+                        ),
+                        ("abs", [x]) => (
+                            Signs {
+                                re: x.magnitude(),
+                                im: Sign::Zero,
+                            },
+                            follows,
+                        ),
+                        ("pyamplicol_scalar_v1::real_part", [x]) => (
+                            Signs {
+                                re: x.re,
+                                im: Sign::Zero,
+                            },
+                            follows,
+                        ),
+                        ("pyamplicol_scalar_v1::imaginary_part", [x]) => (
+                            Signs {
+                                re: x.im,
+                                im: Sign::Zero,
+                            },
+                            follows,
+                        ),
+                        _ => {
+                            // `arg` or unknown.
+                            mark(&mut side, &dependence);
+                            (unknown, None)
+                        }
+                    };
+                    (o, value, dependence, sign_dependence)
+                }
             }
-            I::Assign(o, value) => (o, read(value, &path), deps(&[*value], &path)),
+            I::Assign(o, value) => (
+                o,
+                read(value, &path),
+                deps(&[*value], &path),
+                Some(sign_deps(&[*value], &path)),
+            ),
             I::Join(..) | I::IfElse(..) | I::Goto(_) | I::Label(_) => {
                 unreachable!("handled above")
             }
         };
-        write(&mut path, destination, value, &dependence)?;
+        let sign_dependence = sign_dependence.unwrap_or_else(|| dependence.clone());
+        write(&mut path, destination, value, &dependence, &sign_dependence)?;
         current = Some(vec![path]);
     }
     Ok((0..inputs)
@@ -1315,6 +1452,9 @@ struct SidePath {
     signs: Vec<Signs>,
     /// `words` bit words per slot.
     depends: Vec<u64>,
+    /// The inputs whose values can change the slot's signs (a subset of
+    /// `depends`; empty for fixed signs), `words` bit words per slot.
+    sign_depends: Vec<u64>,
     facts: Vec<(usize, bool)>,
 }
 
@@ -1330,12 +1470,17 @@ impl SidePath {
         Self {
             signs: vec![Signs::UNKNOWN; slots],
             depends: vec![0; slots * words],
+            sign_depends: vec![0; slots * words],
             facts: Vec::new(),
         }
     }
 
     fn depends(&self, slot: usize, words: usize) -> &[u64] {
         &self.depends[slot * words..(slot + 1) * words]
+    }
+
+    fn sign_depends(&self, slot: usize, words: usize) -> &[u64] {
+        &self.sign_depends[slot * words..(slot + 1) * words]
     }
 
     fn fact(&self, slot: usize) -> Option<bool> {
@@ -1354,6 +1499,9 @@ impl SidePath {
                 *a = a.join(*b);
             }
             for (a, b) in merged.depends.iter_mut().zip(&path.depends) {
+                *a |= b;
+            }
+            for (a, b) in merged.sign_depends.iter_mut().zip(&path.sign_depends) {
                 *a |= b;
             }
             merged.facts.retain(|fact| path.facts.contains(fact));
@@ -1522,6 +1670,13 @@ impl Signs {
     /// Exactly zero (either sign bits).
     fn is_zero(self) -> bool {
         self.re.is_zero() && self.im.is_zero()
+    }
+
+    /// Both parts' signs, a zero's bit included, the same at every point of
+    /// the same input signs.
+    fn fixed(self) -> bool {
+        let fixed = |s: Sign| matches!(s, Sign::Zero | Sign::Pos | Sign::Neg);
+        fixed(self.re) && fixed(self.im)
     }
 
     /// Nonzero (`Some(true)`), zero (`Some(false)`) or undecided.
@@ -2485,6 +2640,54 @@ mod tests {
         let side = |lapse: bool| side_inputs_of(&program(lapse), 4, 2, &point).unwrap();
         assert_eq!(side(false), vec![0, 1, 3]);
         assert_eq!(side(true), vec![0, 1, 2, 3]);
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn a_fixed_sign_real_factor_moves_no_side() {
+        // `real_axis_side_inputs` on inputs a, b, c, d at positive values:
+        // (b - d) / c^2 has signs that only b and d can change (c^2 > 0
+        // scales both parts), so a cut or a zero test on it marks b and d,
+        // not c (the scale in the complex-mass scheme's counterterms); a
+        // comparison of two values marks every input they depend on.
+        use symbolica::atom::{AtomCore, Symbol};
+        use symbolica::evaluate::{Instruction as I, Slot};
+        let (p, t, c) = (Slot::Param, Slot::Temp, Slot::Const);
+        let fun = |name: Symbol, o: Slot, args: Vec<Slot>| {
+            I::Fun(o, Box::new((name, Vec::new(), args)), false)
+        };
+        // The primitives' registered symbols (a bare parse would define
+        // them without their evaluation).
+        crate::source_scalar::register_scalar_primitives();
+        let less = {
+            let _unlock = crate::licence::unlock();
+            symbolica::parse!("pyamplicol_scalar_v1::less(pyamplicol_symjit_tests::x)")
+                .get_symbol()
+                .expect("a function")
+        };
+        let program = |last: I| InlinedProgram {
+            rows: vec![
+                I::Mul(t(0), vec![c(0), p(3)], 0),
+                I::Add(t(1), vec![p(1), t(0)], 0),
+                I::Pow(t(2), p(2), -2, false),
+                I::Mul(t(3), vec![t(2), t(1)], 0),
+                last,
+            ],
+            constants: vec![
+                symbolica::domains::float::Complex::new(-1.0, 0.0),
+                symbolica::domains::float::Complex::new(0.0, 0.0),
+            ],
+            temporaries: 4,
+            next_label: 1,
+        };
+        let point = [0.118, 91.188, 1000.0, 80.4];
+        let side = |last: I| side_inputs_of(&program(last), 4, 1, &point).unwrap();
+        assert_eq!(side(fun(Symbol::LOG, Slot::Out(0), vec![t(3)])), vec![1, 3]);
+        assert_eq!(side(fun(less, Slot::Out(0), vec![t(3), c(1)])), vec![1, 3]);
+        assert_eq!(
+            side(fun(less, Slot::Out(0), vec![t(3), p(0)])),
+            vec![0, 1, 2, 3]
+        );
     }
 
     const MODEL: &str = "

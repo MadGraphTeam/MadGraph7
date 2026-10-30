@@ -473,10 +473,11 @@ fn side_inputs_are_those_that_can_move_an_argument_onto_a_cut() {
     // A difference of masses under a cut: both masses.
     assert_eq!(side("log({c}^2-{b}^2)+{a}", positive), vec![1, 2]);
     assert_eq!(side("sqrt({c}-{b})*sqrt({d})", positive), vec![1, 2]);
-    // A cut argument whose input is zero at the point.
-    assert_eq!(side("sqrt({a})", [0.0, 1.0, 1.0, 1.0]), vec![0]);
-    // A product with an unknown-sign sum stays unknown.
-    assert_eq!(side("log({a}*({b}-{c}))", positive), vec![0, 1, 2]);
+    // A cut argument that is an input at zero: its signs are the point's.
+    assert_eq!(side("sqrt({a})", [0.0, 1.0, 1.0, 1.0]), Vec::<usize>::new());
+    // A product with an unknown-sign sum: the sum's inputs (the positive
+    // factor does not change its sign).
+    assert_eq!(side("log({a}*({b}-{c}))", positive), vec![1, 2]);
 }
 
 #[test]
@@ -518,17 +519,18 @@ fn a_cut_side_the_signs_decide_marks_nothing() {
         side("log(-({b}^2-1𝑖*{a})/{c}^2)", [0.0, 91.188, 1000.0, 80.4]),
         none
     );
-    // A difference of masses under the cut: undecided, every input of the
-    // argument.
-    assert_eq!(side("log(-({b}^2-{d}^2)/{c}^2)", point), vec![1, 2, 3]);
+    // A difference of masses under the cut: undecided, the masses (the
+    // scale c^2 > 0 does not change the argument's signs).
+    assert_eq!(side("log(-({b}^2-{d}^2)/{c}^2)", point), vec![1, 3]);
     // A power with a slot exponent of a positive base: an exactly zero
     // imaginary part whose sign follows the exponent's value; negated
     // under a log, it marks base and exponent.
     assert_eq!(side("log(-{b}^{a})", point), vec![0, 1]);
     // A negative input under the cut: decided, none.
     assert_eq!(side("log({d})", [0.118, 91.188, 1000.0, -80.4]), none);
-    // An exactly zero argument (log(0), a zero width): its input.
-    assert_eq!(side("log({d}^2)", [0.118, 91.188, 1000.0, 0.0]), vec![3]);
+    // An exactly zero argument of fixed signs (log(0) at a zero width): the
+    // same at every point of the same signs, none.
+    assert_eq!(side("log({d}^2)", [0.118, 91.188, 1000.0, 0.0]), none);
 }
 
 #[test]
