@@ -1145,20 +1145,25 @@ def _candidate_from_payload(
     output_layout: tuple[str, ...],
     *,
     proof_class: str | None,
+    inputs_checked: bool = False,
 ) -> _Candidate:
-    declared_symbols = {descriptor.symbol for descriptor in inputs}
-    used_symbols = {
-        symbol.to_canonical_string()
-        for expression in exact_expressions
-        for symbol in _sym.E(expression).get_all_symbols(False)
-        if not symbol.is_constant()
-    }
-    unbound_symbols = sorted(used_symbols - declared_symbols)
-    if unbound_symbols:
-        raise PreparedKernelCatalogError(
-            f"prepared {contract_kind} contract has undeclared inputs: "
-            f"{', '.join(unbound_symbols)}"
-        )
+    # ``inputs_checked``: the caller formed the outputs and checked this
+    # already (the loop catalogue's native polynomial stage), so the outputs
+    # are not parsed again.
+    if not inputs_checked:
+        declared_symbols = {descriptor.symbol for descriptor in inputs}
+        used_symbols = {
+            symbol.to_canonical_string()
+            for expression in exact_expressions
+            for symbol in _sym.E(expression).get_all_symbols(False)
+            if not symbol.is_constant()
+        }
+        unbound_symbols = sorted(used_symbols - declared_symbols)
+        if unbound_symbols:
+            raise PreparedKernelCatalogError(
+                f"prepared {contract_kind} contract has undeclared inputs: "
+                f"{', '.join(unbound_symbols)}"
+            )
     semantic_payload = {
         "abi": payload.get("abi"),
         "contract_kind": contract_kind,

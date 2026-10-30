@@ -18,9 +18,13 @@
 //! - [`networks`]: exact SU(N_c) reduction of colour networks (quark rings
 //!   and generic seeds of the seed stage);
 //! - [`arena`]: the retained schedule builds of a generation, read in place
-//!   by the seed stage, the LC/NLC prune rebuild and plan lowering.
+//!   by the seed stage, the LC/NLC prune rebuild and plan lowering;
+//! - [`catalogue`]: the loop-kernel catalogue's polynomial stage (monomial
+//!   coefficients, canonical strings and inputs of every segment;
+//!   `catalogue.py`).
 
 pub mod arena;
+pub mod catalogue;
 pub mod cells;
 pub mod cycles;
 pub mod families;
