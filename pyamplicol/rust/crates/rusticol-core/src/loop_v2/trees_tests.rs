@@ -206,20 +206,44 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
             "x = {x}: plane {got:?}, exact {expected:?}"
         );
         let key = vec![Rational::from(x as i64)];
-        let kept = side
-            .settle(key.clone(), &input, &mut got, (2, 1, 1), build)
+        let groups = || vec![(key.clone(), vec![0, 1])];
+        side.settle(groups(), &input, &mut got, (1, 1), build)
             .expect("settles");
-        assert_eq!(kept, !on_cut, "x = {x}");
         assert_eq!(got, expected, "x = {x}: the exact side");
         assert_eq!(side.checked.last(), Some(&(key.clone(), !on_cut)));
         // The same values again: the recorded verdict, not a new check (rows
         // that agree with the exact evaluator stay replaced on the cut).
         let mut again = expected;
-        let kept = side
-            .settle(key, &input, &mut again, (2, 1, 1), || panic!("built once"))
-            .expect("settles");
-        assert_eq!((kept, again), (!on_cut, expected), "x = {x}");
+        side.settle(groups(), &input, &mut again, (1, 1), || {
+            panic!("built once")
+        })
+        .expect("settles");
+        assert_eq!(again, expected, "x = {x}");
     }
+    // Two keys in one batch (a scale that moves a side): each row group is
+    // settled on its own; the plane's rows of the agreeing key are kept.
+    side.checked.clear();
+    let input = [Complex::new(-4.0, 0.0), Complex::new(4.0, 0.0)];
+    let mut got = [Complex::new(0.0, 0.0); 2];
+    plane.evaluate_batch(&input, &mut got, 2).expect("runs");
+    let mut expected = [Complex::new(0.0, 0.0); 2];
+    exact
+        .evaluate_batch(&input, &mut expected, 2)
+        .expect("runs");
+    let plane_rows = got;
+    side.settle(
+        vec![
+            (vec![Rational::from(-4)], vec![0]),
+            (vec![Rational::from(4)], vec![1]),
+        ],
+        &input,
+        &mut got,
+        (1, 1),
+        build,
+    )
+    .expect("settles");
+    assert_eq!((got[0], got[1]), (plane_rows[0], expected[1]));
+    assert_eq!(side.checked.len(), 2);
     // Certified values (the generation's plane check): the plane's rows are
     // kept without a check, even on the cut.
     let key = vec![Rational::from(4)];
@@ -227,16 +251,17 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     side.checked.clear();
     let (input, mut got) = rows(&mut plane, 4.0);
     let plane_rows = got;
-    let kept = side
-        .settle(key, &input, &mut got, (2, 1, 1), || panic!("no check"))
-        .expect("settles");
-    assert!(kept && got == plane_rows && side.checked.is_empty());
+    side.settle(vec![(key, vec![0, 1])], &input, &mut got, (1, 1), || {
+        panic!("no check")
+    })
+    .expect("settles");
+    assert!(got == plane_rows && side.checked.is_empty());
     // Alternating value sets (a split pole selection) keep both verdicts.
     side.certified = None;
     for x in [-4.0, 4.0, -4.0, 4.0] {
         let (input, mut got) = rows(&mut plane, x);
         let key = vec![Rational::from(x as i64)];
-        side.settle(key, &input, &mut got, (2, 1, 1), build)
+        side.settle(vec![(key, vec![0, 1])], &input, &mut got, (1, 1), build)
             .expect("settles");
     }
     assert_eq!(side.checked.len(), 2);
@@ -266,6 +291,7 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         plan_masses: vec![None, Some(MassSource::Output(4))],
         scale: Some(0),
         scale_outputs,
+        side_inputs: None,
         photons: None,
     };
     let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
@@ -402,4 +428,103 @@ fn off_axis_probes_are_distinct_and_off_the_real_axis() {
             assert!(a.re != b.re && a.im != b.im, "{a:?} {b:?}");
         }
     }
+}
+
+#[test]
+fn side_inputs_are_those_that_can_move_an_argument_onto_a_cut() {
+    // `engine::real_axis_side_inputs` (M-SM MS-MASTERS): inputs a, b, c, d
+    // at the real point `point`; the indices of the inputs whose change can
+    // move a branch side (the others keep every side while their signs stay).
+    use symbolica::atom::AtomCore;
+    let _unlock = crate::licence::unlock();
+    let names = ["a", "b", "c", "d"];
+    let inputs: Vec<_> = names
+        .iter()
+        .map(|n| symbolica::parse!(&format!("pyamplicol_trees_tests::{n}")))
+        .collect();
+    let side = |text: &str, point: [f64; 4]| -> Vec<usize> {
+        let mut source = text.to_owned();
+        for n in names {
+            source = source.replace(&format!("{{{n}}}"), &format!("pyamplicol_trees_tests::{n}"));
+        }
+        let evaluator = symbolica::parse!(&source)
+            .evaluator(&inputs)
+            .build()
+            .expect("an evaluator");
+        let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
+        crate::engine::real_axis_side_inputs(&binary64, &point).expect("analysed")
+    };
+    let positive = [0.118, 91.188, 173.0, 1.5];
+    // aS through sqrt and the scale through log(mu^2/m^2): none.
+    assert_eq!(
+        side("sqrt(4*pi*{a})*log({b}^2/{c}^2)", positive),
+        Vec::<usize>::new()
+    );
+    // A complex-mass scheme's log(mu^2 / (m^2 - i m w)) at a positive width,
+    // or a zero one (a positive real argument): none.
+    let cms = "log({b}^2/({c}^2-1𝑖*{c}*{d}))";
+    assert_eq!(side(cms, positive), Vec::<usize>::new());
+    assert_eq!(side(cms, [0.118, 91.188, 173.0, 0.0]), Vec::<usize>::new());
+    // A difference of masses under a cut: both masses.
+    assert_eq!(side("log({c}^2-{b}^2)+{a}", positive), vec![1, 2]);
+    assert_eq!(side("sqrt({c}-{b})*sqrt({d})", positive), vec![1, 2]);
+    // A cut argument whose input is zero or negative at the point.
+    assert_eq!(side("sqrt({a})", [0.0, 1.0, 1.0, 1.0]), vec![0]);
+    assert_eq!(side("log(-{d})", positive), vec![3]);
+    // A product with an unknown-sign sum stays unknown.
+    assert_eq!(side("log({a}*({b}-{c}))", positive), vec![0, 1, 2]);
+}
+
+#[test]
+fn parameter_keys_keep_side_values_and_other_signs() {
+    // `Parameters::key`: with the side record, the side inputs' values and
+    // the other inputs' signs (the scale's 1 unless it is a side input,
+    // then mu_R^2); without it (an older artifact), every value but the
+    // scale's, zeroed.
+    let parameters = |side_inputs: Option<Vec<usize>>| Parameters {
+        names: vec!["MU_R".into(), "aS".into(), "MT".into(), "WT".into()],
+        defaults: vec![Rational::from(91); 4],
+        saved: Vec::new(),
+        plane: None,
+        outputs: 1,
+        model: Vec::new(),
+        counterterm_model: Vec::new(),
+        couplings: Vec::new(),
+        counterterm_couplings: Vec::new(),
+        finite: Vec::new(),
+        constants: Vec::new(),
+        positive: Vec::new(),
+        masses: Vec::new(),
+        derived_masses: Vec::new(),
+        plan_masses: Vec::new(),
+        scale: Some(0),
+        scale_outputs: Some(Vec::new()),
+        side_inputs,
+        photons: None,
+    };
+    let r = |n: i64| Rational::from(n);
+    let values = [r(91), r(3), r(173), r(0)];
+    let mu2 = r(8281);
+    assert_eq!(
+        parameters(Some(vec![2])).key(&values, Some(&mu2)),
+        vec![r(1), r(1), r(173), r(0)]
+    );
+    assert_eq!(
+        parameters(Some(vec![0, 2])).key(&values, Some(&mu2)),
+        vec![r(8281), r(1), r(173), r(0)]
+    );
+    assert_eq!(
+        parameters(None).key(&values, Some(&mu2)),
+        vec![r(0), r(3), r(173), r(0)]
+    );
+    // A change of aS keeps the key; a width set nonzero changes it.
+    let p = parameters(Some(vec![2]));
+    assert_eq!(
+        p.key(&[r(91), r(4), r(173), r(0)], None),
+        p.key(&values, None)
+    );
+    assert_ne!(
+        p.key(&[r(91), r(3), r(173), r(1)], None),
+        p.key(&values, None)
+    );
 }

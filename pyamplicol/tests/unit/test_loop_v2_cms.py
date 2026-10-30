@@ -757,11 +757,13 @@ def _sector_key(orders) -> tuple[tuple[str, int], ...]:
     )
 
 
-def _check_sectors(slice_, reference, model, carriers, points):
+def _check_sectors(slice_, reference, model, carriers, points, executor=None):
     """Per point and per squared-order sector of a MadLoop CMS row: the Born,
     the set of the virtual's sectors, their sum and each sector's Laurent
     coefficients in the campaign metric (the correction's coupling: alpha_s
-    for a QCD sector, alpha_Gmu ~ 1/132 for an EW one and the sum)."""
+    for a QCD sector, alpha_Gmu ~ 1/132 for an EW one and the sum). With
+    ``executor`` (a ``NativeExecutor``: binary64 only) its points instead of
+    the slice's Python inputs."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
@@ -776,12 +778,19 @@ def _check_sectors(slice_, reference, model, carriers, points):
         )
         for k in points:
             row = reference["rows"][k]
-            result = slice_.evaluate(
-                reference["points"][k],
-                str(Fraction(reference["mu_r"][k]) ** 2),
-                parameters=parameters,
-                precision=precision,
-            )
+            scale = str(Fraction(reference["mu_r"][k]) ** 2)
+            if executor is not None:
+                assert carrier == "double", carrier
+                (result,) = executor.evaluate(
+                    [reference["points"][k]], [scale], parameters=parameters
+                )
+            else:
+                result = slice_.evaluate(
+                    reference["points"][k],
+                    scale,
+                    parameters=parameters,
+                    precision=precision,
+                )
             born = sum(complex(v).real for v in result.born.values())
             assert abs(born - row["born"]) <= tolerance * abs(row["born"])
             virtual = {
@@ -810,10 +819,10 @@ def _check_sectors(slice_, reference, model, carriers, points):
                 assert max(errors) <= tolerance, (carrier, k, sector, errors)
 
 
-# The CM rows whose native point inputs ``_check_cms_split`` checks too:
-# CM05's native export refuses (``plane-mismatch``: SymJIT's SIMD code gives
-# NaN for one output of its binary64 parameter program, not a master defect;
-# MS-MASTERS, ``test_loop_v2_master_census.py``).
+# The CM rows whose native point inputs ``_check_cms_split`` checks here;
+# CM05's native lane is checked against MadLoop CMS, split included, in
+# ``test_loop_v2_master_census.py`` (its parameter program's plane is the
+# level-0 one: SymJIT's optimised SIMD code gave NaN for one output, MS-MASTERS).
 NATIVE_SPLIT_ROWS = ("uux_emep_cms", "gg_ttx_cms")
 
 
@@ -836,7 +845,7 @@ def _check_cms_split(slice_, reference, model, lanes=("python", "native")):
     }
     point = reference["points"][0]
     scale = str(Fraction(reference["mu_r"][0]) ** 2)
-    # Only a native lane exports native inputs (CM05's refuses: plane-mismatch).
+    # Only a native lane exports native inputs.
     native = (
         NativeExecutor(slice_, forward=False, inputs="native")
         if "native" in lanes

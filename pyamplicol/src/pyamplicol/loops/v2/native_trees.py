@@ -1868,10 +1868,21 @@ def _parameter_program(
     if photon_record is not None:
         # Likewise: an older native would leave the photons at alpha.
         record["photons"] = photon_record
+    state = bytes(evaluator.save())
+    # The inputs whose change can move a branch side of the binary64
+    # parameter program, from the plane check's real point: the run-time
+    # side check compares their values and the other inputs' signs with the
+    # certified ones (``loop_v2::trees::Parameters::key``), so a change of
+    # aS or of the scale (in the shipped models) needs no exact evaluation.
+    from pyamplicol.loops.native import load_loop_native
+
+    record["side_inputs"] = load_loop_native().v2_parameter_side_inputs(
+        state, list(_request_points(slice_, record)[0])
+    )
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():
         keys[index] = key
-    return record, bytes(evaluator.save()), tuple(keys)
+    return record, state, tuple(keys)
 
 
 def _scale_outputs(

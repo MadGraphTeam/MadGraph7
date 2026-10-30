@@ -4863,6 +4863,7 @@ pub(crate) use evaluator::symjit_plane::{
 ))]
 pub(crate) use evaluator::symjit_plane::{
     compile_symbolica_evaluator_to_plane_application_bytes, real_axis_sensitive_outputs,
+    real_axis_side_inputs,
 };
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_plane::{

@@ -952,6 +952,508 @@ pub(crate) fn real_axis_sensitive_outputs(
         .collect())
 }
 
+/// The inputs of a binary64 Symbolica evaluator whose values can move an
+/// argument onto (or off) a branch cut or flip a discontinuous condition,
+/// starting from the real input row `point`: every other input changes no
+/// branch side as long as it keeps the sign (negative, zero, positive) it
+/// has in `point` (`loop_v2::trees`' run-time side check of a parameter
+/// program, M-SM MS-MASTERS).
+///
+/// An abstract interpretation of the program in the signs of the real and
+/// imaginary parts of every value (each exactly zero, positive, negative or
+/// unknown), with the inputs' signs from `point` (real: zero imaginary
+/// parts) and the constants' own, along the instructions' forward jumps
+/// (a branch whose condition the signs decide is the only one taken). A
+/// `log`, `sqrt` or a power with a slot exponent whose argument may lie on
+/// the negative real axis (a zero or unknown imaginary part with a real
+/// part not known positive), `arg` or any function this rule does not know,
+/// a predicate (`truth`, `equal`, `less`, `less_equal`) or a selection
+/// (`Join`, `IfElse`) the signs do not decide marks every input its
+/// arguments depend on. `exp`, `sin`, `cos`, `conj`, `abs`, `real_part` and
+/// `imaginary_part` are continuous. So `sqrt(4 pi aS)` and `log(mu_R^2 /
+/// m^2)` at positive inputs, or the complex-mass scheme's `log(mu_R^2 / (m^2
+/// - i m w))` at a positive width, mark nothing, while `log(m1^2 - m2^2)`
+/// marks both masses. The sign rules are exact for finite values (a
+/// product of two positive values is positive, a sum of a positive and a
+/// zero one positive, ...); a product that underflows to zero is outside
+/// them.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+pub(crate) fn real_axis_side_inputs(
+    evaluator: &symbolica::evaluate::ExpressionEvaluator<symbolica::domains::float::Complex<f64>>,
+    point: &[f64],
+) -> RusticolResult<Vec<usize>> {
+    use symbolica::evaluate::{Instruction as I, Slot};
+    let exported = evaluator.export_instructions();
+    if point.len() != exported.input_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "side inputs: a point of {} values for a program of {} inputs",
+            point.len(),
+            exported.input_count
+        )));
+    }
+    let program = InlinedProgram::of(&exported)?;
+    let inputs = exported.input_count;
+    let words = inputs.div_ceil(64).max(1);
+    let slots = program.temporaries + exported.output_count;
+    let index = |slot: &Slot| -> Option<usize> {
+        match *slot {
+            Slot::Temp(i) if i < program.temporaries => Some(i),
+            Slot::Out(i) if i < exported.output_count => Some(program.temporaries + i),
+            _ => None,
+        }
+    };
+    // Per slot the inputs its value depends on (over every path).
+    let mut depends = vec![vec![0_u64; words]; slots];
+    // Per slot its signs on the current path (`None`: unreachable).
+    let unknown = Signs::UNKNOWN;
+    let mut state: Option<Vec<Signs>> = Some(vec![unknown; slots]);
+    let mut pending: std::collections::BTreeMap<usize, Vec<Signs>> =
+        std::collections::BTreeMap::new();
+    let mut side = vec![0_u64; words];
+    let read = |slot: &Slot, state: &[Signs]| -> Signs {
+        match *slot {
+            Slot::Param(i) => Signs {
+                re: Sign::of(point.get(i).copied().unwrap_or(f64::NAN)),
+                im: Sign::Zero,
+            },
+            Slot::Const(i) => program.constants.get(i).map_or(unknown, |c| Signs {
+                re: Sign::of(c.re),
+                im: Sign::of(c.im),
+            }),
+            _ => index(slot).map_or(unknown, |i| state[i]),
+        }
+    };
+    let deps = |slots: &[Slot], depends: &[Vec<u64>]| -> Vec<u64> {
+        let mut out = vec![0_u64; words];
+        for slot in slots {
+            match *slot {
+                Slot::Param(i) if i < inputs => out[i / 64] |= 1 << (i % 64),
+                Slot::Const(_) | Slot::Param(_) => {}
+                _ => {
+                    if let Some(k) = index(slot) {
+                        for (o, d) in out.iter_mut().zip(&depends[k]) {
+                            *o |= d;
+                        }
+                    } else {
+                        out.iter_mut().for_each(|o| *o = u64::MAX);
+                    }
+                }
+            }
+        }
+        out
+    };
+    let mark = |side: &mut Vec<u64>, d: &[u64]| {
+        for (s, d) in side.iter_mut().zip(d) {
+            *s |= d;
+        }
+    };
+    let merge = |into: &mut Vec<Signs>, from: &[Signs]| {
+        for (a, b) in into.iter_mut().zip(from) {
+            *a = a.join(*b);
+        }
+    };
+    for row in &program.rows {
+        match row {
+            I::Label(label) => {
+                if let Some(arriving) = pending.remove(label) {
+                    match &mut state {
+                        Some(current) => merge(current, &arriving),
+                        None => state = Some(arriving),
+                    }
+                }
+                continue;
+            }
+            I::Goto(label) => {
+                if let Some(current) = state.take() {
+                    match pending.get_mut(label) {
+                        Some(waiting) => merge(waiting, &current),
+                        None => {
+                            pending.insert(*label, current);
+                        }
+                    }
+                }
+                continue;
+            }
+            I::IfElse(condition, label) => {
+                let Some(current) = &state else { continue };
+                let jump = match read(condition, current).truth() {
+                    Some(true) => false,
+                    Some(false) => true,
+                    None => {
+                        mark(&mut side, &deps(&[*condition], &depends));
+                        let copy = current.clone();
+                        match pending.get_mut(label) {
+                            Some(waiting) => merge(waiting, &copy),
+                            None => {
+                                pending.insert(*label, copy);
+                            }
+                        }
+                        false
+                    }
+                };
+                if jump {
+                    let current = state.take().expect("reachable");
+                    match pending.get_mut(label) {
+                        Some(waiting) => merge(waiting, &current),
+                        None => {
+                            pending.insert(*label, current);
+                        }
+                    }
+                }
+                continue;
+            }
+            _ => {}
+        }
+        let Some(current) = &state else { continue };
+        let (destination, value, dependence) = match row {
+            I::Add(o, args, _) => (
+                o,
+                args.iter()
+                    .map(|a| read(a, current))
+                    .fold(Signs::ZERO, Signs::add),
+                deps(args, &depends),
+            ),
+            I::Mul(o, args, _) => (
+                o,
+                args.iter()
+                    .map(|a| read(a, current))
+                    .fold(Signs::ONE, Signs::mul),
+                deps(args, &depends),
+            ),
+            I::Pow(o, base, exponent, _) => (
+                o,
+                read(base, current).powi(*exponent),
+                deps(&[*base], &depends),
+            ),
+            I::Powf(o, base, exponent, _) => {
+                let (b, e) = (read(base, current), read(exponent, current));
+                let dependence = deps(&[*base, *exponent], &depends);
+                if !b.off_cut() {
+                    mark(&mut side, &dependence);
+                }
+                let value = if b.re == Sign::Pos && b.im == Sign::Zero && e.im == Sign::Zero {
+                    Signs {
+                        re: Sign::Pos,
+                        im: Sign::Zero,
+                    }
+                } else {
+                    unknown
+                };
+                (o, value, dependence)
+            }
+            I::Fun(o, call, _) => {
+                let (symbol, _tags, args) = &**call;
+                let a: Vec<Signs> = args.iter().map(|s| read(s, current)).collect();
+                let dependence = deps(args, &depends);
+                let name = if symbol.get_namespace() == "symbolica" {
+                    symbol.get_stripped_name()
+                } else {
+                    symbol.get_name()
+                };
+                let decided = |value: Option<bool>, side: &mut Vec<u64>| match value {
+                    Some(true) => Signs::ONE,
+                    Some(false) => Signs::ZERO,
+                    None => {
+                        mark(side, &dependence);
+                        Signs {
+                            re: Sign::Any,
+                            im: Sign::Zero,
+                        }
+                    }
+                };
+                let value = match (name, a.as_slice()) {
+                    ("sqrt", [x]) if x.off_cut() => Signs {
+                        re: Sign::Pos,
+                        im: x.im,
+                    },
+                    ("log", [x]) if x.off_cut() => Signs {
+                        re: Sign::Any,
+                        im: x.im,
+                    },
+                    ("exp", [x]) if x.im == Sign::Zero => Signs {
+                        re: Sign::Pos,
+                        im: Sign::Zero,
+                    },
+                    ("sin" | "cos", [x]) if x.im == Sign::Zero => Signs {
+                        re: Sign::Any,
+                        im: Sign::Zero,
+                    },
+                    ("exp" | "sin" | "cos", [_]) => unknown,
+                    ("conj", [x]) => Signs {
+                        re: x.re,
+                        im: x.im.neg(),
+                    },
+                    ("abs", [x]) => Signs {
+                        re: x.magnitude(),
+                        im: Sign::Zero,
+                    },
+                    ("pyamplicol_scalar_v1::real_part", [x]) => Signs {
+                        re: x.re,
+                        im: Sign::Zero,
+                    },
+                    ("pyamplicol_scalar_v1::imaginary_part", [x]) => Signs {
+                        re: x.im,
+                        im: Sign::Zero,
+                    },
+                    ("pyamplicol_scalar_v1::truth", [x]) => decided(x.truth(), &mut side),
+                    ("pyamplicol_scalar_v1::equal", [x, y]) => decided(
+                        if args[0] == args[1] {
+                            Some(true)
+                        } else {
+                            x.equal(*y)
+                        },
+                        &mut side,
+                    ),
+                    ("pyamplicol_scalar_v1::less", [x, y]) => {
+                        decided(x.re.less(y.re, false), &mut side)
+                    }
+                    ("pyamplicol_scalar_v1::less_equal", [x, y]) => {
+                        decided(x.re.less(y.re, true), &mut side)
+                    }
+                    _ => {
+                        // On a cut (`sqrt`, `log`), `arg` or unknown.
+                        mark(&mut side, &dependence);
+                        unknown
+                    }
+                };
+                (o, value, dependence)
+            }
+            I::Assign(o, value) => (o, read(value, current), deps(&[*value], &depends)),
+            I::Join(o, condition, yes, no) => {
+                let (y, n) = (read(yes, current), read(no, current));
+                match read(condition, current).truth() {
+                    Some(true) => (o, y, deps(&[*yes], &depends)),
+                    Some(false) => (o, n, deps(&[*no], &depends)),
+                    None => {
+                        let dependence = deps(&[*condition, *yes, *no], &depends);
+                        mark(&mut side, &deps(&[*condition], &depends));
+                        (o, y.join(n), dependence)
+                    }
+                }
+            }
+            I::IfElse(..) | I::Goto(_) | I::Label(_) => unreachable!("handled above"),
+        };
+        let Some(k) = index(destination) else {
+            return Err(RusticolError::serialization(
+                "a Symbolica instruction writes outside its temporaries and outputs",
+            ));
+        };
+        let current = state.as_mut().expect("reachable");
+        current[k] = value;
+        for (d, e) in depends[k].iter_mut().zip(&dependence) {
+            *d |= e;
+        }
+    }
+    Ok((0..inputs)
+        .filter(|&i| side[i / 64] & (1 << (i % 64)) != 0)
+        .collect())
+}
+
+/// The sign of a binary64 part ([`real_axis_side_inputs`]): exactly zero
+/// (either signed zero), positive, negative, or unknown.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sign {
+    Zero,
+    Pos,
+    Neg,
+    Any,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl Sign {
+    fn of(x: f64) -> Self {
+        if x == 0.0 {
+            Self::Zero
+        } else if x > 0.0 {
+            Self::Pos
+        } else if x < 0.0 {
+            Self::Neg
+        } else {
+            Self::Any
+        }
+    }
+
+    fn neg(self) -> Self {
+        match self {
+            Self::Pos => Self::Neg,
+            Self::Neg => Self::Pos,
+            other => other,
+        }
+    }
+
+    fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Zero, x) | (x, Self::Zero) => x,
+            (a, b) if a == b => a,
+            _ => Self::Any,
+        }
+    }
+
+    fn mul(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Zero, _) | (_, Self::Zero) => Self::Zero,
+            (Self::Any, _) | (_, Self::Any) => Self::Any,
+            (a, b) if a == b => Self::Pos,
+            _ => Self::Neg,
+        }
+    }
+
+    fn join(self, other: Self) -> Self {
+        if self == other { self } else { Self::Any }
+    }
+
+    fn known_nonzero(self) -> bool {
+        matches!(self, Self::Pos | Self::Neg)
+    }
+
+    /// `self < other` (`or_equal`: `<=`) when the signs decide it.
+    fn less(self, other: Self, or_equal: bool) -> Option<bool> {
+        let rank = |s: Self| match s {
+            Self::Neg => Some(0),
+            Self::Zero => Some(1),
+            Self::Pos => Some(2),
+            Self::Any => None,
+        };
+        let (a, b) = (rank(self)?, rank(other)?);
+        if a != b {
+            Some(a < b)
+        } else if a == 1 {
+            // Both exactly zero.
+            Some(or_equal)
+        } else {
+            None
+        }
+    }
+}
+
+/// The signs of a complex binary64 value ([`real_axis_side_inputs`]).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Signs {
+    re: Sign,
+    im: Sign,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl Signs {
+    const UNKNOWN: Self = Self {
+        re: Sign::Any,
+        im: Sign::Any,
+    };
+    const ZERO: Self = Self {
+        re: Sign::Zero,
+        im: Sign::Zero,
+    };
+    const ONE: Self = Self {
+        re: Sign::Pos,
+        im: Sign::Zero,
+    };
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            re: self.re.add(other.re),
+            im: self.im.add(other.im),
+        }
+    }
+
+    fn mul(self, other: Self) -> Self {
+        Self {
+            re: self.re.mul(other.re).add(self.im.mul(other.im).neg()),
+            im: self.re.mul(other.im).add(self.im.mul(other.re)),
+        }
+    }
+
+    fn join(self, other: Self) -> Self {
+        Self {
+            re: self.re.join(other.re),
+            im: self.im.join(other.im),
+        }
+    }
+
+    /// Nonzero (`Some(true)`), zero (`Some(false)`) or undecided.
+    fn truth(self) -> Option<bool> {
+        if self.re.known_nonzero() || self.im.known_nonzero() {
+            Some(true)
+        } else if self.re == Sign::Zero && self.im == Sign::Zero {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
+    /// `self == other` when the signs decide it.
+    fn equal(self, other: Self) -> Option<bool> {
+        let differ = |a: Sign, b: Sign| a != Sign::Any && b != Sign::Any && a != b;
+        if differ(self.re, other.re) || differ(self.im, other.im) {
+            Some(false)
+        } else if self == Self::ZERO && other == Self::ZERO {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// Off the negative real axis and away from zero, the cut of `log`,
+    /// `sqrt` and a power with a slot exponent: a known nonzero imaginary
+    /// part, or a zero one with a positive real part.
+    fn off_cut(self) -> bool {
+        self.im.known_nonzero() || (self.im == Sign::Zero && self.re == Sign::Pos)
+    }
+
+    /// The sign of |self|.
+    fn magnitude(self) -> Sign {
+        if self.re.known_nonzero() || self.im.known_nonzero() {
+            Sign::Pos
+        } else if self == Self::ZERO {
+            Sign::Zero
+        } else {
+            Sign::Any
+        }
+    }
+
+    /// `self^n`, an integer power (a negative one of a value that may be
+    /// zero is unknown).
+    fn powi(self, n: i64) -> Self {
+        let base = if n < 0 {
+            if self.truth() != Some(true) {
+                return Self::UNKNOWN;
+            }
+            // 1 / (a + ib) = (a - ib) / (a^2 + b^2).
+            Self {
+                re: self.re,
+                im: self.im.neg(),
+            }
+        } else {
+            self
+        };
+        let (mut result, mut square, mut k) = (Self::ONE, base, n.unsigned_abs());
+        while k > 0 {
+            if k & 1 == 1 {
+                result = result.mul(square);
+            }
+            square = square.mul(square);
+            k >>= 1;
+        }
+        result
+    }
+}
+
 /// Symbolica's instruction export with every sub-evaluator call inlined.
 ///
 /// A call `dst = f(args)` of a sub-evaluator `f` becomes `f`'s body with its

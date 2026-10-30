@@ -1336,6 +1336,16 @@ fn compile_v2_plane<'py>(
     }
 }
 
+/// Generation: the inputs of a saved parameter program whose change can move
+/// a branch side of its binary64 evaluation, from the real input row `point`
+/// (`rusticol_core::loop_v2::trees::parameter_side_inputs`; the tree
+/// program records them, `native_trees._parameter_program`).
+#[pyfunction]
+fn v2_parameter_side_inputs(py: Python<'_>, state: &[u8], point: Vec<f64>) -> PyResult<Vec<usize>> {
+    py.detach(|| rusticol_core::loop_v2::trees::parameter_side_inputs(state, &point))
+        .map_err(error)
+}
+
 /// Whether pyAmpliCol's Symbolica library key unlocks the native code of
 /// this process (crate `pyamplicol`).
 #[pyfunction]
@@ -1413,6 +1423,7 @@ fn evaluate_v2_artifact(
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
+    module.add_function(wrap_pyfunction!(v2_parameter_side_inputs, module)?)?;
     module.add(
         "PlaneMismatchError",
         module.py().get_type::<PlaneMismatchError>(),

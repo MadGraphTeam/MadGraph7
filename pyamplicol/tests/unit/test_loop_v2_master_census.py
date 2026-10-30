@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import replace
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
@@ -44,6 +44,11 @@ from tools.loop_benchmark.master_census import (
     bubble_loss,
     census,
     slice_census,
+)
+from tools.loop_benchmark.master_census_rows import (
+    GMU_PARAMETERS,
+    _difference,
+    _values,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -98,32 +103,6 @@ def test_the_census_reads_each_defect_signature():
 def _real(value) -> Decimal:
     part = value.real if hasattr(value, "real") else value
     return Decimal(repr(part)) if isinstance(part, float) else Decimal(str(part))
-
-
-def _values(result) -> dict[str, list[Decimal]]:
-    """The Born and the virtual's Laurent coefficients per sector."""
-
-    values = {"born": [sum(_real(v) for v in result.born.values())]}
-    for sector, laurent in result.components["virtual"].items():
-        values[str(sorted(dict(sector).items()))] = [
-            _real(x) for x in laurent.coefficients
-        ]
-    return values
-
-
-def _difference(mine, theirs, coupling: float) -> float:
-    """The largest coefficient difference in the campaign metric: relative,
-    against max(|value|, |Born| coupling / 2 pi)."""
-
-    with localcontext(prec=90):
-        flux = abs(theirs["born"][0]) * Decimal(coupling) / Decimal(2 * math.pi)
-        return float(
-            max(
-                abs(a - b) / max(abs(b), flux)
-                for key, values in theirs.items()
-                for a, b in zip(mine[key], values, strict=True)
-            )
-        )
 
 
 def _carriers(executor, points, scales, parameters, coupling: float) -> dict:
@@ -218,16 +197,6 @@ def test_cm10_masters_avoid_the_known_complex_mass_defects(
     assert agreement["ap40"] <= 1e-30, agreement
     assert agreement["dd"] <= 1e-20, agreement
     assert agreement["double"] <= 1e-8, agreement
-
-
-GMU_PARAMETERS = {
-    "Gf": "0.0000116639",
-    "aS": "0.118",
-    "MT": "173.3",
-    "MZ": "91.188",
-    "MW": "80.419",
-    "MH": "125",
-}
 
 
 def _madloop_rows(block) -> list[dict[str, list[Decimal]]]:
@@ -336,27 +305,29 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
 
 
 @pytest.mark.loop_nightly
-def test_cm05_parameter_plane_nan_in_simd_is_refused(
-    loop_gmu_ufo, loop_native, tmp_path
-):
+def test_cm05_native_inputs_equal_madloop_cms(loop_gmu_ufo, loop_native, tmp_path):
     """CM05 (u u~ > e- e+ g [QCD QED] on the G_mu UFO under the complex-mass
-    scheme, ``required/msm/uux_emepg_cms.json``): not a master defect. One
-    output of its binary64 parameter program is NaN in SymJIT's SIMD code (a
-    block of equal lanes, as a batch runs it) and right in its scalar code
-    and the exact evaluator; the plane check evaluated the request's point in
-    a block with the off-axis probes, which SymJIT replays in scalar code, so
-    native inputs gave a NaN QCD^4 QED^4 finite part at every point
-    (``uv_local``; double-double, AP and Python inputs were right). The check
-    now runs the real point in a block of its own: the native export refuses
-    with ``plane-mismatch`` (typed), Python inputs evaluate. Generation about
-    3 min, 6 GB."""
+    scheme, ``required/msm/uux_emepg_cms.json``) with native point inputs:
+    every squared-order sector and their sum equal MadLoop CMS at the four
+    points in binary64 to 1e-8, and the pole split holds (``_check_cms_split``).
+    Not a master defect: one output of its binary64 parameter program was NaN
+    in SymJIT 2.27's optimised SIMD code (a block of equal lanes, as a batch
+    runs it), right in its scalar code, at optimisation level 0 and in the
+    exact evaluator; the plane check now runs every probe row in a block of
+    its own and, on a disagreement, compiles the program again at level 0
+    (``loop_v2::trees::compile_plane_application_checked``; upstream report
+    ``upstream/symjit-simd-compact-nan``). Before, the finite part was NaN at
+    every point (``uv_local``). Generation about 3 min, 6 GB."""
 
-    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
     from pyamplicol.loops.v2.plan_export import NativeExecutor
-    from tests.unit.test_loop_v2_cms import _gmu_cms_slice
+    from tests.unit.test_loop_v2_cms import (
+        _check_cms_split,
+        _check_sectors,
+        _gmu_cms_slice,
+    )
 
     reference = json.loads((FIXTURES / "required/msm/uux_emepg_cms.json").read_text())
-    _model, _scheme, slice_ = _gmu_cms_slice(
+    model, _scheme, slice_ = _gmu_cms_slice(
         loop_gmu_ufo,
         loop_native,
         tmp_path,
@@ -366,5 +337,13 @@ def test_cm05_parameter_plane_nan_in_simd_is_refused(
         restriction=reference["restriction"],
         fixed=reference["fixed_parameters"],
     )
-    with pytest.raises(NativeExportUnsupported, match="plane-mismatch"):
-        NativeExecutor(slice_, inputs="native")
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    _check_sectors(
+        slice_,
+        reference,
+        model,
+        (("double", 1e-8),),
+        range(len(reference["points"])),
+        executor=native,
+    )
+    _check_cms_split(slice_, reference, model, lanes=("native",))

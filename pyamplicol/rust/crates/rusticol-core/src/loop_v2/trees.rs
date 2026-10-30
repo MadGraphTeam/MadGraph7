@@ -80,6 +80,36 @@ use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 /// slot table and per-slot reachability masks, WP3.1 I5).
 pub const TREE_SCHEMA: u32 = 4;
 
+/// A saved exact evaluator with its coefficients cast to binary64, as
+/// [`TreeProgram::runtime`] casts them (the evaluator binary64 would run
+/// without a plane application). Call under the library key.
+#[cfg(feature = "python-generation-bridge")]
+fn binary64_evaluator(
+    saved: &[u8],
+) -> RusticolResult<symbolica::evaluate::ExpressionEvaluator<Complex<f64>>> {
+    let zero = 0.0_f64;
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
+    Ok(
+        crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
+            &|r| complex(&r.re, &r.im),
+            symbolica::domains::float::FloatLike::get_precision(&zero),
+        ),
+    )
+}
+
+/// Generation: the inputs of a saved parameter program whose change can
+/// move a branch side of its binary64 evaluation, from the real input row
+/// `point` (the plane check's real point, the request's parameter values):
+/// `engine::real_axis_side_inputs`. Recorded in the tree program
+/// (`ParameterFile::side_inputs`); the run-time side check
+/// ([`TreeProgram::bind`]) compares those inputs' values and the other
+/// inputs' signs with the certified ones.
+#[cfg(feature = "python-generation-bridge")]
+pub fn parameter_side_inputs(saved: &[u8], point: &[f64]) -> RusticolResult<Vec<usize>> {
+    let _unlock = crate::licence::unlock();
+    crate::engine::real_axis_side_inputs(&binary64_evaluator(saved)?, point)
+}
+
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), with its
 /// input and output counts. The evaluator is the one binary64 would run
@@ -88,10 +118,15 @@ pub const TREE_SCHEMA: u32 = 4;
 /// storage-v4 IR (`evaluator::symjit_plane`). `real_points` are rows of real
 /// input values at which the program runs (the parameter program: the
 /// request's parameter values), the plane check's real-axis rows
-/// ([`verify_plane`]). The plane check's refusal is a value:
-/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
-/// evaluator at the check's probes, or when an output's real-axis value
-/// cannot be certified without a real point (the generation refuses the
+/// ([`verify_plane`]). An application that disagrees with its evaluator at a
+/// probe row is compiled again at optimisation level 0 and kept if that one
+/// passes the check: SymJIT 2.27's optimised SIMD code gave NaN where its
+/// scalar code and level 0 are right (CM05's parameter program, M-SM
+/// MS-MASTERS; upstream report `upstream/symjit-simd-compact-nan`). The plane
+/// check's refusal is a value: `Ok(Err(mismatch))` when the plane
+/// application disagrees with its exact evaluator at the check's probes at
+/// both levels (the first level's mismatch), or when an output's real-axis
+/// value cannot be certified without a real point (the generation refuses the
 /// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
 /// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
@@ -102,16 +137,13 @@ pub fn compile_plane_application_checked(
     real_points: &[Vec<f64>],
 ) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
-    let zero = 0.0_f64;
-    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
-    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
-        &|r| complex(&r.re, &r.im),
-        symbolica::domains::float::FloatLike::get_precision(&zero),
-    );
-    let (plane, inputs, outputs) =
+    let evaluator = binary64_evaluator(saved)?;
+    let compile = |level: u8| {
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
-            &evaluator, opt_level, compress,
-        )?;
+            &evaluator, level, compress,
+        )
+    };
+    let (plane, inputs, outputs) = compile(opt_level)?;
     if let Some(point) = real_points.iter().find(|point| point.len() != inputs) {
         return Err(invalid(format!(
             "plane check: a real point of {} values for a program of {inputs} inputs",
@@ -129,17 +161,18 @@ pub fn compile_plane_application_checked(
             probe: PlaneProbe::NoRealPoint,
         }));
     }
-    Ok(
-        match verify_plane(
-            &plane,
-            evaluator.into_batch_evaluator(),
-            (inputs, outputs),
-            real_points,
-        )? {
-            Some(mismatch) => Err(mismatch),
-            None => Ok((plane, inputs, outputs)),
-        },
-    )
+    let mut batch = evaluator.clone().into_batch_evaluator();
+    let shape = (inputs, outputs);
+    let Some(mismatch) = verify_plane(&plane, &mut batch, shape, real_points)? else {
+        return Ok(Ok((plane, inputs, outputs)));
+    };
+    if opt_level > 0 && matches!(mismatch.probe, PlaneProbe::Row { .. }) {
+        let (level0, ..) = compile(0)?;
+        if verify_plane(&level0, &mut batch, shape, real_points)?.is_none() {
+            return Ok(Ok((level0, inputs, outputs)));
+        }
+    }
+    Ok(Err(mismatch))
 }
 
 /// What the plane check refuses ([`compile_plane_application_checked`]): the
@@ -214,10 +247,15 @@ impl std::fmt::Display for PlaneMismatch {
 /// x > 0: -i sqrt(x) against +i sqrt(x)), so a real probe placed on a cut
 /// refuses a correct translation; the former real probes, assigned by input
 /// index, made the verdict depend on the parameters' declaration order.
+/// The rows run together, then each in a call of its own, as a batch of
+/// equal rows runs them: a SIMD block of equal lanes (the padding copies
+/// the last row) runs SymJIT's SIMD code, which a block whose lanes take
+/// different branches replays in scalar code. CM05's parameter program gave
+/// NaN in SIMD only (M-SM MS-MASTERS, DESIGN risk 13).
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
-    mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
+    evaluator: &mut BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
     real_points: &[Vec<f64>],
 ) -> RusticolResult<Option<PlaneMismatch>> {
@@ -242,24 +280,27 @@ fn verify_plane(
         }
         mismatch
     });
-    if mixed.is_some() || real_points.is_empty() {
+    if mixed.is_some() {
         return Ok(mixed);
     }
-    // The real points again in a call of their own, as a batch runs them: a
-    // SIMD block of equal lanes (the padding copies the last row) runs
-    // SymJIT's SIMD code, which the block above, whose lanes take other
-    // branches, replays in scalar code. CM05's parameter program gave NaN
-    // in SIMD only (M-SM MS-MASTERS, DESIGN risk 13).
-    let real = &values[OFF_AXIS * inputs..];
-    let got = evaluate_plane_application(plane, shape, real, real_points.len())?;
-    Ok(
-        first_mismatch(&expected[OFF_AXIS * outputs..], &got, outputs).map(|mut mismatch| {
-            if let PlaneProbe::Row { real_axis, .. } = &mut mismatch.probe {
-                *real_axis = true;
+    for row in 0..rows {
+        let got = evaluate_plane_application(plane, shape, &values[row * inputs..][..inputs], 1)?;
+        if let Some(mut mismatch) =
+            first_mismatch(&expected[row * outputs..][..outputs], &got, outputs)
+        {
+            if let PlaneProbe::Row {
+                row: probe,
+                real_axis,
+                ..
+            } = &mut mismatch.probe
+            {
+                *real_axis = row >= OFF_AXIS;
+                *probe = if row >= OFF_AXIS { row - OFF_AXIS } else { row };
             }
-            mismatch
-        }),
-    )
+            return Ok(Some(mismatch));
+        }
+    }
+    Ok(None)
 }
 
 /// `rows` rows of `inputs` complex probe values off the real axis: real parts
@@ -536,6 +577,14 @@ struct ParameterFile {
     /// the analysis: its batches are then checked per point.
     #[serde(default)]
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// The external parameters whose change can move a branch side of the
+    /// binary64 parameter program (generation's [`parameter_side_inputs`]
+    /// at the plane check's real point, increasing): `TreeProgram::bind`'s
+    /// run-time side check compares their values, and the other
+    /// parameters' signs, with the certified ones. Absent in an artifact
+    /// written before the record: every value but the scale's.
+    #[serde(default)]
+    side_inputs: Option<Vec<usize>>,
     /// The on-shell external photons of an electroweak request (WP3.2
     /// EWI-6b, the alpha(0) convention): the output index of
     /// alpha(0) / alpha (real and positive, also in `positive`) and the
@@ -829,11 +878,52 @@ struct Parameters {
     plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
     scale_outputs: Option<Vec<(usize, String)>>,
+    /// `ParameterFile::side_inputs`.
+    side_inputs: Option<Vec<usize>>,
     /// `ParameterFile::photons`.
     photons: Option<(usize, Vec<usize>)>,
 }
 
 impl Parameters {
+    /// What `bind`'s run-time side check compares of a point's external
+    /// parameter values `values` at the scale `scale` (mu_R^2, replacing the
+    /// scale parameter's entry): with the generation's record of the inputs
+    /// that can move a branch side (`ParameterFile::side_inputs`), their
+    /// values and the signs (-1, 0, 1) of the others (the scale's: 1), which
+    /// decide every other side (`engine::real_axis_side_inputs`); in an
+    /// artifact written before the record, every value but the scale's
+    /// (zeroed: it entered through logarithms of positive ratios in every
+    /// model then shipped).
+    fn key(&self, values: &[Rational], scale: Option<&Rational>) -> Vec<Rational> {
+        let program = self;
+        let sign = |value: &Rational| {
+            Rational::from(if value.is_zero() {
+                0
+            } else if value.is_negative() {
+                -1
+            } else {
+                1
+            })
+        };
+        values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                let at_scale = program.scale == Some(index);
+                match &program.side_inputs {
+                    None if at_scale => Rational::from(0),
+                    None => value.clone(),
+                    Some(side) if side.binary_search(&index).is_ok() => match scale {
+                        Some(scale) if at_scale => scale.clone(),
+                        _ => value.clone(),
+                    },
+                    Some(_) if at_scale => Rational::from(1),
+                    Some(_) => sign(value),
+                }
+            })
+            .collect()
+    }
+
     /// `TreeProgram::scale_dependent_shared`.
     fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
         let program = self;
@@ -1117,12 +1207,12 @@ pub struct TreeRuntime<T> {
 
 /// The run-time side check of a binary64 parameter program's plane
 /// application (`TreeProgram::bind`, M-SM MS-MASTERS): its exact evaluator,
-/// built on first use, the latest external parameter values (the scale's
-/// entry zeroed) checked, with whether the plane agreed there (a few: a
-/// split pole selection alternates two sets, MS-POLES), and the values
-/// the generation's plane check certified
-/// ([`TreeProgram::certify_parameters`]), where a batch takes the plane
-/// without the check (so a binary64 evaluation at them touches no Symbolica
+/// built on first use, the latest parameter keys checked
+/// (`Parameters::key`), with whether the plane agreed there (a
+/// few: a split pole selection alternates two sets, MS-POLES), and the key
+/// of the values the generation's plane check certified
+/// ([`TreeProgram::certify_parameters`]), where a point takes the plane
+/// without the check (so a binary64 evaluation there touches no Symbolica
 /// state, DESIGN §3.7).
 pub struct ParameterSide<T> {
     certified: Option<Vec<Rational>>,
@@ -1137,47 +1227,57 @@ impl<T: Carrier> ParameterSide<T>
 where
     Complex<T>: Real + EvaluationDomain,
 {
-    /// The plane application's `outputs` (row-major, `rows` rows of
-    /// `width` inputs and `per_row` outputs at `inputs`) at the external
-    /// parameter values `key`: kept at the certified values; elsewhere
-    /// checked against the exact evaluator (`build` on first use) on the
-    /// first row when `key` is not among the latest checked values, and
-    /// replaced by the exact evaluator's rows when the plane disagreed there.
-    /// Returns whether the plane's rows were kept.
+    /// The plane application's `outputs` (row-major: rows of `width`
+    /// inputs and `per_row` outputs at `inputs`) for `groups`, the batch's
+    /// distinct parameter keys with their rows: kept at the certified key;
+    /// at another, checked against the exact evaluator (`build` on first
+    /// use) on the key's first row unless the key is among the latest
+    /// checked, and the key's rows replaced by the exact evaluator's when the
+    /// plane disagreed there.
     fn settle(
         &mut self,
-        key: Vec<Rational>,
+        groups: Vec<(Vec<Rational>, Vec<usize>)>,
         inputs: &[Complex<T>],
         outputs: &mut [Complex<T>],
-        (rows, width, per_row): (usize, usize, usize),
-        build: impl FnOnce() -> RusticolResult<Kernel<T>>,
-    ) -> RusticolResult<bool> {
-        if self.certified.as_ref() == Some(&key) {
-            return Ok(true);
-        }
-        let plane = match self.checked.iter().find(|(checked, _)| *checked == key) {
-            Some((_, plane)) => *plane,
-            None => {
-                if self.exact.is_none() {
-                    self.exact = Some(build()?);
-                }
-                let exact = self.exact.as_mut().expect("built above");
-                let plane = plane_side_agrees(exact, &inputs[..width], &outputs[..per_row])?;
-                if self.checked.len() == CHECKED_VALUES {
-                    self.checked.remove(0);
-                }
-                self.checked.push((key, plane));
-                plane
+        (width, per_row): (usize, usize),
+        build: impl Fn() -> RusticolResult<Kernel<T>>,
+    ) -> RusticolResult<()> {
+        let row_in = |row: usize| row * width..(row + 1) * width;
+        let row_out = |row: usize| row * per_row..(row + 1) * per_row;
+        for (key, rows) in groups {
+            if self.certified.as_ref() == Some(&key) {
+                continue;
             }
-        };
-        if !plane {
-            let exact = self.exact.as_mut().expect("built by the check");
-            let _unlock = crate::licence::unlock();
-            exact
-                .evaluate_batch(inputs, outputs, rows)
-                .map_err(|e| invalid(format!("parameter program: {e}")))?;
+            let plane = match self.checked.iter().find(|(checked, _)| *checked == key) {
+                Some((_, plane)) => *plane,
+                None => {
+                    if self.exact.is_none() {
+                        self.exact = Some(build()?);
+                    }
+                    let exact = self.exact.as_mut().expect("built above");
+                    let plane = plane_side_agrees(
+                        exact,
+                        &inputs[row_in(rows[0])],
+                        &outputs[row_out(rows[0])],
+                    )?;
+                    if self.checked.len() == CHECKED_VALUES {
+                        self.checked.remove(0);
+                    }
+                    self.checked.push((key, plane));
+                    plane
+                }
+            };
+            if !plane {
+                let exact = self.exact.as_mut().expect("built by the check");
+                let _unlock = crate::licence::unlock();
+                for row in rows {
+                    exact
+                        .evaluate_batch(&inputs[row_in(row)], &mut outputs[row_out(row)], 1)
+                        .map_err(|e| invalid(format!("parameter program: {e}")))?;
+                }
+            }
         }
-        Ok(plane)
+        Ok(())
     }
 }
 
@@ -1666,6 +1766,9 @@ fn load_parameters(
             })
             && file.photons.as_ref().is_none_or(|(o, legs)| {
                 output(*o) && file.positive.contains(o) && !legs.is_empty()
+            })
+            && file.side_inputs.as_ref().is_none_or(|side| {
+                side.windows(2).all(|pair| pair[0] < pair[1]) && side.iter().all(|&i| i < inputs)
             }),
         "parameter program index",
     )?;
@@ -1710,6 +1813,7 @@ fn load_parameters(
         plan_masses,
         scale: file.scale,
         scale_outputs: file.scale_outputs,
+        side_inputs: file.side_inputs,
         photons: file.photons,
     })
 }
@@ -2285,8 +2389,9 @@ impl TreeProgram {
     /// `parameter_names` order) the generation's plane check certified the
     /// binary64 parameter program at: each parameter's value fixed at
     /// generation, else its default (`native_trees._request_points`; the
-    /// scale's entry is ignored). A batch at them takes the plane without
-    /// `bind`'s run-time side check.
+    /// scale's entry is its value, the point's sqrt(mu_R^2)). A batch point
+    /// whose key (`Parameters::key`) equals theirs takes the plane
+    /// without `bind`'s run-time side check.
     pub fn certify_parameters<T>(
         &self,
         runtime: &mut TreeRuntime<T>,
@@ -2296,24 +2401,12 @@ impl TreeProgram {
             values.len() == self.parameters.names.len(),
             "external parameter count",
         )?;
-        runtime.parameter_side.certified = Some(self.parameter_key(values));
+        let scale = self
+            .parameters
+            .scale
+            .map(|index| &values[index] * &values[index]);
+        runtime.parameter_side.certified = Some(self.parameters.key(values, scale.as_ref()));
         Ok(())
-    }
-
-    /// External parameter values with the scale's entry zeroed: what
-    /// `bind`'s run-time side check compares.
-    fn parameter_key(&self, values: &[Rational]) -> Vec<Rational> {
-        values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                if self.parameters.scale == Some(index) {
-                    Rational::from(0)
-                } else {
-                    value.clone()
-                }
-            })
-            .collect()
     }
 
     /// The renormalisation scale's external parameter, if the program reads
@@ -2426,18 +2519,38 @@ impl TreeProgram {
         // (CM01 with its widths set to zero at run time on masses generated
         // complex took the other side of the electroweak UV counterterm
         // couplings' cuts: finite part 3.9e-5 against MadLoop's 1.8e-3,
-        // M-SM MS-MASTERS). So each new set of parameter values other than
-        // the certified ones (the scale aside: it enters through logarithms
-        // of positive ratios) is checked once on the batch's first point
-        // against the exact evaluator; on a disagreement the batch, and later
-        // ones at these values, evaluate the parameter program exactly, the
-        // side DD, AP and MadLoop take.
+        // M-SM MS-MASTERS). The sides are decided by the values of the
+        // inputs generation found able to move one (`side_inputs`) and the
+        // signs of the others (`Parameters::key`): each new key other than the
+        // certified one is checked once, on its first point, against the
+        // exact evaluator; on a disagreement its points, and later ones at
+        // that key, evaluate the parameter program exactly, the side DD, AP
+        // and MadLoop take. A change of a parameter that moves no side (aS,
+        // and the scale, in the shipped models) keeps the certified key.
         if matches!(runtime.parameters, Kernel::Plane(_)) {
+            let mut groups: Vec<(Vec<Rational>, Vec<usize>)> = Vec::new();
+            let keyed = program.scale.is_some_and(|index| {
+                program
+                    .side_inputs
+                    .as_ref()
+                    .is_some_and(|side| side.binary_search(&index).is_ok())
+            });
+            if keyed {
+                for (row, scale) in scales.iter().enumerate() {
+                    let key = self.parameters.key(values, Some(scale));
+                    match groups.iter_mut().find(|(known, _)| *known == key) {
+                        Some((_, rows)) => rows.push(row),
+                        None => groups.push((key, vec![row])),
+                    }
+                }
+            } else {
+                groups.push((self.parameters.key(values, None), (0..points).collect()));
+            }
             runtime.parameter_side.settle(
-                self.parameter_key(values),
+                groups,
                 &inputs,
                 &mut outputs,
-                (points, width, program.outputs),
+                (width, program.outputs),
                 || exact_kernel(&program.saved, zero),
             )?;
         }
