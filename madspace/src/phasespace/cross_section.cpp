@@ -115,9 +115,7 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
 
     std::array<Value, 2> x1x2{1., 1.};
     if (_decay) {
-        // No beams: nothing to extract momentum fractions from. The declared
-        // argument list still carries x1/x2 when input_momentum_fraction is on,
-        // so consume them and ignore their (unit) values.
+        // skip the declared x1/x2 arguments; the momentum fractions stay 1
         if (_input_momentum_fraction) {
             arg_index += 2;
         }
@@ -167,11 +165,7 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
     std::size_t me_index = search - _matrix_element.outputs().begin();
     Value matrix_element = me_result.at(me_index);
     if (_decay) {
-        // Differential decay rate: dGamma = |M|^2 dPhi_n / (2 M), in GeV. The
-        // flux is a compile-time constant here (M is fixed by the decaying
-        // particle), so this is a single multiply and needs no dedicated
-        // instruction. Deliberately no GeV^-2 -> pb conversion: a width is not
-        // a cross section.
+        // dGamma = |M|^2 dPhi_n / (2 M), in GeV, with no GeV^-2 -> pb conversion
         me_result.at(me_index) =
             fb.mul(me_result.at(me_index), 1. / (2. * _e_cm));
     } else {

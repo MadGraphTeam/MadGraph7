@@ -76,8 +76,9 @@ constexpr int flavor_class_first_absolute = 3;
 // already been mapped through by the time it gets here.
 constexpr int merged_quark_representative = 1;
 
-// Color representation of a line, as the signed color of the model (1 for a
-// singlet, +-3 for a (anti)triplet, 8 for an octet, +-6 for a sextet). The
+// Color representation of a line, as the absolute value of the signed color of
+// the model (1 for a singlet, 3 for a (anti)triplet, 8 for an octet, 6 for a
+// sextet). The
 // merged-flavor placeholders that survive in propagator pdg ids stand for the
 // particles clean_pids() maps them to in launch.py: 81 is a quark, 82 an
 // electron and 83 a neutrino.
@@ -816,18 +817,9 @@ MLMClustering::MLMClustering(
                 continue;
             }
 
-            // for the t-channel part, one of the initial state particles has to be
-            // involved in the clustering. find_t_vertices collects the t-channel
-            // propagators on the way back from beam 1 (index 0 of the incoming
-            // legs), so t_propagator_masses/pdg_ids start at the propagator next
-            // to that beam. The k-th mask accumulated from beam 1 (mask 1) is
-            // therefore propagator k, and the k-th from beam 2 (mask 2), walking
-            // the children in reverse, is propagator t_count - 1 - k. Getting
-            // this backwards swaps the flavour and mass of the two ends of every
-            // chain with two or more t-channel propagators: in g g > t t~ g the
-            // gluon line left after the beam emits the jet was read as the top,
-            // so the beam's parton line stopped at the jet and mu_R picked up
-            // the jet's own scale.
+            // t-channel lines: find_t_vertices collects the propagators from beam 1
+            // on, so the k-th mask accumulated from beam 1 (mask 1) is propagator
+            // k, and the k-th from beam 2 (mask 2) is propagator t_count - 1 - k.
             auto& t_masses = topo.t_propagator_masses();
             auto& t_pdg_ids = topo.t_propagator_pdg_ids();
             std::size_t t_count = t_masses.size();

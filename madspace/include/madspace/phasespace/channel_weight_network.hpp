@@ -8,7 +8,7 @@ namespace madspace {
 /**
  * Turns event momenta into invariant features for @ref ChannelWeightNetwork.
  *
- * Computes @f$(p_\mathrm{T}, \eta, \phi)@f$ for each particle together with the
+ * Computes @f$(p_\mathrm{T}, \eta, \phi)@f$ for each final-state particle with the
  * momentum fractions, a representation the channel-weight network can consume
  * directly [1].
  *
@@ -75,8 +75,8 @@ public:
      * @param layers                  Number of @ref MLP layers.
      * @param activation              @ref MLP activation.
      * @param prefix                  Prefix for the trainable global names.
-     * @param include_preprocessing   If true, apply @ref MomentumPreprocessing
-     *                                to the input first.
+     * @param include_preprocessing   Currently unused: the network always takes
+     *                                the preprocessed features as `input`.
      */
     ChannelWeightNetwork(
         std::size_t channel_count,

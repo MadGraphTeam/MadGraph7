@@ -37,15 +37,8 @@ DataType str_to_dtype(std::string dtype) {
     }
 }
 
-// The header-length field's width depends on the npy format version: 1.0
-// uses 2 bytes (uint16, so the header itself must fit in 65535 bytes), 2.0/3.0
-// use 4 bytes (uint32) -- write_event_header() switches to 2.0 whenever the
-// header would otherwise be too long to describe in 2 bytes (eg several "add
-// process" channels of different final-state multiplicity combined into one
-// binary EventFile can easily need a header longer than 65535 bytes' worth of
-// field descriptors). Only ever reading the 2-byte case silently truncated the
-// *declared* length for any such oversized header, cutting a field name off
-// mid-string for every reader (this one and numpy alike).
+// npy format 1.0 stores the header length in 2 bytes, 2.0/3.0 in 4 bytes;
+// write_event_header() uses 2.0 when the header exceeds 65535 bytes.
 constexpr std::size_t npy_preamble_size = 10;
 constexpr std::size_t npy_wide_preamble_size = 12;
 
@@ -261,17 +254,7 @@ std::tuple<std::size_t, std::size_t> write_event_header(
     std::size_t header_size = 0
 ) {
     using namespace std::string_literals;
-    // Built into a string first (rather than written straight to
-    // file_stream, as this function used to) so its true length is known
-    // before deciding whether npy format 1.0's 2-byte header-length field
-    // (max 65535) is wide enough, or format 2.0's 4-byte field is needed
-    // instead -- see parse_header()'s matching version-selection logic for
-    // why: silently wrapping an oversized length into 16 bits (the old
-    // behavior here) corrupts the file for every reader, this project's own
-    // and numpy's alike. A large particle_count (eg several "add process"
-    // channels of different final-state multiplicity combined into one
-    // binary EventFile) easily needs a header longer than 65535 bytes'
-    // worth of field descriptors.
+    // Build the content first to know whether format 1.0 or 2.0 is needed.
     std::string content = "{'descr':["s;
     auto field_descr = full_descr(particle_count, layout);
     for (auto [field_name, field_type] : field_descr) {
@@ -279,10 +262,8 @@ std::tuple<std::size_t, std::size_t> write_event_header(
     }
     content += "],'fortran_order':False,'shape':(";
 
-    // prefix_len: magic (6) + major/minor version (2) + header-length field
-    // (2 for v1.0, 4 for v2.0) -- header_size is always the *absolute* file
-    // offset where the header ends and event data begins (matching
-    // EventFile's own _header_size-based seek math), regardless of format.
+    // prefix_len: magic (6) + version (2) + length field (2 or 4). header_size is
+    // the absolute file offset where the event data begins.
     bool wide = false;
     std::size_t prefix_len = 10;
     if (header_size == 0) {

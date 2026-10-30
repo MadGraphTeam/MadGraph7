@@ -20,15 +20,9 @@ Tensor load_tensor(TarReader& tar, const std::string& name);
 /// Append `tensor` as an npy file called `name` to the tar archive `tar`.
 void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
-// Peeks a .npy event file's own field descriptor (its header's "descr"
-// entry) without needing to already know its layout -- returns the field
-// names in declaration order (particle-level fields duplicated per particle
-// slot with a "partN_" prefix, matching full_descr()'s own naming). Used
-// where a file's actual layout has caller-optional fields the reader needs
-// to auto-detect before committing to a DataLayout to open it with (eg
-// LHE event records, which may or may not carry
-// x1/fact_scale1/x2/fact_scale2/partial_weight_product depending on whether
-// [generation] systematics was enabled when the file was written).
+/// Field names, in order, from the "descr" entry of the header of the npy event
+/// file `file`. Particle fields are repeated per particle with a "partN_"
+/// prefix. Allows detecting optional fields before choosing a @ref DataLayout.
 std::vector<std::string> peek_npy_field_names(const std::string& file);
 
 struct FieldLayout {
@@ -229,8 +223,8 @@ public:
     static constexpr int f_bias = 256;
     static constexpr int f_matrix_element = 512;
 
-    // `syst_weight_count` columns of systematic variation weights are appended
-    // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
+    // With f_syst_weights, one column rwgt_<id> is added per entry of
+    // `syst_weight_ids`.
     static std::vector<FieldLayout>
     layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
@@ -504,10 +498,7 @@ public:
     void clear();
     std::size_t particle_count() const { return _particle_count; }
     std::size_t event_count() const { return _event_count; }
-    // The DataLayout this file was actually constructed with -- lets a
-    // reader that only has an already-open EventFile& (not the layout that
-    // was used to open it) build a matching EventBuffer, rather than having
-    // to independently know/recompute the same layout itself.
+    // The DataLayout this file was opened with, for building a matching EventBuffer.
     const DataLayout& layout() const { return _layout; }
     ~EventFile();
 

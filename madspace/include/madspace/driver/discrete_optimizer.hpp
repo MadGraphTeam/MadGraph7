@@ -10,10 +10,10 @@ namespace madspace {
  * Refines the categorical probabilities of a @ref DiscreteSampler or @ref
  * DiscreteFlow from accumulated per-category statistics.
  *
- * The training-time counterpart of @ref DiscreteHistogram — @ref add_data
- * feeds in the per-category weight sums accumulated during a warm-up run, and
- * @ref optimize rewrites every `prob_names` global on every context in
- * `contexts` with the refined distribution.
+ * Counterpart of @ref DiscreteHistogram: @ref add_data feeds in the
+ * per-category weight sums and counts it accumulates, and @ref optimize
+ * rewrites every `prob_names` global on every context in `contexts` with the
+ * refined distribution.
  */
 class DiscreteOptimizer {
 public:

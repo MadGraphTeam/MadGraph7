@@ -6,10 +6,9 @@ state machine of possible clustering histories; the kernel walks that state
 machine for one phase-space point, picks a history, and reads the
 renormalisation / factorisation / per-jet scales off it.
 
-There is no single "right answer" to compare against (see the discussion in the
-branch notes: the resonance handling and the factorisation-scale definition
-differ from what madevent does on purpose), so these tests pin down the
-properties the implementation must have whatever those choices end up being:
+There is no single "right answer" to compare against (the resonance handling and
+the factorisation-scale definition differ from madevent's on purpose), so these
+tests pin down properties the implementation must have:
 
   * the compiled state machine is well formed and reachable,
   * the kernel's outputs are finite, positive and ordered as documented,
@@ -119,13 +118,8 @@ def run(clustering, momenta):
 
 
 def run_all(clustering, momenta):
-    """As run(), plus the trailing xqcut_weight.
-
-    Deliberately stops there: the clustering also returns the per-vertex
-    alpha_s scales and their weight, which these tests are not about, and
-    unpacking everything would break every caller each time an output is
-    added. Use alphas_outputs() for those.
-    """
+    """As run(), plus the xqcut_weight. The alpha_s and pdf outputs that follow
+    are left out; see alphas_outputs() and pdf_outputs()."""
     return tuple(np.asarray(v) for v in clustering(momenta))[:6]
 
 
@@ -150,10 +144,9 @@ PDF_OUTPUTS = [
 
 
 def pdf_outputs(clustering, momenta):
-    """The pdf reweighting outputs, by name: the scale each beam density is to
-    be evaluated at, and one slot per step of the ladder it is walked back up.
-    Named rather than positional because there are eight of them and their
-    order is not something a test should be pinning down."""
+    """The pdf reweighting outputs (the trailing outputs of the clustering), by
+    name: the scale each beam density is to be evaluated at, and one slot per
+    step of the ladder it is walked back up."""
     out = clustering(momenta)
     first = len(out) - len(PDF_OUTPUTS)
     return {
@@ -412,8 +405,8 @@ BEAM_LINE_SCHEMES = {
     "clustering_mean_pdf_ladder": {"clustering_mean_pdf_ladder": True},
 }
 
-# What the beam-line walk hands the pdf reweighting, all of it built from
-# transverse masses and invariants.
+# What the beam-line walk hands the pdf reweighting (built from transverse
+# masses and invariants).
 LADDER_OUTPUTS = ["pdf_scale1", "pdf_scale2", "pdf_rw_x", "pdf_rw_q_num", "pdf_rw_q_den"]
 
 
@@ -434,10 +427,9 @@ def test_beam_line_scales_are_azimuthally_invariant(process, scheme):
 
     Equal measures are common there. With two massless partons left in the
     final state they balance in transverse momentum, so clustering either one
-    into the beam it travels along scores the same. Settled by rounding, a
-    rotation moved mu_F from 832 to 1195 GeV for one ttgg event in 200; the
-    tie now goes the way cluster.f's loop order takes it, so nothing may
-    change, not even which leg a jet scale is booked against.
+    into the beam it travels along scores the same. Ties are broken in the
+    order of cluster.f's loops rather than by rounding, so nothing may change
+    under a rotation, not even which leg a jet scale is booked against.
     """
     _, diagrams, pdg_ids = process
     clustering = make_clustering(
@@ -777,7 +769,7 @@ def collinear_pair_event(hadronic):
 def test_a_nearly_collinear_pair_keeps_its_clustering_scale(hadronic):
     """The clustering scale of two partons 1e-5 apart. Written as in cluster.f,
     cosh(deta) - cos(dphi) (or 1 - cos_theta) is the difference of two numbers
-    within 1e-10 of one, which left about 1e-6 of relative error, enough for
+    within 1e-10 of one, which loses about 1e-6 of relative error, enough for
     scalar and SIMD math to give different scales and histories. The kernel's
     form of the measure has none of that cancellation."""
     jet_radius = 0.4
@@ -879,9 +871,9 @@ def test_single_clustering_scale_matches_the_measures():
 
 def test_the_default_jet_radius_is_madevents():
     """madevent's hidden run_card d (common/to_dj/D in kin_functions.f) and
-    FxFx both put 1 in the final-state kt measure. With 0.4 that measure came
-    out 2.5 times larger, and the merging cut weaker for final-state
-    splittings, than in the madevent samples it is compared against."""
+    FxFx both put 1 in the final-state kt measure. A radius of 0.4 would make
+    that measure 2.5 times larger, and the merging cut weaker for final-state
+    splittings, than in madevent."""
     diagrams = load_diagrams(PROCESSES["ttggg"][0])
     pdg_ids = PROCESSES["ttggg"][1]
     momenta = sample_momenta(diagrams)
@@ -950,8 +942,8 @@ def test_kt_measure_matches_the_fortran():
 # --------------------------------------------------------------------------
 #
 # The kernel walks a flat integer array. A non-terminal state is a run of
-# (data, next_offset) pairs ending at the pair whose data has bit 30 set; a
-# terminal state is a count followed by that many diagram indices. Which of the
+# (data, next_offset, trace_data) triples ending at the triple whose data has
+# bit 30 set; a terminal state is a count followed by that many diagram indices. Which of the
 # two a given offset is depends only on how many clusterings have been done, so
 # the walker below tracks the depth the same way the kernel does.
 
@@ -1262,9 +1254,8 @@ def test_extreme_kinematics_do_not_break_the_walk(process):
     it would jump to a stale or unset state offset and read outside the state
     machine.
 
-    Strongly asymmetric beam energies reach that configuration, so this is a
-    regression test for the crash it used to cause. Three guards stand between
-    that crash and this assertion - dj_clus zeroing a NaN, the selection
+    Strongly asymmetric beam energies reach that configuration. Three guards
+    stand between that crash and this assertion - dj_clus zeroing a NaN, the selection
     mapping a non-finite measure onto SCALE_MAX, and taking the first candidate
     unconditionally - and they are deliberately redundant, so dropping any one
     of them leaves the others covering it. What is pinned here is the behaviour
@@ -1993,8 +1984,7 @@ def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path, scheme):
     1e-10. With x f = 1e-12 everywhere every step of the ladder is such a
     division, so every event with a step on it must come out at zero.
 
-    A ramp in the denominator used to let these through at num den 1e20 - a
-    hundredth of the weight per step here, not zero."""
+    A smooth ramp in the denominator would leave a small nonzero weight."""
     weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12, **scheme)
     clustering = {k: v for k, v in scheme.items() if k != "min_scale"}
     out = pdf_outputs(t_channel_clustering(pdf_reweighting=True, **clustering), momenta)
@@ -2011,8 +2001,8 @@ def test_no_pdf_product_for_the_systematics_under_pdf_reweighting(tmp_path):
     """The systematics divide each PDF variation, taken at (k times) the
     factorisation scale, by the event's partial_weight_product. Under pdf
     reweighting that product is of the densities at pdf_scale, low on the
-    clustering ladder, so even the central member came out != 1. The
-    integrand leaves it out there, and the systematics take the nominal
+    clustering ladder, so even the central member would not give a ratio of 1.
+    The integrand leaves it out there, and the systematics take the nominal
     densities at the factorisation scale themselves."""
     def output_count(**kwargs):
         return len(t_channel_integrand_outputs(tmp_path, 1.0, 16, **kwargs))
@@ -2050,8 +2040,8 @@ def w_plus_jet_diagram():
 
     That vertex is not a QCD splitting - the W carries no color - and madevent
     never applies the merging cut to a leg that was not emitted at a jet vertex
-    (its iqjets gate). Reading the cut off any vertex instead removed 19% of
-    this process at xqcut = 60, all of it jets that were already above the cut.
+    (its iqjets gate). Reading the cut off any vertex would veto jets that are
+    already above the cut.
     """
     return [
         {
@@ -2197,9 +2187,7 @@ def transverse_mass(p):
 
 def test_an_s_channel_qcd_root_uses_the_mean_transverse_mass_of_the_pair():
     """q q~ > g > t t~ is reported at sqrt(mT(t) mT(t~)), madevent's mt2last,
-    for both scales. Before this rule the root kept the mT of the whole final
-    state, sqrt(shat), which made q q~ > t t~ 18% low against madevent at
-    0 jets."""
+    for both scales, rather than at the mT of the whole final state, sqrt(shat)."""
     gluon = (0.0, 0.0, 21)
     momenta = sample_momenta(s_channel_ttbar_diagram(gluon), batch_size=500)
     ren, fac1, fac2, _, _ = run(s_channel_ttbar_clustering(gluon), momenta)
@@ -2298,9 +2286,9 @@ def first_initial_state_transitions(clustering, n_ext):
 def test_each_end_of_a_t_channel_chain_gets_its_own_flavour():
     """Beam 0 emitting the jet leaves the gluon propagator, massless and a jet;
     beam 1 taking back the t~ leaves the top propagator, massive and not a jet.
-    With the two ends swapped the gluon was read as the top, the beam's parton
-    line stopped at the jet, and mu_R picked up the jet's own scale - 3 to 12%
-    too much t t~ + jets against madevent."""
+    With the two ends swapped the gluon would be read as the top, the beam's
+    parton line would stop at the jet, and mu_R would pick up the jet's own
+    scale."""
     first = first_initial_state_transitions(gg_ttbar_g_chain_clustering(), 5)
     assert first[(0, 4)] == (0, 1), "beam 0 + jet should leave a massless jet line"
     assert first[(1, 3)] == (1, 0), "beam 1 + t~ should leave a massive, non-jet line"
@@ -2310,11 +2298,10 @@ def test_a_jet_emitted_before_the_tops_does_not_set_the_renormalisation_scale():
     """setclscales carries a beam's parton line on past a jet emission to the
     vertex where the top attaches, so when the jet is clustered into a beam and
     the tops make up the rest, all four scales in the mu_R average are central
-    ones and mu_R equals mu_F. The jet's own scale entering mu_R is exactly the
-    symptom of the swapped chain, whose kernel gave mu_R == mu_F on no point.
-    It also needs the root measured where cluster.f measures it: not boosted
-    after the last clustering, and in the current frame after an initial-state
-    one. Taking it in the lab left mu_R a few per cent below mu_F."""
+    ones and mu_R equals mu_F. The jet's own scale entering mu_R would break
+    that. It also needs the root measured where cluster.f measures it: not
+    boosted after the last clustering, and in the current frame after an
+    initial-state one; measured in the lab, mu_R would sit below mu_F."""
     clustering = gg_ttbar_g_chain_clustering()
     momenta = sample_momenta(gg_ttbar_g_chain_diagram(), batch_size=4000)
     ren, fac1, fac2, outgoing, _ = run(clustering, momenta)
@@ -2418,8 +2405,7 @@ def test_the_madevent_measure_takes_the_jet_into_the_beam():
 
 def test_the_fxfx_measure_lets_the_jet_pair_with_the_w():
     """The FxFx score of the (W, d) pair is often below the d's pt, so some jets
-    pair with the W instead - which is exactly what made W + 1 jet (quark jets)
-    and h + 1 jet (gluon jets) low against madevent."""
+    pair with the W instead."""
     momenta = sample_momenta(w_plus_jet_two_diagrams(), batch_size=4000)
     fxfx = jet_into_beam_fraction(
         w_plus_jet_two_diagram_clustering(
@@ -2627,8 +2613,8 @@ def test_a_quark_that_is_not_a_merging_jet_is_written_at_the_collider_energy():
 
 
 def test_the_emission_scheme_still_books_the_radiating_quark():
-    """The emission scheme is not madevent's and keeps booking the (u, g)
-    vertex onto both of its legs."""
+    """The emission scheme books the (u, g) vertex onto both of its legs,
+    unlike madevent's."""
     emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
     np.testing.assert_array_equal(emission[:, 0], emission[:, 2])
     np.testing.assert_array_equal(emission[:, 1], CM_ENERGY)
@@ -2750,8 +2736,9 @@ def two_to_one_momenta(batch_size=BATCH_SIZE, seed=SEED):
     list(ms.MLMClustering.ClusteringHistory.__members__.values()),
 )
 def test_a_two_to_one_process_takes_its_scales_from_shat(scale_scheme, history):
-    """Used to throw "MLM clustering found no valid clustering for this
-    process", which killed the 0-jet sample of every p p > z @0 + jets run."""
+    """A 2 -> 1 process has no clustering to find and must not raise "MLM
+    clustering found no valid clustering for this process", which would kill
+    the 0-jet sample of a p p > z @0 + jets run."""
     clustering = drell_yan_two_to_one_clustering(
         scale_scheme=scale_scheme, clustering_history=history, xqcut=20.0
     )

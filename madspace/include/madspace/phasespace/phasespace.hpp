@@ -14,7 +14,8 @@
 namespace madspace {
 
 /**
- * Full @f$2 \to n@f$ phase-space mapping for one diagram topology.
+ * Full @f$2 \to n@f$ (or @f$1 \to n@f$ decay) phase-space mapping for one
+ * diagram topology.
  *
  * Assembles a complete mapping from the elementary building blocks along the
  * recursive decomposition of the tree-level phase space (Sec. 2.2 of [1]),
@@ -52,12 +53,12 @@ namespace madspace {
  *   `permutation_index`.
  *
  * **Outputs**
- * - `momenta` – `float`, shape `(batch, n_out + 2, 4)` – all momenta (incoming
- *   beams first, then outgoing).
+ * - `momenta` – `float`, shape `(batch, particle_count(), 4)` – all momenta
+ *   (incoming first, then outgoing), in the lab frame.
  * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction.
  * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -226,8 +227,7 @@ public:
     const Cuts& cuts() const { return _cuts; }
     /// True when the cuts exclude the whole region this mapping samples: a
     /// pair mass cut puts a propagator's floor at or above the upper end of
-    /// its on-shell window. Every point then fails the cuts, so the channel
-    /// contributes nothing and should be dropped rather than sampled.
+    /// its on-shell window. The channel contributes nothing and can be dropped.
     bool empty() const { return _empty; }
 
 private:
