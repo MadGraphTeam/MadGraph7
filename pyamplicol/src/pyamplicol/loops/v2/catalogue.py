@@ -73,7 +73,9 @@ Conventions
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+import json
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from itertools import permutations, product
@@ -93,6 +95,7 @@ from ...models.external import CompiledUFOModel
 from ...models.prepared_catalog import (
     PreparedContractKind,
     PreparedKernelCatalog,
+    PreparedKernelCatalogError,
     PreparedKernelInput,
     PreparedKernelSpec,
     TreeKernelVariant,
@@ -108,6 +111,7 @@ from ...models.prepared_catalog_builder import (
 )
 from ...models.prepared_catalog_helpers import (
     canonical_expressions,
+    canonical_json,
     component_descriptors,
     formal_components,
     formal_model_parameter,
@@ -130,6 +134,36 @@ LOOP_KERNEL_CATALOGUE_ABI = "pyamplicol-loop-kernel-catalogue-v1"
 
 LoopSegmentForm: TypeAlias = Literal["fused", "split"]
 LOOP_SEGMENT_FORMS: tuple[LoopSegmentForm, ...] = ("fused", "split")
+
+# The segments' polynomial stage (``_polynomial_candidate`` without the
+# candidate's signature: monomial coefficients, their canonical strings and
+# the inputs they read) runs natively, every segment of a catalogue in one
+# parallel call (``rusticol_core::loop_v2::generate::catalogue`` through the
+# loop extension's ``loop_catalogue_polynomials``; M-SM MS-GEN, HANDOFF
+# §0.4): byte-identical to ``_polynomial_coefficients``,
+# ``canonical_expressions``, ``used_input_descriptors`` and the
+# undeclared-input check of ``_candidate_from_payload``, which stay the
+# oracle (``native_catalogue_polynomials(False)`` runs them).
+NATIVE_CATALOGUE_POLYNOMIALS = True
+# Segments per native call: enough for the worker pool, few enough that the
+# deferred outputs and the returned canonical strings (megabytes per segment
+# on the electroweak UFOs) do not pile up.
+NATIVE_CATALOGUE_CHUNK = 64
+
+
+@contextmanager
+def native_catalogue_polynomials(enabled: bool) -> Iterator[None]:
+    """``NATIVE_CATALOGUE_POLYNOMIALS`` set to ``enabled`` for the block and
+    restored after it: ``native_catalogue_polynomials(False)`` is the oracle
+    lane."""
+
+    global NATIVE_CATALOGUE_POLYNOMIALS
+    before = NATIVE_CATALOGUE_POLYNOMIALS
+    NATIVE_CATALOGUE_POLYNOMIALS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_CATALOGUE_POLYNOMIALS = before
 
 
 class LoopKernelCatalogueError(ValueError):
@@ -512,6 +546,28 @@ class _PendingBinding:
     build: Any
 
 
+# A lowered polynomial kernel: its entries and candidate (None: zero).
+_Lowered: TypeAlias = "tuple[tuple[LoopMonomialEntry, ...], _Candidate] | None"
+
+
+@dataclass(frozen=True, slots=True)
+class _DeferredPolynomials:
+    """The ``_polynomial_candidate`` calls of one segment, lowered natively
+    with every other segment of the catalogue (``_CatalogueBuilder._flush``):
+    one variant per form, each with its block variables and error context;
+    ``bind`` takes the variants' results in order and returns False to skip
+    the remaining ones. ``available`` are the job's own inputs followed by
+    the model parameters."""
+
+    contract_kind: PreparedContractKind
+    outputs: tuple[Any, ...]
+    rows: tuple[Any, ...]
+    variants: tuple[tuple[str, tuple[tuple[Any, ...], ...], str], ...]
+    own_inputs: int
+    available: tuple[PreparedKernelInput, ...]
+    bind: Callable[[str, _Lowered], bool]
+
+
 class _CatalogueBuilder:
     """Accumulates exact candidates and their bindings for one model."""
 
@@ -553,6 +609,11 @@ class _CatalogueBuilder:
         self.proof_classes: dict[str, set[str]] = {}
         self.pending: list[_PendingBinding] = []
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
+        self.native_polynomials = NATIVE_CATALOGUE_POLYNOMIALS
+        self._deferred: list[_DeferredPolynomials] = []
+        self._native: Any = None
+        self._input_items: dict[PreparedKernelInput, tuple[str, str]] = {}
+        self._shared_items: list[tuple[str, str]] | None = None
         self._reading_signs: dict[int, int] = {}
         self._field_signs: _FieldSigns | None = None
         self._conjugate_signs: _FieldSigns | None = None
@@ -691,12 +752,12 @@ class _CatalogueBuilder:
                 f"segment of {term.vertex} produced {len(outputs)} components for "
                 f"species {out_species}, expected {out_dimension}"
             )
-        available = (
+        own_inputs = (
             *component_descriptors(self.model, "loop-momentum", shift),
             *component_descriptors(self.model, "block-current", block_values),
             *component_descriptors(self.model, "block-momentum", block_momentum_values),
-            *self.parameter_descriptors,
         )
+        available = (*own_inputs, *self.parameter_descriptors)
         context = f"segment {term.vertex}/{term.id} {loop_in}->{loop_out}"
         metadata: dict[str, Any] = {
             "vertex": term.vertex,
@@ -713,21 +774,16 @@ class _CatalogueBuilder:
             "color_normalization_power": int(term.lc_color_normalization_power),
             "coupling_orders": tuple(term.coupling_orders),
         }
-        for form in LOOP_SEGMENT_FORMS:
-            lowered = self._polynomial_candidate(
-                "loop-segment",
-                outputs,
-                rows,
-                tuple(blocks) if form == "split" else (),
-                available,
-                context=f"{form} {context}",
-            )
+
+        def bind(form: str, lowered: _Lowered) -> bool:
             if lowered is None:
                 if any(chiralities):
-                    return  # a chirality selection rule, not a missing kernel
+                    return False  # a chirality selection rule, not a missing kernel
                 raise LoopKernelCatalogueError(f"{context} lowered to zero")
             entries, candidate = lowered
-            key = LoopSegmentKey(term.id, loop_in, loop_out, chiralities, form)
+            key = LoopSegmentKey(
+                term.id, loop_in, loop_out, chiralities, cast("LoopSegmentForm", form)
+            )
             self.pending.append(
                 _PendingBinding(
                     candidate,
@@ -739,6 +795,38 @@ class _CatalogueBuilder:
                     ),
                 )
             )
+            return True
+
+        variants = tuple(
+            (form, tuple(blocks) if form == "split" else (), f"{form} {context}")
+            for form in LOOP_SEGMENT_FORMS
+        )
+        if not self.native_polynomials:
+            for form, form_blocks, form_context in variants:
+                lowered = self._polynomial_candidate(
+                    "loop-segment",
+                    outputs,
+                    rows,
+                    form_blocks,
+                    available,
+                    context=form_context,
+                )
+                if not bind(form, lowered):
+                    return
+            return
+        self._deferred.append(
+            _DeferredPolynomials(
+                "loop-segment",
+                tuple(outputs),
+                tuple(rows),
+                variants,
+                len(own_inputs),
+                available,
+                bind,
+            )
+        )
+        if len(self._deferred) >= NATIVE_CATALOGUE_CHUNK:
+            self._flush()
 
     # -- tree reading of vertices ------------------------------------------
 
@@ -1343,7 +1431,129 @@ class _CatalogueBuilder:
         _register_candidate(self.candidates, self.proof_classes, candidate)
         return candidate
 
+    def _flush(self) -> None:
+        """Lower the deferred segments natively, in one parallel call, and
+        bind them in their order (the oracle's, which binds each at once;
+        ``finish`` orders the bindings and kernels)."""
+
+        deferred, self._deferred = self._deferred, []
+        if not deferred:
+            return
+        if self._native is None:
+            # Verified once per catalogue: the identity check costs 0.2 s
+            # per call in a source checkout.
+            from ..native import load_loop_native
+
+            self._native = load_loop_native()
+        shared = self.parameter_descriptors
+        (kind,) = {item.contract_kind for item in deferred}
+        jobs = []
+        for item in deferred:
+            if item.available[item.own_inputs :] != shared:
+                raise LoopKernelCatalogueError(
+                    f"{item.variants[0][2]}: the native polynomial stage takes the "
+                    "model parameters as its shared inputs"
+                )
+            jobs.append(
+                (
+                    # Symbolica's portable text (every namespace but the
+                    # default one): the same expression as its canonical
+                    # string, without sorting every node.
+                    [_portable(output) for output in item.outputs],
+                    [row.to_canonical_string() for row in item.rows],
+                    [
+                        [
+                            [value.to_canonical_string() for value in block]
+                            for block in blocks
+                        ]
+                        for _form, blocks, _context in item.variants
+                    ],
+                    [self._input_item(d) for d in item.available[: item.own_inputs]],
+                )
+            )
+        if self._shared_items is None:
+            self._shared_items = [self._input_item(d) for d in shared]
+        results = self._native.loop_catalogue_polynomials(
+            jobs,
+            [component.to_canonical_string() for component in self.q],
+            self._shared_items,
+            (
+                json.dumps(LOOP_KERNEL_CATALOGUE_ABI, ensure_ascii=True),
+                json.dumps(kind, ensure_ascii=True),
+            ),
+        )
+        for item, variants in zip(deferred, results, strict=True):
+            for (form, _blocks, context), (found, refusal) in zip(
+                item.variants, variants, strict=True
+            ):
+                lowered = self._native_lowered(
+                    item.contract_kind, item.available, context, found, refusal
+                )
+                if not item.bind(form, lowered):
+                    break
+
+    def _native_lowered(
+        self,
+        contract_kind: PreparedContractKind,
+        available: Sequence[PreparedKernelInput],
+        context: str,
+        found: Any,
+        refusal: tuple[str, str] | None,
+    ) -> _Lowered:
+        """A native variant's result as ``_polynomial_candidate``'s, with the
+        oracle's refusals."""
+
+        if refusal is not None:
+            kind, detail = refusal
+            if kind == "not-linear":
+                raise LoopKernelCatalogueError(
+                    "loop kernel is not linear in the open-loop current and blocks"
+                )
+            if kind == "unexpected-monomial":
+                raise LoopKernelCatalogueError(f"unexpected monomial {detail}")
+            if kind == "not-finite":
+                raise PreparedKernelCatalogError(
+                    f"{context} output {detail} is not a finite exact expression"
+                )
+            if kind == "undeclared":
+                raise PreparedKernelCatalogError(
+                    f"prepared {contract_kind} contract has undeclared inputs: {detail}"
+                )
+            raise LoopKernelCatalogueError(f"{context}: native refusal {kind} {detail}")
+        if found is None:
+            return None
+        raw, exact, positions, signature = found
+        entries = tuple(
+            LoopMonomialEntry(int(row), int(out), tuple(exponents), tuple(blocks))
+            for row, out, exponents, blocks in raw
+        )
+        # ``_candidate_from_payload``'s candidate, its checks and signature
+        # formed natively.
+        candidate = _Candidate(
+            contract_kind=contract_kind,
+            canonical_signature=signature,
+            exact_expressions=tuple(exact),
+            inputs=tuple(available[position] for position in positions),
+            output_layout=tuple(entry.label() for entry in entries),
+            proof_class=None,
+        )
+        _register_candidate(self.candidates, self.proof_classes, candidate)
+        return entries, candidate
+
+    def _input_item(self, descriptor: PreparedKernelInput) -> tuple[str, str]:
+        """(symbol, the canonical JSON of the descriptor) of an available
+        input, as ``_candidate_from_payload`` writes it."""
+
+        found = self._input_items.get(descriptor)
+        if found is None:
+            found = self._input_items[descriptor] = (
+                descriptor.symbol,
+                canonical_json(descriptor.to_dict()).decode("ascii"),
+            )
+        return found
+
     def finish(self, loop_species: tuple[int, ...]) -> LoopKernelCatalogue:
+        self._flush()
         signatures = tuple(sorted(self.candidates))
         kernel_ids = {signature: index for index, signature in enumerate(signatures)}
         kernels = tuple(
@@ -1560,6 +1770,15 @@ def _contract_lorentz(
             network.result_tensor(library), labels
         ).values
     )
+
+
+def _portable(value: Any) -> str:
+    """An output as ``_polynomial_coefficients`` reads it (``0 + output``),
+    in Symbolica's portable text."""
+
+    if not isinstance(value, _sym.Expression):
+        value = _sym.E("0") + value
+    return repr(value)
 
 
 def _polynomial_coefficients(
