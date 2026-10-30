@@ -27,6 +27,8 @@ analyze_process_groups = "none"
 
 [loop]
 r2_strategy = "model"
+external_photons = "final"
+alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
 
 [loop.model]
 

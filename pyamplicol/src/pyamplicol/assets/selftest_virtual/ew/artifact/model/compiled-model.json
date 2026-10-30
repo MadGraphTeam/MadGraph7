@@ -143738,7 +143738,7 @@
   "producer": {
     "compiled_model_schema_version": 9,
     "contact_decomposition_policy": "ufo-four-point-contact-decomposition-v2",
-    "model_compiler_sha256": "a899f153788ec174ecb5b91586da0bb599981fe413c2c0142fb9804bfa484a55",
+    "model_compiler_sha256": "5c98a333ca03d8326655b0202b589843cb7a94ce906487c74bbb2a3ddecae3ee",
     "model_compiler_version": 16,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
     "pyamplicol": "1.0.1",
@@ -255175,11 +255175,11 @@
               "kind": "mapping"
             },
             "value": {
-              "expression": "(-1/(16*cw**2))*((2+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)",
+              "expression": "(-1/(16*cw**2))*((1+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)",
               "kind": "expression"
             },
             "value_source": {
-              "argument": "'(-1/(16*cw**2))*((2+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)'",
+              "argument": "'(-1/(16*cw**2))*((1+2*cw**2 +40*cw**4 -4*cw**6)/(48.*sw**4*cw**2))*(complex(0,1)*R24S)'",
               "exact": true,
               "file": "CT_couplings.py",
               "kind": "source-literal",
@@ -294168,7 +294168,7 @@
   },
   "schema_version": 9,
   "source": {
-    "digest": "c880c092012bbaad55275da73461297d233bc779136fc2913169e464ff75e07f",
+    "digest": "9d2c1876e3a28872169b447b6844b7a9275d0440db8b4c0df8bd1c71c1688c84",
     "kind": "ufo",
     "options": {
       "restriction": {
