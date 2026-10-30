@@ -1,0 +1,142 @@
+<!-- SPDX-License-Identifier: 0BSD -->
+
+# One-loop QCD+QED on loop_qcd_qed_sm, coming from MadLoop
+
+pyAmpliCol ships H.-S. Shao's two NLO UFO models with QCD and QED
+counterterms (arXiv:1804.10017; MG5_aMC's model database) with all their
+restriction cards:
+
+- `loop_qcd_qed_sm` (alpha(M_Z) input scheme), as downloaded;
+- `loop_qcd_qed_sm_Gmu` (G_mu input scheme), as the mechanical Python-3
+  conversion of its Python-2 download (package-relative imports and
+  `.iteritems()` -> `.items()` only; no declaration changes; source checksums
+  and the conversion in `src/pyamplicol/assets/models/PROVENANCE.toml`).
+
+A request with electroweak (`QED`) or joint (`QCD`, `QED`) corrections runs
+on them with no `[loop.model]` section and no compatibility setting:
+
+```toml
+action = "generate"
+
+[model]
+source = "loop_qcd_qed_sm_Gmu"  # the shipped model; a path of that name wins
+
+[process]
+entries = [{ expression = "u u~ > e- e+", name = "dy" }]
+loop_coupling_orders = ["QCD", "QED"]  # MG5_aMC: [virt=QCD QED]
+coupling_order_policy = "minimal"
+
+[loop.preparation]
+fixed_parameters = { WT = "0", WZ = "0", WW = "0", WH = "0" }
+
+[generation]
+output = "artifacts/dy"
+```
+
+- **Scheme declaration.** pyAmpliCol ships the declaration of both models
+  (QCD and QED corrections, complete UV and R2 counterterms,
+  't Hooft-Veltman, on-shell electroweak renormalisation in the model's
+  input scheme, real on-shell masses) for the exact sources: it applies to a
+  model whose UFO declarations have the recorded digest, which the shipped
+  copy, the reference download and every restriction share. A modified copy
+  (a massive-muon variant, edited parameters) has other declarations and
+  needs its own `[loop.model]`. An explicit `[loop.model]` always wins.
+- **Source repair.** The models' legacy object library drops the Goldstone
+  flag of `G-` (the antiparticle of `G+`). Model preparation restores it by
+  structure and records it (`pyamplicol_source_repairs`); the former
+  `compatibility = "gmu_particle_anti"` is not needed and is still accepted.
+- **Gauge.** Born, loops and counterterms of an electroweak request take the
+  't Hooft-Feynman gauge of the models' counterterms, with explicit
+  Goldstones and ghosts.
+- **Colour.** Full colour by default, as MadLoop. Leading and next-to-leading
+  colour are refused for these models (`colour-declaration-coverage`: no
+  shipped N_c declaration covers their scheme).
+- **Tree level.** The same models serve tree requests (Born and real
+  emission from one UFO).
+- **Python 2.** A Python-2 UFO (the raw G_mu download) is refused with
+  `ufo-python2`, naming MG5_aMC's conversion and the shipped model.
+
+`pyamplicol self-test` evaluates an electroweak virtual (`e- e+ > e- e+`
+[virt=QED] on `loop_qcd_qed_sm`) from a shipped prepared artifact and
+compares it with MadLoop.
+
+## MadLoop process syntax
+
+| MadLoop / MG5_aMC | pyAmpliCol |
+| --- | --- |
+| `import model loop_qcd_qed_sm_Gmu-a0` | `[model] source = "loop_qcd_qed_sm_Gmu"`, `restriction = "a0"` |
+| `[virt=QCD QED]`, `[virt=QED]` | `process.loop_coupling_orders = ["QCD", "QED"]`, `["QED"]` |
+| `QED=2` (Born amplitude order) | `process.max_coupling_orders = { QED = 2 }` |
+| `QCD^2==4`, `QED^2<=4` (squared orders) | every squared-order sector is a separate partial result: read it out (`result.for_order(...)`) |
+| `/ x` | `generation.particle_veto = ["x"]`; a vetoed vector boson takes its ghosts. A veto that removes a loop species of a requested correction is refused on these models (`veto-unlabelled-counterterms`: their electroweak counterterms are not split by loop content), so photon-only QED is not expressible |
+| `set complex_mass_scheme True` | not available yet (the complex-mass scheme is in progress); resonant widths are refused, see the recipes |
+| `!a!` (a tagged photon) | every on-shell external photon couples with alpha(0) with the conversion term, which needs `restriction = "a0"` on `loop_qcd_qed_sm_Gmu` |
+| `p p > e+ e-` with a multiparticle label | the same expression: one artifact entry per subprocess with a Born; members without one are skipped, see below |
+
+MG5_aMC syntax inside a process expression is refused with `madloop-syntax`.
+MadLoop's default order selection for processes with Born amplitudes of
+several orders drops the highest-alpha squared order unless the squared
+orders are given; pyAmpliCol returns every squared-order sector of the
+request's limits, so compare sector by sector.
+
+## Recipes
+
+| Need | Recipe |
+| --- | --- |
+| a real on-shell virtual (widths zero) | `[loop.preparation] fixed_parameters = { WT = "0", WZ = "0", WW = "0", WH = "0" }`; a width that propagates in a tree current of an electroweak request is refused (the message names the parameters). Use `fixed_parameters`, not the `no_widths` restriction of `loop_qcd_qed_sm_Gmu`, which also changes MT and MH |
+| external photons (alpha(0)) | `loop_qcd_qed_sm_Gmu` with `restriction = "a0"` (it sets `aEW0M1`); `loop_qcd_qed_sm` has no alpha(0) input, so on-shell photons with QED corrections are refused there (`external-photon-scheme`), as in MG5_aMC |
+| massive b | `restriction = "with_b_mass"` (`loop_qcd_qed_sm`: `with_b_mass_no_widths` sets the widths too) |
+| non-diagonal CKM | `restriction = "ckm"` |
+| resonant W, Z, H, t (complex-mass scheme) | not available yet |
+
+## Multiparticle requests
+
+A request with a multiparticle label generates its concrete processes that
+have a Born amplitude within the coupling-order limits. A member without one
+(`g g > e+ e-` in `p p > e+ e-`) is loop-induced: it is skipped, with a
+typed record (key `loop-induced`) in the dry run
+(`estimated_coverage.skipped_members`) and in the artifact (manifest
+extension `loop_skipped_members`). The stored members' sum is MadLoop's
+Born x virtual; the loop-squared contribution of a skipped member, which
+MadLoop's multiparticle output holds, is not computed. A request none of whose
+members has a Born is refused (`loop-induced`). `p` and `j` are the model's
+massless quarks and gluon; add the photon with `process.multiparticles`.
+
+## Refusals
+
+Every refusal is typed: the message starts with a listed key, names the rule
+and the remedy, and the exception carries `key`. `pyamplicol generate
+--dry-run --json` reports what the model and the Born need and lists every
+key with its remedy:
+
+- `estimated_coverage.loop_configuration_refusals`: run-card settings and
+  model declarations (decided before any tree);
+- `loop_admission_refusals`: structures the generation refuses;
+- `loop_internal_refusals`: engine conditions met during generation;
+- `native_export_refusals` and `process_request_refusals`.
+
+| Key | Request |
+| --- | --- |
+| `loop-model-declaration` | a model with no `[loop.model]` that is not a shipped profile (a modified copy) |
+| `loop-model-corrections` | corrections the declaration does not cover (`QED` on loop_sm) |
+| `loop-model-completion` | a declaration without complete UV or model R2 counterterms |
+| `undeclared-corrections` | corrections the source does not expand perturbatively |
+| `scale-parameter` | no identifiable renormalisation-scale parameter (e.g. fixed) |
+| `veto-external-particle` | a `particle_veto` naming an external particle |
+| `tree-only-model` | a compiled model without its NLO UFO source |
+| `external-photon-scheme` | on-shell photons with QED corrections on a model without the alpha(0) convention |
+| `feynman-gauge` | a model that cannot be taken in 't Hooft-Feynman gauge |
+| `veto-unlabelled-counterterms` | a veto of a loop species of a requested correction on these models |
+| `anomalous-veto` | a veto that breaks an anomaly-free multiplet (`generation.allow_anomalous_veto` overrides) |
+| `colour-declaration-coverage` | LC or NLC without a covering colour declaration |
+| `loop-induced` | no Born amplitude within the limits |
+| `coloured-width` | a coloured particle with a width in a tree current |
+| `ufo-python2` | a Python-2 UFO |
+| `process-aliases`, `process-group-analysis` | permutation aliases or numerical process-group analysis of a one-loop request |
+| `direct-r2`, `fft-basis-trace`, `colour-selectors`, `relation-discovery`, `evaluator-backend`, `evaluator-tuning`, `covariant-multiplets` | settings the one-loop engine does not take (each message names the setting) |
+| `fermion-sign`, `reading-sign`, `unlowered-counterterm`, `counterterm-coupling`, `loop-kernel-catalogue`, `counterterm-completeness` | internal: an engine condition met during generation |
+
+A process whose point inputs the native export does not cover is refused
+with the export's key (`NativeExportRefused`, e.g. `plane-mismatch`). See
+[UFO Model Coverage](ufo-model-coverage.md) for every one-loop refusal and
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md) for the QCD model.
