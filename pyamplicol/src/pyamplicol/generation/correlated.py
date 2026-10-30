@@ -479,9 +479,17 @@ class CorrelatedGenerationBackend(GenerationBackend):
         return {"correlators": {"schema_version": 1, "path": CORRELATOR_PAYLOAD_PATH}}
 
     def _write_artifact(self, *args: object, **kwargs: object) -> ArtifactWriteResult:
-        return super()._write_artifact(
-            *args, **kwargs, payload_hook=self._write_correlator_payload
-        )
+        # A caller's payload hook (the loop service's skipped members) is
+        # composed with the correlator payload.
+        extra = kwargs.pop("payload_hook", None)
+
+        def payload(builder: ArtifactBuilder) -> Mapping[str, object]:
+            out = dict(self._write_correlator_payload(builder))
+            if callable(extra):
+                out.update(extra(builder))
+            return out
+
+        return super()._write_artifact(*args, **kwargs, payload_hook=payload)
 
 
 def generate_correlated(

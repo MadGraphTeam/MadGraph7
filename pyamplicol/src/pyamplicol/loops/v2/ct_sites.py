@@ -204,6 +204,9 @@ Cell = tuple[str, int, int, int]
 class CountertermCompletenessError(ValueError):
     """A divergent witness is covered neither by a rule nor by a certified zero."""
 
+    # The listed internal refusal (``refusals.LOOP_INTERNAL_REFUSALS``).
+    refusal_key = "counterterm-completeness"
+
 
 # --------------------------------------------------------------------------- records
 

@@ -43,6 +43,58 @@ EXPECTED_UFO_FILES = {
         "vertices.py",
         "write_param_card.py",
     },
+    # H.-S. Shao's QCD+QED loop models (MG5_aMC's online model database,
+    # m-sm PLAN Q5 (a)): every module and restriction card, no MG5_aMC cache,
+    # backup, AppleDouble or hidden file and no SMWidth tool; the G_mu
+    # download's Python-2 modules take the Python-3 conversion.
+    "loop_qcd_qed_sm": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_with_b_mass.dat",
+        "restrict_with_b_mass_no_widths.dat",
+        "restrict_with_technical.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
+    "loop_qcd_qed_sm_Gmu": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_a0.dat",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_parallel_test_WW.dat",
+        "restrict_parallel_test_WZ.dat",
+        "restrict_parallel_test_ZZ.dat",
+        "restrict_with_b_mass.dat",
+        "restrict_with_b_mass_no_width.dat",
+        "restrict_with_technical.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
     "scalar_gravity": {
         "__init__.py",
         "coupling_orders.py",
@@ -213,8 +265,8 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
 
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
-    assert len(records) == 90
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 51
+    assert len(records) == 134
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 82
 
     record_paths = set()
     for entry in records:

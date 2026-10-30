@@ -1015,11 +1015,13 @@ corrections are.
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
 
-MG5_aMC's `loop_qcd_qed_sm` needs
-`[loop.preparation] compatibility = "gmu_particle_anti"` (its `G-` loses the
-Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
-goldstoneboson"); `loop.preparation.covariant_multiplets` is not supported by
-v2 (refused). `color.contraction` selects the seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
+MG5_aMC's `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu` (shipped, see
+[One-loop QCD+QED on loop_qcd_qed_sm](electroweak-and-madloop.md)) need no
+compatibility setting: their `G-` loses the Goldstone flag of `G+`, which
+model preparation repairs by structure and records
+(`compatibility = "gmu_particle_anti"` is still accepted);
+`loop.preparation.covariant_multiplets` is not supported by v2 (refused,
+`covariant-multiplets`). `color.contraction` selects the seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
 the certified symmetric-group orbit pairs of the external gluons with the FFT
 and the rest directly, `direct` contracts everything directly, and
 `symmetric-group-fft` requires a certified pair (a process with fewer than two
@@ -1031,11 +1033,14 @@ reports the algorithm it ran. The orbits are those of the loop's own seed
 tables (the external gluons' permutations, certified on the exact colour
 weights): loop requests keep the default `color.fft_basis = "adjoint"`, and
 `"trace"` is refused unless the contraction is `direct`. A dry run
-(`generate --dry-run`) reports what the model preparation refuses (the
-veto refusal "veto-unlabelled-counterterms" included); the rest of loop
-admission is checked by the generation only, and the dry run lists what it
-refuses (`estimated_coverage.loop_admission_refusals`, with the remedies) and
-what the native export refuses (`native_export_refusals`).
+(`generate --dry-run`) reports what the configuration, the model preparation
+and the Born need (the veto refusal "veto-unlabelled-counterterms", the
+external-photon convention and the widths of the Born currents of an
+electroweak request included), each with its listed key; the rest of loop
+admission is checked by the generation only, and the dry run lists every key
+with its remedy (`estimated_coverage.loop_configuration_refusals`,
+`loop_admission_refusals`, `loop_internal_refusals`) and what the native
+export refuses (`native_export_refusals`).
 
 Particle veto. `[generation] particle_veto = ["t"]` (CLI `--particle-veto t`,
 repeatable; Python `GenerationConfig(particle_veto=("t",))`) removes the named
@@ -1088,8 +1093,10 @@ shipped) loop declaration. Generation then runs on MG5_aMC's transform of the
 model: every particle with a nonzero width at the card propagates with its
 complex pole mass `sqrt(M^2 - i M W)`, which the parameters, counterterms and
 couplings read too (`CMSParam = 1`; internal widths take their real part; the
-Yukawa couplings follow the masses). Masses and widths stay real inputs, so
-they can change at run time. The scheme refuses, with listed keys: an external
+Yukawa couplings follow the masses). Masses and the nonzero widths stay real
+inputs of the evaluation; a width that is zero at the card (fixed, or zero on
+the restriction card) gives its particle no pole mass and stays zero. The
+scheme refuses, with listed keys: an external
 particle with a width (`cms-external-width`: external states are stable), a
 width-carrying particle whose mass is not an external parameter
 (`cms-internal-mass`, e.g. loop_sm's W), a fixed Yukawa input
