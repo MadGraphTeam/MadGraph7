@@ -16,8 +16,9 @@ loop_qcd_qed_sm_Gmu (the shipped copies: UFOmodeldb's with the model patch of
 UFOmodeldb issue 1 / mg5amcnlo#475; the G_mu model's Python-3 conversion
 changes no declaration, its patch's charge-counterterm appends are folded into
 their constructors), whose digests are those after the Goldstone-flag source
-repair. Their profiles also accept UFOmodeldb's unpatched models and
-MG5_aMC's online-database downloads: the patch (R2_G0tt_{d,s,b} split by loop
+repair. Their profiles also accept UFOmodeldb's models (60ee58bb, which took
+the patch's b-flavour R2 split, and 6ca4b120) and MG5_aMC's online-database
+downloads: the patch (R2_G0tt_{d,s,b} split by loop
 content, exactly unitary CKM, the G_mu charge counterterm's b-mass term) and
 UFOmodeldb's R2_ZZHH fix (1f13c48f / 6ca4b120) change values and loop labels,
 not the scheme. A modified copy (e.g. a massive-muon variant) has other
@@ -99,12 +100,14 @@ SHIPPED_LOOP_PROFILES = (
         LoopModelDeclaration(LOOP_SM_SCHEME, ("QCD",), True, True),
     ),
     # The shipped copy (UFOmodeldb 6ca4b120 with the issue-1 model patch)
-    # first, then UFOmodeldb 6ca4b120 unpatched, then MG5_aMC's
-    # online-database download (R2_ZZHH before UFOmodeldb's fix).
+    # first, then UFOmodeldb 60ee58bb (the patch's b-flavour R2 split only),
+    # UFOmodeldb 6ca4b120 unpatched and MG5_aMC's online-database download
+    # (R2_ZZHH before UFOmodeldb's fix).
     ShippedLoopProfile(
         "UFOmodeldb loop_qcd_qed_sm (alpha(MZ) scheme)",
         (
             "0dc17624150975c9f751b744bb8cc096538489e84bbd75f5fb65fb20c36ab86b",
+            "1555635eeb5b219264839f6fa1cb59e87c9c712878bb7a16587cef71da92f0b3",
             "580c029a2ae2ce1bfc58722897edfc9da0b809c5038d382404918b412d17b1e4",
             "1b9f65500b248fb8ecf4a28dae1258a1f48613403482a72a0c794d7cb3964f16",
         ),
@@ -114,6 +117,7 @@ SHIPPED_LOOP_PROFILES = (
         "UFOmodeldb loop_qcd_qed_sm_Gmu (G_mu scheme)",
         (
             "97f39eeb340606a6810879079826900ddbb5f99c15c142e1ecd98f27bde354b7",
+            "14ddd9435ffefdb8247ef93a4400fc39a646328e0e1cc26a618a4da58c3b3667",
             "b580d14a07e550b3ab9ba0800b486eccd35117defe4c948c052c2d9c08029f48",
             "588cb07a2e1691f8ee1038613f5fe8c4b768d68ad3c1df42b2ea28c8b2daeb6f",
         ),

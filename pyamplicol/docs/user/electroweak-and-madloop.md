@@ -27,7 +27,9 @@ matrix of the `ckm` restriction exactly unitary (standard parametrisation from
 the same four Wolfenstein inputs; it was truncated at O(lambda^3)); (3)
 restores the bottom-mass term of the G_mu charge counterterm (with a massive b,
 e.g. `u d~ > t b~` moves by 9.5e-5 x Born and now equals Recola); (4) adds the
-missing `SMINPUTS 1` line to the G_mu `restrict_with_b_mass.dat`.
+missing `SMINPUTS 1` line to the G_mu `restrict_with_b_mass.dat`. UFOmodeldb's
+commit 60ee58bb took item (1) for the b quark; the rest is local to the
+shipped copies until UFOmodeldb takes it.
 
 **Retained limitation.** The electroweak counterterms of both models omit the
 tau mass. With a massive tau (the `ckm` restriction has MTA = 1.777) the single
@@ -36,7 +38,7 @@ MTA^2 / (2 sw^2 (s - MW^2)) x (alpha/2pi) x Born (about 3e-5 x (alpha/2pi) x Bor
 at sqrt(s) = 500 GeV); MadLoop has the same. Fix `MTA` and `ymtau` to zero to
 remove it.
 
-UFOmodeldb's unpatched models and the copies MG5_aMC's online model database
+UFOmodeldb's models (60ee58bb and the unpatched 6ca4b120) and the copies MG5_aMC's online model database
 downloads (`import model loop_qcd_qed_sm`; they differ from UFOmodeldb's in
 one coupling, `R2_ZZHH`, UFOmodeldb's fix of the R2 vertices Z Z H H and
 Z Z G0 G0) take the same shipped `[loop.model]` profile, so pointing

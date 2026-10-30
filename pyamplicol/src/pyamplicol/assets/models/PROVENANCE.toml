@@ -90,7 +90,7 @@ upstream_distribution = "UFOmodeldb (https://github.com/mg5amcnlo/UFOmodeldb) co
 canonical_ufo_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm"
 license_ids = [ "MadGraph5-aMCatNLO",]
 release_eligible = true
-note = "With the model patch of UFOmodeldb issue 1 / mg5amcnlo#475 (Valentin Hirschi; gist https://gist.github.com/ValentinHirschi/81a26a3c9a03ca38cd2f6d6cf6a2b75f, sha256 4b5b1ef0e5f942a956c3e01b4b0f2a77070777910d81567c2caffaace18000a8; ufomodeldb-issue-1-patch-v1: CT_couplings.py, CT_vertices.py, parameters.py); every other UFO module and restriction card of the download byte for byte; not shipped: MG5_aMC caches (*.pkl, __pycache__), editor backups (*~), AppleDouble files (._*), hidden internal test cards (.restrict_*) and the SMWidth Fortran width tool"
+note = "With the model patch of UFOmodeldb issue 1 / mg5amcnlo#475 (Valentin Hirschi; gist https://gist.github.com/ValentinHirschi/81a26a3c9a03ca38cd2f6d6cf6a2b75f, sha256 4b5b1ef0e5f942a956c3e01b4b0f2a77070777910d81567c2caffaace18000a8; ufomodeldb-issue-1-patch-v1: CT_couplings.py, CT_vertices.py, parameters.py; UFOmodeldb 60ee58bb2695c2f4a9b048de801db2caffc2fe6f (2026-10-30) took the patch's b-flavour R2_G0tt split (same values); the local delta against it is the d/s split, the exactly unitary CKM); every other UFO module and restriction card of the download byte for byte; not shipped: MG5_aMC caches (*.pkl, __pycache__), editor backups (*~), AppleDouble files (._*), hidden internal test cards (.restrict_*) and the SMWidth Fortran width tool"
 
 [[models]]
 id = "loop_qcd_qed_sm_Gmu"
@@ -101,7 +101,7 @@ upstream_distribution = "UFOmodeldb (https://github.com/mg5amcnlo/UFOmodeldb) co
 canonical_ufo_path = "pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu"
 license_ids = [ "MadGraph5-aMCatNLO",]
 release_eligible = true
-note = "With the model patch of UFOmodeldb issue 1 / mg5amcnlo#475 (Valentin Hirschi; gist https://gist.github.com/ValentinHirschi/81a26a3c9a03ca38cd2f6d6cf6a2b75f, sha256 4b5b1ef0e5f942a956c3e01b4b0f2a77070777910d81567c2caffaace18000a8; CT_couplings.py, CT_vertices.py, parameters.py, CT_parameters.py (its appends folded into the constructors), restrict_with_b_mass.dat). The download is Python 2: its modules take the mechanical Python-3 conversion ufo-python3-conversion-v1 (every declaration unchanged), its restriction cards are byte for byte; not shipped as for loop_qcd_qed_sm"
+note = "With the model patch of UFOmodeldb issue 1 / mg5amcnlo#475 (Valentin Hirschi; gist https://gist.github.com/ValentinHirschi/81a26a3c9a03ca38cd2f6d6cf6a2b75f, sha256 4b5b1ef0e5f942a956c3e01b4b0f2a77070777910d81567c2caffaace18000a8; CT_couplings.py, CT_vertices.py, parameters.py, CT_parameters.py (its appends folded into the constructors), restrict_with_b_mass.dat; UFOmodeldb 60ee58bb2695c2f4a9b048de801db2caffc2fe6f (2026-10-30) took the patch's b-flavour R2_G0tt split (same values); the local delta against it is the d/s split, the exactly unitary CKM, the b-mass charge counterterm and the restriction card). The download is Python 2: its modules take the mechanical Python-3 conversion ufo-python3-conversion-v1 (every declaration unchanged), its restriction cards are byte for byte; not shipped as for loop_qcd_qed_sm"
 
 [[transformations]]
 id = "verbatim-git-blob-v1"

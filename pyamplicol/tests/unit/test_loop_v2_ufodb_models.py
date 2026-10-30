@@ -122,9 +122,12 @@ def test_shipped_model_is_patched_ufodb_and_older_copies_share_its_profile(
     assert profile is not None
     assert shipped_loop_profile(ufodb) is profile
     assert shipped_loop_profile(mg5) is profile
-    assert profile.source_digests == tuple(
-        source_declarations_digest(raw) for raw in (shipped, ufodb, mg5)
-    )
+    digests = [source_declarations_digest(raw) for raw in (shipped, ufodb, mg5)]
+    # The shipped digest first; UFOmodeldb 60ee58bb's (the b-flavour R2 split
+    # alone) is the second.
+    assert profile.source_digests[0] == digests[0]
+    assert len(profile.source_digests) == 4
+    assert profile.source_digests[2:] == tuple(digests[1:])
 
 
 # ------------------------------------------------- which requests reach it
