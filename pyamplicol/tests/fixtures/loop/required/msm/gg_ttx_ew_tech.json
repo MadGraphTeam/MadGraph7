@@ -784,9 +784,9 @@
   "called": [
    "R2_3Gg",
    "R2_3Gq",
-   "R2_GCC2Cps",
    "R2_GGHt",
    "R2_GGZdown",
+   "R2_GGZup",
    "R2_GGg_1",
    "R2_GGg_2",
    "R2_GGq",
@@ -795,15 +795,21 @@
    "R2_GTT2Cm",
    "R2_GTT2Cmb",
    "R2_GTT2Cp",
+   "R2_GTT2Cpb",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCptb",
    "R2_QQq",
    "R2_QQt",
    "R2_TTC0",
    "R2_UUCm"
   ],
+  "called_as": {
+   "R2_GGZup": "-R2_GGZdown",
+   "R2_GTT2Cpb": "R2_GCC2Cps",
+   "R2_QQCptb": "R2_QQCpcs"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_gg_ttx)"
  },
  "mqcd_run": {
   "id": "gg_ttx_ew_tech",
@@ -811,6 +817,7 @@
   "export": "runs/msm/gg_ttx_ew_tech/madloop-export",
   "binding": false,
   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1",
+  "components": "required/msm/components/gg_ttx_ew_tech.json",
   "points": {
    "generator": "exact"
   }

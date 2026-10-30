@@ -169,6 +169,9 @@
    ],
    "sectors": [
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
    ]
   },
   {
@@ -255,6 +258,9 @@
    "sectors": [
     "e^6",
     "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
    ]
   },
   {
@@ -298,7 +304,10 @@
     "s^2e^4",
     "e^6"
    ],
-   "helicity_reference": "uux_emep_ew"
+   "helicity_reference": "uux_emep_ew",
+   "components": [
+    "required/msm/components/uux_emep_ew.json"
+   ]
   },
   {
    "row": "DY02",
@@ -447,6 +456,9 @@
    "sectors": [
     "s^4e^2",
     "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/udx_wpg_ew.json"
    ]
   },
   {
@@ -685,6 +697,9 @@
    "sectors": [
     "s^6",
     "s^4e^2"
+   ],
+   "components": [
+    "required/msm/components/gg_ttx_ew_tech.json"
    ]
   },
   {
@@ -706,6 +721,9 @@
     "s^4e^2",
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ttx_ew.json"
    ]
   },
   {
@@ -887,6 +905,9 @@
    "sectors": [
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/ub_dt_ew.json"
    ]
   },
   {
@@ -962,6 +983,9 @@
     "s^4e^2",
     "s^2e^4",
     "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ddx_ew.json"
    ]
   },
   {
@@ -1074,7 +1098,10 @@
     "s^4e^2",
     "s^2e^4"
    ],
-   "note": "untagged photon [MS-PHOTON]"
+   "note": "untagged photon [MS-PHOTON]",
+   "components": [
+    "required/msm/components/ag_uux_ew.json"
+   ]
   },
   {
    "row": "PI04",
@@ -1172,7 +1199,10 @@
     "s^6",
     "s^4e^2"
    ],
-   "note": "EW-25: external top stable (WT = 0)"
+   "note": "EW-25: external top stable (WT = 0)",
+   "components": [
+    "required/msm/components/gg_ttx_cms.json"
+   ]
   },
   {
    "row": "CM05",
@@ -1284,7 +1314,10 @@
    "sectors": [
     "per Born subprocess"
    ],
-   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles); P0_gg_emep is MG5's loop-squared member (sqrvirt), skipped (typed loop-induced on the pyAmpliCol side)"
+   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles); P0_gg_emep is MG5's loop-squared member (sqrvirt), skipped (typed loop-induced on the pyAmpliCol side)",
+   "components": [
+    "required/msm/components/pp_emep_ew_P2_uux_emep.json"
+   ]
   },
   {
    "row": "MP02",
@@ -1359,7 +1392,10 @@
     "s^2e^4",
     "e^6"
    ],
-   "note": "[EWI-7]"
+   "note": "[EWI-7]",
+   "components": [
+    "required/msm/components/udx_epve_ew_ckm.json"
+   ]
   },
   {
    "row": "SC04",
@@ -1748,7 +1784,8 @@
     "generator": "exact"
    },
    "binding": false,
-   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1"
+   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1",
+   "components": "required/msm/components/gg_ttx_ew_tech.json"
   },
   {
    "id": "gg_ttx_ew_tech_ir0",
@@ -1991,7 +2028,8 @@
     -2,
     11,
     -11
-   ]
+   ],
+   "components": "required/msm/components/pp_emep_ew_P2_uux_emep.json"
   },
   {
    "id": "pp_emep_ew_P3_ddx_emep",

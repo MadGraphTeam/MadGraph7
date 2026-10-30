@@ -520,6 +520,23 @@ def test_coupling_renamings_compose_conversion_and_restriction() -> None:
         recorder.resolve({"id": 7, "couplings": {(0, 0): "R2_a"}})
 
 
+def test_every_uv_row_and_class_names_rule5_components(
+    campaign: dict, manifest: dict
+) -> None:
+    """Rule 5 components on one row per class; every row tagged uv names the
+    component files that serve it (its own runs', else its class's)."""
+    files = {r["components"] for r in campaign["runs"] if r.get("components")}
+    for row in campaign["rows"]:
+        if "uv" in row["extras"]:
+            assert row.get("components"), row["row"]
+        assert set(row.get("components", ())) <= files, row["row"]
+    classes = {row["class"] for row in campaign["rows"]}
+    assert classes == {r["class"] for r in campaign["rows"] if r.get("components")}
+    assert [r.get("components") for r in manifest["rows"]] == [
+        r.get("components") for r in campaign["rows"]
+    ]
+
+
 @pytest.mark.parametrize(
     "run_id",
     [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"] if r.get("components")],

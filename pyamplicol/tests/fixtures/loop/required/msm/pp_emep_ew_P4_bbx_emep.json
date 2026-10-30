@@ -995,8 +995,8 @@
    "R2_AAboson1",
    "R2_AAboson2",
    "R2_AAboson3",
+   "R2_AAl",
    "R2_AAt3",
-   "R2_AWWcs",
    "R2_AZD",
    "R2_AZU",
    "R2_AZboson1",
@@ -1025,10 +1025,15 @@
    "R2_eeACp",
    "R2_eeZCm",
    "R2_eeZCp",
+   "R2_llACp",
    "R2_llZCp"
   ],
+  "called_as": {
+   "R2_AAl": "-R2_AAboson2",
+   "R2_llACp": "-R2_AWWcs"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P4_bbx_emep/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P4_bbx_emep)"
  },
  "mqcd_run": {
   "id": "pp_emep_ew_P4_bbx_emep",

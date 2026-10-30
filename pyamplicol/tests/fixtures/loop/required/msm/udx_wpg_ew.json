@@ -779,25 +779,39 @@
  "madloop_r2_couplings": {
   "called": [
    "R2_DDCm",
-   "R2_GBB2Cm",
-   "R2_GBB2Cp",
-   "R2_GCC2Cm",
-   "R2_GCC2Cps",
+   "R2_GDD2Cm",
+   "R2_GDD2Cp",
+   "R2_GDD2Cpu",
    "R2_GQQ",
+   "R2_GUU2Cm",
+   "R2_GUU2Cp",
+   "R2_GUU2Cpd",
    "R2_QQCp0",
-   "R2_QQCpcs",
+   "R2_QQCpud",
    "R2_QQq",
    "R2_UUCm",
-   "R2_bxtW",
-   "R2_bxtW2Cp"
+   "R2_uxdW",
+   "R2_uxdW2Cp"
   ],
+  "called_as": {
+   "R2_GDD2Cm": "R2_GBB2Cm",
+   "R2_GDD2Cp": "R2_GBB2Cp",
+   "R2_GDD2Cpu": "R2_GCC2Cps",
+   "R2_GUU2Cm": "R2_GCC2Cm",
+   "R2_GUU2Cp": "R2_GBB2Cp",
+   "R2_GUU2Cpd": "R2_GCC2Cps",
+   "R2_QQCpud": "R2_QQCpcs",
+   "R2_uxdW": "R2_bxtW",
+   "R2_uxdW2Cp": "R2_bxtW2Cp"
+  },
   "ufo_r2_couplings": 1217,
-  "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+  "source": "MG5_aMC regeneration of the export's amplitudes with its own settings (madloop_ct_couplings.py): UFO couplings of the R2 vertices attached to the loops; called_as = the merged name its call passes (P0_udx_wpg)"
  },
  "mqcd_run": {
   "id": "udx_wpg_ew",
   "process": "udx_wpg_ew",
   "export": "runs/msm/udx_wpg_ew/madloop-export",
+  "components": "required/msm/components/udx_wpg_ew.json",
   "points": {
    "generator": "exact"
   }
