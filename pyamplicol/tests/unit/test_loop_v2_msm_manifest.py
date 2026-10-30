@@ -159,6 +159,50 @@ def test_r2_rule_rows_compare_against_a_complete_insertion(rows):
 
 
 @pytest.mark.loop_fast
+def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
+    """PLAN §1.4 rule 1, the R2 rule found structurally: MG5_aMC's export
+    merges couplings of equal value under one name (V_R2AWW's R2_AWWud and
+    R2_AWWtb under R2_AWWcs) and drops vanishing ones (R2_AAu3 ~ MU^2), so an
+    inserted coupling counts as called when its value class is; R2_G0tt_b
+    (V_ttG02's b-loop R2, whose propagator label MadLoop's matching never
+    meets) is the omission, and a row that does not list it fails the
+    structural check."""
+
+    from types import SimpleNamespace as N
+
+    names = ["R2_AWWcs", "R2_AWWud", "R2_AWWtb", "R2_AAu3", "R2_G0tt", "R2_G0tt_b"]
+    classes = mqcd.r2_value_classes(loop_gmu_ufo, "default", names)
+    assert classes["R2_AWWcs"] == classes["R2_AWWud"] == classes["R2_AWWtb"]
+    assert classes["R2_AWWcs"] is not None and classes["R2_AAu3"] is None
+    assert None not in (classes["R2_G0tt"], classes["R2_G0tt_b"])
+    assert classes["R2_G0tt"] != classes["R2_G0tt_b"]
+
+    def entry(vertex, coupling):
+        return ("x", N(vertex_name=vertex, coupling=N(name=coupling)))
+
+    rules = {
+        "aww": N(kind="R2", couplings=[entry("V_R2AWW", "R2_AWWud"),
+                                       entry("V_R2AWW", "R2_AWWtb")]),
+        "aa": N(kind="R2", couplings=[entry("V_R2AA", "R2_AAu3")]),
+        "g0": N(kind="R2", couplings=[entry("V_ttG0", "R2_G0tt"),
+                                      entry("V_ttG02", "R2_G0tt_b")]),
+    }  # fmt: skip
+    admitted = dict.fromkeys(rules, True)
+    recursion = N(rules=rules, admission=admitted, inert=set())
+    slice_ = N(counterterm_program=N(recursion=recursion))
+    reference = N(primary="recola")
+    row = N(
+        madloop_omitted_r2=("R2_G0tt_b",), madloop_r2_called=("R2_AWWcs", "R2_G0tt")
+    )
+    checks = mqcd.rule_r2(row, slice_, reference, classes)
+    assert [c.coefficient for c in checks] == ["inserted", "omitted"]
+    assert all(c.passed for c in checks)
+    unlisted = N(madloop_omitted_r2=None, madloop_r2_called=row.madloop_r2_called)
+    (check,) = mqcd.rule_r2(unlisted, slice_, reference, classes)
+    assert not check.passed and check.value == "R2_G0tt_b"
+
+
+@pytest.mark.loop_fast
 def test_active_references_load_at_their_points(rows):
     for name, row in rows.items():
         if row.status != "active":
