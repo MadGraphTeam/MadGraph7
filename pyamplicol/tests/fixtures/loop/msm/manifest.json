@@ -350,85 +350,78 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1380,
+    "seconds": 1368,
     "rows": [
      "CM01",
      "CM01@small",
-     "CM01@source",
      "CM01@zero"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 1286,
+    "seconds": 1498,
     "rows": [
+     "CM01@source",
      "CM02",
-     "CM03",
-     "SC05"
+     "CM03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
    },
    {
     "job": 3,
-    "seconds": 1200,
+    "seconds": 1241,
     "rows": [
      "CM04",
-     "CM05"
+     "CM05",
+     "CM08"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
    },
    {
     "job": 4,
-    "seconds": 1200,
+    "seconds": 1457,
     "rows": [
-     "CM08"
+     "CM09",
+     "CM10",
+     "DY01",
+     "DY01@mwmz"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
    },
    {
     "job": 5,
-    "seconds": 1200,
+    "seconds": 1258,
     "rows": [
-     "CM09",
-     "CM10"
+     "DY02",
+     "DY03",
+     "DY04",
+     "DY07"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
    },
    {
     "job": 6,
-    "seconds": 1359,
+    "seconds": 1349,
     "rows": [
-     "DY01",
-     "DY01@mwmz",
-     "DY02",
-     "DY03",
-     "DY04"
+     "DY05",
+     "JJ03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
    },
    {
     "job": 7,
-    "seconds": 1476,
+    "seconds": 1485,
     "rows": [
-     "DY05",
-     "JJ02"
+     "DY08",
+     "JJ01",
+     "JJ02",
+     "PI01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
    },
    {
     "job": 8,
-    "seconds": 1417,
-    "rows": [
-     "DY07",
-     "DY08",
-     "JJ01",
-     "JJ03"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
-   },
-   {
-    "job": 9,
     "seconds": 1261,
     "rows": [
      "JJ04",
@@ -436,10 +429,10 @@
      "LL02",
      "LL03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
    },
    {
-    "job": 10,
+    "job": 9,
     "seconds": 1485,
     "rows": [
      "LL05",
@@ -447,134 +440,120 @@
      "LL09",
      "LL10"
     ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
+   },
+   {
+    "job": 10,
+    "seconds": 1320,
+    "rows": [
+     "PI01@all",
+     "PI02",
+     "PI03",
+     "PI04"
+    ],
     "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
    },
    {
     "job": 11,
-    "seconds": 1200,
+    "seconds": 1343,
     "rows": [
-     "PI01",
-     "PI01@all"
+     "SC01",
+     "SC02",
+     "SC03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
    },
    {
     "job": 12,
-    "seconds": 1200,
+    "seconds": 1286,
     "rows": [
-     "PI02",
-     "PI03"
+     "SC04",
+     "SC05",
+     "SC06"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
    },
    {
     "job": 13,
-    "seconds": 1343,
+    "seconds": 1200,
     "rows": [
-     "PI04",
-     "SC01",
-     "SC02"
+     "SC07",
+     "SC08"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
    {
     "job": 14,
-    "seconds": 1200,
+    "seconds": 1492,
     "rows": [
-     "SC03",
-     "SC04"
+     "SC09",
+     "ST01",
+     "ST02",
+     "TT02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
    },
    {
     "job": 15,
-    "seconds": 1200,
+    "seconds": 1467,
     "rows": [
-     "SC06",
-     "SC07"
+     "ST03",
+     "ST04",
+     "TT01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
     "job": 16,
-    "seconds": 1379,
+    "seconds": 1375,
     "rows": [
-     "SC08",
-     "SC09",
-     "ST01"
+     "TT03",
+     "TT04",
+     "TT05"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
    },
    {
     "job": 17,
-    "seconds": 1291,
+    "seconds": 1322,
     "rows": [
-     "ST02",
-     "ST03",
-     "ST04"
+     "TT06",
+     "TV01",
+     "TV02",
+     "VJ02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
    },
    {
     "job": 18,
-    "seconds": 1428,
+    "seconds": 1467,
     "rows": [
-     "TT01",
-     "TT02",
-     "TT03"
+     "TV03",
+     "TV06",
+     "VJ01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    },
    {
     "job": 19,
-    "seconds": 1267,
+    "seconds": 1200,
     "rows": [
-     "TT04",
-     "TT05",
-     "TT06"
+     "V301",
+     "VH01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
    {
     "job": 20,
-    "seconds": 1278,
+    "seconds": 1200,
     "rows": [
-     "TV01",
-     "TV02",
-     "TV03"
+     "VH02",
+     "VH03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
    },
    {
     "job": 21,
-    "seconds": 1229,
-    "rows": [
-     "TV06",
-     "V301",
-     "VJ02"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
-   },
-   {
-    "job": 22,
-    "seconds": 1200,
-    "rows": [
-     "VH01",
-     "VH02"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_22.py"
-   },
-   {
-    "job": 23,
-    "seconds": 1051,
-    "rows": [
-     "VH03",
-     "VJ01"
-    ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_23.py"
-   },
-   {
-    "job": 24,
     "seconds": 1376,
     "rows": [
      "VJ03",
@@ -583,25 +562,25 @@
      "VV05",
      "VV05@zero"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_24.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
    },
    {
-    "job": 25,
+    "job": 22,
     "seconds": 1284,
     "rows": [
      "VV02",
      "VV03",
      "VV06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_25.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_22.py"
    },
    {
-    "job": 26,
+    "job": 23,
     "seconds": 823,
     "rows": [
      "VV07"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_26.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_23.py"
    }
   ]
  },
