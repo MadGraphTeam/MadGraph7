@@ -94,6 +94,19 @@ SUPPORTED_FUNCTION_ARITIES.update(
         "cond": frozenset({3}),
         "if": frozenset({3}),
         "pow": frozenset({2}),
+        # MG5_aMC's NLO UFO scalar helpers next to cond/reglog/reglogp/reglogm
+        # (the NLOCT function library of the QCD+QED loop models): the
+        # complex-mass-scheme selectors recms(cms, z) / crecms(cms, z), the
+        # principal argument arg(z), the principal square root regsqrt(z) and
+        # the branch-continued logarithm grreglog(logswitch, z1, z2). The
+        # QCD+QED loop models declare them and call them in counterterm
+        # expressions only, which the loop counterterm program lowers
+        # (loops.v2.ct_recursion); their tree models never call them.
+        "arg": frozenset({1}),
+        "crecms": frozenset({2}),
+        "grreglog": frozenset({3}),
+        "recms": frozenset({2}),
+        "regsqrt": frozenset({1}),
     }
 )
 SUPPORTED_FUNCTIONS = frozenset(SUPPORTED_FUNCTION_ARITIES)
@@ -984,15 +997,22 @@ def _load_external_model(
         from ufo_model_loader.common import JSONLook
 
         restriction = _loader_restriction_name(source, options.restriction)
-        model, parameter_card = load_model(
-            str(source),
-            restriction,
-            options.simplify,
-            wrap_indices_in_lorentz_structures=False,
-            # Loop counterterms belong to the exact source program. A tree
-            # projection need not parse or evaluate their finite coefficients.
-            include_counterterm_finite_parts=not source.is_dir(),
-        )
+        try:
+            model, parameter_card = load_model(
+                str(source),
+                restriction,
+                options.simplify,
+                wrap_indices_in_lorentz_structures=False,
+                # Loop counterterms belong to the exact source program. A tree
+                # projection need not parse or evaluate their finite
+                # coefficients.
+                include_counterterm_finite_parts=not source.is_dir(),
+            )
+        except Exception as error:
+            from .source_refusals import refuse_python2_ufo
+
+            refuse_python2_ufo(source, error)
+            raise
         _canonical_loader_values(model)
         from .loop_import import adapt_raw_ufo_model
 
