@@ -243,7 +243,9 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     log = pjoin(run_dir, 'mg7_postproc.log')
     if switch_lines:
         stdin_text = '\n'.join(list(switch_lines) + ['done']) + '\n'
-        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events')]
+        # the switches are answered through stdin on purpose
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'),
+                '--allow-stdin']
     else:
         stdin_text = None
         args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f']

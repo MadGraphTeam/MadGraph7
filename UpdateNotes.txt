@@ -5,6 +5,16 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: bin/madgraph, bin/madevent, bin/aMCatNLO and bin/generate_events (madevent, aMC@NLO
+       and mg7 outputs) no longer read their commands, or the answers to the questions of
+       a command given on the command line, from a pipe or a redirected file (e.g.
+       "./bin/madgraph < script.txt", "echo 0 | ./bin/generate_events"). That mode runs as
+       an interactive session, where a command that cannot be applied (such as an invalid
+       "set") was only a warning and the run went on. They now stop with an error asking
+       to write the commands to a file and run "EXECUTABLE PATH" instead, unless the new
+       --allow-stdin option is given. A forced run (-f) only stops when input is waiting
+       on stdin, which it would otherwise silently ignore. Running with a script file, or
+       with stdin on /dev/null, is unchanged.
    OM: madevent MLM (ickkw=1) with use_syst: the <pdfrwt> entry of the incoming partons
        used the flavour class of the grouped subprocess instead of the event's flavour
        (pdg 1 for s s~, 2 for c c~), so the systematics (PDF and mu_F variations) of every

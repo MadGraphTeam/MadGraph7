@@ -5720,6 +5720,29 @@ def _raise_open_file_limit() -> None:
         logger.debug("could not raise the open-file limit: %s", error)
 
 
+def _stdin_is_redirected() -> bool:
+    """True when stdin is a pipe, a socket or a file, i.e. neither a terminal
+    nor a character device such as /dev/null (batch jobs)."""
+    import stat
+    try:
+        return not stat.S_ISCHR(os.fstat(sys.stdin.fileno()).st_mode)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _stdin_has_input() -> bool:
+    """True when something is waiting on stdin. A forced (-f) run never reads
+    stdin, so a closed or idle pipe (CI runners, agents) is harmless there,
+    but piped answers would be silently dropped."""
+    import select
+    try:
+        if not select.select([sys.stdin], [], [], 0)[0]:
+            return False
+        return bool(os.read(sys.stdin.fileno(), 1))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def main() -> None:
     """``bin/generate_events`` entry point.
 
@@ -5754,7 +5777,25 @@ def main() -> None:
         help="who reweights: the classic module, MadtRex, or auto (the default: "
              "MadtRex when it can run the card)",
     )
+    parser.add_argument(
+        "--allow-stdin", action="store_true", default=False,
+        help="read the answers to the questions piped or redirected into stdin, "
+             "as an interactive session: invalid \"set\" commands then only warn")
     args = parser.parse_args()
+
+    # The answers to the questions are read from stdin as in an interactive
+    # session, where a command that cannot be applied (e.g. an invalid "set")
+    # is only a warning: refuse that mode unless asked for. --decay-widths and
+    # a forced run ask nothing; the latter is still refused when answers are
+    # waiting on stdin, which it would silently drop.
+    if not args.allow_stdin and not args.decay_widths and _stdin_is_redirected() \
+            and (args.ask_edit_cards or _stdin_has_input()):
+        sys.exit("Reading the answers to the questions from stdin is not supported: "
+                 "write the line 'launch %s' and the answers to a file and run "
+                 "'%s PATH' instead, so that an invalid command stops the run.\n"
+                 "Use --allow-stdin to read stdin as an interactive session (invalid "
+                 "commands then only warn)."
+                 % (os.getcwd(), _MG_ROOT / 'bin' / 'madgraph'))
 
     if args.decay_widths:
         results = compute_decay_widths(
