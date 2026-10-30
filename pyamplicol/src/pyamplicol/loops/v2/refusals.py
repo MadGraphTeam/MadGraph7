@@ -510,22 +510,306 @@ LOOP_ADMISSION_REFUSALS = (
         "MS-PHOTON (a guard)",
         "none",
     ),
+    LoopAdmissionRefusal(
+        "feynman-gauge",
+        "a loop request on a model that cannot be taken in 't Hooft-Feynman "
+        "gauge: its source declares no gauge 1, or an electroweak request on "
+        "a model bundle prepared in another gauge",
+        "loop lines, the Born and the counterterms take the gauge of the "
+        "model's UV and R2 rules, 't Hooft-Feynman gauge (design §6.8), in "
+        "which a massive vector's loop line has rank <= 1",
+        "an NLO UFO that declares gauge 1 (MG5_aMC's loop models), compiled "
+        "from its source rather than a prepared bundle",
+        "WP3.2 EWI-4b (a guard)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "antiparticle-metadata",
+        "a source model whose particle-antiparticle pairs are not reciprocal "
+        "or differ in spin, mass, width, propagation, Goldstone flag, PDG "
+        "sign, colour or conjugate charges (covariant_model._validate_pairs)",
+        "the loop model's covariant structure conjugates fields by their "
+        "declared antiparticles; the Goldstone flag MG5_aMC's legacy UFO "
+        "object library drops is repaired by structure first",
+        "a source whose antiparticles agree (MG5_aMC's loop models do, after "
+        "the repair)",
+        "m-sm MS-MODEL (model preparation)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "anomalous-veto",
+        "a particle_veto that breaks the cancellation of a Levi-Civita "
+        "counterterm cell (a quark of a doublet, a whole lepton generation) "
+        "whose vertex a tree of the request can hold "
+        "(ct_recursion.AnomalousVetoError)",
+        "such a cell cancels only with every flavour of its multiplet admitted "
+        "([U2]); under the veto the remaining gamma-five terms are "
+        "scheme-dependent",
+        "veto whole anomaly-free multiplets, or set "
+        "generation.allow_anomalous_veto = true to lower the cells anyway",
+        "WP3.2 EWI-7 ([U2])",
+        "none (the [U2] rule)",
+    ),
 )
-_REFUSALS = {refusal.key: refusal for refusal in LOOP_ADMISSION_REFUSALS}
+
+# Configuration-level refusals (m-sm MS-MODEL): settings of the run card
+# and the loop model declaration that v2 one-loop generation does not take,
+# decided before any tree from the configuration and the model's own
+# declarations (``generation.loop_service``, ``models.loop_declaration``).
+# They are raised as ``LoopRequestUnsupported`` like the admission keys and
+# listed by the dry run as ``loop_configuration_refusals``.
+LOOP_CONFIGURATION_REFUSALS = (
+    LoopAdmissionRefusal(
+        "loop-model-declaration",
+        "a loop request on a model with no [loop.model] declaration: none in "
+        "the card, none in the source's metadata, and the source is not one "
+        "of the shipped profiles (loops.shipped_profiles, by the digest of its "
+        "declarations)",
+        "v2 takes the scheme and the completeness of the model's UV and R2 "
+        "rules from a declaration, never from model names",
+        "[loop.model] and [loop.model.scheme] in the card, or a shipped model "
+        "(loop_sm, loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu) by name",
+        "m-qcd MQ-MODEL, m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "loop-model-corrections",
+        "corrections (process.loop_coupling_orders) outside the "
+        "loop_coupling_orders of the model's [loop.model] declaration (e.g. "
+        "QED on loop_sm, whose shipped declaration covers QCD)",
+        "the declaration states which corrections the model's UV and R2 rules complete",
+        "request covered corrections, or a model whose declaration covers "
+        "them (QED and QCD+QED: loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu)",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "loop-model-completion",
+        "a [loop.model] declaration without complete UV counterterms or "
+        "complete model R2 rules",
+        "the production path is the model's own UV and R2 rules "
+        "(REQUIREMENTS_ADDENDUM J); direct R2 comes after M-FINAL",
+        "a model and declaration with uv_complete and model_r2_complete",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "undeclared-corrections",
+        "corrections the source model does not expand perturbatively (its "
+        "coupling order's perturbative_expansion is below 1)",
+        "v2 would admit no loop species of such an order and return a "
+        "vanishing correction",
+        "corrections the source expands (an NLO UFO with that order's loop content)",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "scale-parameter",
+        "a model whose renormalisation-scale parameter is not identified: no "
+        "adjustable external parameter at (LOOP, 1) and not exactly one in "
+        "block LOOP",
+        "the counterterms' logarithms read the renormalisation scale from that "
+        "parameter (_v2_scale_parameter)",
+        "keep the model's scale parameter adjustable (not in "
+        "loop.preparation.fixed_parameters, not fixed by its restriction)",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "veto-external-particle",
+        "a generation.particle_veto that names an external particle of the process",
+        "a veto removes internal lines and loops; an external leg cannot be removed",
+        "veto internal particles only",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "tree-only-model",
+        "a loop request on a compiled model without its NLO UFO sidecar (a tree model)",
+        "v2 reads loop content, counterterms and declarations from the exact "
+        "raw NLO source",
+        "an NLO UFO source (e.g. loop_sm, loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu)",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "fft-basis-trace",
+        "color.fft_basis = 'trace' for a one-loop request",
+        "the one-loop seed FFT (design §7.3) acts on the external adjoint labels",
+        "color.fft_basis = 'adjoint', or color.contraction = 'direct'",
+        "MQ-FFT",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "colour-selectors",
+        "helicity or colour selectors (process.selected_source_helicities, "
+        "selected_color_sector_ids, max_color_sectors, reference_color_order) "
+        "at next-to-leading or full colour",
+        "v2 selects the flows of the leading-colour plan (MQ-SELECT)",
+        "color.accuracy = 'lc' with the selectors, or inclusive selectors",
+        "MQ-SELECT",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "process-aliases",
+        "permutation aliases of a one-loop request (process aliases)",
+        "plan v4 artifacts publish no permutation-alias records",
+        "request each permuted process as its own entry",
+        "m-sm MS-MODEL",
+        "M-FINAL (m-sm PLAN §1.7)",
+    ),
+    LoopAdmissionRefusal(
+        "process-group-analysis",
+        "a numerical process-group analysis (process.analyze_process_groups) "
+        "of a one-loop request",
+        "plan v4 artifacts group processes by an exact species-substitution "
+        "proof only (process.flavor_blind), never numerically",
+        "process.analyze_process_groups = 'none' (process.flavor_blind groups "
+        "identity-port flavour members exactly)",
+        "m-sm MS-MODEL",
+        "M-FINAL (m-sm PLAN §1.7)",
+    ),
+    LoopAdmissionRefusal(
+        "direct-r2",
+        "loop.r2_strategy = 'direct'",
+        "the model's R2 rules are the production path "
+        "(REQUIREMENTS_ADDENDUM J); direct rational R2 comes after M-FINAL",
+        "loop.r2_strategy = 'model'",
+        "m-sm MS-MODEL",
+        "after M-FINAL",
+    ),
+    LoopAdmissionRefusal(
+        "relation-discovery",
+        "tree numerical current relation discovery "
+        "(generation.relation_discovery) for a one-loop request",
+        "v2 builds its tree currents structurally",
+        "generation.relation_discovery.mode = 'off'",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "evaluator-backend",
+        "evaluator.backend other than 'jit' for a one-loop request",
+        "the loop coefficients compile with SymJIT",
+        "evaluator.backend = 'jit'",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "evaluator-tuning",
+        "nondefault tree evaluator tuning (evaluator.jit, .optimization, "
+        ".recurrence settings, evaluator.output_chunk_size) for a one-loop "
+        "request",
+        "the loop compiler selects its own kernels and schedules and would "
+        "not apply them (resource cores stay shared)",
+        "the default evaluator settings",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "covariant-multiplets",
+        "loop.preparation.covariant_multiplets for a v2 one-loop request",
+        "v2 virtuals read the model's own fields",
+        "no loop.preparation covariant multiplets",
+        "m-sm MS-MODEL",
+        "none",
+    ),
+)
+_REFUSALS = {
+    refusal.key: refusal
+    for refusal in (*LOOP_ADMISSION_REFUSALS, *LOOP_CONFIGURATION_REFUSALS)
+}
+
+# Internal refusals (m-sm MS-MODEL): a condition the engine meets while
+# generating a request it admitted, raised by its own checks deep in the
+# generation (``refusal_key`` of the class). Fail closed: the generation
+# stops with the key (``LoopEngineRefusal``) instead of a silent value; such
+# a request is outside what the engine covers today. Listed by the dry run as
+# ``loop_internal_refusals``; none of them is decidable before generation.
+LOOP_INTERNAL_REFUSALS = (
+    LoopAdmissionRefusal(
+        "fermion-sign",
+        "a fermion line the loop slice's sign rule does not cover "
+        "(conventions.FermionSignError)",
+        "every fermion line of a loop takes one relative sign against the "
+        "tree engine's Wick order; a line it cannot sign would give a wrong "
+        "relative sign",
+        "report the request; bound its coupling orders or veto the particle",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
+        "reading-sign",
+        "a vertex with no sign between the tree engine's reading and a loop "
+        "segment's or root closure's (conventions.ReadingSignError)",
+        "its colour tensor has no sign under the transposition of its adjoint "
+        "generators",
+        "report the request",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
+        "unlowered-counterterm",
+        "a counterterm rule the tree recursion cannot lower whose vertex can "
+        "enter a tree of the request (ct_recursion.UnloweredCountertermError)",
+        "a reachable counterterm vertex is inserted exactly once or refused "
+        "(REQUIREMENTS_ADDENDUM J); an unreachable one is inert",
+        "report the request; bound its coupling orders",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
+        "counterterm-coupling",
+        "a counterterm coupling the tree model cannot express exactly "
+        "(ct_recursion.CountertermCouplingError)",
+        "counterterm couplings enter the parameter program exactly, as "
+        "polynomials in their counterterm scalars",
+        "report the request",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
+        "loop-kernel-catalogue",
+        "a model vertex without a complete exact loop kernel "
+        "(catalogue.LoopKernelCatalogueError)",
+        "loop lines read exact kernels of every vertex they use",
+        "report the request; veto the particle or bound the coupling orders",
+        "v2 engine",
+        "engine fix per case",
+    ),
+    LoopAdmissionRefusal(
+        "counterterm-completeness",
+        "a divergent witness covered neither by a counterterm rule nor by a "
+        "certified zero (ct_sites.CountertermCompletenessError)",
+        "the model's counterterms must cover every UV-divergent structure "
+        "the request's loops produce",
+        "report the request (the model's declaration of completeness does "
+        "not hold for it)",
+        "v2 engine",
+        "engine fix per case",
+    ),
+)
+_INTERNAL = {refusal.key: refusal for refusal in LOOP_INTERNAL_REFUSALS}
+
+
+def refusal_text(key: str, message: str) -> str:
+    """The text of a listed refusal (admission or configuration): the key,
+    the message, the rule and the remedy."""
+
+    refusal = _REFUSALS.get(key)
+    if refusal is None:
+        raise ValueError(f"unknown loop admission refusal {key!r}")
+    return f"{key}: {message}. Rule: {refusal.rule}. Instead: {refusal.remedy}"
 
 
 class LoopRequestUnsupported(GenerationError):
-    """A listed structure v2 generation refuses (``LOOP_ADMISSION_REFUSALS``);
-    ``key`` is its key. The message starts with the key and names the rule
-    and the remedy."""
+    """A listed structure or setting v2 generation refuses
+    (``LOOP_ADMISSION_REFUSALS``, ``LOOP_CONFIGURATION_REFUSALS``); ``key``
+    is its key. The message starts with the key and names the rule and the
+    remedy."""
 
     def __init__(self, key: str, message: str) -> None:
-        refusal = _REFUSALS.get(key)
-        if refusal is None:
-            raise ValueError(f"unknown loop admission refusal {key!r}")
-        super().__init__(
-            f"{key}: {message}. Rule: {refusal.rule}. Instead: {refusal.remedy}"
-        )
+        super().__init__(refusal_text(key, message))
         self.key = key
 
 
@@ -535,8 +819,85 @@ class LoopRequestUnsupportedValue(LoopRequestUnsupported, ValueError):
     model preparation)."""
 
 
+class LoopEngineRefusal(GenerationError):
+    """An internal refusal (``LOOP_INTERNAL_REFUSALS``): an engine condition
+    met while generating an admitted request; ``key`` is its key."""
+
+    def __init__(self, key: str, message: str) -> None:
+        refusal = _INTERNAL.get(key)
+        if refusal is None:
+            raise ValueError(f"unknown loop internal refusal {key!r}")
+        super().__init__(
+            f"{key}: {message}. Rule: {refusal.rule}. Instead: {refusal.remedy}"
+        )
+        self.key = key
+
+
+class ListedBlocker(str):
+    """A configuration refusal found before generation (the dry run's
+    unsupported feature): its text (``refusal_text``) with its ``key``."""
+
+    key: str
+    message: str
+
+    def __new__(cls, key: str, message: str) -> ListedBlocker:
+        blocker = super().__new__(cls, refusal_text(key, message))
+        blocker.key = key
+        blocker.message = message
+        return blocker
+
+    def error(self) -> LoopRequestUnsupported:
+        return LoopRequestUnsupported(self.key, self.message)
+
+
+def keyed_error(error: BaseException) -> BaseException:
+    """``error`` as the typed refusal of its key: an engine error class that
+    carries a listed ``refusal_key`` (``LOOP_INTERNAL_REFUSALS``, or an
+    admission key such as ``anomalous-veto``) becomes ``LoopEngineRefusal``
+    or ``LoopRequestUnsupported`` with the original message; a native export
+    refusal (``native_trees.NativeExportUnsupported``) keeps its feature key
+    (``NativeExportRefused``); an error that already has a key is returned
+    as it is, any other error too."""
+
+    if getattr(error, "key", None) is not None:
+        return error
+    key = getattr(type(error), "refusal_key", None)
+    if key in _INTERNAL:
+        return LoopEngineRefusal(key, str(error))
+    if key in _REFUSALS:
+        return LoopRequestUnsupported(key, str(error))
+    feature = getattr(error, "feature", None)
+    if isinstance(error, NotImplementedError) and feature is not None:
+        return NativeExportRefused(feature, str(error))
+    return error
+
+
+class NativeExportRefused(GenerationError):
+    """A process whose point inputs the native export does not cover (a
+    listed ``native_trees.NATIVE_EXPORT_REFUSALS`` feature): a plan v4 process
+    is stored with them, so it is not stored. ``key`` (= ``feature``) is the
+    export refusal's key, the message starts with it."""
+
+    def __init__(self, key: str, message: str) -> None:
+        super().__init__(
+            message if message.startswith(f"{key}:") else f"{key}: {message}"
+        )
+        self.key = key
+        self.feature = key
+
+
 def listed_refusal_keys() -> tuple[str, ...]:
-    return tuple(_REFUSALS)
+    """The admission keys (``LOOP_ADMISSION_REFUSALS``)."""
+
+    return tuple(refusal.key for refusal in LOOP_ADMISSION_REFUSALS)
+
+
+def listed_configuration_keys() -> tuple[str, ...]:
+    return tuple(refusal.key for refusal in LOOP_CONFIGURATION_REFUSALS)
+
+
+def listed_internal_keys() -> tuple[str, ...]:
+    return tuple(_INTERNAL)
 
 
 # ------------------------------------------------------------ N_c exactness
@@ -886,11 +1247,20 @@ def require_labelled_counterterms_for_veto(
 
 __all__ = [
     "LOOP_ADMISSION_REFUSALS",
+    "LOOP_CONFIGURATION_REFUSALS",
+    "LOOP_INTERNAL_REFUSALS",
+    "ListedBlocker",
     "LoopAdmissionRefusal",
+    "LoopEngineRefusal",
     "LoopRequestUnsupported",
     "LoopRequestUnsupportedValue",
+    "NativeExportRefused",
+    "keyed_error",
+    "listed_configuration_keys",
+    "listed_internal_keys",
     "listed_refusal_keys",
     "mixed_grade_blocks",
+    "refusal_text",
     "representation_changing_vertices",
     "require_colour_preserving_fermion_lines",
     "require_declared_colour_fields",

@@ -233,9 +233,12 @@ A one-loop v2 request is refused at generation, with a typed error whose
 message starts with the rule's key and names the rule and the remedy, rather
 than stored with a value it does not compute exactly. `generate --dry-run
 --json` lists the keys (`estimated_coverage.loop_admission_refusals`,
+`loop_configuration_refusals`, `loop_internal_refusals`,
 `process_request_refusals` and `native_export_refusals`). MG5_aMC's loop_sm
 ships with pyAmpliCol; see [One-loop QCD on loop_sm](loop-sm-and-madloop.md)
-for its declaration, restriction recipes and the MadLoop syntax mapping.
+for its declaration, restriction recipes and the MadLoop syntax mapping, and
+[One-loop QCD+QED on loop_qcd_qed_sm](electroweak-and-madloop.md) for the
+shipped QCD+QED models and the configuration keys.
 
 | Feature | Status | Condition and consequence |
 | --- | --- | --- |
@@ -249,6 +252,10 @@ for its declaration, restriction recipes and the MadLoop syntax mapping.
 | Colour-flow selection interfering with an unselected flow | rejected | `interfering-colour-flows`: a generation-time colour-flow selection at leading colour one of whose flows interferes at the leading N_c power with an unselected flow, which happens between two Born orders (e.g. `u u~ > d d~` with QCD and photon Born amplitudes: the QCD flow (2,4,3,1) with the photon Born's (2,1,3,4) at QCD^2 QED^2), at generation: a generation-time selection restricts the Born itself and would drop that term. Select the interfering flows together, or select at evaluation, which keeps it. |
 | Fermion line changing colour representation | rejected | `fermion-line-representation`: a vertex joining a coloured and a colour-singlet fermion (a leptoquark) that a tree or loop of the request can use, named, before any tree is built; veto one of its particles or bound its coupling order. |
 | On-shell external photons with electroweak corrections | supported | per leg, as MG5_aMC's `!a!` tags (`[loop] external_photons`: `"final"` by default, `"all"`, `"none"` or a list of 1-based legs, initial legs allowed): a tagged photon couples with alpha(0) instead of the loops' coupling, with the matching charge-renormalisation term (MG5_aMC's alpha(0) formula), which needs a G_mu model with an adjustable 1/alpha(0) (MG5_aMC's `aEW0M1` at `SMINPUTS 1`, set by its `restrict_a0`) and the conversion counterterm `eCoup_DGmua0_UV_EW`, with the electromagnetic correction requested; stored with native point inputs (1/alpha(0) is a runtime parameter). An untagged photon (by default an initial-state, PDF photon) keeps the loops' coupling and its gamma_gamma pole and needs no model input. Tagged photons a model or request cannot convert are refused (`external-photon-scheme`, naming the reason and the remedy: untagged photons, or `restriction = "a0"`); a listed leg that is no on-shell external photon is refused (`external-photon-legs`). |
+| Models outside 't Hooft-Feynman gauge | rejected | `feynman-gauge`: a source that declares no gauge 1, or an electroweak request on a bundle prepared in another gauge. |
+| Anomalous vetoes | rejected | `anomalous-veto`: a `particle_veto` that breaks an anomaly-free multiplet whose Levi-Civita counterterm cell a tree of the request can hold; `generation.allow_anomalous_veto = true` lowers the cells anyway. |
+| Multiparticle members without a Born | supported | skipped with a typed `loop-induced` record (dry run `skipped_members`, artifact extension `loop_skipped_members`); a request with no member left is refused. |
+| Python-2 UFO | rejected | `ufo-python2`: a UFO whose modules are Python-2 code (the raw `loop_qcd_qed_sm_Gmu` download); the message names MG5_aMC's conversion and the shipped model. |
 | Decay requests | rejected | `decay-process`: a 1 -> n request (one initial particle), tree and one-loop alike. |
 | MG5_aMC process syntax | rejected | `madloop-syntax`: NLO brackets (`[virt=QCD]`, `[QCD]`), coupling-order constraints (`QED=2`, `QCD^2==4`), `/`, `$`, decay chains and `@N` inside the expression; the message names the run-card setting (`process.loop_coupling_orders`, `process.max_coupling_orders`, `generation.particle_veto`). |
 | Loop-induced processes | rejected | `loop-induced`: no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, `g g > a a`). |

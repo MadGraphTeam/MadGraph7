@@ -130,8 +130,13 @@ def load_raw_loop_model(
     path = Path(source).expanduser().resolve()
     selected = _loader_restriction_name(path, restriction)
     with _sanitized_model_environment():
-        return adapt_raw_ufo_model(
-            load_raw_ufo_model(
+        try:
+            raw = load_raw_ufo_model(
                 path, restriction=selected, value_overrides=value_overrides
             )
-        )
+        except Exception as error:
+            from .source_refusals import refuse_python2_ufo
+
+            refuse_python2_ufo(path, error)
+            raise
+        return adapt_raw_ufo_model(raw)
