@@ -229,7 +229,8 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
     (``required/msm/udx_wpbbx_cms.json``) at its four points: arbitrary
     precision (32 digits) to 1e-11 (measured 6.8e-14), binary64 to 1e-8
     (3.4e-10). The slice's loop propagators take the complex top: its
-    squared mass M^2 - i M Gamma; the conventions record the scheme."""
+    squared mass M^2 - i M Gamma; the conventions record the scheme; the
+    recommended stability estimate bounds the binary64 error."""
 
     from pyamplicol.loops.v2.assemble import Precision, _model_masses, _squared
     from pyamplicol.loops.v2.ew_policy import scheme_conventions
@@ -272,6 +273,23 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
                 alpha_s,
             )
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+    # The recommended stability checks (a rotation and the rescaled reduction,
+    # which scales the complex m^2 with the other dimensionful inputs) bound
+    # the binary64 error (campaign rule 3: error <= 10 E).
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    row = reference["rows"][0]
+    result = slice_.evaluate(
+        reference["points"][0],
+        str(Fraction(reference["mu_r"][0]) ** 2),
+        parameters=parameters,
+        precision=Precision.double(),
+        stability=RECOMMENDED_CHECKS,
+    )
+    estimate = result.stability.relative
+    error = abs(float(result.totals[1].real) - row["finite"]) / abs(row["finite"])
+    assert set(result.stability.checks) == {"rotation-0", "reduction-rescaled"}
+    assert 0 < estimate < 1e-6 and error <= 10 * estimate, (error, estimate)
 
 
 # ------------------------------------------- the G_mu UFO, every width (nightly)
