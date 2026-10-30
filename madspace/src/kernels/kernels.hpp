@@ -3,6 +3,7 @@
 #include "chili.hpp"
 #include "cuts.hpp"
 #include "discrete.hpp"
+#include "fks.hpp"
 #include "invariants.hpp"
 #include "kinematics.hpp"
 #include "math.hpp"

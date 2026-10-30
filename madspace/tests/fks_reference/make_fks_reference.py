@@ -188,6 +188,7 @@ def main():
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))
+                f.write("\n")
             npts = sum(len(c["points"]) for c in data["configs"])
             print(f"{path}: {len(data['configs'])} FKS configs, {npts} points")
     if not args.keep:

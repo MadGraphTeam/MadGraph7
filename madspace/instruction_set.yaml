@@ -2290,6 +2290,154 @@ boost_to_frame:
 
 
 ---
+title: FKS radiation
+
+fks_xi_y_sample:
+  inputs:
+    - name: r_xi
+      type: [float]
+      desc: "random number for the rescaled energy fraction xi_hat of the FKS parton"
+    - name: r_y
+      type: [float]
+      desc: "random number for the cosine y of the FKS angle"
+  outputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of the FKS parton in units of its upper bound, in [stiny, 1]"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between the FKS partons i and j, in [-1, 1 - 2 ctiny]"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the map"
+  desc: "Quadratic importance sampling of the FKS variables towards the soft (xi_hat -> 0) and collinear (y -> 1) limits, as genps_fks.f of MadGraph, with its cutoffs stiny = 1e-6 and ctiny = 5e-7. Unlike genps_fks.f the Jacobian includes the factors 1 - stiny and 1 - ctiny, so that the map is exactly invertible."
+
+fks_xi_y_sample_inverse:
+  inputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of the FKS parton in units of its upper bound"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between the FKS partons i and j"
+  outputs:
+    - name: r_xi
+      type: [float]
+      desc: "random number for xi_hat"
+    - name: r_y
+      type: [float]
+      desc: "random number for y"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the inverse map"
+  desc: "Inverse of @ref fks_xi_y_sample."
+
+fks_final_massless_radiate:
+  inputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of the FKS parton i in units of its upper bound xi_max"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the direction of the Born emitter"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy of the Born, unchanged by the emission"
+    - name: p_jbar
+      type: [float, 4]
+      desc: "massless Born emitter in the Born centre-of-mass frame"
+  outputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i (the radiated massless parton)"
+    - name: p_j
+      type: [float, 4]
+      desc: "FKS parton j (the massless emitter after the emission)"
+    - name: xi
+      type: [float]
+      desc: "energy fraction 2 E_i / sqrt_s"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound 1 - M_rec^2 / s of xi, with M_rec the mass of the system recoiling against the emitter"
+    - name: det_xi
+      type: [float]
+      desc: "Jacobian of (xi_hat, y, r_phi) to the (n+1)-body phase space in units of the n-body one, divided by xi"
+  desc: "FKS emission off a massless final-state parton, as generate_momenta_massless_final of MadGraph's genps_fks.f, except that the angle of i to i + j comes from its exact sine and cosine instead of the law of cosines (which loses up to half the digits of small angles). The sum of i and j has the direction of the Born emitter and the other final-state momenta are boosted along it with @ref fks_recoil_boost, at fixed partonic energy. Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
+
+fks_final_massless_cluster:
+  inputs:
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i in the centre-of-mass frame of the real emission"
+    - name: p_j
+      type: [float, 4]
+      desc: "FKS parton j, massless"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy"
+  outputs:
+    - name: p_jbar
+      type: [float, 4]
+      desc: "massless Born emitter"
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of i in units of xi_max"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the direction of the Born emitter"
+    - name: xi
+      type: [float]
+      desc: "energy fraction 2 E_i / sqrt_s"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound of xi"
+    - name: det_xi
+      type: [float]
+      desc: "inverse of det_xi of @ref fks_final_massless_radiate"
+  desc: "Inverse of @ref fks_final_massless_radiate. The other final-state momenta are mapped back with @ref fks_recoil_boost_inverse."
+
+fks_recoil_boost:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born recoiling against the emitter"
+    - name: k
+      type: [float, 4]
+      desc: "momentum p_i + p_j of the FKS pair after the emission"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the boosted momenta"
+  desc: "Boost of the recoiling system along the direction of k in an FKS emission off a final-state parton, as genps_fks.f (with boostwdir2 and cosh(y) - 1 computed directly). It takes the Born recoil, of momentum (sqrt_s, 0) - p_jbar, to (sqrt_s, 0) - k at fixed invariant mass. See @ref fks_final_massless_radiate."
+
+fks_recoil_boost_inverse:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta recoiling against the FKS pair"
+    - name: k
+      type: [float, 4]
+      desc: "momentum p_i + p_j of the FKS pair"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the momenta of the Born recoil"
+  desc: "Inverse of @ref fks_recoil_boost."
+
+
+---
 title: Invariants
 
 uniform_invariant:
