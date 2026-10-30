@@ -381,7 +381,11 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
                 [row["finite"], row["single_pole"], row["double_pole"]],
                 alpha_s,
             )
-            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+            assert all(e <= tolerance for e in errors), (
+                precision.arithmetic,
+                k,
+                errors,
+            )
     # The recommended stability checks (a rotation and the rescaled reduction,
     # which scales the complex m^2 with the other dimensionful inputs) bound
     # the binary64 error (campaign rule 3: error <= 10 E).
@@ -705,7 +709,7 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
                 errors = _laurent_errors(
                     [x.real for x in laurent], born_reference, theirs, 1 / 132.0
                 )
-                assert max(errors) <= tolerance, (block, carrier, k, errors)
+                assert all(e <= tolerance for e in errors), (block, carrier, k, errors)
         for k in range(len(expected["points"])):
             # Double-double against arbitrary precision (§1.3).
             dd, ap = exact["double-double", k], exact["arbitrary", k]
@@ -806,7 +810,8 @@ def _check_sectors(slice_, reference, model, carriers, points, executor=None):
                 [total["finite"], total["single_pole"], total["double_pole"]],
                 1 / 132.0,
             )
-            assert max(errors) <= tolerance, (carrier, k, "total", errors)
+            # all(), not max(): max([0.0, nan]) is 0.0 (a NaN pole passed).
+            assert all(e <= tolerance for e in errors), (carrier, k, "total", errors)
             for sector in row["sectors"]["loop"]:
                 laurent = virtual[_sector_key(sector)]
                 qcd = sector["QCD"] > sector["born_sector"]["QCD"]
@@ -816,7 +821,7 @@ def _check_sectors(slice_, reference, model, carriers, points, executor=None):
                     [sector["finite"], sector["single_pole"], sector["double_pole"]],
                     float(parameters["aS"]) if qcd else 1 / 132.0,
                 )
-                assert max(errors) <= tolerance, (carrier, k, sector, errors)
+                assert all(e <= tolerance for e in errors), (carrier, k, sector, errors)
 
 
 # The CM rows whose native point inputs ``_check_cms_split`` checks here;
@@ -980,4 +985,4 @@ def test_cm09_tagged_photon_with_python_inputs_equals_madloop_cms(
                     ]
                 )
             errors = native_cms._sector_errors(result, row, abs(r * born), want)
-            assert max(errors) <= 1e-8, (precision.arithmetic, k, errors)
+            assert all(e <= 1e-8 for e in errors), (precision.arithmetic, k, errors)

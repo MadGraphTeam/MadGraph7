@@ -418,13 +418,15 @@ def _held_evaluations(
     extra_env: dict[str, str] | None = None,
     point: dict | None = None,
     parameters: dict[str, str] | None = None,
+    poles: str | None = None,
 ) -> tuple[dict, list[subprocess.CompletedProcess]]:
     """One unlicensed ``evaluate`` process per (arithmetic, digits), all at
     once, while ``RestrictedPermit`` holds the user's permit: a process that
     completes touched no Symbolica state needing the permit (the permit
     record's positive control says the hold discriminates). ``point``: the
     points file's content (default: one of the tool's points); ``parameters``:
-    model parameter values every process evaluates at."""
+    model parameter values every process evaluates at; ``poles``: the pole
+    selection (default: the API's)."""
 
     points = scratch / "points.json"
     points.write_text(json.dumps(point or portability.points(legs, 1)))
@@ -449,6 +451,8 @@ def _held_evaluations(
                 command += ["--precision", str(digits)]
             for name, value in (parameters or {}).items():
                 command += ["--parameter", f"{name}={value}"]
+            if poles is not None:
+                command += ["--poles", poles]
             running.append(
                 subprocess.Popen(
                     command,
@@ -1079,6 +1083,55 @@ def test_binary64_side_inputs_need_the_key_only_when_they_change(
         output = run.stdout[-2000:] + run.stderr[-2000:]
         assert (run.returncode == 0) is completes, output
         assert (RESTRICTED in output) is not completes, output
+
+
+@pytest.mark.loop_physics
+def test_binary64_ew_pole_split_needs_no_key(tmp_path):
+    """The "uv", "ir" and "split" pole selections of a model with pole
+    regulators (MS-POLES) also evaluate the counterterms with the IR regulator
+    at 0. The generation records the regulator (``ir_regulator``), its plane
+    check certifies those values as a second real point
+    (``native_trees._request_points``) and the runtime takes both keys as
+    certified (``TreeProgram::certify_parameters``; DESIGN §12.1 (e)). So the
+    shipped EW self-test artifact (e- e+ > e- e+ [QED] on loop_qcd_qed_sm,
+    which also shows it is regenerated with the record) evaluates every split
+    selection in binary64 with the native key disabled while the permit is
+    held. Control: a changed side input (aEWM1) needs the key, so the check
+    is live on this artifact."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    point = {
+        "schema": portability.SCHEMA,
+        "kind": "points",
+        "legs": 4,
+        "points": [[[float(c).hex() for c in p] for p in expected["points"][0]]],
+        "mu_r2": [float(expected["mu_r2"][0]).hex()],
+    }
+    runs = [("uv", None, True), ("ir", None, True), ("split", None, True)]
+    runs.append(("uv", {"aEWM1": "130"}, False))
+    for poles, parameters, completes in runs:
+        scratch = tmp_path / f"{poles}-{completes}"
+        scratch.mkdir()
+        permit, (run,) = _held_evaluations(
+            artifact,
+            selftest.NAME,
+            scratch,
+            4,
+            [("double", None)],
+            NO_NATIVE_KEY,
+            point=point,
+            parameters=parameters,
+            poles=poles,
+        )
+        assert permit["verified"], permit
+        output = run.stdout[-2000:] + run.stderr[-2000:]
+        assert (run.returncode == 0) is completes, (poles, output)
+        assert (RESTRICTED in output) is not completes, (poles, output)
 
 
 @pytest.mark.loop_physics

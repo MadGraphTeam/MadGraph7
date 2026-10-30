@@ -311,12 +311,13 @@ def test_cm05_native_inputs_equal_madloop_cms(loop_gmu_ufo, loop_native, tmp_pat
     every squared-order sector and their sum equal MadLoop CMS at the four
     points in binary64 to 1e-8, and the pole split holds (``_check_cms_split``).
     Not a master defect: one output of its binary64 parameter program was NaN
-    in SymJIT 2.27's optimised SIMD code (a block of equal lanes, as a batch
+    in SymJIT's optimised AVX/AVX-512 code (2.27.3 through v228 ``c0ccfa4``;
+    a block of equal lanes, as a batch
     runs it), right in its scalar code, at optimisation level 0 and in the
     exact evaluator; the plane check now runs every probe row in a block of
     its own and, on a disagreement, compiles the program again at level 0
     (``loop_v2::trees::compile_plane_application_checked``; upstream report
-    ``upstream/symjit-simd-compact-nan``). Before, the finite part was NaN at
+    ``upstream/symjit-simd-complex-times-alias``). Before, the finite part was NaN at
     every point (``uv_local``). Generation about 3 min, 6 GB."""
 
     from pyamplicol.loops.v2.plan_export import NativeExecutor
