@@ -4875,13 +4875,14 @@ def _model_masses(
 
 def _constant_parameters(
     compiled, parameters: Mapping[str, str], digits: int
-) -> dict[str, Fraction]:
+) -> dict[str, Any]:
     """The model parameter values of the kernel constants
     (``rx.KernelConstants``): every external parameter exactly, and every
     particle's derived mass the slice's one mass evaluator gives
-    (``_model_masses``; a loop propagator's kernel reads its mass). A derived
-    mass that is not real and positive here is left out (a constant reading
-    it is refused by ``KernelConstants``)."""
+    (``_model_masses``; a loop propagator's kernel reads its mass), a
+    complex-mass scheme's pole mass complex (as the native lane binds it). A
+    derived mass that is not real and positive here otherwise is left out (a
+    constant reading it is refused by ``KernelConstants``)."""
 
     values = _kernel_parameters(compiled, parameters)
     internal = {
@@ -4889,7 +4890,7 @@ def _constant_parameters(
     }
     derived = sorted({str(record.mass) for record in compiled.ir.particles} & internal)
     if derived:
-        mass_of = _model_masses(compiled, parameters, digits)
+        mass_of = _model_masses(compiled, parameters, digits, poles=True)
         for name in derived:
             try:
                 values[name] = mass_of(name)

@@ -194,6 +194,45 @@ def test_zero_width_native_inputs_equal_python_inputs(slices):
         assert abs(float(real.totals[k]) - float(theirs.totals[k])) <= 1e-12 * scale
 
 
+@pytest.mark.parametrize(
+    ("carrier", "tolerance"), [("double", 1e-12), ("double-double", 1e-24)]
+)
+def test_native_inputs_equal_python_inputs_at_the_width(slices, carrier, tolerance):
+    """The continued fixture at the card's top width: the native lane (the
+    parameter program binds CMASS_MT, its square and every complex coupling)
+    and the Python-input lane (``_mass_values`` with the pole masses: an
+    ``[re, im]`` squared mass, complex kernel constants) on the same plan give
+    Born and every component within ``tolerance`` of the sector's virtual
+    (measured: binary64 1.8e-14, the parameter program's binary64 rounding;
+    double-double bitwise)."""
+
+    slice_ = slices("continued")
+    point = _point(slice_)
+    native = NativeExecutor(slice_, inputs="native", forward=False)
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    precision = CARRIERS[carrier][0]
+    (mine,) = native.evaluate([point], [SCALE], precision=precision)
+    (theirs,) = python.evaluate([point], [SCALE], precision=precision)
+    for order, value in theirs.born.items():
+        assert _relative(float(mine.born[order]), float(value)) <= tolerance
+    assert mine.components.keys() == theirs.components.keys()
+    for component, sectors in theirs.components.items():
+        for sector, laurent in sectors.items():
+            size = max(
+                abs(complex(x))
+                for x in theirs.components["virtual"][sector].coefficients
+            )
+            for x, y in zip(
+                mine.components[component][sector].coefficients,
+                laurent.coefficients,
+                strict=True,
+            ):
+                assert abs(complex(x) - complex(y)) <= tolerance * size, (
+                    component,
+                    sector,
+                )
+
+
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
 def test_the_pole_mass_square_is_bound_complex(slices, carrier):
     """At the card's width the top's bound squared mass is the square of the
