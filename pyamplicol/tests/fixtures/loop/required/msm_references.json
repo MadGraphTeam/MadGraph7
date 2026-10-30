@@ -6744,10 +6744,68 @@
    "existing_references": [
     {
      "fixture": "required/ttx_ttx_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      216,
+      216,
+      216
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 6.079941561954554e-14
+      },
+      {
+       "QCD^2=0,QED^2=6": 3.3581015046464763e-15
+      },
+      {
+       "QCD^2=0,QED^2=6": 2.780653254651591e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/ttx_ttx_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
    "primary_provider": "recola"
   },
   {
@@ -7953,10 +8011,68 @@
    "existing_references": [
     {
      "fixture": "required/udx_tbx_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      216,
+      217,
+      216
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 1.4721147591290607e-12
+      },
+      {
+       "QCD^2=0,QED^2=6": 8.280099727436707e-14
+      },
+      {
+       "QCD^2=0,QED^2=6": 2.144099254902128e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "required/udx_tbx_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ]
   },
   {
    "row": "ST03",
@@ -10742,18 +10858,188 @@
    "references": [
     {
      "run": "gg_ttxemepg_cms",
-     "fixture": null,
+     "fixture": "required/msm/gg_ttxemepg_cms.json",
      "process_key": "gg_ttxemepg_cms",
      "note": "[U4] acceptance: MadLoop CMS at the points of the zero-width reference required/gg_ttxemepg_ew.json, one job per point",
      "reference_notes": {},
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
-     "status": "pending"
+     "status": "committed",
+     "madloop_process": "g g > t t~ e- e+ g QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6",
+     "pdgs": [
+      21,
+      21,
+      6,
+      -6,
+      11,
+      -11,
+      21
+     ],
+     "born_orders": {
+      "QCD": 3,
+      "QED": 2
+     },
+     "born_orders_all": [
+      {
+       "QCD": 3,
+       "QED": 2
+      }
+     ],
+     "loop_orders": {
+      "QCD": 3,
+      "QED": 4
+     },
+     "scheme": "ew-gmu-cms",
+     "restriction": "default",
+     "madloop_model": "loop_qcd_qed_sm_Gmu_py3",
+     "gauge": "Feynman",
+     "parameter_overrides": {
+      "WT": "0"
+     },
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "point_family": "exact terminating decimals",
+     "madloop_qp_point": false,
+     "point_labels": null,
+     "scale_variation": null,
+     "primary_provider": "madloop",
+     "validated_providers": [
+      "madloop"
+     ],
+     "madloop_return_codes": [
+      328,
+      328,
+      328
+     ],
+     "madloop_evaluation": "quadruple",
+     "evaluation_precision": [
+      "quadruple",
+      "quadruple",
+      "quadruple"
+     ],
+     "binding_rows": [
+      0,
+      1,
+      2
+     ],
+     "outliers": {},
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=6,QED^2=6": 3.811012852781579e-15
+      },
+      {
+       "QCD^2=6,QED^2=6": 9.376397270976493e-15
+      },
+      {
+       "QCD^2=6,QED^2=6": 0.0
+      }
+     ],
+     "second_provider_outcome": {},
+     "squared_split_orders": {
+      "born": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 4
+       }
+      ],
+      "loop": [
+       {
+        "index": 1,
+        "QCD": 6,
+        "QED": 6
+       }
+      ]
+     },
+     "per_helicity": false,
+     "subprocess": null,
+     "complex_mass_scheme": true,
+     "scheme_conventions": {
+      "CMSParam": "1 (set by MG5's change_mass_to_complex_scheme)",
+      "LogSwitch": "1 (fixed by the restriction card)",
+      "GfRedefinitionChoice": "1 (fixed by the restriction card: alpha_Gmu = sqrt(2) Gf |mu_W^2 (1 - mu_W^2/mu_Z^2)| / pi)",
+      "ghost_widths": "zero (the UFO's ghosts carry no width; MadLoop's loop denominators use the complex mass)"
+     },
+     "madloop_r2_couplings": {
+      "called": [
+       "R2_AAD",
+       "R2_AAU",
+       "R2_AAboson1",
+       "R2_AAboson2",
+       "R2_AAboson3",
+       "R2_AAt3",
+       "R2_AWWcs",
+       "R2_AZD",
+       "R2_AZU",
+       "R2_AZboson1",
+       "R2_AZboson2",
+       "R2_AZboson3",
+       "R2_AZl",
+       "R2_AZt3",
+       "R2_GCC2Cps",
+       "R2_GGAAdown",
+       "R2_GGAAup",
+       "R2_GGGAvecDown",
+       "R2_GGGAvecUp",
+       "R2_GGGZaxialDown",
+       "R2_GGGZvecDown",
+       "R2_GGGZvecUp",
+       "R2_GGHt",
+       "R2_GGZAdown",
+       "R2_GGZAup",
+       "R2_GGZZdown",
+       "R2_GGZZup",
+       "R2_GGZdown",
+       "R2_GTT2Cm",
+       "R2_GTT2Cmb",
+       "R2_GTT2Cp",
+       "R2_QQCp0",
+       "R2_QQCpcs",
+       "R2_TTC0",
+       "R2_UUCm",
+       "R2_ZZD",
+       "R2_ZZU",
+       "R2_ZZboson1",
+       "R2_ZZboson2",
+       "R2_ZZboson3",
+       "R2_ZZl",
+       "R2_ZZt3",
+       "R2_ZZv",
+       "R2_ccA2Cp_s",
+       "R2_ccZ2Cp_s",
+       "R2_eeACm",
+       "R2_eeACp",
+       "R2_eeZCm",
+       "R2_eeZCp",
+       "R2_llZCp",
+       "R2_ttA2Cm",
+       "R2_ttA2Cm_b",
+       "R2_ttA2Cp",
+       "R2_ttZ2Cm",
+       "R2_ttZ2Cm_b",
+       "R2_ttZ2Cp"
+      ],
+      "ufo_r2_couplings": 1217,
+      "source": "UFO R2 CT-vertex couplings (all_CTvertices of type R2) found as tokens in the export's SubProcesses/P*/*.f"
+     }
     }
    ],
    "existing_references": [],
-   "binding_references": []
+   "binding_references": [
+    {
+     "fixture": "required/msm/gg_ttxemepg_cms.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ]
   },
   {
    "row": "CM08",
@@ -14453,10 +14739,68 @@
    "existing_references": [
     {
      "fixture": "required/ttx_zh_ew.json",
-     "status": "pending"
+     "status": "committed",
+     "kind": "provider reference",
+     "primary_provider": "madloop",
+     "providers": [
+      "madloop",
+      "recola"
+     ],
+     "validated_providers": [
+      "madloop",
+      "recola"
+     ],
+     "points": 3,
+     "mu_r": [
+      "1000",
+      "700",
+      "1400"
+     ],
+     "scheme": "ew-gmu",
+     "madloop_return_codes": [
+      217,
+      216,
+      217
+     ],
+     "evaluation_precision": [
+      "double",
+      "double",
+      "double"
+     ],
+     "provider_accuracy_per_sector": [
+      {
+       "QCD^2=0,QED^2=6": 1.0622028811368822e-13
+      },
+      {
+       "QCD^2=0,QED^2=6": 4.310971654533489e-12
+      },
+      {
+       "QCD^2=0,QED^2=6": 8.571535875578706e-12
+      }
+     ],
+     "point_binding": [
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      },
+      {
+       "binding": true
+      }
+     ]
     }
    ],
-   "binding_references": [],
+   "binding_references": [
+    {
+     "fixture": "required/ttx_zh_ew.json",
+     "rows": [
+      0,
+      1,
+      2
+     ]
+    }
+   ],
    "primary_provider": "recola"
   }
  ]
