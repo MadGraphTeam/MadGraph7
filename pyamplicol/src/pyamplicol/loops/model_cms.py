@@ -21,7 +21,9 @@ specification and the oracle (m-sm PLAN §3.2 MS-CMS). The steps, as MG5:
      by PDG 24 and the MW expression) is not ported (genericity; m-sm PLAN
      §1.7);
 3. the YUKAWA-block inputs become the masses of their particles (the complex
-   pole mass where the mass has one): under the scheme they are derived, and a
+   pole mass where the mass has one, written in the real mass and width, so
+   that no coupling reads the pole-mass parameter whose sign the tree reading
+   of a fermion loop line flips): under the scheme they are derived, and a
    request that sets one is refused (``cms-yukawa-input``);
 4. if some mass is complex, every internal parameter other than the masses
    and widths of step 2 becomes complex, and every reference to a mass ``M``
@@ -550,6 +552,13 @@ def _rename_counterterm(value: Any, replacements: Mapping[str, str]) -> Any:
     return value
 
 
+def pole_mass_expression(mass: str, width: str) -> str:
+    """MG5_aMC's complex pole mass of a real external mass and its width
+    (``change_mass_to_complex_scheme``'s ``CMASS_`` definition)."""
+
+    return f"cmath.sqrt({mass}**2 - complex(0,1) * {mass} * {width})"
+
+
 def complex_mass_scheme(
     raw: RawLoopModel,
     *,
@@ -671,8 +680,20 @@ def complex_mass_scheme(
         fields.update(nature="internal", type="complex" if masses else "real")
         fields.pop("lhablock", None)
         fields.pop("lhacode", None)
+        # MG5's ymX = CMASS_MX, written in the real inputs: no coupling then
+        # reads the loop line's own mass parameter, whose sign the tree
+        # reading of a fermion loop flips (``conventions``, module docstring).
         _set_value(
-            record, {"kind": "expression", "expression": mass_name}, "yukawa-from-mass"
+            record,
+            {
+                "kind": "expression",
+                "expression": (
+                    pole_mass_expression(mass_name, widths[mass_name])
+                    if mass_name in masses
+                    else mass_name
+                ),
+            },
+            "yukawa-from-mass",
         )
 
     # 4. Complex internal parameters and the pole masses everywhere.
@@ -683,21 +704,22 @@ def complex_mass_scheme(
             for record in collections[collection]:
                 fields = record["fields"]
                 if collection == "parameters" and (
-                    fields.get("nature") == "external" or record["name"] in kept
+                    fields.get("nature") == "external"
+                    or record["name"] in kept
+                    or record["name"] in yukawas
                 ):
                     continue
                 if collection != "couplings":
                     fields["type"] = "complex"
-                if record["name"] not in yukawas:
-                    raw.exact_value(collection, record["id"])  # exact origin
+                raw.exact_value(collection, record["id"])  # its exact origin
                 value = _replace_value(fields["value"], masses)
                 if value != fields["value"]:
                     operation = fields.get("value_source", {}).get("operation")
                     _set_value(
                         record,
                         value,
-                        operation
-                        if operation in {"enable-cms", "yukawa-from-mass"}
+                        "enable-cms"
+                        if operation == "enable-cms"
                         else "complex-pole-masses",
                     )
         for record in collections["particles"]:
@@ -723,10 +745,7 @@ def complex_mass_scheme(
                 record,
                 {
                     "kind": "expression",
-                    "expression": (
-                        f"cmath.sqrt({mass_name}**2 - complex(0,1) * {mass_name} "
-                        f"* {widths[mass_name]})"
-                    ),
+                    "expression": pole_mass_expression(mass_name, widths[mass_name]),
                 },
                 "complex-pole-mass",
             )
@@ -852,9 +871,10 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
             expression = expression.replace(old, new)
         return expression
 
-    def source(name: str) -> str:
-        record = raw.record("parameters", name)
-        return raw.exact_value("parameters", record["id"])["expression"]
+    def source(name: str, derived: bool = False) -> str:
+        model = scheme.derived if derived else raw
+        record = model.record("parameters", name)
+        return model.exact_value("parameters", record["id"])["expression"]
 
     if scheme.cms_parameter in parameters:
         parameter = parameters[scheme.cms_parameter]
@@ -863,21 +883,19 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
         parameter = parameters[name]
         parameter.expression = parse_python_expression_safe(f"re({source(name)})")
         parameter.value = None
-    for name, mass in scheme.yukawas.items():
+    for name in scheme.yukawas:
         if name not in parameters:
             continue
         parameter = parameters[name]
         parameter.nature = ParameterNature.INTERNAL
-        parameter.parameter_type = ParameterType.REAL
-        parameter.lhablock = parameter.lhacode = None
-        parameter.expression = parse_python_expression_safe(
-            next(key for key, alias in scheme.masses.items() if alias == mass)
-            if mass in scheme.masses.values()
-            else mass
+        parameter.parameter_type = (
+            ParameterType.COMPLEX if scheme.masses else ParameterType.REAL
         )
+        parameter.lhablock = parameter.lhacode = None
+        parameter.expression = parse_python_expression_safe(source(name, derived=True))
         parameter.value = None
     if scheme.masses:
-        kept = set(scheme.real)
+        kept = set(scheme.real) | set(scheme.yukawas)
         for parameter in model.parameters:
             if parameter.nature == ParameterNature.EXTERNAL or parameter.name in kept:
                 continue
@@ -892,8 +910,7 @@ def tree_model_payload(payload: Mapping[str, Any], scheme: ComplexMassScheme):
                 ParameterNature.INTERNAL,
                 ParameterType.COMPLEX,
                 None,
-                f"cmath.sqrt({mass}**2 - complex(0,1) * {mass} * "
-                f"{scheme.widths[mass]})",
+                pole_mass_expression(mass, scheme.widths[mass]),
             )
             model.parameters.append(created)
             parameters[alias] = created
