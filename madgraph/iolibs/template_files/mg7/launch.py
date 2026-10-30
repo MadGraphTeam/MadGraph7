@@ -2358,16 +2358,34 @@ class MadgraphProcess:
             bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
         )
 
+    def gridpack_custom_paths(self) -> list:
+        """[kind, path, parameters] of the custom functions as the gridpack
+        refers to them: by a path relative to the gridpack."""
+        paths = []
+        for kind, path, parameters in self.custom_function_paths:
+            rel_path = os.path.normpath(path)
+            if os.path.isabs(rel_path) or rel_path.startswith(".."):
+                rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
+            paths.append([kind, rel_path, parameters])
+        return paths
+
     def save_gridpack(self) -> None:
         if not self.run_card["gridpack"]["save_gridpack"]:
             return
-
         gridpack_path = os.path.join(self.run_path, "gridpack")
-        data_path = os.path.join(gridpack_path, "data")
-        events_path = os.path.join(gridpack_path, "Events")
         os.mkdir(gridpack_path)
+        self.write_gridpack_data(gridpack_path)
+        self.write_gridpack_shell(gridpack_path)
+        self.compress_gridpack(gridpack_path)
+
+    def write_gridpack_data(self, gridpack_path: str) -> None:
+        """The data/ of a gridpack: what the integration of the selected
+        subprocesses produced (the trained state and the channels) and the
+        description of the process. The gridpacks of runs over different
+        subprocess selections can be merged from these alone, see
+        merge_gridpacks.py."""
+        data_path = os.path.join(gridpack_path, "data")
         os.mkdir(data_path)
-        os.mkdir(events_path)
         self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
         include_estimates = self.gridpack_run_mode == "fix_max_weight"
@@ -2380,6 +2398,55 @@ class MadgraphProcess:
         with open(os.path.join(data_path, "channels.json"), "w") as f:
             f.write("{" + ",".join(channel_entries) + "}")
 
+        # every matrix element in loading order, and the ones this run loaded:
+        # the gridpack of a subprocess selection only needs its own
+        matrix_elements = list(self.me_paths)
+        _, me_offsets = self.me_layout()
+        metas = (
+            self.subprocess_data if self.merged_subprocess_data is None
+            else self.merged_subprocess_data
+        )
+        matrix_element_indices = [
+            me_offsets[subproc.subproc_id] + k
+            for subproc in self.subprocesses
+            for k in range(
+                1 if self.merged_subprocess_data is None
+                else len(metas[subproc.subproc_id]["subprocesses"])
+            )
+        ]
+
+        data = {
+            "matrix_elements": matrix_elements,
+            "matrix_element_indices": matrix_element_indices,
+            # loaded before the matrix elements, as in the run
+            "custom_functions": self.gridpack_custom_paths(),
+            "me_parameters": me_parameters(self.run_card),
+            "source_hash": ms.SOURCE_HASH,
+        }
+        with open(os.path.join(data_path, "data.json"), "w") as f:
+            json.dump(data, f)
+
+        if self.lhe_completer is None:
+            self.lhe_completer = self.build_lhe_completer()
+        self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
+        self.save_gridpack_lhe_meta(os.path.join(data_path, "lhe_meta.json"))
+        if self.systematics_data is not None:
+            systematics_data = dict(self.systematics_data)
+            # A decay takes alpha_s from a constant grid written into the run
+            # directory rather than from an LHAPDF set, so the gridpack cannot
+            # look that file up: ship it and point at the shipped copy.
+            if self.fixed_alphas_info and \
+                    systematics_data["nominal_info_file"] == self.fixed_alphas_info:
+                name = os.path.basename(self.fixed_alphas_info)
+                shutil.copy(self.fixed_alphas_info, os.path.join(data_path, name))
+                systematics_data["nominal_info_file"] = os.path.join("data", name)
+            with open(os.path.join(data_path, "systematics.json"), "w") as f:
+                json.dump(systematics_data, f)
+
+    def write_gridpack_shell(self, gridpack_path: str) -> None:
+        """Everything of a gridpack but data/: the libraries or sources, the
+        python packages, the cards and the executables."""
+        os.mkdir(os.path.join(gridpack_path, "Events"))
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
             os.mkdir(lib_path)
@@ -2389,16 +2456,13 @@ class MadgraphProcess:
         else:
             shutil.copytree("lib", lib_path)
         # the gridpack refers to its own copies, by paths relative to it
-        gridpack_custom_paths = []
-        for kind, path, parameters in self.custom_function_paths:
-            rel_path = os.path.normpath(path)
-            if os.path.isabs(rel_path) or rel_path.startswith(".."):
-                rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
+        gridpack_custom_paths = self.gridpack_custom_paths()
+        for (_, path, _), (_, rel_path, _) in zip(
+                self.custom_function_paths, gridpack_custom_paths):
             target = os.path.join(gridpack_path, rel_path)
             if not os.path.exists(target):
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copy(path, target)
-            gridpack_custom_paths.append([kind, rel_path, parameters])
 
         if self.run_card["gridpack"]["include_madspace_source"]:
             shutil.copytree(
@@ -2464,23 +2528,6 @@ class MadgraphProcess:
                 os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
                 shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
                             gridpack_subprocesses_json)
-
-        # every matrix element in loading order, and the ones this run loaded:
-        # the gridpack of a subprocess selection only needs its own
-        matrix_elements = list(self.me_paths)
-        _, me_offsets = self.me_layout()
-        metas = (
-            self.subprocess_data if self.merged_subprocess_data is None
-            else self.merged_subprocess_data
-        )
-        matrix_element_indices = [
-            me_offsets[subproc.subproc_id] + k
-            for subproc in self.subprocesses
-            for k in range(
-                1 if self.merged_subprocess_data is None
-                else len(metas[subproc.subproc_id]["subprocesses"])
-            )
-        ]
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)
@@ -2556,33 +2603,10 @@ class MadgraphProcess:
                 shutil.copy(os.path.join(os.path.dirname(__file__), name),
                             os.path.join(bin_path, name))
 
-        data = {
-            "matrix_elements": matrix_elements,
-            "matrix_element_indices": matrix_element_indices,
-            # loaded before the matrix elements, as in the run
-            "custom_functions": gridpack_custom_paths,
-            "me_parameters": me_parameters(self.run_card),
-            "source_hash": ms.SOURCE_HASH,
-        }
-        with open(os.path.join(data_path, "data.json"), "w") as f:
-            json.dump(data, f)
-
-        if self.lhe_completer is None:
-            self.lhe_completer = self.build_lhe_completer()
-        self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
-        self.save_gridpack_lhe_meta(os.path.join(data_path, "lhe_meta.json"))
-        if self.systematics_data is not None:
-            systematics_data = dict(self.systematics_data)
-            # A decay takes alpha_s from a constant grid written into the run
-            # directory rather than from an LHAPDF set, so the gridpack cannot
-            # look that file up: ship it and point at the shipped copy.
-            if self.fixed_alphas_info and \
-                    systematics_data["nominal_info_file"] == self.fixed_alphas_info:
-                name = os.path.basename(self.fixed_alphas_info)
-                shutil.copy(self.fixed_alphas_info, os.path.join(data_path, name))
-                systematics_data["nominal_info_file"] = os.path.join("data", name)
-            with open(os.path.join(data_path, "systematics.json"), "w") as f:
-                json.dump(systematics_data, f)
+    def compress_gridpack(self, gridpack_path: str) -> None:
+        """Replace the gridpack directory by <gridpack_path>.tar.gz when the
+        run card asks for it."""
+        parent, name = os.path.split(gridpack_path)
         if self.run_card["gridpack"]["compress"]:
             archive_path = gridpack_path + ".tar.gz"
             use_pigz = self.run_card["run"]["use_pigz"]
@@ -2591,7 +2615,7 @@ class MadgraphProcess:
                 # multi-threaded gzip
                 with open(archive_path, "wb") as f:
                     tar = subprocess.Popen(
-                        ["tar", "-cf", "-", "-C", self.run_path, "gridpack"],
+                        ["tar", "-cf", "-", "-C", parent, name],
                         stdout=subprocess.PIPE,
                     )
                     gz_command = [pigz, "-c"]
@@ -2603,7 +2627,7 @@ class MadgraphProcess:
                     if tar.wait() != 0 or gz.returncode != 0:
                         raise RuntimeError("compressing the gridpack failed")
             else:
-                shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+                shutil.make_archive(gridpack_path, "gztar", parent, name)
             shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:
