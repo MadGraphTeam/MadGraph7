@@ -691,8 +691,10 @@ def test_native_members_do_not_depend_on_the_model_cache(
     """g g > g g generated in two fresh interpreters from the UFO source, one
     with an empty model cache and one with the session's warm cache: the plan
     and every native member are byte-identical, except the parameter
-    program's plane application, whose SymJIT call tags are random
-    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py). The
+    programs' plane applications (the process's and its scaleless
+    companion's), whose SymJIT call tags are random
+    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py; the
+    companion's calls are the cut-argument canonicalisation's, MS-MASTERS). The
     compiled and the cached model list their helper functions in different
     orders; the parameter program names them in sorted order, so its saved
     state is the same."""
@@ -732,7 +734,8 @@ def test_native_members_do_not_depend_on_the_model_cache(
         for name, digest in cold["members"].items()
         if warm_run["members"][name] != digest
     )
-    assert differing in ([], ["parameters.symjit"]), differing
+    planes = {"parameters.symjit", "scaleless-parameters.symjit"}
+    assert set(differing) <= planes, differing
 
 
 @pytest.mark.loop_physics

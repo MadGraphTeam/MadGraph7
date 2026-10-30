@@ -2001,17 +2001,24 @@ mod tests {
                 }
             }
         }
-        // The control: SymJIT's own translation misses the exact side of a
-        // negated real (and only on the cut, x > 0).
+        // The control: SymJIT's own translation takes the other side of
+        // every cut at both levels, at x = 4 (a negated real) and, for the
+        // complex-mass forms (on the cut at w = 0 whatever x), at x = -4
+        // too; never off a cut.
+        for (text, x) in texts[..5].iter().flat_map(|t| [(*t, 4.0), (*t, -4.0)]) {
+            let on_cut = x > 0.0 || !text.contains("{x}");
+            for level in [0, 2] {
+                assert_eq!(
+                    control_misses.contains(&(text, x, level)),
+                    on_cut,
+                    "{text} at x = {x}, level {level}: {control_misses:?}"
+                );
+            }
+        }
         assert!(
-            control_misses.contains(&("sqrt(-{x})", 4.0, 2)),
+            control_misses.iter().all(|&(text, ..)| text != texts[5]),
             "{control_misses:?}"
         );
-        assert!(
-            control_misses.iter().all(|&(_, x, _)| x > 0.0),
-            "{control_misses:?}"
-        );
-        eprintln!("control misses: {control_misses:?}");
     }
 
     const MODEL: &str = "
