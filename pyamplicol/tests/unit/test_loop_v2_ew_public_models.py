@@ -27,8 +27,6 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.api.errors import ArtifactError
-
 GOLDSTONE_ANTIPARTICLE = "G-"
 LOOP_SM_DIGEST = "e2512823936595ee4848974146d20b1290de6ecd7cf48c5d03bb47e1466b1a77"
 EW_MODELS = {
@@ -643,26 +641,11 @@ PUBLIC_ROUTE = {
 }
 
 
-# An engine defect outside the model route, routed (ms-model report): the
-# stored plan v4 of u u~ > z z [virt=QED] on G_mu is refused when it is loaded
-# (``loops.v2.artifact.admit``: "loop v2 plan: a trace step above the family
-# rank", rusticol-core loop_v2/plan.rs), on the public route and the tools
-# view alike (at the slice 54ec03c5 and at EWI-7's 7f30a110).
-_PLAN_RANK_DEFECT = pytest.mark.xfail(
-    strict=True,
-    raises=ArtifactError,
-    reason="plan v4 admission: a trace step above the family rank (engine defect)",
-)
-
-
+# u u~ > z z [virt=QED] on G_mu was refused at load ("a trace step above the
+# family rank") until the plan export split such trace steps by source storage
+# (``plan_export._trace_groups``).
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize(
-    "case",
-    [
-        pytest.param(case, marks=_PLAN_RANK_DEFECT) if case == "uu_zz" else case
-        for case in sorted(PUBLIC_ROUTE)
-    ],
-)
+@pytest.mark.parametrize("case", sorted(PUBLIC_ROUTE))
 def test_public_route_on_the_shipped_qcd_qed_models_equals_the_tools_view(
     request, loop_native, tmp_path, case
 ):
