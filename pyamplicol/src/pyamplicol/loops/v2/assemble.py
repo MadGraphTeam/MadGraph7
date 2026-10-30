@@ -65,6 +65,7 @@ This is the Python reference path of the slice (gate S1); the native executor
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import math
 from collections import defaultdict
@@ -712,6 +713,79 @@ def _check_canonical_block(block: list[Any]) -> None:
         )
 
 
+# A stage with function definitions is renamed on Symbolica's portable text
+# (``_renamed_text``: one native pass per expression, linear in its size and
+# in parallel; the renamed text, on short canonical names, parses faster
+# than the original), not by ``replace_multiple`` with a rule per symbol and
+# repeated call passes (46 s of the 2->3 electroweak parameter program, M-SM
+# MS-GEN). Both give the same expressions; the ``replace_multiple`` passes
+# stay the oracle (``text_canonical_stage(False)``).
+TEXT_CANONICAL_STAGE = True
+
+
+def text_canonical_stage(enabled: bool) -> Any:
+    """``TEXT_CANONICAL_STAGE`` set to ``enabled`` for a ``with`` block and
+    restored after it: ``text_canonical_stage(False)`` is the oracle lane."""
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def switch():
+        global TEXT_CANONICAL_STAGE
+        before = TEXT_CANONICAL_STAGE
+        TEXT_CANONICAL_STAGE = bool(enabled)
+        try:
+            yield
+        finally:
+            TEXT_CANONICAL_STAGE = before
+
+    return switch()
+
+
+def _renamed_text(
+    expressions: Sequence[Any],
+    variables: Mapping[Any, Any],
+    heads: Mapping[Any, Any],
+) -> list[Any]:
+    """``expressions`` with every symbol of ``variables`` and every call of a
+    function of ``heads`` renamed (old -> new symbol): their portable text
+    (``repr``: every namespace but the default one) renamed natively in
+    parallel (``loop_v2::generate::rename``: a token is a maximal run of
+    name characters, ``:``, ``{`` and ``}``, a head when a ``(`` follows it
+    and a variable otherwise) and parsed back, a chunk at a time."""
+
+    from symbolica import E
+
+    native = _loop_native()
+    variable_names = [(repr(old), repr(new)) for old, new in variables.items()]
+    head_names = [(repr(old), repr(new)) for old, new in heads.items()]
+    renamed: list[Any] = []
+    for start in range(0, len(expressions), _RENAME_CHUNK):
+        texts = native.loop_rename_symbols(
+            [repr(e) for e in expressions[start : start + _RENAME_CHUNK]],
+            variable_names,
+            head_names,
+        )
+        renamed.extend(E(text) for text in texts)
+    return renamed
+
+
+# Expressions per native rename call (the parameter program's outputs reach
+# megabytes each on the electroweak UFOs).
+_RENAME_CHUNK = 256
+
+
+@functools.cache
+def _loop_native() -> Any:
+    """The loop extension, verified once per process: ``load_loop_native``
+    checks the native build identity on every call (0.2 s in a source
+    checkout), and a generation's export renames a few hundred stages."""
+
+    from ..native import load_loop_native
+
+    return load_loop_native()
+
+
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     """A stage's outputs, parameters and function definitions on canonical
     symbols (``_canonical_symbols``).
@@ -765,6 +839,25 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     )
     old = [*parameters, *heads, *arguments]
     renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
+    if TEXT_CANONICAL_STAGE:
+        head_set = set(heads)
+        variable_map = {k: v for k, v in renamed.items() if k not in head_set}
+        head_map = {k: v for k, v in renamed.items() if k in head_set}
+        bodies = _renamed_text(
+            [body for _head, _items, body in definitions], variable_map, head_map
+        )
+        return (
+            _renamed_text(stage.output_expressions, variable_map, head_map),
+            [renamed[parameter] for parameter in parameters],
+            [
+                (
+                    renamed.get(head, head),
+                    tuple(renamed[argument] for argument in items),
+                    body,
+                )
+                for (head, items, _body), body in zip(definitions, bodies, strict=True)
+            ],
+        )
     tail = symbols.qualified("pyamplicol_v2_canonical::args___")
     # Two passes: a single ``replace_multiple`` does not descend into a call
     # its head rule replaced, so the arguments of a model-function call kept
