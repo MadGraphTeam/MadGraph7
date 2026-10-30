@@ -150,8 +150,22 @@ struct NativeRecord {
     /// The certified-scaleless companion's record (its plan's seed FFT).
     #[serde(default)]
     scaleless: Option<CompanionRecord>,
+    /// The model's pole regulators (`poles.pole_regulators`: the external
+    /// parameters multiplying the 1/ε_UV and 1/ε_IR of its counterterm
+    /// parameters, epsUV and epsIR of MadLoop's electroweak UFOs), absent
+    /// for a model without them. The split selections then take the
+    /// counterterms' UV parts from the tree program at the IR regulator 0.
+    #[serde(default)]
+    pole_regulators: Option<PoleRegulators>,
     #[serde(flatten)]
     _rest: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct PoleRegulators {
+    #[allow(dead_code)]
+    uv: String,
+    ir: String,
 }
 
 #[derive(Deserialize)]
@@ -383,9 +397,15 @@ fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
+/// The UV Laurent values `(r2, uv_local, fields)` of the counterterm
+/// components (finite parts unused): the tree program at the IR regulator 0
+/// of a model with pole regulators.
+type CountertermsUv = ([f64; 3], [f64; 3], [f64; 3]);
+
 /// The selected virtual of one sector in a split selection, from its
 /// combined bare Laurent `bare`, the bare loop's UV Laurent `bare_uv`
-/// (finite part unused) and the counterterm components: `poles.split_sector`
+/// (finite part unused), the counterterm components and, for a model with
+/// pole regulators, their UV parts `counterterms_uv`: `poles.split_sector`
 /// then `poles.select_sector`, operation for operation.
 fn split_virtual(
     mode: V2Poles,
@@ -394,13 +414,23 @@ fn split_virtual(
     r2: [f64; 3],
     uv_local: [f64; 3],
     fields: [f64; 3],
+    counterterms_uv: Option<CountertermsUv>,
 ) -> [f64; 3] {
-    // The UV (single, double) poles per component; the field factors carry
-    // what makes the renormalised virtual UV finite.
-    let field_uv = [
-        -(bare_uv[1] + uv_local[1] + r2[1]),
-        -(bare_uv[2] + uv_local[2] + r2[2]),
-    ];
+    // The UV (single, double) poles per component: the counterterms' own
+    // (pole regulators), else the local counterterms' poles, with the field
+    // factors carrying what makes the renormalised virtual UV finite.
+    let poles = |value: [f64; 3]| [value[1], value[2]];
+    let (r2_uv, local_uv, field_uv) = match counterterms_uv {
+        Some((r2_uv, local_uv, field_uv)) => (poles(r2_uv), poles(local_uv), poles(field_uv)),
+        None => (
+            poles(r2),
+            poles(uv_local),
+            [
+                -(bare_uv[1] + uv_local[1] + r2[1]),
+                -(bare_uv[2] + uv_local[2] + r2[2]),
+            ],
+        ),
+    };
     let part = |value: [f64; 3], uv: [f64; 2]| -> [f64; 3] {
         match mode {
             V2Poles::Uv => [value[0], uv[0], uv[1]],
@@ -408,8 +438,8 @@ fn split_virtual(
         }
     };
     let bare_part = part(bare, [bare_uv[1], bare_uv[2]]);
-    let r2_part = part(r2, [r2[1], r2[2]]);
-    let local_part = part(uv_local, [uv_local[1], uv_local[2]]);
+    let r2_part = part(r2, r2_uv);
+    let local_part = part(uv_local, local_uv);
     let field_part = part(fields, field_uv);
     let uv = add(local_part, field_part);
     let virtual_part = add(add(bare_part, uv), r2_part);
@@ -843,6 +873,44 @@ impl V2Runtime {
         let counterterms = inputs
             .counterterms
             .ok_or_else(|| invalid("the tree program forms no counterterm components"))?;
+        // A model with pole regulators: the split selections also form the
+        // counterterm and field components with the IR regulator at 0, the
+        // counterterms' UV parts (`plan_export.NativeExecutor.reduce`).
+        let counterterms_uv = match (&self.record.pole_regulators, mode.split()) {
+            (Some(regulators), true) => {
+                let regulated: Vec<Rational> = trees
+                    .parameter_names()
+                    .iter()
+                    .zip(&values)
+                    .map(|(name, value)| {
+                        if *name == regulators.ir {
+                            Rational::from(0)
+                        } else {
+                            value.clone()
+                        }
+                    })
+                    .collect();
+                let (trees, runtime, executor) = (&self.trees, &mut self.runtime, &self.executor);
+                let inputs = executor.install(|| -> RusticolResult<_> {
+                    let bound = trees.bind(runtime, &regulated, scales, &zero)?;
+                    trees.inputs(
+                        runtime,
+                        executor.plan(),
+                        &bound.trees,
+                        &incoming,
+                        &bound.constants,
+                        true,
+                        &zero,
+                    )
+                })?;
+                Some(
+                    inputs.counterterms.ok_or_else(|| {
+                        invalid("the tree program forms no counterterm components")
+                    })?,
+                )
+            }
+            _ => None,
+        };
         // The split selections also run the companion of the certified-
         // scaleless families on its own tree inputs (schedule B), for the UV
         // residues of its lanes (`plan_export.NativeExecutor.reduce`).
@@ -964,16 +1032,26 @@ impl V2Runtime {
                 }
             }
             // (counterterm component, sector, power) -> value.
-            let mut local: BTreeMap<(&str, usize, i32), f64> = BTreeMap::new();
-            for ((component, s, power), value) in outputs.iter().zip(&counterterms[index]) {
-                local.insert((component.as_str(), *s, *power), *value);
-            }
-            let component = |name: &str, s: usize, k: usize| -> f64 {
-                local
-                    .get(&(name, s, LAURENT_POWERS[k]))
-                    .copied()
-                    .unwrap_or(0.0)
+            let table = |values: &[f64]| -> BTreeMap<(&str, usize, i32), f64> {
+                outputs
+                    .iter()
+                    .zip(values)
+                    .map(|((component, s, power), value)| {
+                        ((component.as_str(), *s, *power), *value)
+                    })
+                    .collect()
             };
+            let local = table(&counterterms[index]);
+            let local_uv = counterterms_uv.as_ref().map(|values| table(&values[index]));
+            let value_of =
+                |table: &BTreeMap<(&str, usize, i32), f64>, name: &str, s: usize, k: usize| {
+                    table
+                        .get(&(name, s, LAURENT_POWERS[k]))
+                        .copied()
+                        .unwrap_or(0.0)
+                };
+            let component =
+                |name: &str, s: usize, k: usize| -> f64 { value_of(&local, name, s, k) };
             let laurent = |name: &str, s: usize| -> [f64; 3] {
                 [
                     component(name, s, 0),
@@ -981,11 +1059,28 @@ impl V2Runtime {
                     component(name, s, 2),
                 ]
             };
+            let laurent_uv = |name: &str, s: usize| -> Option<[f64; 3]> {
+                local_uv.as_ref().map(|table| {
+                    [
+                        value_of(table, name, s, 0),
+                        value_of(table, name, s, 1),
+                        value_of(table, name, s, 2),
+                    ]
+                })
+            };
             let mut virtual_values = Vec::with_capacity(self.sector_index.len());
             for &s in &self.sector_index {
                 let bare = |k: usize| sums[s].as_ref().map_or(0.0, |terms| loop_factor(terms[k]));
                 if mode.split() {
                     let bare_uv = |k: usize| uv_sums[s].map_or(0.0, |terms| loop_factor(terms[k]));
+                    let counterterms_uv = match (
+                        laurent_uv("r2", s),
+                        laurent_uv("uv_local", s),
+                        laurent_uv(FIELD_COMPONENT, s),
+                    ) {
+                        (Some(r2), Some(local), Some(fields)) => Some((r2, local, fields)),
+                        _ => None,
+                    };
                     let selected = split_virtual(
                         mode,
                         [bare(0), bare(1), bare(2)],
@@ -993,6 +1088,7 @@ impl V2Runtime {
                         laurent("r2", s),
                         laurent("uv_local", s),
                         laurent(FIELD_COMPONENT, s),
+                        counterterms_uv,
                     );
                     virtual_values.push(selected.to_vec());
                     continue;
@@ -1067,6 +1163,14 @@ mod tests {
             "observables": null
         }"#;
         let record: NativeRecord = serde_json::from_str(json).unwrap();
+        // A model without pole regulators records none.
+        assert!(record.pole_regulators.is_none());
+        let regulated = json.replace(
+            r#""observables": null"#,
+            r#""observables": null, "pole_regulators": {"uv": "epsUV", "ir": "epsIR"}"#,
+        );
+        let regulated: NativeRecord = serde_json::from_str(&regulated).unwrap();
+        assert_eq!(regulated.pole_regulators.unwrap().ir, "epsIR");
         assert_eq!(record.schema, NATIVE_PROCESS_SCHEMA);
         assert_eq!(record.legs.len(), 4);
         assert!(record.legs[0].1 && !record.legs[3].1);
@@ -1094,8 +1198,8 @@ mod tests {
         let uv_local = [1.0, -2.0, 0.0];
         let fields = [0.25, 0.75, 0.0];
         let finite = bare[0] + (uv_local[0] + fields[0]) + r2[0];
-        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields);
-        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields);
+        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, None);
+        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, None);
         // The finite part is the renormalised virtual's in every selection.
         assert_eq!(uv[0], finite);
         assert_eq!(ir[0], finite);
@@ -1109,6 +1213,18 @@ mod tests {
             bare[2] + (uv_local[2] + fields[2]) + r2[2],
         ];
         assert_eq!(&ir[1..], &combined);
+        // A model with pole regulators: the counterterms' UV parts are given
+        // (the tree program at the IR regulator 0), so the renormalised
+        // virtual's IR poles are bare_IR + CT_IR, with no remainder.
+        let given = Some(([0.5, 0.0, 0.0], [1.0, -1.5, 0.0], [0.25, -1.0, 0.0]));
+        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, given);
+        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, given);
+        assert_eq!(uv, [finite, 3.0, 0.0]);
+        let parts = [
+            (bare[1] - 3.0) + ((uv_local[1] + 1.5) + (fields[1] + 1.0)) + r2[1],
+            (bare[2] - 0.0) + ((uv_local[2] - 0.0) + (fields[2] - 0.0)) + r2[2],
+        ];
+        assert_eq!(ir, [finite, parts[0], parts[1]]);
         // A finite-only or combined selection is not split here.
         assert!(!V2Poles::All.split() && !V2Poles::None.split());
         assert!(V2Poles::Uv.split() && V2Poles::Ir.split());
