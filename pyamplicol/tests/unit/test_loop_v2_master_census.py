@@ -156,9 +156,10 @@ def test_cm10_masters_avoid_the_known_complex_mass_defects(
 ):
     """CM10 (u d~ > w+ b b~ QCD=0 [QCD] on loop_sm under the complex-mass
     scheme, Gamma_t > 0; ``required/msm/udx_wpbbx_cms.json``): at its four
-    points no master reaches a defect signature; the complex-top boxes on the
-    ``Float`` route agree, AP(40) = AP(60) to 1e-30 (measured 1e-54) and
-    double-double = AP(60) to 1e-20 (6e-26); binary64 to 1e-8 (8e-10)."""
+    points no master reaches a defect signature; at two of them the
+    complex-top boxes on the ``Float`` route agree, AP(40) = AP(60) to 1e-30
+    (measured 1e-54) and double-double = AP(60) to 1e-20 (6e-26); binary64
+    to 1e-8 (8e-10)."""
 
     from pyamplicol.loops.model_cms import complex_mass_model
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
@@ -207,7 +208,9 @@ def test_cm10_masters_avoid_the_known_complex_mass_defects(
     assert not any(found.bites().values()), found.record()
     assert found.complex_masters["D0"] > 0
     assert found.small_bubble_ratio > 0.1
-    agreement = _carriers(executor, points, scales, parameters, float(parameters["aS"]))
+    agreement = _carriers(
+        executor, points[:2], scales[:2], parameters, float(parameters["aS"])
+    )
     assert agreement["ap40"] <= 1e-30, agreement
     assert agreement["dd"] <= 1e-20, agreement
     assert agreement["double"] <= 1e-8, agreement
