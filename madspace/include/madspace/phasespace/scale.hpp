@@ -2,6 +2,7 @@
 
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/mlm_clustering.hpp"
 
 namespace madspace {
 
@@ -63,12 +64,38 @@ public:
     /// Dynamical scale of type @p type for all three scales.
     /// @param particle_count  Number of external particles.
     /// @param type            The dynamical scale choice.
-    EnergyScale(std::size_t particle_count, DynamicalScaleType type) :
-        EnergyScale(particle_count, type, false, false, 0., 0., 0.) {}
+    /// @param min_scale       Floor on the scales, see the full constructor.
+    /// @param max_scale       Ceiling on the scales, see the full constructor.
+    EnergyScale(
+        std::size_t particle_count,
+        DynamicalScaleType type,
+        double min_scale = 0.,
+        double max_scale = 0.
+    ) :
+        EnergyScale(
+            particle_count,
+            type,
+            false,
+            false,
+            0.,
+            0.,
+            0.,
+            1.,
+            std::nullopt,
+            min_scale,
+            max_scale
+        ) {}
     /// A single fixed value for all three scales.
     /// @param particle_count  Number of external particles.
     /// @param fixed_scale     The constant scale value.
-    EnergyScale(std::size_t particle_count, double fixed_scale) :
+    /// @param min_scale       Floor on the scales, see the full constructor.
+    /// @param max_scale       Ceiling on the scales, see the full constructor.
+    EnergyScale(
+        std::size_t particle_count,
+        double fixed_scale,
+        double min_scale = 0.,
+        double max_scale = 0.
+    ) :
         EnergyScale(
             particle_count,
             half_transverse_mass,
@@ -76,7 +103,11 @@ public:
             true,
             fixed_scale,
             fixed_scale,
-            fixed_scale
+            fixed_scale,
+            1.,
+            std::nullopt,
+            min_scale,
+            max_scale
         ) {}
     /**
      * @param particle_count       Number of external particles.
@@ -90,6 +121,12 @@ public:
      *                             left alone.
      * @param custom_scale         Optional user-supplied function that replaces
      *                             the dynamical scale choice.
+     * @param min_scale            Floor on mu_R and mu_F. The scales are clamped
+     *                             to it, so that a pdf is never asked for a
+     *                             density below the bottom of its grid. Zero
+     *                             disables it.
+     * @param max_scale            Upper end of the same range, normally the top
+     *                             of the PDF grid. Zero disables it.
      */
     EnergyScale(
         std::size_t particle_count,
@@ -100,22 +137,111 @@ public:
         double fact_scale1,
         double fact_scale2,
         double scale_factor = 1.,
-        const std::optional<CustomFunction>& custom_scale = std::nullopt
+        const std::optional<CustomFunction>& custom_scale = std::nullopt,
+        double min_scale = 0.,
+        double max_scale = 0.
+    );
+    /**
+     * Scales from an MLM clustering of the event (dynamical_scale_choice mlm).
+     *
+     * @param clustering  The compiled clustering histories of the subprocess.
+     * @param min_scale   As in the full constructor; here an event whose scales
+     *                    fall outside the range is also vetoed, through an
+     *                    extra `scale_weight` output, as setclscales does.
+     * @param max_scale   As in the full constructor.
+     */
+    EnergyScale(
+        const MLMClustering& clustering,
+        double min_scale = 0.,
+        double max_scale = 0.
     );
 
+    /// Whether the scales come from an MLM clustering of the event.
+    bool is_mlm() const { return _clustering.has_value(); }
+    bool mlm_alphas_reweighting() const {
+        return _clustering &&
+               _clustering->alphas_scheme() != AlphasScheme::none;
+    }
+    // Whether the consumer has pdf ratios to apply. The kernel walks the
+    // clustering ladder under ScaleScheme::madevent, and under clustering_mean
+    // with clustering_mean_pdf_ladder; otherwise it leaves every reweighting
+    // slot inert and pdf_scale equal to fact_scale, so the ratios would all
+    // come out as exactly one.
+    bool mlm_pdf_reweighting() const {
+        return _clustering && _clustering->pdf_reweighting() &&
+               (_clustering->scale_scheme() == ScaleScheme::madevent ||
+                _clustering->clustering_mean_pdf_ladder());
+    }
+    const std::vector<int>& mlm_pdf_absolute_pdgs() const {
+        return _clustering.value().pdf_absolute_pdgs();
+    }
+    // Whether the MLM history is picked per event from the diagram weights,
+    // which moves the clustering after a first matrix element evaluation.
+    bool mlm_history_per_diagram() const {
+        return _clustering &&
+               _clustering->clustering_history() != ClusteringHistory::all_diagrams;
+    }
+    const std::vector<me_int_t>& mlm_diagram_start_states() const {
+        return _clustering.value().diagram_start_states();
+    }
+    // The scales of the MLM clustering walked from one diagram's start state
+    // (see MLMClustering::diagram_start_states), with the same scale range
+    // applied as the function itself applies.
+    // flavor_index and leg_flavors as in MLMClustering::build_from_start_state.
+    NamedVector<Value> build_mlm_from_start_state(
+        FunctionBuilder& fb,
+        Value momenta,
+        Value start_state,
+        Value flavor_index = Value(),
+        const std::vector<me_int_t>& leg_flavors = {}
+    ) const;
+    // The MLM history over every diagram, restricted to the flavours of each
+    // event (MLMClustering::build_with_flavors), with the scale range applied.
+    NamedVector<Value> build_mlm_with_flavors(
+        FunctionBuilder& fb,
+        Value momenta,
+        Value flavor_index,
+        const std::vector<me_int_t>& leg_flavors
+    ) const;
+    bool mlm_flavor_dependent() const {
+        return _clustering && _clustering->has_flavor_dependent_clusterings();
+    }
+    // The band the pdf grid covers, for whoever has to keep a scale inside it.
+    double min_scale() const { return _min_scale; }
+    double max_scale() const { return _max_scale; }
+
+    bool has_scale_range() const {
+        return _min_scale > 0. || _max_scale > 0.;
+    }
+    // Whether the scales come with a scale_weight output vetoing an event
+    // outside the range. Only the MLM clustering has one: madevent drops a
+    // merged event whose factorisation scale falls under 2 GeV, but for any
+    // other scale choice it lets LHAPDF freeze the density instead, which is
+    // what clamping the scale does here.
+    bool has_scale_veto() const { return is_mlm() && has_scale_range(); }
+
 private:
+    NamedVector<Value> apply_scale_range(
+        FunctionBuilder& fb, NamedVector<Value> scales
+    ) const;
+
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
 
-    DynamicalScaleType _dynamical_scale_type;
-    bool _ren_scale_fixed;
-    bool _fact_scale_fixed;
-    double _ren_scale;
-    double _fact_scale1;
-    double _fact_scale2;
-    double _scale_factor;
+    // The MLM constructor leaves these at their defaults: the clustering
+    // decides the scales there.
+    DynamicalScaleType _dynamical_scale_type = half_transverse_mass;
+    bool _ren_scale_fixed = false;
+    bool _fact_scale_fixed = false;
+    double _ren_scale = 0.;
+    double _fact_scale1 = 0.;
+    double _fact_scale2 = 0.;
+    double _scale_factor = 1.;
     std::optional<CustomFunction> _custom_scale;
+    double _min_scale = 0.;
+    double _max_scale = 0.;
+    std::optional<MLMClustering> _clustering;
 };
 
 } // namespace madspace

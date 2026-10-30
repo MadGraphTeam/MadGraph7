@@ -2083,6 +2083,76 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_mlm_pdfrwt_flavour(self):
+        """With MLM (ickkw=1) and use_syst, the <pdfrwt> information must carry
+        the event's flavours. A grouped
+        subprocess (q q~ > z with q = d s / u c) clusters with the
+        representative of its coupling class: s s~ > z was booked as 1 and
+        c c~ > z as 2, so the systematics of every s/c-initiated event used
+        the d/u PDF."""
+
+        import gzip
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > z @0')
+        mg_cmd.exec_cmd('add process p p > z j @1')
+        # scalar mode only: vector_size>1 with grouped flavours does not run
+        # (DSIG_VEC reads the per-warp IFLAV_VEC per event)
+        for vector_size in [1]:
+            run_dir = pjoin(self.path, 'MGPROC_pdfrwt_%d' % vector_size)
+            mg_cmd.exec_cmd('output madevent %s' % run_dir)
+
+            run_card = banner.RunCardLO(pjoin(run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 7, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 20.0, user=True)
+            run_card.set('use_syst', True, user=True)
+            run_card.set('systematics_program', 'none', user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+
+            path = pjoin(run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+            text = gzip.open(path, 'rt').read()
+            checked = collections.Counter()
+            for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+                lines = [l.split() for l in event.split('<')[0].strip().splitlines()]
+                partons = [(int(l[0]), int(l[1]), float(l[8])) for l in lines[1:]]
+                # beam 1 moves along +z, beam 2 along -z
+                beam = dict((1 if pz > 0 else 2, pdg)
+                            for pdg, status, pz in partons if status == -1)
+                flavours = set(abs(pdg) for pdg, status, pz in partons
+                               if abs(pdg) <= 6)
+                pdfrwt = dict((int(b), [int(x) for x in body.split()[1:1+int(body.split()[0])]])
+                              for b, body in re.findall(
+                                  r'<pdfrwt beam="(\d)">(.*?)</pdfrwt>', event))
+                self.assertEqual(sorted(pdfrwt), [1, 2], event)
+                for b in (1, 2):
+                    # leading entry: the incoming parton of this beam
+                    self.assertEqual(pdfrwt[b][0], beam[b],
+                        'vector_size=%s: leading pdfrwt entry of beam %s is '
+                        'not the incoming parton:\n%s' % (vector_size, b, event))
+                    # ladder: only quark flavours present in the event
+                    for pdg in pdfrwt[b][1:]:
+                        if abs(pdg) <= 6:
+                            self.assertIn(abs(pdg), flavours,
+                                'vector_size=%s: pdfrwt ladder of beam %s has a '
+                                'flavour absent from the event:\n%s'
+                                % (vector_size, b, event))
+                quarks = [abs(pdg) for pdg in beam.values() if pdg != 21]
+                checked[max(quarks) if quarks else 21] += 1
+            # the check is only meaningful with s and c initiated events
+            self.assertGreater(checked[3], 0, checked)
+            self.assertGreater(checked[4], 0, checked)
+
     def test_t_channel_survey_grid(self):
         """check that refining on the survey grid is not biased for
         u q > z u q (all channels pure t-channel chains). With the grid
@@ -2228,7 +2298,48 @@ class TestMECmdShell(unittest.TestCase):
             # without the fix, grouped is ~3% low (about 8 sigma)
             self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
                             '%s: %s +- %s vs nongrouped %s +- %s' % (name, val, err, val0, err0))
-        
+
+    def test_vector_mode_helicity_both_orientations(self):
+        """check that scalar and vector (vector_size 16) madevent agree for
+        p p > z, with and without helicity recycling. q q~ > z with the Z at
+        rest has helicities that vanish in one beam orientation only, and in
+        vector mode the first events of the good-helicity scan share one
+        orientation: without the fix, vector mode was 10-50% low."""
+
+        results = {}
+        for name, hel_recycling, vector_size in [('hel_scalar', True, 1),
+                                                 ('hel_vec', True, 16),
+                                                 ('nohel_scalar', False, 1),
+                                                 ('nohel_vec', False, 16)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('generate p p > z')
+            mg_cmd.exec_cmd('output madevent %s --hel_recycling=%s' % (self.run_dir, hel_recycling))
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 31, user=True)
+            run_card.set('use_syst', False, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['hel_scalar']
+        self.assertGreater(val0, 0)
+        for name in ['hel_vec', 'nohel_scalar', 'nohel_vec']:
+            val, err = results[name]
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs hel_scalar %s +- %s' % (name, val, err, val0, err0))
+
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
         

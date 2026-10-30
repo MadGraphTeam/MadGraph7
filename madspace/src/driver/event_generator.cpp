@@ -774,10 +774,14 @@ void EventGenerator::combine_to_lhe_npy(
             copy_event_fields(buffer, i, buffer_out, i, syst_weights);
             std::size_t j = 0;
             for (; j < lhe_event.particles.size(); ++j) {
-                buffer_out.particle(i, j).from_lhe_particle(lhe_event.particles[j]);
+                buffer_out.particle(i, j).from_lhe_particle(
+                    lhe_event.particles[j], lhe_event.has_cluster_scales
+                );
             }
             for (; j < lhe_completer.max_particle_count(); ++j) {
-                buffer_out.particle(i, j).from_lhe_particle(LHEParticle{});
+                buffer_out.particle(i, j).from_lhe_particle(
+                    LHEParticle{}, lhe_event.has_cluster_scales
+                );
             }
         }
         event_file.write(buffer_out);
@@ -912,6 +916,32 @@ void EventGenerator::combine_to_lhe(
     _event_histograms = nullptr;
 }
 
+namespace {
+
+// The MLM alpha_s vertex scales and pdf ladder of any channel: a merged run
+// mixes a 2 -> 1 sample, which has no vertex, with the jet samples, which do,
+// and channel 0 may be either.
+template <typename Channels>
+int any_alphas_scales(const Channels& channels) {
+    int flags = 0;
+    for (auto& channel : channels) {
+        flags |= channel->particle_layout_extra_flags() &
+            (ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder);
+    }
+    return flags;
+}
+
+// the pdf ladder fields of one particle, or zeros (an inactive slot)
+void copy_ladder(ParticleRecord in, ParticleRecord out, bool from_in) {
+    out.ladder_x() = from_in ? in.ladder_x().value() : 0.;
+    out.ladder_pdg() = from_in ? in.ladder_pdg().value() : 0.;
+    out.ladder_q() = from_in ? in.ladder_q().value() : 0.;
+    out.ladder_info() = from_in ? in.ladder_info().value() : 0.;
+    out.ladder_lead_q() = from_in ? in.ladder_lead_q().value() : 0.;
+}
+
+} // namespace
+
 DataLayout EventGenerator::combined_layout() const {
     return DataLayout(
         EventRecord::layout(
@@ -921,7 +951,7 @@ DataLayout EventGenerator::combined_layout() const {
         ),
         ParticleRecord::layout(
             ParticleRecord::f_particle_data |
-            _channels.at(0)->particle_layout_extra_flags()
+            _channels.at(0)->particle_layout_extra_flags() | any_alphas_scales(_channels)
         )
     );
 }
@@ -942,10 +972,14 @@ EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const
             extra_flags |= EventRecord::f_syst_weights;
         }
     }
+    // the alpha_s vertex scales and the pdf ladder only serve the systematics,
+    // which run on the combined buffer: no event file carries them
     return DataLayout(
         EventRecord::layout(event_flags | extra_flags, syst_ids),
         ParticleRecord::layout(
-            particle_flags | _channels.at(0)->particle_layout_extra_flags()
+            particle_flags |
+            (_channels.at(0)->particle_layout_extra_flags() &
+             ~(ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder))
         )
     );
 }
@@ -1006,6 +1040,9 @@ void EventGenerator::copy_event_fields(
     }
     if (contains("partial_weight_product")) {
         event_out.partial_weight_product() = event_in.partial_weight_product();
+    }
+    if (contains("matrix_element")) {
+        event_out.matrix_element() = event_in.matrix_element();
     }
     if (_systematics) {
         std::size_t count = _systematics->weight_count();
@@ -1180,9 +1217,16 @@ void EventGenerator::read_and_combine(
     bool has_beam2 = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_beam2;
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
+    bool has_clustering =
+        _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
+    int mlm_flags = any_alphas_scales(_channels);
+    bool has_alphas_scales = mlm_flags & ParticleRecord::f_alphas_scales;
+    bool has_ladder = mlm_flags & ParticleRecord::f_pdf_ladder;
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
     bool has_bias = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_bias;
+    bool has_matrix_element =
+        _channels.at(0)->event_layout_extra_flags() & EventRecord::f_matrix_element;
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
@@ -1196,6 +1240,10 @@ void EventGenerator::read_and_combine(
             --chan.cum_count;
         });
         auto& channel = _channels.at(sampled_chan - channel_data.begin());
+        bool channel_has_alphas_scales =
+            channel->particle_layout_extra_flags() & ParticleRecord::f_alphas_scales;
+        bool channel_has_ladder =
+            channel->particle_layout_extra_flags() & ParticleRecord::f_pdf_ladder;
 
         double weight = 0.;
         while (true) {
@@ -1245,6 +1293,9 @@ void EventGenerator::read_and_combine(
         if (has_partial) {
             event_out.partial_weight_product() = event_in.partial_weight_product();
         }
+        if (has_matrix_element) {
+            event_out.matrix_element() = event_in.matrix_element();
+        }
 
         std::size_t i = 0;
         for (; i < sampled_chan->event_buffer.particle_count(); ++i) {
@@ -1255,6 +1306,18 @@ void EventGenerator::read_and_combine(
             particle_out.px() = particle_in.px();
             particle_out.py() = particle_in.py();
             particle_out.pz() = particle_in.pz();
+            if (has_clustering) {
+                particle_out.cluster_scale() = particle_in.cluster_scale();
+            }
+            if (has_alphas_scales) {
+                // zero from a channel without vertices (2 -> 1)
+                particle_out.alphas_scale() = channel_has_alphas_scales
+                    ? particle_in.alphas_scale().value()
+                    : 0.;
+            }
+            if (has_ladder) {
+                copy_ladder(particle_in, particle_out, channel_has_ladder);
+            }
         }
         for (; i < buffer.particle_count(); ++i) {
             auto particle_out = buffer.particle(event_index, i);
@@ -1262,6 +1325,17 @@ void EventGenerator::read_and_combine(
             particle_out.px() = 0.;
             particle_out.py() = 0.;
             particle_out.pz() = 0.;
+            // the buffer is reused: a padding slot must not keep the scales of
+            // an earlier, higher-multiplicity event
+            if (has_clustering) {
+                particle_out.cluster_scale() = 0.;
+            }
+            if (has_alphas_scales) {
+                particle_out.alphas_scale() = 0.;
+            }
+            if (has_ladder) {
+                copy_ladder(particle_out, particle_out, false);
+            }
         }
         ++sampled_chan->buffer_index;
     }
@@ -1280,6 +1354,17 @@ void EventGenerator::fill_lhe_event(
     lhe_event.scale = event_in.ren_scale();
     lhe_event.alpha_qed = 0; // TODO: populate this
     lhe_event.alpha_qcd = event_in.alpha_qcd();
+    // Both scales, as LHEF3 <scales> attributes: SCALUP holds only one number
+    // and the codes do not agree on which, so write them out explicitly.
+    int scale_flags = _channels.at(0)->event_layout_extra_flags();
+    lhe_event.mu_r = event_in.ren_scale();
+    lhe_event.mu_f1 = (scale_flags & EventRecord::f_beam1)
+        ? double(event_in.fact_scale1())
+        : double(event_in.ren_scale());
+    lhe_event.mu_f2 = (scale_flags & EventRecord::f_beam2)
+        ? double(event_in.fact_scale2())
+        : lhe_event.mu_f1;
+    lhe_event.has_scales = true;
     lhe_event.particles.clear();
     for (std::size_t i = 0; i < buffer.particle_count(); ++i) {
         auto particle_in = buffer.particle(event_index, i);
@@ -1294,6 +1379,15 @@ void EventGenerator::fill_lhe_event(
                 .energy = particle_in.energy(),
             }
         );
+    }
+    bool has_clustering =
+        _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
+    lhe_event.has_cluster_scales = has_clustering;
+    if (has_clustering) {
+        for (std::size_t i = 0; i < lhe_event.particles.size(); ++i) {
+            lhe_event.particles.at(i).cluster_scale =
+                buffer.particle(event_index, i).cluster_scale();
+        }
     }
     lhe_completer.complete_event_data(
         lhe_event,

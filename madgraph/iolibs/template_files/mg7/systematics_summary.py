@@ -46,17 +46,18 @@ def nominal_cross_section(summary):
     return value or None
 
 
-def scale_percentages(summary):
+def scale_percentages(summary, group='scale'):
     """``(up, down)`` percent for the scale envelope, or None.
 
     Positive magnitudes: ``up`` is how far above the nominal the envelope
-    reaches, ``down`` how far below.
+    reaches, ``down`` how far below. ``group`` names the envelope in the
+    summary: 'scale', or 'emission' (see emission_percentages).
     """
 
     nominal = nominal_cross_section(summary)
     if nominal is None:
         return None
-    band = summary.get('scale')
+    band = summary.get(group)
     if not band:
         return None
     low, high = band.get('min'), band.get('max')
@@ -64,6 +65,13 @@ def scale_percentages(summary):
         return None
     return ((high - nominal) / abs(nominal) * 100.,
             (nominal - low) / abs(nominal) * 100.)
+
+
+def emission_percentages(summary):
+    """``(up, down)`` percent for the MLM emission scale envelope (madevent's
+    alpsfact), or None, with the conventions of scale_percentages."""
+
+    return scale_percentages(summary, 'emission')
 
 
 def pdf_percentages(summary):

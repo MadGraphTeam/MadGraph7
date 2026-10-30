@@ -119,10 +119,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # Default cards for the optional post-processing tools
                      # (Pythia8/Delphes/MadSpin/reweight/analysis) so that
                      # bin/generate_events can offer to enable and edit them.
+                     # The reweight card is the MG7 one: it documents both
+                     # reweighting backends (classic module, MadtRex).
                      'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
-                                  ['madspin_card_default.dat', 'reweight_card_default.dat',
+                                  ['madspin_card_default.dat',
                                    'density_card_default.dat',
                                    'delphes_card_default.dat']) +
+                              relative_path_list(mg7_templates, ['reweight_card_default.dat']) +
                               relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
                                   ['pythia8_card_default.dat',
                                    'madanalysis5_parton_card_default.dat',
@@ -188,7 +191,18 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV (default from OM's tutorial) - add a debug printout
     def __init__(self, *args, **kwargs):
         self.in_madevent_mode = False # see MR #747
-        args[1]["me_lib_format"] = pjoin("lib", "libmadmatrix_{process_id}_{{device}}.so")
+        # {model} is resolved by ProcessExporterMG7.generate_subprocess_directory()
+        # alongside {process_id}, from the matrix element's own model -- same
+        # sanitized name (get_model_name()) used for MADMATRIX_LIB/
+        # MADMATRIX_COMMONLIB's %(model)s in madmatrix.mk. {{device}}/{{fptype}}
+        # stay literal ("{device}"/"{fptype}") in the resulting me_path: which
+        # concrete BACKEND/FPTYPE a given process directory was compiled for is
+        # a per-build choice made when the libraries are compiled and loaded
+        # (see compile_matrix_elements() in mg7/launch.py), not something
+        # subprocesses.json commits to at generation time.
+        args[1]["me_lib_format"] = pjoin(
+            "lib", "libmadmatrix_{model}_{process_id}_{{device}}_{{fptype}}.so"
+        )
         super().__init__(*args, **kwargs)
         # Honor the output command's --mask=True|False (flavor-mask
         # optimization for grouped/merged flavors). Default: enabled.
@@ -415,8 +429,9 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     def write_processes_file(self):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
-        (with the make variables LIBTAG and BACKEND left as '{libtag}' and
-        '{backend}'), its legs, the processes it evaluates, its off-shell legs
+        (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
+        '{backend}' and '{fptype}', as for the common library, common_library),
+        its legs, the processes it evaluates, its off-shell legs
         and, per flavor index, every pdg combination (in the leg order of the
         process) that this index stands for, and what of it depends on the
         renormalisation scale beyond alpha_s (scale_dependence)."""
@@ -432,7 +447,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 flavors[flavor['index']].extend(list(pdgs) for pdgs in flavor['options'])
             subprocesses.append({
                 'path': path,
-                'library': 'libmadmatrix{libtag}_%s_{backend}.so' % path,
+                'library': 'libmadmatrix{libtag}_%s_%s_{backend}_{fptype}.so'
+                           % (self.lib_model_name, path),
                 'ninitial': len(info['incoming']),
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
@@ -441,4 +457,6 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'scale_dependence': scale,
                 'flavors': flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
-            json.dump({'subprocesses': subprocesses}, fsock, indent=1)
+            json.dump({'common_library': 'libmadmatrix_common{libtag}_%s_{backend}_{fptype}.so'
+                                         % self.lib_model_name,
+                       'subprocesses': subprocesses}, fsock, indent=1)

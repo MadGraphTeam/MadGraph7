@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -94,6 +95,7 @@ struct LHEParticle {
     double lifetime;
     /// Cosine of the spin angle, or `9` if the spin is not specified.
     double spin;
+    double cluster_scale;
 };
 
 /// Leading-order reweighting inputs of one event, written as the `<mgrwt>`
@@ -111,6 +113,19 @@ struct LOReweightInfo {
     double x1, x2;
     /// Factorization scales of the two beams, in GeV.
     double fact_scale1, fact_scale2;
+    /// MLM pdf reweighting ladder of each beam, as madevent's `<pdfrwt>`
+    /// books it: the beam parton at its leading scale, then one entry per
+    /// ladder step (line flavour, momentum fraction before the step, scale).
+    /// Empty: a single entry from pdg/x/fact_scale.
+    std::array<std::vector<int>, 2> ladder_pdgs{};
+    /// See @ref ladder_pdgs.
+    std::array<std::vector<double>, 2> ladder_x{};
+    /// See @ref ladder_pdgs.
+    std::array<std::vector<double>, 2> ladder_q{};
+    /// Scales of the MLM alpha_s vertices (`<asrwt>`); `qcd_power` counts
+    /// them too, the `<rscale>` power is what is left at the
+    /// renormalisation scale.
+    std::vector<double> asrwt{};
 };
 
 /**
@@ -134,6 +149,18 @@ struct LHEEvent {
     double alpha_qcd;
     /// One entry per particle, incoming and outgoing.
     std::vector<LHEParticle> particles;
+    /// Whether the MLM clustering scales of the outgoing particles are written
+    /// (`pt_clust_<i>` attributes of `<scales>`).
+    bool has_cluster_scales;
+    /// The renormalisation and factorisation scales, written as the standard
+    /// LHEF3 `<scales>` attributes. SCALUP carries only one number, and the two
+    /// codes do not agree on which: unwgt.f writes sqrt(max(q2fact)) there,
+    /// i.e. mu_F, while this writer puts mu_R. Emitting both explicitly means a
+    /// comparison does not have to guess.
+    double mu_r;
+    double mu_f1;
+    double mu_f2;
+    bool has_scales;
     /// Optional LHEF v3 weights (`<rwgt>` block); `rwgt_ids` and `rwgt` have
     /// the same length.
     std::vector<int> rwgt_ids;

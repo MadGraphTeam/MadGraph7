@@ -623,6 +623,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --no-debug     Optimized build, no debug symbols, Release (source build, default).")
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
+        logger.info(" ")
+        logger.info("   \"install madtrex [options]\"",'$MG:BOLD')
+        logger.info("   Install MadtRex, the event-reweighting library used by MG7, together")
+        logger.info("   with its bundled Rex fork. Requires madspace to be installed first.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Install non-interactively.")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (defaults to the 'nb_core' option).")
+        logger.info("     --clean        Rebuild from scratch.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')
@@ -3749,6 +3757,12 @@ class CompleteForCmd(cmd.CompleteCmd):
                 if any(a.startswith(opt) for a in args[2:]):
                     options.remove(opt)
             return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'madtrex':
+            options = ['-y', '--yes', '--clean', '--jobs=']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
         elif len(args)>=2 and args[1] in self._advanced_install_opts:
             options = ['--keep_source','--logging=']
             if args[1]=='pythia8':
@@ -3804,7 +3818,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace']
+                     'madspace', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -8146,6 +8160,14 @@ This implies that with decay chains:
             logger.warning('Pythia8 is installed but its main164 could not be ' +
                 'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
             return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
         # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
         if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
             self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
@@ -8563,8 +8585,8 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
-        elif args[0] == 'madspace':
-            install_script = pjoin(MG5DIR, 'madspace', 'install.py')
+        elif args[0] in ('madspace', 'madtrex'):
+            install_script = pjoin(MG5DIR, args[0], 'install.py')
             install_args = args[1:]
             # The source build compiles in parallel only if it is told how many
             # jobs it may use (see set_build_parallelism in install.py), so hand
@@ -8572,7 +8594,11 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
                        for a in install_args):
                 install_args = install_args + ['-j', str(self.options['nb_core'])]
-            subprocess.run([sys.executable, install_script] + install_args)
+            result = subprocess.run([sys.executable, install_script] + install_args)
+            if result.returncode != 0:
+                raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
+                                      'its output above' % (args[0], install_script,
+                                                            result.returncode))
             return
 
         plugin = self.install_plugin

@@ -171,7 +171,15 @@ class TestExternalWavefunctionCalls(unittest.TestCase):
                 for name in self.OPTIMISED:
                     self.assertNotIn(name, call, ids)
 
-
+    def test_helicity_is_per_lane(self):
+        """The external wavefunctions take the helicity of each SIMD lane/GPU
+        thread (hel_sv, built in calculate_jamps), not one helicity for all
+        events, so that events with different helicities run in lock-step."""
+        calls = self.external_calls([81, -81, 23, 21])   # q q~ > z g
+        for ipar, call in enumerate(calls):
+            self.assertIn('hel_sv[%d]' % ipar, call)
+            self.assertNotIn('cHel[', call)
+            
 class TestPropagatorDenominators(unittest.TestCase):
     """The propagator factor 'denom' of an off-shell routine.
 

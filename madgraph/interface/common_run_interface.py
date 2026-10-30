@@ -1257,7 +1257,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     '@MG5aMC', # MA5 hadronique
                     'run_rivet_later', # Rivet
                     'change particle_in_density_matrix', # density mode of reweight
-                    'simd_vector_size', # mg7 run_card.toml
+                    'madspace_cpu_mode', # mg7 run_card.toml
+                    'simd_vector_size', # mg7 run_card.toml (before madspace_cpu_mode)
                     'include_madspace', # mg7 run_card.toml
                     ]
         
@@ -1293,7 +1294,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # MadAnalysis4 is gone, but banners and process directories written
             # by older versions still carry this card: recognise it, ignore it.
             return 'plot_card.dat'
-        elif 'simd_vector_size' in text or 'include_madspace' in text:
+        elif 'madspace_cpu_mode' in text or 'simd_vector_size' in text or \
+                'include_madspace' in text:
             # mg7 run_card is a TOML file (madspace/MadNIS integration engine)
             return 'run_card.toml'
         elif ('gridpack' in text and 'ebeam1' in text) or \
@@ -1470,9 +1472,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         PY8_plots_root_path = pjoin(self.me_dir,'HTML',
                                            self.run_name,'%s_PY8_plots'%tag)
 
-        if 'ickkw' in self.run_card:
-            if int(self.run_card['ickkw'])==1 or \
-                  self.run_card['ktdurham']>0.0 or self.run_card['ptlund']>0.0:
+        # read through __getitem__: an mg7 run card answers these legacy keys
+        # (ickkw = 1 for an MLM sample) without containing them
+        try:
+            ickkw = int(self.run_card['ickkw'])
+            ckkw_cut = self.run_card['ktdurham'] > 0.0 or self.run_card['ptlund'] > 0.0
+        except KeyError:
+            ickkw, ckkw_cut = 0, False
+        if ickkw or ckkw_cut:
+            if ickkw==1 or ckkw_cut:
                 self.update_status('Create matching plots for Pythia8',
                                                                 level='pythia8')
 
@@ -1489,6 +1497,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                              self.run_name, '%s_pts.dat' % tag)
                 for observable_name, data_path in [('djr',djr_path),
                                                    ('pt',pt_path)]:
+                    # Pythia8's main164 writes the DJRs only (no pts.dat):
+                    # an observable without data is skipped, not the plots
+                    if not os.path.isfile(data_path):
+                        continue
                     try:
                         if not self.generate_Pythia8_HwU_plots(
                                     PY8_plots_root_path, merging_scale_name,
@@ -2168,6 +2180,20 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         except ImportError:
             raise self.ConfigurationError('''Can\'t load Reweight module.
             The variable mg5_path might not be correctly configured.''')
+
+        # the reweighting backend (madgraph/various/reweight_backend.py): this
+        # is the classic module; MadtRex runs from the MG7 output's launcher
+        backend = [a.split('=', 1)[1] for a in line.split()
+                   if a.startswith(('--backend=', '--reweight-backend='))]
+        if backend:
+            line = ' '.join(a for a in line.split()
+                            if not a.startswith(('--backend=', '--reweight-backend=')))
+            if backend[-1].lower() == 'madtrex':
+                raise self.InvalidCmd('--backend=madtrex: MadtRex needs an MG7 output; '
+                                      'this reweighting uses the classic module')
+            if backend[-1].lower() not in ('classic', 'auto'):
+                raise self.InvalidCmd('--backend=%s: expected classic, madtrex or auto'
+                                      % backend[-1])
 
         # plugin option
         plugin = False

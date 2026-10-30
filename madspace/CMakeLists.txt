@@ -132,7 +132,7 @@ if(ENABLE_OPENBLAS)
             -DCMAKE_INSTALL_LIBDIR=lib
             -DBUILD_SHARED_LIBS=OFF
             -DBUILD_WITHOUT_LAPACK=ON
-            -DBUILD_SINGLE=OFF
+            -DBUILD_SINGLE=ON
             -DBUILD_DOUBLE=ON
             -DBUILD_COMPLEX=OFF
             -DBUILD_COMPLEX16=OFF
@@ -177,6 +177,7 @@ set(
     ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
 )
@@ -256,6 +257,7 @@ add_library(
     src/phasespace/channel_weight_network.cpp
     src/phasespace/pdf.cpp
     src/phasespace/matrix_element.cpp
+    src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
     include/madspace/util.hpp
@@ -313,6 +315,7 @@ add_library(
     include/madspace/phasespace/channel_weight_network.hpp
     include/madspace/phasespace/pdf.hpp
     include/madspace/phasespace/matrix_element.hpp
+    include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/mixmax/mixmax.hpp
@@ -334,7 +337,11 @@ install(TARGETS madspace DESTINATION madspace/lib)
 install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "madspace/include"
-    FILES_MATCHING PATTERN "*.hpp*"
+    # *.h (not just *.hpp*) so umami.h -- the public UMAMI ABI header needed by
+    # anyone implementing or consuming a MatrixElementApi-compatible shared
+    # library -- is installed too, and *.c for mixmax/mixmax_skip_N17.c, which
+    # mixmax.hpp #includes.
+    FILES_MATCHING PATTERN "*.hpp*" PATTERN "*.h" PATTERN "*.c"
 )
 # Generated public headers: installed alongside function.hpp/instruction.hpp
 # so a downstream #include "function_builder_mixin.inc" resolves the same
@@ -361,6 +368,7 @@ set(
     src/kernels/rambo.hpp
     src/kernels/cuts.hpp
     src/kernels/chili.hpp
+    src/kernels/mlm.hpp
     src/kernels/nn.hpp
     src/kernels/observables.hpp
     src/kernels/discrete.hpp
@@ -439,14 +447,26 @@ if(NOT ENABLE_SIMD)
     set(CPU_TARGETS madspace_cpu)
     set(SIMD_FLAGS "")
     set(SIMD_DEFINES "")
-elseif(APPLE)
-    set(CPU_TARGETS madspace_cpu madspace_cpu_neon)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(CPU_TARGETS madspace_cpu madspace_cpu_simd_128)
     set(SIMD_FLAGS "" "")
     set(SIMD_DEFINES "" "USE_SIMD_NEON=1")
 else()
-    set(CPU_TARGETS madspace_cpu madspace_cpu_avx2 madspace_cpu_avx512)
-    set(SIMD_FLAGS "" "-mavx2 -mfma" "-mavx512f")
-    set(SIMD_DEFINES "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512=1")
+    set(
+        CPU_TARGETS
+        madspace_cpu madspace_cpu_simd_256 madspace_cpu_avx512y madspace_cpu_simd_512
+    )
+    set(
+        SIMD_FLAGS
+        ""
+        "-mavx2 -mfma"
+        "-mavx2 -mfma -mavx512f -mavx512vl -mavx512dq -mprefer-vector-width=256"
+        "-mavx512f"
+    )
+    set(
+        SIMD_DEFINES
+        "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512Y=1" "USE_SIMD_AVX512=1"
+    )
 endif()
 
 foreach(
@@ -463,10 +483,13 @@ foreach(
         src/cpu/kernel_definitions.hpp
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
         src/cpu/tensor.hpp
         src/cpu/simd.hpp
         src/cpu/simd_arm.hpp
         src/cpu/simd_x86_256.hpp
+        src/cpu/simd_x86_256y.hpp
+        src/cpu/simd_x86_512.hpp
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)

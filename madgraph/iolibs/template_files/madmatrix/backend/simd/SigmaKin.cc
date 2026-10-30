@@ -222,21 +222,21 @@ namespace madmatrix
 
   template<class M_ACCESS, class W_ACCESS>
   inline void
-  ixxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const int nhel, const int nsf, const int flv, ALOHAOBJ& fi, const int ipar )
+  ixxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const fptype_amp_sv nhel, const int nsf, const int flv, ALOHAOBJ& fi, const int ipar )
   {
     wavefunction_per_lane_mass<W_ACCESS>( fmass, fi, [&]( const fptype_amp m, ALOHAOBJ& out ) { ixxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsf, flv, out, ipar ); } );
   }
 
   template<class M_ACCESS, class W_ACCESS>
   inline void
-  oxxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const int nhel, const int nsf, const int flv, ALOHAOBJ& fo, const int ipar )
+  oxxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const fptype_amp_sv nhel, const int nsf, const int flv, ALOHAOBJ& fo, const int ipar )
   {
     wavefunction_per_lane_mass<W_ACCESS>( fmass, fo, [&]( const fptype_amp m, ALOHAOBJ& out ) { oxxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsf, flv, out, ipar ); } );
   }
 
   template<class M_ACCESS, class W_ACCESS>
   inline void
-  vxxxxx( const fptype_momenta momenta[], const fptype_amp_v vmass, const int nhel, const int nsv, const int flv, ALOHAOBJ& vc, const int ipar )
+  vxxxxx( const fptype_momenta momenta[], const fptype_amp_v vmass, const fptype_amp_sv nhel, const int nsv, const int flv, ALOHAOBJ& vc, const int ipar )
   {
     wavefunction_per_lane_mass<W_ACCESS>( vmass, vc, [&]( const fptype_amp m, ALOHAOBJ& out ) { vxxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsv, flv, out, ipar ); } );
   }
@@ -257,6 +257,29 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The helicities of the npar external legs for the events of one page (neppV events,
+  // one SIMD lane each, or one event without SIMD), as the external wavefunctions take
+  // them: the helicities hel[npar] for every event, or the helicity allihel[ievt] of each event.
+  static inline void
+  fillHelicities( fptype_amp_sv* hel_sv,  // output: hel_sv[npar] helicities of the external legs
+                  const short* hel,       // input: helicity of each leg, hel[npar], of all events (if allihel == nullptr)
+                  const int* allihel,     // input: helicity index [0,ncomb) of each event[nevt] (nullptr: hel for all events)
+                  const int ievt0 )       // input: first event number in current C++ event page
+  {
+#ifdef MGONGPU_CPPSIMD
+    for( int ieppV = 0; ieppV < neppV; ieppV++ )
+    {
+      const short* heli = ( allihel != nullptr ? cHel[allihel[ievt0 + ieppV]] : hel );
+      for( int ipar = 0; ipar < npar; ipar++ ) hel_sv[ipar][ieppV] = heli[ipar];
+    }
+#else
+    const short* heli = ( allihel != nullptr ? cHel[allihel[ievt0]] : hel );
+    for( int ipar = 0; ipar < npar; ipar++ ) hel_sv[ipar] = heli[ipar];
+#endif
+  }
+
+  //--------------------------------------------------------------------------
+
   // Accumulate a multichannel numerator contribution in place. In C++ each
   // event page is processed serially within the helicity loop, so a plain
   // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
@@ -268,9 +291,12 @@ namespace madmatrix
   // moved to a separate function/kernel). This function processes a single event "page"
   // or SIMD vector (or for two in "mixed" precision mode, nParity=2). Accepts a SCALAR
   // channelId because it is GUARANTEED that all events in a SIMD vector have the same
-  // channelId #898.
+  // channelId #898. The helicity, on the other hand, may differ from one event (SIMD lane)
+  // to the next: the external wavefunctions are branch-free in the helicity (see helas.h),
+  // so that the events of a page with different helicities are computed in lock-step.
   void
-  calculate_jamps( const short* hel,                 // input: helicity of each leg, hel[npar] (a row of cHel, or not: see Density.cc)
+  calculate_jamps( const short* hel,                   // input: helicity of each leg, hel[npar], of all events (if allihel == nullptr): a row of cHel, or not (see Density.cc)
+                   const int* allihel,                 // input: helicity index [0,ncomb) of each event[nevt] (nullptr: hel for all events)
                    const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,     // input: indices of the flavor combinations
@@ -290,16 +316,6 @@ namespace madmatrix
     using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
     mgDebug( 0, __FUNCTION__ );
-
-    // EvaluateDiagrams.inc reads the helicities as cHel[ihel][ipar]. Shadow the
-    // helicity table with the one row this call evaluates, so that the row need
-    // not be one of cHel at all: the density matrix builds combinations that a
-    // polarised process leaves out of its table (sigmaKin_density, Density.cc).
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-    const short( *cHel )[npar] = reinterpret_cast<const short( * )[npar]>( hel );
-#pragma GCC diagnostic pop
-    constexpr int ihel = 0;
 
     // Local TEMPORARY variables for a subset of Feynman diagrams in the given C++ event
     // page (ipagV) [NB these variables are reused several times (and re-initialised each
@@ -356,6 +372,10 @@ namespace madmatrix
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
         COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
       fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
+      // The helicities of the external legs for the events of this page, one per SIMD lane:
+      // the same helicities hel for all of them, or the helicity allihel of each event
+      fptype_amp_sv hel_sv[npar];
+      fillHelicities( hel_sv, hel, allihel, ievt0 );
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
 
@@ -478,7 +498,7 @@ namespace madmatrix
 #else
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
 #endif
-        calculate_jamps( cHel[ihel], allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        calculate_jamps( cHel[ihel], nullptr, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
@@ -633,7 +653,8 @@ namespace madmatrix
             unsigned int* allDiagramIdsOut,    // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
             const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
-            const bool sampleSignedHelicity )  // input: choose the helicity on |T_i| and return sign(T_i)*sum|T| (split orders only)
+            const bool sampleSignedHelicity,   // input: choose the helicity on |T_i| and return sign(T_i)*sum|T| (split orders only)
+            const int* allihel )               // input: helicity index [0,ncomb) of each event[nevt]; nullptr to sum over the good helicities
   {
     mgDebugInitialise();
 
@@ -670,6 +691,10 @@ namespace madmatrix
 
     // === PART 1 - HELICITY LOOP: CALCULATE WAVEFUNCTIONS ===
     // (using precomputed good helicities)
+    // With allihel, each event has a single helicity of its own instead: the "loop" is one
+    // evaluation in which the events of a SIMD page carry different helicities in lock-step,
+    // and everything below (color sum, color and channel choice) runs on that one helicity.
+    const int nhelEval = ( allihel != nullptr ? 1 : cNGoodHel );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     // Mixed fptypes #537: float for color algebra and double elsewhere
     // Delay color algebra and ME updates (only on even pages)
@@ -680,7 +705,7 @@ namespace madmatrix
 #endif
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
-#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2, sampleSignedHelicity
+#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, allihel, cGoodHel, nhelEval, npagV2, sampleSignedHelicity
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
@@ -709,31 +734,35 @@ namespace madmatrix
       if( ColorMatrixData::shouldUseBlas )
       {
         static thread_local std::vector<cxtype_sv> ghelJamp_sv( (size_t)ncomb * nParity * ncolor );
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nhelEval; ighel++ )
         {
-          const int ihel = cGoodHel[ighel];
+          const int ihel = ( allihel != nullptr ? -1 : cGoodHel[ighel] ); // unused with allihel
           cxtype_sv* jamp_sv = ghelJamp_sv.data() + (size_t)ighel * nParity * ncolor;
           for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>(); // calculate_jamps accumulates into jamp_sv
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+          calculate_jamps( ( allihel != nullptr ? nullptr : cHel[ihel] ), allihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         }
+        // nhelEval may be 0 (no good helicity): the color sum of no helicity leaves allMEs at 0
+        if( nhelEval > 0 )
+        {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-        color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
+          color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), nhelEval, ievt00 );
 #else
-        color_sum_cpu_blas( allMEs, MEs_ighel, nullptr, ghelJamp_sv.data(), cNGoodHel, ievt00 );
+          color_sum_cpu_blas( allMEs, MEs_ighel, nullptr, ghelJamp_sv.data(), nhelEval, ievt00 );
 #endif
+        }
       }
       else
 #endif // MGONGPU_CPP_HAS_BLAS
       {
-        for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+        for( int ighel = 0; ighel < nhelEval; ighel++ )
         {
-          const int ihel = cGoodHel[ighel];
+          const int ihel = ( allihel != nullptr ? -1 : cGoodHel[ighel] ); // unused with allihel
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+          calculate_jamps( ( allihel != nullptr ? nullptr : cHel[ihel] ), allihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -746,6 +775,16 @@ namespace madmatrix
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int ievt = ievt00 + ieppV;
+        if( allihel != nullptr )
+        {
+          // No choice: each event was evaluated for its given helicity only, whose |M|^2 (signed,
+          // with an interference) is the color sum above
+          allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+          allselhel[ievt + neppV] = allihel[ievt + neppV] + 1;
+#endif
+          continue;
+        }
         if constexpr( nampso > 1 )
         {
           if( sampleSignedHelicity )
