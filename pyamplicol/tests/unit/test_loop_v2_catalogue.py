@@ -849,3 +849,130 @@ def test_built_in_models_refuse_the_full_variant():
     assert compile_tree_kernel_variant(builtin, "transverse") is builtin
     with pytest.raises(LoopKernelCatalogueError, match="built-in"):
         compile_tree_kernel_variant(builtin, "full")
+
+
+# ------------------------------------------- native polynomial stage (MS-GEN)
+
+
+def _catalogue_lanes(compiled, **kwargs):
+    """The catalogue with the segments' polynomial stage in Python (the
+    oracle) and natively (``loop_catalogue_polynomials``)."""
+
+    from pyamplicol.loops.v2.catalogue import (
+        build_loop_kernel_catalogue,
+        native_catalogue_polynomials,
+    )
+
+    with native_catalogue_polynomials(False):
+        oracle = build_loop_kernel_catalogue(compiled, **kwargs)
+    with native_catalogue_polynomials(True):
+        native = build_loop_kernel_catalogue(compiled, **kwargs)
+    return oracle, native
+
+
+def _assert_identical(oracle, native):
+    # Every kernel (canonical signature, exact outputs, inputs, layout) and
+    # every binding with its entries, in order.
+    assert native.kernels == oracle.kernels
+    for kind in (
+        "segments",
+        "propagator_numerators",
+        "closures",
+        "counterterm_sites",
+        "unsupported_counterterms",
+    ):
+        assert getattr(native, kind) == getattr(oracle, kind), kind
+    assert [binding.entries for binding in native.segments] == [
+        binding.entries for binding in oracle.segments
+    ]
+    assert native == oracle
+
+
+def test_native_polynomial_stage_equals_the_python_oracle(
+    compiled, catalogue, loop_native
+):
+    """The segments' polynomial stage in Rust (M-SM MS-GEN, HANDOFF §0.4)
+    gives the Python stage's catalogue byte for byte on loop_sm: every
+    kernel's exact outputs, inputs, layout and signature, every segment's
+    entries; the default lane is the native one."""
+
+    from pyamplicol.loops.v2 import catalogue as module
+
+    assert module.NATIVE_CATALOGUE_POLYNOMIALS is True
+    oracle, native = _catalogue_lanes(compiled)
+    _assert_identical(oracle, native)
+    assert catalogue == native
+    assert oracle.segments and all(
+        binding.key.form in ("fused", "split") for binding in oracle.segments
+    )
+
+
+@pytest.mark.loop_nightly
+def test_native_polynomial_stage_equals_the_python_oracle_on_the_ew_ufo(
+    loop_gmu_ufo, loop_native
+):
+    """The same on the G_mu UFO in 't Hooft-Feynman gauge with every
+    propagating particle as a loop species (weak bosons, Goldstones, ghosts,
+    every fermion: the catalogue of an EW virtual; about 2 min in the Python
+    lane)."""
+
+    from pyamplicol.models.loading import compile_model_source, with_model_gauge
+
+    compiled = with_model_gauge(
+        compile_model_source(loop_gmu_ufo, require_supported=False), "feynman"
+    )
+    species = tuple(
+        particle.pdg_code
+        for particle in compiled.ir.particles
+        if particle.auxiliary_kind is None and particle.propagating
+    )
+    oracle, native = _catalogue_lanes(
+        compiled, loop_species=species, counterterm_entries=()
+    )
+    _assert_identical(oracle, native)
+    assert len(native.segments) > 1000
+
+
+@pytest.mark.loop_nightly
+def test_native_stages_give_the_oracle_plans_on_an_ew_rung(loop_gmu_ufo, loop_native):
+    """g g > t t~ with QCD and QED corrections on the G_mu UFO (the EW
+    ladder's first rung, ``tools/loop_v2_generate._fixture_request``)
+    generated and exported with the native stages (catalogue polynomials,
+    text canonical stages) and with their Python oracles: the same plan v4
+    JSON and the same native tree programs, saved evaluators included
+    (``snapshot.programs_digest``). About 5 min, 7 GB."""
+
+    import argparse
+    import json
+    from pathlib import Path
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.catalogue import native_catalogue_polynomials
+    from pyamplicol.loops.v2.plan_export import export_plan
+    from pyamplicol.loops.v2.snapshot import programs_digest
+    from pyamplicol.models.loading import compile_model_source
+    from tools import loop_v2_generate
+
+    root = Path(__file__).resolve().parents[2]
+    reference = json.loads(
+        (root / "tests/fixtures/loop/required/gg_ttx_ew.json").read_text()
+    )
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    request, _ = loop_v2_generate._fixture_request(
+        reference, compiled, argparse.Namespace()
+    )
+
+    def lane(native: bool):
+        with (
+            native_catalogue_polynomials(native),
+            assemble.text_canonical_stage(native),
+        ):
+            slice_ = LoopSlice.generate(compiled, request, loop_native)
+            exported = export_plan(slice_, forward=False, trees=True, born_squared=True)
+        return exported.json(), programs_digest(exported.trees)
+
+    oracle = lane(False)
+    native = lane(True)
+    assert native[1] == oracle[1]
+    assert native[0] == oracle[0]
