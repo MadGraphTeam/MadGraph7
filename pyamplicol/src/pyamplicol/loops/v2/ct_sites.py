@@ -865,6 +865,19 @@ def promoted_root_entry(entry: Any, leg: int) -> PromotedRootEntry:
     )
 
 
+def _loop_content(entries: Sequence[Any]) -> frozenset | None:
+    """The loop content of a rule's entries, invariant under conjugation:
+    each loop group alternative as its sorted |PDG| codes (None without
+    declared loop particles, e.g. an ordinary vertex)."""
+
+    found = {
+        tuple(sorted(abs(int(pdg)) for pdg in alternative))
+        for entry in entries
+        for alternative in (getattr(entry, "loop_particles", None) or ())
+    }
+    return frozenset(found) if found else None
+
+
 class ConjugateVertices:
     """The model's conjugate rule of each vertex not closed under conjugation.
 
@@ -882,7 +895,9 @@ class ConjugateVertices:
     ``groups`` are (name, entries) of one ordinary vertex or counterterm rule
     each (``KernelBasisEntry``, one collection and kind per group). A group's
     conjugate is the group of the same collection, kind and coupling orders on
-    the antiparticles; it must be unique, and both must have one colour
+    the antiparticles (among several, the one with the same loop content:
+    a counterterm vertex split by loop group); it must be unique, and both
+    must have one colour
     structure (the closure keeps the vertex's own colour, the incoming
     reading of the colour seeds, and the pairing of several structures with
     the conjugate's is not established), and neither may have a ghost leg
@@ -921,6 +936,13 @@ class ConjugateVertices:
         first = entries[0]
         names = [self._anti[name] for name in first.particle_names]
         found = self._groups.get(self._key(entries, names), [])
+        if len(found) > 1:
+            # A counterterm vertex split by loop content (one rule per UFO
+            # loop group, e.g. the R2 [W- A G+] of MG5_aMC's NLOCT UFOs, one
+            # per quark pair): Hermiticity pairs each rule with the
+            # conjugate's rule of the same loop content (|PDG| per group).
+            content = _loop_content(entries)
+            found = [item for item in found if _loop_content(item[1]) == content]
         if len(found) != 1:
             raise NotImplementedError(
                 f"{first.vertex_name} [{' '.join(first.particle_names)}] is not "

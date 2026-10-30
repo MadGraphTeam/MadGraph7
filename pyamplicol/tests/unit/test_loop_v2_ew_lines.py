@@ -258,6 +258,28 @@ def test_conjugate_vertices_need_one_conjugate_with_one_colour_structure():
     with pytest.raises(NotImplementedError, match="several colour structures"):
         several.of(open_)
 
+    # A counterterm vertex split by loop content (one rule per loop group,
+    # MG5_aMC's R2 [W- A G+] per quark pair): each rule's conjugate is the
+    # conjugate vertex's rule of the same loop content (|PDG| per group).
+    def split(name, fields, groups):
+        out = []
+        for index, group in enumerate(groups):
+            (entry,) = entries(name, fields, kind="R2")
+            entry.loop_particles = (group,)
+            entry.loop_group_index = index
+            out.append((f"{name}_{index}", [entry]))
+        return out
+
+    plus = split("V_R2p", ("d~", "u", "W-"), ((24, 23), (2, 1), (4, 3)))
+    minus = split("V_R2m", ("u~", "d", "W+"), ((-24, 23), (2, 1), (4, 3)))
+    pairs = ConjugateVertices([*plus, *minus], data)
+    for (_, rule), (name, conjugate) in zip(plus, minus, strict=True):
+        assert pairs.named(rule) == (name, tuple(conjugate))
+    unpaired = ConjugateVertices([*plus, *split("V_R2m", ("u~", "d", "W+"),
+                                                ((6, 5), (6, 3)))], data)  # fmt: skip
+    with pytest.raises(NotImplementedError, match="0 conjugate rules"):
+        unpaired.named(plus[1][1])
+
 
 @pytest.mark.loop_fast
 def test_born_orders_the_request_leaves_open_are_bounded_by_the_vertices():
