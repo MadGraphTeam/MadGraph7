@@ -1163,6 +1163,50 @@ impl AmplitudeRuntime {
         )
     }
 
+    /// The reduction of `reduce_planes_f64_into_selected_slice` as the groups
+    /// of a pacman runner, which applies it after its leaves; `false` if a
+    /// runner cannot (colour contraction).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn fill_pacman_reduction(
+        &self,
+        selected_color_sector_ids: Option<&BTreeSet<i64>>,
+        reduction: &mut super::super::pacman_runner::PacmanReduction,
+    ) -> bool {
+        reduction.clear();
+        if self.color_contraction.is_some() {
+            return false;
+        }
+        if self.has_coherent_groups {
+            for group in &self.raw_sum_groups {
+                if !raw_sum_group_is_selected(group, selected_color_sector_ids) {
+                    continue;
+                }
+                let weight = if selected_color_sector_ids.is_none() {
+                    group.all_sector_weight
+                } else {
+                    group.weight
+                };
+                reduction.push_group(weight, group.indices.iter().copied());
+            }
+            return true;
+        }
+        for index in 0..self.output_length {
+            if !raw_sum_index_is_selected(
+                self.raw_sum_color_sector_ids.get(index).copied().flatten(),
+                selected_color_sector_ids,
+            ) {
+                continue;
+            }
+            let weight = if selected_color_sector_ids.is_none() {
+                self.raw_sum_all_sector_weights[index]
+            } else {
+                self.raw_sum_weights[index]
+            };
+            reduction.push_group(weight, [index]);
+        }
+        true
+    }
+
     /// Reduce canonical split-complex amplitude planes without packing them
     /// into the legacy point-major complex buffer.
     #[allow(dead_code)]

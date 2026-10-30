@@ -37,7 +37,7 @@ use super::pacman_capture::{
     ArenaRecorder, ArenaSource, CaptureLayout, CaptureMethod, CaptureSchedule, CaptureStage,
 };
 #[cfg(feature = "pacman")]
-use super::pacman_runner::PacmanRunner;
+use super::pacman_runner::{PacmanReduction, PacmanRunner};
 use super::sources::{ResolvedSourceWavefunction, RuntimeSourceState};
 use super::*;
 #[cfg(test)]
@@ -1727,6 +1727,30 @@ impl CompiledDirectEnginePrototype {
             self.arena.point_stride(),
             self.arena.active_point_count(),
         )
+    }
+
+    /// The reduction a runner of `PACMAN_RUNNER` applies when armed, if it
+    /// can (`None`: no runner, or one that leaves the reduction to Rusticol).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_reduction(&mut self) -> Option<&mut PacmanReduction> {
+        self.pacman_runner.as_mut()?.reduction()
+    }
+
+    /// The next evaluation's runner call applies the reduction.
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_arm_reduction(&mut self) {
+        if let Some(runner) = self.pacman_runner.as_mut() {
+            runner.arm_reduction();
+        }
+    }
+
+    /// The reduced values of the last evaluation into `out`; `false` if the
+    /// runner did not reduce (then `amplitude_planes` holds the amplitudes).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_take_reduced(&mut self, out: &mut [f64]) -> bool {
+        self.pacman_runner
+            .as_mut()
+            .is_some_and(|runner| runner.take_values(out))
     }
 
     /// Explicit developer-only AoS extraction, excluded from measured leaf and

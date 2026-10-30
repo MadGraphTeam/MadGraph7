@@ -18,6 +18,12 @@
 //! plane, and two planes per model parameter (real, imaginary), which this
 //! module owns and fills with the parameter values.
 //!
+//! A runner that exports `pacman_runner_v1_run_reduce` also applies the
+//! amplitude reduction of the selected sum (coherent groups, or a group per
+//! amplitude), so that only one value per point comes back from a GPU; the
+//! engine's caller hands it the groups (`PacmanReduction`).
+//! `PACMAN_RUNNER_REDUCE=0` keeps the reduction in Rusticol.
+//!
 //! A GPU runner needs many points per call: set `RUSTICOL_TILE_POINTS=N`
 //! (`tile_override`, which feature `pacman` enables). With `PACMAN_RUNNER`
 //! set, every engine gets tiles of N points, not only those whose cache-sized
@@ -34,6 +40,8 @@ const RUNNER: &str = "PACMAN_RUNNER";
 const ABI_VERSION: u32 = 1;
 const METADATA_SYMBOL: &[u8] = b"pacman_runner_v1_metadata\0";
 const RUN_SYMBOL: &[u8] = b"pacman_runner_v1_run\0";
+const RUN_REDUCE_SYMBOL: &[u8] = b"pacman_runner_v1_run_reduce\0";
+const REDUCE: &str = "PACMAN_RUNNER_REDUCE";
 const STATUS_OK: i32 = 0;
 
 /// `pacman_runner_metadata` of `pacman_runner.h`.
@@ -55,8 +63,55 @@ struct RunnerMetadataV1 {
     reserved: u32,
 }
 
+/// `pacman_runner_reduction` of `pacman_runner.h`.
+#[repr(C)]
+struct RunnerReduction {
+    struct_size: u32,
+    num_groups: u32,
+    offsets: *const u32,
+    indices: *const u32,
+    weights: *const f64,
+}
+
 type MetadataFunction = unsafe extern "C" fn() -> *const RunnerMetadataV1;
 type RunFunction = unsafe extern "C" fn(*const *mut f64, u32, *const u32, u32, u32, u32) -> i32;
+type RunReduceFunction = unsafe extern "C" fn(
+    *const *mut f64,
+    u32,
+    *const u32,
+    u32,
+    u32,
+    u32,
+    *const RunnerReduction,
+    *mut f64,
+) -> i32;
+
+/// The amplitude reduction a runner applies after the leaves: per group, in
+/// order, its weight and amplitude indices; the value of a point is the sum of
+/// `weight * |sum of its amplitudes|²` (`pacman_runner.h`), as the selected
+/// sum's reduction computes it, without the normalization.
+#[derive(Debug, Default)]
+pub(crate) struct PacmanReduction {
+    offsets: Vec<u32>,
+    indices: Vec<u32>,
+    weights: Vec<f64>,
+}
+
+impl PacmanReduction {
+    pub(crate) fn clear(&mut self) {
+        self.offsets.clear();
+        self.offsets.push(0);
+        self.indices.clear();
+        self.weights.clear();
+    }
+
+    pub(crate) fn push_group(&mut self, weight: f64, indices: impl IntoIterator<Item = usize>) {
+        self.indices
+            .extend(indices.into_iter().map(|index| index as u32));
+        self.offsets.push(self.indices.len() as u32);
+        self.weights.push(weight);
+    }
+}
 
 /// The leaves a schedule runs: per current stage the active leaves, then the
 /// amplitude stage's.
@@ -74,6 +129,14 @@ pub(crate) struct PacmanRunner {
     stage_offsets: Box<[u32]>,
     leaves: Vec<u32>,
     run: RunFunction,
+    /// `pacman_runner_v1_run_reduce` (`None`: absent, or `PACMAN_RUNNER_REDUCE=0`)
+    run_reduce: Option<RunReduceFunction>,
+    reduction: PacmanReduction,
+    /// the next run reduces (`arm_reduction`)
+    armed: bool,
+    /// the values of the last run's reduction, if it reduced
+    values: Vec<f64>,
+    values_ready: bool,
     path: PathBuf,
     execution: String,
     // last: the code `run` points into
@@ -239,9 +302,21 @@ impl PacmanRunner {
             let execution = unsafe { CStr::from_ptr(metadata.execution) }
                 .to_string_lossy()
                 .into_owned();
+            let reduce = std::env::var(REDUCE).map_or(true, |value| value != "0");
+            // SAFETY: the symbol has the signature of pacman_runner.h
+            let run_reduce = reduce
+                .then(|| unsafe {
+                    library
+                        .get::<RunReduceFunction>(RUN_REDUCE_SYMBOL)
+                        .map(|symbol| *symbol)
+                        .ok()
+                })
+                .flatten();
             // SAFETY: the caller's contract
             return unsafe {
-                Self::bind(layout, arena, momenta, zero, library, run, path, execution)
+                Self::bind(
+                    layout, arena, momenta, zero, library, run, run_reduce, path, execution,
+                )
             }
             .map(|runner| Some(Box::new(runner)));
         }
@@ -263,6 +338,7 @@ impl PacmanRunner {
         zero: *mut f64,
         library: libloading::Library,
         run: RunFunction,
+        run_reduce: Option<RunReduceFunction>,
         path: PathBuf,
         execution: String,
     ) -> RusticolResult<Self> {
@@ -295,8 +371,13 @@ impl PacmanRunner {
             next += stage.leaves.len() as u32;
         }
         eprintln!(
-            "pacman: {RUNNER}: the engine of {next} leaves runs {} ({execution})",
-            path.display()
+            "pacman: {RUNNER}: the engine of {next} leaves runs {} ({execution}{})",
+            path.display(),
+            if run_reduce.is_some() {
+                ", reductions included"
+            } else {
+                ""
+            }
         );
         Ok(Self {
             planes: planes.into_boxed_slice(),
@@ -306,6 +387,11 @@ impl PacmanRunner {
             stage_offsets: stage_offsets.into_boxed_slice(),
             leaves: Vec::with_capacity(next as usize),
             run,
+            run_reduce,
+            reduction: PacmanReduction::default(),
+            armed: false,
+            values: Vec::new(),
+            values_ready: false,
             path,
             execution,
             _library: library,
@@ -338,18 +424,46 @@ impl PacmanRunner {
                 (self.leaves.as_ptr(), self.leaves.len() as u32)
             }
         };
+        let reduce = std::mem::take(&mut self.armed);
+        self.values_ready = false;
         // SAFETY: the plane pointers address live planes of `stride` points
         // (`from_env`), `point_count` does not exceed the stride (checked by
-        // the engine), and the engine's evaluate methods hold `&mut self`
+        // the engine), and the engine's evaluate methods hold `&mut self`; the
+        // reduction's tables and `values` (point_count values) live through
+        // the call
         let status = unsafe {
-            (self.run)(
-                self.planes.as_ptr(),
-                self.planes.len() as u32,
-                leaves,
-                leaf_count,
-                0,
-                point_count,
-            )
+            match (reduce, self.run_reduce) {
+                (true, Some(run_reduce)) => {
+                    self.values.resize(point_count as usize, 0.0);
+                    let reduction = RunnerReduction {
+                        struct_size: std::mem::size_of::<RunnerReduction>() as u32,
+                        num_groups: self.reduction.weights.len() as u32,
+                        offsets: self.reduction.offsets.as_ptr(),
+                        indices: self.reduction.indices.as_ptr(),
+                        weights: self.reduction.weights.as_ptr(),
+                    };
+                    let status = run_reduce(
+                        self.planes.as_ptr(),
+                        self.planes.len() as u32,
+                        leaves,
+                        leaf_count,
+                        0,
+                        point_count,
+                        &reduction,
+                        self.values.as_mut_ptr(),
+                    );
+                    self.values_ready = status == STATUS_OK;
+                    status
+                }
+                _ => (self.run)(
+                    self.planes.as_ptr(),
+                    self.planes.len() as u32,
+                    leaves,
+                    leaf_count,
+                    0,
+                    point_count,
+                ),
+            }
         };
         if status != STATUS_OK {
             return Err(RusticolError::evaluation(format!(
@@ -358,6 +472,29 @@ impl PacmanRunner {
             )));
         }
         Ok(())
+    }
+
+    /// The reduction to fill for `arm_reduction`, if the runner can reduce
+    /// (`None`: Rusticol reduces the amplitude planes).
+    pub(crate) fn reduction(&mut self) -> Option<&mut PacmanReduction> {
+        self.run_reduce.is_some().then_some(&mut self.reduction)
+    }
+
+    /// The next run applies the reduction (as filled through `reduction`)
+    /// and leaves the amplitude planes unspecified.
+    pub(crate) fn arm_reduction(&mut self) {
+        self.armed = self.run_reduce.is_some();
+    }
+
+    /// Copies the values of the last run's reduction into `out`; `false` if
+    /// that run did not reduce (its amplitude planes hold the amplitudes).
+    pub(crate) fn take_values(&mut self, out: &mut [f64]) -> bool {
+        if !self.values_ready || out.len() != self.values.len() {
+            return false;
+        }
+        out.copy_from_slice(&self.values);
+        self.values_ready = false;
+        true
     }
 
     /// Broadcast the parameters into their planes when their bits changed.

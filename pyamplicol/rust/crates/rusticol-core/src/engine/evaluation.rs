@@ -1207,6 +1207,11 @@ impl ExecutionRuntime {
         } else {
             direct.tile_capacity()
         };
+        // with feature `pacman`, a runner that can reduce does, after its leaves
+        #[cfg(feature = "pacman")]
+        let runner_reduces = direct.pacman_reduction().is_some_and(|reduction| {
+            amplitude.fill_pacman_reduction(selected_color_sector_ids, reduction)
+        });
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -1221,18 +1226,29 @@ impl ExecutionRuntime {
                 external_is_initial,
                 model_parameter_values_f64,
             )?;
+            #[cfg(feature = "pacman")]
+            if runner_reduces {
+                direct.pacman_arm_reduction();
+            }
             evaluate_direct_color_schedule(
                 direct,
                 compiled_direct_color_schedules,
                 selected_color_sector_ids,
                 point_stop - point_start,
             )?;
-            let planes = direct.amplitude_planes()?;
-            amplitude.reduce_planes_f64_into_selected_slice(
-                planes,
-                &mut output[point_start..point_stop],
-                selected_color_sector_ids,
-            )?;
+            #[cfg(feature = "pacman")]
+            let reduced = runner_reduces
+                && direct.pacman_take_reduced(&mut output[point_start..point_stop]);
+            #[cfg(not(feature = "pacman"))]
+            let reduced = false;
+            if !reduced {
+                let planes = direct.amplitude_planes()?;
+                amplitude.reduce_planes_f64_into_selected_slice(
+                    planes,
+                    &mut output[point_start..point_stop],
+                    selected_color_sector_ids,
+                )?;
+            }
             if *normalization_factor != 1.0 {
                 for value in &mut output[point_start..point_stop] {
                     *value *= *normalization_factor;
