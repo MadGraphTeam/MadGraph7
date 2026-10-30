@@ -2230,7 +2230,11 @@
    "points": {
     "generator": "supplied",
     "family": "regular"
-   }
+   },
+   "madloop_params": {
+    "MLReductionLib": "1"
+   },
+   "note": "CutTools only: MadLoop's quadruple-precision Ninja stage mis-evaluates the e^6 sector at m_mu^2/s ~ 1e-9 (3 of 4 points, wrong single pole, undetected by its own test)"
   },
   {
    "id": "udx_epve_ew_ckm",

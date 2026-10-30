@@ -14548,11 +14548,14 @@
      "run": "uux_mummp_ew_mm",
      "fixture": "required/msm/uux_mummp_ew_mm.json",
      "process_key": "uux_mummp_ew_mm",
-     "note": null,
+     "note": "CutTools only: MadLoop's quadruple-precision Ninja stage mis-evaluates the e^6 sector at m_mu^2/s ~ 1e-9 (3 of 4 points, wrong single pole, undetected by its own test)",
      "reference_notes": {},
      "excluded_providers": {},
      "second_providers": [],
      "second_provider_trigger": null,
+     "madloop_params": {
+      "MLReductionLib": "1"
+     },
      "status": "committed",
      "madloop_process": "u u~ > mu- mu+ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99",
      "pdgs": [
@@ -14607,10 +14610,10 @@
       "madloop"
      ],
      "madloop_return_codes": [
-      328,
-      328,
-      328,
-      328
+      329,
+      329,
+      329,
+      329
      ],
      "madloop_evaluation": "quadruple",
      "evaluation_precision": [
