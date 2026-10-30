@@ -37,9 +37,10 @@ PLAN_ROWS = {
     "MP": "01 02",
     "SC": "01 02 03 04 05 06 07 08 09",
 }
-# PLAN §4.3 tiers: VJ02 is the default tier; the 2->5 target and CM07 run in
-# the campaign tier.
-DEFAULT_TIER = {"VJ02"}
+# PLAN §4.3 tiers: VJ02 is the default tier, joined after MS-GEN by TT01
+# (PLAN §3.2 item 3: generated in < 60 s; LL01 and DY01 are not); the 2->5
+# target and CM07 run in the campaign tier.
+DEFAULT_TIER = {"VJ02", "TT01"}
 CAMPAIGN_TIER = {"TV07", "CM07"}
 # PLAN §1.4: the known rows of MadLoop's R2 label matching.
 R2_RULE_ROWS = {"LL10", "TT04", "SC09", "TT05"}
