@@ -1867,6 +1867,16 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
+        # Under the complex-mass scheme external states are stable (EW-25,
+        # ``model_cms``): an external particle of a complex pole mass is
+        # refused (``cms-external-width``).
+        from pyamplicol.loops.model_cms import require_stable_external_states
+
+        require_stable_external_states(
+            compiled,
+            (leg.pdg for leg in process.legs if leg.pdg is not None),
+            repr(request.process),
+        )
         # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
         # any tree, family or counterterm generation (``ew_policy``).
         electroweak = ew_policy.electroweak(

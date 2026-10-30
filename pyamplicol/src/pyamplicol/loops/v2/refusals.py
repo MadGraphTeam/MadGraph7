@@ -146,6 +146,18 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   uncovered field factor (``require_declared_colour_rules``,
   ``require_declared_colour_fields``), naming the vertices and factors.
   Full colour needs no declaration.
+* The mass scheme (M-SM MS-CMS, ``loops.model_cms``): the declaration's
+  ``mass_scheme`` is ``"real-on-shell"`` or ``"complex-mass"``
+  (``mass-scheme`` otherwise). Real on-shell requests propagate no width in
+  coloured trees (``coloured-width``) nor, if electroweak, in any tree
+  (``electroweak-width``, [U8]); the complex-mass scheme is MG5_aMC's
+  transform of the model (``complex_mass_model``), which refuses a model
+  outside its assumptions (``complex-mass-scheme``), a width-carrying
+  particle of internal mass (``cms-internal-mass``), a fixed Yukawa input
+  (``cms-yukawa-input``) and an external particle of a complex pole mass
+  (``cms-external-width``, EW-25). Fixed parameters are real in both schemes
+  (``complex-fixed-parameter``). Each is decided by the model's records and
+  the card: widths, parameter natures and SLHA blocks, the external legs.
 """
 
 from __future__ import annotations
@@ -247,18 +259,104 @@ LOOP_ADMISSION_REFUSALS = (
     ),
     LoopAdmissionRefusal(
         "coloured-width",
-        "a request whose tree currents propagate a coloured particle with a "
-        "nonzero width (e.g. the top at a restriction with DECAY 6 1.4915)",
-        "v2 virtuals are real on-shell: loop propagators carry no width and the "
-        "model counterterms renormalise the real mass, so a width in the tree "
+        "a real on-shell request whose tree currents propagate a coloured "
+        "particle with a nonzero width (e.g. the top at a restriction with "
+        "DECAY 6 1.4915)",
+        "real on-shell virtuals: loop propagators carry no width and the model "
+        "counterterms renormalise the real mass, so a width in the tree "
         "currents makes the Born, its colour correlations and the virtual "
-        "inconsistent (a resonant coloured particle needs the complex-mass "
-        "scheme)",
-        "a restriction with every width at zero (model.restriction = "
-        '"no_widths", MG5_aMC loop_sm-no_widths), or the width fixed to zero '
+        "inconsistent",
+        'the complex-mass scheme ([loop.model.scheme] mass_scheme = "complex-mass", '
+        "MG5_aMC's set complex_mass_scheme True), a restriction with every width "
+        'at zero (model.restriction = "no_widths"), or the width fixed to zero '
         'in [loop.preparation] fixed_parameters (e.g. WT = "0")',
-        "M-SM (complex-mass scheme; user ruling 2026-10-28 ~15:25 (3))",
-        "widths of coloured particles in the complex-mass scheme",
+        "none: lifted by the complex-mass scheme (M-SM MS-CMS)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "electroweak-width",
+        "a real on-shell electroweak request (a correction other than the strong "
+        "one, ew_policy.electroweak) whose tree currents propagate a particle "
+        "with a nonzero width, coloured or not (e.g. the Z at the G_mu UFO's "
+        "default card)",
+        "real on-shell virtuals: loop propagators carry no width and the model "
+        "counterterms renormalise the real masses, so a width in the Born, the "
+        "loop-side or the counterterm trees mixes two schemes ([U8])",
+        'the complex-mass scheme ([loop.model.scheme] mass_scheme = "complex-mass"), '
+        "or the widths fixed to zero in [loop.preparation] fixed_parameters",
+        "none: lifted by the complex-mass scheme (M-SM MS-CMS)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "mass-scheme",
+        "a loop model declaration whose mass_scheme is neither "
+        '"real-on-shell" nor "complex-mass"',
+        "the mass scheme decides the model the virtual is computed in; an "
+        "unknown value (a misspelt complex-mass request) is never computed "
+        "real on-shell",
+        '[loop.model.scheme] mass_scheme = "real-on-shell" or "complex-mass"',
+        "none (a guard of the declaration)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "complex-mass-scheme",
+        "a complex-mass request on a model the transform (a port of MG5_aMC's "
+        "change_mass_to_complex_scheme, loops.model_cms) cannot take: no raw "
+        "UFO records, an external CMSParam, an internal width without a source "
+        "expression, a Yukawa input without one PDG code, no ZERO parameter, "
+        "a CMASS_ name already taken",
+        "the complex-mass scheme is MG5_aMC's transform of the model's own "
+        "records; a model outside its assumptions has no such transform",
+        'the real on-shell scheme (mass_scheme = "real-on-shell") with the '
+        "widths fixed to zero, or a model within the transform's assumptions",
+        "none (a guard of the transform)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "cms-internal-mass",
+        "under the complex-mass scheme, a particle with a nonzero width whose "
+        "mass is an internal parameter (loop_sm's W: MW derived from MZ, "
+        "alpha and G_F)",
+        "MG5_aMC switches such a model to (MZ, MW, alpha) inputs through an "
+        "SM-specific rule (PDG 24 and the MW expression), which the "
+        "genericity rule forbids; without it the pole mass has no input",
+        "the width fixed to zero, or a model whose mass is an external "
+        "parameter (the G_mu or alpha(M_Z) NLOCT UFO under the complex-mass "
+        "scheme)",
+        "none (deliberate deviation from MG5_aMC, m-sm PLAN §1.7)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "cms-yukawa-input",
+        "under the complex-mass scheme, a request that fixes a Yukawa input "
+        "(an SLHA YUKAWA parameter)",
+        "MG5_aMC's complex-mass scheme removes the YUKAWA block: the Yukawa "
+        "couplings follow the (pole) masses",
+        "fix the mass instead, or the real on-shell scheme",
+        "none (MG5_aMC's rule)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "cms-external-width",
+        "under the complex-mass scheme, an external particle with a nonzero "
+        "width (its mass a complex pole mass)",
+        "external states are stable (EW-25): an on-shell external state has a "
+        "real mass",
+        "the external particle's width fixed to zero in [loop.preparation] "
+        "fixed_parameters (MG5_aMC computes it with the complex mass)",
+        "none (EW-25)",
+        "none",
+    ),
+    LoopAdmissionRefusal(
+        "complex-fixed-parameter",
+        "a fixed parameter with a nonzero imaginary part ([loop.preparation] "
+        "fixed_parameters)",
+        "external parameters are real (as MG5_aMC's); the complex-mass scheme "
+        "derives its complex pole masses from real masses and widths",
+        "real fixed parameters; complex pole masses through mass_scheme = "
+        '"complex-mass"',
+        "none (a guard)",
+        "none",
     ),
     LoopAdmissionRefusal(
         "lorentz-slot-arity",

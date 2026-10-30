@@ -27,6 +27,7 @@ from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.config import ColorContraction
 from pyamplicol.loops.covariant_model import with_source_repairs
+from pyamplicol.loops.model_cms import apply_mass_scheme, require_real_fixed_parameters
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
 from pyamplicol.models.loop_color_declaration import (
@@ -193,6 +194,12 @@ def _prepare(
         names, run.process.loop_coupling_orders, "process.loop_coupling_orders"
     )
     configured = run.loop.model
+    mass_scheme = None
+    if configured is not None and configured.mass_scheme_only:
+        # ``[loop.model.scheme] mass_scheme`` alone (MadLoop's set
+        # complex_mass_scheme True) selects the mass scheme of the model's own
+        # declaration.
+        mass_scheme, configured = configured.scheme.mass_scheme, None
     if configured is not None and configured.loop_coupling_orders is not None:
         configured = replace(
             configured,
@@ -205,12 +212,26 @@ def _prepare(
     declaration = resolve_loop_model_declaration(
         compiled.raw_loop_model, configured, selected_corrections=corrections
     )
+    if mass_scheme is not None:
+        declaration = replace(
+            declaration, scheme=replace(declaration.scheme, mass_scheme=mass_scheme)
+        )
     declaration.require_declared_completion(strategy="model")
     compiled = with_loop_model_declaration(compiled, declaration)
     preparation = resolve_loop_preparation(
         compiled.raw_loop_model, run.loop.preparation
     )
     compiled = with_loop_preparation(compiled, preparation)
+    # The mass scheme of the declaration (M-SM MS-CMS): real on-shell, or
+    # MG5_aMC's complex-mass model of the source at the card of the fixed
+    # parameters (``loops.model_cms``); its refusals are listed, so the dry
+    # run reports them.
+    compiled = apply_mass_scheme(
+        compiled,
+        declaration.scheme.mass_scheme,
+        fixed_parameters=require_real_fixed_parameters(preparation.fixed_parameters),
+        cache_dir=run.model.cache_dir,
+    )
     color_data = None
     projected = run.color.accuracy in ("lc", "nlc")
     if projected or run.resolved_color.contraction != "direct":
@@ -638,11 +659,13 @@ def _v2_request(backend, context, index):
     the slice re-checks its loop-side tree currents after generation). The
     renormalisation-scale parameter is resolved here
     (``_v2_scale_parameter``)."""
+    from pyamplicol.loops.model_cms import require_stable_external_states
     from pyamplicol.loops.v2.artifact import (
         born_amplitude_orders,
         require_zero_coloured_widths,
     )
     from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.ew_policy import correction_orders, require_zero_widths
 
     run = backend._run_config
     compiled = context.resolved.compiled
@@ -651,21 +674,12 @@ def _v2_request(backend, context, index):
     process = entry.process_ir.process
     label = f"{entry.request.name!r} ({entry.request.expression})"
     _require_declared_corrections(compiled, context.corrections)
-    fixed = {}
-    for name, (real, imaginary) in context.preparation.fixed_parameters.items():
-        if Decimal(imaginary) != 0:
-            raise GenerationError(
-                f"v2 virtuals take real fixed parameters; {name!r} is complex"
-            )
-        fixed[name] = str(real)
+    fixed = require_real_fixed_parameters(context.preparation.fixed_parameters)
     veto = particle_veto_codes(compiled, run.generation.particle_veto)
-    external = sorted(
-        {
-            abs(int(pdg))
-            for pdg in (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
-        }
-        & set(veto)
-    )
+    pdgs = (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
+    # Under the complex-mass scheme external states are stable (EW-25).
+    require_stable_external_states(compiled, pdgs, label)
+    external = sorted({abs(int(pdg)) for pdg in pdgs} & set(veto))
     if external:
         raise GenerationError(
             f"{label}: generation.particle_veto removes external particles "
@@ -687,7 +701,7 @@ def _v2_request(backend, context, index):
         if _leading_colour(run)
         else None
     )
-    return SliceRequest(
+    request = SliceRequest(
         process,
         dict(limits),
         v2_loop_orders(born, context.corrections, limits),
@@ -703,6 +717,12 @@ def _v2_request(backend, context, index):
         compatibility=context.preparation.compatibility,
         selection=selection,
     )
+    if set(context.corrections) - {correction_orders(compiled, fixed).strong}:
+        # An electroweak correction ([U8], ``ew_policy.require_zero_widths``):
+        # the Born's widths here, where the dry run sees them; the slice
+        # checks its loop-side trees too.
+        require_zero_widths(compiled, request, (dag,), fixed)
+    return request
 
 
 def _plan_v2(backend, processes, blockers, *, model=None):
