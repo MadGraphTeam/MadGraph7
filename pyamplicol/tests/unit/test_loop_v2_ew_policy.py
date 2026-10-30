@@ -155,9 +155,77 @@ def test_external_photons_without_the_convention_are_refused_before_the_trees(
     with pytest.raises(ExternalPhotonError, match=reason) as refused:
         LoopSlice.generate(request.getfixturevalue(model), request_, loop_native)
     message = str(refused.value)
-    assert "'u u~ > a g': on-shell external photons (legs [3])" in message
+    assert refused.value.key == "external-photon-scheme"
+    assert "'u u~ > a g': tagged on-shell external photons (legs [3]" in message
     assert "alpha(0)" in message
-    assert "QCD corrections to such processes are available" in message
+    # The remedy for the model at hand (m-sm/PLAN.md §1.6): untagged
+    # photons, or a restriction that sets 1/alpha(0) where one fixes it.
+    assert 'leave them untagged (loop.external_photons = "none"' in message
+    if model == "gmu":
+        assert 'model.restriction = "a0"' in message
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("model", ["qcd_qed", "gmu"])
+def test_untagged_photons_need_no_alpha0_input(
+    request, loop_native, monkeypatch, model
+):
+    """MS-PHOTON (m-sm/PLAN.md Q1 (a)): with its photon untagged
+    (``external_photons = "none"``) u u~ > a g [QCD QED] needs neither the
+    conversion counterterm nor 1/alpha(0): it reaches its trees on
+    loop_qcd_qed_sm (alpha(M_Z), no alpha(0) input, as in MG5_aMC) and on the
+    G_mu UFO's default card, where the default ("final") tag is refused."""
+
+    monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
+    compiled = request.getfixturevalue(model)
+    process, born = PHOTON_JET
+    options = {**GMU, "fixed_parameters": ZERO_WIDTHS}
+    untagged = SliceRequest(
+        process,
+        born,
+        PHOTON_JET_LOOPS,
+        corrections=("QCD", "QED"),
+        external_photons="none",
+        **options,
+    )
+    with pytest.raises(AssertionError, match="before the trees"):
+        LoopSlice.generate(compiled, untagged, loop_native)
+    tagged = SliceRequest(
+        process, born, PHOTON_JET_LOOPS, corrections=("QCD", "QED"), **options
+    )
+    with pytest.raises(ExternalPhotonError) as refused:
+        LoopSlice.generate(compiled, tagged, loop_native)
+    assert refused.value.key == "external-photon-scheme"
+
+
+@pytest.mark.loop_physics
+def test_tagged_legs_must_be_on_shell_photons(gmu_a0, loop_native, monkeypatch):
+    """A leg list naming a leg that is no on-shell external photon is refused
+    (``external-photon-legs``) before the trees, for an electroweak and a
+    QCD-only request alike; a list of photon legs passes (the QCD-only
+    request converts nothing: no electromagnetic correction, as MG5_aMC)."""
+
+    monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
+    process, born = PHOTON_JET
+    for corrections, loops in (
+        (("QCD", "QED"), PHOTON_JET_LOOPS),
+        (("QCD",), PHOTON_JET_LOOPS[:1]),
+    ):
+        for legs, outcome in (((4,), ExternalPhotonError), ((3,), AssertionError)):
+            request_ = SliceRequest(
+                process,
+                born,
+                loops,
+                corrections=corrections,
+                fixed_parameters=ZERO_WIDTHS,
+                external_photons=legs,
+                **GMU,
+            )
+            with pytest.raises(outcome) as refused:
+                LoopSlice.generate(gmu_a0, request_, loop_native)
+            if outcome is ExternalPhotonError:
+                assert refused.value.key == "external-photon-legs"
+                assert "4 (g, final)" in str(refused.value)
 
 
 @pytest.mark.loop_physics

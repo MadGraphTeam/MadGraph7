@@ -1894,16 +1894,16 @@ class LoopSlice:
             photons = ew_policy.external_photon_scheme(
                 compiled, request, process, fixed, structure.perturbative_species_orders
             )
-        else:
-            # A tag list naming a leg that is no on-shell photon is refused
-            # for every request; without the electromagnetic correction the
-            # tags convert nothing (as in MG5_aMC).
-            ew_policy.photon_tags(compiled, request, process, fixed)
             # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
             # loop lines and counterterms of a request with electroweak loop
             # species take 't Hooft-Feynman gauge with explicit Goldstones
             # and ghosts; QCD-only requests keep the model's gauge.
             compiled = ew_policy.feynman_gauge_model(compiled, request)
+        else:
+            # A tag list naming a leg that is no on-shell photon is refused
+            # for every request; without the electromagnetic correction the
+            # tags convert nothing (as in MG5_aMC).
+            ew_policy.photon_tags(compiled, request, process, fixed)
         # A fermion line that changes colour representation (a vertex joining
         # a coloured and a colour-singlet fermion that a tree or a loop of the
         # request can use) has no sign in the blocks' conventions: refused

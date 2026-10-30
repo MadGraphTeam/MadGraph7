@@ -605,7 +605,7 @@ PHOTON_ROWS = {
     "VV06": _PhotonRow(("uux_aa_ew", "msm/uux_aa_ew_qcd"), "u u~ > a a",
                        ("QCD", "QED"), (("QCD", 0), ("QED", 2)), "gmu_a0", "final",
                        (3, 4), ()),
-    "LL08": _PhotonRow(("msm/emep_mummpa_ew_a0",), "e- e+ > mu- mu+ a", ("QED",),
+    "LL08": _PhotonRow(("msm/emep_mummpa_ew_a0",), "e- e+ > m- m+ a", ("QED",),
                        (("QCD", 0), ("QED", 3)), "gmu_a0", "final", (5,), ()),
 }  # fmt: skip
 

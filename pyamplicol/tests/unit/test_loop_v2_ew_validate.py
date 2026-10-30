@@ -652,10 +652,11 @@ def test_carriers_of_electroweak_top_pair_agree_within_their_estimates(
 # ------------------------------------------------------- convention metadata
 
 
-def _scheme_slice(compiled, corrections, photons=None):
+def _scheme_slice(compiled, corrections, photons=None, fields=("e-", "e+")):
     """The fields of a slice ``ew_policy.scheme_conventions`` reads, without
     a generation: a request with ``corrections`` on ``compiled`` (no loop
-    species facts: a QED correction alone makes it electroweak)."""
+    species facts: a QED correction alone makes it electroweak) and external
+    legs of incoming ``fields`` (``ew_policy.slice_photon_tags``)."""
 
     from types import SimpleNamespace
 
@@ -673,6 +674,12 @@ def _scheme_slice(compiled, corrections, photons=None):
         request=request,
         prepared=SimpleNamespace(
             structure=SimpleNamespace(perturbative_species_orders={})
+        ),
+        families=SimpleNamespace(
+            legs=tuple(
+                SimpleNamespace(index=index, field=field)
+                for index, field in enumerate(fields)
+            )
         ),
         external_photons=photons,
     )
@@ -702,8 +709,24 @@ def test_conventions_record_the_models_schemes(loop_gmu_ufo, loop_qcd_qed_sm_ufo
     assert record["alpha_inputs"]["MZ"] == "MASS 23"
     assert record["external_photons"] == "none"
     assert "generation-complete" in record["gamma5"]
-    photons = scheme_conventions(_scheme_slice(gmu, ("QED",), SimpleNamespace()))
+    # MS-PHOTON: the photons' coupling per leg, with the tagged (alpha(0))
+    # and untagged (the loops' coupling) legs.
+    legs = ("e-", "e+", "a", "a")
+    photons = scheme_conventions(
+        _scheme_slice(gmu, ("QED",), SimpleNamespace(legs=(3, 4)), legs)
+    )
     assert photons["external_photons"] == "alpha(0)"
+    assert photons["tagged_photon_legs"] == [3, 4]
+    assert photons["untagged_photon_legs"] == []
+    assert photons["external_photons_option"] == "final"
+    mixed = scheme_conventions(
+        _scheme_slice(gmu, ("QED",), SimpleNamespace(legs=(4,)), legs)
+    )
+    assert mixed["external_photons"] == "mixed"
+    assert (mixed["tagged_photon_legs"], mixed["untagged_photon_legs"]) == ([4], [3])
+    untagged = scheme_conventions(_scheme_slice(gmu, ("QED",), None, legs))
+    assert untagged["external_photons"] == "loop-coupling"
+    assert untagged["untagged_photon_legs"] == [3, 4]
     assert scheme_conventions(_scheme_slice(gmu, ("QCD",))) is None
     alpha = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
     record = scheme_conventions(_scheme_slice(alpha, ("QED",)))
