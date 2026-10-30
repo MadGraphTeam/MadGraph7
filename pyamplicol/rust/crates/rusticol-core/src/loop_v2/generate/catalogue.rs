@@ -461,10 +461,15 @@ mod tests {
         items.iter().map(|item| (*item).to_owned()).collect()
     }
 
+    /// Available inputs by their canonical strings (`descriptor.symbol`).
     fn inputs(items: &[&str]) -> Vec<(String, String)> {
         items
             .iter()
-            .map(|item| ((*item).to_owned(), format!("{{\"symbol\":\"{item}\"}}")))
+            .map(|item| {
+                let symbol = parse(item).unwrap().to_canonical_string();
+                let json = format!("{{\"symbol\":\"{symbol}\"}}");
+                (symbol, json)
+            })
             .collect()
     }
 
@@ -519,7 +524,10 @@ mod tests {
         assert_eq!(fused.entries[0].exponents, [1, 0, 0, 0]);
         assert_eq!((fused.entries[0].loop_in, fused.entries[0].out), (0, 0));
         assert_eq!((fused.entries[1].loop_in, fused.entries[1].out), (0, 1));
-        assert_eq!(fused.exact[1], "msgen::b1*msgen::m");
+        assert_eq!(
+            fused.exact[1],
+            parse("msgen::b1*msgen::m").unwrap().to_canonical_string()
+        );
         // b0, b1 (own inputs), g and m (shared); z is not read
         assert_eq!(fused.inputs, vec![0, 1, 3, 4]);
         let split = results[0][1].clone().unwrap().unwrap();
@@ -551,7 +559,9 @@ mod tests {
         let results = polynomial_candidates(&[undeclared], &q, &[], &header, None).unwrap();
         assert_eq!(
             results[0][0],
-            Err(CandidateError::Undeclared(vec!["msgen::y".to_owned()]))
+            Err(CandidateError::Undeclared(vec![
+                parse("msgen::y").unwrap().to_canonical_string()
+            ]))
         );
     }
 }
