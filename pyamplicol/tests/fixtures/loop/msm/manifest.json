@@ -1624,6 +1624,11 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "delegated": {
+    "uv_eps_ir0": [
+     "tests/unit/test_loop_v2_ew_pole_split.py::test_dy01_technical_card_pole_split_equals_madloop"
+    ]
+   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -4675,6 +4680,11 @@
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
    "notes": "joint QCD + QED request; s^6 against loop_sm's QCD fixture (pure QCD, independent of the EW inputs), s^4e^2 against the G_mu fixture; in the default tier since MS-GEN (PLAN \u00a73.2 item 3: generation 58 s, < 60 s; LL01 83 s and DY01 84 s stay nightly; tmp/ms-validate/gen60 at e16b620f)",
+   "delegated": {
+    "uv_eps_ir0": [
+     "tests/unit/test_loop_v2_ew_pole_split.py::test_tt01_technical_card_pole_split_equals_madloop"
+    ]
+   },
    "extras_pending": {
     "uv": "rule 5's EW form runs on the class's component row (MS-REF's component runs, one row per class: m-sm/PLAN.md \u00a71.4 rule 5)"
    }
