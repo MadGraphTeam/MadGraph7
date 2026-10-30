@@ -1013,9 +1013,10 @@ width-carrying particle whose mass is not an external parameter
 (`cms-internal-mass`, e.g. loop_sm's W), a fixed Yukawa input
 (`cms-yukawa-input`), a value of `mass_scheme` other than `"real-on-shell"` and
 `"complex-mass"` (`mass-scheme`), and a complex fixed parameter in either
-scheme (`complex-fixed-parameter`). Stored artifacts need complex masses in the
-native point inputs (M-SM MS-CMS-N); until then generation refuses a request
-with a complex pole mass (`complex-mass-scheme`). An evaluation
+scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
+masses in their native point inputs (the loop propagators read M^2 - i M W; the
+binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
+point inputs and relocate as any other artifact. An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
 value that is not a finite decimal number (a number, or ASCII decimal text:
 surrounding whitespace and underscores are ignored, fractions and non-ASCII

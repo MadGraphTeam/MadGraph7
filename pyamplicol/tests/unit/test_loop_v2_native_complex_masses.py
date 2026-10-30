@@ -324,33 +324,23 @@ def test_gluon_ward_identity_with_a_complex_top_pole_mass(slices):
         assert check["passed"] is True, (carrier, check["rows"])
 
 
-_CARD = """
+_CMS_CARD = """
 action = "generate"
 [model]
-source = {source}
+source = "loop_sm"
+restriction = "{restriction}"
 [process]
 entries = [{{expression = "{expression}", name = "{name}"}}]
 loop_coupling_orders = ["QCD"]
-coupling_order_policy = "minimal"
-[color]
-accuracy = "full"
-contraction = "direct"
+coupling_order_policy = "explicit"
+[process.max_coupling_orders]
+{orders}
 [loop]
 r2_strategy = "model"
-[loop.preparation]
-fixed_parameters = {{MB = "0", WZ = "0", WW = "0", WH = "0"}}
-[loop.model]
-loop_coupling_orders = ["QCD"]
-uv_complete = true
-model_r2_complete = true
 [loop.model.scheme]
-dimensional_regularization = "HV"
-external_states = "physical-four-dimensional"
-gamma5 = "source-UFO-four-dimensional-prescription"
-renormalization = "source-UFO mass-dependent decoupling"
-mass_scheme = "real-on-shell"
-finite_restoration = "source-UFO-local-rules"
-model_convention = "loop_sm lhv=1 supplied QCD rules"
+mass_scheme = "complex-mass"
+[loop.preparation]
+fixed_parameters = {{{fixed}}}
 [generation]
 output = {output}
 emit_api_bundle = false
@@ -359,36 +349,42 @@ post_build_validation = false
 """
 
 
-def test_complex_pole_mass_artifact_stores_native_inputs_and_relocates_bitwise(
-    loop_sm_ufo, loop_native, tmp_path
-):
-    """The public route on the continued complex top fixture (a UFO already
-    in the complex-mass form: CMASS_MT with width ZERO, the card's top width
-    a runtime parameter): b b~ > w+ w- [QCD] stores native point inputs
-    (``point_inputs`` "native-v2") whose parameter program binds the top's
-    loop propagators as a complex plan mass, and the artifact-portability
-    check passes (no host strings, storage-v4 plane applications only,
-    bitwise-identical binary64 results at a relocated copy evaluated without
-    a licence)."""
+def test_cms_artifact_stores_native_inputs_relocates_and_equals_madloop(tmp_path):
+    """The public route under the complex-mass scheme (``[loop.model.scheme]
+    mass_scheme = "complex-mass"`` on the shipped loop_sm, CM10's request:
+    u d~ > w+ b b~ QCD=0 [QCD] with the top width): the stored process
+    declares native point inputs (``point_inputs`` "native-v2"), its tree
+    program binds the top's loop propagators as a complex plan mass, the
+    artifact-portability check passes (no host strings, storage-v4 plane
+    applications only, bitwise-identical binary64 results at a relocated copy
+    evaluated without a licence), and the loaded artifact equals MadLoop CMS
+    (``required/msm/udx_wpbbx_cms.json``) at its first point: binary64 to
+    1e-8, double-double to 1e-12."""
 
     import zlib
 
+    from pyamplicol import Runtime
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
     from tools import loop_artifact_portability as portability
 
-    ufo = complex_mass_ufo(
-        loop_sm_ufo, tmp_path / "loop_sm_continued", "t", "MT", "WT", references=True
-    )
-    expression, name = PROCESS[0], "bbx_wpwm"
+    reference = _madloop_rows("udx_wpbbx_cms")
+    expression, name = "u d~ > w+ b b~", "udx_wpbbx"
     output = tmp_path / "artifact"
     card = tmp_path / "card.toml"
     card.write_text(
-        _CARD.format(
-            source=json.dumps(str(ufo)),
+        _CMS_CARD.format(
+            restriction=reference["restriction"],
             expression=expression,
             name=name,
+            orders="\n".join(
+                f"{order} = {power}"
+                for order, power in sorted(reference["born_orders"].items())
+            ),
+            fixed=", ".join(
+                f'{k} = "{v}"' for k, v in reference["fixed_parameters"].items()
+            ),
             output=json.dumps(str(output)),
         )
     )
@@ -400,7 +396,6 @@ def test_complex_pole_mass_artifact_stores_native_inputs_and_relocates_bitwise(
         for path in output.rglob("execution.json")
     ]
     assert declared == [LOOP_V2_NATIVE_POINT_INPUTS], declared
-    # The stored tree program's parameter record holds the complex plan mass.
     (pacbin,) = output.rglob("*.pacbin")
     members = {path: data for path, _kind, data in portability._members(pacbin)}
     program = json.loads(
@@ -414,6 +409,24 @@ def test_complex_pole_mass_artifact_stores_native_inputs_and_relocates_bitwise(
     scan = verdict["scan"]
     assert scan["clean"], scan["findings"]
     assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
+    runtime = Runtime.load(output, process=name)
+    # The reference's exact decimal point (binary64 momenta would move the
+    # resonant top's Born by ~1e-14 and the finite part by ~1e-12).
+    point = reference["points"][0]
+    scale = str(Fraction(reference["mu_r"][0]) ** 2)
+    row = reference["rows"][0]
+    for arithmetic, tolerance in (("double", 1e-8), ("double-double", 1e-12)):
+        result = runtime.evaluate([point], mu_r2=[scale], arithmetic=arithmetic)
+        ((born,),) = result.born_values
+        ((laurent,),) = result.values
+        theirs = [row["born"], row["finite"], row["single_pole"], row["double_pole"]]
+        flux = abs(row["born"]) * float(reference["parameters"]["aS"]) / (2 * math.pi)
+        mine = [float(born), *(float(x) for x in laurent)]
+        errors = [
+            abs(a - b) / max(abs(b), flux if k else 0.0)
+            for k, (a, b) in enumerate(zip(mine, theirs, strict=True))
+        ]
+        assert max(errors) <= tolerance, (arithmetic, errors)
 
 
 # ------------------------------------------------------------ MadLoop CMS rows
@@ -609,4 +622,111 @@ def test_cms_widths_in_a_two_to_four_process_equal_madloop(
             born = sum(float(v) for v in result.born.values())
             assert abs(born - row["born"]) <= tolerance * abs(row["born"])
             errors = _sector_errors(result, row, abs(row["born"]))
+            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+
+
+def _tagged_photon_conversion(loop_gmu_ufo, reference, points):
+    """Per point, MG5_aMC's tagged-photon factors of a G_mu CMS reference:
+    (r, conversion pole, conversion finite) with r = (alpha(0)/alpha)^n over
+    the reference's n tagged photons and the conversion the real part of
+    the complex-mass scheme's eCoup_DGmua0_UV_EW at the point's MU_R
+    (MG5 assigns it to a double-precision function,
+    ``rescale_alpha_tagged.inc``). The values are the transformed model's
+    (``model_cms.complex_mass_scheme``, which equals MG5_aMC's own CMS model
+    to 1e-12, ``test_loop_model_cms``)."""
+
+    from pyamplicol.loops.model_cms import complex_mass_scheme
+    from pyamplicol.loops.model_restrictions import prepare_loop_restrictions
+    from pyamplicol.loops.scalar_bindings import (
+        NativeScalarBindings,
+        prepare_scalar_bindings,
+    )
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    fixed = reference["fixed_parameters"]
+    scheme = complex_mass_scheme(
+        load_raw_loop_model(str(loop_gmu_ufo), restriction=reference["restriction"]),
+        fixed_parameters={k: v for k, v in fixed.items() if k.startswith("W")},
+    )
+    raw = prepare_loop_restrictions(scheme.derived, simplify=False).derived
+    names = {record["name"] for record in raw.collections["parameters"]}
+    plan = prepare_scalar_bindings(
+        raw,
+        (("eCoup_DGmua0_UV_EW", -1), ("eCoup_DGmua0_UV_EW", 0), ("aEW", 0)),
+        fixed_parameters={k: v for k, v in fixed.items() if k in names},
+    )
+    photons = len(reference["tagged_photon_legs"])
+    alpha0 = 1 / float(reference["parameters"]["aEW0M1"])
+    out = []
+    for mu in reference["mu_r"][: len(points)]:
+        parameters = {
+            name: value
+            for name, value in reference["parameters"].items()
+            if name in plan.external_names
+        }
+        parameters["MU_R"] = mu
+        pole, finite, alpha = (
+            complex(*map(float, value))
+            for value in NativeScalarBindings(
+                plan, arithmetic="double", parameters=parameters
+            ).values.to_decimal()
+        )
+        out.append(((alpha0 / alpha.real) ** photons, pole.real, finite.real))
+    return out
+
+
+@pytest.mark.loop_nightly
+def test_cms_tagged_photon_equals_madloop_with_the_mg5_conversion(
+    loop_gmu_ufo, loop_native, tmp_path
+):
+    """CM09: u d~ > e+ ve a [QCD QED] on the G_mu UFO (restriction a0) under
+    the complex-mass scheme with the card's widths (resonant W in the Born,
+    complex masses in the loops and counterterms), its photon tagged
+    (alpha(0), the photon sources scaled natively; the conversion a field
+    insertion whose interference takes the real part of the complex
+    eCoup_DGmua0_UV_EW), native inputs: Born and both sectors equal MadLoop
+    CMS in quadruple precision (``required/msm/udx_epvea_cms.json``) times
+    MG5_aMC's formula over the tagged photon (r = (alpha(0)/alpha)^n; the EW
+    sector's finite part and single pole minus 2 n Re(DGmua0) Born), at its
+    four points: double-double to 1e-10, binary64 to 1e-8."""
+
+    reference = _madloop_rows("udx_epvea_cms")
+    executor, parameters = _gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        reference,
+        "u d~ > e+ ve a",
+        ("QCD", "QED"),
+    )
+    record = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in record["plan_masses"])
+    assert record["photons"][1] == reference["tagged_photon_legs"]
+    factors = _tagged_photon_conversion(loop_gmu_ufo, reference, reference["points"])
+    scales = [str(Fraction(mu) ** 2) for mu in reference["mu_r"]]
+    for precision, tolerance in (
+        (Precision.double_double(), 1e-10),
+        (Precision.double(), 1e-8),
+    ):
+        results = executor.evaluate(
+            reference["points"], scales, parameters=parameters, precision=precision
+        )
+        for k, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
+            r, pole, finite = factors[k]
+            n = len(reference["tagged_photon_legs"])
+            born = row["born"]
+            mine = sum(float(v) for v in result.born.values())
+            assert abs(mine - r * born) <= tolerance * abs(r * born)
+            want = []
+            for sector in row["sectors"]["loop"]:
+                electroweak = sector["QCD"] == sector["born_sector"]["QCD"]
+                shift = 2 * n * born if electroweak else 0.0
+                want.append(
+                    [
+                        r * (sector["finite"] - shift * finite),
+                        r * (sector["single_pole"] - shift * pole),
+                        r * sector["double_pole"],
+                    ]
+                )
+            errors = _sector_errors(result, row, abs(r * born), want)
             assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
