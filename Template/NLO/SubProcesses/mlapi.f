@@ -59,6 +59,8 @@ c                             n points, see the routine for the layout.
       common /to_abrv/ abrv
       character*16 abrv_env
       integer len_env,stat_env
+      integer soft_phi_n
+      common /c_soft_phi/soft_phi_n
       logical nbody
       common/cnbody/nbody
       integer ini_fin_fks
@@ -164,6 +166,16 @@ c n+1-body counter terms of the S events.
       if (stat_env.eq.0 .and. len_env.gt.0) then
          abrv=abrv_env(1:4)
          write (*,*) 'mlapi_init: abrv set to ',abrv
+      endif
+c Average of the S part of the soft counter term over MLAPI_SOFT_PHI
+c azimuths of the soft parton (fks_singular.f, compute_soft_counter_term;
+c default 1: none)
+      call get_environment_variable('MLAPI_SOFT_PHI',abrv_env,len_env
+     &     ,stat_env)
+      if (stat_env.eq.0 .and. len_env.gt.0) then
+         read (abrv_env(1:len_env),*) soft_phi_n
+         write (*,*) 'mlapi_init: soft counter term averaged over'
+     &        ,soft_phi_n,' azimuths'
       endif
       nbody=.false.
       only_virt=.false.

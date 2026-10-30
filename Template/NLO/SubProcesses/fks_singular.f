@@ -698,16 +698,61 @@ c the list of weights using the add_wgt subroutine
       common/factor_n1body_NLOPS/f_s_MC_S,f_s_MC_H,f_c_MC_S,f_c_MC_H
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       integer get_orders_tag
+c Average of the S-event part over the azimuth of the soft parton
+c (optional, soft_phi_n azimuths, on in the ML API with MLAPI_SOFT_PHI)
+      integer soft_phi_n
+      common /c_soft_phi/soft_phi_n
+      integer k
+      double precision amp_S(amp_split_size),amp_H(amp_split_size)
+     $     ,p_save(0:3),axis(3),anorm,ang,ca,sa,adotp,s_k,pi
       call cpu_time(tBefore)
       if (f_s.eq.0d0 .and. f_s_MC_S.eq.0d0 .and. f_s_MC_H.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0).gt.xiScut_used .and. replace_MC_subt.eq.0d0)
      $     return
       s_s = fks_Sij(p1_cnt(0,1,0),i_fks,j_fks,zero,y_ij_fks_ev)
-      if (s_s.le.0d0) return
-      call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s)
+      amp_H(1:amp_split_size)=0d0
+      if (s_s.gt.0d0) then
+         call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s)
+         amp_H(1:amp_split_size)=amp_split(1:amp_split_size)*s_s
+      endif
+      amp_S(1:amp_split_size)=amp_H(1:amp_split_size)
+      if (soft_phi_n.gt.1) then
+c The S part depends on the soft direction only through the eikonal
+c factors and S_ij (the colour-linked Borns are those of p_born): rotate
+c p_i_fks_cnt(:,0) about the direction of the mother (j_fks in the soft
+c counter event) and average.  Exact for the integral over the azimuth.
+c The H part keeps the actual azimuth.
+         pi=4d0*atan(1d0)
+         p_save(0:3)=p_i_fks_cnt(0:3,0)
+         anorm=sqrt(p1_cnt(1,j_fks,0)**2+p1_cnt(2,j_fks,0)**2
+     $        +p1_cnt(3,j_fks,0)**2)
+         axis(1:3)=p1_cnt(1:3,j_fks,0)/anorm
+         adotp=axis(1)*p_save(1)+axis(2)*p_save(2)+axis(3)*p_save(3)
+         do k=1,soft_phi_n-1
+            ang=2d0*pi*dble(k)/dble(soft_phi_n)
+            ca=cos(ang)
+            sa=sin(ang)
+c Rodrigues: v cos + (a x v) sin + a (a.v) (1 - cos)
+            p_i_fks_cnt(1,0)=p_save(1)*ca+(axis(2)*p_save(3)-axis(3)
+     $           *p_save(2))*sa+axis(1)*adotp*(1d0-ca)
+            p_i_fks_cnt(2,0)=p_save(2)*ca+(axis(3)*p_save(1)-axis(1)
+     $           *p_save(3))*sa+axis(2)*adotp*(1d0-ca)
+            p_i_fks_cnt(3,0)=p_save(3)*ca+(axis(1)*p_save(2)-axis(2)
+     $           *p_save(1))*sa+axis(3)*adotp*(1d0-ca)
+            s_k=fks_Sij(p1_cnt(0,1,0),i_fks,j_fks,zero,y_ij_fks_ev)
+            if (s_k.gt.0d0) then
+               call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s)
+               amp_S(1:amp_split_size)=amp_S(1:amp_split_size)
+     $              +amp_split(1:amp_split_size)*s_k
+            endif
+         enddo
+         amp_S(1:amp_split_size)=amp_S(1:amp_split_size)
+     $        /dble(soft_phi_n)
+         p_i_fks_cnt(0:3,0)=p_save(0:3)
+      endif
 
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0) cycle
+        if (amp_S(iamp).eq.0d0 .and. amp_H(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         QCD_power=orders(qcd_pos)
         wgtcpower=0d0
@@ -716,14 +761,14 @@ c the list of weights using the add_wgt subroutine
         amp_pos=iamp
         g22=g**(QCD_power)
         if (replace_MC_subt.gt.0d0) then
-          wgt1=amp_split(iamp)*s_s/g22*replace_MC_subt
-          call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0)
-          wgt1=wgt1*f_s_MC_S
+          wgt1=amp_H(iamp)/g22*replace_MC_subt
+          if (wgt1.ne.0d0) call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0)
+          wgt1=amp_S(iamp)/g22*replace_MC_subt*f_s_MC_S
         else
           wgt1=0d0
         endif
         if (xi_i_fks_ev.le.xiScut_used) then
-          wgt1=wgt1-amp_split(iamp)*s_s*f_s/g22
+          wgt1=wgt1-amp_S(iamp)*f_s/g22
         endif
         if (wgt1.ne.0d0) call add_wgt(4,orders,wgt1,0d0,0d0)
       enddo
@@ -4529,6 +4574,15 @@ c Safety measure
          enddo
       endif
       return
+      end
+
+
+      block data soft_phi_default
+c No average over the azimuth of the soft counter term in the S events
+c by default (compute_soft_counter_term).  mlapi_init may switch it on.
+      integer soft_phi_n
+      common /c_soft_phi/soft_phi_n
+      data soft_phi_n /1/
       end
 
 
