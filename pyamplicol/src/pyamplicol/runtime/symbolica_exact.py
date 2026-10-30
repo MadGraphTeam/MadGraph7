@@ -3436,7 +3436,15 @@ def _particle_mass(
         for raw_parameter in cast(
             Sequence[Mapping[str, object]], schema["model_parameters"]
         ):
-            if raw_parameter["name"] == parameter_name:
+            # An external mass by its name; a derived one (an internal mass,
+            # e.g. loop_sm's MW or a complex-mass scheme's line mass) by its
+            # real component, evaluated at the point's parameters (the
+            # record's ``mass`` is its value at generation).
+            if raw_parameter["name"] == parameter_name or (
+                raw_parameter.get("kind") == "derived_parameter_component"
+                and raw_parameter.get("runtime_name") == parameter_name
+                and raw_parameter.get("complex_component") == "real"
+            ):
                 try:
                     return parameters[_json_integer(raw_parameter["parameter_index"])]
                 except IndexError as exc:
