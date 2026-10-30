@@ -282,6 +282,8 @@ class ModelSource:
             from .models import _compiled_model_from_payload
 
             return _compiled_model_from_payload(payload)
+        except ModelError:
+            raise  # typed already (e.g. models.source_refusals)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
 

@@ -9,8 +9,8 @@ number of its initial-state particles, never a particle or process name:
 
 * ``decay-process``: a 1 -> n request (one initial particle). pyAmpliCol
   evaluates 2 -> n scattering matrix elements; decays (with or without QCD
-  corrections) are not served (user ruling 2026-10-28 ~15:25 (1): decays
-  come after M-QCD).
+  or electroweak corrections) are not served (user ruling 2026-10-28 ~15:25
+  (1): decays come after M-QCD; m-sm PLAN Q3 (a): after M-SM).
 * ``madloop-syntax``: MG5_aMC process syntax that has a pyAmpliCol run-card
   setting instead (``[virt=QCD]``, ``[QCD]`` and the other NLO brackets,
   coupling-order constraints such as ``QED=2`` or ``QCD^2==4``, ``/ x``
@@ -42,8 +42,8 @@ PROCESS_REQUEST_REFUSALS = (
     ProcessRequestRefusal(
         "decay-process",
         "a 1 -> n decay request (one initial-state particle)",
-        "a 2 -> n scattering process; decays with QCD corrections are not "
-        "served yet (after M-QCD)",
+        "a 2 -> n scattering process; decays, with or without QCD or "
+        "electroweak corrections, are not served yet",
     ),
     ProcessRequestRefusal(
         "madloop-syntax",

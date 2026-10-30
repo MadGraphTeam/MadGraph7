@@ -182,9 +182,12 @@ model directory; card names select the conventional `restrict_<name>.json` or
 ### One-loop source preparation
 
 For a loop-capable UFO, `[loop.preparation]` supplies explicit source preparation
-inputs independently of the physics scheme in `[loop.model]`. For example, this
-fragment selects the existing compatibility profile and covariant partners of
-the tested `loop_qcd_qed_sm_Gmu_py3` source:
+inputs independently of the physics scheme in `[loop.model]`. The shipped
+`loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu` need none (their Goldstone-flag
+defect is repaired automatically; the one-loop engine takes no covariant
+multiplets). For example, this fragment selects the existing compatibility
+profile and covariant partners of the tested `loop_qcd_qed_sm_Gmu_py3` source
+for the source-preparation tools:
 
 ```toml
 [loop.preparation]

@@ -196,6 +196,29 @@ class _Object:
     step: int = -1
 
 
+def _trace_groups(edges, rank: int, shape) -> list[list]:
+    """The trace steps of one accumulator and loop species.
+
+    A step reads its sources at the largest source storage and contracts its
+    contents at the largest content degree, so its output rank is their sum,
+    which the loader requires within the family rank (the largest degree sum
+    of the family's rings). Two rings of one family can peak at different
+    positions (a bubble whose rings have degree 1 at either propagator: rank
+    1, while one step would take 1 + 1; u u~ > z z with QED corrections); the
+    edges are then split by source storage into steps that each stay within
+    the rank, which the accumulator sums. Otherwise one step, as before, so a
+    plan the loader admits is exported byte for byte as before."""
+
+    degree = max(shape(content).degree for content, _source in edges)
+    storage = max(source.storage for _content, source in edges)
+    if storage + degree <= rank:
+        return [edges]
+    groups: dict[int, list] = defaultdict(list)
+    for content, source in edges:
+        groups[source.storage].append((content, source))
+    return [groups[key] for key in sorted(groups)]
+
+
 @dataclass
 class _Exporter:
     slice_: Any
@@ -530,7 +553,10 @@ class _Exporter:
             for content, source in edges:
                 cuts[content.loop_out].append((content, source))
             for species in sorted(cuts):
-                self._step(steps, cuts[species], 0, shift, accumulator)
+                for group in _trace_groups(
+                    cuts[species], trie.rank, self.kinematics.shape
+                ):
+                    self._step(steps, group, 0, shift, accumulator)
         if values:
             raise AssertionError("a trie object without a consumer")
         return {

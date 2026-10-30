@@ -79,8 +79,6 @@ from decimal import Decimal
 from fractions import Fraction
 from typing import Any, NamedTuple
 
-from pyamplicol.api.errors import GenerationError
-
 from .refusals import LoopRequestUnsupported
 
 # UFO spins are 2s + 1.
@@ -105,10 +103,14 @@ class ExternalPhotonError(LoopRequestUnsupported):
     (``external-photon-legs``, ``photon_tags``)."""
 
 
-class ElectroweakGaugeError(GenerationError):
+class ElectroweakGaugeError(LoopRequestUnsupported):
     """An electroweak request on a model that cannot be taken in
     't Hooft-Feynman gauge (its source declares no gauge 1, or a prepared
     bundle carries another gauge)."""
+
+    # The listed refusal ``feynman-gauge`` (``refusals``).
+    def __init__(self, message: str) -> None:
+        super().__init__("feynman-gauge", message)
 
 
 class CorrectionOrders(NamedTuple):

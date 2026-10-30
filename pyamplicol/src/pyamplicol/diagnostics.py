@@ -250,6 +250,34 @@ def _virtual_check() -> DiagnosticCheck:
     return DiagnosticCheck("physics-virtual", "pass", f"{summary}; Symbolica {mode}")
 
 
+def _prepared_virtual_check() -> DiagnosticCheck:
+    """An electroweak one-loop virtual from the shipped prepared artifact
+    (``_internal.selftest_virtual_ew``: loaded and evaluated, never
+    generated) against MadLoop. Loading a v2 virtual artifact reads its
+    compiled model with Symbolica (no licence needed): an evaluation-only
+    installation without it (the f64 deployment gate) reports a warning
+    naming why the check did not run."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared",
+            "warning",
+            "not run: loading the prepared one-loop virtual reads its compiled "
+            f"model with Symbolica ({exc})",
+        )
+    try:
+        from ._internal.selftest_virtual_ew import run_prepared_virtual_self_test
+
+        summary, _worst = run_prepared_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared", "fail", f"{type(exc).__name__}: {exc}"
+        )
+    return DiagnosticCheck("physics-virtual-prepared", "pass", summary)
+
+
 def _symbolica_check() -> DiagnosticCheck:
     try:
         from .licensing import detect_symbolica_license
@@ -298,6 +326,7 @@ def run_self_test() -> DiagnosticReport:
         _sdk_check(required=True),
         _physics_check(),
         _virtual_check(),
+        _prepared_virtual_check(),
     )
     return DiagnosticReport(__version__, checks)
 

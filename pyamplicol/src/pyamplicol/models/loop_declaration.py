@@ -122,7 +122,12 @@ class LoopModelDeclaration:
         if strategy == "model" and not self.model_r2_complete:
             missing.append("complete model R2 rules")
         if missing:
-            raise ValueError("loop model does not declare " + " and ".join(missing))
+            from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+            raise LoopRequestUnsupportedValue(
+                "loop-model-completion",
+                "loop model does not declare " + " and ".join(missing),
+            )
 
 
 def resolve_loop_model_declaration(
@@ -151,19 +156,26 @@ def resolve_loop_model_declaration(
             # its declarations, ``loops.shipped_profiles``), e.g. MG5_aMC's loop_sm.
             profile = shipped_loop_profile(raw)
             if profile is None:
-                raise ValueError(
+                from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+                raise LoopRequestUnsupportedValue(
+                    "loop-model-declaration",
                     "loop model has no explicit scheme/completeness declaration; "
                     "supply [loop.model] and [loop.model.scheme] or model metadata "
-                    + LOOP_DECLARATION_KEY
+                    + LOOP_DECLARATION_KEY,
                 )
             declaration = profile.declaration
     missing = set(_corrections(selected_corrections)) - set(
         declaration.loop_coupling_orders
     )
     if missing:
-        raise ValueError(
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+        raise LoopRequestUnsupportedValue(
+            "loop-model-corrections",
             "loop model declaration does not cover selected corrections: "
             + ", ".join(sorted(missing))
+            + f" (it declares {', '.join(declaration.loop_coupling_orders)})",
         )
     return declaration
 

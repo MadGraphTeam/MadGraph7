@@ -147,7 +147,10 @@ def _repair(raw, particles, compatibility):
     """The explicit source-compatibility profile ``gmu_particle_anti``: every
     antiparticle that lost its Goldstone flag to the legacy ``Particle.anti``
     (``_lost_goldstone_flag``) gets it back, one diagnostic each. The profile
-    on a source without that defect is refused."""
+    on a source whose flags the structural source repair
+    (``repair_source_declarations``, rule ``GOLDSTONE_FLAG``) has already
+    restored is satisfied as it is; on a source without that defect it is
+    refused."""
 
     if compatibility is None:
         return ()
@@ -159,6 +162,11 @@ def _repair(raw, particles, compatibility):
         if _lost_goldstone_flag(raw, record)
     ]
     if not repaired:
+        if any(
+            item.get("rule") == GOLDSTONE_FLAG
+            for item in raw.metadata.get(SOURCE_REPAIRS_KEY, ())
+        ):
+            return ()
         raise ValueError(
             "source does not match the recognized Gmu anti metadata mismatch "
             "(an antiparticle of a declared Goldstone that the legacy "
@@ -176,14 +184,17 @@ def _repair(raw, particles, compatibility):
                     "field": "goldstoneboson",
                     "raw": False,
                     "derived": True,
-                    "reason": (
-                        "legacy anti positional arguments bind Goldstone flag to "
-                        "line; constructor defaults lose the flag"
-                    ),
+                    "reason": _LOST_FLAG_REASON,
                 }
             )
         )
     return tuple(diagnostics)
+
+
+_LOST_FLAG_REASON = (
+    "legacy anti positional arguments bind Goldstone flag to line; constructor "
+    "defaults lose the flag"
+)
 
 
 # Source declarations repaired by structure (never by a particle, vertex or
@@ -191,6 +202,7 @@ def _repair(raw, particles, compatibility):
 # the structure's diagnostics.
 SOURCE_REPAIRS_KEY = "pyamplicol_source_repairs"
 CONSTANT_TENSOR_ARITY = "constant-tensor-slot-arity"
+GOLDSTONE_FLAG = "antiparticle-goldstone-flag"
 
 
 def _slot_spins(record) -> tuple[int, ...]:
@@ -208,24 +220,38 @@ def _constant_structure(record) -> Any:
 
 
 def repair_source_declarations(raw: Any, within: Any = None) -> Any:
-    """``raw`` with its constant-tensor slot-arity defects repaired, or ``raw``
-    itself when it has none (the rule is idempotent). ``within``, if given,
-    restricts the rule to those ``(collection, vertex id)`` pairs (the
-    vertices a request reaches).
+    """``raw`` with its structural source defects repaired, or ``raw`` itself
+    when it has none (the rules are idempotent). Two rules, each found by
+    structure (never by a particle, vertex or tensor name):
 
-    A vertex (tree or counterterm) whose particles are all scalars and that
-    references a constant Lorentz tensor with a different number of (scalar)
-    slots means that constant on its own particles: the reference is moved to
-    the model's unique tensor with the vertex's spin signature and the same
-    exact constant. MadLoop 3.7.0's loop_sm declares a four-scalar vertex
-    with the three-slot constant SSS1 next to the four-slot SSSS1 of the same
-    value. Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
+    * ``GOLDSTONE_FLAG``: an antiparticle that the legacy UFO object
+      library's ``Particle.anti`` built from a declared Goldstone boson
+      without the flag (``_lost_goldstone_flag``: the library's positional
+      arguments bind ``goldstoneboson`` to ``line``; MG5_aMC's
+      loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu) gets the flag back. Particles
+      belong to every request, so ``within`` does not restrict this rule.
+    * ``CONSTANT_TENSOR_ARITY``: a vertex (tree or counterterm) whose
+      particles are all scalars and that references a constant Lorentz
+      tensor with a different number of (scalar) slots means that constant
+      on its own particles: the reference is moved to the model's unique
+      tensor with the vertex's spin signature and the same exact constant.
+      MadLoop 3.7.0's loop_sm declares a four-scalar vertex with the
+      three-slot constant SSS1 next to the four-slot SSSS1 of the same value.
+      Any other slot mismatch is left as declared: a request that reaches it
+      is refused at model preparation with the listed key
+      ``lorentz-slot-arity`` (``build_covariant_structure``), an unreachable
+      one stays inert. ``within``, if given, restricts this rule to those
+      ``(collection, vertex id)`` pairs (the vertices a request reaches).
+
+    Each repair is recorded under ``SOURCE_REPAIRS_KEY`` in the derived
     source's metadata (the compiled model and the artifact carry it) and in
-    the covariant structure's diagnostics. Any other slot mismatch is left as
-    declared: a request that reaches it is refused at model preparation with
-    the listed key ``lorentz-slot-arity`` (``build_covariant_structure``), an
-    unreachable one stays inert."""
+    the covariant structure's diagnostics."""
 
+    flags = [
+        record
+        for record in raw.collections["particles"]
+        if _lost_goldstone_flag(raw, record)
+    ]
     tensors = raw.collections["lorentz_structures"]
     repairs = []
     for collection in ("vertices", "counterterm_vertices"):
@@ -254,10 +280,25 @@ def repair_source_declarations(raw: Any, within: Any = None) -> Any:
                 ]
                 if len(candidates) == 1:
                     repairs.append((collection, vertex, position, old, candidates[0]))
-    if not repairs:
+    if not repairs and not flags:
         return raw
     payload = raw.to_dict()
     diagnostics = list(raw.metadata.get(SOURCE_REPAIRS_KEY, ()))
+    for record in flags:
+        payload["collections"]["particles"][record["id"]]["fields"][
+            "goldstoneboson"
+        ] = True
+        diagnostics.append(
+            {
+                "rule": GOLDSTONE_FLAG,
+                "collection": "particles",
+                "particle": [record["id"], record["name"]],
+                "field": "goldstoneboson",
+                "original": False,
+                "derived": True,
+                "reason": _LOST_FLAG_REASON,
+            }
+        )
     for collection, vertex, position, old, new in repairs:
         target = payload["collections"][collection][vertex["id"]]["fields"]
         target["lorentz"][position] = {
@@ -305,6 +346,16 @@ def with_source_repairs(model: Any) -> Any:
 
 
 def _validate_pairs(particles):
+    """Particle-antiparticle pairs must be reciprocal and agree in their
+    metadata (the listed refusal ``antiparticle-metadata``; the Goldstone
+    flag MG5_aMC's legacy object library drops is repaired first,
+    ``repair_source_declarations``)."""
+
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+    def refuse(message: str) -> LoopRequestUnsupportedValue:
+        return LoopRequestUnsupportedValue("antiparticle-metadata", message)
+
     by_name = {p["name"]: p for p in particles}
     if len(by_name) != len(particles):
         raise ValueError("ambiguous particle names in structural model")
@@ -312,27 +363,29 @@ def _validate_pairs(particles):
         try:
             anti = by_name[particle["antiname"]]
         except KeyError as exc:
-            raise ValueError("missing source antiparticle") from exc
+            raise refuse(f"missing source antiparticle of {particle['name']}") from exc
         if anti["antiname"] != particle["name"]:
-            raise ValueError("antiparticle names are not reciprocal")
+            raise refuse(f"antiparticle names of {particle['name']} are not reciprocal")
         for key in ("spin", "mass", "width", "propagating", "goldstoneboson"):
             if particle[key] != anti[key]:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         self_conjugate = particle is anti
         if not self_conjugate and particle["pdg_code"] != -anti["pdg_code"]:
-            raise ValueError("antiparticle PDG signs differ")
+            raise refuse(f"antiparticle PDG signs of {particle['name']} differ")
         color = particle["color"]
         if anti["color"] != (color if color in (1, 8) else -color):
-            raise ValueError("antiparticle colour representations differ")
+            raise refuse(
+                f"antiparticle colour representations of {particle['name']} differ"
+            )
         for key in ("charge", "ghost_number", "lepton_number"):
             left, right = (
                 parse_exact_ufo(str(particle[key])),
                 parse_exact_ufo(str(anti[key])),
             )
             if left + right != 0:
-                raise ValueError(
+                raise refuse(
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         for key in ("y_charge", "y_charge_right"):
@@ -370,7 +423,13 @@ def build_covariant_structure(
     if request_scope is not None:
         request_scope.require_raw(raw)
     if 1 not in raw.metadata.get("gauge", ()):
-        raise ValueError("source model does not declare Feynman gauge")
+        from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
+
+        raise LoopRequestUnsupportedValue(
+            "feynman-gauge",
+            "the source model does not declare Feynman gauge (gauge = "
+            f"{list(raw.metadata.get('gauge', ()))})",
+        )
     restriction = raw.metadata.get("restriction", {})
     if restriction.get("card") is not None and not restriction.get("applied", False):
         raise NotImplementedError(
