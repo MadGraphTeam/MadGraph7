@@ -96,7 +96,8 @@ def test_nested_resonances_stay_contiguous():
 
 
 def test_every_compatible_set_of_resonances_is_a_configuration():
-    # H > Z Z > 4l: each resonance alone and every nested or disjoint set
+    # H > Z Z > 4l: each resonance alone and every nested or disjoint set, except
+    # the H alone, a four-body decay that the phase-space mapping cannot build
     h = (25, frozenset({2, 3, 4, 5}))
     z1, z2 = (23, frozenset({2, 4})), (23, frozenset({3, 5}))
     configurations, complete = _configurations([h, z1, z2])
@@ -107,7 +108,6 @@ def test_every_compatible_set_of_resonances_is_a_configuration():
         (h, z1),
         (h, z2),
         (z1, z2),
-        (h,),
         (z1,),
         (z2,),
     ]
@@ -306,3 +306,18 @@ def test_candidates_are_kept_unless_their_mass_or_width_is_zero_in_the_model():
     )
     found = s_channel_resonances(ir, _Model(particles, parameters))
     assert found == [{"pdg": pdg, "labels": [3, 4], "color": 1} for pdg in (23, 97, 99)]
+
+
+def test_a_resonance_decays_to_at_most_three_daughters():
+    # a Z of four legs that has no nested resonance would be a four-body decay,
+    # which the phase-space mapping cannot build; with one nested it has three
+    z_4l = (23, frozenset({2, 3, 4, 5}))
+    z_ee = (23, frozenset({2, 3}))
+    z_mm = (23, frozenset({4, 5}))
+    configurations, _ = _configurations([z_4l])
+    assert configurations == [()]
+    configurations, _ = _configurations([z_4l, z_ee, z_mm])
+    assert (z_4l,) not in configurations
+    assert (z_4l, z_ee) in configurations and (z_ee, z_mm) in configurations
+    z_3l = (23, frozenset({2, 3, 4}))
+    assert _configurations([z_3l])[0] == [(), (z_3l,)]

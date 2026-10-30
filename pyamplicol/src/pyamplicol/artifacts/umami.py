@@ -401,9 +401,30 @@ def _classify_resonances(resonances, roles):
     return mappable, coloured, mixed
 
 
+# A decay of the phase-space mapping has at most this many daughters.
+_MAX_DECAY_DAUGHTERS = 3
+
+
+def _decays_fit(chosen):
+    """Whether every resonance of the set decays to at most three daughters,
+    its nested resonances and its legs that no nested resonance contains."""
+    for resonance in chosen:
+        children = [
+            other
+            for other in chosen
+            if other[1] < resonance[1]
+            and not any(other[1] < r[1] < resonance[1] for r in chosen)
+        ]
+        covered = set().union(*(other[1] for other in children))
+        if len(children) + len(resonance[1] - covered) > _MAX_DECAY_DAUGHTERS:
+            return False
+    return True
+
+
 def _configurations(resonances, limit=_MAX_CONFIGURATIONS):
     """Every set of resonances that can be mapped together, pairwise nested or
-    disjoint: the non-resonant one first, then the larger ones first. Returns
+    disjoint, each decaying to at most three daughters: the non-resonant one
+    first, then the larger ones first. Returns
     ``(configurations, complete)``, enumerating at most ``limit`` of them."""
 
     def compatible(a, b):
@@ -413,7 +434,9 @@ def _configurations(resonances, limit=_MAX_CONFIGURATIONS):
 
     def extend(chosen, start):
         nonlocal truncated
-        found.append(tuple(chosen))
+        # a set the mapping cannot follow may still grow into one it can
+        if _decays_fit(chosen):
+            found.append(tuple(chosen))
         for index in range(start, len(resonances)):
             candidate = resonances[index]
             if all(compatible(candidate[1], r[1]) for r in chosen):
