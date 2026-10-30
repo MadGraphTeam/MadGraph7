@@ -21,6 +21,13 @@
 //!   amplitude and momentum plane counts.
 //! - A row group the kernel lacks (symjit executors, certified reuse) leaves
 //!   the whole plan run to the CPU, reported once on standard error.
+//! - Amplitude planes the runtime has just cleared (`note_cleared_amplitudes`)
+//!   are zeroed on the device instead of uploaded.
+//! - The LC replay may reduce the amplitudes on the device (`reduction_begin`,
+//!   `reduction_end`, `reduce`): the plan run keeps them there, and the library
+//!   adds `weight * |A|^2` into the caller's per-point output in RustiCol's
+//!   order and arithmetic, so 8 bytes per point come back instead of the
+//!   amplitudes. A library without `pacman_recurrence_v1_reduce` copies them.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -52,6 +59,96 @@ const WHOLE: &str = "PACMAN_RECURRENCE_WHOLE";
 const DUMP: &str = "PACMAN_RECURRENCE_DUMP";
 const ABI_VERSION: u32 = 1;
 const RUN_SYMBOL: &[u8] = b"pacman_recurrence_v1_run\0";
+const REDUCE_SYMBOL: &[u8] = b"pacman_recurrence_v1_reduce\0";
+const KEEP_AMPLITUDES: u32 = 1;
+
+thread_local! {
+    /// the amplitude planes the runtime cleared for the plan run in progress
+    static CLEARED_AMPLITUDES: std::cell::RefCell<Vec<(u32, u32)>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// the caller reduces the next plan run's amplitudes on the device
+    static KEEP_REQUESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// the last plan run ran on the GPU and kept its amplitudes there
+    static KEPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The amplitude planes (`[start, end)` ranges) the runtime has just cleared
+/// for the next plan run.
+pub(super) fn note_cleared_amplitudes(ranges: &[std::ops::Range<usize>]) {
+    CLEARED_AMPLITUDES.with(|cleared| {
+        let mut cleared = cleared.borrow_mut();
+        cleared.clear();
+        cleared.extend(ranges.iter().filter_map(|range| {
+            Some((u32::try_from(range.start).ok()?, u32::try_from(range.end).ok()?))
+        }));
+    });
+}
+
+/// After the plan run: the cleared planes no longer describe the arena.
+pub(super) fn forget_cleared_amplitudes() {
+    CLEARED_AMPLITUDES.with(|cleared| cleared.borrow_mut().clear());
+}
+
+/// Asks that the next plan run keep its amplitudes on the device; false (and
+/// nothing asked) without a runner that can reduce.
+pub(super) fn reduction_begin() -> bool {
+    let able = matches!(runner(), Some(Ok(runner)) if runner.reduce.is_some());
+    KEEP_REQUESTED.set(able);
+    KEPT.set(false);
+    able
+}
+
+/// Whether the plan run since `reduction_begin` kept its amplitudes on the
+/// device (then the host's amplitude planes are stale: call `reduce`).
+pub(super) fn reduction_end() -> bool {
+    KEEP_REQUESTED.set(false);
+    KEPT.replace(false)
+}
+
+/// `output[point] += weights[k] * |A_planes[k](point)|^2` on the device, for
+/// the amplitudes kept by the last plan run; `output` has its point count.
+pub(super) fn reduce(planes: &[u32], weights: &[f64], output: &mut [f64]) -> RusticolResult<()> {
+    let Some(Ok(Runner {
+        reduce: Some(reduce),
+        ..
+    })) = runner()
+    else {
+        return Err(RusticolError::integrity("no recurrence runner can reduce"));
+    };
+    let call = ReduceCall {
+        abi_version: ABI_VERSION,
+        struct_size: size_of::<ReduceCall>() as u32,
+        planes: planes.as_ptr(),
+        weights: weights.as_ptr(),
+        output: output.as_mut_ptr(),
+        count: u32::try_from(planes.len())
+            .map_err(|_| RusticolError::integrity("too many amplitudes to reduce"))?,
+        points: u32::try_from(output.len())
+            .map_err(|_| RusticolError::integrity("a reduction tile exceeds u32 points"))?,
+    };
+    // SAFETY: the slices are live for the call, which only reads planes and
+    // weights and reads and writes output
+    let status = unsafe { reduce(&call) };
+    if status != 0 {
+        return Err(RusticolError::evaluation(format!(
+            "{RUNNER}: the GPU reduction failed with status {status}"
+        )));
+    }
+    Ok(())
+}
+
+/// `pacman_recurrence_reduce` of `recurrence_runner.cu`.
+#[repr(C)]
+struct ReduceCall {
+    abi_version: u32,
+    struct_size: u32,
+    planes: *const u32,
+    weights: *const f64,
+    output: *mut f64,
+    count: u32,
+    points: u32,
+}
+
+type ReduceFunction = unsafe extern "C" fn(*const ReduceCall) -> i32;
 
 const OP_CLEAR_CURRENTS: u64 = 1;
 const OP_CLOSURE: u64 = 11;
@@ -97,12 +194,16 @@ struct RunnerCall {
     download_current_runs: u32,
     stride: u32,
     points: u32,
+    zero_amplitude: *const u32,
+    zero_amplitude_runs: u32,
+    flags: u32,
 }
 
 type RunFunction = unsafe extern "C" fn(*const RunnerCall) -> i32;
 
 struct Runner {
     run: RunFunction,
+    reduce: Option<ReduceFunction>,
     whole: bool,
     _library: libloading::Library,
 }
@@ -122,9 +223,14 @@ fn runner() -> Option<&'static Result<Runner, String>> {
                 let run = unsafe { library.get::<RunFunction>(RUN_SYMBOL) }
                     .map_err(|error| format!("{RUNNER}: {}: {error}", path.to_string_lossy()))?;
                 let run = *run;
+                // older libraries have no reduction: their amplitudes come back
+                let reduce = unsafe { library.get::<ReduceFunction>(REDUCE_SYMBOL) }
+                    .ok()
+                    .map(|reduce| *reduce);
                 eprintln!("pacman: {RUNNER}: {}", path.to_string_lossy());
                 Ok(Runner {
                     run,
+                    reduce,
                     whole: std::env::var_os(WHOLE).is_some_and(|value| value != "0"),
                     _library: library,
                 })
@@ -570,6 +676,19 @@ fn execute(
     let current_planes = planes(workspace.current_re.len())?;
     let whole_currents = [0, current_planes];
     let download_current: &[u32] = if runner.whole { &whole_currents } else { &[] };
+    // amplitude runs inside the planes the runtime cleared are zeroed on the device
+    let (mut upload_amplitude, mut zero_amplitude) = (Vec::new(), Vec::new());
+    CLEARED_AMPLITUDES.with(|cleared| {
+        let cleared = cleared.borrow();
+        for run in encoded.amplitudes.chunks_exact(2) {
+            let (first, count) = (run[0], run[1]);
+            let inside = cleared
+                .iter()
+                .any(|&(start, end)| start <= first && first + count <= end);
+            if inside { &mut zero_amplitude } else { &mut upload_amplitude }.extend([first, count]);
+        }
+    });
+    let keep = KEEP_REQUESTED.get() && runner.reduce.is_some();
     let call = RunnerCall {
         abi_version: ABI_VERSION,
         struct_size: size_of::<RunnerCall>() as u32,
@@ -587,7 +706,7 @@ fn execute(
         factor_re: workspace.factors_re.as_ptr(),
         factor_im: workspace.factors_im.as_ptr(),
         upload_current: encoded.source_currents.as_ptr(),
-        upload_amplitude: encoded.amplitudes.as_ptr(),
+        upload_amplitude: upload_amplitude.as_ptr(),
         download_amplitude: encoded.amplitudes.as_ptr(),
         download_current: download_current.as_ptr(),
         current_planes,
@@ -596,11 +715,14 @@ fn execute(
         scale_count: scale_re.len() as u32,
         factor_count: workspace.factors_re.len() as u32,
         upload_current_runs: (encoded.source_currents.len() / 2) as u32,
-        upload_amplitude_runs: (encoded.amplitudes.len() / 2) as u32,
+        upload_amplitude_runs: (upload_amplitude.len() / 2) as u32,
         download_amplitude_runs: (encoded.amplitudes.len() / 2) as u32,
         download_current_runs: (download_current.len() / 2) as u32,
         stride: workspace.point_stride,
         points: point_count,
+        zero_amplitude: zero_amplitude.as_ptr(),
+        zero_amplitude_runs: (zero_amplitude.len() / 2) as u32,
+        flags: if keep { KEEP_AMPLITUDES } else { 0 },
     };
     dump_once(
         &call,
@@ -617,6 +739,7 @@ fn execute(
             "{RUNNER}: the GPU run failed with status {status}"
         )));
     }
+    KEPT.set(keep);
     Ok(())
 }
 

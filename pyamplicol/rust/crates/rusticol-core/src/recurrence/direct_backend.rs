@@ -41,6 +41,35 @@ pub(super) fn pacman_gpu_tile_points() -> RusticolResult<Option<u32>> {
     pacman::gpu_tile_points()
 }
 
+/// The amplitude planes cleared for the next plan run (the GPU zeroes them instead of uploading).
+#[cfg(feature = "pacman")]
+pub(super) fn pacman_note_cleared_amplitudes(ranges: &[std::ops::Range<usize>]) {
+    pacman::note_cleared_amplitudes(ranges);
+}
+
+#[cfg(feature = "pacman")]
+pub(super) fn pacman_forget_cleared_amplitudes() {
+    pacman::forget_cleared_amplitudes();
+}
+
+/// The LC replay's reduction on the GPU: `pacman_reduction_begin` before a plan run (false: no
+/// runner can reduce), `pacman_reduction_end` after it (true: the amplitudes stayed on the
+/// device, so reduce them with `pacman_reduce` instead of reading the host's planes).
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduction_begin() -> bool {
+    pacman::reduction_begin()
+}
+
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduction_end() -> bool {
+    pacman::reduction_end()
+}
+
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduce(planes: &[u32], weights: &[f64], output: &mut [f64]) -> RusticolResult<()> {
+    pacman::reduce(planes, weights, output)
+}
+
 pub const DIRECT_STATUS_OK: c_int = 0;
 
 thread_local! {

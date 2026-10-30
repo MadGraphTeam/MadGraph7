@@ -1675,6 +1675,8 @@ impl DirectRecurrenceExecutionRuntime {
             self.arena
                 .clear_amplitude_active(component_base, component_count)?;
         }
+        #[cfg(feature = "pacman")]
+        super::direct_backend::pacman_note_cleared_amplitudes(amplitude_ranges);
 
         {
             let (current_re, current_im, amplitude_re, amplitude_im) =
@@ -1761,6 +1763,8 @@ impl DirectRecurrenceExecutionRuntime {
                     .expect("profiled direct execution has a start time")
                     .elapsed();
             }
+            #[cfg(feature = "pacman")]
+            super::direct_backend::pacman_forget_cleared_amplitudes();
             result?;
             #[cfg(any(test, feature = "on-the-fly-test-support"))]
             observe_direct_amplitudes_before_replay(
