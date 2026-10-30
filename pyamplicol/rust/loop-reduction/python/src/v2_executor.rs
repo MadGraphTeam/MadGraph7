@@ -211,6 +211,10 @@ struct Trees {
     /// The program in the executor's carrier (a `TreeRuntime<T>`), built on
     /// first use; the executor is shared with Python threads, hence the lock.
     runtime: Mutex<Option<Box<dyn Any + Send>>>,
+    /// The external parameter values the generation's plane check
+    /// certified (`TreeProgram::certify_parameters`), if the caller gave
+    /// them.
+    certified: Option<Vec<Rational>>,
 }
 
 impl Trees {
@@ -218,6 +222,7 @@ impl Trees {
     /// tree runtime, built on first use.
     fn bind<'a, T: Exchanged + Real + TreeCarrier>(
         program: &TreeProgram,
+        certified: Option<&[Rational]>,
         guard: &'a mut Option<Box<dyn Any + Send>>,
         values: &[Rational],
         scales: &[Rational],
@@ -231,7 +236,13 @@ impl Trees {
             .as_ref()
             .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
         if fresh {
-            *guard = Some(Box::new(program.runtime(zero).map_err(error)?));
+            let mut runtime = program.runtime(zero).map_err(error)?;
+            if let Some(values) = certified {
+                program
+                    .certify_parameters(&mut runtime, values)
+                    .map_err(error)?;
+            }
+            *guard = Some(Box::new(runtime));
         }
         let runtime = guard
             .as_mut()
@@ -278,8 +289,9 @@ impl Trees {
             .map_err(|_| error("a poisoned tree runtime"))?;
         let slot: &mut Option<Box<dyn Any + Send>> = &mut guard;
         let (program, scales, momenta) = (&self.program, &batch.scales, &batch.momenta);
+        let certified = self.certified.as_deref();
         let (bound, out) = executor.install(|| -> PyResult<_> {
-            let (runtime, bound) = Self::bind(program, slot, &values, scales, zero)?;
+            let (runtime, bound) = Self::bind(program, certified, slot, &values, scales, zero)?;
             let out = program
                 .inputs_loop_side(
                     runtime,
@@ -737,7 +749,14 @@ where
         .lock()
         .map_err(|_| error("a poisoned tree runtime"))?;
     let values = Trees::values(inputs)?;
-    let (_runtime, bound) = Trees::bind(&trees.program, &mut guard, &values, scales, zero)?;
+    let (_runtime, bound) = Trees::bind(
+        &trees.program,
+        trees.certified.as_deref(),
+        &mut guard,
+        &values,
+        scales,
+        zero,
+    )?;
     Ok((
         bound.masses.iter().map(ToString::to_string).collect(),
         bound
@@ -776,9 +795,13 @@ impl V2Executor {
     /// (or None: binary64 then runs the exact states).
     /// `columns` (JSON, `loops/v2/native_observables`) adds observable
     /// columns to the tree program and `plan_components` replaces its plan
-    /// Born components (an observable column set's plan).
+    /// Born components (an observable column set's plan). `certified`
+    /// (exact texts, one per external parameter of the tree program) are the
+    /// values the generation's plane check certified the binary64 parameter
+    /// program at (`native_trees.certified_values`): a batch at them takes
+    /// the plane without `TreeProgram::bind`'s run-time side check.
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None, fourier=None, certified=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
@@ -792,6 +815,7 @@ impl V2Executor {
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
         fourier: Option<String>,
+        certified: Option<Vec<String>>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -814,6 +838,10 @@ impl V2Executor {
             }
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
+        let certified = certified.map(rationals).transpose()?;
+        if certified.is_some() && trees.is_none() {
+            return Err(error("certified parameter values need a tree program"));
+        }
         let trees = trees
             .map(|(json, kernels, planes)| {
                 let mut program = TreeProgram::load_with_components(
@@ -826,9 +854,17 @@ impl V2Executor {
                 if let Some(columns) = &columns {
                     program.set_columns(columns.as_bytes())?;
                 }
+                if let Some(values) = &certified
+                    && values.len() != program.parameter_names().len()
+                {
+                    return Err(rusticol_core::RusticolError::invalid_argument(
+                        "certified parameter values: one per external parameter",
+                    ));
+                }
                 Ok::<_, rusticol_core::RusticolError>(Trees {
                     program,
                     runtime: Mutex::new(None),
+                    certified: certified.clone(),
                 })
             })
             .transpose()

@@ -425,6 +425,13 @@ class _ProcessView:
             )
         )
 
+    @property
+    def fixed_parameters(self) -> dict[str, str]:
+        """The parameters fixed at generation (the record's, as
+        ``LoopSlice.fixed_parameters``)."""
+
+        return dict(self.request.fixed_parameters)
+
     def _point_parameters(
         self, parameters: Mapping[str, str], scale: Fraction, precision: Any
     ) -> dict[str, str]:

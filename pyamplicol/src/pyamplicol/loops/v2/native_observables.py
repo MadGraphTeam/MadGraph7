@@ -1268,8 +1268,11 @@ class StoredColumns:
         key = (arithmetic, digits, lanes, twin)
         found = self._native.get(key)
         if found is None:
+            from .native_trees import certified_values
+
             process = self.observables.process
             native = self.observables.native
+            fixed = process.record["fixed_parameters"]
             if twin:
                 trees = process.scaleless.trees
                 sources = self.observables.stored.record["sources"]
@@ -1280,6 +1283,7 @@ class StoredColumns:
                     lanes=lanes,
                     threads=self.threads,
                     trees=trees.executor_argument(),
+                    certified=certified_values(trees, fixed),
                     # The spin sources only (the companion adds lanes).
                     columns=json.dumps(
                         {
@@ -1300,6 +1304,7 @@ class StoredColumns:
                     lanes=lanes,
                     threads=self.threads,
                     trees=process.trees.executor_argument(),
+                    certified=certified_values(process.trees, fixed),
                     columns=self.set.columns_json,
                     plan_components=list(self.set.plan_components),
                 )

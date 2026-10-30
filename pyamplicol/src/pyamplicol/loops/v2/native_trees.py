@@ -305,6 +305,22 @@ def _request_points(
     ]
 
 
+def certified_values(trees: NativeTrees, fixed: Mapping[str, Any]) -> list[str]:
+    """The exact external parameter values the plane check certified the
+    parameter program's binary64 plane at (``_request_points``, exactly):
+    each parameter's value fixed at generation (``fixed``: ``LoopSlice.
+    fixed_parameters``, a native record's ``fixed_parameters``), else its
+    default. ``V2Executor(..., certified=...)`` evaluates a batch at them on
+    the plane without ``TreeProgram::bind``'s run-time side check, so
+    binary64 touches no Symbolica state there (DESIGN §3.7)."""
+
+    record = trees.program["parameters"]
+    return [
+        _fraction_text(Fraction(fixed.get(name, default)))
+        for name, default in zip(record["names"], record["defaults"], strict=True)
+    ]
+
+
 @dataclass(frozen=True)
 class _PlaneOutputs:
     """What the plane check's refusal names (``_plane_applications``) for the
