@@ -13219,6 +13219,7 @@
      "per_helicity": false,
      "subprocess": "P5_aa_emep",
      "complex_mass_scheme": false,
+     "tagged_photon_legs": [],
      "madloop_r2_couplings": {
       "called": [
        "R2_LLCm",
@@ -14306,6 +14307,7 @@
       "EW"
      ],
      "complex_mass_scheme": false,
+     "tagged_photon_legs": [],
      "madloop_r2_couplings": {
       "called": [
        "R2_GQQ",
@@ -14458,6 +14460,7 @@
       "EW"
      ],
      "complex_mass_scheme": false,
+     "tagged_photon_legs": [],
      "madloop_r2_couplings": {
       "called": [
        "R2_AAH",

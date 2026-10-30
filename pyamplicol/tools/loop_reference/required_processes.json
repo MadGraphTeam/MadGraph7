@@ -1098,7 +1098,8 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > e- e+ QCD=0 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_emep_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
     },
     {
       "name": "pp_ttx_ew_ga",
@@ -1111,7 +1112,8 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_ttx_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
     },
     {
       "name": "pp_ttx_ew_aa",
@@ -1124,7 +1126,8 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "p p > t t~ QCD=2 QED=2 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
       "madloop_export_of": "pp_ttx_ew",
-      "multiparticle": true
+      "multiparticle": true,
+      "tagged_photon_legs": []
     },
     {
       "name": "emep_mummp_ew_ctl",

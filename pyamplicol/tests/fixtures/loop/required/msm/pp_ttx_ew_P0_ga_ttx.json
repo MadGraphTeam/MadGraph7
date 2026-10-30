@@ -28,6 +28,7 @@
  "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
  "restriction": null,
  "complex_mass_scheme": false,
+ "tagged_photon_legs": [],
  "madloop_model": "loop_qcd_qed_sm_Gmu_py3",
  "gauge": "Feynman",
  "parameter_overrides": {},

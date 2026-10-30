@@ -188,6 +188,9 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
     if fixture["complex_mass_scheme"] and "loop_qcd_qed_sm" in fixture["madloop_model"]:
         assert set(CMS_CONVENTIONS) <= set(fixture["scheme_conventions"])
     assert fixture.get("tagged_photon_legs") == spec.get("tagged_photon_legs")
+    if 22 in fixture["pdgs"]:
+        # Every external photon is recorded tagged or untagged ([] = untagged).
+        assert isinstance(fixture.get("tagged_photon_legs"), list)
     assert fixture.get("corrections", [spec["correction"]]) == spec["corrections"]
     # Provenance and MadLoop's quadruple-precision evaluation at every point.
     madloop = fixture["providers"]["madloop"]
@@ -202,7 +205,11 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
         == evaluation["requested_relative_accuracy"]
     )
     assert settings["quadruple_precision_required"] is True
-    assert settings["MadLoopParams_overrides"] == evaluation["madloop_params"]
+    # The campaign's MadLoop parameters, a run's own over them (SC02: CutTools).
+    assert settings["MadLoopParams_overrides"] == {
+        **evaluation["madloop_params"],
+        **run.get("madloop_params", {}),
+    }
     # MadLoop's return code HTU: H = 3 (stability rescue succeeded), T = 2
     # (quadruple precision used).
     statuses = [row["madloop_status"] for row in fixture["rows"]]
@@ -258,6 +265,36 @@ def test_every_loop_sector_has_the_universal_double_pole(
     gets both), with the factors recomputed here; the recorded violation is that
     of the printed sector values."""
     _check_double_poles(_fixture(run_id), _spec(_runs(campaign)[run_id]))
+
+
+def test_existing_fixtures_name_their_r2_lists(
+    campaign: dict, manifest: dict
+) -> None:
+    """existing_r2_couplings.json (mqcd_campaign.py existing-r2): every existing
+    fixture of a row has the R2 name list of its MadLoop export(s) or a reason
+    for none, and the manifest links it."""
+    data = json.loads(
+        (FIXTURES / "required" / "msm" / "existing_r2_couplings.json").read_text()
+    )
+    exports, without = data["exports"], data["without_r2_list"]
+    existing = {f for row in campaign["rows"] for f in row["existing_fixtures"]}
+    listed = {f for entry in exports.values() for f in entry["fixtures"]}
+    assert listed | set(without) == existing and not listed & set(without)
+    for key, entry in exports.items():
+        assert entry["fixture"] == entry["fixtures"][0]
+        assert entry["export"].startswith("${LOOP_REFERENCE_ROOT}/runs/")
+        assert Path(entry["export"]).parent.name == key
+        called = entry["called"]
+        assert called == sorted(set(called)) and len(called) <= entry["ufo_r2_couplings"]
+        assert set(entry["called_as"]) <= set(called)
+    for row in manifest["rows"]:
+        for ref in row["existing_references"]:
+            link = ref["r2_couplings"]
+            if isinstance(link, str):
+                assert without[ref["fixture"]] == link
+            else:
+                keys = [item.split("#", 1)[1] for item in link]
+                assert all(ref["fixture"] in exports[k]["fixtures"] for k in keys)
 
 
 def test_st04_existing_reference_is_relocated_and_consistent() -> None:
