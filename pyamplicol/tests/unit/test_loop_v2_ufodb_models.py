@@ -370,9 +370,7 @@ def test_the_issue_1_patch_changes_what_it_says(request, name):
         # Record ids and source lines shift with the patch's added records.
         if isinstance(item, dict):
             return {
-                k: plain(v)
-                for k, v in item.items()
-                if k not in ("id", "value_source")
+                k: plain(v) for k, v in item.items() if k not in ("id", "value_source")
             }
         return [plain(v) for v in item] if isinstance(item, list) else item
 
@@ -608,9 +606,7 @@ def test_patched_rows_equal_madloop_and_recola(run, loop_native):
     )
     alpha = float(reference["derived_parameters"]["alpha"])
     keys = ("born", "finite", "single_pole", "double_pole")
-    for index, (result, row) in enumerate(
-        zip(results, reference["rows"], strict=True)
-    ):
+    for index, (result, row) in enumerate(zip(results, reference["rows"], strict=True)):
         mine = [float(complex(x).real) for x in result.totals[:4]]
         for provider in ("madloop", "recola"):
             values = row["providers"][provider]

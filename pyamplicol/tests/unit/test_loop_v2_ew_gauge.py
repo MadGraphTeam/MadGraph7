@@ -1299,7 +1299,9 @@ def _ufo_coupling_ratio(path, numerator: str, denominator: str, card) -> float:
             else (f"{coupling}_WG", f"{coupling}_G")
         )
         return sum(
-            complex(eval(oracle._compiled(getattr(couplings, p).value, False), environment))
+            complex(
+                eval(oracle._compiled(getattr(couplings, p).value, False), environment)
+            )
             for p in parts
         )
 

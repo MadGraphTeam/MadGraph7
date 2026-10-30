@@ -72,14 +72,14 @@ def _references(node: ast.expr) -> list[str]:
 
 def _writes_value(statement: ast.stmt) -> bool:
     for node in ast.walk(statement):
-        if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+        stored = isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
             getattr(node, "ctx", None), (ast.Store, ast.Del)
+        )
+        if stored and any(
+            isinstance(part, ast.Attribute) and part.attr == "value"
+            for part in ast.walk(node)
         ):
-            if any(
-                isinstance(part, ast.Attribute) and part.attr == "value"
-                for part in ast.walk(node)
-            ):
-                return True
+            return True
     return False
 
 
@@ -130,7 +130,9 @@ def fold_module(text: str) -> tuple[str, list[str]]:
     for statement, name, power in appends:
         constructor = constructors.get(name)
         if constructor is None or constructor.lineno > statement.lineno:
-            raise ValueError(f"line {statement.lineno}: {name} has no prior constructor")
+            raise ValueError(
+                f"line {statement.lineno}: {name} has no prior constructor"
+            )
         for reference in _references(statement.value):
             bound = constructors.get(reference)
             if bound is None or bound.lineno >= constructor.lineno:
@@ -145,13 +147,18 @@ def fold_module(text: str) -> tuple[str, list[str]]:
         folded.setdefault((name, power), []).append(segment)
         start = starts[statement.lineno - 1]
         end = starts[statement.end_lineno]
-        if text[start : start + statement.col_offset].strip() or text[
-            span(statement)[1] : end
-        ].strip():
+        if (
+            text[start : start + statement.col_offset].strip()
+            or text[span(statement)[1] : end].strip()
+        ):
             raise ValueError(f"line {statement.lineno}: the statement shares its lines")
         original = text[start:end]
         edits.append(
-            (start, end, "".join(f"# (folded) {line}" for line in original.splitlines(True)))
+            (
+                start,
+                end,
+                "".join(f"# (folded) {line}" for line in original.splitlines(True)),
+            )
         )
         log.append(f"{name}.value[{power}] += {' '.join(segment.split())}")
     for (name, power), segments in folded.items():
