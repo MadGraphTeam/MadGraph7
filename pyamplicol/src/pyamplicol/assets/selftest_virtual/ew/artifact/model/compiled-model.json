@@ -143838,7 +143838,7 @@
   "producer": {
     "compiled_model_schema_version": 9,
     "contact_decomposition_policy": "ufo-four-point-contact-decomposition-v2",
-    "model_compiler_sha256": "5c98a333ca03d8326655b0202b589843cb7a94ce906487c74bbb2a3ddecae3ee",
+    "model_compiler_sha256": "b3e4f11a20b823a293af7b2c29d3cade7286a216b76970396d0900726dccd504",
     "model_compiler_version": 16,
     "model_environment_policy": "sanitize-historical-scalar-options-v1",
     "pyamplicol": "1.0.1",
