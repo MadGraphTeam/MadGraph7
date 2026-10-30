@@ -836,7 +836,12 @@ def _check_cms_split(slice_, reference, model, lanes=("python", "native")):
     }
     point = reference["points"][0]
     scale = str(Fraction(reference["mu_r"][0]) ** 2)
-    native = NativeExecutor(slice_, forward=False, inputs="native")
+    # Only a native lane exports native inputs (CM05's refuses: plane-mismatch).
+    native = (
+        NativeExecutor(slice_, forward=False, inputs="native")
+        if "native" in lanes
+        else None
+    )
 
     def run(lane, poles):
         if lane == "python":
