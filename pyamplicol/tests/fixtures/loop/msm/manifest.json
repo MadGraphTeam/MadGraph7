@@ -11449,6 +11449,10 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "relaxed": {
+    "2": 1e-10,
+    "4": 1e-10
+   },
    "inputs": "native",
    "catani": "engine",
    "madloop_r2_called": [
