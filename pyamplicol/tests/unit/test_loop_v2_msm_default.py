@@ -44,7 +44,7 @@ if ROWS:
     @pytest.mark.loop_physics
     @pytest.mark.parametrize("name", ROWS)
     def test_row_meets_the_acceptance_rules(campaign, name):
-        report = campaign.report(name, TIER)
+        report = campaign.record(name, TIER)
         mqcd.write_result(report)
         assert report.checks, name
         assert report.passed, report.describe()

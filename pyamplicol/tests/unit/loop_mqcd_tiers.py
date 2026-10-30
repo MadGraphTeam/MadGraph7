@@ -57,7 +57,7 @@ def nightly_module(job: int, manifest_path: Path = mqcd.MANIFEST):
     @pytest.mark.loop_nightly
     @pytest.mark.parametrize("name", names)
     def test_row_meets_the_acceptance_rules(campaign, name):
-        report = campaign.report(name, "nightly")
+        report = campaign.record(name, "nightly")
         mqcd.write_result(report)
         assert report.checks, name
         assert report.passed, report.describe()
