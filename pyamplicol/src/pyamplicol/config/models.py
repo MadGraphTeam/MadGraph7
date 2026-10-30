@@ -132,8 +132,10 @@ class PoleSelection(StrEnum):
     * ``ir``: the IR poles of the renormalised virtual (Catani's operator).
 
     Every pole is split by origin, P/eps = P_UV/eps_UV + P_IR/eps_IR; the
-    double pole is infrared. The finite part is the renormalised virtual's,
-    the same under every selection.
+    double pole is infrared (for a model with pole regulators, epsUV and
+    epsIR, the counterterms' UV parts are their values at epsIR = 0). The
+    finite part is the renormalised virtual's, the same under every
+    selection.
     """
 
     ALL = "all"

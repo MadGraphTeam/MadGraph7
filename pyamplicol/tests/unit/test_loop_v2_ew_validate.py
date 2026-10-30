@@ -652,26 +652,34 @@ def test_carriers_of_electroweak_top_pair_agree_within_their_estimates(
 # ------------------------------------------------------- convention metadata
 
 
-def _scheme_slice(compiled, corrections, photons=None, fields=("e-", "e+")):
+def _scheme_slice(compiled, corrections, photons=None, fields=("e-", "e+"), fixed=None):
     """The fields of a slice ``ew_policy.scheme_conventions`` reads, without
     a generation: a request with ``corrections`` on ``compiled`` (no loop
     species facts: a QED correction alone makes it electroweak) and external
-    legs of incoming ``fields`` (``ew_policy.slice_photon_tags``)."""
+    legs of incoming ``fields`` (``ew_policy.slice_photon_tags``), with
+    ``G_MU_FIXED`` and ``fixed`` fixed."""
 
     from types import SimpleNamespace
 
     from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.poles import pole_regulators
 
     request = SliceRequest(
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
         corrections=corrections,
-        fixed_parameters=G_MU_FIXED,
+        fixed_parameters={**G_MU_FIXED, **(fixed or {})},
     )
     return SimpleNamespace(
         compiled=compiled,
         request=request,
+        # As ``LoopSlice.pole_regulators`` (no preparation-fixed parameters).
+        pole_regulators=pole_regulators(
+            compiled.ir.parameters,
+            request.fixed_parameters,
+            compiled.raw_loop_model,
+        ),
         prepared=SimpleNamespace(
             structure=SimpleNamespace(perturbative_species_orders={})
         ),
@@ -709,6 +717,12 @@ def test_conventions_record_the_models_schemes(loop_gmu_ufo, loop_qcd_qed_sm_ufo
     assert record["alpha_inputs"]["MZ"] == "MASS 23"
     assert record["external_photons"] == "none"
     assert "generation-complete" in record["gamma5"]
+    # MS-POLES: the counterterms' poles split by the model's regulators, by
+    # the remainder once one is fixed.
+    assert record["pole_split"] == "regulators"
+    assert record["pole_regulators"] == {"uv": "epsUV", "ir": "epsIR"}
+    fixed = scheme_conventions(_scheme_slice(gmu, ("QED",), fixed={"epsIR": "1"}))
+    assert fixed["pole_split"] == "remainder" and "pole_regulators" not in fixed
     # MS-PHOTON: the photons' coupling per leg, with the tagged (alpha(0))
     # and untagged (the loops' coupling) legs.
     legs = ("e-", "e+", "A", "A")

@@ -157,6 +157,7 @@ from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
     UNTAGGED_PHOTON_CONVENTION,
+    PoleRegulators,
     catani_poles,
     colour_casimir,
     coupling_value,
@@ -165,10 +166,12 @@ from .poles import (
     has_poles,
     photon_gamma,
     pole_mode,
+    pole_regulators,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
     reducer_poles,
+    regulated_parameters,
     sector_predictions,
     sector_sum,
     select_lane,
@@ -1866,6 +1869,22 @@ class LoopSlice:
             self.request.fixed_parameters
         )
 
+    @property
+    def pole_regulators(self) -> PoleRegulators | None:
+        """The model's adjustable pole regulators (``poles.pole_regulators``:
+        epsUV and epsIR of MadLoop's electroweak UFOs), which split the
+        counterterms' poles by origin in the "uv" and "ir" selections; None
+        for a model without them (loop_sm) or with one of them fixed."""
+
+        key = "pole-regulators"
+        if key not in self._cache:
+            self._cache[key] = pole_regulators(
+                self.compiled.ir.parameters,
+                self.fixed_parameters,
+                getattr(self.compiled, "raw_loop_model", None),
+            )
+        return self._cache[key]
+
     def _external_parameters(self) -> frozenset[str]:
         """The names of the model's external parameters (those a caller
         sets)."""
@@ -3401,6 +3420,47 @@ class _PointEvaluation:
         self.fixed = dict(fixed or {})
         self._born_and_counterterms(rows, scalars, labels, loop_rows)
         self.rows = loop_rows
+        # What a twin at other parameters needs (``counterterm_twin``).
+        self._twin_inputs = (point, sources, loop_sources, fixed)
+        self.counterterms_uv: dict | None = None
+
+    def counterterm_twin(self) -> _PointEvaluation | None:
+        """The point at the IR regulator 0 (``poles.regulated_parameters``)
+        with pole slots, formed once: its counterterm and field components
+        are this point's counterterms' UV parts (module docstring of
+        ``poles``, "Models with pole regulators"); None for a model without
+        pole regulators."""
+
+        regulators = self.slice.pole_regulators
+        if regulators is None:
+            return None
+        twin = self.__dict__.get("_counterterm_twin")
+        if twin is None:
+            point, sources, loop_sources, fixed = self._twin_inputs
+            with self.numbers.scope():
+                twin = self._counterterm_twin = _PointEvaluation(
+                    self.slice,
+                    point,
+                    self.scale,
+                    regulated_parameters(self.parameters, regulators),
+                    self.numbers,
+                    PoleSelection.ALL,
+                    sources=sources,
+                    loop_sources=loop_sources,
+                    fixed=fixed,
+                )
+        return twin
+
+    def _counterterms_uv(self) -> dict | None:
+        """The UV parts of the counterterm and field components per
+        (component, sector, power) (``counterterm_twin``), or None (no pole
+        regulators: ``poles.split_sector``'s remainder definition)."""
+
+        if self.counterterms_uv is None:
+            twin = self.counterterm_twin()
+            if twin is not None:
+                self.counterterms_uv = twin.counterterms
+        return self.counterterms_uv
 
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
@@ -4051,6 +4111,8 @@ class _PointEvaluation:
                 {lane: Laurent(v[0], v[3], numbers.zero) for lane, v in split.items()}
             )
             origins = {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
+            # A model with pole regulators: the counterterms' own UV parts.
+            counterterms_uv = self._counterterms_uv()
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             values = {
@@ -4064,11 +4126,23 @@ class _PointEvaluation:
                     ]
                 )
             if origins is not None:
+                ultraviolet = None
+                if counterterms_uv is not None:
+                    ultraviolet = {
+                        name: Laurent(
+                            *[
+                                counterterms_uv.get((name, sector, power), zero)
+                                for power in LAURENT_POWERS
+                            ]
+                        )
+                        for name in ("r2", "uv_local", FIELD_COMPONENT)
+                    }
                 parts = split_sector(
                     values,
                     bare_uv.get(sector, Laurent(zero, zero, zero)),
                     FIELD_COMPONENT,
                     Laurent,
+                    ultraviolet,
                 )
                 for origin, part in parts.items():
                     for name in COMPONENTS:
@@ -4582,9 +4656,31 @@ class _NativePoint(_PointEvaluation):
         # With loop-side sources: the executor's loop-side Born interference.
         self.loop_born: dict[Orders, Any] | None = None
         self.counterterms: dict = {}
+        # The counterterm and field components with the IR regulator at 0
+        # (a model with pole regulators, split selections): formed by the
+        # executor (``plan_export.NativeExecutor.reduce``).
+        self.counterterms_uv: dict | None = None
         self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
+
+    def counterterm_twin(self) -> None:
+        # A native point has no Python twin: the executor forms its
+        # counterterms at the IR regulator 0 (``counterterms_uv``).
+        if self.slice.pole_regulators is not None:
+            raise ValueError(
+                "a native point's counterterms at the IR regulator 0 are the "
+                "executor's (counterterms_uv), not a Python twin's"
+            )
+        return None
+
+    def _counterterms_uv(self) -> dict | None:
+        if self.counterterms_uv is None and self.slice.pole_regulators is not None:
+            raise ValueError(
+                "the uv and ir pole selections of a model with pole regulators "
+                "need the executor's counterterm components at the IR regulator 0"
+            )
+        return self.counterterms_uv
 
     def _scaled_average(self) -> Any:
         # The native trees take the alpha(0) of on-shell external photons in
