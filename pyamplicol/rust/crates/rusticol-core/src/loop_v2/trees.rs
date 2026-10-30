@@ -256,10 +256,9 @@ impl std::fmt::Display for PlaneMismatch {
 /// assigned by input index, put arguments on cuts at arbitrary points and
 /// made the verdict depend on the parameters' declaration order; at real
 /// inputs the plane takes exact arithmetic's side of a cut by construction
-/// (`symjit_plane::InlinedProgram::canonical_cut_arguments`, M-SM
-/// MS-MASTERS: before it, SymJIT's negated real had a -0 imaginary part
-/// where Symbolica's evaluator has +0, `sqrt(-x)` at x > 0: -i sqrt(x)
-/// against +i sqrt(x)).
+/// (`symjit_plane::canonical_cut_row`, M-SM MS-MASTERS: before it, SymJIT's
+/// negated real had a -0 imaginary part where Symbolica's evaluator has +0,
+/// `sqrt(-x)` at x > 0: -i sqrt(x) against +i sqrt(x)).
 /// The rows run together, then each in a call of its own, as a batch of
 /// equal rows runs them: a SIMD block of equal lanes (the padding copies
 /// the last row) runs SymJIT's SIMD code, which a block whose lanes take

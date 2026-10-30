@@ -169,9 +169,9 @@ fn a_plane_takes_the_exact_side_of_a_cut() {
     // sqrt(-x) through the plane: SymJIT negates a real into a -0
     // imaginary part where Symbolica's evaluator (and exact arithmetic) has
     // +0; the translation canonicalises a cut argument's zero
-    // (`symjit_plane::InlinedProgram::canonical_cut_arguments`), so on the
-    // cut (x > 0) and off it the plane equals the exact evaluator, at -O2
-    // and level 0, with no run-time check (M-SM MS-MASTERS).
+    // (`symjit_plane::canonical_cut_row`), so on the cut (x > 0) and off it
+    // the plane equals the exact evaluator, at -O2 and level 0, with no
+    // run-time check (M-SM MS-MASTERS).
     use symbolica::atom::AtomCore;
     let _unlock = crate::licence::unlock();
     let x = symbolica::parse!("pyamplicol_trees_tests::x");

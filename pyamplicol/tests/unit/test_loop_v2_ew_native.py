@@ -22,7 +22,7 @@ cut whenever the probe made MW > MZ and refused a correct translation,
 depending on the declaration order (loop_sm with MW a card input; the G_mu
 EW counterterms c_UVepemA1EW and UV_GTTLEW). Since M-SM MS-MASTERS the
 translation makes the zero imaginary part of every cut argument +0
-(``symjit_plane::InlinedProgram::canonical_cut_arguments``), so at real
+(``symjit_plane::canonical_cut_row``), so at real
 inputs the plane takes exact arithmetic's side of a cut, MadLoop's +0 side
 (as ``ct_recursion._RealArguments`` projects the counterterms' real
 arguments for every evaluator), wherever the parameters put an argument;

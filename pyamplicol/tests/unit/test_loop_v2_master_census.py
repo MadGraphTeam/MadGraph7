@@ -231,7 +231,7 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
     against MadLoop's 1.8e-3), a -0 imaginary part from SymJIT's negation;
     the translation now makes every cut argument's zero imaginary part +0
-    (``symjit_plane::InlinedProgram::canonical_cut_arguments``), with nothing
+    (``symjit_plane::canonical_cut_row``), with nothing
     checked at run time, and every carrier equals MadLoop's
     zero-width virtual (to 1e-8), as at widths of 1e-100 and 1e-152 of the
     masses in binary64 and arbitrary precision; double-double, whose C0

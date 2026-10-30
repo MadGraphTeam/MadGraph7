@@ -1042,7 +1042,7 @@ def test_binary64_parameter_changes_need_no_key(loop_artifact, tmp_path):
     parameters with no Symbolica (DESIGN §12.1 (e)): at real inputs it takes
     exact arithmetic's side of every branch cut by construction (the
     translation canonicalises a cut argument's zero imaginary part,
-    ``symjit_plane::InlinedProgram::canonical_cut_arguments``), so there is
+    ``symjit_plane::canonical_cut_row``), so there is
     nothing to check at run time. g g > g g on loop_sm completes unlicensed
     with the native key disabled while the permit is held at a new alpha_s,
     a new top mass and with the Z, W or Higgs width set to 0 (each of which
