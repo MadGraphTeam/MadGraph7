@@ -57,6 +57,8 @@ c                             n points, see the routine for the layout.
       common/tosigint/nndim
       character*4 abrv
       common /to_abrv/ abrv
+      character*16 abrv_env
+      integer len_env,stat_env
       logical nbody
       common/cnbody/nbody
       integer ini_fin_fks
@@ -153,6 +155,16 @@ c exact helicity sum in the virtuals
       do_rwgt_scale=.false.
       do_rwgt_pdf=.false.
       abrv='all '
+c Which contributions to compute can be set from the environment,
+c MLAPI_ABRV (default 'all').  'novi' skips the virtual (fks_singular.f,
+c bornsoftvirtual), for quantities that do not depend on it, e.g. the
+c n+1-body counter terms of the S events.
+      call get_environment_variable('MLAPI_ABRV',abrv_env,len_env
+     &     ,stat_env)
+      if (stat_env.eq.0 .and. len_env.gt.0) then
+         abrv=abrv_env(1:4)
+         write (*,*) 'mlapi_init: abrv set to ',abrv
+      endif
       nbody=.false.
       only_virt=.false.
       lbw(0)=0
