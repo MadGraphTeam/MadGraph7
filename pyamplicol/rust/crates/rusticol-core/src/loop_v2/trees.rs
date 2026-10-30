@@ -444,12 +444,15 @@ fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> Ru
     if ratio >= COMPLEX_MASS_MASTER_RATIO {
         return Ok(());
     }
+    let (re64, im64) = (re.to_f64(), im.to_f64());
     Err(RusticolError::model_parameter(format!(
-        "{COMPLEX_MASS_MASTER}: plan mass {index} is a complex pole mass with \
-         |Im m^2| / Re m^2 = {ratio:e} at these model parameters, below 1e-150, \
-         where the double-double complex-mass master integrals are unreliable. \
-         Instead: evaluate in binary64 or arbitrary precision, give the width \
-         at least 1e-150 of its mass, or zero"
+        "{COMPLEX_MASS_MASTER}: the complex pole mass m = {:.6} (m^2 = {re64:e} \
+         {im64:+e} i; loop mass {index}) has |Im m^2| / Re m^2 = {ratio:e} at \
+         these model parameters, below 1e-150: its width is below 1e-150 of \
+         the mass, where the double-double complex-mass master integrals are \
+         unreliable. Instead: evaluate in binary64 or arbitrary precision, give \
+         that width at least 1e-150 of its mass, or zero",
+        re64.abs().sqrt()
     )))
 }
 

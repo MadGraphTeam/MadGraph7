@@ -298,7 +298,7 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
             for mine, theirs in zip(evaluate(widths, precision), madloop, strict=True)
         )
         assert difference <= 1e-8, (precision.arithmetic, widths, difference)
-    with pytest.raises(ValueError, match="complex-mass-master: plan mass"):
+    with pytest.raises(ValueError, match="complex-mass-master: the complex pole mass"):
         evaluate(tiny, Precision.double_double())
     found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
     assert found.bites()["tiny-width"], found.record()

@@ -144,17 +144,22 @@ NATIVE_EXPORT_REFUSALS = (
         "plane-mismatch",
         "a tree-program kernel or parameter-program output whose binary64 "
         "SymJIT plane application disagrees with its exact evaluator at the "
-        "plane check's rows (complex rows off the real axis: a translation "
-        "error; the parameter program's request values: a branch side that "
-        "SymJIT and Symbolica take differently there, e.g. a negated real "
-        "under a square root, -0 against +0), or that reads a branch-cut or "
-        "discontinuous function of its inputs in a program without a real "
-        "point to certify it at",
+        "plane check's rows, each also run as a SIMD block of its own, at "
+        "the requested optimisation level and again at level 0 (complex rows "
+        "off the real axis: a translation error; the parameter program's "
+        "request values: a branch side that SymJIT and Symbolica take "
+        "differently there, e.g. a negated real under a square root, -0 "
+        "against +0), or that reads a branch-cut or discontinuous function "
+        "of its inputs in a program without a real point to certify it at. "
+        "A disagreement of the optimised SIMD code alone (SymJIT 2.27's "
+        "complex products into aliased registers, CM05; M-SM MS-MASTERS) "
+        "takes the level-0 plane instead and is not refused",
         "WP3.2 EWI-N (ew-native)",
         "a request whose values put such an argument on its cut: the argument "
         "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
         "takes it, ct_recursion._RealArguments) with the first model that "
-        "needs it",
+        "needs it; a SymJIT defect found by the check: an upstream fix "
+        "(upstream/symjit-simd-complex-times-alias) and its release pinned",
     ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)

@@ -147,10 +147,13 @@ fn complex_mass_master_guard_refuses_widths_below_1e150_of_the_mass() {
     assert!(require_complex_mass_master(1, &re, &Rational::from(0)).is_ok());
     let error = require_complex_mass_master(3, &re, &tiny).unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::ModelParameter);
+    let text = error.to_string();
     assert!(
-        error
-            .to_string()
-            .starts_with("complex-mass-master: plan mass 3")
+        text.starts_with(
+            "complex-mass-master: the complex pole mass m = 91.000000 (m^2 = 8.281e3 \
+             -1e-160 i; loop mass 3)"
+        ),
+        "{text}"
     );
 }
 
