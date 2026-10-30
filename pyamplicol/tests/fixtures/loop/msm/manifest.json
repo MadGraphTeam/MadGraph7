@@ -102,9 +102,7 @@
    "restriction": "default",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0"
+    "MTA": "0"
    },
    "scheme": "ew-gmu-cms",
    "alpha": 0.0075467722613403515
@@ -114,16 +112,14 @@
    "restriction": "a0",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0"
+    "MTA": "0"
    },
    "scheme": "ew-gmu-a0-cms",
    "alpha": 0.0075467722613403515
   },
   "Lc": {
    "model": "loop_sm",
-   "restriction": "default",
+   "restriction": "no_b_mass",
    "fixed_parameters": {
     "WW": "0",
     "WZ": "0",
@@ -354,6 +350,53 @@
   "jobs": [
    {
     "job": 1,
+    "seconds": 1380,
+    "rows": [
+     "CM01",
+     "CM01@small",
+     "CM01@source",
+     "CM01@zero"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly.py"
+   },
+   {
+    "job": 2,
+    "seconds": 1286,
+    "rows": [
+     "CM02",
+     "CM03",
+     "SC05"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
+   },
+   {
+    "job": 3,
+    "seconds": 1200,
+    "rows": [
+     "CM04",
+     "CM05"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
+   },
+   {
+    "job": 4,
+    "seconds": 1200,
+    "rows": [
+     "CM08"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
+   },
+   {
+    "job": 5,
+    "seconds": 1200,
+    "rows": [
+     "CM09",
+     "CM10"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
+   },
+   {
+    "job": 6,
     "seconds": 1359,
     "rows": [
      "DY01",
@@ -362,19 +405,19 @@
      "DY03",
      "DY04"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
    },
    {
-    "job": 2,
+    "job": 7,
     "seconds": 1476,
     "rows": [
      "DY05",
      "JJ02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_2.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
    },
    {
-    "job": 3,
+    "job": 8,
     "seconds": 1417,
     "rows": [
      "DY07",
@@ -382,10 +425,10 @@
      "JJ01",
      "JJ03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_3.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
    },
    {
-    "job": 4,
+    "job": 9,
     "seconds": 1261,
     "rows": [
      "JJ04",
@@ -393,10 +436,10 @@
      "LL02",
      "LL03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_4.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
    },
    {
-    "job": 5,
+    "job": 10,
     "seconds": 1485,
     "rows": [
      "LL05",
@@ -404,135 +447,134 @@
      "LL09",
      "LL10"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
    },
    {
-    "job": 6,
-    "seconds": 1286,
+    "job": 11,
+    "seconds": 1200,
     "rows": [
      "PI01",
-     "PI01@all",
-     "SC05"
+     "PI01@all"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
    },
    {
-    "job": 7,
+    "job": 12,
     "seconds": 1200,
     "rows": [
      "PI02",
      "PI03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
    },
    {
-    "job": 8,
+    "job": 13,
     "seconds": 1343,
     "rows": [
      "PI04",
      "SC01",
      "SC02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
    {
-    "job": 9,
+    "job": 14,
     "seconds": 1200,
     "rows": [
      "SC03",
      "SC04"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
    },
    {
-    "job": 10,
+    "job": 15,
     "seconds": 1200,
     "rows": [
      "SC06",
      "SC07"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
-    "job": 11,
+    "job": 16,
     "seconds": 1379,
     "rows": [
      "SC08",
      "SC09",
      "ST01"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
    },
    {
-    "job": 12,
+    "job": 17,
     "seconds": 1291,
     "rows": [
      "ST02",
      "ST03",
      "ST04"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
    },
    {
-    "job": 13,
+    "job": 18,
     "seconds": 1428,
     "rows": [
      "TT01",
      "TT02",
      "TT03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    },
    {
-    "job": 14,
+    "job": 19,
     "seconds": 1267,
     "rows": [
      "TT04",
      "TT05",
      "TT06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
    {
-    "job": 15,
+    "job": 20,
     "seconds": 1278,
     "rows": [
      "TV01",
      "TV02",
      "TV03"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
    },
    {
-    "job": 16,
+    "job": 21,
     "seconds": 1229,
     "rows": [
      "TV06",
      "V301",
      "VJ02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
    },
    {
-    "job": 17,
+    "job": 22,
     "seconds": 1200,
     "rows": [
      "VH01",
      "VH02"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_22.py"
    },
    {
-    "job": 18,
+    "job": 23,
     "seconds": 1051,
     "rows": [
      "VH03",
      "VJ01"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_23.py"
    },
    {
-    "job": 19,
+    "job": 24,
     "seconds": 1376,
     "rows": [
      "VJ03",
@@ -541,25 +583,25 @@
      "VV05",
      "VV05@zero"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_24.py"
    },
    {
-    "job": 20,
+    "job": 25,
     "seconds": 1284,
     "rows": [
      "VV02",
      "VV03",
      "VV06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_25.py"
    },
    {
-    "job": 21,
+    "job": 26,
     "seconds": 823,
     "rows": [
      "VV07"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_26.py"
    }
   ]
  },
@@ -8009,21 +8051,33 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0"
+    "MTA": "0"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "E cms-ufo-standard-gmu.json + cms-source-gmu.json + small-width control (MadLoop double)",
-   "reference": null,
+   "reference": {
+    "format": "cms-control",
+    "path": "tests/fixtures/loop/cms-ufo-standard-gmu.json",
+    "block": "finite",
+    "mu_r2": "1000000",
+    "parameters": {
+     "Gf": "0.0000116639",
+     "MW": "80.419",
+     "MZ": "91.188",
+     "MH": "125",
+     "MT": "173.3",
+     "aS": "0.118"
+    }
+   },
    "points": {
     "nightly": [
      0,
      1,
-     2
+     2,
+     3
     ]
    },
    "extras": [
@@ -8050,19 +8104,111 @@
    "unpredicted_reasons": {},
    "reference_outliers": [],
    "vanishing": [],
-   "reference_tolerance": 1e-12,
+   "reference_tolerance": 1e-08,
    "alphas": {
     "QED": 0.0075467722613403515
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
-   "pending": {
-    "waits_for": "MS-CMS",
-    "reason": "the row's package: MS-CMS"
-   },
-   "extras_pending": {
-    "sp": "MS-REF (special points S1-S4)"
-   }
+   "variants": [
+    {
+     "name": "zero",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "cms-control",
+      "path": "tests/fixtures/loop/cms-ufo-standard-gmu.json",
+      "block": "zero",
+      "mu_r2": "1000000",
+      "parameters": {
+       "Gf": "0.0000116639",
+       "MW": "80.419",
+       "MZ": "91.188",
+       "MH": "125",
+       "MT": "173.3",
+       "aS": "0.118"
+      }
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "every width zero at runtime (the real-mass values)"
+    },
+    {
+     "name": "small",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "cms-control",
+      "path": "tests/fixtures/loop/cms-ufo-standard-gmu.json",
+      "block": "small",
+      "mu_r2": "1000000",
+      "parameters": {
+       "Gf": "0.0000116639",
+       "MW": "80.419",
+       "MZ": "91.188",
+       "MH": "125",
+       "MT": "173.3",
+       "aS": "0.118"
+      }
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "S3: the widths x 0.001 at runtime"
+    },
+    {
+     "name": "source",
+     "gating": true,
+     "tier": "nightly",
+     "reference": {
+      "format": "cms-control",
+      "path": "tests/fixtures/loop/cms-source-gmu.json",
+      "block": "finite",
+      "mu_r2": "1000000",
+      "parameters": {
+       "Gf": "0.0000116639",
+       "MW": "80.419",
+       "MZ": "91.188",
+       "MH": "125",
+       "MT": "173.3",
+       "aS": "0.118"
+      },
+      "widths": {
+       "WZ": "2.49877",
+       "WW": "2.09291",
+       "WT": "1.37758",
+       "WH": "0.00407468"
+      }
+     },
+     "reglog_convention": "source",
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "the G_mu source's reglog override (reglog_convention source), the card widths"
+    }
+   ],
+   "mass_scheme": "complex-mass",
+   "notes": "MadLoop CMS double-precision exports (cms-ufo-standard-gmu.json): the card widths' block (continuum and three Z-resonance points); variants: zero widths, the widths x 0.001 (S3), and the G_mu source's reglog override (cms-source-gmu.json, a compatibility view, [U3]); the widths are runtime parameters of one generation"
   },
   {
    "id": "CM02",
@@ -8097,14 +8243,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "1.37758",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~2 min (at and off sqrt(s) = M_Z)",
    "reference": {
     "format": "required",
@@ -8158,13 +8306,10 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS",
-    "reason": "the row's package: MS-CMS"
-   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -8238,14 +8383,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "1.37758",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N, S ~2 min (near M_W)",
    "reference": {
     "format": "required",
@@ -8299,13 +8446,10 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS",
-    "reason": "the row's package: MS-CMS"
-   },
    "madloop_r2_called": [
     "R2_WWboson1",
     "R2_WWboson2",
@@ -8353,14 +8497,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "0",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2 min",
    "reference": {
     "format": "required",
@@ -8415,13 +8561,10 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS",
-    "reason": "the row's package: MS-CMS"
-   },
    "madloop_r2_called": [
     "R2_3Gg",
     "R2_3Gq",
@@ -8478,14 +8621,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "1.37758",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3 min",
    "reference": {
     "format": "required",
@@ -8539,13 +8684,13 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
+   "diagnostic_extras": [
+    "ward"
+   ],
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS",
-    "reason": "the row's package: MS-CMS"
-   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -8623,14 +8768,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "0",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "campaign",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~35-45 min",
    "reference": {
     "format": "required",
@@ -8676,13 +8823,13 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
+   "diagnostic_extras": [
+    "ward"
+   ],
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS-N",
-    "reason": "the row's package: MS-CMS-N"
-   },
    "madloop_r2_called": [
     "R2_AAD",
     "R2_AAU",
@@ -8771,14 +8918,16 @@
    "restriction_code": "Gc",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "1.37758",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~10 min (2->4)",
    "reference": {
     "format": "required",
@@ -8821,13 +8970,10 @@
    "alphas": {},
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS-N",
-    "reason": "the row's package: MS-CMS-N"
-   },
    "madloop_r2_called": [
     "R2_DDA",
     "R2_DDZ_V2",
@@ -8875,14 +9021,16 @@
    "restriction_code": "Gca",
    "fixed_parameters": {
     "MB": "0",
-    "ymb": "0",
     "MTA": "0",
-    "ymtau": "0"
+    "WT": "1.37758",
+    "WZ": "2.49877",
+    "WW": "2.09291",
+    "WH": "0.00407468"
    },
    "gauge": "feynman",
    "scheme": "ew-gmu-a0-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3-5 min (MadLoop CMS x the MG5 formula)",
    "reference": {
     "format": "required",
@@ -8902,20 +9050,20 @@
      },
      "values": [
       [
-       "0.0026691246884024853",
-       "0.032448892034256105"
+       "0.002670411794707678",
+       "0.03236620159458627"
       ],
       [
-       "0.0026691246884024853",
-       "0.03054487223705328"
+       "0.002670411794707678",
+       "0.030461263640244863"
       ],
       [
-       "0.0026691246884024853",
-       "0.03424506474171146"
+       "0.002670411794707678",
+       "0.034163240453116216"
       ],
       [
-       "0.0026691246884024853",
-       "0.028748699529597826"
+       "0.002670411794707678",
+       "0.02866422478171501"
       ]
      ]
     }
@@ -8967,13 +9115,13 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "mass_scheme": "complex-mass",
+   "diagnostic_extras": [
+    "ward"
+   ],
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-CMS-N",
-    "reason": "the row's package: MS-CMS-N"
-   },
    "madloop_r2_called": [
     "R2_AWW",
     "R2_AWWcs",
@@ -9034,17 +9182,20 @@
     "QCD"
    ],
    "model": "loop_sm",
-   "restriction": "default",
+   "restriction": "no_b_mass",
    "restriction_code": "Lc",
    "fixed_parameters": {
-    "WW": "0",
+    "MB": "0",
+    "MTA": "0",
+    "WT": "1.4915",
     "WZ": "0",
+    "WW": "0",
     "WH": "0"
    },
    "gauge": "unitary",
    "scheme": "qcd-cms",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~3 min",
    "reference": {
     "format": "required",
@@ -9086,10 +9237,10 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "alphas": {},
-   "pending": {
-    "waits_for": "MS-CMS-N",
-    "reason": "the row's package: MS-CMS-N"
-   },
+   "mass_scheme": "complex-mass",
+   "ignored_parameters": [
+    "MW"
+   ],
    "madloop_r2_called": [
     "R2_DDA",
     "R2_DDZ_V2",
