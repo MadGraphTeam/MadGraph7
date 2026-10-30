@@ -393,13 +393,12 @@
    },
    {
     "job": 5,
-    "seconds": 1459,
+    "seconds": 1258,
     "rows": [
      "DY02",
      "DY03",
      "DY04",
-     "DY07",
-     "VH03"
+     "DY07"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_5.py"
    },
@@ -480,13 +479,13 @@
    },
    {
     "job": 13,
-    "seconds": 1363,
+    "seconds": 1329,
     "rows": [
      "PI04",
      "SC01",
      "SC02",
      "SC07",
-     "VH02"
+     "ST03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
@@ -504,54 +503,55 @@
    },
    {
     "job": 15,
-    "seconds": 1379,
+    "seconds": 1322,
     "rows": [
      "SC09",
      "SC10",
-     "ST01"
+     "ST01",
+     "ST02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
     "job": 16,
-    "seconds": 1335,
+    "seconds": 1232,
     "rows": [
-     "ST02",
-     "ST03",
      "ST04",
-     "TT01"
+     "TT01",
+     "TT02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
    },
    {
     "job": 17,
-    "seconds": 1324,
+    "seconds": 1375,
     "rows": [
-     "TT02",
      "TT03",
-     "TT04"
+     "TT04",
+     "TT05"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
    },
    {
     "job": 18,
-    "seconds": 1319,
+    "seconds": 1366,
     "rows": [
-     "TT05",
      "TT06",
      "TV01",
-     "VH01"
+     "TV02",
+     "TV03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
    },
    {
     "job": 19,
-    "seconds": 1307,
+    "seconds": 1199,
     "rows": [
-     "TV02",
-     "TV03",
      "TV06",
-     "V301"
+     "V301",
+     "VH01",
+     "VH02",
+     "VH03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
@@ -8994,6 +8994,12 @@
     "R2_bxtW",
     "R2_txbW",
     "R2_uxdW"
+   ],
+   "r2_vanishing": [
+    "R2_WWcs1",
+    "R2_WWtb1",
+    "R2_WWtb3",
+    "R2_WWud1"
    ]
   },
   {
@@ -11804,7 +11810,12 @@
    "unpredicted_sectors": [],
    "unpredicted_reasons": {},
    "reference_outliers": [],
-   "vanishing": [],
+   "vanishing": [
+    {
+     "sector": "QED^6",
+     "coefficient": "single_pole"
+    }
+   ],
    "reference_tolerance": 1e-12,
    "alphas": {
     "QED": 0.0075467722613403515
@@ -11814,6 +11825,10 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "relaxed": {
+    "2": 1e-08,
+    "4": 1e-08
+   },
    "madloop_r2_called": [
     "R2_G0G0boson1",
     "R2_G0G0boson2",

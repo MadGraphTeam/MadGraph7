@@ -239,6 +239,14 @@ def test_r2_rule_finds_madloop_omissions_structurally(loop_gmu_ufo):
     unreached = mqcd.engine_r2(slice_, lambda rule: rule is not rules["g0"])
     (omitted,) = mqcd.rule_r2(unlisted, slice_, reference, classes, unreached)
     assert omitted.passed and omitted.value == "none"
+    # An insertion listed as vanishing in the row's sectors is no omission;
+    # a listed one the difference does not hold fails.
+    zero = N(madloop_omitted_r2=(), madloop_r2_called=row.madloop_r2_called,
+             r2_vanishing=("R2_G0tt_b",))  # fmt: skip
+    (omitted,) = mqcd.rule_r2(zero, slice_, reference, classes, engine)
+    assert omitted.passed and omitted.value == "none"
+    (omitted,) = mqcd.rule_r2(zero, slice_, reference, classes, unreached)
+    assert not omitted.passed
 
 
 @pytest.mark.loop_fast
