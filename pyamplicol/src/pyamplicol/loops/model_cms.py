@@ -904,9 +904,16 @@ def apply_mass_scheme(
     transform's refusals are typed (``cms-internal-mass``,
     ``cms-yukawa-input``, ``complex-mass-scheme``)."""
 
+    transformed = scheme_metadata(compiled) is not None
     if require_mass_scheme(mass_scheme) == REAL_ON_SHELL:
+        if transformed:
+            raise ComplexMassSchemeUnsupported(
+                "mass-scheme",
+                "the request declares the real on-shell scheme on a model in the "
+                "complex-mass scheme",
+            )
         return compiled
-    if scheme_metadata(compiled) is not None:
+    if transformed:
         return compiled
     if compiled.raw_loop_model is None:
         raise ComplexMassSchemeUnsupported(

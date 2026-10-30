@@ -379,7 +379,10 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
         expected = reference.get(block)
         if expected is None:
             continue
-        parameters = {**GMU_PARAMETERS, **expected.get("widths", CM01_WIDTHS[block])}
+        parameters = {
+            **GMU_PARAMETERS,
+            **(expected.get("widths") or CM01_WIDTHS[block]),
+        }
         values = {}
         for carrier, tolerance in CM01_CARRIERS:
             precision = (
@@ -406,6 +409,17 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
                     max(abs(a - b) for a, b in zip(double, arbitrary, strict=True))
                     <= 1e-9 * scale
                 )
+
+
+def _sector_key(orders) -> tuple[tuple[str, int], ...]:
+    """A squared-order sector as the result keys it: its nonzero QCD and
+    QED powers."""
+
+    return tuple(
+        (name, int(orders.get(name, 0)))
+        for name in ("QCD", "QED")
+        if int(orders.get(name, 0))
+    )
 
 
 def _check_sectors(slice_, reference, model, carriers, points):
@@ -436,11 +450,11 @@ def _check_sectors(slice_, reference, model, carriers, points):
             born = sum(complex(v).real for v in result.born.values())
             assert abs(born - row["born"]) <= tolerance * abs(row["born"])
             virtual = {
-                tuple(sorted(dict(sector).items())): laurent
+                _sector_key(dict(sector)): laurent
                 for sector, laurent in result.components["virtual"].items()
             }
             for sector in row["sectors"]["loop"]:
-                laurent = virtual[(("QCD", sector["QCD"]), ("QED", sector["QED"]))]
+                laurent = virtual[_sector_key(sector)]
                 qcd = sector["QCD"] > sector["born_sector"]["QCD"]
                 errors = _laurent_errors(
                     [complex(x).real for x in laurent.coefficients],
