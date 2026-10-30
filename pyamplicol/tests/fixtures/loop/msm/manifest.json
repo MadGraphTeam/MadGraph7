@@ -9592,7 +9592,7 @@
     "WTau"
    ],
    "catani": "none",
-   "catani_reason": "restrict_ckm: no CKM counterterm in the UFO, so the complex CKM leaves a UV pole in the QED correction (single pole = the QED operator - 0.0213 alpha/2pi Born, as MadLoop's; finding F6)",
+   "catani_reason": "restrict_ckm: the UFO's O(lambda^3) Wolfenstein CKM is not unitary, so the QED correction keeps a UV pole ~lambda^4 (single pole = the QED operator - 0.0213 alpha/2pi Born, as MadLoop's; MS-REF scheme ew-gmu-ckm; finding F6)",
    "madloop_r2_called": [
     "R2_WWboson1",
     "R2_WWboson2",
