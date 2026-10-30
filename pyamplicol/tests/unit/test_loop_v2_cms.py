@@ -175,6 +175,93 @@ def test_mass_scheme_refusals_fire_in_the_dry_run(
         assert 'mass_scheme = "complex-mass"' in blocker
 
 
+_EW_CARD = """
+action = "generate"
+[model]
+source = {model}
+[process]
+entries = [{{expression = "e- e+ > m- m+", name = "p"}}]
+loop_coupling_orders = ["QED"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+[loop.model]
+loop_coupling_orders = ["QED"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO on-shell electroweak"
+mass_scheme = {scheme}
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_qcd_qed_sm lhv=1 supplied QED rules"
+[loop.preparation]
+fixed_parameters = {fixed}
+compatibility = "gmu_particle_anti"
+[generation]
+output = {output}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+"""
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    "key,scheme,widths",
+    [
+        ("electroweak-width", "real-on-shell", ("WT", "WW", "WH")),
+        ("complex-mass-scheme", "complex-mass", ()),
+        (None, "real-on-shell", ("WT", "WW", "WH", "WZ")),
+    ],
+    ids=["width", "pole-mass", "stable"],
+)
+def test_electroweak_width_policy_in_the_dry_run(
+    loop_qcd_qed_sm_ufo, tmp_path, key, scheme, widths
+):
+    """The electroweak width policy on the public route, in the dry run of
+    e- e+ > mu- mu+ [QED] on loop_qcd_qed_sm (its s-channel Z): real on
+    shell with the Z width at the card is refused at the Born DAG
+    (``loop_service._v2_request``: ``electroweak-width``, naming the
+    complex-mass scheme); the complex-mass scheme with every width at the
+    card is ``complex-mass-scheme`` until stored artifacts take native pole
+    masses (MS-CMS-N); every width fixed to zero passes."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.models.loading import compile_model_source
+
+    # The dry run reads compiled models from the cache only.
+    compile_model_source(str(loop_qcd_qed_sm_ufo), require_supported=False)
+    fixed = "{" + ", ".join(f'{name} = "0"' for name in widths) + "}"
+    card = tmp_path / "card.toml"
+    card.write_text(
+        _EW_CARD.format(
+            model=json.dumps(str(loop_qcd_qed_sm_ufo)),
+            scheme=json.dumps(scheme),
+            fixed=fixed,
+            output=json.dumps(str(tmp_path / "out")),
+        )
+    )
+    plan = Generator(resolve_config(card)).plan(
+        ProcessSet((ProcessRequest.parse("e- e+ > m- m+", name="p"),))
+    )
+    if key is None:
+        assert plan.unsupported_features == ()
+        return
+    (blocker,) = plan.unsupported_features
+    assert blocker.startswith(f"{key}: "), blocker
+    if key == "electroweak-width":
+        assert "complex-mass" in blocker and "WZ" in blocker, blocker
+    else:
+        assert NATIVE_POLE_MASSES or "MS-CMS-N" in blocker, blocker
+
+
 # ----------------------------------------------------- CM rows, Python inputs
 
 
@@ -408,6 +495,45 @@ def test_a_zero_width_yukawa_mass_propagates_as_its_line_mass(
         assert (
             max(abs(a - b) for a, b in zip(ours, theirs, strict=True)) <= 1e-13 * scale
         ), (mt, precision.arithmetic, ours, theirs)
+
+
+@pytest.mark.loop_physics
+def test_public_complex_mass_artifact_at_zero_widths_equals_real_on_shell(tmp_path):
+    """The public route at zero widths (no pole mass, so no native guard):
+    ``Generator.generate`` stores t t~ > h h [QCD] on loop_sm under the
+    complex-mass scheme (ymt := MT, the top on its line mass) with native
+    point inputs, and ``Runtime`` evaluates it as the real on-shell artifact
+    at a run-time MT = ymt = 172. About 30 s."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.models.loading import compile_model_source
+
+    compile_model_source("loop_sm", restriction="no_b_mass")
+    expression = "t t~ > h h"
+    fixed = {**STABLE, "WT": "0"}
+    point = _supplied_point((172, 172, 125, 125))
+    values = {}
+    for scheme, parameters in (
+        ("complex-mass", {"MT": "172"}),
+        (None, {"MT": "172", "ymt": "172"}),
+    ):
+        output = tmp_path / str(scheme)
+        card = tmp_path / f"{scheme}.toml"
+        card.write_text(_card(output, expression, fixed, scheme))
+        Generator(resolve_config(card)).generate(
+            ProcessSet((ProcessRequest.parse(expression, name="p"),)), output
+        )
+        runtime = Runtime.load(output, process="p", model_parameters=parameters)
+        result = runtime.evaluate([point], mu_r2=["250000"])
+        values[scheme] = [float(result.born_values[0][0])] + [
+            float(x) for x in result.values[0][0]
+        ]
+    ours, theirs = values["complex-mass"], values[None]
+    scale = max(abs(x) for x in theirs)
+    assert theirs[1] != 0
+    assert max(abs(a - b) for a, b in zip(ours, theirs, strict=True)) <= 1e-13 * scale
 
 
 # ------------------------------------------- the G_mu UFO, every width (nightly)
