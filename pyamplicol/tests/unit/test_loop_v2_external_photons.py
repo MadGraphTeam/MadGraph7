@@ -784,3 +784,40 @@ def test_photon_rows_equal_madloop_with_the_formula_over_tagged_legs(
                     strict=True,
                 ):
                     assert abs(float(x) - float(y)) <= 1e-12 * size, (component, sector)
+
+
+@pytest.mark.loop_fast
+def test_an_ambiguous_photon_is_refused():
+    """Genericity audit 2 G2-m6: a model with a second massless, neutral,
+    colourless vector (a massless Z') makes the photon ambiguous, so an
+    electroweak request with such an external leg is refused (listed,
+    ``external-photon-scheme``) whether the leg is tagged or not; the model's
+    one photon passes this check."""
+
+    from pyamplicol.loops.v2 import ew_policy
+
+    model = _photon_model()
+    process = SimpleNamespace(
+        legs=(_leg(1, 22, "initial"), _leg(2, 2, "initial"), _leg(3, 22, "final"),
+              _leg(4, 2, "final"))
+    )  # fmt: skip
+    assert ew_policy.photon_species(model, {}) == {22}
+    dark = SimpleNamespace(**{**vars(model.ir.particles[0]), "name": "zp"})
+    dark.pdg_code = 9000032
+    ambiguous = SimpleNamespace(
+        ir=SimpleNamespace(
+            particles=(*model.ir.particles, dark), parameters=model.ir.parameters
+        )
+    )
+    assert ew_policy.photon_species(ambiguous, {}) == {22, 9000032}
+    for option in ("final", "none"):
+        request = SimpleNamespace(
+            process="a u > a u",
+            external_photons=option,
+            corrections=("QCD", "QED"),
+            particle_veto=(),
+        )
+        with pytest.raises(ew_policy.ExternalPhotonError) as refused:
+            ew_policy.external_photon_scheme(ambiguous, request, process, {}, {})
+        assert refused.value.key == "external-photon-scheme"
+        assert "|PDG| [22, 9000032]" in str(refused.value)

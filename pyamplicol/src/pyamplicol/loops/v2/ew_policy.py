@@ -331,6 +331,20 @@ def external_photons(
     )
 
 
+def photon_species(compiled: Any, fixed: Mapping[str, Any]) -> frozenset[int]:
+    """The |PDG| codes of the model's photon candidates (``is_photon``:
+    massless, neutral, colourless physical vectors); more than one makes the
+    photon ambiguous (genericity audit 2 G2-m6, ``external_photon_scheme``)."""
+
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    return frozenset(
+        abs(int(record.pdg_code))
+        for record in compiled.ir.particles
+        if getattr(record, "auxiliary_kind", None) is None
+        and is_photon(record, parameters, fixed)
+    )
+
+
 # ``loop.external_photons`` (``SliceRequest.external_photons``): which
 # on-shell external photons are tagged (MG5_aMC's ``!a!``).
 PHOTON_TAG_CHOICES = ("final", "all", "none")
@@ -497,7 +511,22 @@ def external_photon_scheme(
 
     from .poles import qed_coupling
 
-    photons, _untagged = photon_tags(compiled, request, process, fixed)
+    photons, untagged = photon_tags(compiled, request, process, fixed)
+    candidates = photon_species(compiled, fixed)
+    if (photons or untagged) and len(candidates) > 1:
+        # Genericity audit 2 G2-m6: which massless neutral colourless vector
+        # is the photon is ambiguous (a dark photon, a massless Z'), so
+        # neither the alpha(0) convention nor an untagged photon's
+        # gamma_gamma can be assigned to the legs: fail closed.
+        raise ExternalPhotonError(
+            "external-photon-scheme",
+            f"{request.process!r}: the external legs {list(photons + untagged)} "
+            "are massless, neutral, colourless vectors, and the model has "
+            f"several such species (|PDG| {sorted(candidates)}): which one is the "
+            "photon is ambiguous, so neither the alpha(0) convention of a tagged "
+            "photon nor the gamma_gamma pole of an untagged one can be assigned. "
+            "Use a model with one photon",
+        )
     if not photons:
         return None
 
@@ -861,6 +890,7 @@ __all__ = [
     "gauge_ghost_partners",
     "is_photon",
     "is_zero",
+    "photon_species",
     "photon_tag_option",
     "photon_tags",
     "propagated_species",

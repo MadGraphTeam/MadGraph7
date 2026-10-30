@@ -366,7 +366,9 @@ LOOP_ADMISSION_REFUSALS = (
         "without an adjustable 1/alpha(0) (SMINPUTS 1), loops that already "
         "couple with that parameter, 1/alpha(0) fixed to zero, a particle_veto "
         "of an electromagnetically perturbative species, or a request without "
-        "the electromagnetic correction",
+        "the electromagnetic correction; and any on-shell external photon of an "
+        "electroweak request on a model with several photon candidates "
+        "(massless, neutral, colourless vectors: ambiguous)",
         "a tagged photon couples with alpha(0) and takes the conversion term "
         "(MG5_aMC's alpha(0) formula over the tagged legs), which needs the "
         "model's conversion counterterm and its adjustable 1/alpha(0); MG5_aMC "
