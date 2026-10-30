@@ -711,7 +711,7 @@ def test_conventions_record_the_models_schemes(loop_gmu_ufo, loop_qcd_qed_sm_ufo
     assert "generation-complete" in record["gamma5"]
     # MS-PHOTON: the photons' coupling per leg, with the tagged (alpha(0))
     # and untagged (the loops' coupling) legs.
-    legs = ("e-", "e+", "a", "a")
+    legs = ("e-", "e+", "A", "A")
     photons = scheme_conventions(
         _scheme_slice(gmu, ("QED",), SimpleNamespace(legs=(3, 4)), legs)
     )
