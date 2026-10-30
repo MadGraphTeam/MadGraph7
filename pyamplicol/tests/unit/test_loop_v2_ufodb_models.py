@@ -11,6 +11,8 @@ user 2026-10-30: https://github.com/mg5amcnlo/UFOmodeldb is the ground truth).
   tree couplings only, so a request none of whose trees can hold such a
   vertex generates the same plan on either model. Of the M-SM campaign rows
   only SC10 (z z > h h) can (``_reaches``, a necessary condition).
+* Recola (R2 terms of its own) equals MadLoop on the UFOmodeldb model for
+  SC10 and not MadLoop on the MG5_aMC download: the fix is right.
 * SC10 equals MadLoop in quadruple precision on the UFOmodeldb model, and the
   difference to MadLoop on the MG5_aMC download is the R2_ZZHH term alone
   (nightly; the Python reference path of the slice: the native plan of this
@@ -256,6 +258,27 @@ def _sc10(ufo, loop_native):
         ),
         loop_native,
     )
+
+
+@pytest.mark.loop_fast
+def test_recola_decides_the_r2_zzhh_fix():
+    """Recola's R2 terms do not come from the UFO: on SC10 it equals MadLoop
+    on UFOmodeldb's model (to 2.2e-11 of the finite part) and not MadLoop on
+    the MG5_aMC download (3.7 % to 2.7 times the finite part)."""
+
+    fixtures = {
+        key: json.loads((FIXTURES / f"required/msm/{key}.json").read_text())
+        for key in ("zz_hh_ew", "zz_hh_ew_mg5")
+    }
+    ufodb, mg5 = fixtures["zz_hh_ew"], fixtures["zz_hh_ew_mg5"]
+    assert ufodb["validated_providers"] == ["madloop", "recola"]
+    assert ufodb["points"] == mg5["points"]
+    for row, control in zip(ufodb["rows"], mg5["rows"], strict=True):
+        recola = row["providers"]["recola"]["finite"]
+        madloop = row["providers"]["madloop"]["finite"]
+        download = control["providers"]["madloop"]["finite"]
+        assert abs(madloop - recola) <= 1e-10 * abs(recola)
+        assert abs(download - recola) >= 1e-2 * abs(recola)
 
 
 @pytest.mark.loop_nightly

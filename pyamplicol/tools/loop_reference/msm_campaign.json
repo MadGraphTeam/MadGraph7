@@ -2348,7 +2348,11 @@
    "points": {
     "generator": "supplied",
     "family": "regular"
-   }
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "diagnostic: Recola's R2 terms are not the UFO's, so it decides UFOmodeldb's R2_ZZHH fix"
   },
   {
    "id": "zz_hh_ew_mg5",

@@ -16034,8 +16034,10 @@
      "note": null,
      "reference_notes": {},
      "excluded_providers": {},
-     "second_providers": [],
-     "second_provider_trigger": null,
+     "second_providers": [
+      "recola"
+     ],
+     "second_provider_trigger": "diagnostic: Recola's R2 terms are not the UFO's, so it decides UFOmodeldb's R2_ZZHH fix",
      "status": "committed",
      "madloop_process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6",
      "pdgs": [
@@ -16087,7 +16089,8 @@
      },
      "primary_provider": "madloop",
      "validated_providers": [
-      "madloop"
+      "madloop",
+      "recola"
      ],
      "madloop_return_codes": [
       329,
@@ -16123,7 +16126,34 @@
        "QCD^2=0,QED^2=6": 0.0
       }
      ],
-     "second_provider_outcome": {},
+     "second_provider_outcome": {
+      "recola": [
+       {
+        "born": 7.500624682115814e-14,
+        "finite": 1.3756861274697434e-12,
+        "single_pole": 1.0,
+        "double_pole": 0.0
+       },
+       {
+        "born": 1.384841846473388e-16,
+        "finite": 2.164899734443795e-11,
+        "single_pole": 0.8856323242187499,
+        "double_pole": 0.0
+       },
+       {
+        "born": 8.71619889429759e-15,
+        "finite": 1.9283034475250794e-12,
+        "single_pole": 1.0215625000000002,
+        "double_pole": 0.0
+       },
+       {
+        "born": 7.500624682115814e-14,
+        "finite": 1.3906528978956479e-12,
+        "single_pole": 0.9599218749999999,
+        "double_pole": 0.0
+       }
+      ]
+     },
      "squared_split_orders": {
       "born": [
        {

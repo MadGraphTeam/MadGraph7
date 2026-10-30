@@ -1048,7 +1048,8 @@
       "born_orders": {"QCD": 0, "QED": 2},
       "correction": "EW",
       "scheme": "ew-gmu",
-      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"}
+      "madloop": {"process": "z z > h h QCD=0 QED=2 [virt=QED] QED^2==6"},
+      "recola": {"process": "Z Z -> H H"}
     },
     {
       "name": "zz_hh_ew_mg5",
