@@ -599,7 +599,8 @@ fn a_probe_row_mismatch_falls_back_to_level_zero() {
             row: 0,
             real_axis: true,
             imaginary: false,
-            plane: f64::NAN,
+            // A wrong value (NaN in CM05; not NaN here: PartialEq compares).
+            plane: 0.5,
             exact: 1.0,
         },
     };
