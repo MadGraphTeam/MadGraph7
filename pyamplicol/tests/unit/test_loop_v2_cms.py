@@ -599,7 +599,7 @@ def _gmu_cms_slice(
     return model, scheme, LoopSlice.generate(model, request, loop_native)
 
 
-CM01_CARRIERS = (("double", 1e-8), ("arbitrary", 1e-8))
+CM01_CARRIERS = (("double", 1e-8), ("double-double", 1e-8), ("arbitrary", 1e-8))
 # The widths of the CM01 blocks (``cms-source-gmu.json`` records none).
 CM01_WIDTHS = {
     "finite": {"WZ": "2.49877", "WW": "2.09291", "WT": "1.37758", "WH": "0.00407468"},
@@ -640,15 +640,16 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
     against MadLoop CMS (double-precision exports, ``fixture``): the Born and
     the virtual's three Laurent coefficients at the continuum and three
     Z-resonance points, at zero widths and at the widths x 0.001 (runtime
-    widths, one generation), binary64 and arbitrary precision (32 digits) to
-    1e-8; binary64 = AP(32) to 1e-9 at the small widths (the branch side of
-    the helpers on their cuts; ``electroweak-mumu-cms-small-width-control``);
-    AP(40) = AP(60) to 1e-30 at a Z-resonance point (the high-precision
-    carrier; double-double is the native executor's, MS-CMS-N). ``"source"``:
-    the G_mu source's reglog override, a compatibility view ([U3]).
-    Generation ~5 min, ~6 GB."""
+    widths, one generation), binary64, double-double (the native executor
+    with Python inputs) and arbitrary precision (32 digits) to 1e-8;
+    double-double = AP(32) to 1e-20 everywhere and binary64 = AP(32) to 1e-9
+    at the small widths (the branch side of the helpers on their cuts;
+    ``electroweak-mumu-cms-small-width-control``); AP(40) = AP(60) to 1e-30
+    at a Z-resonance point. ``"source"``: the G_mu source's reglog override,
+    a compatibility view ([U3]). Generation ~5 min, ~6 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
 
     reference = json.loads((FIXTURES / fixture).read_text())
     _model, scheme, slice_ = _gmu_cms_slice(
@@ -662,20 +663,39 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
         reglog_convention=convention,
     )
     assert set(scheme.masses) == {"MZ", "MW", "MT", "MH"}
+    executor = NativeExecutor(slice_, inputs="python")
+    precisions = {
+        "double": Precision.double(),
+        "double-double": Precision.double_double(),
+        "arbitrary": Precision.arbitrary(32),
+    }
     for block, expected in _cm01_blocks(reference, convention).items():
         parameters = {
             **GMU_PARAMETERS,
             **(expected.get("widths") or CM01_WIDTHS[block]),
         }
-        values = {}
+        values, exact = {}, {}
         for carrier, tolerance in CM01_CARRIERS:
-            precision = (
-                Precision.double() if carrier == "double" else Precision.arbitrary(32)
-            )
-            for k, point in enumerate(expected["points"]):
-                result = slice_.evaluate(
-                    point, "1000000", parameters=parameters, precision=precision
+            precision = precisions[carrier]
+            points = expected["points"]
+            results = (
+                executor.evaluate(
+                    points,
+                    ["1000000"] * len(points),
+                    parameters=parameters,
+                    precision=precision,
                 )
+                if carrier == "double-double"
+                else [
+                    slice_.evaluate(
+                        point, "1000000", parameters=parameters, precision=precision
+                    )
+                    for point in points
+                ]
+            )
+            for k, result in enumerate(results):
+                if carrier != "double":
+                    exact[carrier, k] = [Decimal(x) for x in result.totals[:4]]
                 born, *laurent = (complex(x) for x in result.totals[:4])
                 values[carrier, k] = [born, *laurent]
                 theirs = [float(x) for x in expected["full"][k]]
@@ -685,6 +705,17 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
                     [x.real for x in laurent], born_reference, theirs, 1 / 132.0
                 )
                 assert max(errors) <= tolerance, (block, carrier, k, errors)
+        for k in range(len(expected["points"])):
+            # Double-double against arbitrary precision (§1.3).
+            dd, ap = exact["double-double", k], exact["arbitrary", k]
+            scale = max(abs(x) for x in ap)
+            assert max(abs(a - b) for a, b in zip(dd, ap, strict=True)) <= (
+                Decimal("1e-20") * scale
+            ), (
+                block,
+                k,
+                [float(abs(a - b) / scale) for a, b in zip(dd, ap, strict=True)],
+            )
         if block == "small":
             for k in range(len(expected["points"])):
                 double, arbitrary = values["double", k], values["arbitrary", k]
@@ -815,3 +846,65 @@ def test_cm_joint_corrections_with_python_inputs_equal_madloop_cms(
         slice_, reference, model, (("double", 1e-8),), range(len(reference["points"]))
     )
     _check_sectors(slice_, reference, model, (("arbitrary", 1e-8),), [0])
+
+
+@pytest.mark.loop_nightly
+def test_cm09_tagged_photon_with_python_inputs_equals_madloop_cms(
+    loop_gmu_ufo, loop_native, tmp_path
+):
+    """CM09: u d~ > e+ ve a [QCD QED] on the G_mu UFO (a0) under the
+    complex-mass scheme with the card's widths, its photon tagged (alpha(0);
+    the conversion a field insertion taking the real part of the complex
+    eCoup_DGmua0_UV_EW), Python inputs (``LoopSlice.evaluate``): Born and
+    both sectors equal MadLoop CMS (``required/msm/udx_epvea_cms.json``,
+    quadruple precision) times MG5_aMC's formula over the tagged photon (as
+    the native-input test of MS-CMS-N, whose slice and conversion this
+    reuses), binary64 at the four points and arbitrary precision (32 digits)
+    at the first, to 1e-8. About 5 min."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    from . import test_loop_v2_native_complex_masses as native_cms
+
+    reference = native_cms._madloop_rows("udx_epvea_cms")
+    executor, parameters = native_cms._gmu_cms_slice(
+        loop_gmu_ufo,
+        loop_native,
+        tmp_path,
+        reference,
+        "u d~ > e+ ve a",
+        ("QCD", "QED"),
+    )
+    factors = native_cms._tagged_photon_conversion(
+        loop_gmu_ufo, reference, reference["points"]
+    )
+    n = len(reference["tagged_photon_legs"])
+    for precision, points in (
+        (Precision.double(), range(len(reference["points"]))),
+        (Precision.arbitrary(32), [0]),
+    ):
+        for k in points:
+            row = reference["rows"][k]
+            result = executor.slice.evaluate(
+                reference["points"][k],
+                str(Fraction(reference["mu_r"][k]) ** 2),
+                parameters=parameters,
+                precision=precision,
+            )
+            r, pole, finite = factors[k]
+            born = row["born"]
+            mine = sum(complex(v).real for v in result.born.values())
+            assert abs(mine - r * born) <= 1e-8 * abs(r * born)
+            want = []
+            for sector in row["sectors"]["loop"]:
+                electroweak = sector["QCD"] == sector["born_sector"]["QCD"]
+                shift = 2 * n * born if electroweak else 0.0
+                want.append(
+                    [
+                        r * (sector["finite"] - shift * finite),
+                        r * (sector["single_pole"] - shift * pole),
+                        r * sector["double_pole"],
+                    ]
+                )
+            errors = native_cms._sector_errors(result, row, abs(r * born), want)
+            assert max(errors) <= 1e-8, (precision.arithmetic, k, errors)
