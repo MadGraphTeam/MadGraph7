@@ -43,7 +43,10 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 117
+    assert len(FIELD_REGISTRY) == 118
+    # MS-PHOTON: the photons' alpha(0) tags (MG5_aMC's !a!).
+    assert FIELD_REGISTRY["loop.external_photons"].kind == "choice_or_list_int"
+    assert FIELD_REGISTRY["loop.external_photons"].default == "final"
     # The legacy one-loop engine and its switch were removed (v2 only).
     assert "loop.engine" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
