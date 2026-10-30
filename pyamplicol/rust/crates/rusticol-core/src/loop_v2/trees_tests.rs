@@ -531,3 +531,19 @@ fn parameter_keys_keep_side_values_and_other_signs() {
         p.key(&values, None)
     );
 }
+
+#[test]
+fn single_row_checks_measure_against_every_rows_scale() {
+    // The plane check's single-row SIMD calls (`verify_plane`) compare a row
+    // with the scales of all its rows: output 0 is O(1) in row 0 and cancels
+    // to rounding in row 1, where the plane's -6.6e-16 against the exact
+    // -1.67e-15 is rounding of an O(1) output, not a mistranslation.
+    let expected = [Complex::new(1.0, 0.0), Complex::new(-1.67e-15, 0.0)];
+    let got = [Complex::new(-6.6e-16, 0.0)];
+    let scales = output_scales(&expected, 1);
+    assert_eq!(first_mismatch_at(&expected[1..], &got, 1, &scales), None);
+    assert!(first_mismatch(&expected[1..], &got, 1).is_some());
+    // A wrong value is still one.
+    let wrong = [Complex::new(0.5, 0.0)];
+    assert!(first_mismatch_at(&expected[1..], &wrong, 1, &scales).is_some());
+}

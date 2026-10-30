@@ -283,11 +283,15 @@ fn verify_plane(
     if mixed.is_some() {
         return Ok(mixed);
     }
+    let scales = output_scales(&expected, outputs);
     for row in 0..rows {
         let got = evaluate_plane_application(plane, shape, &values[row * inputs..][..inputs], 1)?;
-        if let Some(mut mismatch) =
-            first_mismatch(&expected[row * outputs..][..outputs], &got, outputs)
-        {
+        if let Some(mut mismatch) = first_mismatch_at(
+            &expected[row * outputs..][..outputs],
+            &got,
+            outputs,
+            &scales,
+        ) {
             if let PlaneProbe::Row {
                 row: probe,
                 real_axis,
@@ -334,9 +338,12 @@ fn first_mismatch(
     got: &[Complex<f64>],
     outputs: usize,
 ) -> Option<PlaneMismatch> {
-    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
-        values.iter().flat_map(|z| [z.re, z.im]).collect()
-    };
+    first_mismatch_at(expected, got, outputs, &output_scales(expected, outputs))
+}
+
+/// Per output the largest finite part of `expected` (row-major over
+/// `outputs` complex outputs per row): [`first_mismatch`]'s scales.
+fn output_scales(expected: &[Complex<f64>], outputs: usize) -> Vec<f64> {
     let width = outputs.max(1);
     let mut scales = vec![0.0_f64; width];
     for (index, z) in expected.iter().enumerate() {
@@ -346,6 +353,22 @@ fn first_mismatch(
             }
         }
     }
+    scales
+}
+
+/// [`first_mismatch`] with given per-output `scales` (the plane check's
+/// single-row SIMD calls take those of all its rows, so a part that cancels
+/// to rounding in one row is measured against its output's size).
+fn first_mismatch_at(
+    expected: &[Complex<f64>],
+    got: &[Complex<f64>],
+    outputs: usize,
+    scales: &[f64],
+) -> Option<PlaneMismatch> {
+    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
+        values.iter().flat_map(|z| [z.re, z.im]).collect()
+    };
+    let width = outputs.max(1);
     let (expected, got) = (parts(expected), parts(got));
     for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
         let scale = scales[(index / 2) % width];
@@ -895,8 +918,7 @@ impl Parameters {
     /// values and the signs (-1, 0, 1) of the others (the scale's: 1), which
     /// decide every other side (`engine::real_axis_side_inputs`); in an
     /// artifact written before the record, every value but the scale's
-    /// (zeroed: it entered through logarithms of positive ratios in every
-    /// model then shipped).
+    /// (zeroed, as before the record).
     fn key(&self, values: &[Rational], scale: Option<&Rational>) -> Vec<Rational> {
         let program = self;
         let sign = |value: &Rational| {
@@ -2528,8 +2550,8 @@ impl TreeProgram {
         // certified one is checked once, on its first point, against the
         // exact evaluator; on a disagreement its points, and later ones at
         // that key, evaluate the parameter program exactly, the side DD, AP
-        // and MadLoop take. A change of a parameter that moves no side (aS,
-        // and the scale, in the shipped models) keeps the certified key.
+        // and MadLoop take. A change of a parameter that moves no side (aS
+        // and the scale on loop_sm's QCD processes) keeps the certified key.
         if matches!(runtime.parameters, Kernel::Plane(_)) {
             let mut groups: Vec<(Vec<Rational>, Vec<usize>)> = Vec::new();
             let keyed = program.scale.is_some_and(|index| {
