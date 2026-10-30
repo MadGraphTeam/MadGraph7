@@ -73,6 +73,7 @@ Conventions
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -110,6 +111,7 @@ from ...models.prepared_catalog_builder import (
 )
 from ...models.prepared_catalog_helpers import (
     canonical_expressions,
+    canonical_json,
     component_descriptors,
     formal_components,
     formal_model_parameter,
@@ -606,6 +608,8 @@ class _CatalogueBuilder:
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
         self.native_polynomials = NATIVE_CATALOGUE_POLYNOMIALS
         self._deferred: list[_DeferredPolynomials] = []
+        self._input_items: dict[PreparedKernelInput, tuple[str, str]] = {}
+        self._shared_items: list[tuple[str, str]] | None = None
         self._reading_signs: dict[int, int] = {}
         self._field_signs: _FieldSigns | None = None
         self._conjugate_signs: _FieldSigns | None = None
@@ -1411,8 +1415,6 @@ class _CatalogueBuilder:
         exact: tuple[str, ...],
         inputs: tuple[PreparedKernelInput, ...],
         layout: tuple[str, ...],
-        *,
-        inputs_checked: bool = False,
     ) -> _Candidate:
         candidate = _candidate_from_payload(
             contract_kind,
@@ -1421,7 +1423,6 @@ class _CatalogueBuilder:
             inputs,
             layout,
             proof_class=None,
-            inputs_checked=inputs_checked,
         )
         _register_candidate(self.candidates, self.proof_classes, candidate)
         return candidate
@@ -1437,6 +1438,7 @@ class _CatalogueBuilder:
         from ..native import load_loop_native
 
         shared = self.parameter_descriptors
+        (kind,) = {item.contract_kind for item in deferred}
         jobs = []
         for item in deferred:
             if item.available[item.own_inputs :] != shared:
@@ -1446,19 +1448,28 @@ class _CatalogueBuilder:
                 )
             jobs.append(
                 (
-                    [_canonical(output) for output in item.outputs],
+                    # Symbolica's portable text (every namespace but the
+                    # default one): the same expression as its canonical
+                    # string, without sorting every node.
+                    [_portable(output) for output in item.outputs],
                     [row.to_canonical_string() for row in item.rows],
                     [
                         [[value.to_canonical_string() for value in block] for block in blocks]
                         for _form, blocks, _context in item.variants
                     ],
-                    [descriptor.symbol for descriptor in item.available[: item.own_inputs]],
+                    [self._input_item(d) for d in item.available[: item.own_inputs]],
                 )
             )
+        if self._shared_items is None:
+            self._shared_items = [self._input_item(d) for d in shared]
         results = load_loop_native().loop_catalogue_polynomials(
             jobs,
             [component.to_canonical_string() for component in self.q],
-            [descriptor.symbol for descriptor in shared],
+            self._shared_items,
+            (
+                json.dumps(LOOP_KERNEL_CATALOGUE_ABI, ensure_ascii=True),
+                json.dumps(kind, ensure_ascii=True),
+            ),
         )
         for item, variants in zip(deferred, results, strict=True):
             for (form, _blocks, context), (found, refusal) in zip(
@@ -1500,16 +1511,35 @@ class _CatalogueBuilder:
             raise LoopKernelCatalogueError(f"{context}: native refusal {kind} {detail}")
         if found is None:
             return None
-        raw, exact, positions = found
+        raw, exact, positions, signature = found
         entries = tuple(
             LoopMonomialEntry(int(row), int(out), tuple(exponents), tuple(blocks))
             for row, out, exponents, blocks in raw
         )
-        inputs = tuple(available[position] for position in positions)
-        layout = tuple(entry.label() for entry in entries)
-        return entries, self._candidate(
-            contract_kind, tuple(exact), inputs, layout, inputs_checked=True
+        # ``_candidate_from_payload``'s candidate, its checks and signature
+        # formed natively.
+        candidate = _Candidate(
+            contract_kind=contract_kind,
+            canonical_signature=signature,
+            exact_expressions=tuple(exact),
+            inputs=tuple(available[position] for position in positions),
+            output_layout=tuple(entry.label() for entry in entries),
+            proof_class=None,
         )
+        _register_candidate(self.candidates, self.proof_classes, candidate)
+        return entries, candidate
+
+    def _input_item(self, descriptor: PreparedKernelInput) -> tuple[str, str]:
+        """(symbol, the canonical JSON of the descriptor) of an available
+        input, as ``_candidate_from_payload`` writes it."""
+
+        found = self._input_items.get(descriptor)
+        if found is None:
+            found = self._input_items[descriptor] = (
+                descriptor.symbol,
+                canonical_json(descriptor.to_dict()).decode("ascii"),
+            )
+        return found
 
     def finish(self, loop_species: tuple[int, ...]) -> LoopKernelCatalogue:
         self._flush()
@@ -1731,13 +1761,13 @@ def _contract_lorentz(
     )
 
 
-def _canonical(value: Any) -> str:
-    """The canonical string of an output as ``_polynomial_coefficients``
-    reads it (``0 + output``)."""
+def _portable(value: Any) -> str:
+    """An output as ``_polynomial_coefficients`` reads it (``0 + output``),
+    in Symbolica's portable text."""
 
     if not isinstance(value, _sym.Expression):
         value = _sym.E("0") + value
-    return str(value.to_canonical_string())
+    return repr(value)
 
 
 def _polynomial_coefficients(

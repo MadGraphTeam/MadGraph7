@@ -2,37 +2,45 @@
 
 //! Python entry point of the loop-kernel catalogue's polynomial stage
 //! (`rusticol_core::loop_v2::generate::catalogue`, M-SM MS-GEN): the twin of
-//! `loops/v2/catalogue.py::_polynomial_candidate` without its signature,
-//! which stays the oracle.
+//! `loops/v2/catalogue.py::_polynomial_candidate` with the candidate's
+//! signature, which stays the oracle.
 use super::*;
 use rusticol_core::loop_v2::generate::catalogue::{
-    CandidateError, PolynomialJob, polynomial_candidates,
+    CandidateError, PolynomialJob, SignatureHeader, polynomial_candidates,
 };
 
 /// (loop_in, out, (q0, q1, q2, q3) exponents, block indices).
 type EntryTuple = (i64, i64, (i64, i64, i64, i64), Vec<i64>);
-/// (entries, exact canonical strings, input positions).
-type CandidateTuple = (Vec<EntryTuple>, Vec<String>, Vec<usize>);
+/// (entries, exact canonical strings, input positions, canonical signature).
+type CandidateTuple = (Vec<EntryTuple>, Vec<String>, Vec<usize>, String);
 /// (refusal kind, detail): `not-linear`, `unexpected-monomial` (the key),
 /// `not-finite` (the output index), `undeclared` (the names, `, `-joined).
 type RefusalTuple = (String, String);
-/// A job: (outputs, rows, per variant the blocks, own available inputs),
-/// every expression a canonical string.
-type JobItem = (Vec<String>, Vec<String>, Vec<Vec<Vec<String>>>, Vec<String>);
+/// An available input: (canonical symbol, canonical JSON of its descriptor).
+type InputItem = (String, String);
+/// A job: (outputs as Symbolica text with namespaces, rows, per variant the
+/// blocks, own available inputs), the variables canonical strings.
+type JobItem = (Vec<String>, Vec<String>, Vec<Vec<Vec<String>>>, Vec<InputItem>);
 
 /// Per job, per variant, the lowered candidate (None with no refusal: the
 /// variant lowers to zero) or the oracle's refusal. `q` are the four
-/// loop-momentum symbols and `shared` the available inputs that follow each
-/// job's own. The GIL is released while they run.
+/// loop-momentum symbols, `shared` the available inputs that follow each
+/// job's own and `header` the canonical JSON of the signatures' ABI and
+/// contract kind. The GIL is released while they run.
 #[pyfunction]
-#[pyo3(signature = (jobs, q, shared, threads=None))]
+#[pyo3(signature = (jobs, q, shared, header, threads=None))]
 fn loop_catalogue_polynomials(
     py: Python<'_>,
     jobs: Vec<JobItem>,
     q: Vec<String>,
-    shared: Vec<String>,
+    shared: Vec<InputItem>,
+    header: (String, String),
     threads: Option<usize>,
 ) -> PyResult<Vec<Vec<(Option<CandidateTuple>, Option<RefusalTuple>)>>> {
+    let header = SignatureHeader {
+        abi: header.0,
+        contract_kind: header.1,
+    };
     let jobs: Vec<PolynomialJob> = jobs
         .into_iter()
         .map(|(outputs, rows, variants, available)| PolynomialJob {
@@ -43,7 +51,7 @@ fn loop_catalogue_polynomials(
         })
         .collect();
     let results = py
-        .detach(|| polynomial_candidates(&jobs, &q, &shared, threads))
+        .detach(|| polynomial_candidates(&jobs, &q, &shared, &header, threads))
         .map_err(error)?;
     Ok(results
         .into_iter()
@@ -64,6 +72,7 @@ fn loop_catalogue_polynomials(
                                 .collect(),
                             candidate.exact,
                             candidate.inputs,
+                            candidate.signature,
                         )),
                         None,
                     ),

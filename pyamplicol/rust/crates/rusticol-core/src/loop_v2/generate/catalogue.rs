@@ -3,18 +3,21 @@
 //! The polynomial stage of the loop-kernel catalogue in parallel (M-SM
 //! MS-GEN, HANDOFF §0.4).
 //!
-//! The twin of `loops/v2/catalogue.py`'s `_polynomial_candidate` minus the
-//! candidate's JSON signature: `_polynomial_coefficients` (the monomial
-//! coefficients of a map linear in the open-loop current and in each block),
-//! `canonical_expressions` (the expanded coefficients' canonical strings and
-//! their finiteness check), `used_input_descriptors` (the inputs the
-//! unexpanded coefficients read) and the undeclared-input check of
-//! `prepared_catalog_builder._candidate_from_payload`. The Python functions
-//! stay the oracle (`catalogue.native_catalogue_polynomials(False)`).
+//! The twin of `loops/v2/catalogue.py`'s `_polynomial_candidate`:
+//! `_polynomial_coefficients` (the monomial coefficients of a map linear in
+//! the open-loop current and in each block), `canonical_expressions` (the
+//! expanded coefficients' canonical strings and their finiteness check),
+//! `used_input_descriptors` (the inputs the unexpanded coefficients read)
+//! and `prepared_catalog_builder._candidate_from_payload` (the
+//! undeclared-input check and the candidate's signature, the sha256 of its
+//! canonical JSON). The Python functions stay the oracle
+//! (`catalogue.native_catalogue_polynomials(False)`).
 //!
-//! The expressions cross as Symbolica canonical strings and this crate builds
-//! the Symbolica revision of the Python wheel, so every operation below is
-//! the oracle's own, in the oracle's order (`(0 + output).expand()`, the
+//! The outputs cross as Symbolica's portable text (`repr`, every symbol with
+//! its namespace) and the variables and inputs as canonical strings; this
+//! crate builds the Symbolica revision of the Python wheel, so every
+//! operation below is the oracle's own, in the oracle's order
+//! (`(0 + output).expand()`, the
 //! coefficient list in `i16` exponents over the current, block and loop
 //! momentum variables, the per-entry sums `0 + c1 + c2 + ...` in coefficient
 //! order, their expansion and canonical strings), and every string is the
@@ -23,11 +26,14 @@
 //! job order, so they do not depend on the thread count.
 
 use rayon::prelude::*;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use symbolica::atom::{Atom, AtomCore, AtomView, Symbol};
 use symbolica::coefficient::CoefficientView;
 use symbolica::parser::ParseSettings;
 
+use crate::model_proofs::json_string;
 use crate::{RusticolError, RusticolResult};
 
 /// One `_polynomial_candidate` call per variant on shared outputs: a loop
@@ -35,16 +41,24 @@ use crate::{RusticolError, RusticolResult};
 /// block variables.
 #[derive(Clone, Debug, Default)]
 pub struct PolynomialJob {
-    /// Canonical strings of the kernel's output components.
+    /// The kernel's output components (Symbolica text with namespaces).
     pub outputs: Vec<String>,
     /// Canonical strings of the open-loop current components (`rows`).
     pub rows: Vec<String>,
     /// Per variant, the canonical strings of each block's components (no
     /// block for a fused segment or a propagator numerator).
     pub variants: Vec<Vec<Vec<String>>>,
-    /// Canonical symbols of the job's own available inputs; the shared
-    /// inputs of the call follow them.
-    pub available: Vec<String>,
+    /// The job's own available inputs (canonical symbol, the canonical JSON
+    /// of the descriptor); the shared inputs of the call follow them.
+    pub available: Vec<(String, String)>,
+}
+
+/// The fixed fields of the candidates' signature payload: the canonical
+/// JSON of the ABI and of the contract kind (`json.dumps` of the strings).
+#[derive(Clone, Debug, Default)]
+pub struct SignatureHeader {
+    pub abi: String,
+    pub contract_kind: String,
 }
 
 /// `LoopMonomialEntry`: (loop_in, out, exponents of `q0..q3`, blocks).
@@ -57,13 +71,82 @@ pub struct MonomialEntry {
 }
 
 /// A lowered variant: its entries in sorted order, the canonical strings of
-/// their coefficients and the positions (in the job's available inputs
-/// followed by the shared ones) of the inputs the coefficients read.
+/// their coefficients, the positions (in the job's available inputs
+/// followed by the shared ones) of the inputs the coefficients read and the
+/// candidate's canonical signature (sha256 hex).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PolynomialCandidate {
     pub entries: Vec<MonomialEntry>,
     pub exact: Vec<String>,
     pub inputs: Vec<usize>,
+    pub signature: String,
+}
+
+impl MonomialEntry {
+    /// `LoopMonomialEntry.label`.
+    pub fn label(&self) -> String {
+        let mut out = format!("in{}", self.loop_in);
+        if !self.blocks.is_empty() {
+            out.push_str(":b");
+            for (index, block) in self.blocks.iter().enumerate() {
+                if index > 0 {
+                    out.push('.');
+                }
+                let _ = write!(out, "{block}");
+            }
+        }
+        let [a, b, c, d] = self.exponents;
+        let _ = write!(out, ":out{}:q{a}.{b}.{c}.{d}", self.out);
+        out
+    }
+}
+
+/// `_candidate_from_payload`'s signature: the sha256 of
+/// `canonical_json({"abi", "contract_kind", "inputs", "outputs",
+/// "output_layout"})` (sorted keys, no spaces, ASCII escapes).
+fn signature(
+    header: &SignatureHeader,
+    inputs: &[&str],
+    layout: &[String],
+    exact: &[String],
+) -> String {
+    let size = exact.iter().map(String::len).sum::<usize>()
+        + inputs.iter().map(|item| item.len()).sum::<usize>()
+        + 64 * layout.len()
+        + 256;
+    let mut text = String::with_capacity(size);
+    text.push_str("{\"abi\":");
+    text.push_str(&header.abi);
+    text.push_str(",\"contract_kind\":");
+    text.push_str(&header.contract_kind);
+    text.push_str(",\"inputs\":[");
+    for (index, input) in inputs.iter().enumerate() {
+        if index > 0 {
+            text.push(',');
+        }
+        text.push_str(input);
+    }
+    text.push_str("],\"output_layout\":[");
+    for (index, label) in layout.iter().enumerate() {
+        if index > 0 {
+            text.push(',');
+        }
+        json_string(label, &mut text);
+    }
+    text.push_str("],\"outputs\":[");
+    for (index, value) in exact.iter().enumerate() {
+        if index > 0 {
+            text.push(',');
+        }
+        json_string(value, &mut text);
+    }
+    text.push_str("]}");
+    let digest = Sha256::digest(text.as_bytes());
+    let mut hex = String::with_capacity(64);
+    for byte in digest {
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
 }
 
 /// The oracle's refusals, raised by the caller with the oracle's messages.
@@ -163,7 +246,8 @@ fn variant(
     rows: &[Atom],
     blocks: &[Vec<Atom>],
     q: &[Atom],
-    available: &[&str],
+    available: &[(&str, &str)],
+    header: &SignatureHeader,
 ) -> VariantResult {
     let variables: Vec<Atom> = rows
         .iter()
@@ -261,12 +345,12 @@ fn variant(
     let inputs: Vec<usize> = available
         .iter()
         .enumerate()
-        .filter(|(_, symbol)| used.contains(**symbol))
+        .filter(|(_, (symbol, _))| used.contains(*symbol))
         .map(|(index, _)| index)
         .collect();
     // `_candidate_from_payload`: the exact outputs' non-constant symbols are
     // declared inputs.
-    let declared: HashSet<&str> = inputs.iter().map(|&index| available[index]).collect();
+    let declared: HashSet<&str> = inputs.iter().map(|&index| available[index].0).collect();
     let mut symbols = HashSet::new();
     for (_, _, expanded) in &kept {
         symbols.extend(expanded.get_all_symbols(false));
@@ -281,17 +365,23 @@ fn variant(
         unbound.sort();
         return Err(CandidateError::Undeclared(unbound));
     }
+    let entries: Vec<MonomialEntry> = kept.into_iter().map(|(entry, _, _)| entry).collect();
+    let layout: Vec<String> = entries.iter().map(MonomialEntry::label).collect();
+    let fragments: Vec<&str> = inputs.iter().map(|&index| available[index].1).collect();
+    let signature = signature(header, &fragments, &layout, &exact);
     Ok(Some(PolynomialCandidate {
-        entries: kept.into_iter().map(|(entry, _, _)| entry).collect(),
+        entries,
         exact,
         inputs,
+        signature,
     }))
 }
 
 fn job(
     input: &PolynomialJob,
     q: &[Atom],
-    shared: &[String],
+    shared: &[(String, String)],
+    header: &SignatureHeader,
 ) -> RusticolResult<Vec<VariantResult>> {
     let outputs = input
         .outputs
@@ -303,11 +393,11 @@ fn job(
         .iter()
         .map(|text| variable(text))
         .collect::<RusticolResult<Vec<_>>>()?;
-    let available: Vec<&str> = input
+    let available: Vec<(&str, &str)> = input
         .available
         .iter()
         .chain(shared)
-        .map(String::as_str)
+        .map(|(symbol, json)| (symbol.as_str(), json.as_str()))
         .collect();
     input
         .variants
@@ -317,7 +407,7 @@ fn job(
                 .iter()
                 .map(|block| block.iter().map(|text| variable(text)).collect())
                 .collect::<RusticolResult<Vec<Vec<Atom>>>>()?;
-            Ok(variant(&outputs, &rows, &blocks, q, &available))
+            Ok(variant(&outputs, &rows, &blocks, q, &available, header))
         })
         .collect()
 }
@@ -336,12 +426,13 @@ fn pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
 
 /// Per job, per variant, the lowered candidate (`None`: zero) or the
 /// oracle's refusal. `q` are the loop-momentum variables (the last four
-/// variables of every variant) and `shared` the available inputs that follow
-/// every job's own.
+/// variables of every variant), `shared` the available inputs that follow
+/// every job's own and `header` the signatures' fixed fields.
 pub fn polynomial_candidates(
     jobs: &[PolynomialJob],
     q: &[String],
-    shared: &[String],
+    shared: &[(String, String)],
+    header: &SignatureHeader,
     threads: Option<usize>,
 ) -> RusticolResult<Vec<Vec<VariantResult>>> {
     if q.len() != 4 {
@@ -356,7 +447,7 @@ pub fn polynomial_candidates(
                     .iter()
                     .map(|text| variable(text))
                     .collect::<RusticolResult<Vec<_>>>()?;
-                job(input, &q, shared)
+                job(input, &q, shared, header)
             })
             .collect()
     })
@@ -370,9 +461,46 @@ mod tests {
         items.iter().map(|item| (*item).to_owned()).collect()
     }
 
+    fn inputs(items: &[&str]) -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|item| ((*item).to_owned(), format!("{{\"symbol\":\"{item}\"}}")))
+            .collect()
+    }
+
+    #[test]
+    fn labels_and_signatures_follow_the_oracle() {
+        let entry = MonomialEntry {
+            loop_in: 2,
+            out: 1,
+            exponents: [1, 0, 0, 3],
+            blocks: vec![0, 4],
+        };
+        assert_eq!(entry.label(), "in2:b0.4:out1:q1.0.0.3");
+        let plain = MonomialEntry {
+            blocks: vec![],
+            ..entry
+        };
+        assert_eq!(plain.label(), "in2:out1:q1.0.0.3");
+        // hashlib.sha256(b'{"abi":"a","contract_kind":"k","inputs":[{"x":1}],
+        // "output_layout":["l"],"outputs":["\\u00e9"]}').hexdigest()
+        let header = SignatureHeader {
+            abi: "\"a\"".into(),
+            contract_kind: "\"k\"".into(),
+        };
+        let text = "{\"abi\":\"a\",\"contract_kind\":\"k\",\"inputs\":[{\"x\":1}],\"output_layout\":[\"l\"],\"outputs\":[\"\\u00e9\"]}";
+        let digest = Sha256::digest(text.as_bytes());
+        let expected: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        assert_eq!(
+            signature(&header, &["{\"x\":1}"], &["l".to_owned()], &["é".to_owned()]),
+            expected
+        );
+    }
+
     #[test]
     fn linear_map_coefficients_follow_the_oracle() {
         let _guard = crate::licence::unlock();
+        let header = SignatureHeader::default();
         let q = strings(&["msgen::q0", "msgen::q1", "msgen::q2", "msgen::q3"]);
         let job = PolynomialJob {
             outputs: strings(&[
@@ -381,10 +509,10 @@ mod tests {
             ]),
             rows: strings(&["msgen::r0", "msgen::r1"]),
             variants: vec![vec![], vec![strings(&["msgen::b0", "msgen::b1"])]],
-            available: strings(&["msgen::b0", "msgen::b1", "msgen::z"]),
+            available: inputs(&["msgen::b0", "msgen::b1", "msgen::z"]),
         };
-        let shared = strings(&["msgen::g", "msgen::m"]);
-        let results = polynomial_candidates(&[job], &q, &shared, Some(2)).unwrap();
+        let shared = inputs(&["msgen::g", "msgen::m"]);
+        let results = polynomial_candidates(&[job], &q, &shared, &header, Some(2)).unwrap();
         let fused = results[0][0].clone().unwrap().unwrap();
         assert_eq!(fused.entries.len(), 3);
         // sorted (loop_in, out, exponents): r0 q0 of output 0 first
@@ -397,13 +525,14 @@ mod tests {
         let split = results[0][1].clone().unwrap().unwrap();
         assert!(split.entries.iter().all(|entry| entry.blocks.len() == 1));
         assert_eq!(split.inputs, vec![3, 4]);
+        assert_ne!(split.signature, fused.signature);
         let zero = PolynomialJob {
             outputs: strings(&["msgen::r0*msgen::q0-msgen::q0*msgen::r0"]),
             rows: strings(&["msgen::r0"]),
             variants: vec![vec![]],
             available: vec![],
         };
-        let results = polynomial_candidates(&[zero], &q, &[], None).unwrap();
+        let results = polynomial_candidates(&[zero], &q, &[], &header, None).unwrap();
         assert_eq!(results[0][0], Ok(None));
         let quadratic = PolynomialJob {
             outputs: strings(&["msgen::r0^2"]),
@@ -411,7 +540,7 @@ mod tests {
             variants: vec![vec![]],
             available: vec![],
         };
-        let results = polynomial_candidates(&[quadratic], &q, &[], None).unwrap();
+        let results = polynomial_candidates(&[quadratic], &q, &[], &header, None).unwrap();
         assert_eq!(results[0][0], Err(CandidateError::NotLinear));
         let undeclared = PolynomialJob {
             outputs: strings(&["msgen::r0*msgen::y"]),
@@ -419,7 +548,7 @@ mod tests {
             variants: vec![vec![]],
             available: vec![],
         };
-        let results = polynomial_candidates(&[undeclared], &q, &[], None).unwrap();
+        let results = polynomial_candidates(&[undeclared], &q, &[], &header, None).unwrap();
         assert_eq!(
             results[0][0],
             Err(CandidateError::Undeclared(vec!["msgen::y".to_owned()]))
