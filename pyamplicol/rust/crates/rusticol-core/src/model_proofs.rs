@@ -78,7 +78,7 @@ fn parse(text: &str) -> RusticolResult<Atom> {
 /// escaped, the short escapes of `\b \f \n \r \t`, every other character
 /// outside printable ASCII as `\uXXXX` (lower-case hex), surrogate pairs above
 /// the basic plane.
-fn json_string(text: &str, out: &mut String) {
+pub(crate) fn json_string(text: &str, out: &mut String) {
     out.push('"');
     for character in text.chars() {
         match character {
