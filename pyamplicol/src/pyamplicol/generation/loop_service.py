@@ -702,6 +702,7 @@ def _v2_request(backend, context, index):
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
         selection=selection,
+        external_photons=run.loop.external_photons,
     )
 
 

@@ -75,7 +75,10 @@ from typing import Any, NamedTuple
 
 from pyamplicol.api.errors import GenerationError
 
+from .refusals import LoopRequestUnsupported
+
 # UFO spins are 2s + 1.
+FERMION_SPIN = 2
 VECTOR_SPIN = 3
 
 
@@ -84,9 +87,12 @@ class ElectroweakWidthError(GenerationError):
     a non-zero width outside the complex-mass scheme."""
 
 
-class ExternalPhotonError(GenerationError):
-    """An electroweak request with an on-shell external photon on a model
-    that cannot take the alpha(0) convention (``external_photon_scheme``)."""
+class ExternalPhotonError(LoopRequestUnsupported):
+    """A listed external-photon refusal (``refusals``): tagged on-shell
+    external photons on a model or request that cannot take the alpha(0)
+    convention (``external-photon-scheme``, ``external_photon_scheme``), or a
+    tag list naming a leg that is not an on-shell external photon
+    (``external-photon-legs``, ``photon_tags``)."""
 
 
 class ElectroweakGaugeError(GenerationError):
@@ -325,6 +331,107 @@ def external_photons(
     )
 
 
+# ``loop.external_photons`` (``SliceRequest.external_photons``): which
+# on-shell external photons are tagged (MG5_aMC's ``!a!``).
+PHOTON_TAG_CHOICES = ("final", "all", "none")
+PHOTON_TAG_DEFAULT = "final"
+
+
+def photon_tag_option(value: Any) -> str | tuple[int, ...]:
+    """``value`` as a ``SliceRequest.external_photons`` option: one of
+    ``PHOTON_TAG_CHOICES`` or the sorted 1-based labels of the tagged legs
+    (positive integers, each once); anything else raises ``ValueError``."""
+
+    if isinstance(value, str):
+        if value not in PHOTON_TAG_CHOICES:
+            raise ValueError(
+                "external_photons must be one of "
+                f"{', '.join(map(repr, PHOTON_TAG_CHOICES))} or a list of 1-based "
+                f"leg labels; got {value!r}"
+            )
+        return value
+    if isinstance(value, bytes | Mapping) or not isinstance(value, Iterable):
+        raise ValueError(
+            f"external_photons must be a choice or a list of leg labels; got {value!r}"
+        )
+    labels = tuple(value)
+    if any(isinstance(x, bool) or not isinstance(x, int) or x < 1 for x in labels):
+        raise ValueError(
+            "external_photons lists 1-based leg labels (positive integers); "
+            f"got {value!r}"
+        )
+    if len(set(labels)) != len(labels):
+        raise ValueError(f"external_photons repeats a leg: {list(labels)}")
+    return tuple(sorted(labels))
+
+
+def photon_tags(
+    compiled: Any, request: Any, process: Any, fixed: Mapping[str, Any]
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The (tagged, untagged) 1-based labels of the on-shell external photons
+    of ``process`` (``external_photons``) under ``request.external_photons``
+    (m-sm/PLAN.md Q1 (a), MG5_aMC's ``!a!``): "final" tags the final-state
+    ones, "all" every one, "none" none, a list exactly its legs. A listed leg
+    that is not an on-shell external photon of the process is refused
+    (``ExternalPhotonError`` ``external-photon-legs``). A tagged photon
+    couples with alpha(0) when the request takes the electromagnetic
+    correction (``external_photon_scheme``); an untagged one keeps the
+    loops' coupling and its gamma_gamma pole."""
+
+    photons = external_photons(compiled, process, fixed)
+    option = photon_tag_option(getattr(request, "external_photons", PHOTON_TAG_DEFAULT))
+    legs = {int(leg.label): leg for leg in process.legs}
+    if option == "all":
+        tagged = photons
+    elif option == "none":
+        tagged = ()
+    elif option == "final":
+        tagged = tuple(label for label in photons if legs[label].side == "final")
+    else:
+        wrong = [label for label in option if label not in photons]
+        if wrong:
+            names = {int(r.pdg_code): str(r.name) for r in compiled.ir.particles}
+
+            def describe(label: int) -> str:
+                leg = legs.get(label)
+                if leg is None:
+                    return f"{label} (the process has {len(legs)} legs)"
+                name = names.get(int(leg.pdg), str(leg.pdg))
+                return f"{label} ({name}, {leg.side})"
+
+            raise ExternalPhotonError(
+                "external-photon-legs",
+                f"{request.process!r}: loop.external_photons lists the legs "
+                f"{', '.join(map(describe, wrong))}, which are not on-shell "
+                "external photons (the process's on-shell photons: legs "
+                f"{list(photons)})",
+            )
+        tagged = tuple(option)
+    return tagged, tuple(label for label in photons if label not in tagged)
+
+
+def slice_photon_tags(slice_: Any) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The (tagged, untagged) on-shell external photons of a generated slice:
+    the tagged ones are its ``external_photons`` legs (alpha(0)), the others
+    keep the loops' coupling."""
+
+    compiled = slice_.compiled
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    records = {str(record.name): record for record in compiled.ir.particles}
+    fixed = slice_.request.fixed_parameters
+    photons = tuple(
+        leg.index + 1
+        for leg in slice_.families.legs
+        if is_photon(records[leg.field], parameters, fixed)
+    )
+    convention = getattr(slice_, "external_photons", None)
+    tagged = set(() if convention is None else convention.legs)
+    return (
+        tuple(label for label in photons if label in tagged),
+        tuple(label for label in photons if label not in tagged),
+    )
+
+
 # MG5_aMC's loop models declare the external-photon conversion
 # delta Z_e^{G_mu} - delta Z_e^{alpha(0)} as this counterterm parameter, and
 # MG5_aMC applies it by this name outside the UFO (1804.10017 §2;
@@ -338,19 +445,22 @@ ALPHA0_INVERSE_CODE = ("SMINPUTS", (1,))
 
 @dataclass(frozen=True)
 class ExternalPhotons:
-    """The external-photon convention of an electroweak request (WP3.2
-    EWI-6b; the user's decision [U9] of 2026-10-25): every on-shell external
-    photon couples with alpha(0) instead of the loops' alpha_Gmu.
+    """The alpha(0) convention of the tagged on-shell external photons of an
+    electroweak request (WP3.2 EWI-6b; the user's decision [U9] of
+    2026-10-25, per leg since MS-PHOTON: m-sm/PLAN.md Q1 (a), MG5_aMC's
+    ``!a!``): a tagged photon couples with alpha(0) instead of the loops'
+    alpha_Gmu.
 
     The Born and every virtual component are multiplied by
-    (alpha(0) / alpha_Gmu)^n for n photons (``scale``; the coupling e of each
-    external photon), and each photon adds the field-like term
+    (alpha(0) / alpha_Gmu)^n for n tagged photons (``scale``; the coupling e
+    of each tagged photon), and each tagged photon adds the field-like term
     -2 (delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) Born to the virtual of the
     electromagnetic correction (the model's ``conversion`` parameter as an
     external-field factor of the photon leg, ``assemble``), as MadLoop's
-    aMC@NLO interface does for tagged photons."""
+    aMC@NLO interface does for tagged photons. Untagged photons are not
+    listed: they keep the loops' coupling (``slice_photon_tags``)."""
 
-    # 1-based labels of the on-shell external photons.
+    # 1-based labels of the tagged on-shell external photons (never empty).
     legs: tuple[int, ...]
     # The external parameter holding 1/alpha(0).
     alpha0_inverse: str
@@ -368,51 +478,63 @@ def external_photon_scheme(
     fixed: Mapping[str, Any],
     species_orders: Mapping[int, Iterable[str]],
 ) -> ExternalPhotons | None:
-    """The external-photon convention of an electroweak ``request``
-    (``ExternalPhotons``), None without an on-shell external photon.
+    """The alpha(0) convention of the tagged on-shell external photons of an
+    electroweak ``request`` (``ExternalPhotons``; ``photon_tags``), None
+    without a tagged photon (untagged ones need no model input).
 
-    Refused (``ExternalPhotonError``) where the convention cannot be applied:
-    the electromagnetic correction is not requested (or the model has none),
-    the model declares no conversion parameter (``ALPHA0_CONVERSION``) or no
-    unique adjustable 1/alpha(0) at ``ALPHA0_INVERSE_CODE`` that the loops'
-    coupling (``poles.qed_coupling``) does not depend on (a model whose
-    loops couple with alpha(0) or alpha(M_Z) needs another conversion), its
-    value is fixed to zero, or ``particle_veto`` removes a species
-    perturbative in the electromagnetic correction (the conversion is one
-    counterterm parameter over the whole electroweak content)."""
+    Refused (``ExternalPhotonError`` ``external-photon-scheme``) where the
+    convention cannot be applied to a tagged photon: the electromagnetic
+    correction is not requested (or the model has none), the model declares
+    no conversion parameter (``ALPHA0_CONVERSION``) or no unique adjustable
+    1/alpha(0) at ``ALPHA0_INVERSE_CODE`` that the loops' coupling
+    (``poles.qed_coupling``) does not depend on (a model whose loops couple
+    with alpha(0) or alpha(M_Z) needs another conversion), its value is fixed
+    to zero, or ``particle_veto`` removes a species perturbative in the
+    electromagnetic correction (the conversion is one counterterm parameter
+    over the whole electroweak content). The message names the remedy for
+    the model at hand: untagged photons, or a model (restriction) that sets
+    1/alpha(0)."""
 
     from .poles import qed_coupling
 
-    photons = external_photons(compiled, process, fixed)
+    photons, _untagged = photon_tags(compiled, request, process, fixed)
     if not photons:
         return None
 
-    def refuse(reason: str) -> ExternalPhotonError:
+    def refuse(reason: str, remedy: str) -> ExternalPhotonError:
         return ExternalPhotonError(
-            f"{request.process!r}: on-shell external photons (legs "
-            f"{list(photons)}) in a request with corrections "
-            f"{list(request.corrections)}. Electroweak corrections take the "
-            "external-photon convention alpha(0): every on-shell external "
-            "photon couples with alpha(0) instead of the loops' coupling, with "
-            "the matching charge-renormalisation term (MadLoop's and "
-            "OpenLoops' default; the user's decision of 2026-10-25), which "
-            f"cannot be applied here: {reason}. QCD corrections to such "
-            "processes are available"
+            "external-photon-scheme",
+            f"{request.process!r}: tagged on-shell external photons (legs "
+            f"{list(photons)}; loop.external_photons = "
+            f"{_option_text(request.external_photons)}) in a request with "
+            f"corrections {list(request.corrections)}. A tagged photon couples "
+            "with alpha(0) instead of the loops' coupling, with the matching "
+            "charge-renormalisation term (MG5_aMC's alpha(0) formula over the "
+            f"tagged legs), which cannot be applied here: {reason}. {remedy}",
         )
 
+    untag = (
+        'leave them untagged (loop.external_photons = "none"; they then keep '
+        "the loops' coupling and their gamma_gamma pole)"
+    )
     abelian = correction_orders(compiled, fixed).abelian
     if abelian is None or abelian not in request.corrections:
         raise refuse(
             "the request does not take the electromagnetic correction"
             if abelian is not None
-            else "the model has no electromagnetic coupling order"
+            else "the model has no electromagnetic coupling order",
+            f"Instead {untag}; QCD corrections to such processes are available",
         )
     raw = compiled.raw_loop_model
     names = {record["name"] for record in raw.collections["counterterm_parameters"]}
     if ALPHA0_CONVERSION not in names:
         raise refuse(
             f"the model declares no conversion counterterm {ALPHA0_CONVERSION} "
-            "(delta Z_e^Gmu - delta Z_e^alpha(0), as MG5_aMC's G_mu loop models)"
+            "(delta Z_e^Gmu - delta Z_e^alpha(0), as MG5_aMC's G_mu loop models; "
+            "MG5_aMC refuses tagged photons on such a model too)",
+            f"Instead {untag}, or use a model that declares the conversion with "
+            "an adjustable 1/alpha(0) (MG5_aMC's loop_qcd_qed_sm_Gmu under its "
+            "restriction a0)",
         )
     block, code = ALPHA0_INVERSE_CODE
     coded = [
@@ -426,12 +548,15 @@ def external_photon_scheme(
             f"the model has no adjustable 1/alpha(0) at {block} {list(code)} "
             + (
                 f"({', '.join(r.name for r in coded)} fixed by its restriction, "
-                "zero in MG5_aMC's default card of a G_mu loop model: compile the "
-                "model with a restriction that sets it, as MG5_aMC requires, "
-                "e.g. its restrict_a0)"
+                "zero in MG5_aMC's default card of a G_mu loop model)"
                 if coded
                 else "(MG5_aMC's G_mu loop models: aEW0M1)"
-            )
+            ),
+            "Instead compile the model with a restriction that sets it, as "
+            "MG5_aMC requires (e.g. its restrict_a0: model.restriction = "
+            f'"a0"), or {untag}'
+            if coded
+            else f"Instead {untag}",
         )
     (inverse,) = found
     parameters = {record.name: record for record in compiled.ir.parameters}
@@ -439,11 +564,15 @@ def external_photon_scheme(
     if coupling is None or inverse.name in {name for _symbol, name in coupling[1]}:
         raise refuse(
             "the loops' electromagnetic coupling is not a G_mu-scheme one that "
-            f"leaves {inverse.name} free"
+            f"leaves {inverse.name} free",
+            f"Instead {untag}",
         )
     value = fixed.get(inverse.name)
     if value is not None and Decimal(str(value)) == 0:
-        raise refuse(f"{inverse.name} (1/alpha(0)) is fixed to zero")
+        raise refuse(
+            f"{inverse.name} (1/alpha(0)) is fixed to zero",
+            f"Instead set {inverse.name} (e.g. 137.035999), or {untag}",
+        )
     veto = set(request.particle_veto)
     vetoed = sorted(
         abs(int(pdg))
@@ -454,9 +583,14 @@ def external_photon_scheme(
         raise refuse(
             f"particle_veto removes the species {vetoed}, perturbative in the "
             f"{abelian} correction, from the conversion's one counterterm "
-            "parameter"
+            "parameter",
+            f"Instead {untag}, or drop the veto",
         )
     return ExternalPhotons(photons, inverse.name, ALPHA0_CONVERSION, abelian)
+
+
+def _option_text(option: Any) -> str:
+    return f'"{option}"' if isinstance(option, str) else str(list(option))
 
 
 def propagated_species(dag: Any) -> tuple[tuple[int, bool], ...]:
@@ -622,8 +756,13 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
       2), "alpha" when it depends on an input 1/alpha (SMINPUTS 1: alpha(M_Z)
       in MG5_aMC's ``loop_qcd_qed_sm``), else "model"; ``alpha_inputs`` the
       external parameters it depends on, with their SLHA codes;
-    * ``external_photons``: "alpha(0)" when the request has on-shell
-      external photons (``external_photon_scheme``, [U9]), else "none".
+    * ``external_photons``: the coupling of the on-shell external photons
+      (MS-PHOTON, per leg: ``photon_tags``): "alpha(0)" when every one is
+      tagged (``external_photon_scheme``, [U9]), "loop-coupling" when none
+      is, "mixed" otherwise, "none" without such photons; with photons the
+      1-based ``tagged_photon_legs`` (alpha(0) and the conversion term) and
+      ``untagged_photon_legs`` (the loops' coupling, gamma_gamma in the IR
+      poles) and the request's ``external_photons_option``.
     """
 
     from .poles import qed_coupling
@@ -675,8 +814,28 @@ def scheme_conventions(slice_: Any) -> dict[str, object] | None:
             name: f"{block} {' '.join(map(str, lha))}".strip()
             for name, (block, lha) in codes.items()
         },
+        **_photon_conventions(slice_),
+    }
+
+
+def _photon_conventions(slice_: Any) -> dict[str, object]:
+    """``scheme_conventions``' external-photon entries (MS-PHOTON): without
+    on-shell external photons only ``external_photons`` "none" (the records
+    of such requests keep their bytes)."""
+
+    tagged, untagged = slice_photon_tags(slice_)
+    if not tagged and not untagged:
+        return {"external_photons": "none"}
+    return {
         "external_photons": (
-            "alpha(0)" if slice_.external_photons is not None else "none"
+            "alpha(0)" if not untagged else "loop-coupling" if not tagged else "mixed"
+        ),
+        "tagged_photon_legs": list(tagged),
+        "untagged_photon_legs": list(untagged),
+        "external_photons_option": (
+            option
+            if isinstance(option := slice_.request.external_photons, str)
+            else list(option)
         ),
     }
 
@@ -686,6 +845,8 @@ __all__ = [
     "ALPHA0_CONVERSION",
     "ALPHA0_INVERSE_CODE",
     "HV_TEXNAME",
+    "PHOTON_TAG_CHOICES",
+    "PHOTON_TAG_DEFAULT",
     "CorrectionOrders",
     "ElectroweakGaugeError",
     "ElectroweakWidthError",
@@ -700,9 +861,12 @@ __all__ = [
     "gauge_ghost_partners",
     "is_photon",
     "is_zero",
+    "photon_tag_option",
+    "photon_tags",
     "propagated_species",
     "propagating_widths",
     "require_feynman_gauge",
     "require_zero_widths",
     "scheme_conventions",
+    "slice_photon_tags",
 ]

@@ -197,21 +197,29 @@ def _decode_field(name: str, value: Any) -> Any:
 # (``selection.Selection``), so requests without one keep their records'
 # bytes.
 OPTIONAL_REQUEST_FIELD = "selection"
+# The request fields recorded only when they differ from their default
+# (``request_record``), with that default: the selection and the external
+# photons' tags (MS-PHOTON), so records of requests that keep them keep their
+# bytes, and records written before a field existed keep their meaning.
+OPTIONAL_REQUEST_DEFAULTS: dict[str, object] = {
+    OPTIONAL_REQUEST_FIELD: None,
+    "external_photons": "final",
+}
 
 
 def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
     """The JSON record of a ``SliceRequest`` (every dataclass field, so a new
     request field is recorded and restored without an edit here; the
-    selection only when set) and its resolved correlator declarations: the
-    artifact's generation recipe."""
+    ``OPTIONAL_REQUEST_DEFAULTS`` fields only when not at their default) and
+    its resolved correlator declarations: the artifact's generation recipe."""
 
     from dataclasses import fields
 
     record: dict[str, object] = {
         item.name: _encode_field(item.name, getattr(request, item.name))
         for item in fields(request)
-        if item.name != OPTIONAL_REQUEST_FIELD
-        or getattr(request, item.name) is not None
+        if item.name not in OPTIONAL_REQUEST_DEFAULTS
+        or getattr(request, item.name) != OPTIONAL_REQUEST_DEFAULTS[item.name]
     }
     record["correlators"] = None if correlators is None else correlators.to_json_dict()
     return record
@@ -219,15 +227,17 @@ def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
 
 def request_from_record(record: Mapping[str, Any]) -> Any:
     """The ``SliceRequest`` of a request record, which must name exactly the
-    request's fields (a missing field would silently take its default)."""
+    request's fields (a missing field would silently take its default) except
+    the ``OPTIONAL_REQUEST_DEFAULTS`` ones."""
 
     from dataclasses import fields
 
     from .assemble import SliceRequest
 
     known = {item.name for item in fields(SliceRequest)}
-    if OPTIONAL_REQUEST_FIELD not in record:
-        known.discard(OPTIONAL_REQUEST_FIELD)
+    for name in OPTIONAL_REQUEST_DEFAULTS:
+        if name not in record:
+            known.discard(name)
     if set(record) != known | {"correlators"}:
         raise ArtifactError(
             "the loop request record does not match this pyAmpliCol build "

@@ -323,6 +323,22 @@ def _coerce(
         ):
             raise ConfigurationError(f"{item.path} must be a list of integers")
         result = tuple(cast(Sequence[int], value))
+    elif kind == "choice_or_list_int":
+        # One of the choices, or a list of integers (``loop.external_photons``).
+        if isinstance(value, str):
+            result = value
+        elif isinstance(value, Sequence) and not isinstance(value, bytes):
+            if any(
+                isinstance(entry, bool) or not isinstance(entry, int) for entry in value
+            ):
+                raise ConfigurationError(
+                    f"{item.path} must be one of the choices or a list of integers"
+                )
+            return tuple(cast(Sequence[int], value))
+        else:
+            raise ConfigurationError(
+                f"{item.path} must be one of the choices or a list of integers"
+            )
     elif kind == "process_entries":
         result = _coerce_process_entries(value, item.path)
     elif kind in ("map_list_str", "map_int", "map_list_int", "map_exact_scalar"):
@@ -382,7 +398,13 @@ def parse_override(
         try:
             parsed = tomllib.loads(f"value = {value_text}\n")["value"]
         except tomllib.TOMLDecodeError as exc:
-            if item.kind not in ("str", "path", "auto_int", "auto_bool"):
+            if item.kind not in (
+                "str",
+                "path",
+                "auto_int",
+                "auto_bool",
+                "choice_or_list_int",
+            ):
                 raise ConfigurationError(
                     f"invalid value for override {path!r}: {value_text!r}"
                 ) from exc

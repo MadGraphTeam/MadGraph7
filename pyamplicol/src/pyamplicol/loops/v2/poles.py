@@ -67,11 +67,12 @@ joint request's prediction is the sum of its corrections' operators
 only where its coupling is not alpha(0) (``EXTERNAL_PHOTON_CONVENTIONS``):
 with alpha(0), delta Z_e^alpha(0) + 1/2 delta Z_AA has no light-fermion pole;
 with the loops' coupling the photon's gamma_gamma = -2/3 sum_f N_c^f Q_f^2
-(massless charged fermions) stays. The production convention is alpha(0), the
-user's decision [U9] of 2026-10-25 (``EXTERNAL_PHOTON_CONVENTION``); the
-engine implements that coupling in WP3.2 EWI-6b, so until then its virtual
-makes no prediction with an external photon and the generation refuses
-electroweak requests with one (``ew_policy``).
+(massless charged fermions) stays. A tagged photon (MG5_aMC's ``!a!``,
+``SliceRequest.external_photons``: by default the final-state ones) couples
+with alpha(0), the user's decision [U9] of 2026-10-25
+(``EXTERNAL_PHOTON_CONVENTION``, WP3.2 EWI-6b); an untagged one (a PDF
+photon) keeps the loops' coupling (``UNTAGGED_PHOTON_CONVENTION``, MS-PHOTON),
+so the engine's operator passes the number of untagged photons.
 
 The fixtures' provider poles of the electroweak rungs (MadLoop, Recola and
 OpenLoops; g g > t t~, u u~ > e- e+ g, g g > t t~ e- e+ and
@@ -507,10 +508,14 @@ def predicted_sectors(
 # The coupling of an on-shell external photon: "alpha0" (alpha(0) with its
 # charge-renormalisation term, MadLoop's and OpenLoops' convention) or
 # "loop-coupling" (the loops' alpha, e.g. alpha_Gmu throughout).
-# ``EXTERNAL_PHOTON_CONVENTION`` is the production choice, "alpha0" by the
-# user's decision [U9] of 2026-10-25 (slice-status DECISIONS ~04:55).
+# ``EXTERNAL_PHOTON_CONVENTION`` is the one of a tagged photon, "alpha0" by
+# the user's decision [U9] of 2026-10-25 (slice-status DECISIONS ~04:55);
+# since MS-PHOTON the tags are per leg (``SliceRequest.external_photons``,
+# MG5_aMC's ``!a!``) and an untagged photon takes
+# ``UNTAGGED_PHOTON_CONVENTION``.
 EXTERNAL_PHOTON_CONVENTIONS = ("alpha0", "loop-coupling")
 EXTERNAL_PHOTON_CONVENTION = "alpha0"
+UNTAGGED_PHOTON_CONVENTION = "loop-coupling"
 
 
 def dressed_born(
@@ -765,6 +770,7 @@ __all__ = [
     "UNCOMPUTED_BORN_PAIR",
     "UNCORRECTED_EXCHANGE",
     "UNPREDICTED_REASONS",
+    "UNTAGGED_PHOTON_CONVENTION",
     "Partition",
     "catani_poles",
     "colour_casimir",
