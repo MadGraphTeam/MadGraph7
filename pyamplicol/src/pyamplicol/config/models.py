@@ -1516,6 +1516,16 @@ class LoopConfig:
         default="final",
         metadata=_setting("choice_or_list_int", choices=("final", "all", "none")),
     )
+    # The tagged photons' conversion counterterm and adjustable 1/alpha(0)
+    # parameter (``SliceRequest.alpha0_conversion`` / ``alpha0_inverse``):
+    # MG5_aMC's eCoup_DGmua0_UV_EW and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default.
+    alpha0_conversion_parameter: str = field(
+        default="eCoup_DGmua0_UV_EW", metadata=_setting("str")
+    )
+    alpha0_inverse_parameter: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
 
     def __new__(cls, *args: object, **kwargs: object) -> LoopConfig:
         # The removed engine switch is refused with its reason, as in TOML,

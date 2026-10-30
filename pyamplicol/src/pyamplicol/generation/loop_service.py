@@ -703,6 +703,8 @@ def _v2_request(backend, context, index):
         compatibility=context.preparation.compatibility,
         selection=selection,
         external_photons=run.loop.external_photons,
+        alpha0_conversion=run.loop.alpha0_conversion_parameter,
+        alpha0_inverse=run.loop.alpha0_inverse_parameter,
     )
 
 

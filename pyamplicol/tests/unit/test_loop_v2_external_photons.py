@@ -430,7 +430,21 @@ def test_request_records_name_non_default_tags_only():
 
     plain = SliceRequest("u u~ > a g", {"QCD": 1, "QED": 1}, {"QCD": 3, "QED": 1})
     record = request_record(plain)
-    assert "external_photons" not in record
+    assert not {"external_photons", "alpha0_conversion", "alpha0_inverse"} & set(record)
+    named = SliceRequest(
+        "u u~ > a g",
+        {"QCD": 1, "QED": 1},
+        {"QCD": 3, "QED": 1},
+        alpha0_conversion="dZe_conv",
+        alpha0_inverse="ainv0",
+    )
+    record = json.loads(json.dumps(request_record(named)))
+    assert (record["alpha0_conversion"], record["alpha0_inverse"]) == (
+        "dZe_conv",
+        "ainv0",
+    )
+    assert request_from_record(record) == named
+    record = request_record(plain)
     assert request_from_record(json.loads(json.dumps(record))) == plain
     for option in ("all", "none", (1, 3)):
         tagged = SliceRequest(
@@ -454,6 +468,10 @@ def test_loop_external_photons_configuration():
     from pyamplicol.config.resolver import parse_override
 
     assert FIELD_REGISTRY["loop.external_photons"].default == "final"
+    assert FIELD_REGISTRY["loop.alpha0_conversion_parameter"].default == (
+        "eCoup_DGmua0_UV_EW"
+    )
+    assert FIELD_REGISTRY["loop.alpha0_inverse_parameter"].default is None
     assert LoopConfig().external_photons == "final"
     assert LoopConfig(external_photons=[3, 1]).external_photons == (1, 3)
     assert parse_override("loop.external_photons=none").value == "none"

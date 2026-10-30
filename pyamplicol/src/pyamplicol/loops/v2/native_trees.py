@@ -1735,7 +1735,7 @@ def _parameter_program(
     # (``assemble._alpha0_field_rules``), exported as every field coupling.
     photons = getattr(slice_, "external_photons", None)
     photon_record = None
-    if photons is not None:
+    if photons is not None and photons.conversion is not None:
         from .ew_policy import is_photon
         from .poles import qed_coupling
 

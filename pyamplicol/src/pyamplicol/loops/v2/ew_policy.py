@@ -482,8 +482,11 @@ class ExternalPhotons:
     legs: tuple[int, ...]
     # The external parameter holding 1/alpha(0).
     alpha0_inverse: str
-    # The model's counterterm parameter delta Z_e^{G_mu} - delta Z_e^{alpha(0)}.
-    conversion: str
+    # The model's counterterm parameter delta Z_e^{G_mu} - delta Z_e^{alpha(0)};
+    # None where the loops already couple with alpha(0) (a declared
+    # ``alpha0_inverse`` the loops' alpha is the inverse of: no rescaling and
+    # no conversion term; genericity audit 2 G2-m5).
+    conversion: str | None
     # The electromagnetic correction (coupling order) the term belongs to.
     correction: str
     convention: str = "alpha0"
@@ -558,47 +561,85 @@ def external_photon_scheme(
             else "the model has no electromagnetic coupling order",
             f"Instead {untag}; QCD corrections to such processes are available",
         )
-    raw = compiled.raw_loop_model
-    names = {record["name"] for record in raw.collections["counterterm_parameters"]}
-    if ALPHA0_CONVERSION not in names:
-        raise refuse(
-            f"the model declares no conversion counterterm {ALPHA0_CONVERSION} "
-            "(delta Z_e^Gmu - delta Z_e^alpha(0), as MG5_aMC's G_mu loop models; "
-            "MG5_aMC refuses tagged photons on such a model too)",
-            f"Instead {untag}, or use a model that declares the conversion with "
-            "an adjustable 1/alpha(0) (MG5_aMC's loop_qcd_qed_sm_Gmu under its "
-            "restriction a0)",
-        )
-    block, code = ALPHA0_INVERSE_CODE
-    coded = [
-        record
-        for record in compiled.ir.parameters
-        if (record.lhablock or "").upper() == block and tuple(record.lhacode) == code
-    ]
-    found = [record for record in coded if record.nature == "external"]
-    if len(found) != 1:
-        raise refuse(
-            f"the model has no adjustable 1/alpha(0) at {block} {list(code)} "
-            + (
-                f"({', '.join(r.name for r in coded)} fixed by its restriction, "
-                "zero in MG5_aMC's default card of a G_mu loop model)"
-                if coded
-                else "(MG5_aMC's G_mu loop models: aEW0M1)"
-            ),
-            "Instead compile the model with a restriction that sets it, as "
-            "MG5_aMC requires (e.g. its restrict_a0: model.restriction = "
-            f'"a0"), or {untag}'
-            if coded
-            else f"Instead {untag}",
-        )
-    (inverse,) = found
     parameters = {record.name: record for record in compiled.ir.parameters}
     coupling = qed_coupling(compiled, lambda r: is_photon(r, parameters, fixed))
+    conversion = getattr(request, "alpha0_conversion", None) or ALPHA0_CONVERSION
+    declared = getattr(request, "alpha0_inverse", None)
+    if declared is not None:
+        # Genericity audit 2 G2-m5: the model's 1/alpha(0) named by the
+        # request (``loop.alpha0_inverse_parameter``).
+        record = parameters.get(declared)
+        if record is None or record.nature != "external":
+            raise refuse(
+                f"loop.alpha0_inverse_parameter names {declared!r}, which is no "
+                "adjustable external parameter of the model"
+                + (" (fixed by its restriction)" if record is not None else ""),
+                "Instead name the model's adjustable 1/alpha(0), or " + untag,
+            )
+        value = fixed.get(declared)
+        if value is not None and Decimal(str(value)) == 0:
+            raise refuse(
+                f"{declared} (1/alpha(0)) is fixed to zero",
+                f"Instead set {declared} (e.g. 137.035999), or {untag}",
+            )
+        if coupling is not None and _is_inverse_of(coupling, declared):
+            # The loops already couple with alpha(0) (alpha = 1/declared):
+            # a tagged photon needs no rescaling and no conversion term.
+            return ExternalPhotons(photons, declared, None, abelian)
+    raw = compiled.raw_loop_model
+    names = {record["name"] for record in raw.collections["counterterm_parameters"]}
+    if conversion not in names:
+        raise refuse(
+            f"the model declares no conversion counterterm {conversion} "
+            "(delta Z_e^Gmu - delta Z_e^alpha(0), as MG5_aMC's G_mu loop models"
+            + (
+                "; MG5_aMC refuses tagged photons on such a model too)"
+                if conversion == ALPHA0_CONVERSION
+                else "; named by loop.alpha0_conversion_parameter)"
+            ),
+            f"Instead {untag}, or use a model that declares the conversion with "
+            "an adjustable 1/alpha(0) (MG5_aMC's loop_qcd_qed_sm_Gmu under its "
+            "restriction a0; another model's names: loop.alpha0_conversion_parameter "
+            "and loop.alpha0_inverse_parameter)",
+        )
+    if declared is not None:
+        inverse = parameters[declared]
+    else:
+        block, code = ALPHA0_INVERSE_CODE
+        coded = [
+            record
+            for record in compiled.ir.parameters
+            if (record.lhablock or "").upper() == block
+            and tuple(record.lhacode) == code
+        ]
+        found = [record for record in coded if record.nature == "external"]
+        if len(found) != 1:
+            raise refuse(
+                f"the model has no adjustable 1/alpha(0) at {block} {list(code)} "
+                + (
+                    f"({', '.join(r.name for r in coded)} fixed by its restriction, "
+                    "zero in MG5_aMC's default card of a G_mu loop model)"
+                    if coded
+                    else "(MG5_aMC's G_mu loop models: aEW0M1)"
+                ),
+                "Instead compile the model with a restriction that sets it, as "
+                "MG5_aMC requires (e.g. its restrict_a0: model.restriction = "
+                f'"a0"), or {untag}'
+                if coded
+                else f"Instead name it (loop.alpha0_inverse_parameter), or {untag}",
+            )
+        (inverse,) = found
     if coupling is None or inverse.name in {name for _symbol, name in coupling[1]}:
         raise refuse(
             "the loops' electromagnetic coupling is not a G_mu-scheme one that "
             f"leaves {inverse.name} free",
-            f"Instead {untag}",
+            f"Instead {untag}"
+            + (
+                "; if the loops couple with alpha(0), name its parameter "
+                "(loop.alpha0_inverse_parameter) and no conversion applies"
+                if declared is None
+                else ""
+            ),
         )
     value = fixed.get(inverse.name)
     if value is not None and Decimal(str(value)) == 0:
@@ -619,7 +660,21 @@ def external_photon_scheme(
             "parameter",
             f"Instead {untag}, or drop the veto",
         )
-    return ExternalPhotons(photons, inverse.name, ALPHA0_CONVERSION, abelian)
+    return ExternalPhotons(photons, inverse.name, conversion, abelian)
+
+
+def _is_inverse_of(coupling: tuple[str, Any], name: str) -> bool:
+    """Whether the loops' alpha (``poles.qed_coupling``: canonical text and
+    its (symbol, parameter) pairs) is exactly 1/``name``."""
+
+    from symbolica import E
+
+    symbols = {parameter: symbol for symbol, parameter in coupling[1]}
+    symbol = symbols.get(name)
+    if symbol is None or len(symbols) != 1:
+        return False
+    product = (E(coupling[0]) * E(symbol)).expand()
+    return product.to_canonical_string() == E("1").to_canonical_string()
 
 
 def _option_text(option: Any) -> str:

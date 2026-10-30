@@ -204,6 +204,8 @@ OPTIONAL_REQUEST_FIELD = "selection"
 OPTIONAL_REQUEST_DEFAULTS: dict[str, object] = {
     OPTIONAL_REQUEST_FIELD: None,
     "external_photons": "final",
+    "alpha0_conversion": "eCoup_DGmua0_UV_EW",
+    "alpha0_inverse": None,
 }
 
 

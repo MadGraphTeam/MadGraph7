@@ -1422,6 +1422,16 @@ class SliceRequest:
     # that takes the electromagnetic correction converts its tagged photons;
     # the request record names it only when it is not the default.
     external_photons: str | tuple[int, ...] = "final"
+    # The model's names of the tagged photons' conversion counterterm
+    # (delta Z_e of the loops' scheme - delta Z_e^alpha(0)) and of its
+    # adjustable 1/alpha(0) (genericity audit 2 G2-m5; ``[loop]
+    # alpha0_conversion_parameter``, ``alpha0_inverse_parameter``): MG5_aMC's
+    # ``eCoup_DGmua0_UV_EW`` and the unique adjustable SLHA SMINPUTS 1
+    # parameter by default. A named 1/alpha(0) whose inverse is the loops'
+    # alpha declares loops that couple with alpha(0): tagged photons then
+    # take neither a rescaling nor a conversion. Recorded only when set.
+    alpha0_conversion: str = ew_policy.ALPHA0_CONVERSION
+    alpha0_inverse: str | None = None
 
     def __post_init__(self) -> None:
         if self.selection is not None and self.accuracy != "lc":
@@ -1434,6 +1444,12 @@ class SliceRequest:
             "external_photons",
             ew_policy.photon_tag_option(self.external_photons),
         )
+        if not isinstance(self.alpha0_conversion, str) or not self.alpha0_conversion:
+            raise ValueError("alpha0_conversion names a counterterm parameter")
+        if self.alpha0_inverse is not None and (
+            not isinstance(self.alpha0_inverse, str) or not self.alpha0_inverse
+        ):
+            raise ValueError("alpha0_inverse names a model parameter or is None")
         veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
@@ -2086,7 +2102,7 @@ class LoopSlice:
         field_rules = prepare_external_field_rules(prepared.counterterms.source)
         source_field_rules = field_rules
         alpha0_rules: tuple[Any, ...] = ()
-        if photons is not None:
+        if photons is not None and photons.conversion is not None:
             # alpha(0)'s field-like term on each tagged photon (EWI-6b).
             alpha0_rules = _alpha0_field_rules(
                 prepared.counterterms.source, photons, process
@@ -4071,7 +4087,8 @@ class _PointEvaluation:
         slice_ = self.slice
         average = slice_.normalisation.average
         photons = getattr(slice_, "external_photons", None)
-        if photons is None:
+        if photons is None or photons.conversion is None:
+            # No tagged photon, or loops that couple with alpha(0) already.
             return average
         values = _kernel_parameters(slice_.compiled, self.parameters)
         inverse = values.get(photons.alpha0_inverse)

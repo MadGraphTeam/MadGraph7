@@ -229,6 +229,78 @@ def test_tagged_legs_must_be_on_shell_photons(gmu_a0, loop_native, monkeypatch):
 
 
 @pytest.mark.loop_physics
+def test_alpha0_parameters_can_be_named(qcd_qed, gmu_a0, gmu, loop_native, monkeypatch):
+    """Genericity audit 2 G2-m5: the tagged photons' conversion counterterm
+    and 1/alpha(0) are MG5_aMC's names by default and can be named
+    (``SliceRequest.alpha0_conversion`` / ``alpha0_inverse``, ``[loop]
+    alpha0_conversion_parameter`` / ``alpha0_inverse_parameter``): naming
+    the default ones changes nothing; a conversion the model lacks or a
+    1/alpha(0) that is no adjustable parameter is refused naming it; a named
+    1/alpha(0) whose inverse is the loops' alpha (loop_qcd_qed_sm's aEWM1,
+    declared alpha(0) here) declares loops that couple with alpha(0), so the
+    tagged photon takes neither a rescaling nor a conversion and needs no
+    conversion counterterm; one the loops' alpha only depends on (G_mu's MZ)
+    is refused."""
+
+    monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
+    from pyamplicol.loops.v2.assemble import prepare_request_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    process, born = PHOTON_JET
+
+    def scheme(compiled, **options):
+        request_ = SliceRequest(
+            process,
+            born,
+            PHOTON_JET_LOOPS,
+            corrections=("QCD", "QED"),
+            fixed_parameters=ZERO_WIDTHS,
+            **options,
+            **GMU,
+        )
+        prepared = prepare_request_model(compiled, request_)
+        species = prepared.prepared.structure.perturbative_species_orders
+        ir = build_model_process_ir(process, compiled.ir, color_accuracy="full")
+        return ew_policy.external_photon_scheme(
+            compiled, request_, ir, ZERO_WIDTHS, species
+        )
+
+    default = scheme(gmu_a0)
+    assert default == ew_policy.ExternalPhotons(
+        (3,), "aEW0M1", "eCoup_DGmua0_UV_EW", "QED"
+    )
+    named = scheme(
+        gmu_a0, alpha0_conversion="eCoup_DGmua0_UV_EW", alpha0_inverse="aEW0M1"
+    )
+    assert named == default
+    for options, reason in (
+        (
+            {"alpha0_conversion": "dZe_conv"},
+            "declares no conversion counterterm dZe_conv",
+        ),
+        ({"alpha0_inverse": "nope"}, "names 'nope', which is no adjustable"),
+    ):
+        with pytest.raises(ExternalPhotonError, match=reason) as refused:
+            scheme(gmu_a0, **options)
+        assert refused.value.key == "external-photon-scheme"
+    with pytest.raises(ExternalPhotonError, match="leaves MZ free"):
+        scheme(gmu, alpha0_inverse="MZ")
+    loops_alpha0 = scheme(qcd_qed, alpha0_inverse="aEWM1")
+    assert loops_alpha0 == ew_policy.ExternalPhotons((3,), "aEWM1", None, "QED")
+    request_ = SliceRequest(
+        process,
+        born,
+        PHOTON_JET_LOOPS,
+        corrections=("QCD", "QED"),
+        fixed_parameters=ZERO_WIDTHS,
+        alpha0_inverse="aEWM1",
+        **GMU,
+    )
+    with pytest.raises(AssertionError, match="before the trees"):
+        LoopSlice.generate(qcd_qed, request_, loop_native)
+
+
+@pytest.mark.loop_physics
 def test_stored_external_photon_requests_reach_their_trees(
     gmu_a0, loop_native, monkeypatch
 ):
