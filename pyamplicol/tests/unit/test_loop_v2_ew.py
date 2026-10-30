@@ -1879,8 +1879,15 @@ def test_electroweak_ladder_reaches_its_blocker(
         slice_ = LoopSlice.generate(ladder_models(model), request, loop_native)
         _check_admitted_loops(slice_, request)
         if point is not None:
+            # The top Yukawa at the top mass: the counterterms renormalise
+            # the Yukawa through the mass, so with ymt != MT the UV poles do
+            # not cancel (g t > t t t~: 0.7 % of the bare UV pole at the
+            # card's ymt = 173.3), which the pole split shows since MS-POLES.
             result = slice_.evaluate(
-                point, "1000000", parameters={"aS": "0.118", "MT": "173"}, poles=poles
+                point,
+                "1000000",
+                parameters={"aS": "0.118", "MT": "173", "ymt": "173"},
+                poles=poles,
             )
     except Exception as error:
         if blocker is LIFTED:

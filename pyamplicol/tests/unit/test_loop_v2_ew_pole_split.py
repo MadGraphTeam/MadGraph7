@@ -173,6 +173,18 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
+[loop.model]
+loop_coupling_orders = ["QCD", "QED"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_qcd_qed_sm_Gmu lhv=1 supplied QCD and QED rules"
 [loop.preparation]
 fixed_parameters = {{{fixed}}}
 compatibility = "gmu_particle_anti"
