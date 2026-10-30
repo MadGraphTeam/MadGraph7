@@ -408,105 +408,131 @@
    },
    {
     "job": 6,
-    "seconds": 1343,
+    "seconds": 1286,
     "rows": [
-     "SC01",
-     "SC02",
-     "SC03"
+     "PI01",
+     "PI01@all",
+     "SC05"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_6.py"
    },
    {
     "job": 7,
-    "seconds": 1286,
+    "seconds": 1200,
     "rows": [
-     "SC04",
-     "SC05",
-     "SC06"
+     "PI02",
+     "PI03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_7.py"
    },
    {
     "job": 8,
-    "seconds": 1200,
+    "seconds": 1343,
     "rows": [
-     "SC07",
-     "SC08"
+     "PI04",
+     "SC01",
+     "SC02"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_8.py"
    },
    {
     "job": 9,
-    "seconds": 1492,
+    "seconds": 1200,
     "rows": [
-     "SC09",
-     "ST01",
-     "ST02",
-     "TT02"
+     "SC03",
+     "SC04"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_9.py"
    },
    {
     "job": 10,
-    "seconds": 1467,
+    "seconds": 1200,
     "rows": [
-     "ST03",
-     "ST04",
-     "TT01"
+     "SC06",
+     "SC07"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_10.py"
    },
    {
     "job": 11,
-    "seconds": 1375,
+    "seconds": 1379,
     "rows": [
-     "TT03",
-     "TT04",
-     "TT05"
+     "SC08",
+     "SC09",
+     "ST01"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_11.py"
    },
    {
     "job": 12,
-    "seconds": 1322,
+    "seconds": 1291,
     "rows": [
-     "TT06",
-     "TV01",
-     "TV02",
-     "VJ02"
+     "ST02",
+     "ST03",
+     "ST04"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_12.py"
    },
    {
     "job": 13,
-    "seconds": 1467,
+    "seconds": 1428,
     "rows": [
-     "TV03",
-     "TV06",
-     "VJ01"
+     "TT01",
+     "TT02",
+     "TT03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_13.py"
    },
    {
     "job": 14,
-    "seconds": 1200,
+    "seconds": 1267,
     "rows": [
-     "V301",
-     "VH01"
+     "TT04",
+     "TT05",
+     "TT06"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_14.py"
    },
    {
     "job": 15,
-    "seconds": 1200,
+    "seconds": 1278,
     "rows": [
-     "VH02",
-     "VH03"
+     "TV01",
+     "TV02",
+     "TV03"
     ],
     "file": "tests/unit/test_loop_v2_msm_nightly_15.py"
    },
    {
     "job": 16,
+    "seconds": 1229,
+    "rows": [
+     "TV06",
+     "V301",
+     "VJ02"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
+   },
+   {
+    "job": 17,
+    "seconds": 1200,
+    "rows": [
+     "VH01",
+     "VH02"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
+   },
+   {
+    "job": 18,
+    "seconds": 1051,
+    "rows": [
+     "VH03",
+     "VJ01"
+    ],
+    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
+   },
+   {
+    "job": 19,
     "seconds": 1376,
     "rows": [
      "VJ03",
@@ -515,25 +541,25 @@
      "VV05",
      "VV05@zero"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_16.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_19.py"
    },
    {
-    "job": 17,
+    "job": 20,
     "seconds": 1284,
     "rows": [
      "VV02",
      "VV03",
      "VV06"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_17.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_20.py"
    },
    {
-    "job": 18,
+    "job": 21,
     "seconds": 823,
     "rows": [
      "VV07"
     ],
-    "file": "tests/unit/test_loop_v2_msm_nightly_18.py"
+    "file": "tests/unit/test_loop_v2_msm_nightly_21.py"
    }
   ]
  },
@@ -7434,7 +7460,7 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min (one job serves both twins)",
    "reference": {
     "format": "required",
@@ -7480,13 +7506,89 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "variants": [
+    {
+     "name": "all",
+     "gating": true,
+     "tier": "nightly",
+     "restriction": "a0",
+     "restriction_code": "Ga",
+     "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+     },
+     "scheme": "ew-gmu-a0",
+     "external_photons": "all",
+     "parameters": {
+      "aEW0M1": "137.035999"
+     },
+     "reference": {
+      "format": "required",
+      "path": "tests/fixtures/loop/required/msm/aa_emep_ew.json",
+      "providers": [
+       "madloop"
+      ],
+      "photon_conversion": {
+       "tagged": 2,
+       "alpha0_inverse": "137.035999",
+       "parameters": "tests/fixtures/loop/madloop-ct-parameters.json",
+       "model": "gmu",
+       "counterterm": "eCoup_DGmua0_UV_EW",
+       "sector": {
+        "QCD": 0,
+        "QED": 6
+       },
+       "values": [
+        [
+         "0.0026691246884024853",
+         "0.032448892034256105"
+        ],
+        [
+         "0.0026691246884024853",
+         "0.03054487223705328"
+        ],
+        [
+         "0.0026691246884024853",
+         "0.03424506474171146"
+        ],
+        [
+         "0.0026691246884024853",
+         "0.028748699529597826"
+        ]
+       ]
+      }
+     },
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2,
+       3
+      ]
+     },
+     "extras": [],
+     "extras_pending": {},
+     "notes": "loop.external_photons = 'all' on Ga: 2 tagged photons, raw MadLoop x MG5's alpha(0) formula over them (one MadLoop job serves both twins)",
+     "madloop_r2_called": [
+      "R2_LLCm",
+      "R2_LLCp0",
+      "R2_QQCplv",
+      "R2_eeACm",
+      "R2_eeACp",
+      "R2_llACp"
+     ]
+    }
+   ],
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-PHOTON",
-    "reason": "the row's package: MS-PHOTON"
-   },
+   "notes": "the default photon tags (\"final\"): both initial photons untagged, raw MadLoop and -gamma_gamma/eps each in rule 4; the twin @all tags both (Q1 (a), MG5_aMC's !a! on initial photons)",
    "madloop_r2_called": [
     "R2_LLCm",
     "R2_LLCp0",
@@ -7533,7 +7635,7 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~2-3 min",
    "reference": {
     "format": "required",
@@ -7581,10 +7683,6 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-PHOTON",
-    "reason": "the row's package: MS-PHOTON"
-   },
    "madloop_r2_called": [
     "R2_AAH",
     "R2_AAHt",
@@ -7665,7 +7763,7 @@
    "gauge": "feynman",
    "scheme": "ew-gmu",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
    "reference": {
     "format": "required",
@@ -7723,10 +7821,6 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-PHOTON",
-    "reason": "the row's package: MS-PHOTON"
-   },
    "madloop_r2_called": [
     "R2_GQQ",
     "R2_GUU2Cm",
@@ -7786,7 +7880,7 @@
    "gauge": "feynman",
    "scheme": "ew-gmu-a0",
    "tier": "nightly",
-   "status": "pending",
+   "status": "active",
    "reference_legend": "N ~1 min",
    "reference": {
     "format": "required",
@@ -7873,10 +7967,6 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
-   "pending": {
-    "waits_for": "MS-PHOTON",
-    "reason": "the row's package: MS-PHOTON"
-   },
    "madloop_r2_called": [
     "R2_QQCp0",
     "R2_QQCpud",
