@@ -884,6 +884,75 @@ def test_pole_regulators_are_found_by_code_and_need_both_adjustable():
 
 
 @pytest.mark.loop_fast
+def test_pole_regulators_are_read_only_by_pole_coefficients():
+    """``poles.model_pole_regulators``, the structural guard: the parameters
+    at the regulator codes count only when nothing but the pole coefficients
+    of Laurent values reads them (a model using those codes otherwise has
+    none, so no lane sets them to 0); ``pole_regulators`` with the raw
+    model requires the same pair."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.poles import (
+        PoleRegulators,
+        model_pole_regulators,
+        pole_regulators,
+    )
+
+    def raw(parameter="xUV", coupling="g", finite="g"):
+        values = {
+            ("parameters", 0): {"kind": "expression", "expression": "1.0"},
+            ("parameters", 1): {"kind": "expression", "expression": "1.0"},
+            ("parameters", 2): {"kind": "expression", "expression": f"2*{parameter}"},
+            ("counterterm_parameters", 0): {
+                "kind": "laurent",
+                "terms": ((-1, "g*(xUV - xIR)"), (0, finite)),
+            },
+            ("couplings", 0): {"kind": "expression", "expression": coupling},
+        }
+
+        def external(index, name, code):
+            fields = {"nature": "external", "type": "real", "lhablock": "TECHNICAL"}
+            return {"id": index, "name": name, "fields": {**fields, "lhacode": [code]}}
+
+        collections = {
+            "parameters": [
+                external(0, "xUV", 1),
+                external(1, "xIR", 2),
+                {"id": 2, "name": "g", "fields": {"nature": "internal"}},
+            ],
+            "counterterm_parameters": [{"id": 0, "name": "dZ", "fields": {}}],
+            "couplings": [{"id": 0, "name": "GC", "fields": {}}],
+        }
+        return SimpleNamespace(
+            collections=collections,
+            exact_value=lambda collection, index: values[collection, index],
+        )
+
+    found = PoleRegulators("xUV", "xIR")
+    assert model_pole_regulators(raw(parameter="1")) == found
+    assert model_pole_regulators(None) is None
+    # A tree parameter, a coupling or a finite part reads one: none.
+    assert model_pole_regulators(raw()) is None
+    assert model_pole_regulators(raw(parameter="1", coupling="xIR*g")) is None
+    assert model_pole_regulators(raw(parameter="1", finite="xIR")) is None
+    # Attribute access and longer names are not reads.
+    assert model_pole_regulators(raw(parameter="1", coupling="a.xIR + xIRb")) == found
+    compiled = [
+        SimpleNamespace(
+            name=name,
+            nature="external",
+            parameter_type="real",
+            lhablock="TECHNICAL",
+            lhacode=(code,),
+        )
+        for name, code in (("xUV", 1), ("xIR", 2))
+    ]
+    assert pole_regulators(compiled, (), raw(parameter="1")) == found
+    assert pole_regulators(compiled, (), raw()) is None
+
+
+@pytest.mark.loop_fast
 def test_catani_takes_the_masses_from_the_model():
     """The legs' masses are the model's runtime values, not the p^2 of the
     given momenta: with rounded massless momenta (p^2 = -1e-17 relative) the

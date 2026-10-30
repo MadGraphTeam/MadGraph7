@@ -221,20 +221,29 @@ def test_the_restriction_cards_ones_become_constants(loop_gmu_ufo):
     """MG5_aMC restricts the transformed model by its restriction card, which
     fixes every parameter of value 1 there: under the scheme the G_mu UFO's
     TECHNICAL switches at 1 become the constant 1 (their dead branches, e.g.
-    GfRedefinitionChoice's re(), leave the couplings); without a restriction
-    card (``"full"``) or without a pole mass nothing is fixed."""
+    GfRedefinitionChoice's re(), leave the couplings), except its pole
+    regulators epsUV and epsIR (``poles.model_pole_regulators``: read only
+    by the counterterms' pole coefficients, linear, no dead branch), which
+    stay adjustable so that "uv" and "ir" split the counterterms' poles by
+    them under the scheme too (MS-POLES); without a restriction card
+    (``"full"``) or without a pole mass nothing is fixed."""
+
+    from pyamplicol.loops.v2.poles import PoleRegulators, model_pole_regulators
 
     restricted = load_raw_loop_model(str(loop_gmu_ufo), restriction="default")
     scheme = complex_mass_scheme(restricted)
-    assert scheme.ones == ("epsUV", "epsIR", "LogSwitch", "GfRedefinitionChoice")
+    assert scheme.ones == ("LogSwitch", "GfRedefinitionChoice")
     assert tuple(scheme.derived.metadata["complex_mass_scheme"]["ones"]) == scheme.ones
     for name in scheme.ones:
         fields = scheme.derived.record("parameters", name)["fields"]
         assert (fields["nature"], fields["value"]["expression"]) == ("internal", "1.0")
         assert "lhablock" not in fields
-    for name in ("MZ", "WZ", "MT", "WT"):
+    for name in ("MZ", "WZ", "MT", "WT", "epsUV", "epsIR"):
         fields = scheme.derived.record("parameters", name)["fields"]
         assert fields["nature"] == "external"
+    regulators = PoleRegulators("epsUV", "epsIR")
+    assert model_pole_regulators(restricted) == regulators
+    assert model_pole_regulators(scheme.derived) == regulators
     full = load_raw_loop_model(str(loop_gmu_ufo), restriction="full")
     assert complex_mass_scheme(full).ones == ()
     stable = dict.fromkeys(("WZ", "WW", "WH", "WT"), "0")
@@ -504,8 +513,14 @@ def test_tree_model_view_equals_mg5_complex_mass_model(
     model, scheme = complex_mass_model(compiled, cache_dir=tmp_path / "model-cache")
     assert model.raw_loop_model is scheme.derived and model.ir.gauge == "feynman"
     assert "ymt" not in model.parameter_defaults and "MT" in model.parameter_defaults
-    # The restriction card's ones are constants (MG5's restriction).
+    # The restriction card's ones are constants (MG5's restriction), except
+    # the pole regulators: the "uv" and "ir" split holds (MS-POLES).
     assert scheme.ones and not set(scheme.ones) & set(model.parameter_defaults)
+    from pyamplicol.loops.v2.poles import PoleRegulators, pole_regulators
+
+    assert pole_regulators(
+        model.ir.parameters, (), model.raw_loop_model
+    ) == PoleRegulators("epsUV", "epsIR")
     particles = {record.name: record for record in model.ir.particles}
     for name, mass in (("t", "CMASS_MT"), ("Z", "CMASS_MZ"), ("G0", "CMASS_MZ")):
         assert (str(particles[name].mass), str(particles[name].width)) == (mass, "ZERO")

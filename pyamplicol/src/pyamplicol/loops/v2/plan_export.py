@@ -2036,7 +2036,9 @@ class NativeExecutor:
         ):
             # (block rows, Born, amplitudes, |A0|^2, counterterms) per batch.
             regulated = native.tree_inputs(
-                self._inputs(_regulated(evaluations, regulators), arithmetic)
+                self._inputs(
+                    _regulated(evaluations, regulators, exported.trees), arithmetic
+                )
             )[4]
         # The certified-scaleless families carry part of the bare UV and IR
         # poles; only the "uv" and "ir" selections dress them (schedule B).
@@ -2132,13 +2134,19 @@ class NativeExecutor:
         return failed
 
 
-def _regulated(evaluations: Sequence[Any], regulators: Any) -> list[Any]:
+def _regulated(evaluations: Sequence[Any], regulators: Any, trees: Any) -> list[Any]:
     """Shallow copies of native point evaluations with the IR regulator at 0
-    (``poles.regulated_parameters``): their native tree inputs are the
-    counterterms' UV parts."""
+    (``poles.regulated_parameters``): their native tree inputs (of the tree
+    program ``trees``, which must bind the regulator: fail closed, as the
+    SDK's ``V2Runtime``) are the counterterms' UV parts."""
 
     from .poles import regulated_parameters
 
+    if regulators.ir not in trees.program["parameters"]["names"]:
+        raise ValueError(
+            f"the pole regulator {regulators.ir!r} is not a parameter of the "
+            "tree program; regenerate the process"
+        )
     out = []
     for evaluation in evaluations:
         twin = copy.copy(evaluation)

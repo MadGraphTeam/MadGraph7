@@ -233,6 +233,10 @@ def test_dy01_technical_card_pole_split_equals_madloop(dy01_artifact, loop_nativ
         pacbin, read_plan(pacbin), read_plan(pacbin, SCALELESS_PLAN_MEMBER)
     )
     assert stored.record["pole_regulators"] == {"uv": "epsUV", "ir": "epsIR"}
+    # The conventions record which split the "uv" and "ir" parts use.
+    conventions = Runtime.load(dy01_artifact).inspect()["conventions"]
+    assert conventions["pole_split"] == "regulators"
+    assert conventions["pole_regulators"] == {"uv": "epsUV", "ir": "epsIR"}
     reference = _reference(DY01)
     points = [reference["points"][i] for i in POINTS]
     scales = _scales(DY01, POINTS)

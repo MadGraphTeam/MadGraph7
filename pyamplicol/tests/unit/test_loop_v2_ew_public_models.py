@@ -856,10 +856,13 @@ def test_prepared_ew_self_test_artifact_is_the_public_route_output(
 ):
     """Regenerating the shipped artifact through the public route
     (``generate_ew_self_test_artifact``) gives bitwise its values: the shipped
-    copy is current."""
+    copy is current, also in its conventions and in the "uv" selection
+    (MS-POLES: the counterterms' poles split by loop_qcd_qed_sm's pole
+    regulators, which an artifact written before records none of)."""
 
     import json
 
+    from pyamplicol import Runtime
     from pyamplicol._internal import selftest_virtual_ew as selftest
 
     root = selftest.fixture_root()
@@ -869,3 +872,19 @@ def test_prepared_ew_self_test_artifact_is_the_public_route_output(
     assert selftest.evaluate(output, expected) == selftest.evaluate(
         root / "artifact", expected
     )
+    points = [[list(map(float, p)) for p in point] for point in expected["points"]]
+    scales = [float(x) for x in expected["mu_r2"]]
+    runs = []
+    for artifact in (output, root / "artifact"):
+        runtime = Runtime.load(artifact, process=selftest.NAME, mute_warnings=True)
+        result = runtime.evaluate(points, mu_r2=scales, poles="uv")
+        runs.append(
+            (
+                runtime.inspect()["conventions"],
+                result.values,
+                result.pole_part("uv", "uv"),
+                result.pole_part("ir", "uv"),
+            )
+        )
+    assert runs[0][0]["pole_split"] == "regulators"
+    assert runs[0] == runs[1]

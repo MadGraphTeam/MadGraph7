@@ -1621,8 +1621,10 @@ LADDER = [
     # EWI-1). The veto cannot act on loop_qcd_qed_sm's unlabelled
     # counterterms, so it is refused before any tree (WP3.2 EWI-5 interim):
     # generated without the guard its single pole misses the QED Catani
-    # operator's, which the "uv" identity cannot see (it holds by
-    # construction, ``loops.v2.poles``; ``test_loop_v2_ew_leptons``).
+    # operator's (``test_loop_v2_ew_leptons``); the "uv" identity is no
+    # substitute: it holds by construction for a model without pole
+    # regulators and, with loop_qcd_qed_sm's epsUV and epsIR, tests the
+    # UV poles only (bare + counterterms, ``loops.v2.poles``).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",

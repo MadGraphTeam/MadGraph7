@@ -1786,7 +1786,9 @@ class LoopSlice:
         key = "pole-regulators"
         if key not in self._cache:
             self._cache[key] = pole_regulators(
-                self.compiled.ir.parameters, self.fixed_parameters
+                self.compiled.ir.parameters,
+                self.fixed_parameters,
+                getattr(self.compiled, "raw_loop_model", None),
             )
         return self._cache[key]
 

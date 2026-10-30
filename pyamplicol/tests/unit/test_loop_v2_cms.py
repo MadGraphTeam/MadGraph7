@@ -810,6 +810,53 @@ def _check_sectors(slice_, reference, model, carriers, points):
                 assert max(errors) <= tolerance, (carrier, k, sector, errors)
 
 
+def _check_cms_split(slice_, reference, model):
+    """MS-POLES under the scheme: the transform keeps the G_mu UFO's pole
+    regulators adjustable (``model_cms`` step 5), so "uv" and "ir" split the
+    counterterms' poles by them, with no remainder. At the row's first
+    point, with Python and native point inputs: per sector bare + counterterm
+    UV poles vanish (1e-12 of the bare UV pole), the "ir" virtual's poles are
+    those of "all" (to the same bound) and the finite part is the same in
+    every selection."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    assert slice_.pole_regulators.record() == {"uv": "epsUV", "ir": "epsIR"}
+    parameters = {
+        k: v
+        for k, v in reference["parameters"].items()
+        if k in model.parameter_defaults and k not in slice_.request.fixed_parameters
+    }
+    point = reference["points"][0]
+    scale = str(Fraction(reference["mu_r"][0]) ** 2)
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+
+    def run(lane, poles):
+        if lane == "python":
+            return slice_.evaluate(point, scale, parameters=parameters, poles=poles)
+        (result,) = native.evaluate(
+            [point], [scale], parameters=parameters, poles=poles
+        )
+        return result
+
+    for lane in ("python", "native"):
+        whole, uv, ir = (run(lane, poles) for poles in ("all", "uv", "ir"))
+        for sector, laurent in whole.components["virtual"].items():
+            total = [complex(x) for x in laurent.coefficients]
+            parts = uv.pole_origins["uv"]
+            bare_uv = complex(parts["bare"][sector].coefficients[1])
+            residue = complex(parts["virtual"][sector].coefficients[1])
+            assert abs(residue) <= 1e-12 * abs(bare_uv), (lane, sector, residue)
+            assert parts["virtual"][sector].coefficients[2] == 0
+            poles = [complex(x) for x in ir.components["virtual"][sector].coefficients]
+            for k in (1, 2):
+                bound = 1e-12 * max(abs(bare_uv), abs(total[k]))
+                assert abs(poles[k] - total[k]) <= bound, (lane, sector, k)
+            for result in (uv, ir):
+                finite = result.components["virtual"][sector].coefficients[0]
+                assert complex(finite) == total[0], (lane, sector)
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
     "name,process",
@@ -830,7 +877,9 @@ def test_cm_joint_corrections_with_python_inputs_equal_madloop_cms(
     (``required/msm/<name>.json``, MadLoop CMS in quadruple precision), Python
     inputs: every squared-order sector and their sum at the four points in
     binary64 and at the first point in arbitrary precision (32 digits), to
-    1e-8. About 3 min generation each (CM02, CM05: 176 s), 6 GB."""
+    1e-8; the counterterms' poles split by the pole regulators
+    (``_check_cms_split``, MS-POLES). About 3 min generation each (CM02,
+    CM05: 176 s), 6 GB."""
 
     reference = _reference(name)
     model, _scheme, slice_ = _gmu_cms_slice(
@@ -847,6 +896,7 @@ def test_cm_joint_corrections_with_python_inputs_equal_madloop_cms(
         slice_, reference, model, (("double", 1e-8),), range(len(reference["points"]))
     )
     _check_sectors(slice_, reference, model, (("arbitrary", 1e-8),), [0])
+    _check_cms_split(slice_, reference, model)
 
 
 @pytest.mark.loop_nightly

@@ -141,33 +141,96 @@ class PoleRegulators:
         return None if record is None else cls(str(record["uv"]), str(record["ir"]))
 
 
+def _by_code(externals: Iterable[tuple[str, str, Any]]) -> PoleRegulators | None:
+    """The regulators among (name, LHA block, LHA code) of real external
+    parameters (``REGULATOR_CODES``), None unless both exist once each."""
+
+    externals = list(externals)
+    found: dict[str, str] = {}
+    for origin, (block, code) in REGULATOR_CODES.items():
+        names = [
+            name
+            for name, lhablock, lhacode in externals
+            if str(lhablock or "").upper() == block
+            and tuple(int(c) for c in (lhacode or ())) == code
+        ]
+        if len(names) != 1:
+            return None
+        found[origin] = str(names[0])
+    return PoleRegulators(**found)
+
+
+def _value_texts(value: Mapping[str, Any]) -> list[tuple[int, str]]:
+    """(epsilon power, source text) of a raw model value: a Laurent value's
+    terms, else the value's expression at power 0."""
+
+    if value.get("kind") == "laurent":
+        return [(int(power), str(text)) for power, text in value["terms"]]
+    text = value.get("expression")
+    return [] if text is None else [(0, str(text))]
+
+
+def model_pole_regulators(raw: Any) -> PoleRegulators | None:
+    """The pole regulators a raw loop model declares: its real external
+    parameters at ``REGULATOR_CODES`` (by code, not by name) that only the
+    pole coefficients of its Laurent values (the counterterm parameters'
+    1/eps terms) read; None when it has none, or when a tree parameter, a
+    coupling or a finite part reads one (a model using those codes for
+    something else: setting it to 0 would change more than the
+    counterterms' IR poles)."""
+
+    if raw is None:
+        return None
+    externals = []
+    for record in raw.collections["parameters"]:
+        fields = record["fields"]
+        if fields.get("nature") == "external" and (
+            str(fields.get("type", "real")).lower() == "real"
+        ):
+            externals.append(
+                (record["name"], fields.get("lhablock"), fields.get("lhacode"))
+            )
+    regulators = _by_code(externals)
+    if regulators is None:
+        return None
+    names = "|".join(re.escape(name) for name in (regulators.uv, regulators.ir))
+    reads = re.compile(rf"(?<![A-Za-z0-9_.])(?:{names})(?![A-Za-z0-9_])")
+    for collection in ("parameters", "counterterm_parameters", "couplings"):
+        for record in raw.collections[collection]:
+            if collection == "parameters" and record["name"] in (
+                regulators.uv,
+                regulators.ir,
+            ):
+                continue
+            value = raw.exact_value(collection, record["id"])
+            for power, text in _value_texts(value):
+                if power >= 0 and reads.search(text):
+                    return None
+    return regulators
+
+
 def pole_regulators(
-    parameters: Iterable[Any], fixed: Container[str] = ()
+    parameters: Iterable[Any], fixed: Container[str] = (), raw: Any = None
 ) -> PoleRegulators | None:
     """The pole regulators of a model (``REGULATOR_CODES``): its real
     external parameters at UFO/SLHA codes (TECHNICAL, 1) and (TECHNICAL, 2),
     by code, not by name; None unless both exist once each and neither is
     fixed (``fixed``: the request's and the preparation's fixed parameters,
     which the counterterm program substitutes). ``parameters`` are the
-    compiled model's parameter records (``compiled.ir.parameters``)."""
+    compiled model's parameter records (``compiled.ir.parameters``); with
+    its raw loop model ``raw`` the regulators must also be the ones it
+    declares (``model_pole_regulators``: read only by pole coefficients)."""
 
-    externals = [
-        record
+    found = _by_code(
+        (record.name, record.lhablock, record.lhacode)
         for record in parameters
         if record.nature == "external" and str(record.parameter_type).lower() == "real"
-    ]
-    found: dict[str, str] = {}
-    for origin, (block, code) in REGULATOR_CODES.items():
-        names = [
-            record.name
-            for record in externals
-            if (record.lhablock or "").upper() == block
-            and tuple(record.lhacode or ()) == code
-        ]
-        if len(names) != 1 or names[0] in fixed:
-            return None
-        found[origin] = str(names[0])
-    return PoleRegulators(**found)
+    )
+    if found is None or found.uv in fixed or found.ir in fixed:
+        return None
+    if raw is not None and model_pole_regulators(raw) != found:
+        return None
+    return found
 
 
 def regulated_parameters(
