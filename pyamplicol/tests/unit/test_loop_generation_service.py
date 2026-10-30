@@ -141,7 +141,7 @@ def _colour_backend(monkeypatch, accuracy, declaration):
     from pyamplicol.models.loop_preparation import LoopPreparation
 
     scheme = LoopSchemeDeclaration(
-        "HV", "4d", "source", "source", "real", "source", "fixture"
+        "HV", "4d", "source", "source", "real-on-shell", "source", "fixture"
     )
     loop = LoopModelDeclaration(scheme, ("QCD", "QED"), True, True)
     backend = GenerationBackend(
