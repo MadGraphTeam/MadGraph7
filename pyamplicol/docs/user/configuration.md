@@ -853,8 +853,11 @@ Catani's operator. A model that writes its counterterms with pole regulators
 itself: as long as both stay adjustable (not in `fixed_parameters`), every
 counterterm component's UV part is its value at `epsIR = 0` (MadLoop's
 reading of that card setting) and its IR part the rest, so for these models
-the bare and counterterm UV poles cancel as a check, not by construction.
-In Python:
+the bare and counterterm UV poles cancel as a check, not by construction
+(UV finiteness then also needs consistent inputs, e.g. the top Yukawa `ymt`
+at the top mass `MT`). This costs one more pass of the tree program per point
+in `"uv"` and `"ir"` (g g > t t~ with QCD and QED corrections: about 3.1
+against 2.1 ms per point under `"all"`, binary64, one thread). In Python:
 
 ```python
 result = runtime.evaluate(points, mu_r2=scales, poles="uv")
