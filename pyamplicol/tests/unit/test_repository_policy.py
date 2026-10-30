@@ -112,6 +112,8 @@ def test_release_source_roots_contain_no_symlinks() -> None:
         for source_root in FIRST_PARTY_ROOTS
         for path in source_root.rglob("*")
         if _eligible(path) and path.is_symlink()
+        # shared with madspace, copied by content (_SHARED_SYMLINKS)
+        and path != ROOT / "src/pyamplicol/assets/api_templates/umami/umami.h"
     ]
     assert not links, "release source contains symlinks:\n" + "\n".join(links)
 

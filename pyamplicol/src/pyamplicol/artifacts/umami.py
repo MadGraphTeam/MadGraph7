@@ -13,16 +13,20 @@ the C provider.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from itertools import combinations_with_replacement, islice, permutations
 from typing import TYPE_CHECKING, Any
 
 from .api_bundle import ApiBundlePayload
 
 if TYPE_CHECKING:
     from ..generation.process_grouping import GroupMember
+
+_LOGGER = logging.getLogger(__name__)
 
 FLAVOR_BLIND_ASSUMPTION = (
     "flavor-blind matrix elements: ungenerated process-group members are "
@@ -347,6 +351,182 @@ def _relabelled_runtime(runtime, relabel):
     }
 
 
+# Phase-space partners of one colour order beyond this many are dropped: any
+# subset gives correct channel weights, as each selector lists its own.
+_MAX_PARTNERS = 64
+# Resonance configurations of one process beyond this many are not enumerated.
+_MAX_CONFIGURATIONS = 1024
+
+
+def _roles(pdgs, incoming, particles):
+    """The colour representation of each leg in the all-outgoing convention."""
+    roles = []
+    for slot, pdg in enumerate(pdgs):
+        representation = int(particles[int(pdg)]["color"])
+        if slot < incoming and abs(representation) == 3:
+            representation = -representation
+        roles.append(representation)
+    return roles
+
+
+def _line_blocks(word_slots, roles):
+    """The complete open colour lines of an LC word in its order, or None for a
+    trace or a word without fundamental lines."""
+    blocks, current = [], None
+    for slot in word_slots:
+        if roles[slot] == 3:
+            current = [slot]
+        elif current is not None:
+            current.append(slot)
+            if roles[slot] == -3:
+                blocks.append(current)
+                current = None
+    if not blocks or current is not None or sum(map(len, blocks)) != len(word_slots):
+        return None
+    return blocks
+
+
+def _classify_resonances(resonances, roles):
+    """Split the candidates ``(pdg, legs, color)`` of a process into the colour
+    singlets a phase-space channel can follow, ``(pdg, legs)``, the coloured
+    ones and the singlets decaying to coloured and colourless particles."""
+    mappable, coloured, mixed = [], [], []
+    for pdg, legs, color in resonances:
+        if color != 1:
+            coloured.append((pdg, legs, color))
+        elif len({roles[slot] == 1 for slot in legs}) > 1:
+            mixed.append((pdg, legs))
+        else:
+            mappable.append((pdg, legs))
+    return mappable, coloured, mixed
+
+
+# A decay of the phase-space mapping has at most this many daughters.
+_MAX_DECAY_DAUGHTERS = 3
+
+
+def _decays_fit(chosen):
+    """Whether every resonance of the set decays to at most three daughters,
+    its nested resonances and its legs that no nested resonance contains."""
+    for resonance in chosen:
+        children = [
+            other
+            for other in chosen
+            if other[1] < resonance[1]
+            and not any(other[1] < r[1] < resonance[1] for r in chosen)
+        ]
+        covered = set().union(*(other[1] for other in children))
+        if len(children) + len(resonance[1] - covered) > _MAX_DECAY_DAUGHTERS:
+            return False
+    return True
+
+
+def _configurations(resonances, limit=_MAX_CONFIGURATIONS):
+    """Every set of resonances that can be mapped together, pairwise nested or
+    disjoint, each decaying to at most three daughters: the non-resonant one
+    first, then the larger ones first. Returns
+    ``(configurations, complete)``, enumerating at most ``limit`` of them."""
+
+    def compatible(a, b):
+        return a < b or b < a or not a & b
+
+    found, truncated = [], False
+
+    def extend(chosen, start):
+        nonlocal truncated
+        # a set the mapping cannot follow may still grow into one it can
+        if _decays_fit(chosen):
+            found.append(tuple(chosen))
+        for index in range(start, len(resonances)):
+            candidate = resonances[index]
+            if all(compatible(candidate[1], r[1]) for r in chosen):
+                if len(found) >= limit:
+                    truncated = True
+                    return
+                extend([*chosen, candidate], index + 1)
+
+    extend([], 0)
+    found[1:] = sorted(found[1:], key=len, reverse=True)
+    return found, not truncated
+
+
+def _resonance_legs(resonance, configuration):
+    """The legs of a resonance with its nested resonances kept contiguous."""
+    inner = [
+        other
+        for other in configuration
+        if other[1] < resonance[1]
+        and not any(other[1] < r[1] < resonance[1] for r in configuration)
+    ]
+    covered = set().union(*(other[1] for other in inner))
+    blocks = [_resonance_legs(other, configuration) for other in inner]
+    blocks += [[slot] for slot in resonance[1] - covered]
+    return [slot for block in sorted(blocks, key=min) for slot in block]
+
+
+def _placements(word_slots, blocks, units):
+    """Phase-space orders of one colour order, generated lazily: as in AmpliCol,
+    the colour singlet units follow the antiquark ends of the lines, in every
+    order and every distribution over the lines, and with three or more lines
+    every non-cyclic order of the lines is a partner too (the same colour
+    tensor)."""
+    if blocks is None:
+        yield list(word_slots) + [slot for unit in units for slot in unit]
+        return
+    for rest in permutations(blocks[1:]):
+        lines = [blocks[0], *rest]
+        for unit_order in permutations(units):
+            for cuts in combinations_with_replacement(
+                range(len(units) + 1), len(lines) - 1
+            ):
+                bounds = (0, *cuts, len(units))
+                order = []
+                for index, line in enumerate(lines):
+                    order += line
+                    for unit in unit_order[bounds[index] : bounds[index + 1]]:
+                        order += unit
+                yield order
+
+
+def _phasespace_partners(word_slots, singlet_slots, roles, configurations):
+    """The phase-space orders and resonance configurations integrating one
+    colour order together, the first one its own: ``[(order, configuration)]``
+    with ``configuration`` one of the process's ``configurations`` of
+    ``(pdg, legs)``. A resonance decaying to coloured particles applies only if
+    they are a complete colour line of this order. At most ``_MAX_PARTNERS``
+    configurations are kept, in their order, and as many placements of each
+    as fit."""
+    blocks = _line_blocks(word_slots, roles) if word_slots else None
+    lines = {frozenset(block) for block in blocks or ()}
+    applicable = [
+        configuration
+        for configuration in configurations
+        if all(
+            legs in lines or all(roles[slot] == 1 for slot in legs)
+            for _, legs in configuration
+        )
+    ][:_MAX_PARTNERS]
+    per_configuration = max(1, _MAX_PARTNERS // len(applicable))
+    partners = []
+    for configuration in applicable:
+        top = [
+            r
+            for r in configuration
+            if not any(r[1] < other[1] for other in configuration)
+        ]
+        units = [
+            _resonance_legs(r, configuration)
+            for r in top
+            if all(roles[slot] == 1 for slot in r[1])
+        ]
+        covered = {slot for unit in units for slot in unit}
+        units += [[slot] for slot in singlet_slots if slot not in covered]
+        units.sort(key=min)
+        orders = islice(_placements(word_slots, blocks, units), per_configuration)
+        partners += [(order, configuration) for order in orders]
+    return partners
+
+
 class _InternTable(list):
     """A list with a hash index of its entries, so interning is O(1)."""
 
@@ -442,6 +622,45 @@ def _add_terms(entry, terms):
             existing["factor"] += term["factor"]
 
 
+def _group_phasespace_channels(data, selectors, phasespace_channels):
+    """One UMAMI channel per set of contributions linked by shared phase-space
+    channels: its contributions are integrated together, each over the
+    phase-space channels listed in its ``multichannels``. The coloured
+    resonances of its contributions are listed for the launch to check."""
+    parent = {key: key for key in phasespace_channels}
+
+    def root(key):
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+
+    for _, keys, _ in selectors:
+        for key in keys[1:]:
+            parent[root(key)] = root(keys[0])
+    groups: dict[tuple, dict] = {}
+    for entry, keys, colored in selectors:
+        group = groups.setdefault(
+            root(keys[0]), {"lookup": {}, "processes": [], "colored": []}
+        )
+        entry["multichannels"] = [
+            group["lookup"].setdefault(key, len(group["lookup"])) for key in keys
+        ]
+        group["processes"].append(entry)
+        group["colored"] += [r for r in colored if r not in group["colored"]]
+    data["channels"] = []
+    for group in groups.values():
+        channels = [phasespace_channels[key] for key in group["lookup"]]
+        data["channels"].append(
+            {
+                "phasespace_order": channels[0]["phasespace_order"],
+                "phasespace_channels": channels,
+                "colored_resonances": group["colored"],
+                "processes": group["processes"],
+            }
+        )
+
+
 def _merge_flavour_orbits(data):
     """Merge different flavours with a common proven computation.
 
@@ -450,9 +669,9 @@ def _merge_flavour_orbits(data):
     A merged flavour is evaluated by the kept selector, so the complete runtime
     evaluation (permutation, factor and colour tags included) must agree.
     """
-    candidates = {}
     incoming = data["provider"]["incoming_count"]
     for channel in data["channels"]:
+        candidates = {}
         kept = []
         for entry in channel["processes"]:
             runtime = entry["runtime"]
@@ -464,6 +683,7 @@ def _merge_flavour_orbits(data):
                 tuple(runtime["permutation"]),
                 runtime["factor"],
                 tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
+                tuple(entry["multichannels"]),
             )
             previous = next(
                 (
@@ -481,9 +701,6 @@ def _merge_flavour_orbits(data):
                 previous["members"].extend(entry["members"])
         channel["processes"] = kept
     data["channels"] = [c for c in data["channels"] if c["processes"]]
-    for index, channel in enumerate(data["channels"]):
-        for entry in channel["processes"]:
-            entry["multichannels"] = [index]
 
 
 def _export_helicities(data, runtime_helicities):
@@ -634,7 +851,7 @@ def _build_provider(
         assumptions.append(FLAVOR_BLIND_ASSUMPTION)
     data: dict[str, Any] = {
         "kind": "pyamplicol-umami-metadata",
-        "schema_version": 1,
+        "schema_version": 2,
         "provider": {
             "id": provider_id,
             "library": "libumami.so" if single else f"libumami_{provider_id}.so",
@@ -658,8 +875,11 @@ def _build_provider(
     }
     structural_representatives: dict[str, dict] = {}
     orbit_entries: dict[tuple, tuple[dict, list[int]]] = {}
-    channel_lookup = {}
     channel_patterns: dict[tuple, list[int]] = {}
+    # (order, resonances) of every phase-space channel, and the exported
+    # contributions with the channels integrating them and coloured resonances
+    phasespace_channels: dict[tuple, dict] = {}
+    selectors: list[tuple[dict, list[tuple], list[dict]]] = []
     physical_count = 0
     runtime_helicities: list[list[list[int]]] = []
     runtime_indices: dict[str, int] = {}
@@ -726,6 +946,33 @@ def _build_provider(
             )
         replay = _safe_replay(process)
         sectors_by_word = {_word(sector): sector for sector in process.color_sectors}
+        roles = _roles(pdgs, incoming, particles)
+        resonances = [
+            (
+                int(r["pdg"]),
+                frozenset(labels[int(label)] for label in r["labels"]),
+                int(r["color"]),
+            )
+            for r in _records(
+                physics.get("extensions", {}).get("s_channel_resonances", ())
+            )
+        ]
+        if relation is not None:
+            resonances = [
+                (pdg, frozenset(relation[slot] for slot in legs), color)
+                for pdg, legs, color in resonances
+            ]
+        mappable, coloured, unmapped = _classify_resonances(resonances, roles)
+        configurations, complete = _configurations(mappable)
+        if not complete and process.color_accuracy == "lc":
+            _LOGGER.warning(
+                "%s: only the first %d s-channel resonance configurations are "
+                "followed by the [amplicol] phase space",
+                source_id,
+                len(configurations),
+            )
+        # the legs of a complete colour line in some colour order of the process
+        line_legs = set()
         colors = sorted(
             _records(physics.get("color_components")),
             key=lambda color: tuple(color.get("word", ())),
@@ -761,6 +1008,10 @@ def _build_provider(
                         [int(external[slot]["label"]) for slot in word_slots]
                     )
             color_index = None if flow is None else _intern(data["color_flows"], flow)
+            if flow is not None:
+                coloured_slots = [slot for slot in order if roles[slot] != 1]
+                blocks = _line_blocks(coloured_slots, roles) if coloured_slots else None
+                line_legs.update(frozenset(block) for block in blocks or ())
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
             runtime = {
                 "process_index": process_index,
@@ -860,17 +1111,91 @@ def _build_provider(
                 "members": [member],
                 "multichannels": [],
             }
-            # A single complete map per channel pattern. Maps are shared only if
-            # their fixed external masses agree (already a provider invariant).
-            if pattern not in channel_lookup:
-                channel_lookup[pattern] = len(data["channels"])
-                data["channels"].append(
-                    {"phasespace_order": channel_order, "processes": []}
+            # The phase-space channels of the contribution, in the relabelled
+            # legs. Maps are shared only if their fixed external masses agree
+            # (already a provider invariant) and they follow the same resonances.
+            partners = (
+                [(order, ())]
+                if flow is None
+                else _phasespace_partners(
+                    [slot for slot in order if roles[slot] != 1],
+                    [slot for slot in order if roles[slot] == 1],
+                    roles,
+                    configurations,
                 )
-            channel_index = channel_lookup[pattern]
-            entry["multichannels"] = [channel_index]
-            data["channels"][channel_index]["processes"].append(entry)
+            )
+            # Contributions share a phase-space channel only with the same kind
+            # of particle in every leg, so that the cuts select the same legs
+            kinds = [None] * count
+            for slot, pdg in enumerate(pdgs):
+                particle = particles[int(pdg)]
+                kinds[relabel[slot]] = (
+                    abs(int(particle["color"])),
+                    abs(float(particle.get("charge", 0.0))),
+                    particle.get("spin"),
+                )
+            keys = []
+            for partner_order, configuration in partners:
+                _, partner_rotated = _channel_pattern(
+                    [relabel[slot] for slot in partner_order],
+                    incoming,
+                    data["provider"]["masses"],
+                )
+                partner_resonances = sorted(
+                    (sorted(relabel[slot] for slot in legs), pdg)
+                    for pdg, legs in configuration
+                )
+                key = (
+                    tuple(partner_rotated),
+                    tuple((tuple(legs), abs(pdg)) for legs, pdg in partner_resonances),
+                    tuple(kinds),
+                )
+                if key not in keys:
+                    keys.append(key)
+                phasespace_channels.setdefault(
+                    key,
+                    {
+                        "phasespace_order": partner_rotated,
+                        "resonances": [
+                            {"pdg": pdg, "legs": legs}
+                            for legs, pdg in partner_resonances
+                        ],
+                    },
+                )
+            # not followed by the channels: the launch rejects those that go on shell
+            colored_resonances = (
+                []
+                if flow is None
+                else [
+                    {
+                        "pdg": pdg,
+                        "legs": sorted(relabel[slot] for slot in legs),
+                        "color": color,
+                    }
+                    for pdg, legs, color in coloured
+                ]
+            )
+            selectors.append((entry, keys, colored_resonances))
             orbit_entries[orbit] = (entry, aligned_order, runtime, relabel)
+        unmapped += [
+            (pdg, legs)
+            for pdg, legs in mappable
+            if legs not in line_legs and any(roles[slot] != 1 for slot in legs)
+        ]
+        if unmapped and process.color_accuracy == "lc":
+            _LOGGER.warning(
+                "%s: the [amplicol] phase space does not follow the s-channel "
+                "resonances %s, which decay to coloured and colourless particles "
+                "or not to one complete colour line",
+                source_id,
+                ", ".join(
+                    f"{pdg} > {' '.join(str(pdgs[slot]) for slot in sorted(legs))}"
+                    for pdg, legs in sorted(
+                        unmapped, key=lambda r: (r[0], sorted(r[1]))
+                    )
+                ),
+            )
+    _group_phasespace_channels(data, selectors, phasespace_channels)
     _merge_flavour_orbits(data)
     _export_helicities(data, runtime_helicities)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}

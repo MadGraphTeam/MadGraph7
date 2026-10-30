@@ -741,6 +741,7 @@ def test_writer_append_recovers_old_compact_otf_sdk(tmp_path, monkeypatch):
     written = {}
     builder = SimpleNamespace(
         staged_path=lambda path: tmp_path / path,
+        read_staged=lambda path: (tmp_path / path).read_bytes(),
         payload_records=lambda: [],
         add_bytes=lambda path, content, **kwargs: written.setdefault(path, content),
     )
@@ -965,6 +966,7 @@ def test_writer_exports_only_ungenerated_group_members(tmp_path):
     written = {}
     builder = SimpleNamespace(
         staged_path=lambda path: tmp_path / path,
+        read_staged=lambda path: (tmp_path / path).read_bytes(),
         payload_records=lambda: [],
         add_bytes=lambda path, content, **kwargs: written.setdefault(path, content),
     )

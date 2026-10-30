@@ -11,7 +11,8 @@ DifferentialCrossSection::DifferentialCrossSection(
     const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf1,
     const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2,
     bool input_momentum_fraction,
-    bool decay
+    bool decay,
+    bool return_matrix_element
 ) :
     FunctionGenerator(
         "DifferentialCrossSection",
@@ -50,7 +51,13 @@ DifferentialCrossSection::DifferentialCrossSection(
             }
             return arg_types;
         }(),
-        matrix_element.return_types()
+        [&] {
+            NamedVector<Type> ret_types = matrix_element.return_types();
+            if (return_matrix_element) {
+                ret_types.push_back("raw_matrix_element", batch_float);
+            }
+            return ret_types;
+        }()
     ),
     _pid_options(pid_options),
     _matrix_element(matrix_element),
@@ -62,7 +69,16 @@ DifferentialCrossSection::DifferentialCrossSection(
     _e_cm(cm_energy),
     _energy_scale(energy_scale),
     _input_momentum_fraction(input_momentum_fraction),
-    _decay(decay) {
+    _decay(decay),
+    _return_matrix_element(return_matrix_element) {
+    auto& outputs = matrix_element.outputs();
+    if (std::find(
+            outputs.begin(), outputs.end(), MatrixElement::matrix_element_ratio_out
+        ) != outputs.end()) {
+        throw std::invalid_argument(
+            "a matrix element returning a ratio can only be used in a weighting step"
+        );
+    }
     if (decay) {
         if (_has_pdf.at(0) || _has_pdf.at(1)) {
             throw std::invalid_argument("a decay has no beams, so no PDFs");
@@ -157,14 +173,14 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
         throw std::runtime_error("matrix element missing in return values");
     }
     std::size_t me_index = search - _matrix_element.outputs().begin();
+    Value raw_matrix_element = me_result.at(me_index);
     if (_decay) {
         // Differential decay rate: dGamma = |M|^2 dPhi_n / (2 M), in GeV. The
         // flux is a compile-time constant here (M is fixed by the decaying
         // particle), so this is a single multiply and needs no dedicated
         // instruction. Deliberately no GeV^-2 -> pb conversion: a width is not
         // a cross section.
-        me_result.at(me_index) =
-            fb.mul(me_result.at(me_index), 1. / (2. * _e_cm));
+        me_result.at(me_index) = fb.mul(me_result.at(me_index), 1. / (2. * _e_cm));
     } else {
         me_result.at(me_index) = fb.diff_cross_section(
             x1x2.at(0),
@@ -174,6 +190,9 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
             me_result.at(me_index),
             _e_cm * _e_cm
         );
+    }
+    if (_return_matrix_element) {
+        me_result.push_back("raw_matrix_element", raw_matrix_element);
     }
     return me_result;
 }
