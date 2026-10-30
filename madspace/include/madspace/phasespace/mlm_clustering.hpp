@@ -246,8 +246,8 @@ private:
 };
 
 // The clustering along one diagram as a function of its own, taking the
-// diagram index as a second argument. The integrand calls build_along_diagram
-// directly; this is how that path is reached from Python.
+// diagram index as a second argument. The integrand calls
+// build_from_start_state directly; this is how that path is reached from Python.
 class MLMClusteringAlongDiagram : public FunctionGenerator {
 public:
     MLMClusteringAlongDiagram(const MLMClustering& clustering);

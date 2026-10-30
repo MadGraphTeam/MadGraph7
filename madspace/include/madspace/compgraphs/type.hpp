@@ -72,7 +72,7 @@ public:
     BatchSize operator-(const BatchSize& other) const { return add(other, -1); }
     bool operator==(const BatchSize& other) const { return value == other.value; }
     bool operator!=(const BatchSize& other) const { return value != other.value; }
-    /// Human-readable representation such as `"batch_size + 1"`.
+    /// Human-readable representation such as `"batch_size+1"`.
     std::string to_string() const;
 
     friend std::ostream& operator<<(std::ostream& out, const BatchSize& batch_size);

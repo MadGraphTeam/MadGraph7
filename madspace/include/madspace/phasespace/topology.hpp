@@ -220,7 +220,7 @@ public:
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
     }
-    /// Diagram indices of the outgoing particles, in decay-tree order.
+    /// Decay-tree node index of each outgoing particle, in diagram order.
     const std::vector<std::size_t>& outgoing_indices() const {
         return _outgoing_indices;
     }

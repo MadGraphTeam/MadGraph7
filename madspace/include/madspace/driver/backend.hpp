@@ -36,7 +36,8 @@ private:
 /// Owning handle to a `Runtime`.
 using RuntimePtr = std::unique_ptr<Runtime>;
 /// Compile `function` into a callable @ref Runtime for `context`'s device.
-/// `concurrent` allows several `Runtime`s to share one compilation cache.
+/// `concurrent` lets the CPU runtime run independent instructions concurrently on
+/// the context's thread pool; the GPU runtime ignores it.
 RuntimePtr
 build_runtime(const Function& function, ContextPtr context, bool concurrent = true);
 /// Names of the CPU backend variants usable on this host ("cpu_scalar",

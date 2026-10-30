@@ -58,7 +58,7 @@ namespace madspace {
  * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction.
  * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

@@ -44,7 +44,7 @@ namespace madspace {
  * - `momentum1` – `float`, shape `(batch, 4)` – first daughter momentum.
  * - `momentum2` – `float`, shape `(batch, 4)` – second daughter momentum.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -129,7 +129,7 @@ private:
  * - `momentum1` – `float`, shape `(batch, 4)` – first outgoing momentum.
  * - `momentum2` – `float`, shape `(batch, 4)` – second outgoing momentum.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**
@@ -237,7 +237,7 @@ private:
  * - `momentum1` – `float`, shape `(batch, 4)` – first outgoing momentum.
  * - `momentum2` – `float`, shape `(batch, 4)` – recoil momentum.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

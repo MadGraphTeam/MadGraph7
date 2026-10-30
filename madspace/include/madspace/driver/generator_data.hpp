@@ -83,8 +83,8 @@ struct GeneratorConfig {
     /// Number of consecutive non-improving iterations tolerated before the
     /// survey stops optimizing.
     std::size_t optimization_patience = 3;
-    /// Minimum relative improvement counted as progress by
-    /// `optimization_patience`.
+    /// An iteration counts as progress for `optimization_patience` if the relative
+    /// standard deviation falls below this fraction of its best value so far.
     double optimization_threshold = 0.99;
     /// Number of events per job on a CPU device.
     std::size_t cpu_batch_size = 1000;
@@ -211,9 +211,11 @@ struct Histogram {
     double min;
     /// Upper edge of the last bin.
     double max;
-    /// Summed weight per bin, including the under/overflow bins.
+    /// Weight per bin, including the under/overflow bins: raw sums in a
+    /// ChannelEventGenerator, normalized by EventGenerator::histograms().
     std::vector<double> bin_values;
-    /// Standard error per bin.
+    /// Standard error per bin (raw sums of squared weights in a
+    /// ChannelEventGenerator).
     std::vector<double> bin_errors;
 };
 

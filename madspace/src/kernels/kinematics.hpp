@@ -778,7 +778,7 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin(
 }
 
 // Clamp the kinematic |t| range against the ETmin cut interval. Returns the
-// absolute (positive) t invariant. The ETmin bound only improves sampling; the
+// bounds on the absolute (positive) t invariant. The ETmin bound only improves sampling; the
 // real cut is applied on the final momenta.
 template <typename T>
 KERNELSPEC void kernel_t_inv_min_max_cut(

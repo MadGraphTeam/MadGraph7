@@ -111,7 +111,8 @@ public:
      * @param first_chan_weight_remap           Remap applied to the channel
      *                                          weights before the network.
      * @param first_remapped_chan_count         Channel count after that remap.
-     * @param second_chan_weight_remap          Remap applied after the network.
+     * @param second_chan_weight_remap          Remap applied before the network,
+     *                                          after the subchannel weights.
      * @param second_remapped_chan_count        Channel count after that remap.
      * @param madnis_training                   If true, return the quantities
      *                                          needed for the @ref MadnisLoss
@@ -119,8 +120,9 @@ public:
      * @param drop_cuts_and_rescale             If true, return only the events
      *                                          that pass the cuts, and rescale
      *                                          adaptive_prob by the acceptance.
-     * @param partial_weights                   If true, emit the per-factor
-     *                                          weights for buffered unweighting.
+     * @param partial_weights                   If true, emit the product of the
+     *                                          beam densities (partial_weight_product)
+     *                                          for the systematics.
      *                                          Ignored under MLM pdf
      *                                          reweighting, whose densities are
      *                                          not at the factorisation scale.

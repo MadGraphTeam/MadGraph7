@@ -31,7 +31,7 @@ namespace madspace {
  * **Outputs**
  * - the outputs of the channel mappings (identical across channels).
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

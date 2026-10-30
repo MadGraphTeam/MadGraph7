@@ -182,8 +182,8 @@ public:
     /// Serialize this generator's state to `file_name`; see @ref load.
     void save(const std::string& file_name) const;
     /// The JSON text that @ref save writes; see @ref load_json. With
-    /// `include_estimates`, the current maximum weight and the integrals (signed
-    /// and absolute) are stored as well if there are at least two samples.
+    /// `include_estimates`, the current maximum weight and, if there are at least
+    /// two samples, the integrals (signed and absolute) are stored as well.
     /// @ref load_json then keeps the maximum weight fixed and uses the
     /// integrals as priors, see @ref abs_integral_estimate.
     std::string to_json(bool include_estimates = false) const;

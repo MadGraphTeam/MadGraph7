@@ -596,8 +596,8 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
 // [s_phys_min, s_phys_max] and the 2->3 measure is flat in phi. A sampling density
 // that stays finite at the edges of that range thus leaves an integrable
 // 1/|sin(phi)| in the weight with a log-divergent variance. With
-//   u = (s23 - s_phys_min) / (s_phys_max - s_phys_min) = sin^2(phi / 2),
-// the map is flat in theta = phi / 2 on the part [theta_a, theta_b] of [0, pi/2]
+//   u = (s23 - s_phys_min) / (s_phys_max - s_phys_min) = cos^2(phi / 2),
+// the map is flat in theta = (pi - phi) / 2 on the part [theta_a, theta_b] of [0, pi/2]
 // covered by the sampling range [s_min, s_max], and gives the position x in [0, 1]:
 //   x = (sin^2 theta - sin^2 theta_a) / (sin^2 theta_b - sin^2 theta_a),
 //   theta = theta_a + (theta_b - theta_a) r.

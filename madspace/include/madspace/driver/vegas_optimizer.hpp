@@ -27,8 +27,8 @@ public:
         double damping
     ) :
         _contexts(contexts), _grid_name(grid_name), _damping(damping) {}
-    /// Accumulate one batch of per-bin weight sums (`weights`) and per-bin
-    /// counts (`inputs`) with shape [1, dims, bins]; see @ref VegasHistogram.
+    /// Accumulate one batch of per-bin weight sums (`values`) and per-bin
+    /// counts (`counts`) with shape [1, dims, bins]; see @ref VegasHistogram.
     void add_data(Tensor weights, Tensor inputs);
     /// Refine the grid from the accumulated data and write it back to every
     /// context.

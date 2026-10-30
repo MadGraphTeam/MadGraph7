@@ -14,7 +14,7 @@ std::string format_run_time(double wall_time_sec, double cpu_time_sec);
 /// `value`, rounded to an integer, with an SI magnitude suffix (`k`, `M`, ...)
 /// and three significant digits.
 std::string format_si_prefix(double value);
-/// `value` with its uncertainty `error`, e.g. `"1.23(4)"`. If `error` is not
+/// `value` with its uncertainty `error`, e.g. `"1.234(45)"`. If `error` is not
 /// smaller than `value`, the form `"value ± error"` is used.
 std::string format_with_error(double value, double error);
 /// Progress bar of `width` Unicode block characters, `progress` in `[0, 1]`.

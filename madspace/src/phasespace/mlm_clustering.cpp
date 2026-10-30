@@ -76,8 +76,9 @@ constexpr int flavor_class_first_absolute = 3;
 // already been mapped through by the time it gets here.
 constexpr int merged_quark_representative = 1;
 
-// Color representation of a line, as the signed color of the model (1 for a
-// singlet, +-3 for a (anti)triplet, 8 for an octet, +-6 for a sextet). The
+// Color representation of a line, as the absolute value of the signed color of
+// the model (1 for a singlet, 3 for a (anti)triplet, 8 for an octet, 6 for a
+// sextet). The
 // merged-flavor placeholders that survive in propagator pdg ids stand for the
 // particles clean_pids() maps them to in launch.py: 81 is a quark, 82 an
 // electron and 83 a neutrino.

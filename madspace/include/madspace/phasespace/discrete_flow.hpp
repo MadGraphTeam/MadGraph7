@@ -29,7 +29,7 @@ namespace madspace {
  * **Outputs**
  * - `index_{d}` – `int`, shape `(batch,)` – the chosen category per dimension.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

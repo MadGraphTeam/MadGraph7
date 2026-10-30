@@ -43,7 +43,7 @@ namespace madspace {
  * - `momentum_i` - `float`, shape `(batch, 4)` – the `n` momenta (incoming
  *   beams first, then outgoing).
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

@@ -52,7 +52,7 @@ namespace madspace {
  * **Outputs**
  * - `invariant` – `float`, shape `(batch,)` – the sampled invariant.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

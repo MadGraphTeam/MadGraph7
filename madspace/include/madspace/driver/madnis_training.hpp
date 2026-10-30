@@ -81,9 +81,9 @@ public:
         double adam_beta2 = 0.999;
         /// Adam numerical-stability constant.
         double adam_eps = 1e-8;
-        /// Adam L2 weight-decay coefficient.
+        /// Adam decoupled weight-decay coefficient.
         double adam_weight_decay = 0.0;
-        /// Maximum gradient norm; `0` disables clipping.
+        /// Maximum gradient norm per sqrt(parameter count); `0` disables clipping.
         double grad_clip_threshold = 0.0;
         /// Maximum number of samples kept in the replay buffer per channel;
         /// `0` disables buffering.

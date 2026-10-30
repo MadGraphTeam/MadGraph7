@@ -344,7 +344,7 @@ def resolve_gpu_arch(args: argparse.Namespace, saved: dict, backend: str) -> str
 # The source build (scikit-build-core) needs cmake >= 3.15 on PATH. When it is
 # missing (or too old) we fall back to a cmake installed through MadGraph's
 # HEPTools installer (`install cmake` in MG5), which lives next to this package
-# under <MG5>/HEPTools. An explicit MADGRAPH_CMAKE / CMAKE env var wins.
+# under <MG5>/HEPTools. A cmake on PATH that is recent enough is preferred.
 
 CMAKE_MIN_VERSION = (3, 15)
 

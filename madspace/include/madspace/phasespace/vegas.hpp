@@ -61,7 +61,7 @@ private:
  * - `data` – `float`, shape `(batch, dimension)` – the reparametrized
  *   coordinates.
  *
- * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
  * **References**

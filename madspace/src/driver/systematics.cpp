@@ -1058,7 +1058,7 @@ void SystematicsCalculator::compute(
         }
     }
 
-    // alpha_s part: the distinct (alpha_s grid, mur, dyn) combinations, one
+    // alpha_s part: the distinct (alpha_s grid, mur, dyn, alps) combinations, one
     // batched alpha_s call each; the matrix element is re-evaluated for the
     // events of the mixed-order subprocesses
     std::vector<AlphaSKey> keys;
