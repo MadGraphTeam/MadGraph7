@@ -15,17 +15,19 @@ binary64 plane application with its exact evaluator
   or discontinuous function of its inputs and has no real point is refused.
 
 Evidence for the choice (slice-status DECISIONS 2026-10-26 ~21:10 item 6,
-user-confirmed 2026-10-27 ~19:20): SymJIT gives a negated real a -0
+user-confirmed 2026-10-27 ~19:20): SymJIT gave a negated real a -0
 imaginary part where Symbolica's evaluator gives +0, so at the former real
 probes, assigned by input index, a square root of 1 - MW^2/MZ^2 sat on its
 cut whenever the probe made MW > MZ and refused a correct translation,
 depending on the declaration order (loop_sm with MW a card input; the G_mu
-EW counterterms c_UVepemA1EW and UV_GTTLEW). At the physical point the
-argument is positive, and an argument exactly on a cut at real masses takes
-MadLoop's +0 side in every evaluator (``ct_recursion._RealArguments``); the
-real-axis row checks both. A real point on a cut where the two evaluators
-take opposite sides is a binary64 against DoubleFloat inconsistency there,
-and stays the listed refusal ``plane-mismatch``.
+EW counterterms c_UVepemA1EW and UV_GTTLEW). Since M-SM MS-MASTERS the
+translation makes the zero imaginary part of every cut argument +0
+(``symjit_plane::InlinedProgram::canonical_cut_arguments``), so at real
+inputs the plane takes exact arithmetic's side of a cut, MadLoop's +0 side
+(as ``ct_recursion._RealArguments`` projects the counterterms' real
+arguments for every evaluator), wherever the parameters put an argument;
+the real-axis row checks it at the request's values. A real point where the
+two evaluators still disagree stays the listed refusal ``plane-mismatch``.
 
 Nightly: g g > t t~ EW and e- e+ > mu- mu+ (G_mu UFO) and u u~ > d d~ with
 QED corrections (loop_qcd_qed_sm) export native point inputs, which equal
@@ -113,45 +115,44 @@ def test_plane_check_certifies_the_translation_in_any_input_order(loop_native):
         got = _plane_values(plane, inputs, outputs, rows)
         assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
         assert np.all(got.imag == 0) and np.all(np.isfinite(got))
-    # The former probes as the real point: a correct translation refused on
-    # the cut (the imaginary part's sign: SymJIT's -0 against Symbolica's +0).
-    message, _output, row, imaginary, real_axis = _refusal(
-        loop_native, _state(W_COUPLING), [list(FORMER_PROBES)]
+    # The former probes as the real point (MW > MZ: every argument on its
+    # cut): accepted, and the plane takes the exact evaluator's side there.
+    state = _state(W_COUPLING)
+    plane, inputs, outputs = loop_native.compile_v2_plane(
+        state, 2, False, [list(FORMER_PROBES)]
     )
-    assert (row, imaginary, real_axis) == (0, True, True), message
-    assert "imaginary part, real-axis probe row 0" in message, message
+    rows = [[complex(x) for x in FORMER_PROBES]]
+    expected = np.asarray(Evaluator.load(state).evaluate_complex(rows))
+    got = _plane_values(plane, inputs, outputs, rows)
+    assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
+    assert np.all(expected.imag != 0), expected
 
 
 @pytest.mark.loop_fast
-def test_plane_check_refuses_a_real_point_on_a_cut_where_the_sides_differ(
-    loop_native,
-):
-    """sqrt(-x) at the real input x = 2: the plane application gives
-    -i sqrt(2) and the exact evaluator +i sqrt(2) (a negated real's zero
-    imaginary part), so binary64 and DoubleFloat would disagree there: the
-    listed refusal, naming the output, part and real-axis row. Off the cut
-    (x = -2) the same program is accepted."""
+def test_plane_takes_the_exact_side_at_a_real_point_on_a_cut(loop_native):
+    """sqrt(-x) at the real input x = 2: SymJIT's negation gave the plane
+    application -i sqrt(2) against the exact evaluator's +i sqrt(2) (a
+    negated real's zero imaginary part), so binary64 and DoubleFloat
+    disagreed there and the check refused it; the translation now makes the
+    argument's zero imaginary part +0 (M-SM MS-MASTERS), so the plane gives
+    +i sqrt(2) and is accepted on the cut and off it (x = -2), at -O2 and
+    level 0 (the parameter program's level)."""
+
+    from symbolica import Evaluator
 
     from pyamplicol.loops.v2 import native_trees
 
     state = _state(["x + y", "sqrt(-x)"])
-    message, output, row, imaginary, real_axis = _refusal(
-        loop_native, state, [[-2.0, 1.0], [2.0, 1.0]]
+    rows = [[-2.0, 1.0], [2.0, 1.0]]
+    expected = np.asarray(
+        Evaluator.load(state).evaluate_complex([[complex(x) for x in r] for r in rows])
     )
-    assert (output, row, imaginary, real_axis) == (1, 1, True, True), message
-    assert (
-        "(imaginary part, real-axis probe row 1: -1.4142135623730951e0 against "
-        "1.4142135623730951e0)" in message
-    ), message
-    assert loop_native.compile_v2_plane(state, 2, False, [[-2.0, 1.0]])
-    with pytest.raises(native_trees.NativeExportUnsupported) as refused:
-        native_trees._plane_applications((state,), None, {0: [[2.0, 1.0]]})
-    assert refused.value.feature == "plane-mismatch"
-    assert str(refused.value).startswith(
-        "plane-mismatch: output 1 of saved evaluator 0: loop v2 trees: the SymJIT "
-        "plane application disagrees with its exact evaluator at output 1 "
-        "(imaginary part, real-axis probe row 0"
-    ), str(refused.value)
+    assert expected[1, 1] == pytest.approx(1.4142135623730951j)
+    for level in (2, 0):
+        plane, inputs, outputs = loop_native.compile_v2_plane(state, level, False, rows)
+        got = _plane_values(plane, inputs, outputs, rows)
+        assert np.allclose(got, expected, rtol=1e-15, atol=0), (level, got, expected)
+    assert native_trees._plane_applications((state,), None, {0: [[2.0, 1.0]]})
 
 
 @pytest.mark.loop_fast
@@ -195,15 +196,17 @@ def test_plane_check_needs_a_real_point_for_branch_cuts_of_its_inputs(
 def test_the_parameter_programs_real_point_is_the_requests_values():
     """The parameter program's real point: each external parameter's value
     fixed at generation, else its default (the batch's values without a
-    caller's, ``batch_parameters``), in binary64; with a recorded IR pole
-    regulator also those values with it at 0, the split pole selections'
-    regulated pass (M-SM MS-MASTERS: the runtime certifies that key too)."""
+    caller's, ``batch_parameters``), in binary64; with pole regulators also
+    those values with the IR regulator at 0, the split pole selections'
+    regulated pass (M-SM MS-MASTERS)."""
 
     from types import SimpleNamespace
 
     from pyamplicol.loops.v2.native_trees import _request_points
 
-    slice_ = SimpleNamespace(fixed_parameters={"WZ": "0", "MB": "0"})
+    slice_ = SimpleNamespace(
+        fixed_parameters={"WZ": "0", "MB": "0"}, pole_regulators=None
+    )
     record = {
         "names": ["MZ", "WZ", "MB", "MU_R"],
         "defaults": ["22797/250", "2.4952", "4.7", "91.188"],
@@ -212,14 +215,21 @@ def test_the_parameter_programs_real_point_is_the_requests_values():
     regulated = {
         "names": [*record["names"], "epsIR"],
         "defaults": [*record["defaults"], "1"],
-        "ir_regulator": 4,
     }
+    assert _request_points(slice_, regulated) == [(91.188, 0.0, 0.0, 91.188, 1.0)]
+    slice_ = SimpleNamespace(
+        fixed_parameters=slice_.fixed_parameters,
+        pole_regulators=SimpleNamespace(uv="epsUV", ir="epsIR"),
+    )
     assert _request_points(slice_, regulated) == [
         (91.188, 0.0, 0.0, 91.188, 1.0),
         (91.188, 0.0, 0.0, 91.188, 0.0),
     ]
     # A regulator fixed at 0 already: one point.
-    fixed = SimpleNamespace(fixed_parameters={"WZ": "0", "MB": "0", "epsIR": "0"})
+    fixed = SimpleNamespace(
+        fixed_parameters={"WZ": "0", "MB": "0", "epsIR": "0"},
+        pole_regulators=slice_.pole_regulators,
+    )
     assert _request_points(fixed, regulated) == [(91.188, 0.0, 0.0, 91.188, 0.0)]
 
 
@@ -231,7 +241,8 @@ def test_counterterm_couplings_take_madloops_side_of_real_cuts(loop_native):
     ``signed``; ``native_trees._parameter_program``): the plane application
     and the exact evaluator then take MadLoop's +0 side at a real point on the
     cut (the G_mu UFO's (MZ^2 (MZ^2 - 4 MW^2))^(1/2) at the card's masses),
-    where without it they disagree; manifestly non-negative arguments
+    as the plane now also does without it (before M-SM MS-MASTERS the two
+    disagreed there); manifestly non-negative arguments
     (log(mu^2/m^2)) and arguments that are not manifestly real keep their
     form, and every value is unchanged."""
 
@@ -278,17 +289,18 @@ def test_counterterm_couplings_take_madloops_side_of_real_cuts(loop_native):
             ).save()
         )
 
-    with pytest.raises(loop_native.PlaneMismatchError, match="real-axis probe row 0"):
-        loop_native.compile_v2_plane(state(cut), 2, False, point)
-    plane, inputs, outputs = loop_native.compile_v2_plane(
-        state(projected), 2, False, point
-    )
     rows = [[complex(x) for x in point[0]]]
     exact = Expression.evaluator_multiple([cut], [mw, mz], jit_compile=False)
     expected = np.asarray(exact.evaluate_complex(rows))
-    got = _plane_values(plane, inputs, outputs, rows)
     assert expected[0, 0].imag > 0 and expected[0, 0].real == 0
-    assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
+    # The projected form and, since the translation makes a cut argument's
+    # zero imaginary part +0 (M-SM MS-MASTERS), the unprojected one.
+    for form in (projected, cut):
+        plane, inputs, outputs = loop_native.compile_v2_plane(
+            state(form), 2, False, point
+        )
+        got = _plane_values(plane, inputs, outputs, rows)
+        assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
 
 
 # ------------------------------------------------- electroweak processes

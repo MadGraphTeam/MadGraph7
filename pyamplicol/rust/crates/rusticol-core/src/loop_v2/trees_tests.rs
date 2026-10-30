@@ -165,13 +165,13 @@ fn the_complex_mass_master_guard_is_double_double_only() {
 }
 
 #[test]
-fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
-    // sqrt(-x) through SymJIT: a negated real takes a -0 imaginary part
-    // where Symbolica's evaluator takes +0, so at x > 0 (on the cut) the
-    // plane and the exact evaluator give opposite imaginary parts; off the
-    // cut (x < 0) they agree. `TreeProgram::bind` settles a binary64 batch
-    // through `ParameterSide::settle`: checked once per parameter values,
-    // the exact evaluator's rows where the plane disagreed.
+fn a_plane_takes_the_exact_side_of_a_cut() {
+    // sqrt(-x) through the plane: SymJIT negates a real into a -0
+    // imaginary part where Symbolica's evaluator (and exact arithmetic) has
+    // +0; the translation canonicalises a cut argument's zero
+    // (`symjit_plane::InlinedProgram::canonical_cut_arguments`), so on the
+    // cut (x > 0) and off it the plane equals the exact evaluator, at -O2
+    // and level 0, with no run-time check (M-SM MS-MASTERS).
     use symbolica::atom::AtomCore;
     let _unlock = crate::licence::unlock();
     let x = symbolica::parse!("pyamplicol_trees_tests::x");
@@ -180,95 +180,28 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
         .build()
         .expect("an evaluator");
     let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
-    let (bytes, inputs, outputs) =
-        crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(&binary64, 2, false)
-            .expect("a plane application");
-    let mut plane = Kernel::Plane(Box::new(
-        BinaryPlane::load(&bytes, (inputs, outputs)).expect("loads"),
-    ));
     let mut exact = Kernel::Exact(binary64.clone().into_batch_evaluator());
-    let build = || Ok(Kernel::Exact(binary64.clone().into_batch_evaluator()));
-    let mut side = ParameterSide {
-        certified: Vec::new(),
-        patterns: Vec::new(),
-        exact: None,
-        checked: Vec::new(),
-    };
-    let rows = |kernel: &mut Kernel<f64>, x: f64| {
-        let input = [Complex::new(x, 0.0); 2];
-        let mut rows = [Complex::new(0.0, 0.0); 2];
-        kernel.evaluate_batch(&input, &mut rows, 2).expect("runs");
-        (input, rows)
-    };
-    for x in [-4.0, 4.0] {
-        let (input, mut got) = rows(&mut plane, x);
-        let (_, expected) = rows(&mut exact, x);
-        let on_cut = x > 0.0;
-        assert_eq!(
-            got != expected,
-            on_cut,
-            "x = {x}: plane {got:?}, exact {expected:?}"
-        );
-        let key = vec![Rational::from(x as i64)];
-        let groups = || vec![(key.clone(), vec![0, 1])];
-        side.settle(groups(), &input, &mut got, (1, 1), build)
-            .expect("settles");
-        assert_eq!(got, expected, "x = {x}: the exact side");
-        assert_eq!(side.checked.last(), Some(&(key.clone(), !on_cut)));
-        // The same values again: the recorded verdict, not a new check (rows
-        // that agree with the exact evaluator stay replaced on the cut).
-        let mut again = expected;
-        side.settle(groups(), &input, &mut again, (1, 1), || {
-            panic!("built once")
-        })
-        .expect("settles");
-        assert_eq!(again, expected, "x = {x}");
+    for level in [2, 0] {
+        let (bytes, inputs, outputs) =
+            crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
+                &binary64, level, false,
+            )
+            .expect("a plane application");
+        let mut plane = Kernel::Plane(Box::new(
+            BinaryPlane::load(&bytes, (inputs, outputs)).expect("loads"),
+        ));
+        for x in [-4.0, 4.0] {
+            let input = [Complex::new(x, 0.0); 2];
+            let rows = |kernel: &mut Kernel<f64>| {
+                let mut rows = [Complex::new(0.0, 0.0); 2];
+                kernel.evaluate_batch(&input, &mut rows, 2).expect("runs");
+                rows
+            };
+            let (got, expected) = (rows(&mut plane), rows(&mut exact));
+            assert_eq!(got, expected, "x = {x}, level {level}");
+            assert!(x < 0.0 || got[0].im > 0.0, "x = {x}: +i sqrt(x)");
+        }
     }
-    // Two keys in one batch (a scale that moves a side): each row group is
-    // settled on its own; the plane's rows of the agreeing key are kept.
-    side.checked.clear();
-    let input = [Complex::new(-4.0, 0.0), Complex::new(4.0, 0.0)];
-    let mut got = [Complex::new(0.0, 0.0); 2];
-    plane.evaluate_batch(&input, &mut got, 2).expect("runs");
-    let mut expected = [Complex::new(0.0, 0.0); 2];
-    exact
-        .evaluate_batch(&input, &mut expected, 2)
-        .expect("runs");
-    let plane_rows = got;
-    side.settle(
-        vec![
-            (vec![Rational::from(-4)], vec![0]),
-            (vec![Rational::from(4)], vec![1]),
-        ],
-        &input,
-        &mut got,
-        (1, 1),
-        build,
-    )
-    .expect("settles");
-    assert_eq!((got[0], got[1]), (plane_rows[0], expected[1]));
-    assert_eq!(side.checked.len(), 2);
-    // Certified values (the generation's plane check): the plane's rows are
-    // kept without a check, even on the cut.
-    let key = vec![Rational::from(4)];
-    side.certified = vec![key.clone()];
-    side.checked.clear();
-    let (input, mut got) = rows(&mut plane, 4.0);
-    let plane_rows = got;
-    side.settle(vec![(key, vec![0, 1])], &input, &mut got, (1, 1), || {
-        panic!("no check")
-    })
-    .expect("settles");
-    assert!(got == plane_rows && side.checked.is_empty());
-    // Alternating value sets (a split pole selection) keep both verdicts.
-    side.certified = Vec::new();
-    for x in [-4.0, 4.0, -4.0, 4.0] {
-        let (input, mut got) = rows(&mut plane, x);
-        let key = vec![Rational::from(x as i64)];
-        side.settle(vec![(key, vec![0, 1])], &input, &mut got, (1, 1), build)
-            .expect("settles");
-    }
-    assert_eq!(side.checked.len(), 2);
 }
 
 #[test]
@@ -295,8 +228,6 @@ fn scale_dependent_shared_outputs_are_the_recorded_born_constant_and_mass_ones()
         plan_masses: vec![None, Some(MassSource::Output(4))],
         scale: Some(0),
         scale_outputs,
-        side_inputs: None,
-        ir_regulator: None,
         photons: None,
     };
     let named = |indices: &[usize]| -> Option<Vec<(usize, String)>> {
@@ -433,269 +364,6 @@ fn off_axis_probes_are_distinct_and_off_the_real_axis() {
             assert!(a.re != b.re && a.im != b.im, "{a:?} {b:?}");
         }
     }
-}
-
-#[test]
-fn side_inputs_are_those_that_can_move_an_argument_onto_a_cut() {
-    // `engine::real_axis_side_inputs` (M-SM MS-MASTERS): inputs a, b, c, d
-    // at the real point `point`; the indices of the inputs whose change can
-    // move a branch side (the others keep every side while their signs stay).
-    use symbolica::atom::AtomCore;
-    let _unlock = crate::licence::unlock();
-    let names = ["a", "b", "c", "d"];
-    let inputs: Vec<_> = names
-        .iter()
-        .map(|n| symbolica::parse!(&format!("pyamplicol_trees_tests::{n}")))
-        .collect();
-    let side = |text: &str, point: [f64; 4]| -> Vec<usize> {
-        let mut source = text.to_owned();
-        for n in names {
-            source = source.replace(&format!("{{{n}}}"), &format!("pyamplicol_trees_tests::{n}"));
-        }
-        let evaluator = symbolica::parse!(&source)
-            .evaluator(&inputs)
-            .build()
-            .expect("an evaluator");
-        let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
-        crate::engine::real_axis_side_inputs(&binary64, &point).expect("analysed")
-    };
-    let positive = [0.118, 91.188, 173.0, 1.5];
-    // aS through sqrt and the scale through log(mu^2/m^2): none.
-    assert_eq!(
-        side("sqrt(4*pi*{a})*log({b}^2/{c}^2)", positive),
-        Vec::<usize>::new()
-    );
-    // A complex-mass scheme's log(mu^2 / (m^2 - i m w)) at a positive width,
-    // or a zero one (a positive real argument): none.
-    let cms = "log({b}^2/({c}^2-1𝑖*{c}*{d}))";
-    assert_eq!(side(cms, positive), Vec::<usize>::new());
-    assert_eq!(side(cms, [0.118, 91.188, 173.0, 0.0]), Vec::<usize>::new());
-    // A difference of masses under a cut: both masses.
-    assert_eq!(side("log({c}^2-{b}^2)+{a}", positive), vec![1, 2]);
-    assert_eq!(side("sqrt({c}-{b})*sqrt({d})", positive), vec![1, 2]);
-    // A cut argument that is an input at zero: its signs are the point's.
-    assert_eq!(side("sqrt({a})", [0.0, 1.0, 1.0, 1.0]), Vec::<usize>::new());
-    // A product with an unknown-sign sum: the sum's inputs (the positive
-    // factor does not change its sign).
-    assert_eq!(side("log({a}*({b}-{c}))", positive), vec![1, 2]);
-}
-
-#[test]
-fn a_cut_side_the_signs_decide_marks_nothing() {
-    // `engine::real_axis_side_inputs`: a negative real argument whose zero
-    // imaginary part has a sign bit decided by the operands' signs sits on
-    // the cut on the same side at every point of the same signs (the
-    // electroweak counterterms' log(-MZ^2/mu_R^2), M-SM MS-MASTERS round 4),
-    // so it marks nothing; a zero of undecided sign bit marks its inputs.
-    use symbolica::atom::AtomCore;
-    let _unlock = crate::licence::unlock();
-    let names = ["a", "b", "c", "d"];
-    let inputs: Vec<_> = names
-        .iter()
-        .map(|n| symbolica::parse!(&format!("pyamplicol_trees_tests::{n}")))
-        .collect();
-    let side = |text: &str, point: [f64; 4]| -> Vec<usize> {
-        let mut source = text.to_owned();
-        for n in names {
-            source = source.replace(&format!("{{{n}}}"), &format!("pyamplicol_trees_tests::{n}"));
-        }
-        let evaluator = symbolica::parse!(&source)
-            .evaluator(&inputs)
-            .build()
-            .expect("an evaluator");
-        let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
-        crate::engine::real_axis_side_inputs(&binary64, &point).expect("analysed")
-    };
-    let point = [0.118, 91.188, 1000.0, 80.4];
-    let none = Vec::<usize>::new();
-    // log(-b^2/c^2) and its positive counterpart: none (the scale c drops
-    // out of the key).
-    assert_eq!(side("log(-{b}^2/{c}^2)", point), none);
-    assert_eq!(side("log({c}^2/{b}^2)", point), none);
-    assert_eq!(side("log(-{d})*sqrt(-{b}*{c})", point), none);
-    // A zero regulator times -i (the UFO's vep*complex(0,-1)) keeps the
-    // side.
-    assert_eq!(
-        side("log(-({b}^2-1𝑖*{a})/{c}^2)", [0.0, 91.188, 1000.0, 80.4]),
-        none
-    );
-    // A difference of masses under the cut: undecided, the masses (the
-    // scale c^2 > 0 does not change the argument's signs).
-    assert_eq!(side("log(-({b}^2-{d}^2)/{c}^2)", point), vec![1, 3]);
-    // A power with a slot exponent of a positive base: an exactly zero
-    // imaginary part whose sign follows the exponent's value; negated
-    // under a log, it marks base and exponent.
-    assert_eq!(side("log(-{b}^{a})", point), vec![0, 1]);
-    // A negative input under the cut: decided, none.
-    assert_eq!(side("log({d})", [0.118, 91.188, 1000.0, -80.4]), none);
-    // An exactly zero argument of fixed signs (log(0) at a zero width): the
-    // same at every point of the same signs, none.
-    assert_eq!(side("log({d}^2)", [0.118, 91.188, 1000.0, 0.0]), none);
-}
-
-#[test]
-fn side_groups_key_every_value_at_a_pattern_the_generation_did_not_analyse() {
-    // `Parameters::side_groups` (`TreeProgram::bind`): at the certified
-    // sign pattern one key per batch (the scale no side input) or per
-    // mu_R^2 (a side input); at another pattern every value and each
-    // point's mu_R^2, marked by one more entry; without the side record one
-    // key per batch.
-    let r = |n: i64| Rational::from(n);
-    let values = [r(91), r(3), r(173), r(1)];
-    let scales = [r(8281), r(4), r(8281)];
-    let record = parameter_record(Some(vec![2]), None);
-    let patterns = record.certified_patterns(&values);
-    assert_eq!(patterns, vec![vec![1, 1, 1, 1]]);
-    // A new aS or MT at the certified pattern: one sign key for the batch.
-    let groups = record.side_groups(&[r(91), r(5), r(170), r(1)], &scales, &patterns);
-    assert_eq!(
-        groups,
-        vec![(vec![r(1), r(1), r(170), r(1)], vec![0, 1, 2])]
-    );
-    // The scale a side input: one key per mu_R^2.
-    let keyed = parameter_record(Some(vec![0, 2]), None);
-    let groups = keyed.side_groups(&values, &scales, &patterns);
-    assert_eq!(
-        groups,
-        vec![
-            (vec![r(8281), r(1), r(173), r(1)], vec![0, 2]),
-            (vec![r(4), r(1), r(173), r(1)], vec![1]),
-        ]
-    );
-    // WT set to 0 (a pattern the generation did not analyse): every value,
-    // per mu_R^2, never a certified key.
-    let zero = [r(91), r(3), r(173), r(0)];
-    let groups = record.side_groups(&zero, &scales, &patterns);
-    assert_eq!(
-        groups,
-        vec![
-            (vec![r(8281), r(3), r(173), r(0), r(1)], vec![0, 2]),
-            (vec![r(4), r(3), r(173), r(0), r(1)], vec![1]),
-        ]
-    );
-    let certified = record.certified_keys(&values);
-    assert!(groups.iter().all(|(key, _)| !certified.contains(key)));
-    // Nothing certified: every value too.
-    assert_eq!(record.side_groups(&values, &scales[..1], &[])[0].0.len(), 5);
-    // The regulated pass's pattern is certified too.
-    let regulated = parameter_record(Some(vec![2]), Some(3));
-    let patterns = regulated.certified_patterns(&values);
-    assert_eq!(patterns, vec![vec![1, 1, 1, 1], vec![1, 1, 1, 0]]);
-    assert_eq!(
-        regulated.side_groups(&zero, &scales, &patterns),
-        vec![(vec![r(1), r(1), r(173), r(0)], vec![0, 1, 2])]
-    );
-    // An artifact without the side record: one key per batch.
-    let old = parameter_record(None, None);
-    assert_eq!(
-        old.side_groups(&zero, &scales, &[]),
-        vec![(vec![r(0), r(3), r(173), r(0)], vec![0, 1, 2])]
-    );
-}
-
-#[test]
-fn parameter_keys_keep_side_values_and_other_signs() {
-    // `Parameters::key`: with the side record, the side inputs' values and
-    // the other inputs' signs (the scale's 1 unless it is a side input,
-    // then mu_R^2); without it (an older artifact), every value but the
-    // scale's, zeroed.
-    let parameters = |side_inputs: Option<Vec<usize>>| parameter_record(side_inputs, None);
-    let r = |n: i64| Rational::from(n);
-    let values = [r(91), r(3), r(173), r(0)];
-    let mu2 = r(8281);
-    assert_eq!(
-        parameters(Some(vec![2])).key(&values, Some(&mu2)),
-        vec![r(1), r(1), r(173), r(0)]
-    );
-    assert_eq!(
-        parameters(Some(vec![0, 2])).key(&values, Some(&mu2)),
-        vec![r(8281), r(1), r(173), r(0)]
-    );
-    assert_eq!(
-        parameters(None).key(&values, Some(&mu2)),
-        vec![r(0), r(3), r(173), r(0)]
-    );
-    // A change of aS keeps the key; a width set nonzero changes it.
-    let p = parameters(Some(vec![2]));
-    assert_eq!(
-        p.key(&[r(91), r(4), r(173), r(0)], None),
-        p.key(&values, None)
-    );
-    assert_ne!(
-        p.key(&[r(91), r(3), r(173), r(1)], None),
-        p.key(&values, None)
-    );
-}
-
-/// A parameter record of external parameters MU_R (the scale), aS, MT and
-/// WT (input 3: the IR regulator of `certified_keys_include_the_regulated_pass`).
-fn parameter_record(side_inputs: Option<Vec<usize>>, ir_regulator: Option<usize>) -> Parameters {
-    Parameters {
-        names: vec!["MU_R".into(), "aS".into(), "MT".into(), "WT".into()],
-        defaults: vec![Rational::from(91); 4],
-        saved: Vec::new(),
-        plane: None,
-        outputs: 1,
-        model: Vec::new(),
-        counterterm_model: Vec::new(),
-        couplings: Vec::new(),
-        counterterm_couplings: Vec::new(),
-        finite: Vec::new(),
-        constants: Vec::new(),
-        positive: Vec::new(),
-        masses: Vec::new(),
-        derived_masses: Vec::new(),
-        plan_masses: Vec::new(),
-        scale: Some(0),
-        scale_outputs: Some(Vec::new()),
-        side_inputs,
-        ir_regulator,
-        photons: None,
-    }
-}
-
-#[test]
-fn certified_keys_include_the_regulated_pass() {
-    // `Parameters::certified_keys` (`TreeProgram::certify_parameters`): the
-    // request's key and, with a recorded IR regulator, the key with it at 0
-    // (the split pole selections' regulated pass, whose values the plane
-    // check's second real point certified); once each.
-    let r = |n: i64| Rational::from(n);
-    let values = [r(91), r(3), r(173), r(1)];
-    let side = Some(vec![2]);
-    assert_eq!(
-        parameter_record(side.clone(), None).certified_keys(&values),
-        vec![vec![r(1), r(1), r(173), r(1)]]
-    );
-    let regulated = parameter_record(side.clone(), Some(3));
-    assert_eq!(
-        regulated.certified_keys(&values),
-        vec![
-            vec![r(1), r(1), r(173), r(1)],
-            vec![r(1), r(1), r(173), r(0)]
-        ]
-    );
-    // The regulated pass's points (regulator 0, any aS) have a certified
-    // key; a point with a negative regulator does not.
-    let keys = regulated.certified_keys(&values);
-    let pass = regulated.key(&[r(91), r(5), r(173), r(0)], Some(&r(8281)));
-    assert!(keys.contains(&pass));
-    let negative = regulated.key(&[r(91), r(3), r(173), r(-1)], Some(&r(8281)));
-    assert!(!keys.contains(&negative));
-    // A regulator already at 0: one key.
-    assert_eq!(
-        regulated.certified_keys(&[r(91), r(3), r(173), r(0)]).len(),
-        1
-    );
-    // The regulator as a side input: its values 1 and 0.
-    let keyed = parameter_record(Some(vec![2, 3]), Some(3));
-    assert_eq!(
-        keyed.certified_keys(&values),
-        vec![
-            vec![r(1), r(1), r(173), r(1)],
-            vec![r(1), r(1), r(173), r(0)]
-        ]
-    );
 }
 
 #[test]

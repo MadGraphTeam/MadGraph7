@@ -147,13 +147,14 @@ NATIVE_EXPORT_REFUSALS = (
         "plane check's rows, each also run as a SIMD block of its own, at "
         "the requested optimisation level and again at level 0 (complex rows "
         "off the real axis: a translation error; the parameter program's "
-        "request values: a branch side that SymJIT and Symbolica take "
-        "differently there, e.g. a negated real under a square root, -0 "
-        "against +0), or that reads a branch-cut or discontinuous function "
-        "of its inputs in a program without a real point to certify it at. "
-        "A disagreement of the optimised SIMD code alone (SymJIT 2.27's "
-        "complex products into aliased registers, CM05; M-SM MS-MASTERS) "
-        "takes the level-0 plane instead and is not refused",
+        "request values: a cut side or a predicate's branch the plane takes "
+        "differently there; a signed zero no longer does, the plane "
+        "canonicalises a cut argument's zero imaginary part), or that reads a "
+        "branch-cut or discontinuous function of its inputs in a program "
+        "without a real point to certify it at. A disagreement of the "
+        "optimised SIMD code alone (SymJIT 2.27's complex products into "
+        "aliased registers, CM05; M-SM MS-MASTERS) takes the level-0 plane "
+        "instead and is not refused",
         "WP3.2 EWI-N (ew-native)",
         "a request whose values put such an argument on its cut: the argument "
         "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
@@ -227,16 +228,20 @@ class NativeTrees:
         return tuple(self.program["parameters"]["names"])
 
 
-# The SymJIT optimisation level of the plane applications: -O2, the default
-# ``jit_optimization_level`` (``evaluators.symbolica_settings``), whatever the
-# run's ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
-# A plane whose -O2 code fails the plane check at a probe row is compiled at
-# level 0 instead and kept if that passes (``loop_v2::trees::
-# compile_plane_application_checked``: SymJIT's AVX/AVX-512 complex-product
-# defect, ``upstream/symjit-simd-complex-times-alias``). Both are storage-v4
-# IR recompiled at load at their stored level, so both are portable; the
-# fallback is decided by the generating host's SIMD code (DESIGN §15 risk 13).
+# The SymJIT optimisation level of the tree kernels' plane applications: -O2,
+# the default ``jit_optimization_level`` (``evaluators.symbolica_settings``),
+# whatever the run's ``evaluator.jit.optimization_level`` says
+# (docs/user/configuration.md). A plane whose -O2 code fails the plane check
+# at a probe row is compiled at level 0 instead and kept if that passes
+# (``loop_v2::trees::compile_plane_application_checked``: SymJIT's AVX/AVX-512
+# complex-product defect, ``upstream/symjit-simd-complex-times-alias``). The
+# parameter program (the state with real points) always compiles at level 0:
+# it runs once per batch (or scale), and level 0 has no peephole pass, so its
+# code does not depend on the defect on any CPU class it is relocated to.
+# Both levels are storage-v4 IR recompiled at load at their stored level
+# (DESIGN §15 risk 13).
 _PLANE_OPTIMIZATION_LEVEL = 2
+_PARAMETER_PLANE_OPTIMIZATION_LEVEL = 0
 # Plane applications by saved state (SHA-256): the generation and staged
 # validation of a run export the same kernels repeatedly.
 _PLANES: OrderedDict[bytes, bytes] = OrderedDict()
@@ -273,8 +278,13 @@ def _plane_applications(
         plane = _PLANES.get(key)
         if plane is None:
             try:
+                level = (
+                    _PARAMETER_PLANE_OPTIMIZATION_LEVEL
+                    if rows
+                    else _PLANE_OPTIMIZATION_LEVEL
+                )
                 compiled, _inputs, _outputs = native.compile_v2_plane(
-                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False, rows or None
+                    bytes(state), level, False, rows or None
                 )
             except native.PlaneMismatchError as error:
                 message, output, *_probe = error.args
@@ -302,42 +312,26 @@ def _request_points(
     rows): its inputs at the request's parameter values in binary64, each
     external parameter's value fixed at generation
     (``LoopSlice.fixed_parameters``), else its default (the batch's values
-    without a caller's, ``batch_parameters``); with a recorded IR pole
-    regulator (``ir_regulator``, ``_parameter_program``) also those values
-    with it at 0, the values of the split pole selections' regulated pass
-    (``plan_export._regulated``), which the runtime then takes as certified
-    too (``loop_v2::trees::TreeProgram::certify_parameters``)."""
+    without a caller's, ``batch_parameters``); with pole regulators
+    (``LoopSlice.pole_regulators``) also those values with the IR regulator
+    at 0, the values of the split pole selections' regulated pass
+    (``plan_export._regulated``)."""
 
     fixed = slice_.fixed_parameters
+    names = list(parameters["names"])
     point = tuple(
         float(Fraction(fixed.get(name, default)))
-        for name, default in zip(
-            parameters["names"], parameters["defaults"], strict=True
-        )
+        for name, default in zip(names, parameters["defaults"], strict=True)
     )
     points = [point]
-    regulator = parameters.get("ir_regulator")
-    if regulator is not None and point[regulator] != 0.0:
-        points.append(
-            tuple(0.0 if index == regulator else x for index, x in enumerate(point))
-        )
+    regulators = slice_.pole_regulators
+    if regulators is not None and regulators.ir in names:
+        regulator = names.index(regulators.ir)
+        if point[regulator] != 0.0:
+            points.append(
+                tuple(0.0 if i == regulator else x for i, x in enumerate(point))
+            )
     return points
-
-
-def certified_values(trees: NativeTrees, fixed: Mapping[str, Any]) -> list[str]:
-    """The exact external parameter values the plane check certified the
-    parameter program's binary64 plane at (``_request_points``, exactly):
-    each parameter's value fixed at generation (``fixed``: ``LoopSlice.
-    fixed_parameters``, a native record's ``fixed_parameters``), else its
-    default. ``V2Executor(..., certified=...)`` evaluates a batch at them on
-    the plane without ``TreeProgram::bind``'s run-time side check, so
-    binary64 touches no Symbolica state there (DESIGN §3.7)."""
-
-    record = trees.program["parameters"]
-    return [
-        _fraction_text(Fraction(fixed.get(name, default)))
-        for name, default in zip(record["names"], record["defaults"], strict=True)
-    ]
 
 
 @dataclass(frozen=True)
@@ -1887,35 +1881,10 @@ def _parameter_program(
     if photon_record is not None:
         # Likewise: an older native would leave the photons at alpha.
         record["photons"] = photon_record
-    regulators = slice_.pole_regulators
-    if regulators is not None and regulators.ir in index:
-        # A model with pole regulators: the split pole selections' regulated
-        # pass binds the IR regulator at 0 (``plan_export._regulated``, the
-        # SDK's ``V2Runtime``); the plane check certifies those values too
-        # (``_request_points``), so that pass needs no exact evaluation.
-        # Written only when present: an older native refuses the record.
-        record["ir_regulator"] = index[regulators.ir]
-    state = bytes(evaluator.save())
-    # The inputs whose change can move a branch side of the binary64
-    # parameter program, from the plane check's real points (each one's;
-    # their union): the run-time side check compares their values and the
-    # other inputs' signs with the certified ones
-    # (``loop_v2::trees::Parameters::key``), so a change of aS or of the
-    # scale (in the shipped models) needs no exact evaluation.
-    from pyamplicol.loops.native import load_loop_native
-
-    side_inputs = load_loop_native().v2_parameter_side_inputs
-    record["side_inputs"] = sorted(
-        {
-            int(input_)
-            for point in _request_points(slice_, record)
-            for input_ in side_inputs(state, list(point))
-        }
-    )
     keys: list[Any] = [None] * len(outputs)
     for key, index in output_of.items():
         keys[index] = key
-    return record, state, tuple(keys)
+    return record, bytes(evaluator.save()), tuple(keys)
 
 
 def _scale_outputs(

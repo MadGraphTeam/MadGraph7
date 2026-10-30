@@ -829,7 +829,9 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 # axis, whatever the order and names, and the real-axis evaluation at the
 # request's parameter values (``native_trees._request_points``), where the
 # argument is positive: both variants take the native route
-# (``test_loop_v2_ew_native.py`` holds the model-free tests).
+# (``test_loop_v2_ew_native.py`` holds the model-free tests). Since M-SM
+# MS-MASTERS the translation also makes a cut argument's zero imaginary part
+# +0, so at a real point on the cut the plane takes exact arithmetic's side.
 def _former_probes(count: int) -> list[tuple[float, ...]]:
     """The former real probes of ``count`` inputs: two rows, by input index."""
 
@@ -850,11 +852,13 @@ def test_mw_nature_takes_the_same_native_route(w_slices, name):
 
 
 def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch):
-    """At the former real probes as its real point, the loop_sm variant's
-    parameter program is refused as the listed ``plane-mismatch`` (a
-    ``GenerationError`` at generation, no raw ``ValueError``), naming the
-    parameter-program output, with no stale advice; at the request's values
-    it exports natively."""
+    """At the former real probes as its real point (MW > MZ there: the W
+    coupling's argument on its cut), the loop_sm variant's parameter program
+    exports natively (the translation takes exact arithmetic's side of a
+    cut, M-SM MS-MASTERS); without a real point it is refused as the listed
+    ``plane-mismatch`` (a ``GenerationError`` at generation, no raw
+    ``ValueError``), naming the parameter-program output, with no stale
+    advice."""
 
     from pyamplicol.loops.v2 import native_trees
     from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
@@ -867,6 +871,8 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch
         "_request_points",
         lambda _slice, record: _former_probes(len(record["names"])),
     )
+    assert export_plan(slice_, forward=False, trees=True, born_squared=True)
+    monkeypatch.setattr(native_trees, "_request_points", lambda _slice, record: [])
     with pytest.raises(NativeExportUnsupported) as refused:
         export_plan(slice_, forward=False, trees=True, born_squared=True)
     assert refused.value.feature == "plane-mismatch"
@@ -876,7 +882,7 @@ def test_plane_mismatch_names_the_parameter_program_output(w_slices, monkeypatch
     # runtime's term id (``native_trees._output_label``).
     assert re.search(r"\(model coupling \w+ of vertex \w+ \(", message), message
     assert "derived_coupling_" not in message, message
-    assert "real-axis probe row" in message, message
+    assert "reads a branch-cut" in message, message
     assert "exact evaluator;" not in message
 
 
@@ -890,7 +896,8 @@ def test_plane_check_accepts_the_w_coupling_in_either_parameter_order(
     second: a square-root argument that the former real probes (x = 1.118 >
     y = 0.736) put on its cut, checked at the request's point with x = MW,
     y = MZ, or with the inputs declared the other way round (the last
-    case): accepted, and refused only at a real point on the cut."""
+    case): accepted, and also at a real point on the cut (exact arithmetic's
+    side there, M-SM MS-MASTERS)."""
 
     from symbolica import E, Expression, S
 
@@ -901,5 +908,4 @@ def test_plane_check_accepts_the_w_coupling_in_either_parameter_order(
     )
     point = [80.419, 91.188] if "x^2/y^2" in text else [91.188, 80.419]
     assert loop_native.compile_v2_plane(state, 2, False, [point])
-    with pytest.raises(ValueError, match="real-axis probe row 0"):
-        loop_native.compile_v2_plane(state, 2, False, [point[::-1]])
+    assert loop_native.compile_v2_plane(state, 2, False, [point[::-1]])

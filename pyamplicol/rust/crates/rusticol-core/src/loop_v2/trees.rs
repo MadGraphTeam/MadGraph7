@@ -97,19 +97,6 @@ fn binary64_evaluator(
     )
 }
 
-/// Generation: the inputs of a saved parameter program whose change can
-/// move a branch side of its binary64 evaluation, from the real input row
-/// `point` (the plane check's real point, the request's parameter values):
-/// `engine::real_axis_side_inputs`. Recorded in the tree program
-/// (`ParameterFile::side_inputs`); the run-time side check
-/// ([`TreeProgram::bind`]) compares those inputs' values and the other
-/// inputs' signs with the certified ones.
-#[cfg(feature = "python-generation-bridge")]
-pub fn parameter_side_inputs(saved: &[u8], point: &[f64]) -> RusticolResult<Vec<usize>> {
-    let _unlock = crate::licence::unlock();
-    crate::engine::real_axis_side_inputs(&binary64_evaluator(saved)?, point)
-}
-
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), with its
 /// input and output counts. The evaluator is the one binary64 would run
@@ -265,11 +252,14 @@ impl std::fmt::Display for PlaneMismatch {
 /// branch cut, so the check certifies the translation whatever the inputs'
 /// order, names and values; then `real_points`, the real inputs at which the
 /// program runs, which certify the real-axis evaluation there (a signed
-/// zero's side of a cut, a predicate's branch). SymJIT gives a negated real
-/// a -0 imaginary part where Symbolica's evaluator gives +0 (`sqrt(-x)` at
-/// x > 0: -i sqrt(x) against +i sqrt(x)), so a real probe placed on a cut
-/// refuses a correct translation; the former real probes, assigned by input
-/// index, made the verdict depend on the parameters' declaration order.
+/// zero's side of a cut, a predicate's branch). The former real probes,
+/// assigned by input index, put arguments on cuts at arbitrary points and
+/// made the verdict depend on the parameters' declaration order; at real
+/// inputs the plane takes exact arithmetic's side of a cut by construction
+/// (`symjit_plane::InlinedProgram::canonical_cut_arguments`, M-SM
+/// MS-MASTERS: before it, SymJIT's negated real had a -0 imaginary part
+/// where Symbolica's evaluator has +0, `sqrt(-x)` at x > 0: -i sqrt(x)
+/// against +i sqrt(x)).
 /// The rows run together, then each in a call of its own, as a batch of
 /// equal rows runs them: a SIMD block of equal lanes (the padding copies
 /// the last row) runs SymJIT's SIMD code, which a block whose lanes take
@@ -360,6 +350,7 @@ fn off_axis_probes(inputs: usize, rows: usize) -> Vec<Complex<f64>> {
 /// that output over the rows: a part that cancels to rounding, e.g. the zero
 /// imaginary part of a real coupling, against its output's size, and a small
 /// output not against a large one's).
+#[cfg(any(test, feature = "python-generation-bridge"))]
 fn first_mismatch(
     expected: &[Complex<f64>],
     got: &[Complex<f64>],
@@ -370,6 +361,7 @@ fn first_mismatch(
 
 /// Per output the largest finite part of `expected` (row-major over
 /// `outputs` complex outputs per row): [`first_mismatch`]'s scales.
+#[cfg(any(test, feature = "python-generation-bridge"))]
 fn output_scales(expected: &[Complex<f64>], outputs: usize) -> Vec<f64> {
     let width = outputs.max(1);
     let mut scales = vec![0.0_f64; width];
@@ -386,6 +378,7 @@ fn output_scales(expected: &[Complex<f64>], outputs: usize) -> Vec<f64> {
 /// [`first_mismatch`] with given per-output `scales` (the plane check's
 /// single-row SIMD calls take those of all its rows, so a part that cancels
 /// to rounding in one row is measured against its output's size).
+#[cfg(any(test, feature = "python-generation-bridge"))]
 fn first_mismatch_at(
     expected: &[Complex<f64>],
     got: &[Complex<f64>],
@@ -506,33 +499,6 @@ fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> Ru
     )))
 }
 
-/// Whether a binary64 parameter program's plane application agrees with its
-/// exact evaluator `exact` at one row `inputs`, where the plane gave
-/// `plane`, by the plane check's criterion ([`first_mismatch`]).
-fn plane_side_agrees<T: Carrier>(
-    exact: &mut Kernel<T>,
-    inputs: &[Complex<T>],
-    plane: &[Complex<T>],
-) -> RusticolResult<bool>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    let mut expected = plane.to_vec();
-    {
-        let _unlock = crate::licence::unlock();
-        exact
-            .evaluate_batch(inputs, &mut expected, 1)
-            .map_err(|e| invalid(format!("parameter program: {e}")))?;
-    }
-    let binary64 = |values: &[Complex<T>]| -> Vec<Complex<f64>> {
-        values
-            .iter()
-            .map(|z| Complex::new(z.re.to_f64(), z.im.to_f64()))
-            .collect()
-    };
-    Ok(first_mismatch(&binary64(&expected), &binary64(plane), plane.len()).is_none())
-}
-
 // ------------------------------------------------------------------ file form
 
 #[derive(Deserialize)]
@@ -630,24 +596,6 @@ struct ParameterFile {
     /// the analysis: its batches are then checked per point.
     #[serde(default)]
     scale_outputs: Option<Vec<(usize, String)>>,
-    /// The external parameters whose change can move a branch side of the
-    /// binary64 parameter program (generation's [`parameter_side_inputs`]
-    /// at the plane check's real point, increasing): `TreeProgram::bind`'s
-    /// run-time side check compares their values, and the other
-    /// parameters' signs, with the certified ones. Absent in an artifact
-    /// written before the record: every value but the scale's.
-    #[serde(default)]
-    side_inputs: Option<Vec<usize>>,
-    /// The IR pole regulator's external parameter (a model with pole
-    /// regulators, MS-POLES): the plane check's real points also hold the
-    /// request's parameter values with it at 0, those of the split pole
-    /// selections' regulated pass, and `side_inputs` covers both points, so
-    /// [`TreeProgram::certify_parameters`] certifies that key too (M-SM
-    /// MS-MASTERS). Written only when present (no pole regulators: absent;
-    /// an artifact written before the record: the regulated key is checked
-    /// at run time).
-    #[serde(default)]
-    ir_regulator: Option<usize>,
     /// The on-shell external photons of an electroweak request (WP3.2
     /// EWI-6b, the alpha(0) convention): the output index of
     /// alpha(0) / alpha (real and positive, also in `positive`) and the
@@ -941,161 +889,11 @@ struct Parameters {
     plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
     scale_outputs: Option<Vec<(usize, String)>>,
-    /// `ParameterFile::side_inputs`.
-    side_inputs: Option<Vec<usize>>,
-    /// `ParameterFile::ir_regulator`.
-    ir_regulator: Option<usize>,
     /// `ParameterFile::photons`.
     photons: Option<(usize, Vec<usize>)>,
 }
 
 impl Parameters {
-    /// The keys (`key`) the generation's plane check certified, from the
-    /// request's external parameter values `values`
-    /// (`TreeProgram::certify_parameters`): theirs and, with a recorded IR
-    /// pole regulator, theirs with it at 0 (the plane check's second real
-    /// point, `native_trees._request_points`), once each.
-    fn certified_keys(&self, values: &[Rational]) -> Vec<Vec<Rational>> {
-        let mut keys: Vec<Vec<Rational>> = Vec::new();
-        for set in self.certified_sets(values) {
-            let scale = self.scale.map(|index| &set[index] * &set[index]);
-            let key = self.key(&set, scale.as_ref());
-            if !keys.contains(&key) {
-                keys.push(key);
-            }
-        }
-        keys
-    }
-
-    /// The sign patterns (`signs`) of the value sets the generation's plane
-    /// check certified (`certified_keys`), once each: those at which the
-    /// generation found the side inputs.
-    fn certified_patterns(&self, values: &[Rational]) -> Vec<Vec<i8>> {
-        let mut patterns: Vec<Vec<i8>> = Vec::new();
-        for set in self.certified_sets(values) {
-            let pattern = self.signs(&set);
-            if !patterns.contains(&pattern) {
-                patterns.push(pattern);
-            }
-        }
-        patterns
-    }
-
-    /// The request's values `values` and, with a recorded IR pole
-    /// regulator, theirs with it at 0 (the plane check's real points,
-    /// `native_trees._request_points`).
-    fn certified_sets(&self, values: &[Rational]) -> Vec<Vec<Rational>> {
-        let mut sets = vec![values.to_vec()];
-        if let Some(index) = self.ir_regulator {
-            let mut regulated = values.to_vec();
-            regulated[index] = Rational::from(0);
-            sets.push(regulated);
-        }
-        sets
-    }
-
-    /// The signs (-1, 0, 1) of external parameter values `values`, the
-    /// scale's 1 (mu_R^2 > 0 at every point).
-    fn signs(&self, values: &[Rational]) -> Vec<i8> {
-        values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                if self.scale == Some(index) || (!value.is_zero() && !value.is_negative()) {
-                    1
-                } else if value.is_zero() {
-                    0
-                } else {
-                    -1
-                }
-            })
-            .collect()
-    }
-
-    /// `bind`'s run-time side check: the batch's points (rows, one per
-    /// mu_R^2 of `scales`) grouped by parameter key at external values
-    /// `values`. At a sign pattern the generation analysed (`patterns`, the
-    /// certified sets' `certified_patterns`) the key is `key`: one per batch,
-    /// or one per mu_R^2 when the scale is a side input. At any other
-    /// pattern (a width set to 0, a parameter changing sign) an argument the
-    /// generation's signs decided may sit on a cut through any input, so the
-    /// key is every value with the point's mu_R^2, marked by one more entry
-    /// (never a certified key): each new value set is checked. In an artifact
-    /// written before the side record, one key per batch (`key`).
-    fn side_groups(
-        &self,
-        values: &[Rational],
-        scales: &[Rational],
-        patterns: &[Vec<i8>],
-    ) -> Vec<(Vec<Rational>, Vec<usize>)> {
-        let Some(side) = &self.side_inputs else {
-            return vec![(self.key(values, None), (0..scales.len()).collect())];
-        };
-        let analysed = patterns.contains(&self.signs(values));
-        let keyed = self
-            .scale
-            .is_some_and(|index| side.binary_search(&index).is_ok());
-        if analysed && !keyed {
-            return vec![(self.key(values, None), (0..scales.len()).collect())];
-        }
-        let mut groups: Vec<(Vec<Rational>, Vec<usize>)> = Vec::new();
-        for (row, scale) in scales.iter().enumerate() {
-            let key = if analysed {
-                self.key(values, Some(scale))
-            } else {
-                let mut key = values.to_vec();
-                if let Some(index) = self.scale {
-                    key[index] = scale.clone();
-                }
-                key.push(Rational::from(1));
-                key
-            };
-            match groups.iter_mut().find(|(known, _)| *known == key) {
-                Some((_, rows)) => rows.push(row),
-                None => groups.push((key, vec![row])),
-            }
-        }
-        groups
-    }
-
-    /// What `bind`'s run-time side check compares of a point's external
-    /// parameter values `values` at the scale `scale` (mu_R^2, replacing the
-    /// scale parameter's entry): with the generation's record of the inputs
-    /// that can move a branch side (`ParameterFile::side_inputs`), their
-    /// values and the signs (-1, 0, 1) of the others (the scale's: 1), which
-    /// decide every other side (`engine::real_axis_side_inputs`); in an
-    /// artifact written before the record, every value but the scale's
-    /// (zeroed, as before the record).
-    fn key(&self, values: &[Rational], scale: Option<&Rational>) -> Vec<Rational> {
-        let program = self;
-        let sign = |value: &Rational| {
-            Rational::from(if value.is_zero() {
-                0
-            } else if value.is_negative() {
-                -1
-            } else {
-                1
-            })
-        };
-        values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                let at_scale = program.scale == Some(index);
-                match &program.side_inputs {
-                    None if at_scale => Rational::from(0),
-                    None => value.clone(),
-                    Some(side) if side.binary_search(&index).is_ok() => match scale {
-                        Some(scale) if at_scale => scale.clone(),
-                        _ => value.clone(),
-                    },
-                    Some(_) if at_scale => Rational::from(1),
-                    Some(_) => sign(value),
-                }
-            })
-            .collect()
-    }
-
     /// `TreeProgram::scale_dependent_shared`.
     fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
         let program = self;
@@ -1372,88 +1170,6 @@ pub struct TreeRuntime<T> {
     /// The metric runtime of each distinct column interference
     /// (`Columns::programs`).
     columns: Vec<InterferenceRuntime<T>>,
-    /// The run-time side check of a binary64 parameter program's plane
-    /// application (`TreeProgram::bind`).
-    parameter_side: ParameterSide<T>,
-}
-
-/// The run-time side check of a binary64 parameter program's plane
-/// application (`TreeProgram::bind`, M-SM MS-MASTERS): its exact evaluator,
-/// built on first use, the latest parameter keys checked
-/// (`Parameters::key`), with whether the plane agreed there (a
-/// few: a split pole selection alternates two sets, MS-POLES), and the keys
-/// of the values the generation's plane check certified
-/// ([`TreeProgram::certify_parameters`]: the request's, and those of the
-/// regulated pass of a model with pole regulators), where a point takes the
-/// plane without the check (so a binary64 evaluation there touches no
-/// Symbolica state, DESIGN §3.7).
-pub struct ParameterSide<T> {
-    certified: Vec<Vec<Rational>>,
-    /// The certified value sets' sign patterns (`Parameters::side_groups`).
-    patterns: Vec<Vec<i8>>,
-    exact: Option<Kernel<T>>,
-    checked: Vec<(Vec<Rational>, bool)>,
-}
-
-/// The parameter value sets whose verdicts a [`ParameterSide`] keeps.
-const CHECKED_VALUES: usize = 8;
-
-impl<T: Carrier> ParameterSide<T>
-where
-    Complex<T>: Real + EvaluationDomain,
-{
-    /// The plane application's `outputs` (row-major: rows of `width`
-    /// inputs and `per_row` outputs at `inputs`) for `groups`, the batch's
-    /// distinct parameter keys with their rows: kept at a certified key;
-    /// at another, checked against the exact evaluator (`build` on first
-    /// use) on the key's first row unless the key is among the latest
-    /// checked, and the key's rows replaced by the exact evaluator's when the
-    /// plane disagreed there.
-    fn settle(
-        &mut self,
-        groups: Vec<(Vec<Rational>, Vec<usize>)>,
-        inputs: &[Complex<T>],
-        outputs: &mut [Complex<T>],
-        (width, per_row): (usize, usize),
-        build: impl Fn() -> RusticolResult<Kernel<T>>,
-    ) -> RusticolResult<()> {
-        let row_in = |row: usize| row * width..(row + 1) * width;
-        let row_out = |row: usize| row * per_row..(row + 1) * per_row;
-        for (key, rows) in groups {
-            if self.certified.contains(&key) {
-                continue;
-            }
-            let plane = match self.checked.iter().find(|(checked, _)| *checked == key) {
-                Some((_, plane)) => *plane,
-                None => {
-                    if self.exact.is_none() {
-                        self.exact = Some(build()?);
-                    }
-                    let exact = self.exact.as_mut().expect("built above");
-                    let plane = plane_side_agrees(
-                        exact,
-                        &inputs[row_in(rows[0])],
-                        &outputs[row_out(rows[0])],
-                    )?;
-                    if self.checked.len() == CHECKED_VALUES {
-                        self.checked.remove(0);
-                    }
-                    self.checked.push((key, plane));
-                    plane
-                }
-            };
-            if !plane {
-                let exact = self.exact.as_mut().expect("built by the check");
-                let _unlock = crate::licence::unlock();
-                for row in rows {
-                    exact
-                        .evaluate_batch(&inputs[row_in(row)], &mut outputs[row_out(row)], 1)
-                        .map_err(|e| invalid(format!("parameter program: {e}")))?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 /// One kernel (or the parameter program) in carrier `T`: its exact
@@ -1941,13 +1657,7 @@ fn load_parameters(
             })
             && file.photons.as_ref().is_none_or(|(o, legs)| {
                 output(*o) && file.positive.contains(o) && !legs.is_empty()
-            })
-            && file.side_inputs.as_ref().is_none_or(|side| {
-                side.windows(2).all(|pair| pair[0] < pair[1]) && side.iter().all(|&i| i < inputs)
-            })
-            && file
-                .ir_regulator
-                .is_none_or(|i| i < inputs && Some(i) != file.scale),
+            }),
         "parameter program index",
     )?;
     let sources = |records: &[(String, usize, bool)]| {
@@ -1991,8 +1701,6 @@ fn load_parameters(
         plan_masses,
         scale: file.scale,
         scale_outputs: file.scale_outputs,
-        side_inputs: file.side_inputs,
-        ir_regulator: file.ir_regulator,
         photons: file.photons,
     })
 }
@@ -2564,29 +2272,6 @@ impl TreeProgram {
         &self.parameters.defaults
     }
 
-    /// Record in `runtime` the external parameter values (in
-    /// `parameter_names` order) the generation's plane check certified the
-    /// binary64 parameter program at: each parameter's value fixed at
-    /// generation, else its default (`native_trees._request_points`; the
-    /// scale's entry is its value, the point's sqrt(mu_R^2)), and, with a
-    /// recorded IR pole regulator (`ParameterFile::ir_regulator`), the same
-    /// values with it at 0 (the split pole selections' regulated pass). A
-    /// batch point whose key (`Parameters::key`) equals one of theirs takes
-    /// the plane without `bind`'s run-time side check.
-    pub fn certify_parameters<T>(
-        &self,
-        runtime: &mut TreeRuntime<T>,
-        values: &[Rational],
-    ) -> RusticolResult<()> {
-        require(
-            values.len() == self.parameters.names.len(),
-            "external parameter count",
-        )?;
-        runtime.parameter_side.certified = self.parameters.certified_keys(values);
-        runtime.parameter_side.patterns = self.parameters.certified_patterns(values);
-        Ok(())
-    }
-
     /// The renormalisation scale's external parameter, if the program reads
     /// it (each point's sqrt(mu_R^2) binds it).
     pub fn scale_parameter(&self) -> Option<&str> {
@@ -2690,37 +2375,6 @@ impl TreeProgram {
             .parameters
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
-        // The plane application's side of a branch cut at real inputs is
-        // certified at generation only at the request's parameter values
-        // (the plane check's real points: also with the IR pole regulator at
-        // 0, the split selections' regulated pass, `ir_regulator`): elsewhere
-        // an argument on a cut can
-        // take the other side than the exact evaluator through a signed zero
-        // (CM01 with its widths set to zero at run time on masses generated
-        // complex took the other side of the electroweak UV counterterm
-        // couplings' cuts: finite part 3.9e-5 against MadLoop's 1.8e-3,
-        // M-SM MS-MASTERS). The sides are decided by the values of the
-        // inputs generation found able to move one (`side_inputs`) and the
-        // signs of the others (`Parameters::key`), at the sign patterns it
-        // analysed (elsewhere every value: `Parameters::side_groups`): each
-        // new key other than the certified ones is checked once, on its
-        // first point, against the exact evaluator; on a disagreement its
-        // points, and later ones at that key, evaluate the parameter program
-        // exactly, the side DD, AP and MadLoop take. A change of a parameter
-        // that moves no side (aS and the scale on loop_sm's QCD processes
-        // and on the electroweak models) keeps a certified key.
-        if matches!(runtime.parameters, Kernel::Plane(_)) {
-            let groups =
-                self.parameters
-                    .side_groups(values, scales, &runtime.parameter_side.patterns);
-            runtime.parameter_side.settle(
-                groups,
-                &inputs,
-                &mut outputs,
-                (width, program.outputs),
-                || exact_kernel(&program.saved, zero),
-            )?;
-        }
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
         // Values a batch shares (Born couplings, kernel constants, masses):
         // equal at every point unless they depend on the scale, which a
@@ -3009,12 +2663,6 @@ impl TreeProgram {
             average: cast(zero, &self.average),
             interference,
             columns,
-            parameter_side: ParameterSide {
-                certified: Vec::new(),
-                patterns: Vec::new(),
-                exact: None,
-                checked: Vec::new(),
-            },
         })
     }
 

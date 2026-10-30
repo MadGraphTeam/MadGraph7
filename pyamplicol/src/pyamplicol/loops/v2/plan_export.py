@@ -1428,19 +1428,11 @@ class NativeExecutor:
         key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
-            from .native_trees import certified_values
-
-            native_trees = (
-                self.exported.trees
+            trees = (
+                self.exported.trees.executor_argument()
                 if self.inputs == "native" and arithmetic != "exact"
                 else None
             )
-            # The values the plane check certified (``LoopSlice`` and the
-            # stored process's view both carry ``fixed_parameters``).
-            trees, certified = None, None
-            if native_trees is not None:
-                trees = native_trees.executor_argument()
-                certified = certified_values(native_trees, self.slice.fixed_parameters)
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
@@ -1449,7 +1441,6 @@ class NativeExecutor:
                 threads=self.threads,
                 forms=self.forms,
                 trees=trees,
-                certified=certified,
                 # The seed FFT runs in every floating carrier; the exact one
                 # (numerators only) and a direct policy contract directly.
                 fourier=None

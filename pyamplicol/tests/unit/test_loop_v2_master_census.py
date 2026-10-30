@@ -229,9 +229,10 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     Widths changed at run time (``TreeProgram::bind``): at zero widths the
     binary64 SymJIT parameter program took the other side of the
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
-    against MadLoop's 1.8e-3), so a binary64 batch at new parameter values
-    checks the plane against the exact evaluator once and takes the exact
-    evaluator where they disagree; every carrier then equals MadLoop's
+    against MadLoop's 1.8e-3), a -0 imaginary part from SymJIT's negation;
+    the translation now makes every cut argument's zero imaginary part +0
+    (``symjit_plane::InlinedProgram::canonical_cut_arguments``), with nothing
+    checked at run time, and every carrier equals MadLoop's
     zero-width virtual (to 1e-8), as at widths of 1e-100 and 1e-152 of the
     masses in binary64 and arbitrary precision; double-double, whose C0
     turned non-finite below 1e-150, refuses 1e-152 with

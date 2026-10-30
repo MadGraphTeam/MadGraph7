@@ -1037,38 +1037,28 @@ def test_binary64_loop_evaluation_touches_no_symbolica_state(loop_artifact, tmp_
 
 
 @pytest.mark.loop_physics
-def test_binary64_side_inputs_need_the_key_only_when_they_change(
-    loop_artifact, tmp_path
-):
-    """The run-time side check of the binary64 parameter program (DESIGN
-    §12.1 (e), risk 13) compares the plane with the saved state only at a new
-    parameter key: the values of the inputs that can move a branch side and
-    the signs of the others. g g > g g on loop_sm records no side input
-    (alpha_s enters through sqrt(4 pi aS), MT through log(MU_R^2 / MT^2) and
-    zero tests its sign decides), so two concurrent unlicensed evaluations at
-    aS = 0.12 and MT = 172 complete with the native key disabled while the
-    permit is held. A parameter changing sign (the Higgs width set to zero)
-    changes the key, so the check runs: with the key it completes, with the
-    key disabled it aborts (the control)."""
+def test_binary64_parameter_changes_need_no_key(loop_artifact, tmp_path):
+    """Binary64 evaluates the stored parameter program's plane at any model
+    parameters with no Symbolica (DESIGN §12.1 (e)): at real inputs it takes
+    exact arithmetic's side of every branch cut by construction (the
+    translation canonicalises a cut argument's zero imaginary part,
+    ``symjit_plane::InlinedProgram::canonical_cut_arguments``), so there is
+    nothing to check at run time. g g > g g on loop_sm completes unlicensed
+    with the native key disabled while the permit is held at a new alpha_s,
+    a new top mass and with the Z, W or Higgs width set to 0 (each of which
+    needed the key under the former run-time side check, MS-MASTERS
+    rounds 1-4)."""
 
     artifact, _, _ = loop_artifact("gg")
-    alpha = tmp_path / "alpha"
-    alpha.mkdir()
-    permit, runs = _held_evaluations(
-        artifact,
-        "gg",
-        alpha,
-        4,
-        [("double", None)] * 2,
-        NO_NATIVE_KEY,
-        parameters={"aS": "0.12", "MT": "172"},
+    changes = (
+        {"aS": "0.12"},
+        {"MT": "172"},
+        {"WZ": "0"},
+        {"WW": "0"},
+        {"WH": "0"},
     )
-    assert permit["verified"], permit
-    for run in runs:
-        assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
-        assert RESTRICTED not in run.stdout + run.stderr
-    for env, completes in ((None, True), (NO_NATIVE_KEY, False)):
-        scratch = tmp_path / f"width-{completes}"
+    for index, parameters in enumerate(changes):
+        scratch = tmp_path / f"change-{index}"
         scratch.mkdir()
         permit, (run,) = _held_evaluations(
             artifact,
@@ -1076,156 +1066,172 @@ def test_binary64_side_inputs_need_the_key_only_when_they_change(
             scratch,
             4,
             [("double", None)],
-            env,
-            parameters={"WH": "0"},
-        )
-        assert permit["verified"], permit
-        output = run.stdout[-2000:] + run.stderr[-2000:]
-        assert (run.returncode == 0) is completes, output
-        assert (RESTRICTED in output) is not completes, output
-
-
-@pytest.mark.loop_physics
-def test_binary64_ew_pole_split_needs_no_key(tmp_path):
-    """The "uv" and "ir" pole selections of a model with pole regulators
-    (MS-POLES) also evaluate the counterterms with the IR regulator
-    at 0. The generation records the regulator (``ir_regulator``), its plane
-    check certifies those values as a second real point
-    (``native_trees._request_points``) and the runtime takes both keys as
-    certified (``TreeProgram::certify_parameters``; DESIGN §12.1 (e)). So the
-    shipped EW self-test artifact (e- e+ > e- e+ [QED] on loop_qcd_qed_sm,
-    which also shows it is regenerated with the record) evaluates both
-    selections in binary64 with the native key disabled while the permit is
-    held. Control: a changed side input (MZ) needs the key, so the check
-    is live on this artifact."""
-
-    from pyamplicol._internal import selftest_virtual_ew as selftest
-
-    root = selftest.fixture_root()
-    artifact = tmp_path / "artifact"
-    shutil.copytree(root / "artifact", artifact)
-    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
-    point = {
-        "schema": portability.SCHEMA,
-        "kind": "points",
-        "legs": 4,
-        "points": [[[float(c).hex() for c in p] for p in expected["points"][0]]],
-        "mu_r2": [float(expected["mu_r2"][0]).hex()],
-    }
-    runs = [("uv", None, True), ("ir", None, True)]
-    runs.append(("uv", {"MZ": "91.19"}, False))
-    for poles, parameters, completes in runs:
-        scratch = tmp_path / f"{poles}-{completes}"
-        scratch.mkdir()
-        permit, (run,) = _held_evaluations(
-            artifact,
-            selftest.NAME,
-            scratch,
-            4,
-            [("double", None)],
             NO_NATIVE_KEY,
-            point=point,
             parameters=parameters,
-            poles=poles,
         )
         assert permit["verified"], permit
         output = run.stdout[-2000:] + run.stderr[-2000:]
-        assert (run.returncode == 0) is completes, (poles, output)
-        assert (RESTRICTED in output) is not completes, (poles, output)
+        assert run.returncode == 0, (parameters, output)
+        assert RESTRICTED not in output, (parameters, output)
 
 
-@pytest.mark.loop_physics
-def test_binary64_ew_scales_need_no_key(tmp_path):
-    """The electroweak counterterms read the scale through logarithms such
-    as log(-MZ^2/mu_R^2): on the cut, on the side the parameters' signs
-    decide, so the generation's analysis (``engine::real_axis_side_inputs``)
-    records no side input for the scale or aS, and a new scale keeps the
-    certified key (DESIGN §12.1 (e)). The shipped EW self-test artifact
-    evaluates MadLoop's second and third points at their own scales
-    (mu_R^2 = 4.9e5 and 1.96e6) in binary64 with the native key disabled
-    while the permit is held, for every pole selection, bitwise equal to the
-    keyed run, and equal to double-double (the exact states) by the binary64
-    rule of observables. Controls: a changed side input (MZ) and LogSwitch
-    set to 0 (a sign pattern the generation did not analyse, keyed on every
-    value; the widths are fixed at generation) need the key."""
+def _ew_selftest_point(expected: dict, indices) -> dict:
+    """The points file of the shipped EW self-test's MadLoop points
+    ``indices`` (``expected.json``), each at its own scale."""
 
-    from pyamplicol._internal import selftest_virtual_ew as selftest
-
-    root = selftest.fixture_root()
-    artifact = tmp_path / "artifact"
-    shutil.copytree(root / "artifact", artifact)
-    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
-    point = {
+    return {
         "schema": portability.SCHEMA,
         "kind": "points",
         "legs": 4,
         "points": [
-            [[float(c).hex() for c in p] for p in expected["points"][k]] for k in (1, 2)
+            [[float(c).hex() for c in p] for p in expected["points"][k]]
+            for k in indices
         ],
-        "mu_r2": [float(expected["mu_r2"][k]).hex() for k in (1, 2)],
+        "mu_r2": [float(expected["mu_r2"][k]).hex() for k in indices],
     }
-    for poles in ("all", "none", "uv", "ir"):
-        results = []
-        for name, env in (("off", NO_NATIVE_KEY), ("keyed", None)):
-            scratch = tmp_path / f"{poles}-{name}"
-            scratch.mkdir()
-            permit, (run,) = _held_evaluations(
-                artifact,
-                selftest.NAME,
-                scratch,
-                4,
-                [("double", None)],
-                env,
-                point=point,
-                poles=poles,
-            )
-            assert permit["verified"], permit
-            output = run.stdout[-2000:] + run.stderr[-2000:]
-            assert run.returncode == 0, (poles, name, output)
-            assert RESTRICTED not in output, (poles, name, output)
-            record = json.loads((scratch / "0-double.json").read_text())
-            results.append(record["results"])
-        assert results[0] == results[1], poles
-        assert len(_leaves(results[0])) > 0
-        if poles == "all":
-            binary64 = _leaves(results[0])
-    scratch = tmp_path / "double-double"
-    scratch.mkdir()
-    permit, (run,) = _held_evaluations(
-        artifact,
-        selftest.NAME,
-        scratch,
-        4,
-        [("double-double", None)],
-        point=point,
-        poles="all",
-    )
-    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
-    record = json.loads((scratch / "0-double-double.json").read_text())
-    exact = _leaves(record["results"])
-    assert len(exact) == len(binary64)
-    scale = max(abs(v) for v in exact)
-    # The binary64 rule of observables (1e-12, HANDOFF §0.5): a cut side the
-    # plane took unchecked differs at O(1e-5) and more.
-    pairs = zip(binary64, exact, strict=True)
-    assert all(abs(a - b) <= 1e-12 * scale for a, b in pairs)
-    for parameters in ({"MZ": "91.19"}, {"LogSwitch": "0"}):
-        scratch = tmp_path / f"control-{next(iter(parameters))}"
+
+
+@pytest.mark.loop_physics
+def test_binary64_ew_evaluations_need_no_key(tmp_path):
+    """The shipped EW self-test artifact (e- e+ > e- e+ [QED] on
+    loop_qcd_qed_sm; its counterterms read log(-MZ^2/mu_R^2) and MW's square
+    root of a difference, branch cuts of the parameters) evaluates MadLoop's
+    second and third points at their own scales (mu_R^2 = 4.9e5 and 1.96e6)
+    in binary64 with the native key disabled while the permit is held, for
+    every pole selection (the split selections' regulated pass included),
+    bitwise equal to the keyed run and equal to double-double (the exact
+    states) by the binary64 rule of observables; so are a changed MZ, MW
+    and LogSwitch = 0 (each of which needed the key under the former
+    run-time side check). The per-output check of the stored parameter plane
+    at such values: ``test_ew_parameter_plane_equals_its_state_off_the_``
+    ``generation_values``."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    point = _ew_selftest_point(expected, (1, 2))
+
+    def run(name, carrier, env, poles, parameters=None):
+        scratch = tmp_path / name
         scratch.mkdir()
-        permit, (run,) = _held_evaluations(
+        permit, (process,) = _held_evaluations(
             artifact,
             selftest.NAME,
             scratch,
             4,
-            [("double", None)],
-            NO_NATIVE_KEY,
+            [(carrier, None)],
+            env,
             point=point,
+            poles=poles,
             parameters=parameters,
         )
         assert permit["verified"], permit
-        output = run.stdout[-2000:] + run.stderr[-2000:]
-        assert run.returncode != 0, (parameters, output)
-        assert RESTRICTED in output, (parameters, output)
+        output = process.stdout[-2000:] + process.stderr[-2000:]
+        assert process.returncode == 0, (name, output)
+        assert RESTRICTED not in output, (name, output)
+        return json.loads((scratch / f"0-{carrier}.json").read_text())["results"]
+
+    def agree(binary64, exact):
+        binary64, exact = _leaves(binary64), _leaves(exact)
+        assert len(binary64) == len(exact) > 0
+        scale = max(abs(v) for v in exact)
+        # The binary64 rule of observables (1e-12, HANDOFF §0.5): a cut side
+        # taken differently moves them at O(1e-5) and more.
+        pairs = zip(binary64, exact, strict=True)
+        return all(abs(a - b) <= 1e-12 * scale for a, b in pairs)
+
+    for poles in ("all", "none", "uv", "ir"):
+        off = run(f"{poles}-off", "double", NO_NATIVE_KEY, poles)
+        assert off == run(f"{poles}-keyed", "double", None, poles), poles
+        if poles == "all":
+            assert agree(off, run("all-dd", "double-double", None, "all"))
+    for index, parameters in enumerate(
+        ({"MZ": "91.19"}, {"MW": "80.5"}, {"LogSwitch": "0"})
+    ):
+        off = run(f"change-{index}", "double", NO_NATIVE_KEY, "all", parameters)
+        dd = run(f"change-{index}-dd", "double-double", None, "all", parameters)
+        assert agree(off, dd), parameters
+
+
+@pytest.mark.loop_fast
+def test_ew_parameter_plane_equals_its_state_off_the_generation_values():
+    """The shipped EW self-test artifact's stored binary64 parameter plane
+    equals Symbolica's binary64 evaluation of its exact state output by
+    output (1e-12 of each output's size, the plane check's criterion) at
+    parameter values the generation never saw: new scales, alpha_s and
+    alpha, the epsIR = 0 of the split pole selections' regulated pass,
+    LogSwitch = 0, new masses, and MW = 100 > MZ, which puts MW's square
+    root of a difference on its cut (with SymJIT's own signed zeros the
+    plane took the other side there, output 2; MS-MASTERS round 5 makes the
+    translation take exact arithmetic's side). This is the run-time
+    behaviour: binary64 runs the stored plane unchecked."""
+
+    import numpy as np
+    import symbolica
+
+    from pyamplicol import _rusticol
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+    for name in ("truth", "equal", "less", "less_equal", "real_part", "imaginary_part"):
+        symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+    (pacbin,) = (selftest.fixture_root() / "artifact").glob(
+        "processes/*/loop-runtime.pacbin"
+    )
+    trees = read_native_process(pacbin, read_plan(pacbin)).trees
+    record = trees.program["parameters"]
+    names = list(record["names"])
+    base = {
+        name: float(Fraction(value))
+        for name, value in zip(names, record["defaults"], strict=True)
+    }
+    rows = [[base[name] for name in names]]
+    for change in (
+        {"MU_R": 10.0},
+        {"MU_R": 700.0},
+        {"MU_R": 1400.0},
+        {"MU_R": 1e5},
+        {"aS": 0.05},
+        {"aS": 0.2},
+        {"aEWM1": 132.5},
+        {"epsIR": 0.0},
+        {"LogSwitch": 0.0},
+        {"MT": 172.5},
+        {"MZ": 91.19},
+        {"MW": 100.0},
+    ):
+        assert set(change) <= set(names), change
+        rows.append([{**base, **change}[name] for name in names])
+    evaluator = symbolica.Evaluator.load(trees.parameters)
+    outputs = evaluator.get_instructions().output_count
+    rows = np.ascontiguousarray(rows, dtype=np.complex128)
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    expected = expected.reshape(len(rows), outputs)
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        trees.planes[-1],
+        len(names),
+        outputs,
+        rows.view(np.float64).ravel().tolist(),
+        len(rows),
+    )
+    got = np.asarray(flat).view(np.complex128).reshape(len(rows), outputs)
+    finite = np.isfinite(expected)
+    scale = np.where(finite, np.abs(expected), 0).max(axis=0)
+    same = (
+        (got == expected)
+        | (np.isnan(got) & np.isnan(expected))
+        | (np.abs(got - expected) <= 1e-12 * scale)
+    )
+    assert same.all(), [(int(r), int(o)) for r, o in np.argwhere(~same)[:8]]
+    # MW = 100 reaches a cut: an output real at the defaults is complex there.
+    assert ((expected[0].imag == 0) & (expected[-1].imag != 0)).any()
 
 
 @pytest.mark.loop_physics
