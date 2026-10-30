@@ -84,6 +84,7 @@ request's limits, so compare sector by sector.
 | Need | Recipe |
 | --- | --- |
 | a real on-shell virtual (widths zero) | `[loop.preparation] fixed_parameters = { WT = "0", WZ = "0", WW = "0", WH = "0" }`; a width that propagates in a tree current of an electroweak request is refused (the message names the parameters). Use `fixed_parameters`, not the `no_widths` restriction of `loop_qcd_qed_sm_Gmu`, which also changes MT and MH |
+| the parameters of a MadLoop run | the default values are the model's `restrict_default.dat` (on `loop_qcd_qed_sm_Gmu`: MT = ymt = 173.3 GeV); fix every parameter the run's `param_card.dat` sets differently, e.g. `fixed_parameters = { ..., MT = "173", ymt = "173" }`. A different top mass leaves the Born and the poles of `u u~ > z z` unchanged and moves only the electroweak finite part (through the counterterms), by about 1e-4 of the Born for 0.3 GeV |
 | external photons (alpha(0)) | `loop_qcd_qed_sm_Gmu` with `restriction = "a0"` (it sets `aEW0M1`); `loop_qcd_qed_sm` has no alpha(0) input, so on-shell photons with QED corrections are refused there (`external-photon-scheme`), as in MG5_aMC |
 | massive b | `restriction = "with_b_mass"` (`loop_qcd_qed_sm`: `with_b_mass_no_widths` sets the widths too) |
 | non-diagonal CKM | `restriction = "ckm"` |
