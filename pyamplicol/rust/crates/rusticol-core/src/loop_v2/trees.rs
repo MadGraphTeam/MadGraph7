@@ -1099,8 +1099,9 @@ pub struct TreeRuntime<T> {
 
 /// The run-time side check of a binary64 parameter program's plane
 /// application (`TreeProgram::bind`, M-SM MS-MASTERS): its exact evaluator,
-/// built on first use, the external parameter values (the scale's entry
-/// zeroed) last checked, with whether the plane agreed there, and the values
+/// built on first use, the latest external parameter values (the scale's
+/// entry zeroed) checked, with whether the plane agreed there (a few: a
+/// split pole selection alternates two sets, MS-POLES), and the values
 /// the generation's plane check certified
 /// ([`TreeProgram::certify_parameters`]), where a batch takes the plane
 /// without the check (so a binary64 evaluation at them touches no Symbolica
@@ -1108,8 +1109,11 @@ pub struct TreeRuntime<T> {
 pub struct ParameterSide<T> {
     certified: Option<Vec<Rational>>,
     exact: Option<Kernel<T>>,
-    checked: Option<(Vec<Rational>, bool)>,
+    checked: Vec<(Vec<Rational>, bool)>,
 }
+
+/// The parameter value sets whose verdicts a [`ParameterSide`] keeps.
+const CHECKED_VALUES: usize = 8;
 
 impl<T: Carrier> ParameterSide<T>
 where
@@ -1119,7 +1123,7 @@ where
     /// `width` inputs and `per_row` outputs at `inputs`) at the external
     /// parameter values `key`: kept at the certified values; elsewhere
     /// checked against the exact evaluator (`build` on first use) on the
-    /// first row when `key` differs from the last checked values, and
+    /// first row when `key` is not among the latest checked values, and
     /// replaced by the exact evaluator's rows when the plane disagreed there.
     /// Returns whether the plane's rows were kept.
     fn settle(
@@ -1133,15 +1137,18 @@ where
         if self.certified.as_ref() == Some(&key) {
             return Ok(true);
         }
-        let plane = match &self.checked {
-            Some((checked, plane)) if *checked == key => *plane,
-            _ => {
+        let plane = match self.checked.iter().find(|(checked, _)| *checked == key) {
+            Some((_, plane)) => *plane,
+            None => {
                 if self.exact.is_none() {
                     self.exact = Some(build()?);
                 }
                 let exact = self.exact.as_mut().expect("built above");
                 let plane = plane_side_agrees(exact, &inputs[..width], &outputs[..per_row])?;
-                self.checked = Some((key, plane));
+                if self.checked.len() == CHECKED_VALUES {
+                    self.checked.remove(0);
+                }
+                self.checked.push((key, plane));
                 plane
             }
         };
@@ -2707,7 +2714,7 @@ impl TreeProgram {
             parameter_side: ParameterSide {
                 certified: None,
                 exact: None,
-                checked: None,
+                checked: Vec::new(),
             },
         })
     }

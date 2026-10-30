@@ -188,7 +188,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     let mut side = ParameterSide {
         certified: None,
         exact: None,
-        checked: None,
+        checked: Vec::new(),
     };
     let rows = |kernel: &mut Kernel<f64>, x: f64| {
         let input = [Complex::new(x, 0.0); 2];
@@ -211,7 +211,7 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
             .expect("settles");
         assert_eq!(kept, !on_cut, "x = {x}");
         assert_eq!(got, expected, "x = {x}: the exact side");
-        assert_eq!(side.checked, Some((key.clone(), !on_cut)));
+        assert_eq!(side.checked.last(), Some(&(key.clone(), !on_cut)));
         // The same values again: the recorded verdict, not a new check (rows
         // that agree with the exact evaluator stay replaced on the cut).
         let mut again = expected;
@@ -224,13 +224,22 @@ fn the_run_time_side_check_takes_the_exact_side_of_a_cut_the_plane_misses() {
     // kept without a check, even on the cut.
     let key = vec![Rational::from(4)];
     side.certified = Some(key.clone());
-    side.checked = None;
+    side.checked.clear();
     let (input, mut got) = rows(&mut plane, 4.0);
     let plane_rows = got;
     let kept = side
         .settle(key, &input, &mut got, (2, 1, 1), || panic!("no check"))
         .expect("settles");
-    assert!(kept && got == plane_rows && side.checked.is_none());
+    assert!(kept && got == plane_rows && side.checked.is_empty());
+    // Alternating value sets (a split pole selection) keep both verdicts.
+    side.certified = None;
+    for x in [-4.0, 4.0, -4.0, 4.0] {
+        let (input, mut got) = rows(&mut plane, x);
+        let key = vec![Rational::from(x as i64)];
+        side.settle(key, &input, &mut got, (2, 1, 1), build)
+            .expect("settles");
+    }
+    assert_eq!(side.checked.len(), 2);
 }
 
 #[test]
