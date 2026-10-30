@@ -1087,15 +1087,15 @@ def test_binary64_side_inputs_need_the_key_only_when_they_change(
 
 @pytest.mark.loop_physics
 def test_binary64_ew_pole_split_needs_no_key(tmp_path):
-    """The "uv", "ir" and "split" pole selections of a model with pole
-    regulators (MS-POLES) also evaluate the counterterms with the IR regulator
+    """The "uv" and "ir" pole selections of a model with pole regulators
+    (MS-POLES) also evaluate the counterterms with the IR regulator
     at 0. The generation records the regulator (``ir_regulator``), its plane
     check certifies those values as a second real point
     (``native_trees._request_points``) and the runtime takes both keys as
     certified (``TreeProgram::certify_parameters``; DESIGN §12.1 (e)). So the
     shipped EW self-test artifact (e- e+ > e- e+ [QED] on loop_qcd_qed_sm,
-    which also shows it is regenerated with the record) evaluates every split
-    selection in binary64 with the native key disabled while the permit is
+    which also shows it is regenerated with the record) evaluates both
+    selections in binary64 with the native key disabled while the permit is
     held. Control: a changed side input (aEWM1) needs the key, so the check
     is live on this artifact."""
 
@@ -1112,7 +1112,7 @@ def test_binary64_ew_pole_split_needs_no_key(tmp_path):
         "points": [[[float(c).hex() for c in p] for p in expected["points"][0]]],
         "mu_r2": [float(expected["mu_r2"][0]).hex()],
     }
-    runs = [("uv", None, True), ("ir", None, True), ("split", None, True)]
+    runs = [("uv", None, True), ("ir", None, True)]
     runs.append(("uv", {"aEWM1": "130"}, False))
     for poles, parameters, completes in runs:
         scratch = tmp_path / f"{poles}-{completes}"

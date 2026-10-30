@@ -1174,8 +1174,8 @@ Binary64 evaluation needs no Symbolica licence, with two exceptions:
   against its saved state ([licensing](symbolica-and-licensing.md#concurrent-processes-without-a-license)).
   On loop_sm's QCD processes αs and the renormalisation scale do not trigger
   this; on the electroweak models almost every parameter does, the scale
-  included. The `"uv"`, `"ir"` and `"split"` pole selections of a model with
-  pole regulators also evaluate the counterterms with the IR regulator at 0;
+  included. The `"uv"` and `"ir"` pole selections of a model with pole
+  regulators also evaluate the counterterms with the IR regulator at 0;
   the generation certifies those values too, so these selections need no
   licence at the generation's parameter values (an artifact generated before
   this certification needs the key for them; regenerate it).
