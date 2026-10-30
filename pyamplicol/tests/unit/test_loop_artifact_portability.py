@@ -1096,7 +1096,7 @@ def test_binary64_ew_pole_split_needs_no_key(tmp_path):
     shipped EW self-test artifact (e- e+ > e- e+ [QED] on loop_qcd_qed_sm,
     which also shows it is regenerated with the record) evaluates both
     selections in binary64 with the native key disabled while the permit is
-    held. Control: a changed side input (aEWM1) needs the key, so the check
+    held. Control: a changed side input (MZ) needs the key, so the check
     is live on this artifact."""
 
     from pyamplicol._internal import selftest_virtual_ew as selftest
@@ -1113,7 +1113,7 @@ def test_binary64_ew_pole_split_needs_no_key(tmp_path):
         "mu_r2": [float(expected["mu_r2"][0]).hex()],
     }
     runs = [("uv", None, True), ("ir", None, True)]
-    runs.append(("uv", {"aEWM1": "130"}, False))
+    runs.append(("uv", {"MZ": "91.19"}, False))
     for poles, parameters, completes in runs:
         scratch = tmp_path / f"{poles}-{completes}"
         scratch.mkdir()
@@ -1144,9 +1144,10 @@ def test_binary64_ew_scales_need_no_key(tmp_path):
     evaluates MadLoop's second and third points at their own scales
     (mu_R^2 = 4.9e5 and 1.96e6) in binary64 with the native key disabled
     while the permit is held, for every pole selection, bitwise equal to the
-    keyed run. Controls: a changed side input (aEWM1) and a width set
-    nonzero (a sign pattern the generation did not analyse, keyed on every
-    value) need the key."""
+    keyed run, and equal to double-double (the exact states) by the binary64
+    rule of observables. Controls: a changed side input (MZ) and LogSwitch
+    set to 0 (a sign pattern the generation did not analyse, keyed on every
+    value; the widths are fixed at generation) need the key."""
 
     from pyamplicol._internal import selftest_virtual_ew as selftest
 
@@ -1186,7 +1187,29 @@ def test_binary64_ew_scales_need_no_key(tmp_path):
             results.append(record["results"])
         assert results[0] == results[1], poles
         assert len(_leaves(results[0])) > 0
-    for parameters in ({"aEWM1": "130"}, {"WZ": "2.4952"}):
+        if poles == "all":
+            binary64 = _leaves(results[0])
+    scratch = tmp_path / "double-double"
+    scratch.mkdir()
+    permit, (run,) = _held_evaluations(
+        artifact,
+        selftest.NAME,
+        scratch,
+        4,
+        [("double-double", None)],
+        point=point,
+        poles="all",
+    )
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    record = json.loads((scratch / "0-double-double.json").read_text())
+    exact = _leaves(record["results"])
+    assert len(exact) == len(binary64)
+    scale = max(abs(v) for v in exact)
+    # The binary64 rule of observables (1e-12, HANDOFF §0.5): a cut side the
+    # plane took unchecked differs at O(1e-5) and more.
+    pairs = zip(binary64, exact, strict=True)
+    assert all(abs(a - b) <= 1e-12 * scale for a, b in pairs)
+    for parameters in ({"MZ": "91.19"}, {"LogSwitch": "0"}):
         scratch = tmp_path / f"control-{next(iter(parameters))}"
         scratch.mkdir()
         permit, (run,) = _held_evaluations(
