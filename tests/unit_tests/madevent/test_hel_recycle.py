@@ -323,6 +323,122 @@ class TestCppAmplitudeSplit(unittest.TestCase):
         self.assertIsNone(self.dialect._p1n_group(line, amps, 0))
 
 
+class TestCppTabulatedSplit(unittest.TestCase):
+    """The P1N groups written as tables (CppDialect._p1n_table) rather than as
+    one dot product and one fold per member: what the tables say has to be
+    exactly what the straight-line fold says, entry by entry."""
+
+    LINE = TestCppAmplitudeSplit.LINE
+    FakeAmp = TestCppAmplitudeSplit.FakeAmp
+    SLOT = '( ${row} * nParity + iParity )'
+    FOLD = ['if( storeChannelWeights )', '{',
+            '  numAll_sv[%s * ndiagrams + 3] += cxabs2( amp_sv[0] );' % SLOT, '}',
+            'jampTmpAll_sv[%s * 7 + 2] += amp_sv[0];' % SLOT,
+            'jampTmpAll_sv[%s * 7 + 5] += -amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 1] -= 1. / 3. * amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 4] += 2. * cxtype( 0, 1 ) * amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 0] -= amp_sv[0];' % SLOT]
+    # (kind, index, value) of the fold above; None for the numerator
+    EXPECTED = [(2, 3, None), (1, 2, 1), (1, 5, -1), (0, 1, -1. / 3.),
+                (0, 4, 2j), (0, 0, -1)]
+
+    def setUp(self):
+        self.dialect = hel_recycle.CppDialect()
+        self.dialect.TABLES = True
+        self.dialect.folds = {1: list(self.FOLD)}
+
+    def amplitudes(self, peeled=(10, 11, 12, 13)):
+        return [self.FakeAmp(row + 1, ['aloha_obj[%d]' % slot, 'aloha_obj[1]',
+                                       'aloha_obj[2]', 'COUPs[0]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate(peeled)]
+
+    def render(self, amps):
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        try:
+            return self.dialect.render_amplitudes(self.LINE, amps, gauge='U',
+                                                  amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+
+    @staticmethod
+    def table(out, name):
+        line = [l for l in out.split('\n') if ' %s[] = {' % name in l][0]
+        return line.split('{', 1)[1].rsplit('}', 1)[0]
+
+    def test_the_members_are_tables_and_one_call(self):
+        out = self.render(self.amplitudes())
+        self.assertEqual(out.count('FFV1P1N_1<'), 1)
+        self.assertNotIn('amp_sv[0] =', out)
+        self.assertNotIn('jampAll_sv[(', out)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, true>( _p1n, aloha_obj, hrM, 4,'
+                      ' hrF, hrC, 7,', out)
+        # slot of the peeled leg, row, fold entries
+        self.assertIn('hrM[] = { { 10, 0, 6 }, { 11, 1, 6 }, { 12, 2, 6 },'
+                      ' { 13, 3, 6 } };', out)
+
+    def test_the_entries_decode_to_the_fold(self):
+        out = self.render(self.amplitudes())
+        entries = [int(e.strip().rstrip('u'), 16)
+                   for e in self.table(out, 'hrF').split(',')]
+        coefs = [float(c) for c in self.table(out, 'hrC').split(',')]
+        self.assertEqual(len(entries), 4 * len(self.EXPECTED))
+        for k, entry in enumerate(entries):
+            kind, index, value = self.EXPECTED[k % len(self.EXPECTED)]
+            self.assertEqual(entry >> 30, kind)
+            self.assertEqual(entry & 0xfffff, index)
+            if value is None:
+                continue
+            op, coef = (entry >> 28) & 3, (entry >> 20) & 0xff
+            got = {0: 1, 1: -1}.get(op, complex(coefs[2 * coef], coefs[2 * coef + 1]))
+            self.assertEqual(complex(got), complex(value))
+            # +-1 adds or subtracts, a real factor is not multiplied as a complex
+            self.assertEqual(op, {1: 0, -1: 1}.get(value, 2 if not complex(value).imag else 3))
+
+    def test_a_boson_peel_says_so(self):
+        amps = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]',
+                                       'aloha_obj[%d]' % slot, 'COUPs[0]', '1.0',
+                                       '&amp_fp[0]'])
+                for row, slot in enumerate((10, 11, 12, 13))]
+        out = self.render(amps)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, false>', out)
+        self.assertEqual(self.table(out, 'hrM').split(',')[0].strip(), '{ 10')
+
+    def test_an_unknown_fold_keeps_the_straight_form(self):
+        self.dialect.folds = {1: self.FOLD + ['jamp[${row}] += amp_sv[0];']}
+        out = self.render(self.amplitudes())
+        self.assertNotIn('hr_p1n_fold', out)
+        self.assertEqual(out.count('amp_sv[0] ='), 4)
+
+    def test_off_keeps_the_straight_form(self):
+        self.dialect.TABLES = False
+        out = self.render(self.amplitudes())
+        self.assertNotIn('hr_p1n_fold', out)
+        self.assertIn('jampAll_sv[( 3 * nParity + iParity ) * njampso + 4]', out)
+
+    def test_a_store_is_its_own_kind(self):
+        self.dialect.folds = {1: ['ampAll_sv[%s * 40 + 6] = amp_sv[0];' % self.SLOT]}
+        out = self.render(self.amplitudes())
+        self.assertIn('hrC, 40, jampAll_sv, ampAll_sv, numAll_sv,', out)
+        entries = [int(e.strip().rstrip('u'), 16) for e in self.table(out, 'hrF').split(',')]
+        self.assertEqual(entries, [(3 << 30) | 6] * 4)
+        # a store with a factor, or an addition into the amplitude table, is not one
+        for bad in ('ampAll_sv[%s * 40 + 6] += amp_sv[0];',
+                    'ampAll_sv[%s * 40 + 6] = 2. * amp_sv[0];'):
+            self.dialect.folds = {1: [bad % self.SLOT]}
+            self.assertNotIn('hr_p1n_fold', self.render(self.amplitudes()))
+
+    def test_coefficients(self):
+        value = hel_recycle.CppDialect.fold_coefficient
+        self.assertEqual(value(''), 1)
+        self.assertEqual(value('-'), -1)
+        self.assertEqual(value('1. / 3. * '), 1. / 3.)
+        self.assertEqual(value('-2. * cxtype( 0, 1 ) * '), -2j)
+        self.assertEqual(value('cxtype_amp( 0, 1 ) * '), 1j)
+        self.assertIsNone(value('cI * '))
+        self.assertIsNone(value('__import__( "os" ) * '))
+
+
 class TestRecycledChunkBoundaries(unittest.TestCase):
     """Where the recycled call block may be cut.
 
@@ -430,6 +546,10 @@ class TestRecycledChunkPolicy(unittest.TestCase):
                  '      if( storeChannelWeights )\n      {\n'
                  '        numAll_sv[0] += cxabs2( amp_sv[0] );\n      }\n')
         self.assertEqual(self.cls.hr_count_statements(calls), 5)
+        # the tables of a tabulated P1N group are data, not code
+        calls += ('      {\n        static constexpr HrMember hrM[] = { { 1, 0, 1 } };\n'
+                  '        hr_p1n_fold<W_ACCESS, 4, false>( _p1n );\n      }\n')
+        self.assertEqual(self.cls.hr_count_statements(calls), 8)
 
     def test_chunks_take_the_state_and_are_called_in_order(self):
         exporter = self.exporter({'hel_recycling_chunk': '2'})
@@ -564,6 +684,51 @@ class TestRecycledColourSubExpressions(unittest.TestCase):
         # assigns rather than adds, is among the ones left out
         self.check({n: complex(n, -n) for n in (2, 4, 5, 7)})
 
+    def run_rows(self, plan, amps):
+        """The rows mode: every amplitude of the row in ampRow (0 where it
+        vanishes), then the plain build's color code once, reading it."""
+        class Diagram(object):
+            def get(self, key):
+                return 1
+        ncolor = len(self.color_amplitudes)
+        lines = []
+        for namp in range(1, 9):
+            lines += self.writer._hr_row_lines(
+                namp, Diagram(), True, self.color,
+                plan[1].get(namp, []) if plan else None,
+                plan[2].get(namp, []) if plan else [])
+        if plan:
+            lines += plan[3]
+        scope = {'ampRow': [amps.get(n, 0j) for n in range(1, 9)],
+                 'jamp_sv': [0j] * ncolor, 'jampTmp_sv': [0j] * max(plan[0] if plan else 0, 1),
+                 'numerators_sv': [0.] * 2, 'storeChannelWeights': False,
+                 'cxabs2': lambda z: abs(z) ** 2,
+                 'cxtype': complex, 'cxtype_amp': complex, 'fptype': float}
+        for line in lines:
+            line = line.strip().rstrip(';')
+            if line.startswith('if( storeChannelWeights ) '):
+                line = line[len('if( storeChannelWeights ) '):]
+            exec(line, scope)
+        return scope['jamp_sv']
+
+    def test_rows_mode(self):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        for amps in ({n: complex(n, 0.5 * n - 1) for n in range(1, 9)},
+                     {n: complex(n, -n) for n in (2, 4, 5, 7)}):
+            for p in (plan, None):
+                for got, want in zip(self.run_rows(p, amps), self.expected(amps)):
+                    self.assertAlmostEqual(got, want, places=12)
+        # the colour code reads the row's table, never the scratch amplitude
+        rows = self.writer._hr_row_lines(1, None, False, self.color, plan[1][1], [])
+        self.assertTrue(rows)
+        self.assertTrue(all('amp_sv' not in l and 'ampRow[0]' in l for l in rows))
+
+    def test_rows_store(self):
+        fold = self.writer._hr_orig_store('FFV1_0( a ); ', 7, 40)
+        self.assertEqual(fold[1:], ['//HRFOLD 7',
+            'ampAll_sv[( ${row} * nParity + iParity ) * 40 + 6] = amp_sv[0];',
+            '//HRENDFOLD'])
+
     def test_post_lines_only_ever_add(self):
         plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
         _ntmp, post = self.writer.hr_post_lines(plan)
@@ -571,6 +736,144 @@ class TestRecycledColourSubExpressions(unittest.TestCase):
         for line in post:
             self.assertIn(' += ', line)
         self.assertEqual(self.writer.hr_post_lines(None), (0, []))
+
+
+class TestRecycledOptions(unittest.TestCase):
+    """--hel_recycling_jamp / --hel_recycling_tables, and the per-row include
+    HelRecyclingJamps.inc each mode writes."""
+
+    def test_jamp_mode(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter as W
+        writer = W.__new__(W)
+        for options, mode in (({}, 'rows'), ({'hel_recycling_jamp': 'fold'}, 'fold'),
+                              ({'hel_recycling_jamp': 'EXPANDED'}, 'expanded'),
+                              ({'hel_recycling_jamp': 'bogus'}, 'rows')):
+            writer.cmd_options = options
+            self.assertEqual(writer.hr_jamp_mode(), mode)
+
+    def test_tables(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        class Writer(object):
+            cmd_options = {}
+        exporter = E.__new__(E)
+        exporter.helas_call_writer = Writer()
+        self.assertTrue(exporter.hel_recycling_tables())
+        for off in ('False', 'false', '0', 'no'):
+            Writer.cmd_options = {'hel_recycling_tables': off}
+            self.assertFalse(exporter.hel_recycling_tables())
+        Writer.cmd_options = {'hel_recycling_tables': 'True'}
+        self.assertTrue(exporter.hel_recycling_tables())
+
+    def test_jamps_include(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        rows = E.hr_jamps_inc({'mode': 'rows', 'ntmp': 7, 'namp': 159,
+                               'lines': ['jamp_sv[0] += ampRow[3];']})
+        self.assertIn('const cxtype_amp_sv* ampRow = ampAll_sv + slot * 159;', rows)
+        self.assertIn('cxtype_amp_sv jampTmp_sv[7];', rows)
+        self.assertIn('jamp_sv[0] += ampRow[3];', rows)
+        # no table of every row's numerators in the rows mode: hr_row hands the
+        # event's own numerators_sv
+        self.assertNotIn('numAll_sv', rows)
+        fold = E.hr_jamps_inc({'mode': 'fold', 'ntmp': 7, 'namp': 0,
+                               'lines': ['jampTmp_sv[1] += jampTmp_sv[0];']})
+        self.assertIn('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * 7;', fold)
+        self.assertNotIn('ampRow', fold)
+        expanded = E.hr_jamps_inc({'mode': 'expanded', 'ntmp': 0, 'namp': 0, 'lines': ()})
+        self.assertTrue(all(l.strip().startswith('//') for l in expanded.splitlines() if l.strip()))
+
+
+class TestHiddenRunCardEntries(unittest.TestCase):
+    """The mg7 run card's hidden entries -- hel_recycling_max_mb among them --
+    are read, and written back once the user set them (not before), so that
+    rewriting the card does not drop them."""
+
+    def test_round_trip(self):
+        import madgraph.various.banner as banner_mod
+        tmpdir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmpdir, 'run_card.toml')
+            card = banner_mod.RunCardMG7()
+            self.assertEqual(card['run'].get('hel_recycling_max_mb'), -1)
+            card.write(path)
+            self.assertNotIn('hel_recycling_max_mb', open(path).read())
+            card.set('run.hel_recycling_max_mb', 0, user=True)
+            card.write(path)
+            text = open(path).read()
+            self.assertIn('hel_recycling_max_mb = 0', text)
+            # in its own section, so that the card stays valid TOML
+            try:
+                import tomllib
+            except ImportError:
+                tomllib = None
+            if tomllib:
+                self.assertEqual(tomllib.loads(text)['run']['hel_recycling_max_mb'], 0)
+            again = banner_mod.RunCardMG7(path)
+            self.assertEqual(again['run.hel_recycling_max_mb'], 0)
+            again.write(path)
+            self.assertIn('hel_recycling_max_mb = 0', open(path).read())
+            # a legacy alias is read but never written
+            card.set('generation.systematics', True, user=True)
+            card.write(path)
+            generation = text_section(open(path).read(), 'generation')
+            self.assertFalse(any(l.strip().startswith('systematics =') for l in generation))
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+def text_section(text, name):
+    """The lines of [name] in a TOML text."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith('['):
+            inside = line.strip() == '[%s]' % name
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+class TestRecyclingMakeArguments(unittest.TestCase):
+    """What the mg7 launcher hands make for a --hel_recycling output, and when a
+    library has to be rebuilt for other settings."""
+
+    def setUp(self):
+        try:
+            import madgraph.iolibs.template_files.mg7.launch as launch
+        except Exception as error:      # needs the mg7 runtime (madspace)
+            self.skipTest('mg7 launch not importable: %s' % error)
+        import madgraph.various.banner as banner_mod
+        self.launch = launch
+        self.process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        self.process.run_card = banner_mod.RunCardMG7()
+
+    def test_make_arguments(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('HRMAXMB', None)
+            os.environ.pop('HRNOBLAS', None)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=', 'HRNOBLAS='])
+            os.environ['HRMAXMB'] = '20'
+            self.assertEqual(self.process.hel_recycling_make_args()[0], 'HRMAXMB=20')
+            # the run card wins over the environment
+            self.process.run_card.set('run.hel_recycling_max_mb', 0, user=True)
+            self.process.run_card.set('run.hel_recycling_row_color_sum', True, user=True)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=0', 'HRNOBLAS=1'])
+
+    def test_rebuild_when_the_settings_change(self):
+        changed = self.launch.MadgraphProcess.hel_recycling_flags_changed
+        tmpdir = tempfile.mkdtemp()
+        try:
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # not recycled
+            open(os.path.join(tmpdir, 'HelRecycling.inc'), 'w').close()
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # never built
+            os.mkdir(os.path.join(tmpdir, 'build.simd_128'))
+            with open(os.path.join(tmpdir, 'build.simd_128', '.hrflags'), 'w') as fsock:
+                fsock.write(':\n')
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))
+            self.assertTrue(changed(tmpdir, 'simd_128', '0:'))
+            self.assertFalse(changed(tmpdir, 'cuda', '0:'))           # gpu: plain anyway
+        finally:
+            shutil.rmtree(tmpdir)
 
 
 class TestHelRecyclingWarmup(unittest.TestCase):

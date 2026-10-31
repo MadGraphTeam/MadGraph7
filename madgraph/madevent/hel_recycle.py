@@ -467,6 +467,11 @@ class CppDialect(Dialect):
                  % (indent, root, peel + 1, ', '.join(access), ', '.join(args)),
                  '%s  const cxtype_sv* _pt = %s::kernelAccessConst( %s.w );'
                  % (indent, access[0], self.P1N_SCRATCH)]
+        if self.TABLES:
+            table = self._p1n_table(group, peel, indent, access[0], ncomp,
+                                    spin == 'F')
+            if table is not None:
+                return lines[:2] + table + ['%s}' % indent]
         dot = ' + '.join('_pt[%d] * _pw[%d]' % (i, i) for i in range(ncomp))
         for amp in group:
             peeled = amp.args[peel]
@@ -482,6 +487,163 @@ class CppDialect(Dialect):
             lines.extend(self._amp_fold(amp))
         lines.append('%s}' % indent)
         return lines
+
+    # -- the tabulated split ---------------------------------------------
+    # At high multiplicity the recycled block is mostly the members of the P1N
+    # groups -- one dot product per member and the member's fold into its row's
+    # color flows -- written out as straight-line code: 90% of the 1.29M
+    # statements of g g > t t~ g g g. That code is run once per event page and
+    # is far bigger than the caches, so it is fetched from memory every time
+    # and the processor idles (IPC 0.7). Written as tables instead -- which
+    # wavefunction and row each member is, which table entry and coefficient
+    # each fold adds to -- the same work is one small loop (hr_p1n_fold in
+    # HelRecyclingTables.h) over data read in order. The folds are read back
+    # from the text the exporter wrote; a group with a fold this does not
+    # recognise keeps the straight-line form.
+    TABLES = True               # the exporter's --hel_recycling_tables
+    _FOLD_JAMP = re.compile(r'^\s*(jampAll_sv|jampTmpAll_sv|ampAll_sv)\[\( (\d+) \* nParity'
+                            r' \+ iParity \) \* (\w+) \+ (\d+)\] ([+-]?)= (.*)amp_sv\[0\];\s*$')
+    _FOLD_NUM = re.compile(r'^\s*numAll_sv\[\( (\d+) \* nParity \+ iParity \)'
+                           r' \* ndiagrams \+ (\d+)\] \+= cxabs2\( amp_sv\[0\] \);\s*$')
+    _FOLD_SKIP = ('if( storeChannelWeights )', '{', '}')
+    _COEF_TEXT = re.compile(r'^[-+0-9.eE*/(), ]*$')
+    _COEF_NAMES = re.compile(r'\b(?:cxtype_amp|cxtype|fptype)\b')
+    # what a fold entry is packed into: kind (2 bits: jampAll_sv, jampTmpAll_sv,
+    # numAll_sv, a store into ampAll_sv), how it adds (2 bits: +=, -=, += real *,
+    # += complex *), the coefficient in the group's own table (8 bits), the
+    # index (20 bits)
+    HR_KINDS = {'jampAll_sv': 0, 'jampTmpAll_sv': 1, 'ampAll_sv': 3}
+    HR_NUM = 2
+    HR_STORE = 3
+    HR_MAX_INDEX = 1 << 20
+    HR_MAX_COEF = 1 << 8
+
+    @classmethod
+    def fold_coefficient(cls, text):
+        """The complex value of the C++ factor in front of amp_sv[0] ('' is 1),
+        or None for anything but numbers and the complex constructors."""
+        text = text.strip()
+        if text.endswith('*'):
+            text = text[:-1].strip()
+        if text in ('', '+'):
+            return complex(1)
+        if text == '-':
+            return complex(-1)
+        if not cls._COEF_TEXT.match(cls._COEF_NAMES.sub('', text)):
+            return None
+        try:
+            value = eval(text, {'__builtins__': {}},
+                         {'cxtype_amp': complex, 'cxtype': complex, 'fptype': float})
+        except Exception:
+            return None
+        return complex(value)
+
+    def parse_fold(self, amp):
+        """[(kind, index, value)] of the fold of `amp` at its row, value None for
+        a multichannel numerator, plus the stride of the jampTmpAll_sv rows (0
+        when unused); or None when a line is not one of the shapes the exporter
+        writes."""
+        row = amp.numbers[0] - 1
+        entries, ntmp = [], 0
+        for line in self._amp_fold(amp):
+            stripped = line.strip()
+            if stripped in self._FOLD_SKIP:
+                continue
+            match = self._FOLD_NUM.match(line)
+            if match:
+                if int(match.group(1)) != row:
+                    return None
+                entries.append((self.HR_NUM, int(match.group(2)), None))
+                continue
+            match = self._FOLD_JAMP.match(line)
+            if not match:
+                return None
+            target, frow, stride, index, sign, factor = match.groups()
+            if int(frow) != row:
+                return None
+            if (target == 'ampAll_sv') != (sign == '' and factor.strip() == ''):
+                return None             # a store, and only a store
+            if target == 'jampAll_sv':
+                if stride != 'njampso':
+                    return None
+            else:
+                if not stride.isdigit() or (ntmp and int(stride) != ntmp):
+                    return None
+                ntmp = int(stride)
+            value = self.fold_coefficient(factor)
+            if value is None:
+                return None
+            entries.append((self.HR_KINDS[target], int(index),
+                            -value if sign == '-' else value))
+        return entries, ntmp
+
+    @classmethod
+    def pack_fold(cls, kind, index, value, coefs):
+        """One fold entry as the 32 bits hr_fold_amp reads, adding its
+        coefficient to `coefs` (the group's table of distinct values) when it
+        needs one; None when it does not fit."""
+        if index >= cls.HR_MAX_INDEX:
+            return None
+        op, coef = 0, 0
+        if value is not None and kind != cls.HR_STORE:
+            if value == 1:
+                op = 0
+            elif value == -1:
+                op = 1
+            else:
+                op = 2 if value.imag == 0 else 3
+                if value not in coefs:
+                    coefs.append(value)
+                coef = coefs.index(value)
+                if coef >= cls.HR_MAX_COEF:
+                    return None
+        return (kind << 30) | (op << 28) | (coef << 20) | index
+
+    @staticmethod
+    def _double(value):
+        text = repr(float(value))
+        return text if ('.' in text or 'e' in text or 'n' in text) else text + '.'
+
+    def _p1n_table(self, group, peel, indent, w_access, ncomp, fermion):
+        """The members of a P1N group and their folds as tables, and the call
+        that runs them (after the P1N call itself); None when a member cannot be
+        tabulated."""
+        members, folds, coefs, ntmp, table = [], [], [], 0, set()
+        for amp in group:
+            match = self._SLOT_INDEX.fullmatch(amp.args[peel])
+            parsed = self.parse_fold(amp)
+            if match is None or parsed is None:
+                return None
+            entries, stride = parsed
+            if stride:
+                if ntmp and stride != ntmp:
+                    return None
+                ntmp = stride
+            table.update(kind for kind, _index, _value in entries
+                         if kind in (1, self.HR_STORE))
+            if len(table) > 1:
+                return None             # one second table per group
+            packed = [self.pack_fold(kind, index, value, coefs)
+                      for kind, index, value in entries]
+            if any(p is None for p in packed) or len(packed) >= 1 << 16:
+                return None
+            members.append('{ %s, %d, %d }' % (match.group(1), amp.numbers[0] - 1,
+                                               len(packed)))
+            folds.extend(packed)
+        cvalues = []
+        for value in coefs:
+            cvalues += [self._double(value.real), self._double(value.imag)]
+        return ['%s  static constexpr HrMember hrM[] = { %s };'
+                % (indent, ', '.join(members)),
+                '%s  static constexpr unsigned int hrF[] = { %s };'
+                % (indent, ', '.join('0x%xu' % f for f in folds) or '0u'),
+                '%s  static constexpr double hrC[] = { %s };'
+                % (indent, ', '.join(cvalues) or '0.'),
+                '%s  hr_p1n_fold<%s, %d, %s>( %s, aloha_obj, hrM, %d, hrF, hrC, %d,'
+                ' jampAll_sv, %s, numAll_sv, iParity, storeChannelWeights );'
+                % (indent, w_access, ncomp, 'true' if fermion else 'false',
+                   self.P1N_SCRATCH, len(members), ntmp or 1,
+                   'ampAll_sv' if self.HR_STORE in table else 'jampTmpAll_sv')]
 
     def render_amplitudes(self, line, new_amps, gauge, amp_splt):
         '''One amplitude, once per helicity row that keeps it: the call into the
