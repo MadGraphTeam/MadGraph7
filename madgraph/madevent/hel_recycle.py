@@ -498,11 +498,8 @@ class CppDialect(Dialect):
     # from the text the exporter wrote; a group with a fold this does not
     # recognise keeps the straight-line form.
     TABLES = True               # the exporter's --hel_recycling_tables
-    _FOLD_JAMP = re.compile(r'^\s*(jampAll_sv|jampTmpAll_sv)\[\( (\d+) \* nParity'
+    _FOLD_JAMP = re.compile(r'^\s*(jampAll_sv|jampTmpAll_sv|ampAll_sv)\[\( (\d+) \* nParity'
                             r' \+ iParity \) \* (\w+) \+ (\d+)\] ([+-]?)= (.*)amp_sv\[0\];\s*$')
-    # the rows mode's store into the amplitude table
-    _FOLD_STORE = re.compile(r'^\s*hr_store\( ampAll_sv\[\( (\d+) \* nParity'
-                             r' \+ iParity \) \* (\d+) \+ (\d+)\], amp_sv\[0\] \);\s*$')
     _FOLD_NUM = re.compile(r'^\s*numAll_sv\[\( (\d+) \* nParity \+ iParity \)'
                            r' \* ndiagrams \+ (\d+)\] \+= cxabs2\( amp_sv\[0\] \);\s*$')
     _FOLD_SKIP = ('if( storeChannelWeights )', '{', '}')
@@ -512,7 +509,7 @@ class CppDialect(Dialect):
     # numAll_sv, a store into ampAll_sv), how it adds (2 bits: +=, -=, += real *,
     # += complex *), the coefficient in the group's own table (8 bits), the
     # index (20 bits)
-    HR_KINDS = {'jampAll_sv': 0, 'jampTmpAll_sv': 1}
+    HR_KINDS = {'jampAll_sv': 0, 'jampTmpAll_sv': 1, 'ampAll_sv': 3}
     HR_NUM = 2
     HR_STORE = 3
     HR_MAX_INDEX = 1 << 20
@@ -555,20 +552,14 @@ class CppDialect(Dialect):
                     return None
                 entries.append((self.HR_NUM, int(match.group(2)), None))
                 continue
-            match = self._FOLD_STORE.match(line)
-            if match:
-                frow, stride, index = (int(group) for group in match.groups())
-                if frow != row or (ntmp and stride != ntmp):
-                    return None
-                ntmp = stride
-                entries.append((self.HR_STORE, index, complex(1)))
-                continue
             match = self._FOLD_JAMP.match(line)
             if not match:
                 return None
             target, frow, stride, index, sign, factor = match.groups()
             if int(frow) != row:
                 return None
+            if (target == 'ampAll_sv') != (sign == '' and factor.strip() == ''):
+                return None             # a store, and only a store
             if target == 'jampAll_sv':
                 if stride != 'njampso':
                     return None

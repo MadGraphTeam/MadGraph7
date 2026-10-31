@@ -408,16 +408,14 @@ class TestCppTabulatedSplit(unittest.TestCase):
         self.assertIn('jampAll_sv[( 3 * nParity + iParity ) * njampso + 4]', out)
 
     def test_a_store_is_its_own_kind(self):
-        self.dialect.folds = {1: ['hr_store( ampAll_sv[%s * 40 + 6], amp_sv[0] );' % self.SLOT]}
+        self.dialect.folds = {1: ['ampAll_sv[%s * 40 + 6] = amp_sv[0];' % self.SLOT]}
         out = self.render(self.amplitudes())
         self.assertIn('hrC, 40, jampAll_sv, ampAll_sv, numAll_sv,', out)
         entries = [int(e.strip().rstrip('u'), 16) for e in self.table(out, 'hrF').split(',')]
         self.assertEqual(entries, [(3 << 30) | 6] * 4)
-        # a store with a factor, an addition into the amplitude table, or an
-        # assignment that bypasses hr_store, is not one
+        # a store with a factor, or an addition into the amplitude table, is not one
         for bad in ('ampAll_sv[%s * 40 + 6] += amp_sv[0];',
-                    'ampAll_sv[%s * 40 + 6] = amp_sv[0];',
-                    'hr_store( ampAll_sv[%s * 40 + 6], 2. * amp_sv[0] );'):
+                    'ampAll_sv[%s * 40 + 6] = 2. * amp_sv[0];'):
             self.dialect.folds = {1: [bad % self.SLOT]}
             self.assertNotIn('hr_p1n_fold', self.render(self.amplitudes()))
 
@@ -562,19 +560,6 @@ class TestRecycledChunkPolicy(unittest.TestCase):
             self.assertIn(decl, defs)
             self.assertIn(name, body)
         self.assertEqual(self.exporter({}).hr_chunk_calls(calls), ('', [], calls))
-
-    def test_chunks_know_the_size_of_the_amplitude_table(self):
-        """The units do not see HelRecycling.inc, and their table stores depend
-        on the size of the table (hrStreamStores)"""
-        exporter = self.exporter({'hel_recycling_chunk': '2'})
-        calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
-                          for i in range(5)) + '\n'
-        _decls, units, _body = exporter.hr_chunk_calls(calls, 128 * 1890)
-        define = '#define MGONGPU_HR_TABLE_ENTRIES 241920 '
-        self.assertIn(define, units[0])
-        self.assertLess(units[0].index(define), units[0].index('#include "HelRecyclingChunks.h"'))
-        _decls, units, _body = exporter.hr_chunk_calls(calls)
-        self.assertNotIn('MGONGPU_HR_TABLE_ENTRIES', units[0])
 
     def test_chunks_are_declared_without_names_and_spread_over_files(self):
         exporter = self.exporter({'hel_recycling_chunk': '2'})
@@ -732,7 +717,7 @@ class TestRecycledColourSubExpressions(unittest.TestCase):
     def test_rows_store(self):
         fold = self.writer._hr_orig_store('FFV1_0( a ); ', 7, 40)
         self.assertEqual(fold[1:], ['//HRFOLD 7',
-            'hr_store( ampAll_sv[( ${row} * nParity + iParity ) * 40 + 6], amp_sv[0] );',
+            'ampAll_sv[( ${row} * nParity + iParity ) * 40 + 6] = amp_sv[0];',
             '//HRENDFOLD'])
 
     def test_post_lines_only_ever_add(self):
@@ -800,7 +785,6 @@ class TestHiddenRunCardEntries(unittest.TestCase):
             path = os.path.join(tmpdir, 'run_card.toml')
             card = banner_mod.RunCardMG7()
             self.assertEqual(card['run'].get('hel_recycling_max_mb'), -1)
-            self.assertFalse(card['run'].get('hel_recycling_no_stream'))
             card.write(path)
             self.assertNotIn('hel_recycling_max_mb', open(path).read())
             card.set('run.hel_recycling_max_mb', 0, user=True)
@@ -858,20 +842,13 @@ class TestRecyclingMakeArguments(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop('HRMAXMB', None)
             os.environ.pop('HRNOBLAS', None)
-            os.environ.pop('HRNOSTREAM', None)
-            self.assertEqual(self.process.hel_recycling_make_args(),
-                             ['HRMAXMB=', 'HRNOBLAS=', 'HRNOSTREAM='])
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=', 'HRNOBLAS='])
             os.environ['HRMAXMB'] = '20'
             self.assertEqual(self.process.hel_recycling_make_args()[0], 'HRMAXMB=20')
-            os.environ['HRNOSTREAM'] = '1'
-            self.assertEqual(self.process.hel_recycling_make_args()[2], 'HRNOSTREAM=1')
-            del os.environ['HRNOSTREAM']
             # the run card wins over the environment
             self.process.run_card.set('run.hel_recycling_max_mb', 0, user=True)
             self.process.run_card.set('run.hel_recycling_row_color_sum', True, user=True)
-            self.process.run_card.set('run.hel_recycling_no_stream', True, user=True)
-            self.assertEqual(self.process.hel_recycling_make_args(),
-                             ['HRMAXMB=0', 'HRNOBLAS=1', 'HRNOSTREAM=1'])
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=0', 'HRNOBLAS=1'])
 
     def test_rebuild_when_the_settings_change(self):
         changed = self.launch.MadgraphProcess.hel_recycling_flags_changed
@@ -882,11 +859,10 @@ class TestRecyclingMakeArguments(unittest.TestCase):
             self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # never built
             os.mkdir(os.path.join(tmpdir, 'build.simd_128'))
             with open(os.path.join(tmpdir, 'build.simd_128', '.hrflags'), 'w') as fsock:
-                fsock.write('::\n')
-            self.assertFalse(changed(tmpdir, 'simd_128', '::'))
-            self.assertTrue(changed(tmpdir, 'simd_128', '0::'))
-            self.assertTrue(changed(tmpdir, 'simd_128', '::1'))
-            self.assertFalse(changed(tmpdir, 'cuda', '0::'))          # gpu: plain anyway
+                fsock.write(':\n')
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))
+            self.assertTrue(changed(tmpdir, 'simd_128', '0:'))
+            self.assertFalse(changed(tmpdir, 'cuda', '0:'))           # gpu: plain anyway
         finally:
             shutil.rmtree(tmpdir)
 

@@ -25,11 +25,6 @@
 #include "MemoryAccessWavefunctions.h"
 #include "mgOnGpuConfig.h"
 
-#if defined __x86_64__
-#include <immintrin.h> // the non-temporal stores of HelRecyclingTables.h
-#endif
-#include <cstring>
-
 namespace madmatrix
 {
   using namespace ProcessData;

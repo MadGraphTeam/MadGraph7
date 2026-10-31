@@ -1258,10 +1258,9 @@ class MadgraphProcess:
         # On a CPU the recycled build itself falls back to the plain matrix
         # element when its tables are too big for the SIMD width (see
         # hrUseRecycling in backend/{cpu,simd}/SigmaKin.cc, which prints so when
-        # it runs). The limit, the row-by-row color sum and the non-temporal
-        # table stores are the hidden run-card entries hel_recycling_max_mb /
-        # hel_recycling_row_color_sum / hel_recycling_no_stream (else HRMAXMB /
-        # HRNOBLAS / HRNOSTREAM from the environment), passed to make.
+        # it runs). The limit and the row-by-row color sum are the hidden
+        # run-card entries hel_recycling_max_mb / hel_recycling_row_color_sum
+        # (else HRMAXMB / HRNOBLAS from the environment), passed to make.
         hr_args = self.hel_recycling_make_args()
         if recycled and len(gpu_backends) < len(resolved):
             limit = hr_args[0].split("=", 1)[1]
@@ -1269,8 +1268,7 @@ class MadgraphProcess:
                 "--hel_recycling: %s use the recycled matrix element on the cpu "
                 "unless its tables exceed %s MB per SIMD page (run.hel_recycling_max_mb, "
                 "0 for no limit)", ", ".join(recycled),
-                {"": "10 (20 with non-temporal table stores; default)",
-                 "0": "<no limit>"}.get(limit, limit)
+                {"": "10 (default)", "0": "<no limit>"}.get(limit, limit)
             )
         hr_flags = ":".join(arg.split("=", 1)[1] for arg in hr_args)
         for backend in resolved:
@@ -1300,18 +1298,16 @@ class MadgraphProcess:
         return resolved
 
     def hel_recycling_make_args(self) -> list[str]:
-        """HRMAXMB=..., HRNOBLAS=... and HRNOSTREAM=... for make (madmatrix.mk),
-        from the hidden run-card entries, else from the environment; empty
-        values are the build's defaults."""
+        """HRMAXMB=... and HRNOBLAS=... for make (madmatrix.mk), from the hidden
+        run-card entries, else from the environment; empty values are the
+        build's defaults."""
         run = self.run_card["run"]
         max_mb = run.get("hel_recycling_max_mb", -1)
         max_mb = str(max_mb) if max_mb is not None and max_mb >= 0 \
             else os.environ.get("HRMAXMB", "")
         no_blas = "1" if run.get("hel_recycling_row_color_sum", False) \
             else os.environ.get("HRNOBLAS", "")
-        no_stream = "1" if run.get("hel_recycling_no_stream", False) \
-            else os.environ.get("HRNOSTREAM", "")
-        return [f"HRMAXMB={max_mb}", f"HRNOBLAS={no_blas}", f"HRNOSTREAM={no_stream}"]
+        return [f"HRMAXMB={max_mb}", f"HRNOBLAS={no_blas}"]
 
     @staticmethod
     def hel_recycling_flags_changed(proc_path: str, backend: str, hr_flags: str) -> bool:
