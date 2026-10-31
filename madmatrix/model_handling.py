@@ -7,6 +7,7 @@
 import os
 import sys
 
+import glob
 import math
 import re
 
@@ -2198,9 +2199,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # for the same run time, against 808 s inline for a run 13% faster).
     HR_CHUNK_STMTS = 200
     HR_INLINE_MAX = 15000
-    # What the recycled calls read that is local to calculate_all_jamps. The
-    # chunks live in the same translation unit, so the model tables (cIPD, cIPC,
-    # ...) need no plumbing.
+    # The chunks are written into translation units of about this many
+    # statements (HelRecyclingChunks_<k>.cc), which the build compiles in
+    # parallel: in one SigmaKin.cc, g g > t t~ g g g (2.8M statements) is a
+    # single compiler process for the best part of an hour.
+    HR_FILE_STMTS = 20000
+    # What the recycled calls read of calculate_all_jamps and of SigmaKin.cc: the
+    # chunks live in translation units of their own, so the run-time tables of
+    # SigmaKin.cc (cIPD, cFlavors, cBWCUTOFF) are passed along too.
     HR_CHUNK_STATE = [
         ('const fptype_momenta* momenta', 'momenta'),
         ('const fptype* const* COUPs', 'COUPs'),
@@ -2210,13 +2216,22 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ('fptype_amp* amp_fp', 'amp_fp'),
         ('ALOHAOBJ& _p1n', '_p1n'),
         ('cxtype_amp_sv* jampAll_sv', 'jampAll_sv'),
+        ('cxtype_amp_sv* jampTmpAll_sv', 'jampTmpAll_sv'),
+        ('cxtype_amp_sv* ampAll_sv', 'ampAll_sv'),
         ('fptype_amp_sv* numAll_sv', 'numAll_sv'),
         ('const int iParity', 'iParity'),
         ('const bool storeChannelWeights', 'storeChannelWeights'),
         ('const FLV_COUPLING_ARRAY<nIPF, nMF>& flvCOUPs', 'flvCOUPs'),
         ('const FLV_COUPLING_ARRAY<nDPF, nMF, HostAccessCouplings::flv_stride>&'
          ' flvCOUPs_dep', 'flvCOUPs_dep'),
+        ('const fptype* cIPD', 'cIPD'),
+        ('const short ( *cFlavors )[npar]', 'cFlavors'),
+        ('const fptype cBWCUTOFF', 'cBWCUTOFF'),
     ]
+    # hidden: every P* library has its own hr_unit_<k>, which must never bind
+    # to another one's; noinline: one call per unit is the point
+    HR_CHUNK_ATTR = '__attribute__( ( noinline, visibility( "hidden" ) ) )'
+    HR_CHUNK_FILE = 'HelRecyclingChunks_%d.cc'
     HR_CHUNK_USING = (
         '    using M_ACCESS [[maybe_unused]] = HostAccessMomenta;\n'
         '    using W_ACCESS [[maybe_unused]] = HostAccessWavefunctions;\n'
@@ -2225,6 +2240,51 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         '    using CI_ACCESS [[maybe_unused]] = HostAccessCouplingsFixed;\n'
         '    using CDPF_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
+
+    # Above this many statements of code (hr_count_statements: the tables of
+    # the tabulated P1N groups do not count) the recycled block is declined and
+    # the directory keeps the plain code. Recycling makes each wavefunction once
+    # per copy instead of once per row, so it executes fewer instructions, but
+    # as ONE straight run of code per event page, where the plain build loops
+    # over the rows through the same few hundred kB. Once that run no longer
+    # fits in the caches, every page fetches it from memory again and the
+    # instructions per cycle collapse. Measured on an Apple M5 Pro (16 MB L2),
+    # check_sa simd_128, recycled over plain, with the amplitudes as
+    # straight-line code: 1.4x-2.2x up to 183k statements (6 MB of code),
+    # 0.47x at 610k (22 MB), 0.31x at 1.29M (48 MB, g g > t t~ g g g, IPC 0.73
+    # against 5.1). The tables (--hel_recycling_tables, on by default) take
+    # g g > t t~ g g g down to ~100k statements of code, 3.4 MB, and 1.7x
+    # faster than plain; the limit is for what is still bigger than that.
+    # --hel_recycling_max=<n> overrides it, 0 for no limit.
+    HR_MAX_STMTS = 300000
+
+    def hel_recycling_max_stmts(self):
+        """Statements above which the recycled block is declined (0: never),
+        from --hel_recycling_max if given."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        if 'hel_recycling_max' in options:
+            try:
+                return int(options['hel_recycling_max'])
+            except (TypeError, ValueError):
+                logger.warning('--hel_recycling_max must be an integer; '
+                               'using the default')
+        return self.HR_MAX_STMTS
+
+    def hel_recycling_tables(self):
+        """--hel_recycling_tables: write the P1N groups of the recycled block as
+        tables (default) or as straight-line code (see CppDialect._p1n_table)."""
+        options = getattr(self.helas_call_writer, 'cmd_options', None) or {}
+        return str(options.get('hel_recycling_tables', True)).lower() \
+                                            not in ('false', '0', 'no')
+
+    @staticmethod
+    def hr_count_statements(calls):
+        """Statements of code in a recycled call block: the lines hr_chunk_calls
+        counts, but for the tables of the tabulated P1N groups, which are data
+        and not code (see HelRecyclingTables.h)."""
+        return sum(1 for line in calls.split('\n')
+                   if line.split('//')[0].strip()
+                   and not line.lstrip().startswith('static constexpr'))
 
     def hel_recycling_chunk_size(self, nstmt):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
@@ -2263,25 +2323,56 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return chunks
 
     def hr_chunk_calls(self, calls):
-        """(chunk definitions, calls to them) for the recycled call block, or
-        ('', calls) when it is small enough to stay inline."""
+        """(declarations, translation units, calls) for the recycled call block,
+        or ('', [], calls) when it is small enough to stay inline.
+
+        Each unit holds its chunks (static, hr_chunk_<i>) and one function,
+        hr_unit_<k>, that calls them in order: calculate_all_jamps calls the
+        units, so that its own body stays a handful of calls -- with one call
+        per chunk (10570 for g g > t t~ g g g), SigmaKin.cc alone took longer
+        to build than all the chunks together."""
         lines = calls.rstrip('\n').split('\n')
         nstmt = sum(1 for line in lines if line.split('//')[0].strip())
         per_chunk = self.hel_recycling_chunk_size(nstmt)
         if per_chunk <= 0 or nstmt <= per_chunk:
-            return '', calls
+            return '', [], calls
         params = ',\n              '.join('[[maybe_unused]] ' + decl
                                           for decl, _ in self.HR_CHUNK_STATE)
+        # the declarations SigmaKin.cc sees leave the names out: there, cIPD &co
+        # are its own tables
+        types = ', '.join(re.sub(r'\b%s\b' % name, '', decl).strip()
+                          for decl, name in self.HR_CHUNK_STATE)
         args = ', '.join(name for _, name in self.HR_CHUNK_STATE)
-        defs, body = [], []
-        for i, chunk in enumerate(self.hr_split_statements(lines, per_chunk)):
-            # noinline: folding the chunks back into one body is what they avoid
-            defs.append('  __attribute__( ( noinline ) ) static void\n'
-                        '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
-                        % (i, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
-            body.append('      hr_chunk_%d( %s );' % (i, args))
-        logger.debug('hel_recycling: %d statements in %d chunks', nstmt, len(defs))
-        return '\n'.join(defs), '\n'.join(body) + '\n'
+        units, unit, unit_stmts, nchunks = [], [], 0, 0
+        for chunk in self.hr_split_statements(lines, per_chunk):
+            unit.append(chunk)
+            unit_stmts += sum(1 for line in chunk if line.split('//')[0].strip())
+            if unit_stmts >= self.HR_FILE_STMTS:
+                units.append(unit)
+                unit, unit_stmts = [], 0
+        if unit:
+            units.append(unit)
+        decls, texts, body = [], [], []
+        for k, chunks in enumerate(units):
+            defs, calls_k = [], []
+            for chunk in chunks:
+                # noinline: folding the chunks back into one body is what they avoid
+                defs.append('  __attribute__( ( noinline ) ) static void\n'
+                            '  hr_chunk_%d( %s )\n  {\n%s%s\n  }\n'
+                            % (nchunks, params, self.HR_CHUNK_USING, '\n'.join(chunk)))
+                calls_k.append('    hr_chunk_%d( %s );' % (nchunks, args))
+                nchunks += 1
+            defs.append('  %s void\n  hr_unit_%d( %s )\n  {\n%s\n  }\n'
+                        % (self.HR_CHUNK_ATTR, k, params, '\n'.join(calls_k)))
+            texts.append('// --hel_recycling: recycled chunks of calculate_all_jamps, generated by\n'
+                         '// madgraph/madevent/hel_recycle.py (see HelRecycling.inc)\n\n'
+                         '#include "HelRecyclingChunks.h"\n\n'
+                         'namespace madmatrix\n{\n%s}\n' % '\n'.join(defs))
+            decls.append('  %s void hr_unit_%d( %s );' % (self.HR_CHUNK_ATTR, k, types))
+            body.append('      hr_unit_%d( %s );' % (k, args))
+        logger.debug('hel_recycling: %d statements in %d chunks, %d files',
+                     nstmt, nchunks, len(texts))
+        return '\n'.join(decls) + '\n', texts, '\n'.join(body) + '\n'
 
     @property
     def hel_recycling(self):
@@ -2302,6 +2393,26 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return 'split amplitude orders'
         return None
 
+    @staticmethod
+    def hr_jamps_inc(post):
+        """HelRecyclingJamps.inc: the color flows of one row (slot), with
+        jamp_sv the row's color flows -- in the rows mode inside hr_row, once
+        per good helicity, in the others at the end of calculate_all_jamps."""
+        head = ['// --hel_recycling (%s): the color flows of one row (slot), once every'
+                % post['mode'],
+                '// amplitude is made (see calculate_all_jamps)']
+        if post['mode'] == 'fold':
+            head.append('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * %d;'
+                        % max(post['ntmp'], 1))
+        elif post['mode'] == 'rows':
+            # inside hr_row: numerators_sv is the event's own (nullptr unless
+            # storeChannelWeights), jamp_sv the helicity's color flows
+            head += ['const cxtype_amp_sv* ampRow = ampAll_sv + slot * %d;'
+                     % max(post['namp'], 1)]
+            if post['ntmp'] > 0:
+                head.append('cxtype_amp_sv jampTmp_sv[%d];' % post['ntmp'])
+        return ''.join('      %s\n' % line for line in head + list(post['lines']))
+
     def hr_orig_calls(self, color_amplitudes):
         """The calls of the matrix element in the form the recycler reads.
 
@@ -2315,10 +2426,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         amplitudes = matrix_element.get_all_amplitudes()
         numbers = [(amp, amp.get('number')) for amp in amplitudes]
         writer.hr_orig = True
+        writer.hr_jamp_post = dict(writer.HR_POST_EMPTY)
         try:
-            return writer.get_matrix_element_calls(
+            calls = writer.get_matrix_element_calls(
                 matrix_element, color_amplitudes,
                 multi_channel_map=self.multi_channel_map)
+            self._hr_jamp_post = writer.hr_jamp_post
+            return calls
         finally:
             writer.hr_orig = False
             for amp, number in numbers:
@@ -2328,7 +2442,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Run the recycler over the hr_orig calls for the good helicities
         (1-based rows of cHel) and the (row, amplitude) pairs that vanish, and
         write HelRecycling.inc and HelRecyclingCalls.inc. Returns the number of
-        rows built."""
+        rows built, or None when the recycled block is declined for its size
+        (hel_recycling_max_stmts): then nothing is written and the directory
+        keeps the plain code."""
         import madgraph.madevent.hel_recycle as hel_recycle
         matrix_element = self.matrix_elements[0]
         all_hel = [tuple(hel) for hel in
@@ -2338,6 +2454,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         row_of_hel = [-1] * ncomb
         for compact, full in enumerate(kept):
             row_of_hel[full - 1] = compact
+        post = getattr(self, '_hr_jamp_post', None) or \
+               MadMatrixUFOHelasCallWriter.HR_POST_EMPTY
+        ntmp = post['ntmp'] if post['mode'] == 'fold' else 0
+        namp = post['namp'] if post['mode'] == 'rows' else 0
         orig_path = pjoin(self.path, 'HelRecycling_orig.cc')
         tmpl_path = pjoin(self.path, 'HelRecycling_template.cc')
         out_path = pjoin(self.path, 'HelRecycling_out.cc')
@@ -2348,13 +2468,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '  // --hel_recycling: generated by madgraph/madevent/hel_recycle.py\n'
                 '  constexpr int nHrRows = ${ncomb}; // helicity rows built\n'
                 '  constexpr int hrNwf = ${nwavefuncs}; // wavefunction slots of the recycled build\n'
+                '  constexpr int hrNtmp = %d; // shared color-flow sub-expressions of one row (fold)\n'
+                '  constexpr int hrNamp = %d; // amplitude slots of one row (rows)\n'
                 '  static constexpr int cHrRow[ncomb] = { %s }; // row of each helicity (-1: not built)\n'
+                '%s'
                 '${helicity_lines}\n%s\n${helas_calls}\n'
-                % (', '.join(str(row) for row in row_of_hel), self.HR_CALLS_MARK))
+                % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
+                   '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
+                   if post['mode'] == 'rows' else '',
+                   self.HR_CALLS_MARK))
+        dialect = hel_recycle.CppDialect()
+        dialect.TABLES = self.hel_recycling_tables()
         recycler = hel_recycle.HelicityRecycler(
                         [str(hel) for hel in kept], [],
                         sorted((int(h), int(a)) for h, a in zero_perhel),
-                        dialect=hel_recycle.CppDialect())
+                        dialect=dialect)
         recycler.hel_filt = True
         recycler.amp_splt = True
         recycler.amp_filt = True
@@ -2373,11 +2501,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 except OSError:
                     pass
         header, calls = text.split(self.HR_CALLS_MARK, 1)
-        chunks, calls = self.hr_chunk_calls(calls.lstrip('\n'))
+        nstmt = self.hr_count_statements(calls)
+        limit = self.hel_recycling_max_stmts()
+        if limit > 0 and nstmt > limit:
+            logger.warning('hel_recycling: %s is written WITHOUT recycling: its '
+                'recycled block would be %d statements (%d helicity rows), more '
+                'than --hel_recycling_max=%d. Code that size no longer runs from the '
+                'caches and is slower than the plain build (2x at 22 MB of code). '
+                'Pass --hel_recycling_max=0 to build it anyway.',
+                os.path.basename(self.path), nstmt, len(kept), limit)
+            return None
+        decls, units, calls = self.hr_chunk_calls(calls.lstrip('\n'))
+        for stale in glob.glob(pjoin(self.path, self.HR_CHUNK_FILE.replace('%d', '*'))):
+            os.remove(stale)
+        for k, unit in enumerate(units):
+            with open(pjoin(self.path, self.HR_CHUNK_FILE % k), 'w') as fsock:
+                fsock.write(unit)
         with open(pjoin(self.path, 'HelRecycling.inc'), 'w') as fsock:
-            fsock.write(header + '\n' + chunks)
+            fsock.write(header + '\n' + decls)
         with open(pjoin(self.path, 'HelRecyclingCalls.inc'), 'w') as fsock:
             fsock.write(calls)
+        with open(pjoin(self.path, 'HelRecyclingJamps.inc'), 'w') as fsock:
+            fsock.write(self.hr_jamps_inc(post))
         return len(kept)
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
@@ -3425,12 +3570,31 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 color[namp][njamp] = coeff
         # Color flows through shared sub-expressions (None to write them out
         # one (color flow, amplitude) pair at a time, as before)
-        # In hr_orig mode every amplitude is folded into its own row of the
-        # recycled tables, so there is nothing for shared sub-expressions to be
-        # shared between.
-        jamp_plan = None if self.hr_orig \
-                    else self.build_jamp_plan(matrix_element, color_amplitudes)
+        # In hr_orig mode they are kept too (hr_jamp_mode): either the color
+        # code below runs as it is once per helicity row on a table of that
+        # row's amplitudes (rows), or every amplitude is folded into its row's
+        # sub-expressions and the rest is done once per row (fold). Without
+        # them (expanded) each amplitude goes into every color flow of every
+        # row it survives in -- 3.4x the plain build's color updates for
+        # g g > t t~ g g g, where no row drops.
+        jamp_plan = self.cached_jamp_plan(matrix_element, color_amplitudes)
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
+        hr_mode = self.hr_jamp_mode() if self.hr_orig else None
+        if hr_mode == 'fold':
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='fold',
+                                     **dict(zip(('ntmp', 'lines'),
+                                                self.hr_post_lines(jamp_plan))))
+        elif hr_mode == 'rows':
+            # the row loop: what calculate_jamps does with each amplitude, read
+            # from the row's table instead of amp_sv[0], and in the same order
+            hr_rows = []
+            hr_namp = max([a.get('number') for a in
+                           matrix_element.get_all_amplitudes()] or [1])
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='rows',
+                                     ntmp=self.nb_tmp_jamp, namp=hr_namp,
+                                     lines=hr_rows)
+        elif hr_mode == 'expanded':
+            self.hr_jamp_post = dict(self.HR_POST_EMPTY, mode='expanded')
         so_index = self.split_order_index(matrix_element)
         ncolor_jamp = len(color_amplitudes)
         if jamp_plan is not None:
@@ -3533,10 +3697,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
+                if hr_mode == 'rows':
+                    res.extend(self._hr_orig_store(amp_block[0], namp, hr_namp))
+                    hr_rows.extend(self._hr_row_lines(
+                        namp, diagram, id_amp in diag_to_config, color,
+                        jamp_captures.get(namp, []) if jamp_plan is not None else None,
+                        jamp_combines.get(namp, []) if jamp_plan is not None else []))
+                    continue
                 if self.hr_orig:
-                    res.extend(self._hr_orig_amplitude(amp_block[0], namp, diagram,
-                                                       id_amp in diag_to_config,
-                                                       color))
+                    res.extend(self._hr_orig_amplitude(
+                        amp_block[0], namp, diagram, id_amp in diag_to_config, color,
+                        jamp_captures.get(namp, []) if hr_mode == 'fold'
+                                                 and jamp_plan is not None else None))
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
@@ -3592,24 +3764,146 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     # need: they always run, whatever the flavor
                     res.extend(jamp_combines.get(namp, []))
             if len(diagram.get('amplitudes')) == 0 : res.append('// (none)') # AV
-        if jamp_plan is not None:
+        if hr_mode == 'rows' and jamp_plan is not None:
+            hr_rows.extend(jamp_final)
+        if jamp_plan is not None and not self.hr_orig:
             res.append('\n      // *** COLOR FLOWS FROM THE SHARED SUB-EXPRESSIONS ***')
             res.extend(jamp_final)
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
 
-    def _hr_orig_amplitude(self, call, namp, diagram, channel, color):
+    # the per-row tables the hr_orig folds write: the color flows and the shared
+    # sub-expressions of the color flows, each [nHrRows][nParity][n]
+    _HR_JAMP = re.compile(r'\bjamp_sv\[(\d+)\]')
+    _HR_JAMP_TMP = re.compile(r'\bjampTmp_sv\[(\d+)\]')
+    _HR_ASSIGN = re.compile(r'^(\s*jampTmp_sv\[\d+\]) = ')
+    _HR_AMP = re.compile(r'\bamp_sv\[0\]')
+
+    # What the recycled build does with the color flows (--hel_recycling_jamp):
+    #  rows: as the fortran recycler does (AMP(NCOMB,NGRAPHS) and a loop over
+    #        the rows) -- every amplitude of every row is stored in a per-row
+    #        table (ampAll_sv), and the color flows of the plain build, shared
+    #        sub-expressions and all, run once per row afterwards from it;
+    #  fold: each amplitude is added into its row's shared sub-expressions
+    #        (jampTmpAll_sv) as it is made, the rest is done per row after;
+    #  expanded: each amplitude is added into every color flow of its row.
+    # rows is the default: with the tabulated P1N groups it executes the fewest
+    # instructions of the three on every process measured, is the fastest or
+    # tied with fold on one thread, and is by far the quickest to build of the
+    # two, since its color code is the plain build's, written once (g g > t t~
+    # g g g, check_sa simd_128, cycles against plain: rows 1.67x, fold 1.46x,
+    # expanded 1.01x; build 31 s / 114 s / 16 s, plain 13 s). With every core
+    # busy (mg7, 18 threads) its gain on g g > t t~ g g g shrinks to ~5% while
+    # g g > u u~ g g keeps 1.45x. fold and expanded are kept to compare.
+    HR_JAMP_MODES = ('rows', 'fold', 'expanded')
+    HR_POST_EMPTY = {'mode': 'expanded', 'ntmp': 0, 'namp': 0, 'lines': ()}
+
+    def hr_jamp_mode(self):
+        """--hel_recycling_jamp, rows by default."""
+        options = getattr(self, 'cmd_options', None) or {}
+        mode = str(options.get('hel_recycling_jamp', 'rows')).lower()
+        if mode not in self.HR_JAMP_MODES:
+            logger.warning('--hel_recycling_jamp must be one of %s; using rows',
+                           ', '.join(self.HR_JAMP_MODES))
+            mode = 'rows'
+        return mode
+
+    def _hr_orig_store(self, call, namp, nslot):
+        """One amplitude in hr_orig form for the rows mode: the call, then its
+        store into the row's amplitude table -- nothing else is done with it
+        until the row loop (_hr_row_lines)."""
+        return ['%s //HRAMP %d' % (call.rstrip('\n'), namp), '//HRFOLD %d' % namp,
+                'ampAll_sv[( ${row} * nParity + iParity ) * %d + %d] = amp_sv[0];'
+                % (nslot, namp - 1), '//HRENDFOLD']
+
+    def _hr_row_lines(self, namp, diagram, channel, color, captures, combines):
+        """What calculate_jamps does with amplitude namp, for the row loop of
+        the rows mode: amp_sv[0] is the row's ampRow[namp - 1]."""
+        operand = 'ampRow[%d]' % (namp - 1)
+        out = []
+        if channel:
+            out.append('if( storeChannelWeights ) numerators_sv[%d] += cxabs2( %s );'
+                       % (diagram.get('number') - 1, operand))
+        if captures is not None:
+            out += [self._HR_AMP.sub(operand, line.strip())
+                    for line, _target, _first in captures]
+            out += [line.strip() for line in combines]
+            return out
+        for njamp, coeff in color[namp].items():
+            scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
+            if scoeff[0] == '+': scoeff = scoeff[1:]
+            for old_, new_ in (('(', '( '), (')', ' )'), (',', ', '),
+                               ('*', ' * '), ('/', ' / ')):
+                scoeff = scoeff.replace(old_, new_)
+            if scoeff.startswith('-'):
+                out.append('jamp_sv[%s] -= %s%s;' % (njamp, scoeff[1:], operand))
+            else:
+                out.append('jamp_sv[%s] += %s%s;' % (njamp, scoeff, operand))
+        return out
+
+    def cached_jamp_plan(self, matrix_element, color_amplitudes):
+        """build_jamp_plan, once per matrix element: the hr_orig pass and the
+        ordinary one ask for the same plan, and at high multiplicity finding it
+        is most of the generation time."""
+        # the objects themselves, not their id(): the cache holds them alive,
+        # so an id cannot come back for another matrix element
+        flags = (self.jamp_optim_enabled(), self.jamp_orbit_allowed(matrix_element))
+        cache = getattr(self, '_jamp_plan_cache', None)
+        if cache is None or cache[0] is not matrix_element \
+                or cache[1] is not color_amplitudes or cache[2] != flags:
+            cache = (matrix_element, color_amplitudes, flags,
+                     self.build_jamp_plan(matrix_element, color_amplitudes))
+            self._jamp_plan_cache = cache
+        return cache[3]
+
+    @classmethod
+    def hr_post_lines(cls, jamp_plan):
+        """(ntmp, lines): what is left of the color flows of ONE recycled row once
+        every amplitude has been folded into it -- the sub-expressions built out
+        of other sub-expressions, in an order that has each complete before it
+        is read, then the color flows that are combinations of them. They run
+        in place on the row's tables, as jampTmp_sv / jamp_sv, which the folds
+        have only ever added to (the tables start at zero and an amplitude that
+        vanishes at a row is not folded in at all), so every assignment
+        becomes an addition. (0, []) when the color flows share nothing."""
+        if jamp_plan is None:
+            return 0, []
+        ntmp, _captures, combines, final = jamp_plan
+        lines = [cls._HR_ASSIGN.sub(r'\1 += ', line)
+                 for amp in sorted(combines) for line in combines[amp]]
+        return ntmp, lines + list(final)
+
+    def _hr_orig_amplitude(self, call, namp, diagram, channel, color, captures=None):
         """One amplitude in hr_orig form: the call, tagged with its number (all
         amplitudes write the one scratch amp_sv[0], so the call itself cannot say
         which it is), then a //HRFOLD block of what it adds to its helicity row's
         tables -- the multichannel numerator and the color flows -- with a
-        ${row} hole the recycler stamps out once per row it survives in."""
+        ${row} hole the recycler stamps out once per row it survives in.
+
+        With captures (the build_jamp_plan lines of this amplitude) the color
+        flows are added to as the plain build adds to them: into the row's
+        shared sub-expressions (jampTmpAll_sv) and the few color flows it goes
+        to directly; hr_post_lines finishes them per row."""
         out = ['%s //HRAMP %d' % (call.rstrip('\n'), namp), '//HRFOLD %d' % namp]
         slot = '( ${row} * nParity + iParity )'
         if channel:
             out += ['if( storeChannelWeights )', '{',
                     '  numAll_sv[%s * ndiagrams + %i] += cxabs2( amp_sv[0] );'
                     % (slot, diagram.get('number') - 1), '}']
+        if captures is not None:
+            for line, _target, first in captures:
+                if first:
+                    line = line.replace(' = ', ' += ', 1)
+                # the count as a literal: the chunk translation units do not
+                # see HelRecycling.inc, where it is hrNtmp
+                line = self._HR_JAMP_TMP.sub(
+                    r'jampTmpAll_sv[%s * %d + \1]' % (slot, self.nb_tmp_jamp),
+                    line.strip())
+                line = self._HR_JAMP.sub(
+                    r'jampAll_sv[%s * njampso + \1]' % slot, line)
+                out.append(line)
+            out.append('//HRENDFOLD')
+            return out
         for njamp, coeff in color[namp].items():
             scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
             if scoeff[0] == '+': scoeff = scoeff[1:]
