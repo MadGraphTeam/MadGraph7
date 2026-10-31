@@ -15,6 +15,9 @@ The momenta agree to 1e-12 of sqrt(s) rather than to machine precision because
 genps_fks.f computes the angle of i to i + j with the law of cosines, which
 loses up to half the digits of a small angle. The kernel uses the exact sine
 and cosine of that angle.
+
+Massive final-state and incoming emitters follow further down, with their own
+conventions.
 """
 
 import glob
@@ -25,6 +28,7 @@ import os
 import numpy as np
 import pytest
 import torch
+from fks_testing import EPS, massive_fortran_precision, massive_xi_max
 from madspace_testing import default_context, generator
 
 import madspace as ms
@@ -86,14 +90,14 @@ def cluster(p_i, p_j, sqrt_s):
     )
 
 
-def recoil_boost(p, k, sqrt_s, inverse=False):
+def recoil_boost(p, k, p_jbar, sqrt_s, inverse=False):
     n = p.shape[1]
     op = "fks_recoil_boost_inverse" if inverse else "fks_recoil_boost"
     return run(
         lambda fb, *args: [getattr(fb, op)(*args)],
-        [ms.batch_four_vec_array(n), V, F],
+        [ms.batch_four_vec_array(n), V, V, F],
         [ms.batch_four_vec_array(n)],
-        [p, k, sqrt_s],
+        [p, k, p_jbar, sqrt_s],
     )[0]
 
 
@@ -106,7 +110,9 @@ def real_from_born(p_born, i_fks, j_fks, nin, xi_hat, y, r_phi, sqrt_s):
     spect = [b for b in range(nin, p_born.shape[1]) if b != jb]
     real_born = p_born.copy()
     if spect:
-        real_born[:, spect] = recoil_boost(p_born[:, spect], p_i + p_j, sqrt_s)
+        real_born[:, spect] = recoil_boost(
+            p_born[:, spect], p_i + p_j, p_born[:, jb], sqrt_s
+        )
     real_born[:, jb] = p_j
     real = np.insert(real_born, i_fks, 0.0, axis=1)
     real[:, i_fks] = p_i
@@ -208,9 +214,12 @@ def test_final_massless_matches_genps_fks(name, nfks, data, conf, points):
     np.testing.assert_allclose(det_inv * det_xi, 1.0, rtol=1e-12)
 
 
-def random_born(n_out, batch, sqrt_s=1000.0, seed=1):
+def random_born(n_out, batch, sqrt_s=1000.0, seed=1, masses=None):
+    """RAMBO phase space of n_out final-state particles, massless unless masses
+    are given."""
+    masses = [0.0] * n_out if masses is None else list(masses)
     mapping = ms.PhaseSpaceMapping(
-        [0.0] * (n_out + 2), sqrt_s, mode="rambo", leptonic=True
+        [0.0, 0.0] + masses, sqrt_s, mode="rambo", leptonic=True
     )
     r = torch.rand(
         (batch, mapping.random_dim()), generator=generator(seed), device="cpu"
@@ -260,7 +269,9 @@ def test_final_massless_round_trip():
     p_jbar, xi_hat2, y2, r_phi2, xi2, xi_max2, det_inv = cluster(
         real[:, 5], real[:, 4], sqrt_s
     )
-    spect = recoil_boost(real[:, 2:4], real[:, 4] + real[:, 5], sqrt_s, inverse=True)
+    spect = recoil_boost(
+        real[:, 2:4], real[:, 4] + real[:, 5], p_jbar, sqrt_s, inverse=True
+    )
     np.testing.assert_allclose(p_jbar / scale, p_born[:, 4] / scale, atol=1e-12)
     np.testing.assert_allclose(spect / scale, p_born[:, 2:4] / scale, atol=1e-12)
     np.testing.assert_allclose(xi_hat2, xi_hat, rtol=1e-10)
@@ -470,3 +481,305 @@ def test_initial_limits():
         np.testing.assert_allclose(
             np.delete(coll, [0, 1, 4], axis=1), p_born[:, 2:], atol=1e-10
         )
+
+
+# Emission off a massive final-state parton. genps_fks.f generates only the soft
+# counter-event, and for y < 0 it uses the second solution for the momentum of
+# the emitter for xi_hat above rat = xi_max / xi_norm (isolsign = -1). It then
+# leaves out xi_norm (xi = xi_norm xi_hat) and, for the first solution, the
+# factor 1 - stiny of the sampling.
+
+
+def massive_sample(r_xi, r_y, sqrt_s, p_jbar, m_j):
+    return run(
+        lambda fb, *args: fb.fks_final_massive_sample(*args, m_j),
+        [F, F, F, V],
+        [F, F, F],
+        [r_xi, r_y, sqrt_s, p_jbar],
+    )
+
+
+def massive_sample_inverse(xi_hat, y, sqrt_s, p_jbar, m_j):
+    return run(
+        lambda fb, *args: fb.fks_final_massive_sample_inverse(*args, m_j),
+        [F, F, F, V],
+        [F, F, F],
+        [xi_hat, y, sqrt_s, p_jbar],
+    )
+
+
+def massive_radiate(xi_hat, y, r_phi, sqrt_s, p_jbar, m_j):
+    return run(
+        lambda fb, *args: fb.fks_final_massive_radiate(*args, m_j),
+        [F, F, F, F, V],
+        [V, V, F, F, F, F],
+        [xi_hat, y, r_phi, sqrt_s, p_jbar],
+    )
+
+
+def massive_cluster(p_i, p_j, sqrt_s, m_j):
+    return run(
+        lambda fb, *args: fb.fks_final_massive_cluster(*args, m_j),
+        [V, V, F],
+        [V, F, F, F, F, F, F, F],
+        [p_i, p_j, sqrt_s],
+    )
+
+
+def massive_real_from_born(p_born, i_fks, j_fks, nin, xi_hat, y, r_phi, m_j):
+    """Born momenta and FKS variables -> real momenta, xi, xi_max, xi_norm and
+    det_xi, for a massive final-state emitter j."""
+    jb = j_fks if j_fks < i_fks else j_fks - 1
+    p_in = p_born[:, 0] + p_born[:, 1]
+    sqrt_s = np.sqrt(p_in[:, 0] ** 2 - (p_in[:, 1:] ** 2).sum(1))
+    p_i, p_j, xi, xi_max, xi_norm, det_xi = massive_radiate(
+        xi_hat, y, r_phi, sqrt_s, p_born[:, jb], m_j
+    )
+    spect = [b for b in range(nin, p_born.shape[1]) if b != jb]
+    real_born = p_born.copy()
+    if spect:
+        real_born[:, spect] = recoil_boost(
+            p_born[:, spect], p_i + p_j, p_born[:, jb], sqrt_s
+        )
+    real_born[:, jb] = p_j
+    real = np.insert(real_born, i_fks, 0.0, axis=1)
+    real[:, i_fks] = p_i
+    return real, xi, xi_max, xi_norm, det_xi
+
+
+def massive_final_points():
+    cases = []
+    for path in DATA:
+        with open(path) as f:
+            data = json.load(f)
+        nin = data["nincoming"]
+        for conf in data["configs"]:
+            j = conf["j_fks"]
+            if j <= nin or conf["masses"][j - 1] == 0:
+                continue
+            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
+            if points:
+                cases.append(
+                    (os.path.basename(path)[:-5], conf["nfks"], data, conf, points)
+                )
+    return cases
+
+
+MASSIVE_CASES = massive_final_points()
+
+
+def test_reference_has_both_massive_solutions():
+    signs = {p["isolsign"] for case in MASSIVE_CASES for p in case[4]}
+    assert signs == {1, -1}
+
+
+@pytest.mark.parametrize(
+    "name,nfks,data,conf,points",
+    MASSIVE_CASES,
+    ids=[f"{c[0]}-fks{c[1]}" for c in MASSIVE_CASES],
+)
+def test_final_massive_matches_genps_fks(name, nfks, data, conf, points):
+    """Event, soft counter-event and their Jacobians, and back. Where
+    genps_fks.f cancels (see fks_testing.py), the tolerances follow its
+    precision."""
+    nin, nex = data["nincoming"], data["nexternal"]
+    i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
+    jb = j_fks if j_fks < i_fks else j_fks - 1
+    m_j = conf["masses"][j_fks]
+
+    def field(key):
+        return np.array([p[key] for p in points])
+
+    p_born = field("p_born")
+    sqrt_s = np.sqrt(field("shat_born"))
+    r = field("x")[:, -3:]
+    p_ev = field("rad_p_ev")
+
+    xi_hat, y, det_sample = massive_sample(r[:, 0], r[:, 1], sqrt_s, p_born[:, jb], m_j)
+    real, xi, xi_max, xi_norm, det_xi = massive_real_from_born(
+        p_born, i_fks, j_fks, nin, xi_hat, y, r[:, 2], m_j
+    )
+    second = xi_hat > xi_max / xi_norm
+    np.testing.assert_array_equal(np.where(second, -1, 1), field("isolsign"))
+    np.testing.assert_allclose(xi, field("rad_xi_ev"), rtol=1e-12)
+    np.testing.assert_allclose(xi_hat, field("rad_xi_hat_ev"), rtol=1e-12)
+    np.testing.assert_allclose(xi_max, field("rad_xiimax_ev"), rtol=1e-12)
+    np.testing.assert_allclose(y, field("rad_y_ev"), rtol=0, atol=1e-15)
+
+    prec_k, prec_jac = massive_fortran_precision(p_ev, p_born[:, jb], i_fks, j_fks, m_j)
+    diff = np.abs(real - p_ev).max((1, 2)) / sqrt_s
+    assert (diff <= 1e-13 + 10 * prec_k).all()
+    fortran = field("rad_jac") / flux_factor(field("rad_shat_ev"), nex)
+    units = det_sample / (np.where(second, 1.0, 1 - STINY) * (1 - CTINY))
+    ours = det_xi / xi_norm * units
+    assert (np.abs(ours / fortran - 1) <= 1e-12 + 50 * prec_jac).all()
+
+    # only the soft counter-event, and only for the first solution
+    jac_cnt = field("rad_jac_cnt")
+    assert (jac_cnt[:, [0, 1, 3, 4]] <= 0).all()
+    valid = jac_cnt[:, 2] > 0
+    assert (valid == ~second).all()
+    soft, xi0, _, _, det_soft = massive_real_from_born(
+        p_born, i_fks, j_fks, nin, np.zeros_like(xi_hat), y, r[:, 2], m_j
+    )
+    assert (xi0 == 0).all()
+    p_cnt = field("rad_p_cnt")[:, 2]
+    np.testing.assert_allclose(
+        (soft / sqrt_s[:, None, None])[valid],
+        (p_cnt / sqrt_s[:, None, None])[valid],
+        rtol=0,
+        atol=1e-13,
+    )
+    fortran_cnt = jac_cnt[:, 2] / flux_factor(field("rad_shat_cnt")[:, 2], nex)
+    np.testing.assert_allclose(
+        (det_soft / xi_norm * units)[valid], fortran_cnt[valid], rtol=1e-12
+    )
+
+    # and back from the momenta of genps_fks.f
+    p_jbar, xi_hat2, y2, r_phi2, _, _, _, det_inv = massive_cluster(
+        p_ev[:, i_fks], p_ev[:, j_fks], sqrt_s, m_j
+    )
+    r_xi2, r_y2, _ = massive_sample_inverse(xi_hat2, y2, sqrt_s, p_jbar, m_j)
+    np.testing.assert_allclose(
+        np.stack([r_xi2, r_y2, r_phi2], 1), r, rtol=0, atol=1e-12
+    )
+    np.testing.assert_allclose(
+        p_jbar / sqrt_s[:, None], p_born[:, jb] / sqrt_s[:, None], atol=1e-14
+    )
+    assert (np.abs(det_inv * det_xi - 1) <= 1e-12 + 50 * prec_jac).all()
+
+
+# Born layouts with a massive emitter at position 2 (the real emission adds i
+# last): t t~ near and far above threshold, t t~ g and t u u~
+MASSIVE_LAYOUTS = [
+    ([173.0, 173.0], 360.0),
+    ([173.0, 173.0], 1000.0),
+    ([173.0, 173.0, 0.0], 1000.0),
+    ([173.0, 0.0, 0.0], 500.0),
+]
+
+
+@pytest.mark.parametrize("masses,sqrt_s", MASSIVE_LAYOUTS)
+def test_final_massive_round_trip(masses, sqrt_s):
+    batch = 4000
+    n_out = len(masses)
+    p_born, _ = random_born(n_out, batch, sqrt_s, seed=70 + n_out, masses=masses)
+    m_j = masses[0]
+    rs = np.full(batch, sqrt_s)
+    r = np.random.default_rng(71).random((batch, 3))
+    i_fks = n_out + 2
+    xi_hat, y, det_sample = massive_sample(r[:, 0], r[:, 1], rs, p_born[:, 2], m_j)
+    real, xi, xi_max, xi_norm, det_xi = massive_real_from_born(
+        p_born, i_fks, 2, 2, xi_hat, y, r[:, 2], m_j
+    )
+    assert ((xi >= 0) & (xi <= xi_max)).all()
+    assert (xi_hat > xi_max / xi_norm).any() and (y < 0).any()
+
+    # momentum conservation on top of the Born's (RAMBO with masses violates
+    # it by up to 1e-13 of sqrt(s)), which the boost of the spectators stretches
+    # by at most exp(|eta|), mass shells, and i + j along the Born emitter
+    def violation(p):
+        return np.abs(p[:, 2:].sum(1) - p[:, :2].sum(1)).max(1) / sqrt_s
+
+    k = real[:, 2] + real[:, i_fks]
+    plus_real = sqrt_s - k[:, 0] + np.linalg.norm(k[:, 1:], axis=1)
+    plus_born = sqrt_s - p_born[:, 2, 0] + np.linalg.norm(p_born[:, 2, 1:], axis=1)
+    stretch = np.maximum(plus_real / plus_born, plus_born / plus_real)
+    assert (violation(real) <= 2 * stretch * violation(p_born) + 1e-14).all()
+    m2 = real[..., 0] ** 2 - (real[..., 1:] ** 2).sum(-1)
+    m2_expected = np.array([0.0, 0.0] + [m * m for m in masses] + [0.0])
+    np.testing.assert_allclose((m2 - m2_expected) / sqrt_s**2, 0.0, atol=1e-13)
+    cross = np.cross(k[:, 1:], p_born[:, 2, 1:])
+    np.testing.assert_allclose(cross / sqrt_s**2, 0.0, atol=1e-13)
+
+    p_jbar, xi_hat2, y2, r_phi2, xi2, _, _, det_inv = massive_cluster(
+        real[:, i_fks], real[:, 2], rs, m_j
+    )
+    np.testing.assert_allclose(p_jbar / sqrt_s, p_born[:, 2] / sqrt_s, atol=1e-13)
+    if n_out > 1:
+        spect = recoil_boost(real[:, 3:i_fks], k, p_jbar, rs, inverse=True)
+        np.testing.assert_allclose(spect / sqrt_s, p_born[:, 3:] / sqrt_s, atol=1e-13)
+    np.testing.assert_allclose(xi2, xi, rtol=1e-12)
+    r_xi2, r_y2, det_sample_inv = massive_sample_inverse(xi_hat2, y2, rs, p_jbar, m_j)
+    # to the conditioning of the variables (see conditioning() in
+    # test_fks_radiation.py): r_y to eps / r_y (y close to 1 is a double),
+    # xi_hat to eps / xi_max (the range of xi from the recoil mass), the
+    # azimuth to eps / sin(theta) of i to i + j, and the Jacobian accordingly
+    r_xi, r_y = r[:, 0], r[:, 1]
+    res_xi = 10 * EPS * (STINY + 1 / massive_xi_max(real, i_fks, 2, m_j)) / r_xi
+    res_y = 10 * EPS / r_y
+    assert (np.abs(r_xi2 - r_xi) <= res_xi + 1e-13).all()
+    assert (np.abs(r_y2 - r_y) <= res_y + 1e-13).all()
+    p_i = real[:, i_fks, 1:]
+    sin_axis = np.linalg.norm(np.cross(p_i, k[:, 1:]), axis=1) / (
+        np.linalg.norm(p_i, axis=1) * np.linalg.norm(k[:, 1:], axis=1)
+    )
+    dphi = azimuth_difference(r_phi2, r[:, 2])
+    assert (dphi <= 1000 * EPS / sin_axis + 1e-12).all()
+    det = det_xi * det_sample
+    det2 = det_inv * det_sample_inv
+    assert (np.abs(det * det2 - 1) <= res_xi / r_xi + res_y / r_y + 1e-11).all()
+
+
+def azimuth_difference(r_phi, r_phi_ref):
+    return np.abs((r_phi - r_phi_ref + 0.5) % 1.0 - 0.5)
+
+
+def test_final_massive_limits():
+    """Soft: the Born with a zero i. Small mass: the massless emission."""
+    batch = 200
+    masses = [173.0, 173.0, 0.0]
+    p_born, _ = random_born(3, batch, seed=72, masses=masses)
+    rng = np.random.default_rng(73)
+    xi_hat, y, r_phi = rng.random(batch), 2 * rng.random(batch) - 1, rng.random(batch)
+    soft, xi, _, _, det_soft = massive_real_from_born(
+        p_born, 5, 2, 2, np.zeros(batch), y, r_phi, 173.0
+    )
+    assert (xi == 0).all() and np.isfinite(det_soft).all() and (det_soft > 0).all()
+    np.testing.assert_allclose(soft[:, 5], 0.0, atol=1e-12)
+    np.testing.assert_allclose(soft[:, :5] / 1000.0, p_born / 1000.0, atol=1e-13)
+
+    # an emitter of mass m differs from a massless one by O(m / sqrt(s)), here
+    # on a massless Born with the emitter put on its mass shell
+    m_j = 1e-3
+    p_born = random_born(3, batch, seed=74)[0].copy()
+    p_born[:, 2, 0] = np.sqrt(p_born[:, 2, 0] ** 2 + m_j**2)
+    p_born[:, 0, 0] += 0.5 * (
+        p_born[:, 2, 0] - np.linalg.norm(p_born[:, 2, 1:], axis=1)
+    )
+    p_born[:, 0, 3] = p_born[:, 0, 0]
+    p_born[:, 1, 0] = p_born[:, 0, 0]
+    p_born[:, 1, 3] = -p_born[:, 0, 0]
+    # away from xi_max, where D differs from the massless (xi_max - xi)^2 by
+    # O(m (xi_max - xi))
+    xi_hat = 0.9 * xi_hat
+    massive, xi_m, xm_m, xn_m, det_m = massive_real_from_born(
+        p_born, 5, 2, 2, xi_hat, y, r_phi, m_j
+    )
+    rs = p_born[:, 0, 0] + p_born[:, 1, 0]
+    massless, xi_0, xm_0, det_0 = real_from_born(p_born, 5, 2, 2, xi_hat, y, r_phi, rs)
+    np.testing.assert_allclose(xm_m, xm_0, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(massive / 1000.0, massless / 1000.0, atol=1e-5)
+    np.testing.assert_allclose(det_m / xn_m, det_0 / xm_0, rtol=1e-4)
+
+
+@pytest.mark.parametrize("masses", [[173.0, 173.0], [173.0, 173.0, 0.0]])
+def test_final_massive_volume(masses):
+    """Born times the FKS emission off the top covers the phase space with one
+    more massless particle once, with both solutions for y < 0."""
+    batch = 400000
+    n_out = len(masses)
+    p_born, det_born = random_born(n_out, batch, seed=80 + n_out, masses=masses)
+    sqrt_s = np.full(batch, 1000.0)
+    r = np.random.default_rng(81).random((batch, 3))
+    xi_hat, y, det_sample = massive_sample(
+        r[:, 0], r[:, 1], sqrt_s, p_born[:, 2], 173.0
+    )
+    _, _, xi, _, _, det_xi = massive_radiate(
+        xi_hat, y, r[:, 2], sqrt_s, p_born[:, 2], 173.0
+    )
+    weight = det_born * xi * det_xi * det_sample
+    _, det_real = random_born(n_out + 1, batch, seed=82 + n_out, masses=masses + [0.0])
+    mean, err = weight.mean(), weight.std() / math.sqrt(batch)
+    mean_ref, err_ref = det_real.mean(), det_real.std() / math.sqrt(batch)
+    assert abs(mean - mean_ref) < 5 * math.hypot(err, err_ref)

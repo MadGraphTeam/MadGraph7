@@ -69,7 +69,8 @@ FKSRadiation::FKSRadiation(
     std::size_t i_fks,
     std::size_t j_fks,
     bool leptonic,
-    double s_hat_min
+    double s_hat_min,
+    double emitter_mass
 ) :
     Mapping(
         "FKSRadiation",
@@ -83,9 +84,16 @@ FKSRadiation::FKSRadiation(
     _i_fks(i_fks),
     _j_fks(j_fks),
     _leptonic(leptonic),
-    _s_hat_min(s_hat_min) {
+    _s_hat_min(s_hat_min),
+    _emitter_mass(emitter_mass) {
     if (s_hat_min < 0.) {
         throw std::invalid_argument("FKSRadiation: s_hat_min must not be negative");
+    }
+    if (emitter_mass < 0. || (emitter_mass > 0. && j_fks < INCOMING_COUNT)) {
+        throw std::invalid_argument(
+            "FKSRadiation: emitter_mass must not be negative, and incoming emitters "
+            "are massless"
+        );
     }
 }
 
@@ -116,10 +124,32 @@ Mapping::Result FKSRadiation::build_final_forward(
     auto sqrt_s = fb.obs_sqrt_s(born);
     auto p_born = fb.unstack(born);
     auto jb = born_index(_j_fks);
+    auto p_jbar = p_born.at(jb);
 
-    auto [xi_hat, y, det_sample] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
-    auto [p_i, p_j, xi, xi_max, det_xi] =
-        fb.fks_final_massless_radiate(xi_hat, y, inputs.at(2), sqrt_s, p_born.at(jb));
+    Value p_i, p_j, xi, det_xi, det_sample;
+    if (_emitter_mass > 0.) {
+        auto [xi_hat, y, det] = fb.fks_final_massive_sample(
+            inputs.at(0), inputs.at(1), sqrt_s, p_jbar, _emitter_mass
+        );
+        auto [p_i_m, p_j_m, xi_m, xi_max, xi_norm, det_xi_m] =
+            fb.fks_final_massive_radiate(
+                xi_hat, y, inputs.at(2), sqrt_s, p_jbar, _emitter_mass
+            );
+        p_i = p_i_m;
+        p_j = p_j_m;
+        xi = xi_m;
+        det_xi = det_xi_m;
+        det_sample = det;
+    } else {
+        auto [xi_hat, y, det] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
+        auto [p_i_m, p_j_m, xi_m, xi_max, det_xi_m] =
+            fb.fks_final_massless_radiate(xi_hat, y, inputs.at(2), sqrt_s, p_jbar);
+        p_i = p_i_m;
+        p_j = p_j_m;
+        xi = xi_m;
+        det_xi = det_xi_m;
+        det_sample = det;
+    }
 
     ValueVec spectators;
     for (std::size_t b = INCOMING_COUNT; b < _born_particle_count; ++b) {
@@ -129,7 +159,7 @@ Mapping::Result FKSRadiation::build_final_forward(
     }
     if (!spectators.empty()) {
         auto boosted = fb.unstack(
-            fb.fks_recoil_boost(fb.stack(spectators), fb.add(p_i, p_j), sqrt_s)
+            fb.fks_recoil_boost(fb.stack(spectators), fb.add(p_i, p_j), p_jbar, sqrt_s)
         );
         for (std::size_t b = INCOMING_COUNT, k = 0; b < _born_particle_count; ++b) {
             if (b != jb) {
@@ -160,9 +190,32 @@ Mapping::Result FKSRadiation::build_final_inverse(
     auto p_real = fb.unstack(momenta);
     auto p_i = p_real.at(_i_fks), p_j = p_real.at(_j_fks);
 
-    auto [p_jbar, xi_hat, y, r_phi, xi, xi_max, det_xi_inv] =
-        fb.fks_final_massless_cluster(p_i, p_j, sqrt_s);
-    auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y);
+    Value p_jbar, r_xi, r_y, r_phi, xi, det_xi_inv, det_sample_inv;
+    if (_emitter_mass > 0.) {
+        auto [p_jbar_m, xi_hat, y, r_phi_m, xi_m, xi_max, xi_norm, det_m] =
+            fb.fks_final_massive_cluster(p_i, p_j, sqrt_s, _emitter_mass);
+        auto [r_xi_m, r_y_m, det] = fb.fks_final_massive_sample_inverse(
+            xi_hat, y, sqrt_s, p_jbar_m, _emitter_mass
+        );
+        p_jbar = p_jbar_m;
+        r_phi = r_phi_m;
+        xi = xi_m;
+        det_xi_inv = det_m;
+        r_xi = r_xi_m;
+        r_y = r_y_m;
+        det_sample_inv = det;
+    } else {
+        auto [p_jbar_m, xi_hat, y, r_phi_m, xi_m, xi_max, det_m] =
+            fb.fks_final_massless_cluster(p_i, p_j, sqrt_s);
+        auto [r_xi_m, r_y_m, det] = fb.fks_xi_y_sample_inverse(xi_hat, y);
+        p_jbar = p_jbar_m;
+        r_phi = r_phi_m;
+        xi = xi_m;
+        det_xi_inv = det_m;
+        r_xi = r_xi_m;
+        r_y = r_y_m;
+        det_sample_inv = det;
+    }
 
     ValueVec spectators;
     for (std::size_t r = INCOMING_COUNT; r < _born_particle_count + 1; ++r) {
@@ -172,9 +225,9 @@ Mapping::Result FKSRadiation::build_final_inverse(
     }
     ValueVec boosted;
     if (!spectators.empty()) {
-        boosted = fb.unstack(
-            fb.fks_recoil_boost_inverse(fb.stack(spectators), fb.add(p_i, p_j), sqrt_s)
-        );
+        boosted = fb.unstack(fb.fks_recoil_boost_inverse(
+            fb.stack(spectators), fb.add(p_i, p_j), p_jbar, sqrt_s
+        ));
     }
 
     ValueVec born;

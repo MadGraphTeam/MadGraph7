@@ -5,8 +5,8 @@
 namespace madspace {
 
 /**
- * FKS emission of a massless parton off a massless final-state parton or an
- * incoming parton.
+ * FKS emission of a massless parton off a final-state parton, massless or
+ * massive, or an incoming parton.
  *
  * Maps a Born phase-space point and three random numbers to the phase space of
  * the real emission, in the FKS parametrization of MadGraph's genps_fks.f
@@ -26,6 +26,18 @@ namespace madspace {
  * fixed incoming momenta. @f$\xi_\mathrm{max} = 1 - M_\mathrm{rec}^2/s@f$,
  * where @f$M_\mathrm{rec}@f$ is the mass of the system recoiling against
  * @f$\bar\jmath@f$.
+ *
+ * For a massive final-state emitter (@p emitter_mass > 0) the map follows
+ * generate_momenta_massive_final of genps_fks.f. The emitter comes to rest at
+ * @f$\xi_m@f$. For @f$y \ge 0@f$, @f$\xi@f$ runs up to
+ * @f$\xi_\mathrm{max} = \xi_m@f$. For @f$y < 0@f$ there are two solutions for
+ * the momentum of the emitter, which meet at @f$\xi_\mathrm{max} > \xi_m@f$,
+ * and @f$\hat\xi@f$ runs along a path of length @f$\xi_\mathrm{norm} =
+ * 2\xi_\mathrm{max} - \xi_m@f$, from @f$\xi = 0@f$ to
+ * @f$\xi_\mathrm{max}@f$ with the first solution and back to @f$\xi_m@f$
+ * with the second. @f$r_\xi@f$ below @f$\xi_\mathrm{max}/\xi_\mathrm{norm}@f$
+ * gives the first solution, with the quadratic sampling below, and above it
+ * the second one, linearly.
  *
  * For an incoming emitter, the real emission has @f$s = \bar s/(1 - \xi)@f$
  * and new momentum fractions @f$x_{1,2}@f$, @f$\phi@f$ is the azimuth of
@@ -52,6 +64,7 @@ namespace madspace {
  * with @f$s_0 = 10^{-6}@f$ and @f$c_0 = 5 \cdot 10^{-7}@f$, importance
  * sampling towards the soft and collinear limits. The building blocks are the
  * instructions `fks_xi_y_sample`, `fks_final_massless_radiate`,
+ * `fks_final_massive_sample`, `fks_final_massive_radiate`,
  * `fks_recoil_boost`, `fks_initial_radiate` and `fks_initial_recoil_boost`,
  * and their inverses.
  *
@@ -105,20 +118,24 @@ public:
     /// @param i_fks                Position of the radiated parton i in the
     ///                             real process.
     /// @param j_fks                Position of the emitter j in the real
-    ///                             process, a massless final-state parton or
-    ///                             an incoming parton (0 or 1).
+    ///                             process, a final-state parton or an
+    ///                             incoming parton (0 or 1).
     /// @param leptonic             If true, the mapping has no momentum
     ///                             fractions, which an incoming emitter needs.
     /// @param s_hat_min            Lower bound on the partonic energy squared
     ///                             of the real emission, for an incoming
     ///                             emitter (a final-state one leaves it
     ///                             unchanged). 0 for none.
+    /// @param emitter_mass         Mass of a final-state emitter j (incoming
+    ///                             ones are massless). The Born emitter must
+    ///                             have this mass.
     FKSRadiation(
         std::size_t born_particle_count,
         std::size_t i_fks,
         std::size_t j_fks,
         bool leptonic = false,
-        double s_hat_min = 0.
+        double s_hat_min = 0.,
+        double emitter_mass = 0.
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
@@ -127,6 +144,7 @@ public:
     std::size_t j_fks() const { return _j_fks; }
     bool leptonic() const { return _leptonic; }
     double s_hat_min() const { return _s_hat_min; }
+    double emitter_mass() const { return _emitter_mass; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
 
@@ -158,6 +176,7 @@ private:
     std::size_t _j_fks;
     bool _leptonic;
     double _s_hat_min;
+    double _emitter_mass;
 };
 
 } // namespace madspace

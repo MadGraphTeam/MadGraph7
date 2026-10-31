@@ -49,7 +49,12 @@ CASES = {
     ),
     "ChiliMapping": dict(n_particles=3, y_max=[], pt_min=[]),
     "FKSRadiation": dict(
-        born_particle_count=5, i_fks=5, j_fks=4, leptonic=False, s_hat_min=0.0
+        born_particle_count=5,
+        i_fks=5,
+        j_fks=4,
+        leptonic=False,
+        s_hat_min=0.0,
+        emitter_mass=0.0,
     ),
     "FastRamboMapping": dict(n_particles=4, massless=True, com=True),
     "TPropagatorMapping": dict(integration_order=[0], invariant_power=0.8, pt_min=[]),

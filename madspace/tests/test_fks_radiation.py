@@ -1,15 +1,15 @@
-"""FKSRadiation: the FKS emission off a massless final-state or an incoming
-parton as a mapping.
+"""FKSRadiation: the FKS emission off a final-state parton, massless or
+massive, or an incoming parton as a mapping.
 
 The reference points of test_data/fks (see test_fks_reference.py) give the
 real-emission momenta, momentum fractions and radiation Jacobian of the FKS map
 of genps_fks.f, without (the rad_ entries) and with (cut_) the lower bound the
 cuts put on the partonic energy, for a Born point and the last three entries of
-the unit-cube vector. The mapping must reproduce them, and its inverse the Born and the three
-random numbers. The weight of the mapping is the full Jacobian, while
-genps_fks.f returns the radiation Jacobian times compute_flux without the
-factor xi, in units of xi_max and without the factors 1 - stiny and 1 - ctiny of
-the sampling (see test_fks_kernels.py).
+the unit-cube vector. The mapping must reproduce them, and its inverse the Born
+and the three random numbers. The weight of the mapping is the full Jacobian,
+while genps_fks.f returns the radiation Jacobian times compute_flux without the
+factor xi, in units of xi_max (xi_norm for a massive emitter) and without the
+factors 1 - stiny and 1 - ctiny of the sampling (see test_fks_kernels.py).
 """
 
 import glob
@@ -20,6 +20,7 @@ import os
 import numpy as np
 import pytest
 import torch
+from fks_testing import massive_fortran_precision, massive_xi_max
 from madspace_testing import generator
 
 import madspace as ms
@@ -75,7 +76,9 @@ def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
     return xi, xi_max, rho, xi_max - xi_min, width_y
 
 
-def conditioning(r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0):
+def conditioning(
+    r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0, emitter_mass=0.0
+):
     """Precision to which the real momenta determine the random numbers and the
     Jacobian.
 
@@ -94,10 +97,13 @@ def conditioning(r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0):
     relative. With a lower bound s_hat_min on the partonic energy, xi_hat =
     (xi - xi_min) / (xi_max - xi_min) is resolved to eps xi / (xi_max - xi_min)
     and the position of y in its range to eps / (y_upp - y_low), and both
-    widths vanish at the edges of the range of y. This is the conditioning of
-    the variables (genps_fks.f uses the same), up to rounding. Returns the
-    bounds on r_xi and r_y, on r_phi and on det det_inv - 1, with a margin of 4
-    or more over what five million random points per lower bound need. Where
+    widths vanish at the edges of the range of y. For a massive emitter the
+    range of xi follows from the recoil mass, which the momenta give to eps s
+    absolute, so xi_hat is resolved to eps / xi_max (xi_max vanishes for a
+    Born emitter at rest). This is the conditioning of the variables
+    (genps_fks.f uses the same), up to rounding. Returns the bounds on r_xi and
+    r_y, on r_phi and on det det_inv - 1, with a margin of 4 or more over what
+    five million random points per lower bound or massive layout need. Where
     r_xi or r_y is not resolved at all, det is not either.
     """
     r_xi, r_y = r[:, 0], r[:, 1]
@@ -128,6 +134,8 @@ def conditioning(r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0):
         x_edge = 10 * EPS * xi_max / width_xi / (1 - np.maximum(*x_born))
     elif x_born is not None:
         x_edge = 10 * EPS / (1 - np.maximum(x_born[0], x_born[1]))
+    if emitter_mass > 0:
+        range_xi = 1 / massive_xi_max(momenta, i_fks, j_fks, emitter_mass)
     res_xi = 10 * EPS * (STINY + range_xi) / r_xi
     res_y = 10 * EPS * range_y / r_y
     bound_r = res_xi + res_y + x_edge + 1e-13
@@ -215,7 +223,8 @@ def random_born_x(batch, seed):
 
 
 def reference_cases():
-    """Every massless emitter of the reference data, final-state and incoming."""
+    """Every emitter of the reference data, final-state (massless and massive)
+    and incoming."""
     cases = []
     for path in DATA:
         with open(path) as f:
@@ -223,12 +232,12 @@ def reference_cases():
         nin = data["nincoming"]
         for conf in data["configs"]:
             j = conf["j_fks"]
-            if j > nin and conf["masses"][j - 1] > 0:
-                continue
             points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
             if points:
                 name = os.path.basename(path)[:-5]
                 kind = "initial" if j <= nin else "final"
+                if j > nin and conf["masses"][j - 1] > 0:
+                    kind = "massive"
                 cases.append(
                     pytest.param(
                         data, conf, points, id=f"{name}-fks{conf['nfks']}-{kind}"
@@ -242,7 +251,8 @@ def reference_cases():
 def test_matches_genps_fks(data, conf, points, prefix):
     """Without (rad_) and with (cut_) the lower bound tau_lower_bound s_lab on
     the partonic energy of the real emission, which only an incoming emitter
-    sees."""
+    sees. For a massive emitter the tolerances follow the precision of
+    genps_fks.f where it cancels (see fks_testing.py)."""
     nex = data["nexternal"]
     i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
     leptonic = data["lpp"] == [0, 0]
@@ -250,8 +260,14 @@ def test_matches_genps_fks(data, conf, points, prefix):
     taus = {p["tau_lower_bound"] for p in points}
     assert len(taus) == 1
     s_hat_min = taus.pop() * s_lab if prefix == "cut" else 0.0
+    m_j = conf["masses"][j_fks]
     mapping = ms.FKSRadiation(
-        nex - 1, i_fks, j_fks, leptonic=leptonic, s_hat_min=s_hat_min
+        nex - 1,
+        i_fks,
+        j_fks,
+        leptonic=leptonic,
+        s_hat_min=s_hat_min,
+        emitter_mass=m_j if j_fks >= 2 else 0.0,
     )
     assert mapping.random_dim() == 3
     assert mapping.initial_state() == (j_fks < 2)
@@ -268,39 +284,64 @@ def test_matches_genps_fks(data, conf, points, prefix):
     # momenta in units of the hardest particle of the real emission, which for
     # an incoming emitter is up to 1 / (1 - xi) harder than the Born
     scale = p_ev[..., 0].max(1)[:, None, None]
+    prec_k = prec_jac = prec_dir = np.zeros(len(points))
+    if m_j > 0:
+        jb = j_fks if j_fks < i_fks else j_fks - 1
+        prec_k, prec_jac = massive_fortran_precision(
+            p_ev, p_born[:, jb], i_fks, j_fks, m_j
+        )
+        # the direction of j, and so y, to |delta k_j| / |k_j|
+        sqrt_s = np.sqrt(field("shat_born"))
+        prec_dir = prec_k * sqrt_s / np.linalg.norm(p_ev[:, j_fks, 1:], axis=1)
+        prec_k = prec_k * sqrt_s / scale[:, 0, 0]
 
     momenta, x, det = forward(mapping, r, p_born, x_born)
-    np.testing.assert_allclose(momenta / scale, p_ev / scale, rtol=0, atol=1e-13)
+    diff = np.abs(momenta - p_ev).max((1, 2)) / scale[:, 0, 0]
+    assert (diff <= 1e-13 + 10 * prec_k).all()
     if not leptonic:
         np.testing.assert_allclose(np.stack(x, 1), field("rad_xbjrk_ev"), rtol=1e-13)
 
     # genps_fks.f leaves out the width xi_max - xi_min of the range of xi,
-    # with xi_min = 1 - s_born / s_hat_min for an incoming emitter below it
+    # with xi_min = 1 - s_born / s_hat_min for an incoming emitter below it,
+    # and for a massive emitter the length xi_norm of the path of xi_hat, and
+    # the factor 1 - stiny for its second solution (isolsign = -1)
+    xi_ev, xi_hat_ev, xi_max_ev = (
+        field("rad_xi_ev"),
+        field("rad_xi_hat_ev"),
+        field("rad_xiimax_ev"),
+    )
     xi_min = np.zeros(len(points))
     if j_fks < 2 and s_hat_min > 0:
         xi_min = np.maximum(1 - field("shat_born") / s_hat_min, 0.0)
-    width = field("rad_xiimax_ev") - xi_min
+    width = xi_max_ev - xi_min
+    second = field("isolsign") == -1
+    if m_j > 0:
+        width = np.where(second, 2 * xi_max_ev - xi_ev, xi_ev) / xi_hat_ev
+    stiny = np.where(second, 0.0, STINY)
     fortran = field("rad_jac") / flux_factor(field("rad_shat_ev"), nex)
-    expected = fortran * field("rad_xi_ev") * width * (1 - STINY) * (1 - CTINY)
-    np.testing.assert_allclose(det, expected, rtol=1e-12)
+    expected = fortran * xi_ev * width * (1 - stiny) * (1 - CTINY)
+    assert (np.abs(det / expected - 1) <= 1e-12 + 50 * prec_jac).all()
 
     r_inv, born_inv, x_inv, det_inv = inverse(mapping, p_ev, x)
     bound_r, bound_phi, bound_det = conditioning(
-        r, p_born, p_ev, i_fks, j_fks, x_born, s_hat_min
+        r, p_born, p_ev, i_fks, j_fks, x_born, s_hat_min, m_j
     )
+    bound_r = bound_r + 10 * prec_dir / r[:, 1]
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
     assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()
     np.testing.assert_allclose(born_inv / scale, p_born / scale, rtol=0, atol=1e-13)
     if not leptonic:
         np.testing.assert_allclose(np.stack(x_inv, 1), np.stack(x_born, 1), rtol=1e-12)
-    assert (np.abs(det * det_inv - 1) <= bound_det).all()
+    assert (np.abs(det * det_inv - 1) <= bound_det + 50 * prec_jac).all()
 
 
-def test_reference_covers_all_massless_emitters():
+def test_reference_covers_all_emitters():
     ids = [case.id for case in reference_cases()]
     assert any(i.startswith("epem_") and i.endswith("final") for i in ids)
     assert any(i.startswith("pp_") and i.endswith("final") for i in ids)
     assert any(i.endswith("initial") for i in ids)
+    assert any(i.startswith("epem_") and i.endswith("massive") for i in ids)
+    assert any(i.startswith("pp_") and i.endswith("massive") for i in ids)
 
 
 def violation(p):
@@ -341,6 +382,59 @@ def test_round_trip(n_out, i_fks, j_fks):
 
     r_inv, born_inv, _, det_inv = inverse(mapping, momenta)
     bound_r, bound_phi, bound_det = conditioning(r, born, momenta, i_fks, j_fks)
+    assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
+    assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()
+    np.testing.assert_allclose(born_inv / SQRT_S, born / SQRT_S, rtol=0, atol=1e-12)
+    assert (np.abs(det * det_inv - 1) <= bound_det).all()
+
+
+# (Born final-state masses, i_fks, j_fks) with a massive final-state emitter j:
+# i before or after j, spectators massive and massless
+MASSIVE_LAYOUTS = [
+    ([173.0, 173.0], 4, 2),
+    ([173.0, 173.0], 2, 4),
+    ([173.0, 173.0, 0.0], 3, 2),
+    ([0.0, 173.0, 0.0], 5, 3),
+]
+
+
+def real_masses(masses, i_fks):
+    """Masses of the real process from the final-state masses of the Born."""
+    return np.insert(np.array([0.0, 0.0] + masses), i_fks, 0.0)
+
+
+@pytest.mark.parametrize("masses,i_fks,j_fks", MASSIVE_LAYOUTS)
+def test_round_trip_massive(masses, i_fks, j_fks):
+    batch = 4000
+    n_born = len(masses) + 2
+    born, _, _ = rambo([0.0, 0.0] + masses, batch, seed=30 + n_born + i_fks)
+    r = np.random.default_rng(31).random((batch, 3))
+    m_j = real_masses(masses, i_fks)[j_fks]
+    mapping = ms.FKSRadiation(n_born, i_fks, j_fks, leptonic=True, emitter_mass=m_j)
+    assert mapping.emitter_mass() == m_j
+    momenta, _, det = forward(mapping, r, born)
+    np.testing.assert_array_equal(momenta[:, :2], born[:, :2])
+
+    # momentum conservation on top of the Born's, stretched by the boost of the
+    # spectators as for a massless emitter, with exp(eta) the ratio of E + |p|
+    # of the recoils of the real emission and of the Born
+    k = momenta[:, i_fks] + momenta[:, j_fks]
+    p_jbar = born[:, j_fks if j_fks < i_fks else j_fks - 1]
+    plus_real = SQRT_S - k[:, 0] + np.linalg.norm(k[:, 1:], axis=1)
+    plus_born = SQRT_S - p_jbar[:, 0] + np.linalg.norm(p_jbar[:, 1:], axis=1)
+    stretch = np.maximum(plus_real / plus_born, plus_born / plus_real)
+    assert (violation(momenta) <= stretch * violation(born) + 1e-14).all()
+    m2 = momenta[..., 0] ** 2 - (momenta[..., 1:] ** 2).sum(-1)
+    np.testing.assert_allclose(
+        (m2 - real_masses(masses, i_fks) ** 2) / SQRT_S**2, 0.0, atol=1e-12
+    )
+    # both solutions for the momentum of the emitter occur
+    assert (det > 0).all()
+
+    r_inv, born_inv, _, det_inv = inverse(mapping, momenta)
+    bound_r, bound_phi, bound_det = conditioning(
+        r, born, momenta, i_fks, j_fks, emitter_mass=m_j
+    )
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
     assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()
     np.testing.assert_allclose(born_inv / SQRT_S, born / SQRT_S, rtol=0, atol=1e-12)
@@ -475,6 +569,22 @@ def test_volume(n_out, i_fks, j_fks):
     assert_same_mean(det_born * det, det_real)
 
 
+@pytest.mark.parametrize("masses,i_fks,j_fks", MASSIVE_LAYOUTS[:3])
+def test_volume_massive(masses, i_fks, j_fks):
+    """A RAMBO Born times the emission off a massive emitter covers the phase
+    space with one more massless particle once, both solutions included."""
+    batch = 400000
+    born, _, det_born = rambo([0.0, 0.0] + masses, batch, seed=40 + i_fks)
+    r = np.random.default_rng(41).random((batch, 3))
+    m_real = real_masses(masses, i_fks)
+    mapping = ms.FKSRadiation(
+        len(masses) + 2, i_fks, j_fks, leptonic=True, emitter_mass=m_real[j_fks]
+    )
+    _, _, det = forward(mapping, r, born)
+    _, _, det_real = rambo(list(m_real), batch, seed=42 + i_fks)
+    assert_same_mean(det_born * det, det_real)
+
+
 @pytest.mark.parametrize("s_hat_min", [0.0, 600.0**2], ids=["uncut", "bounded"])
 @pytest.mark.parametrize("j_fks", [0, 1])
 def test_volume_initial(j_fks, s_hat_min):
@@ -520,3 +630,9 @@ def test_invalid_layouts(born_count, i_fks, j_fks, leptonic):
 def test_negative_s_hat_min():
     with pytest.raises(ValueError):
         ms.FKSRadiation(4, 4, 0, s_hat_min=-1.0)
+
+
+@pytest.mark.parametrize("j_fks,emitter_mass", [(2, -1.0), (0, 173.0)])
+def test_invalid_emitter_mass(j_fks, emitter_mass):
+    with pytest.raises(ValueError):
+        ms.FKSRadiation(4, 4, j_fks, emitter_mass=emitter_mass)

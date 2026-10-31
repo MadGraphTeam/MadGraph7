@@ -9,6 +9,12 @@ The madspace FKS tests read only the JSON files, so they need no Fortran.
 Run from anywhere with a gfortran in the PATH:
 
     python madspace/tests/fks_reference/make_fks_reference.py [--points N]
+        [--massive M]
+
+Each FKS configuration gets N points at uniform random x, and one with a
+massive final-state emitter M more with y_ij < 0 and xi close to its upper
+end, which cover the second solution for the momentum of the emitter
+(isolsign = -1).
 
 The JSON layout, with Fortran conventions kept (1-based particle indices,
 counter-event index k = -2..2 stored at position k + 2, momenta as
@@ -93,14 +99,14 @@ def generate(name, process, work):
     return out
 
 
-def dump(pdir, points, log):
+def dump(pdir, points, massive, log):
     for f in ["fks_kinematics_dump.f", "makefile_dump"]:
         shutil.copy(os.path.join(HERE, f), pdir)
     run(["make", "-j8", "-f", "makefile_dump", "fks_kinematics_dump"], pdir, log)
     result = subprocess.run(
         ["./fks_kinematics_dump"],
         cwd=pdir,
-        input=f"{points}\n1\n",
+        input=f"{points}\n1\n{massive}\n",
         capture_output=True,
         text=True,
         check=True,
@@ -166,11 +172,16 @@ def parse(text):
         elif key == "EBEAM":
             data["ebeam"] = floats(rest)
         elif key == "CONF":
+            # the extra points for massive emitters come in a second pass
             ints = list(map(int, rest))
-            conf = {"nfks": ints[0], "i_fks": ints[1], "j_fks": ints[2]}
-            conf["pdg"] = ints[3:]
-            conf["points"] = []
-            data["configs"].append(conf)
+            known = [c for c in data["configs"] if c["nfks"] == ints[0]]
+            if known:
+                conf = known[0]
+            else:
+                conf = {"nfks": ints[0], "i_fks": ints[1], "j_fks": ints[2]}
+                conf["pdg"] = ints[3:]
+                conf["points"] = []
+                data["configs"].append(conf)
         elif key == "MASS":
             conf["masses"] = floats(rest)
         elif key == "POINT":
@@ -214,7 +225,13 @@ def parse(text):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--points", type=int, default=8, help="points per FKS config")
+    parser.add_argument("--points", type=int, default=4, help="points per FKS config")
+    parser.add_argument(
+        "--massive",
+        type=int,
+        default=8,
+        help="extra points per FKS config with a massive final-state emitter",
+    )
     parser.add_argument("--keep", help="keep the generated outputs in this directory")
     args = parser.parse_args()
 
@@ -235,7 +252,8 @@ def main():
             sub = os.path.basename(pdir)
             if keep is not None and sub not in keep:
                 continue
-            data = parse(dump(pdir, args.points, os.path.join(work, f"{sub}.log")))
+            log = os.path.join(work, f"{sub}.log")
+            data = parse(dump(pdir, args.points, args.massive, log))
             data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:

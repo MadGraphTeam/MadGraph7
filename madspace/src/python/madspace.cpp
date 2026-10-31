@@ -1015,12 +1015,13 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
         .def(
-            py::init<std::size_t, std::size_t, std::size_t, bool, double>(),
+            py::init<std::size_t, std::size_t, std::size_t, bool, double, double>(),
             py::arg("born_particle_count"),
             py::arg("i_fks"),
             py::arg("j_fks"),
             py::arg("leptonic") = false,
             py::arg("s_hat_min") = 0.,
+            py::arg("emitter_mass") = 0.,
             pydoc::doc("FKSRadiation::FKSRadiation")
         )
         .def(
@@ -1038,6 +1039,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("leptonic", &FKSRadiation::leptonic, pydoc::doc("FKSRadiation::leptonic"))
         .def(
             "s_hat_min", &FKSRadiation::s_hat_min, pydoc::doc("FKSRadiation::s_hat_min")
+        )
+        .def(
+            "emitter_mass",
+            &FKSRadiation::emitter_mass,
+            pydoc::doc("FKSRadiation::emitter_mass")
         )
         .def(
             "initial_state",

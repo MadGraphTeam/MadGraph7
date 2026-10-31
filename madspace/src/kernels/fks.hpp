@@ -186,18 +186,30 @@ KERNELSPEC void kernel_fks_final_massless_cluster(
     det_xi = 1. / max(fks_final_massless_det_xi<T>(s, xiv, xm, yv, lj, kbar), EPS2);
 }
 
-// Boost along the direction of the FKS pair k that takes the Born recoil to
-// the recoil of the real emission, as genps_fks.f with boostwdir2. sign = -1
-// gives the inverse.
+// Boost along the direction of the FKS pair k that takes the Born recoil
+// (sqrt_s, 0) - p_jbar to the recoil (sqrt_s, 0) - k of the real emission at
+// fixed invariant mass, as genps_fks.f with boostwdir2: the light-cone
+// components E + |p| of the two recoils along -k differ by the factor
+// exp(eta) of the boost (the one of the Born is sqrt_s for a massless
+// emitter). sign = -1 gives the inverse.
 template <typename T>
-KERNELSPEC void
-fks_recoil_boost(FIn<T, 2> p, FIn<T, 1> k, FVal<T> rs, double sign, FOut<T, 2> p_out) {
+KERNELSPEC void fks_recoil_boost(
+    FIn<T, 2> p,
+    FIn<T, 1> k,
+    FIn<T, 1> p_jbar,
+    FVal<T> rs,
+    double sign,
+    FOut<T, 2> p_out
+) {
+    auto pjb = load_mom<T>(p_jbar);
     auto klen = sqrt(max(k[1] * k[1] + k[2] * k[2] + k[3] * k[3], EPS2));
-    auto sumrec = rs - k[0] + klen;
-    auto den = 2. * sumrec * rs;
-    auto sh = -sign * (rs - sumrec) * (rs + sumrec) / den;
-    auto ch = (rs * rs + sumrec * sumrec) / den;
-    auto chmo = (rs - sumrec) * (rs - sumrec) / den;
+    auto kbar = sqrt(max(pjb[1] * pjb[1] + pjb[2] * pjb[2] + pjb[3] * pjb[3], EPS2));
+    auto born = rs - (pjb[0] - kbar);
+    auto real = rs - (k[0] - klen);
+    auto den = 2. * real * born;
+    auto sh = -sign * (born - real) * (born + real) / den;
+    auto ch = (born * born + real * real) / den;
+    auto chmo = (born - real) * (born - real) / den;
     auto d1 = k[1] / klen, d2 = k[2] / klen, d3 = k[3] / klen;
     for (std::size_t i = 0; i < p.size(); ++i) {
         auto p_i = p[i];
@@ -213,16 +225,268 @@ fks_recoil_boost(FIn<T, 2> p, FIn<T, 1> k, FVal<T> rs, double sign, FOut<T, 2> p
 }
 
 template <typename T>
-KERNELSPEC void
-kernel_fks_recoil_boost(FIn<T, 2> p, FIn<T, 1> k, FIn<T, 0> sqrt_s, FOut<T, 2> p_out) {
-    fks_recoil_boost<T>(p, k, sqrt_s, 1., p_out);
+KERNELSPEC void kernel_fks_recoil_boost(
+    FIn<T, 2> p, FIn<T, 1> k, FIn<T, 1> p_jbar, FIn<T, 0> sqrt_s, FOut<T, 2> p_out
+) {
+    fks_recoil_boost<T>(p, k, p_jbar, sqrt_s, 1., p_out);
 }
 
 template <typename T>
 KERNELSPEC void kernel_fks_recoil_boost_inverse(
-    FIn<T, 2> p, FIn<T, 1> k, FIn<T, 0> sqrt_s, FOut<T, 2> p_out
+    FIn<T, 2> p, FIn<T, 1> k, FIn<T, 1> p_jbar, FIn<T, 0> sqrt_s, FOut<T, 2> p_out
 ) {
-    fks_recoil_boost<T>(p, k, sqrt_s, -1., p_out);
+    fks_recoil_boost<T>(p, k, p_jbar, sqrt_s, -1., p_out);
+}
+
+// Emission off a massive final-state parton, as
+// generate_momenta_massive_final of genps_fks.f. Energies, momenta and masses
+// are in units of sqrt_s: m_j of the emitter, m_rec of the system recoiling
+// against it, lambda = lambda(1, m_rec^2, m_j^2), xi = 2 E_i / sqrt_s.
+
+// m_j, m_rec and lambda from the mass m_j of the emitter and the invariant
+// mass squared of the recoil
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+fks_massive_masses(FVal<T> rs, FVal<T> mrec2, FVal<T> m_j) {
+    auto mh = sqrt(max(mrec2, 0.)) / rs;
+    auto mj = m_j / rs;
+    auto dm = mh - mj, sm = mh + mj;
+    auto lam = max((1. - dm) * (1. + dm) * (1. - sm) * (1. + sm), 0.);
+    return {mj, mh, lam};
+}
+
+// Range of xi at fixed y. j comes to rest at xi_m = ((1 - m_j)^2 - m_rec^2) /
+// (1 - m_j). The momentum of j solves a quadratic equation with discriminant
+// D(xi) = A (xi_1 - xi)(xi_2 - xi), A = 1 - m_j^2 (1 - y^2), with roots
+// xi_2 - xi_1 = 2 sqrt_delta / A, sqrt_delta = m_j sqrt(4 m_rec^2 + (1 - y^2)
+// lambda), and D(xi_m) = (m_j xi_m y)^2. So u = xi_1 - xi_m >= 0 solves
+// A u^2 + 2 sqrt_delta u = (m_j xi_m y)^2, which gives it without
+// cancellations (genps_fks.f takes xi_1 from the quadratic formula, which
+// cancels near threshold, and its distance to xi_m, which matters near both,
+// as a difference). As genps_fks.f, xi_hat runs along xi from 0 to xi_max
+// (xi_m for y >= 0, else xi_1) with the first solution and, for y < 0, back
+// to xi_m with the second one, a path of length xi_norm, and
+// rat = xi_max / xi_norm is where it turns. Returns xi_m, u, sqrt_delta,
+// xi_max, xi_norm and rat.
+template <typename T>
+KERNELSPEC Sextuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>, FVal<T>, FVal<T>>
+fks_massive_range(FVal<T> y, FVal<T> mj, FVal<T> mh, FVal<T> lam) {
+    auto omy2 = max((1. - y) * (1. + y), 0.);
+    auto sq = mj * sqrt(4. * mh * mh + omy2 * lam);
+    auto xim = max((1. - mj - mh) * (1. - mj + mh) / (1. - mj), 0.);
+    auto a = 1. - mj * mj * omy2;
+    auto w2 = (mj * xim * y) * (mj * xim * y);
+    auto u = w2 / max(sq + sqrt(sq * sq + a * w2), EPS2);
+    auto pos = y >= 0.;
+    auto xm = where(pos, xim, xim + u);
+    auto xn = where(pos, xim, xim + 2. * u);
+    auto rat = where(pos, FVal<T>(1.), xm / max(xn, EPS2));
+    return {xim, u, sq, xm, xn, rat};
+}
+
+// det_xi of the massive final-state emission: 2 pi from the azimuth, xi_norm
+// from xi = xi_norm xi_hat and the phase-space factor of genps_fks.f,
+// 2 s / (4 pi)^3 |k_j| / |kbar_j| / (2 - xi (1 - E_j y / |k_j|)), with
+// 2 - xi (1 - E_j y / |k_j|) = +-sqrt(D) / |k_j|
+template <typename T>
+KERNELSPEC FVal<T> fks_massive_det_xi(
+    FVal<T> s, FVal<T> xi_norm, FVal<T> kj, FVal<T> kbar, FVal<T> sqrt_d
+) {
+    constexpr double norm = 2. * PI * 2. / ((4. * PI) * (4. * PI) * (4. * PI));
+    return norm * s * xi_norm * kj / max(kbar, EPS2) * kj / max(sqrt_d, EPS2);
+}
+
+// Born emitter -> m_j, m_rec, lambda
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+fks_massive_born(FVal<T> rs, FourMom<T> pjb, FVal<T> m_j) {
+    auto kbar = sqrt(max(pjb[1] * pjb[1] + pjb[2] * pjb[2] + pjb[3] * pjb[3], EPS2));
+    auto erec = rs - pjb[0];
+    return fks_massive_masses<T>(rs, (erec - kbar) * (erec + kbar), m_j);
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_final_massive_sample(
+    FIn<T, 0> r_xi,
+    FIn<T, 0> r_y,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 1> p_jbar,
+    FSIn<T, 0> m_j,
+    FOut<T, 0> xi_hat,
+    FOut<T, 0> y,
+    FOut<T, 0> det
+) {
+    FVal<T> rx = r_xi, ry = r_y, rs = sqrt_s;
+    auto yv = 1. - 2. * (FKS_CTINY + (1. - FKS_CTINY) * ry * ry);
+    auto masses = fks_massive_born<T>(rs, load_mom<T>(p_jbar), FVal<T>(m_j));
+    auto rat =
+        fks_massive_range<T>(yv, masses.first, masses.second, masses.third).sixth;
+    auto plus = rx <= rat;
+    auto t = rx / max(rat, EPS2);
+    xi_hat = where(plus, rat * (FKS_STINY + (1. - FKS_STINY) * t * t), rx);
+    y = yv;
+    det = where(plus, 2. * (1. - FKS_STINY) * t, FVal<T>(1.)) * 4. * (1. - FKS_CTINY) *
+        ry;
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_final_massive_sample_inverse(
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> y,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 1> p_jbar,
+    FSIn<T, 0> m_j,
+    FOut<T, 0> r_xi,
+    FOut<T, 0> r_y,
+    FOut<T, 0> det
+) {
+    FVal<T> xh = xi_hat, yv = y, rs = sqrt_s;
+    auto masses = fks_massive_born<T>(rs, load_mom<T>(p_jbar), FVal<T>(m_j));
+    auto rat =
+        fks_massive_range<T>(yv, masses.first, masses.second, masses.third).sixth;
+    auto plus = xh <= rat;
+    auto t = sqrt(max((xh / max(rat, EPS2) - FKS_STINY) / (1. - FKS_STINY), 0.));
+    auto ry = sqrt(max((0.5 * (1. - yv) - FKS_CTINY) / (1. - FKS_CTINY), 0.));
+    r_xi = where(plus, rat * t, xh);
+    r_y = ry;
+    det = 1. /
+        max(where(plus, 2. * (1. - FKS_STINY) * t, FVal<T>(1.)) * 4. *
+                (1. - FKS_CTINY) * ry,
+            EPS2);
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_final_massive_radiate(
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> y,
+    FIn<T, 0> r_phi,
+    FIn<T, 0> sqrt_s,
+    FIn<T, 1> p_jbar,
+    FSIn<T, 0> m_j,
+    FOut<T, 1> p_i,
+    FOut<T, 1> p_j,
+    FOut<T, 0> xi,
+    FOut<T, 0> xi_max,
+    FOut<T, 0> xi_norm,
+    FOut<T, 0> det_xi
+) {
+    FVal<T> xh = xi_hat, yv = y, rs = sqrt_s, rp = r_phi;
+    auto pjb = load_mom<T>(p_jbar);
+    auto masses = fks_massive_born<T>(rs, pjb, FVal<T>(m_j));
+    auto mj = masses.first, mh = masses.second, lam = masses.third;
+    auto range = fks_massive_range<T>(yv, mj, mh, lam);
+    auto xim = range.first, u = range.second, sq = range.third;
+    auto xm = range.fourth, xn = range.fifth, rat = range.sixth;
+
+    // xi along the path, and xi_1 - xi and xi_m - xi without cancellations
+    auto omy2 = max((1. - yv) * (1. + yv), 0.);
+    auto a = 1. - mj * mj * omy2;
+    auto pos = yv >= 0.;
+    auto plus = xh <= rat;
+    auto xiv = where(plus, xn * xh, 2. * (xim + u) - xn * xh);
+    auto d1 = where(
+        plus, where(pos, u + xim * (1. - xh), xn * (1. - xh) - u), u - xn * (1. - xh)
+    );
+    auto dm = where(plus, where(pos, xim * (1. - xh), xim - xiv), -xn * (1. - xh));
+
+    // |k_j| from energy conservation, the two solutions
+    // (-c xi y +- (2 - xi) sqrt(D)) / ((2 - xi (1 - y)) (2 - xi (1 + y))) with
+    // c = 1 - xi + m_j^2 - m_rec^2 and D = c^2 - (2 - xi (1 - y)) (2 - xi (1 + y))
+    // m_j^2 = (xi_1 - xi) (A (xi_1 - xi) + 2 sqrt_delta). Where the two terms
+    // cancel, |k_j| = (1 - m_j) (xi_m - xi) (c + (2 - xi) m_j) /
+    // (c xi y +- (2 - xi) sqrt(D)) instead, which vanishes at xi_m.
+    auto dd = max(d1 * (a * d1 + 2. * sq), 0.);
+    auto sqd = sqrt(dd);
+    auto c = (1. - xiv) + (mj - mh) * (mj + mh);
+    auto den = (2. - xiv * (1. - yv)) * (2. - xiv * (1. + yv));
+    auto q1 = -c * xiv * yv;
+    auto q2 = where(plus, FVal<T>(1.), FVal<T>(-1.)) * (2. - xiv) * sqd;
+    auto direct = q1 * q2 >= 0.;
+    auto num = where(direct, q1 + q2, (1. - mj) * dm * (c + (2. - xiv) * mj));
+    auto kj = num / where(direct, den, q2 - q1); // q2 - q1 != 0 where not direct
+
+    // energy of i, momentum of the pair i + j and angle of i to it, as for a
+    // massless emitter
+    auto ei = 0.5 * xiv;
+    auto km2 = where(
+        yv < 0.,
+        (ei - kj) * (ei - kj) + 2. * ei * kj * (1. + yv),
+        ei * ei + kj * kj + 2. * ei * kj * yv
+    );
+    auto km_inv = 1. / max(sqrt(max(km2, 0.)), EPS2);
+    auto cth = (ei + kj * yv) * km_inv;
+    auto sth = kj * sqrt(omy2) * km_inv;
+    auto phi = 2. * PI * rp;
+    auto ix = rs * ei * sth * cos(phi);
+    auto iy = rs * ei * sth * sin(phi);
+    auto iz = rs * ei * cth;
+    auto jz = rs * kj * (kj + ei * yv) * km_inv;
+    auto ej = rs * sqrt(kj * kj + mj * mj);
+    auto rot = fks_angles<T>(pjb);
+    store_mom<T>(p_i, fks_rotate<T>(rs * ei, ix, iy, iz, rot));
+    store_mom<T>(p_j, fks_rotate<T>(ej, -ix, -iy, jz, rot));
+    auto kbar =
+        sqrt(max(pjb[1] * pjb[1] + pjb[2] * pjb[2] + pjb[3] * pjb[3], EPS2)) / rs;
+    xi = xiv;
+    xi_max = xm;
+    xi_norm = xn;
+    det_xi = fks_massive_det_xi<T>(rs * rs, xn, kj, kbar, sqd);
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_final_massive_cluster(
+    FIn<T, 1> p_i,
+    FIn<T, 1> p_j,
+    FIn<T, 0> sqrt_s,
+    FSIn<T, 0> m_j,
+    FOut<T, 1> p_jbar,
+    FOut<T, 0> xi_hat,
+    FOut<T, 0> y,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> xi,
+    FOut<T, 0> xi_max,
+    FOut<T, 0> xi_norm,
+    FOut<T, 0> det_xi
+) {
+    FVal<T> rs = sqrt_s;
+    auto pi = load_mom<T>(p_i);
+    auto pj = load_mom<T>(p_j);
+    FourMom<T> k{pi[0] + pj[0], pi[1] + pj[1], pi[2] + pj[2], pi[3] + pj[3]};
+    auto klen = sqrt(max(k[1] * k[1] + k[2] * k[2] + k[3] * k[3], EPS2));
+    auto erec = rs - k[0];
+    auto masses =
+        fks_massive_masses<T>(rs, (erec - klen) * (erec + klen), FVal<T>(m_j));
+    auto mj = masses.first, mh = masses.second, lam = masses.third;
+    auto xiv = 2. * pi[0] / rs;
+    auto li = sqrt(max(pi[1] * pi[1] + pi[2] * pi[2] + pi[3] * pi[3], EPS2));
+    auto lj = sqrt(max(pj[1] * pj[1] + pj[2] * pj[2] + pj[3] * pj[3], EPS2));
+    auto yv = (pi[1] * pj[1] + pi[2] * pj[2] + pi[3] * pj[3]) / (li * lj);
+    yv = max(min(yv, FVal<T>(1.)), FVal<T>(-1.));
+    auto range = fks_massive_range<T>(yv, mj, mh, lam);
+    auto xi1 = range.first + range.second, xm = range.fourth, xn = range.fifth;
+
+    // the solution from the sign of (2 - xi) |k_j| + xi y E_j = +-sqrt(D)
+    auto kj = lj / rs;
+    auto bal = (2. - xiv) * kj + xiv * yv * pj[0] / rs;
+    auto plus = bal >= 0.;
+    auto xn_safe = max(xn, EPS2);
+
+    // Born emitter along i + j
+    auto kbar = 0.5 * sqrt(lam);
+    auto ejb = 0.5 * (1. + (mj - mh) * (mj + mh));
+    auto scale = rs * kbar / klen;
+    FourMom<T> pjb{rs * ejb, scale * k[1], scale * k[2], scale * k[3]};
+    auto local = fks_rotate_inverse<T>(pi, fks_angles<T>(pjb));
+    auto rphi = atan2(local[2], local[1]) / (2. * PI);
+
+    store_mom<T>(p_jbar, pjb);
+    xi_hat = where(plus, xiv, 2. * xi1 - xiv) / xn_safe;
+    y = yv;
+    r_phi = where(rphi < 0., rphi + 1., rphi);
+    xi = xiv;
+    xi_max = xm;
+    xi_norm = xn;
+    det_xi = 1. / max(fks_massive_det_xi<T>(rs * rs, xn, kj, kbar, fabs(bal)), EPS2);
 }
 
 // Emission off an incoming parton. y_beam = beam_sign y is the cosine of the

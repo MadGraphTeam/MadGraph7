@@ -4,10 +4,15 @@ c madspace tests. Built in the P* directory of an
 c 'output standalone_fortran --fks --limits' process (see
 c make_fks_reference.py) and linked like test_soft_col_limits.
 c
-c Reads from stdin: the number of points per FKS configuration and the
-c Born configuration (iconfig). For every FKS configuration and point
-c it calls generate_momenta at uniform random x, which runs the full
-c production chain (Born map, FKS radiation, counter-events). It then
+c Reads from stdin: the number of points per FKS configuration, the
+c Born configuration (iconfig) and the number of extra points per FKS
+c configuration with a massive final-state emitter. For every FKS
+c configuration and point it calls generate_momenta at uniform random x,
+c which runs the full production chain (Born map, FKS radiation,
+c counter-events). The extra points follow in a second pass, so that the
+c first one does not depend on their number. They have y_ij < 0 and xi
+c close to its upper end, where the second solution for the momentum of
+c the emitter (isolsign = -1) is used for part of the range. It then
 c calls generate_FKS_kinematics again at the same x with xjac0 =
 c xpswgt0 = 1, so that the second set of Jacobians holds the radiation
 c part alone, times compute_flux. Everything is printed with keywords
@@ -20,7 +25,7 @@ c that make_fks_reference.py parses.
       include 'fks_info.inc'
       include 'run.inc'
       include 'born_conf.inc'
-      integer i,j,k,ipt,npts,iconf_in,fks_loop
+      integer i,j,k,ipt,npts,iconf_in,fks_loop,ipass,nmassive,nloop
       double precision x(99),p(0:3,nexternal),wgt,jac_full
       double precision jac_full_cnt(-2:2)
       double precision stot,shat_born,sqrtshat_born,tau_born
@@ -89,6 +94,7 @@ c that make_fks_reference.py parses.
 
       read (*,*) npts
       read (*,*) iconf_in
+      read (*,*) nmassive
 
       call setrun
       call setpara('param_card.dat')
@@ -105,6 +111,7 @@ c that make_fks_reference.py parses.
      &     ,fks_configs,ndim,lpp(1),lpp(2),iconf_in
       write (*,fmt) 'EBEAM',ebeam(1),ebeam(2)
 
+      do ipass=1,2
       do fks_loop=1,fks_configs
          nFKSprocess=fks_loop
          call fks_inc_chooser()
@@ -114,13 +121,24 @@ c that make_fks_reference.py parses.
          iconfigs(1)=iconfig
          call setfksfactor(.false.)
          call setcuts
+         if (ipass.eq.1) then
+            nloop=npts
+         elseif (j_fks.gt.nincoming .and. emass(j_fks).gt.0d0) then
+            nloop=nmassive
+         else
+            cycle
+         endif
          write (*,'(a,1x,*(i0,1x))') 'CONF',nFKSprocess,i_fks,j_fks
      &        ,(pdg_type(i),i=1,nexternal)
          write (*,fmt) 'MASS',(emass(i),i=1,nexternal)
-         do ipt=1,npts
+         do ipt=1,nloop
             do j=1,ndim
                x(j)=ran2()
             enddo
+            if (ipass.eq.2) then
+               x(ndim-2)=1d0-0.12d0*x(ndim-2)
+               x(ndim-1)=0.71d0+0.29d0*x(ndim-1)
+            endif
             new_point=.true.
             wgt=1d0
             call generate_momenta(ndim,iconfig,wgt,x,p)
@@ -128,8 +146,8 @@ c that make_fks_reference.py parses.
             do k=-2,2
                jac_full_cnt(k)=jac_cnt(k)
             enddo
-            write (*,'(a,1x,i0,1x,i0,1x,i0)') 'POINT',nFKSprocess,ipt
-     &           ,isolsign
+            write (*,'(a,1x,i0,1x,i0,1x,i0)') 'POINT',nFKSprocess
+     &           ,ipt+(ipass-1)*npts,isolsign
             write (*,fmt) 'X',(x(j),j=1,ndim)
             write (*,fmt) 'JAC',jac_full,(jac_full_cnt(k),k=-2,2)
             write (*,fmt) 'PBORN',((p_born_l(j,i),j=0,3),i=1
@@ -221,5 +239,6 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
                tau_lower_bound=tau_lower_bound_save
             endif
          enddo
+      enddo
       enddo
       end
