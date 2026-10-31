@@ -153,6 +153,70 @@ def test_nested_helper_bodies_inline_in_both_exporters() -> None:
         assert values.reshape(-1, 2).tobytes() == expected.tobytes()
 
 
+def test_untaken_branches_define_no_shared_values() -> None:
+    """A value computed in one branch of a helper's conditional and twice in
+    straight-line code (other helpers' bodies): SymJIT's common-subexpression
+    elimination (2.27.3 to 2.28.2) assigned the shared value at its first
+    occurrence, inside the branch, so where the branch is not taken the
+    straight-line uses read an unset temporary (CM01 at run-time widths
+    WT = WZ = 0, M-SM MS-MASTERS; ``upstream/symjit-cse-across-branches``).
+    Both translations drop the jumps (``Join`` selects), so the planes equal
+    Symbolica on either side of the condition, at the parameter program's
+    level 0 and at level 2, with the plane check given only the taken side."""
+    from symbolica import Evaluator, Expression, FunctionDefinition, S
+
+    from pyamplicol.loops.native import load_loop_native
+
+    truth = _primitive("truth")
+    choose = symbols.qualified("symbolica::if")
+    c, x, y, z = (S(f"symjit_cse_{name}") for name in "cxyz")
+    k, a, b, d = (S(f"symjit_cse_arg_{name}") for name in "kabd")
+    f, g, h = (
+        symbols.qualified(f"pyamplicol_symjit_helper_test::cse_{name}")
+        for name in "fgh"
+    )
+    shared = (a * b + d) * a
+    evaluator = Expression.evaluator_multiple(
+        [f(c, x, y, z), g(x, y, z), h(x, y, z)],
+        [c, x, y, z],
+        functions=[
+            FunctionDefinition(
+                f, [k, a, b, d], choose(truth(k), shared, b), inlining="never"
+            ),
+            FunctionDefinition(g, [a, b, d], shared + b, inlining="never"),
+            FunctionDefinition(h, [a, b, d], shared + d, inlining="never"),
+        ],
+        jit_compile=False,
+        n_cores=1,
+    )
+    state = bytes(evaluator.save())
+    rows = np.array(
+        [[1, 2, 3, 5], [0, 2, 3, 5], [0, 1.5, -2, 0.25]], dtype=np.complex128
+    )
+    expected = np.asarray(Evaluator.load(state).evaluate_complex(rows))
+    assert expected[1].tolist() == [3, 25, 27]
+    program = _symbolica_instruction_program_repr(evaluator.get_instructions())
+    assert "if_else" not in program and "join" in program
+    native = load_loop_native()
+    for level in (0, 2):
+        rust_application, inputs, outputs = native.compile_v2_plane(
+            state, level, False, [[1.0, 2.0, 3.0, 5.0]]
+        )
+        assert (inputs, outputs) == (4, 3)
+        python_application = _rusticol._compile_symjit_plane_application_v2(
+            program, 4, 3, level, False
+        )
+        for application in (bytes(rust_application), python_application):
+            flat = _rusticol._evaluate_symjit_plane_application_v2(
+                application, 4, 3, rows.view(np.float64).ravel().tolist(), len(rows)
+            )
+            values = np.asarray(flat, dtype=np.float64).view(np.complex128)
+            assert values.reshape(-1, 3).tobytes() == expected.tobytes(), (
+                level,
+                values,
+            )
+
+
 def test_unbound_functions_are_refused_by_the_plane_compiler() -> None:
     from symbolica import Expression, FunctionDefinition, S
 
