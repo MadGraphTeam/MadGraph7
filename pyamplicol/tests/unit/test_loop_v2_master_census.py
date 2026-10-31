@@ -342,9 +342,10 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
             assert difference <= 1e-8, (row["row"], precision.arithmetic, difference)
     for tag, row in partial["madloop_double_and_quadruple_differ"].items():
         finite = [virtual(row, precision)["virtual"][0] for precision in carriers]
-        assert max(abs(x - finite[2]) for x in finite) <= 1e-8 * abs(finite[2]), tag
+        tolerance = Decimal("1e-8") * abs(finite[2])
+        assert max(abs(x - finite[2]) for x in finite) <= tolerance, tag
         assert any(
-            abs(finite[2] - Decimal(row[key])) <= Decimal("1e-8") * abs(finite[2])
+            abs(finite[2] - Decimal(row[key])) <= tolerance
             for key in ("finite_double", "finite_quadruple")
         ), (tag, finite)
 
