@@ -3787,6 +3787,17 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
             ]
             compact["factorized_block"] = compact_factorized
         result["repeated_block"] = compact
+    nc_expansion = record.get("nc_expansion")
+    if nc_expansion is not None:
+        expansion = _mapping(nc_expansion)
+        result["nc_expansion"] = {
+            "accuracy": str(expansion["accuracy"]),
+            "depth": (
+                None if expansion.get("depth") is None else int(expansion["depth"])
+            ),
+            "reference_degree": int(expansion["reference_degree"]),
+            "degrees": [int(value) for value in _sequence(expansion["degrees"])],
+        }
     return result
 
 
@@ -3796,6 +3807,8 @@ def _color_contraction_entry(
     result = _select(record, left, right, "weight", "symmetry_factor")
     if "exact_weight" in record:
         result["exact_weight"] = record["exact_weight"]
+    if record.get("nc_degree") is not None:
+        result["nc_degree"] = int(record["nc_degree"])
     return result
 
 

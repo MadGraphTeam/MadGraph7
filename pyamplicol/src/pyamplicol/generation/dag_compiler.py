@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
+from ..color.nc_expansion import NcExpansion
 from ..color.plan import GenericColorPlan, build_color_plan
 from ..models._physics_ir import ContractionIR
 from ..models.base import (
@@ -35,7 +36,7 @@ from .dag_equivalence import (
     _canonical_kernel_evaluation,
     assign_recursive_current_evaluation_reuse,
 )
-from .dag_grades import split_u1_grades
+from .dag_grades import split_tree_u1_grades, split_u1_grades
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -226,6 +227,7 @@ class GenericDAGCompiler:
         loop_block_reachability: LoopBlockReachability | None = None,
         u1_grades: bool = False,
         loop_born: bool = False,
+        nc_expansion: NcExpansion | None = None,
     ) -> None:
         """``loop_blocks`` compiles loop-request blocks instead of a tree.
 
@@ -237,6 +239,12 @@ class GenericDAGCompiler:
         tree-only selections do not apply. ``u1_grades`` makes every block
         exact in N_c (``generation.dag_grades.split_u1_grades``), as leading
         and next-to-leading colour need; full colour at N_c = 3 does not.
+
+        ``nc_expansion`` compiles a full-colour tree for the formal-N_c
+        expansion of its colour sum (strict colour, graded output): every
+        current and amplitude root gets one N_c grade
+        (``generation.dag_grades.split_tree_u1_grades``) and the DAG records
+        the expansion (``GenericDAG.nc_expansion``).
 
         ``loop_born`` compiles the Born DAG of a loop request: a Dirac current
         closing on a Weyl sink is a root with the marker contraction
@@ -270,6 +278,25 @@ class GenericDAGCompiler:
             raise ValueError("loop_block_reachability requires loop_blocks=True")
         elif u1_grades:
             raise ValueError("u1_grades requires loop_blocks=True")
+        if nc_expansion is not None:
+            unsupported = [
+                name
+                for name, value in (
+                    ("loop_blocks", loop_blocks),
+                    ("loop_born", loop_born),
+                    ("online_evaluation_reuse", online_evaluation_reuse),
+                    ("backward_live_planning", backward_live_planning),
+                    ("max_color_sectors", max_color_sectors),
+                    ("reference_color_order", reference_color_order),
+                    ("selected_color_sector_ids", selected_color_sector_ids),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    "the formal N_c expansion compiles the complete full-colour "
+                    "tree; unsupported options: " + ", ".join(unsupported)
+                )
         if loop_born and (loop_blocks or backward_live_planning):
             raise ValueError(
                 "loop_born compiles a loop request's Born tree: it excludes "
@@ -278,6 +305,7 @@ class GenericDAGCompiler:
         self.loop_born = bool(loop_born)
         self.loop_blocks = bool(loop_blocks)
         self.u1_grades = bool(u1_grades)
+        self.nc_expansion = nc_expansion
         self.loop_block_reachability = loop_block_reachability
         self.model = model
         self.color_plan = color_plan
@@ -1526,6 +1554,10 @@ class GenericDAGCompiler:
         dag = _retain_canonical_open_line_alias_roots(dag, self.model)
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
+        if self.nc_expansion is not None:
+            # One N_c grade per current and root (formal-N_c expansion of the
+            # colour sum); the evaluation reuse below regroups the copies.
+            dag = replace(split_tree_u1_grades(dag), nc_expansion=self.nc_expansion)
         if reuse_tracker is not None:
             self._report_progress(
                 "symmetry-reuse",
@@ -2534,6 +2566,7 @@ def compile_generic_dag(
     backward_live_planning: bool = False,
     progress_callback: DAGProgressCallback | None = None,
     loop_born: bool = False,
+    nc_expansion: NcExpansion | None = None,
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
@@ -2556,4 +2589,5 @@ def compile_generic_dag(
         backward_live_planning=backward_live_planning,
         progress_callback=progress_callback,
         loop_born=loop_born,
+        nc_expansion=nc_expansion,
     ).compile(process)

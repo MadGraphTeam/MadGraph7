@@ -144,7 +144,10 @@ alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
 # epsUV = "1"
 
 [color]
-# color.accuracy: "lc", "nlc", or "full". Default: lc for tree requests, full for one-loop requests.
+# color.accuracy: "lc", "nlc", "full", "strict-lc" or "strict-nlc". Default: lc
+# for tree requests, full for one-loop requests. lc/nlc are the inherited
+# colour-matrix approximation (amplitude coefficients at N_c = 3); strict-lc/
+# strict-nlc the formal 1/N_c expansion (leading degree, or three degrees).
 accuracy = "lc"
 # color.contraction: "direct" or "symmetric-group-fft". Default direct.
 # The FFT method requires NLC/full with recurrence or on-the-fly execution.
@@ -160,6 +163,10 @@ fft_basis = "trace"
 # topology-replay. The all-flow union is LC-only and cannot be combined with
 # generation-selected or truncated color/helicity coverage.
 lc_flow_layout = "topology-replay"
+# color.graded: report trees split by power of N_c (one contracted colour
+# component per N_c degree). Always on for strict-lc/strict-nlc; true with full
+# colour reports every degree. Tree requests, compiled execution. Default false.
+graded = false
 
 [generation]
 # generation.output: Optional artifact output path. Default null.

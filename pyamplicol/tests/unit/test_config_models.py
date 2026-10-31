@@ -43,7 +43,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 120
+    assert len(FIELD_REGISTRY) == 121
     # MS-PHOTON: the photons' alpha(0) tags (MG5_aMC's !a!).
     assert FIELD_REGISTRY["loop.external_photons"].kind == "choice_or_list_int"
     assert FIELD_REGISTRY["loop.external_photons"].default == "final"

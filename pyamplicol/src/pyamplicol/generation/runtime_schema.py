@@ -15,6 +15,7 @@ from .physics_metadata import (
     build_resolved_physics_payload,
     build_runtime_model_parameter_records,
     build_runtime_normalization,
+    public_color_accuracy,
 )
 from .runtime_amplitudes import build_runtime_amplitude_stage_layout
 
@@ -203,7 +204,7 @@ def build_runtime_schema_layout(
         "kind": "pyamplicol-runtime-expression-schema",
         "process_key": public_process_id,
         "process": dag.process.process,
-        "color_accuracy": dag.process.color_accuracy,
+        "color_accuracy": public_color_accuracy(dag),
         "external_particles": external_particles,
         "momentum_conventions": _momentum_conventions(dag),
         "model": _model_payload(dag, model),

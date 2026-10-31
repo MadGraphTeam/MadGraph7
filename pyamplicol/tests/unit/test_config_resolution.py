@@ -262,6 +262,7 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
         "contraction": "direct",
         "fft_basis": "trace",
         "lc_flow_layout": "all-flow-union",
+        "graded": False,
     }
     assert resolve_config(plain).effective == config
     serialized = config_to_toml(config)
@@ -305,6 +306,7 @@ def test_symmetric_group_fft_card_and_dotted_override_round_trip(
         "contraction": "symmetric-group-fft",
         "fft_basis": fft_basis.value,
         "lc_flow_layout": "topology-replay",
+        "graded": False,
     }
     assert resolve_config(plain).effective == config
     serialized = config_to_toml(config)

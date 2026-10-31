@@ -189,18 +189,44 @@ for the CLI flags and the `group-processes` command, and
 
 ```toml
 [color]
-accuracy = "lc"                 # lc, nlc, or full; unset: lc for tree
-                                # requests, full for one-loop requests
+accuracy = "lc"                 # lc, nlc, full, strict-lc or strict-nlc;
+                                # unset: lc for tree requests, full for
+                                # one-loop requests
 contraction = "auto"            # auto, direct, or symmetric-group-fft
 fft_basis = "adjoint"           # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
+graded = false                  # split trees by power of N_c
 ```
 
 | Accuracy | Resolved color output |
 | --- | --- |
 | `lc` | One entry per physical leading-color flow. |
 | `nlc` | One contracted color entry per helicity. |
-| `full` | One contracted color entry per helicity. |
+| `full` | One contracted color entry per helicity (one per N_c degree with `graded = true`). |
+| `strict-lc` | One contracted color entry per helicity: the leading N_c degree. |
+| `strict-nlc` | One contracted color entry per helicity and N_c degree (three degrees). |
+
+`lc` and `nlc` are the *inherited* colour approximation: the colour matrix is
+truncated in `N_c` while amplitude coefficients stay at `N_c = 3`, including
+the `1/3` of the U(1)-subtraction (Fierz) pieces that join quark lines.
+`strict-lc` and
+`strict-nlc` are the formal 1/N_c expansion of the squared amplitude: every
+U(1)-subtraction piece counts as a power `1/N_c`, LC keeps the leading degree
+`P` and NLC the degrees `P`, `P-1` and `P-2`, and `N_c = 3` is inserted after
+the truncation, so SU(N_c) identities such as colour conservation hold degree
+by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
+exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
+[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+
+Strict tree artifacts report their value split by N_c degree (graded output:
+`Runtime.evaluate_graded`, the contracted colour axis of `evaluate_resolved`,
+and `NativeRuntime::evaluate_graded_f64` and
+`evaluate_graded_with_precision` in Rust). `graded = true` gives the same
+split of full colour, every degree. Graded tree output is implemented in the
+compiled lane (strict and graded requests select `execution_mode = "compiled"`
+under `auto`; other explicit modes are refused) with the direct contraction
+and the complete colour basis (no `process.max_color_sectors`,
+`reference_color_order` or `selected_color_sector_ids`).
 
 LC offers two complete-coverage layouts:
 

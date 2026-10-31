@@ -55,6 +55,11 @@ from pyamplicol.reporting import (
 )
 
 from ..color.fft_basis_strategy import best_general_fft_basis
+from ..color.nc_expansion import (
+    STRICT_COLOR_ACCURACIES,
+    NcExpansion,
+    nc_expansion_for,
+)
 from ..color.plan import (
     ColorTopologyReplayCertificate,
     GenericColorPlan,
@@ -152,7 +157,7 @@ from .on_the_fly_seed import (
     OnTheFlyProcessSeedProjectionV1,
     project_on_the_fly_process_seed_v1,
 )
-from .physics_metadata import build_resolved_physics_from_dag
+from .physics_metadata import build_resolved_physics_from_dag, public_color_accuracy
 from .process_grouping import (
     GroupingBasis,
     GroupingParticle,
@@ -7111,7 +7116,7 @@ class GenerationBackend:
         return CompiledProcessArtifact(
             process_id=process_id,
             expression=ir.process,
-            color_accuracy=ir.color_accuracy,
+            color_accuracy=public_color_accuracy(dag),
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.compiled.expanded.aliases,
             runtime_schema=process.runtime_schema,
@@ -7572,8 +7577,23 @@ class GenerationBackend:
 
     @property
     def _color_accuracy(self) -> str:
+        """The accuracy of the amplitude basis: strict colour expands the
+        complete full-colour basis (``_nc_expansion``)."""
+
         run = self._run_config
-        return "lc" if run is None else run.color.accuracy
+        if run is None:
+            return "lc"
+        accuracy = str(run.color.accuracy)
+        return "full" if accuracy in STRICT_COLOR_ACCURACIES else accuracy
+
+    @property
+    def _nc_expansion(self) -> NcExpansion | None:
+        """The formal-N_c expansion of strict or graded tree colour."""
+
+        run = self._run_config
+        if run is None or run.process.loop_coupling_orders is not None:
+            return None
+        return nc_expansion_for(str(run.color.accuracy), graded=run.color.graded)
 
     @property
     def _coupling_order_limits(self) -> dict[str, int]:
@@ -8282,6 +8302,7 @@ class GenerationBackend:
             ),
             backward_live_planning=self._eager_execution_enabled,
             progress_callback=progress_callback,
+            nc_expansion=self._nc_expansion,
         )
         if replay_plan is not None and replay_plan.optimized:
             root_sector_ids = {
@@ -8453,7 +8474,10 @@ class GenerationBackend:
             limits = inferred or limits
         replay_plan = None
         materialized_sector_ids = selection.selected_color_sector_ids
-        if (
+        if self._nc_expansion is not None:
+            # The formal N_c expansion materializes every colour sector.
+            pass
+        elif (
             self._color_accuracy == "lc"
             and not self._all_flow_union_enabled
             and selection.selected_color_sector_ids is None
