@@ -36,6 +36,9 @@ namespace madmatrix
 #else
   constexpr int nParity = 1;
 #endif
+
+  // the tabulated P1N groups (a fragment of this namespace, after nParity)
+#include "HelRecyclingTables.h"
 }
 
 #endif // HELRECYCLINGCHUNKS_H

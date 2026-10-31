@@ -417,6 +417,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                    'it is written without recycling.', name)
                     continue
                 nrows = exporter.write_recycled(good_hels, zero_perhel)
+                if nrows is None:
+                    continue        # declined, and said why
                 logger.info('hel_recycling: %s builds %d helicity rows of %d, '
                     'dropping %d (helicity, amplitude) pairs that vanish', name,
                     nrows, exporter.matrix_elements[0].get_helicity_combinations(),
