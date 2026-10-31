@@ -481,11 +481,20 @@ jobs:
            tools: boost
 
        # The unpacked boost source/build tree (boost/boost_1_74_0, 1.2 GB) was
-       # cached too. eMELA and HEPToolInstaller only use the installed
-       # boost/include and boost/lib, which the check above just verified.
-       - name: Drop the boost source tree before the cache is saved
+       # cached too. Its header tree boost_1_74_0/boost has to stay:
+       # HEPToolInstaller.install_emela takes the first boost/boost* entry as
+       # boost root and builds eMELA with -I on it (deleting the whole tree
+       # failed run 41208465679 with an IndexError there). The rest (build
+       # objects, docs, tests, tools) is never read.
+       - name: Drop the boost source tree, but its headers, before the cache is saved
          if: steps.cache-boost.outputs.cache-hit != 'true'
-         run: rm -rf /home/runner/.cache/HEPtools/boost/boost_[0-9]*/
+         run: |
+           set -e
+           cd /home/runner/.cache/HEPtools/boost
+           src=$(ls -d boost_[0-9]*/ | head -1)
+           test -d "$src/boost"
+           find "$src" -mindepth 1 -maxdepth 1 ! -name boost -exec rm -rf {} +
+           du -sh "$src"
 
   emela_cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
