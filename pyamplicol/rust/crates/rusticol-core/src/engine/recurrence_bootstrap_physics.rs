@@ -607,6 +607,7 @@ mod tests {
                 id: "contracted".to_owned(),
                 index: 0,
                 description: "coherent contracted color".to_owned(),
+                nc_degree: None,
             })],
             reduction: Reduction {
                 kind: ReductionKind::ContractedColor,

@@ -2963,7 +2963,10 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
                 process.id
             )));
         }
-        if !matches!(process.color_accuracy.as_str(), "lc" | "nlc" | "full") {
+        if !matches!(
+            process.color_accuracy.as_str(),
+            "lc" | "nlc" | "full" | "strict-lc" | "strict-nlc"
+        ) {
             return Err(RusticolError::artifact(format!(
                 "process {} has unsupported color accuracy {:?}",
                 process.id, process.color_accuracy

@@ -42,6 +42,26 @@ FFT and retains unsupported-plan errors. Forced adjoint FFT rejects correlations
 > [Quick Start](quick-start.md). Native consumers need the corresponding language compiler;
 > they do **not** need a Rust compiler unless the consumer itself is Rust.
 
+## Graded (formal 1/N_c) tree output
+
+Artifacts generated with `--color-accuracy strict-lc` or `strict-nlc`, or with
+full colour and `--color-graded`, report their colour sum split by N_c degree.
+In every language the ordinary resolved evaluation exposes the split: the
+contracted colour axis has one component per reported degree, with IDs
+`color:nc-degree:<d>` in decreasing degree, and its components sum to the
+ordinary total. The Rust core (`rusticol-core`, as used by Rust consumers that
+link it directly) adds:
+
+| Method | Result |
+| --- | --- |
+| `NativeRuntime::nc_expansion()` | `Option<NativeNcExpansion>`: accuracy (`strict-lc`, `strict-nlc` or `full`), reference degree P, degrees and their colour IDs |
+| `evaluate_graded_f64(momenta, points, helicity_ids)` | `NativeGradedEvaluation`: `values[point * degrees + d]`, summed over the selected helicities, and `totals()` |
+| `evaluate_graded_with_precision(momenta, points, digits, helicity_ids)` | `NativeDecimalGradedEvaluation` in double-double (`digits = 32`) or arbitrary precision (feature `symbolica-runtime`, compiled artifacts) |
+| `evaluate_correlated_graded_f64(momenta, points, request, helicity_ids)` | `NativeGradedCorrelatedEvaluation`: one correlation, `values[point * degrees + d]` as `[re, im]` |
+
+Each degree is the N_c^degree term of the expansion evaluated at N_c = 3. The
+C ABI and the generated drivers use the ordinary resolved calls.
+
 ## Correlated Born evaluations
 
 The C, C++, Fortran and standalone Rust SDKs expose the same generation-time
@@ -56,8 +76,9 @@ SDK. It runs in RustiCol without Python or Symbolica. The separate Python
 correlated executor retains Symbolica-backed double-double and arbitrary
 precision; its `precision=16` path also uses that executor.
 
-LC, NLC and full colour are selected at generation for each inserted colour
-matrix, independently of connection order. The underlying amplitudes remain
+LC, NLC, full colour and the strict `strict-lc`/`strict-nlc` are selected at
+generation for each inserted colour matrix, independently of connection
+order. The underlying amplitudes remain
 complete and full-colour: ordinary `evaluate`/`evaluate_resolved` still return
 that underlying process, while the correlated `"born"` request returns the
 Born result at the requested correlated accuracy. Spin defaults affect only
