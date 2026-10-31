@@ -6816,7 +6816,7 @@ class RunCardMG7(RunCard):
         # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
         # limit), and a row-by-row color sum instead of BLAS (HRNOBLAS)
         self.add_toml_param('run', 'hel_recycling_max_mb', -1, hidden=True,
-            comment="--hel_recycling: table size (MB per SIMD page) above which the cpu build uses the plain matrix element; -1 build default, 0 no limit")
+            comment="--hel_recycling: table size (MB per SIMD page) above which the cpu build uses the plain matrix element; -1 build default (10, tuned for one thread per core on every core), 0 no limit; lower it with two threads per core (SMT), raise it with few busy cores")
         self.add_toml_param('run', 'hel_recycling_row_color_sum', False, hidden=True,
             comment="--hel_recycling: make the color sum row by row even where BLAS would be used")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
