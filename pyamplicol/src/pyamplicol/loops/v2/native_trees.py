@@ -30,9 +30,11 @@ the same program for the native executor (``rusticol-core``
   interfered with the Born per sector (``loop_v2::interference``).
 
 * **carriers**: every kernel and the parameter program also come as a
-  binary64 SymJIT plane application (storage-v4 IR at -O2, the default
-  ``jit_optimization_level``; ``_plane_applications``), compiled from the
-  saved state's own binary64 evaluator and checked against it natively
+  binary64 SymJIT plane application (storage-v4 IR: the kernels at -O2, the
+  default ``jit_optimization_level``, or level 0 where -O2 fails the plane
+  check; the parameter program at level 0; ``_plane_applications``),
+  compiled from the saved state's own binary64 evaluator (cut arguments
+  canonicalised, control flow flattened) and checked against it natively
   (``compile_v2_plane``); the native lane runs them in binary64, recompiled
   for the loading CPU, and touches no Symbolica state, so binary64 needs no
   licence (DESIGN §3.7); DoubleFloat and arbitrary precision run the exact
@@ -144,17 +146,24 @@ NATIVE_EXPORT_REFUSALS = (
         "plane-mismatch",
         "a tree-program kernel or parameter-program output whose binary64 "
         "SymJIT plane application disagrees with its exact evaluator at the "
-        "plane check's rows (complex rows off the real axis: a translation "
-        "error; the parameter program's request values: a branch side that "
-        "SymJIT and Symbolica take differently there, e.g. a negated real "
-        "under a square root, -0 against +0), or that reads a branch-cut or "
-        "discontinuous function of its inputs in a program without a real "
-        "point to certify it at",
+        "plane check's rows, each also run as a SIMD block of its own, at "
+        "the requested optimisation level and again at level 0 (complex rows "
+        "off the real axis: a translation error; the parameter program's "
+        "request values: a cut side or a predicate's branch the plane takes "
+        "differently there; a signed zero no longer does, the plane "
+        "canonicalises a cut argument's zero imaginary part), or that reads a "
+        "branch-cut or discontinuous function of its inputs in a program "
+        "without a real point to certify it at. A disagreement of the "
+        "optimised SIMD code alone (SymJIT 2.27's complex products into "
+        "aliased registers, CM05; M-SM MS-MASTERS) takes the level-0 plane "
+        "instead and is not refused",
         "WP3.2 EWI-N (ew-native)",
-        "a request whose values put such an argument on its cut: the argument "
-        "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
-        "takes it, ct_recursion._RealArguments) with the first model that "
-        "needs it",
+        "a predicate branch or a rounding-level imaginary part the plane takes "
+        "differently at the request's values: the exact evaluator's branch in "
+        "the translation, with the first model that needs it; a SymJIT defect "
+        "found by the check: an upstream fix (upstream/symjit-simd-complex-"
+        "times-alias, upstream/symjit-cse-across-branches) and its release "
+        "pinned",
     ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
@@ -222,11 +231,20 @@ class NativeTrees:
         return tuple(self.program["parameters"]["names"])
 
 
-# The SymJIT optimisation level of the plane applications: always -O2, the
-# default ``jit_optimization_level`` (``evaluators.symbolica_settings``) and a
-# portable level (O0 and O3 SymJIT is target-specific), whatever the run's
-# ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
+# The SymJIT optimisation level of the tree kernels' plane applications: -O2,
+# the default ``jit_optimization_level`` (``evaluators.symbolica_settings``),
+# whatever the run's ``evaluator.jit.optimization_level`` says
+# (docs/user/configuration.md). A plane whose -O2 code fails the plane check
+# at a probe row is compiled at level 0 instead and kept if that passes
+# (``loop_v2::trees::compile_plane_application_checked``: SymJIT's AVX/AVX-512
+# complex-product defect, ``upstream/symjit-simd-complex-times-alias``). The
+# parameter program (the state with real points) always compiles at level 0:
+# it runs once per batch (or scale), and level 0 has no peephole pass, so its
+# code does not depend on the defect on any CPU class it is relocated to.
+# Both levels are storage-v4 IR recompiled at load at their stored level
+# (DESIGN §15 risk 13).
 _PLANE_OPTIMIZATION_LEVEL = 2
+_PARAMETER_PLANE_OPTIMIZATION_LEVEL = 0
 # Plane applications by saved state (SHA-256): the generation and staged
 # validation of a run export the same kernels repeatedly.
 _PLANES: OrderedDict[bytes, bytes] = OrderedDict()
@@ -263,8 +281,13 @@ def _plane_applications(
         plane = _PLANES.get(key)
         if plane is None:
             try:
+                level = (
+                    _PARAMETER_PLANE_OPTIMIZATION_LEVEL
+                    if rows
+                    else _PLANE_OPTIMIZATION_LEVEL
+                )
                 compiled, _inputs, _outputs = native.compile_v2_plane(
-                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False, rows or None
+                    bytes(state), level, False, rows or None
                 )
             except native.PlaneMismatchError as error:
                 message, output, *_probe = error.args
@@ -289,20 +312,29 @@ def _request_points(
     slice_: Any, parameters: Mapping[str, Any]
 ) -> list[tuple[float, ...]]:
     """The parameter program's real points (the plane check's real-axis
-    rows): one, its inputs at the request's parameter values in binary64,
-    each external parameter's value fixed at generation
+    rows): its inputs at the request's parameter values in binary64, each
+    external parameter's value fixed at generation
     (``LoopSlice.fixed_parameters``), else its default (the batch's values
-    without a caller's, ``batch_parameters``)."""
+    without a caller's, ``batch_parameters``); with pole regulators
+    (``LoopSlice.pole_regulators``) also those values with the IR regulator
+    at 0, the values of the split pole selections' regulated pass
+    (``plan_export._regulated``)."""
 
     fixed = slice_.fixed_parameters
-    return [
-        tuple(
-            float(Fraction(fixed.get(name, default)))
-            for name, default in zip(
-                parameters["names"], parameters["defaults"], strict=True
+    names = list(parameters["names"])
+    point = tuple(
+        float(Fraction(fixed.get(name, default)))
+        for name, default in zip(names, parameters["defaults"], strict=True)
+    )
+    points = [point]
+    regulators = slice_.pole_regulators
+    if regulators is not None and regulators.ir in names:
+        regulator = names.index(regulators.ir)
+        if point[regulator] != 0.0:
+            points.append(
+                tuple(0.0 if i == regulator else x for i, x in enumerate(point))
             )
-        )
-    ]
+    return points
 
 
 @dataclass(frozen=True)
@@ -1500,8 +1532,17 @@ def _parameter_program(
     # its zero imaginary part is the sign of a negated real's, -0 in the
     # binary64 plane application and +0 in Symbolica's evaluator (the plane
     # check's real point, ``_request_points``). The projection keeps every
-    # value; the arguments that are not manifestly real keep their form.
+    # value; the arguments that are not manifestly real keep their form,
+    # except that under the complex-mass scheme one real wherever some of
+    # the run-time widths vanish reads its real projection when they do
+    # (``_RealArguments.zero_width_cases``: its exactly zero imaginary part
+    # may come out as a rounding residue of either sign otherwise, CM01 at
+    # WZ = WT = 0 with WW != 0).
     sides: dict[int, Any] = {}
+    from ..model_cms import scheme_metadata
+
+    scheme = scheme_metadata(slice_.compiled) or {}
+    width_names = set(scheme.get("widths", {}).values())
 
     def madloop_side(p: int, value: Any) -> Any:
         found = sides.get(p)
@@ -1516,7 +1557,16 @@ def _parameter_program(
                 )
                 if kind == "real"
             }
-            found = sides[p] = _RealArguments(reals, plan.program.library, signed=True)
+            widths = [
+                symbol
+                for symbol, name in zip(
+                    plan.input_symbols, plan.external_names, strict=True
+                )
+                if name in width_names and symbol in reals
+            ]
+            found = sides[p] = _RealArguments(
+                reals, plan.program.library, signed=True, widths=widths
+            )
         return found(value)
 
     def column_value(

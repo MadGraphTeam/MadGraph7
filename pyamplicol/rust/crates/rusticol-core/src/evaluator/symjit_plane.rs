@@ -810,7 +810,10 @@ fn seal_generated_plane_application(
 /// ([`InlinedProgram`]); every other call keeps its name, which SymJIT
 /// resolves as a built-in or one of pyAmpliCol's scalar primitives
 /// (`scalar_primitive_defuns`) and refuses otherwise. The instructions reach
-/// SymJIT through the same `Composer` calls as its text front end.
+/// SymJIT through the same `Composer` calls as its text front end, with the
+/// argument of every branch-cut function canonicalised first
+/// ([`canonical_cut_row`]), so at real inputs the plane takes the side of a
+/// cut exact arithmetic takes.
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -820,10 +823,33 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
     opt_level: u8,
     compress: bool,
 ) -> RusticolResult<(Vec<u8>, usize, usize)> {
-    use symjit::{Composer, Translator};
     let exported = evaluator.export_instructions();
     let (inputs, outputs) = (exported.input_count, exported.output_count);
     let program = InlinedProgram::of(&exported)?;
+    Ok((
+        compile_inlined_program(&program, (inputs, outputs), opt_level, compress, true)?,
+        inputs,
+        outputs,
+    ))
+}
+
+/// [`compile_symbolica_evaluator_to_plane_application_bytes`] of an inlined
+/// program of `shape` (inputs, outputs); `canonical`: with the cut
+/// arguments canonicalised ([`canonical_cut_row`]; production), else as
+/// SymJIT translates them (the tests' control). Either way the program's
+/// control flow is flattened ([`is_control_flow`]).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn compile_inlined_program(
+    program: &InlinedProgram,
+    (inputs, outputs): (usize, usize),
+    opt_level: u8,
+    compress: bool,
+    canonical: bool,
+) -> RusticolResult<Vec<u8>> {
+    use symjit::{Composer, Translator};
     let layout = SymjitPlaneLayout::complex(inputs, outputs);
     let config = explicit_plane_config(true, opt_level, compress)?;
     let application = guard_symjit_panic(
@@ -834,8 +860,15 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
                     .append_constant(num_complex::Complex::new(value.re, value.im))
                     .map_err(|error| error.to_string())?;
             }
-            for row in &program.rows {
-                compose(&mut translator, row)?;
+            for row in program.rows.iter().filter(|row| !is_control_flow(row)) {
+                match canonical
+                    .then(|| canonical_cut_row(&mut translator, row, program.temporaries))
+                    .transpose()?
+                    .flatten()
+                {
+                    Some(row) => compose(&mut translator, &row)?,
+                    None => compose(&mut translator, row)?,
+                }
             }
             translator.set_num_params(inputs);
             translator.compile().map_err(|error| error.to_string())
@@ -847,19 +880,39 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
             "could not translate a Symbolica evaluator to a SymJIT plane application: {error}"
         ))
     })?;
-    Ok((
-        seal_generated_plane_application(application, layout)?,
-        inputs,
-        outputs,
-    ))
+    seal_generated_plane_application(application, layout)
+}
+
+/// Whether a row is a jump or a jump target (`IfElse`, `Goto`, `Label`),
+/// which the plane translation drops: every branch of a conditional is
+/// evaluated and its `Join` (a select, bitwise, so a branch's non-finite
+/// value cannot leak) picks the value. SymJIT's translator already reads the
+/// program as straight-line single-assignment code (each write a new value,
+/// each read the latest write in program order), so only the skipped rows
+/// change, and a branch's values reach nothing but its own rows and the
+/// `Join`. With the jumps, SymJIT's common-subexpression elimination
+/// (2.27.3 to 2.28.2, `Block::elimination_pass`) is wrong: it collects the
+/// subexpressions shared by the straight-line statements but rewrites every
+/// occurrence, those inside a branch too, and defines the shared value at
+/// its first occurrence, which can lie in a branch the inputs do not take;
+/// later reads then see an unset temporary (reproduced on a small program,
+/// `upstream/symjit-cse-across-branches`; found while localising CM01's
+/// run-time zero widths; M-SM MS-MASTERS).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn is_control_flow(row: &symbolica::evaluate::Instruction) -> bool {
+    use symbolica::evaluate::Instruction as I;
+    matches!(row, I::IfElse(..) | I::Goto(_) | I::Label(_))
 }
 
 /// The outputs of a binary64 Symbolica evaluator whose values at real inputs
 /// are not decided by the values off the real axis: those reading, on an
 /// argument that depends on the inputs, a function with a branch cut on the
 /// real axis (`log`, `sqrt`, `arg`, a power with a slot exponent: its side
-/// there is a signed zero's, and SymJIT and Symbolica's evaluator sign a
-/// negated real's zero imaginary part differently), a discontinuous one
+/// there is a signed zero's, which the plane canonicalises,
+/// [`canonical_cut_row`]), a discontinuous one
 /// (pyAmpliCol's predicates `truth`, `equal`, `less`, `less_equal`) or any
 /// function this rule does not know, a selection on such a condition
 /// (`Join`), or written after a jump on such a condition. `exp`, `sin`,
@@ -1156,6 +1209,99 @@ impl InlinedProgram {
     }
 }
 
+/// The SymJIT name of the plane translation's cut-argument
+/// canonicalisation, z -> (re + 0) + i (im + 0) ([`canonical_cut_row`]): an
+/// external function of pyAmpliCol's, registered with the scalar primitives
+/// (`scalar_primitive_defuns`) at compilation and at every load.
+const CUT_ARGUMENT: &str = "symbolica_pyamplicol_plane_v1::cut_argument";
+
+/// The zero imaginary part of a branch-cut argument made +0: `row` with each
+/// non-constant argument of a call (other than the continuous `exp`, `sin`,
+/// `cos`, `conj`, `abs` and pyAmpliCol's scalar primitives, which no zero's
+/// sign changes, [`zero_sign_blind`]) and a power's base with a slot
+/// exponent first passed through [`CUT_ARGUMENT`] into temporary
+/// `first + k` (k the argument's position; the translator's SSA form renames
+/// every write), or `None` for any other row. Under round-to-nearest
+/// x + 0 = x for every x but -0 (-0 + 0 = +0), so this changes no value but
+/// a signed zero, and at real inputs a `log`, `sqrt` or power then takes the
+/// side of its cut that exact arithmetic (which has no -0), Symbolica's
+/// evaluators, double-double, arbitrary precision and MadLoop take (its
+/// REGLOG and REGSQRT normalise a signed zero to +0 too): a negative real is
+/// on the cut's upper side, log(-x) = log(x) + i pi. SymJIT, unlike
+/// Symbolica's evaluator, negates (a product by -1) and multiplies by +-i on
+/// the components, so a negated real gets a -0 imaginary part, which put
+/// the plane on the lower side: CM01 with its widths set to zero at run time
+/// on masses generated complex (the electroweak counterterms'
+/// log(-(M^2 - i M W)/mu_R^2) at W = 0, finite part 3.9e-5 against MadLoop's
+/// 1.8e-3; M-SM MS-MASTERS). A SymJIT sum with the constant 0 cannot do it:
+/// SymJIT adds a constant with a zero imaginary part to the real part only.
+/// Constants keep their exact zeros (cast from exact values: +0).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn canonical_cut_row(
+    translator: &mut symjit::Translator,
+    row: &symbolica::evaluate::Instruction,
+    first: usize,
+) -> Result<Option<symbolica::evaluate::Instruction>, String> {
+    use symbolica::evaluate::{Instruction as I, Slot};
+    use symjit::Composer;
+    let mut canonical = |position: usize, slot: Slot| -> Result<Slot, String> {
+        if matches!(slot, Slot::Const(_)) {
+            return Ok(slot);
+        }
+        let temporary = Slot::Temp(first + position);
+        translator
+            .append_fun(
+                &symjit_slot(&temporary),
+                CUT_ARGUMENT,
+                &[symjit_slot(&slot)],
+                false,
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(temporary)
+    };
+    Ok(match row {
+        I::Fun(o, call, real) if !zero_sign_blind(&call.0) => {
+            let (symbol, tags, args) = &**call;
+            let args = args
+                .iter()
+                .enumerate()
+                .map(|(position, &slot)| canonical(position, slot))
+                .collect::<Result<Vec<_>, _>>()?;
+            Some(I::Fun(*o, Box::new((*symbol, tags.clone(), args)), *real))
+        }
+        I::Powf(o, base, exponent, real) => {
+            Some(I::Powf(*o, canonical(0, *base)?, *exponent, *real))
+        }
+        _ => None,
+    })
+}
+
+/// Whether a call's value is the same at -0 and +0 in every argument
+/// component ([`canonical_cut_row`]): Symbolica's
+/// continuous built-ins `exp`, `sin`, `cos`, `conj` (whose zero signs follow
+/// its argument's, as everywhere outside a cut), `abs`, and pyAmpliCol's
+/// scalar primitives (`truth`, `equal`, `less` and `less_equal` compare
+/// -0 = +0; `real_part`, `imaginary_part` pass a component on).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn zero_sign_blind(symbol: &symbolica::atom::Symbol) -> bool {
+    if symbol.get_namespace() == "symbolica" {
+        matches!(
+            symbol.get_stripped_name(),
+            "exp" | "sin" | "cos" | "conj" | "abs"
+        )
+    } else {
+        crate::scalar_primitives::SCALAR_PRIMITIVES
+            .iter()
+            .any(|(name, _)| symbol.get_name() == *name)
+    }
+}
+
 /// One instruction through SymJIT's `Composer` (the calls of its text front
 /// end, `Translator::parse_model`).
 #[cfg(all(
@@ -1169,12 +1315,7 @@ fn compose(
     {
         use symbolica::evaluate::Instruction as I;
         use symjit::Composer;
-        let slot = |slot: &symbolica::evaluate::Slot| match *slot {
-            symbolica::evaluate::Slot::Param(i) => symjit::Slot::Param(i),
-            symbolica::evaluate::Slot::Const(i) => symjit::Slot::Const(i),
-            symbolica::evaluate::Slot::Temp(i) => symjit::Slot::Temp(i),
-            symbolica::evaluate::Slot::Out(i) => symjit::Slot::Out(i),
-        };
+        let slot = symjit_slot;
         let list = |slots: &[symbolica::evaluate::Slot]| slots.iter().map(slot).collect::<Vec<_>>();
         match row {
             I::Add(o, args, reals) => translator.append_add(&slot(o), &list(args), *reals),
@@ -1212,6 +1353,20 @@ fn compose(
             }
         }
         .map_err(|error| error.to_string())
+    }
+}
+
+/// A Symbolica instruction slot as SymJIT's.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn symjit_slot(slot: &symbolica::evaluate::Slot) -> symjit::Slot {
+    match *slot {
+        symbolica::evaluate::Slot::Param(i) => symjit::Slot::Param(i),
+        symbolica::evaluate::Slot::Const(i) => symjit::Slot::Const(i),
+        symbolica::evaluate::Slot::Temp(i) => symjit::Slot::Temp(i),
+        symbolica::evaluate::Slot::Out(i) => symjit::Slot::Out(i),
     }
 }
 
@@ -1332,7 +1487,8 @@ fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> Rustic
 /// same Rust functions, so an application calling them (a model's helper
 /// functions, inlined by the exporter) is relocatable and evaluates without
 /// Symbolica state. A call of any other non-built-in function is refused by the
-/// compiler.
+/// compiler. The translation's cut-argument canonicalisation ([`CUT_ARGUMENT`],
+/// z -> (re + 0) + i (im + 0), M-SM MS-MASTERS) is registered with them.
 fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
     use num_complex::Complex;
     let mut defuns = Defuns::new();
@@ -1358,6 +1514,20 @@ fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
                 ))
             })?;
     }
+    defuns
+        .add_sliced_func::<Complex<f64>>(
+            CUT_ARGUMENT,
+            Box::new(|args: &[Complex<f64>]| match args {
+                // x + 0 = x, except -0 + 0 = +0 (round-to-nearest).
+                [z] => Complex::new(z.re + 0.0, z.im + 0.0),
+                _ => Complex::new(f64::NAN, 0.0),
+            }),
+        )
+        .map_err(|error| {
+            RusticolError::internal(format!(
+                "could not register the SymJIT function {CUT_ARGUMENT}: {error}"
+            ))
+        })?;
     Ok(defuns)
 }
 
@@ -1782,6 +1952,99 @@ fn panic_detail(payload: Box<dyn Any + Send>) -> String {
 mod tests {
     use super::*;
     use crate::RusticolErrorKind;
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn cut_arguments_take_the_exact_side() {
+        // At real inputs on a cut (a negated real under log, sqrt or a power
+        // with a slot exponent; the complex-mass scheme's counterterm
+        // argument -(m^2 - i m w) / mu^2 at a zero width) the plane equals
+        // Symbolica's binary64 evaluator, exact arithmetic's side (+0), at
+        // levels 0 and 2, and stays equal off the cut. Without the
+        // canonicalisation (`canonical_cut_row`) SymJIT's negation takes the
+        // other side (the control).
+        use symbolica::atom::AtomCore;
+        use symbolica::domains::float::Complex;
+        let _unlock = crate::licence::unlock();
+        let names = ["x", "m", "w", "mu", "p"];
+        let symbols: Vec<_> = names
+            .iter()
+            .map(|n| symbolica::parse!(&format!("pyamplicol_symjit_tests::{n}")))
+            .collect();
+        let texts = [
+            "sqrt(-{x})",
+            "log(-{x})",
+            "log(-({m}^2-1𝑖*{m}*{w})/{mu}^2)",
+            "sqrt(-({m}^2-1𝑖*{m}*{w}))*{mu}",
+            "(-{x}*{m})^{p}",
+            "exp({x})*log({mu}^2/{m}^2)",
+        ];
+        let close = |a: f64, b: f64, scale: f64| (a - b).abs() <= 1e-12 * scale;
+        let mut control_misses = Vec::new();
+        for text in texts {
+            let mut source = text.to_owned();
+            for n in names {
+                source = source.replace(
+                    &format!("{{{n}}}"),
+                    &format!("pyamplicol_symjit_tests::{n}"),
+                );
+            }
+            let evaluator = symbolica::parse!(&source)
+                .evaluator(&symbols)
+                .build()
+                .expect("an evaluator");
+            let mut binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
+            let exported = binary64.export_instructions();
+            let program = InlinedProgram::of(&exported).expect("inlined");
+            for x in [4.0, -4.0] {
+                let point = [x, 91.188, 0.0, 1000.0, 0.5];
+                let input: Vec<Complex<f64>> =
+                    point.iter().map(|&v| Complex::new(v, 0.0)).collect();
+                let mut expected = [Complex::new(0.0, 0.0)];
+                binary64.evaluate(&input, &mut expected);
+                let expected = expected[0];
+                let scale = expected.re.abs().max(expected.im.abs());
+                let values: Vec<f64> = point.iter().flat_map(|&v| [v, 0.0]).collect();
+                for level in [0, 2] {
+                    for is_canonical in [true, false] {
+                        let bytes =
+                            compile_inlined_program(&program, (5, 1), level, false, is_canonical)
+                                .expect("compiles");
+                        let got = evaluate_plane_application_bytes(&bytes, 5, 1, &values, 1)
+                            .expect("evaluates");
+                        let agrees =
+                            close(got[0], expected.re, scale) && close(got[1], expected.im, scale);
+                        if is_canonical {
+                            assert!(
+                                agrees,
+                                "{text} at x = {x}, level {level}: plane {got:?}, exact {expected:?}"
+                            );
+                        } else if !agrees {
+                            control_misses.push((text, x, level));
+                        }
+                    }
+                }
+            }
+        }
+        // The control: SymJIT's own translation takes the other side of
+        // every cut at both levels, at x = 4 (a negated real) and, for the
+        // complex-mass forms (on the cut at w = 0 whatever x), at x = -4
+        // too; never off a cut.
+        for (text, x) in texts[..5].iter().flat_map(|t| [(*t, 4.0), (*t, -4.0)]) {
+            let on_cut = x > 0.0 || !text.contains("{x}");
+            for level in [0, 2] {
+                assert_eq!(
+                    control_misses.contains(&(text, x, level)),
+                    on_cut,
+                    "{text} at x = {x}, level {level}: {control_misses:?}"
+                );
+            }
+        }
+        assert!(
+            control_misses.iter().all(|&(text, ..)| text != texts[5]),
+            "{control_misses:?}"
+        );
+    }
 
     const MODEL: &str = "
 ([('fun', ('temp', 0), 'square', [], [('param', 0)], False),

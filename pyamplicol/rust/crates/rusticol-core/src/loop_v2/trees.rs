@@ -80,6 +80,23 @@ use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 /// slot table and per-slot reachability masks, WP3.1 I5).
 pub const TREE_SCHEMA: u32 = 4;
 
+/// A saved exact evaluator with its coefficients cast to binary64, as
+/// [`TreeProgram::runtime`] casts them (the evaluator binary64 would run
+/// without a plane application). Call under the library key.
+#[cfg(feature = "python-generation-bridge")]
+fn binary64_evaluator(
+    saved: &[u8],
+) -> RusticolResult<symbolica::evaluate::ExpressionEvaluator<Complex<f64>>> {
+    let zero = 0.0_f64;
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
+    Ok(
+        crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
+            &|r| complex(&r.re, &r.im),
+            symbolica::domains::float::FloatLike::get_precision(&zero),
+        ),
+    )
+}
+
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), with its
 /// input and output counts. The evaluator is the one binary64 would run
@@ -88,10 +105,16 @@ pub const TREE_SCHEMA: u32 = 4;
 /// storage-v4 IR (`evaluator::symjit_plane`). `real_points` are rows of real
 /// input values at which the program runs (the parameter program: the
 /// request's parameter values), the plane check's real-axis rows
-/// ([`verify_plane`]). The plane check's refusal is a value:
-/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
-/// evaluator at the check's probes, or when an output's real-axis value
-/// cannot be certified without a real point (the generation refuses the
+/// ([`verify_plane`]). An application that disagrees with its evaluator at a
+/// probe row is compiled again at optimisation level 0 and kept if that one
+/// passes the check: SymJIT's optimised AVX/AVX-512 code (2.27.3 through
+/// v228 `c0ccfa4`) gave NaN where its scalar code and level 0 are right
+/// (CM05's parameter program, M-SM MS-MASTERS; upstream report
+/// `upstream/symjit-simd-complex-times-alias`). The plane
+/// check's refusal is a value: `Ok(Err(mismatch))` when the plane
+/// application disagrees with its exact evaluator at the check's probes at
+/// both levels (the first level's mismatch), or when an output's real-axis
+/// value cannot be certified without a real point (the generation refuses the
 /// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
 /// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
@@ -102,16 +125,13 @@ pub fn compile_plane_application_checked(
     real_points: &[Vec<f64>],
 ) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
-    let zero = 0.0_f64;
-    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
-    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
-        &|r| complex(&r.re, &r.im),
-        symbolica::domains::float::FloatLike::get_precision(&zero),
-    );
-    let (plane, inputs, outputs) =
+    let evaluator = binary64_evaluator(saved)?;
+    let compile = |level: u8| {
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
-            &evaluator, opt_level, compress,
-        )?;
+            &evaluator, level, compress,
+        )
+    };
+    let (plane, inputs, outputs) = compile(opt_level)?;
     if let Some(point) = real_points.iter().find(|point| point.len() != inputs) {
         return Err(invalid(format!(
             "plane check: a real point of {} values for a program of {inputs} inputs",
@@ -129,17 +149,40 @@ pub fn compile_plane_application_checked(
             probe: PlaneProbe::NoRealPoint,
         }));
     }
-    Ok(
-        match verify_plane(
-            &plane,
-            evaluator.into_batch_evaluator(),
-            (inputs, outputs),
-            real_points,
-        )? {
-            Some(mismatch) => Err(mismatch),
-            None => Ok((plane, inputs, outputs)),
-        },
-    )
+    let mut batch = evaluator.clone().into_batch_evaluator();
+    let shape = (inputs, outputs);
+    Ok(level_zero_fallback(
+        plane,
+        opt_level,
+        || Ok(compile(0)?.0),
+        |plane| verify_plane(plane, &mut batch, shape, real_points),
+    )?
+    .map(|plane| (plane, inputs, outputs)))
+}
+
+/// [`compile_plane_application_checked`]'s choice: `plane` (compiled at
+/// `opt_level`) when `verify` passes it; after a probe-row disagreement at
+/// `opt_level > 0`, the level-0 compilation (`level0`) when `verify` passes
+/// that one; otherwise the first disagreement. A program without a real
+/// point to certify a branch side (`PlaneProbe::NoRealPoint`) is not
+/// recompiled: no level certifies it.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn level_zero_fallback<P>(
+    plane: P,
+    opt_level: u8,
+    level0: impl FnOnce() -> RusticolResult<P>,
+    mut verify: impl FnMut(&P) -> RusticolResult<Option<PlaneMismatch>>,
+) -> RusticolResult<Result<P, PlaneMismatch>> {
+    let Some(mismatch) = verify(&plane)? else {
+        return Ok(Ok(plane));
+    };
+    if opt_level > 0 && matches!(mismatch.probe, PlaneProbe::Row { .. }) {
+        let plane = level0()?;
+        if verify(&plane)?.is_none() {
+            return Ok(Ok(plane));
+        }
+    }
+    Ok(Err(mismatch))
 }
 
 /// What the plane check refuses ([`compile_plane_application_checked`]): the
@@ -209,15 +252,22 @@ impl std::fmt::Display for PlaneMismatch {
 /// branch cut, so the check certifies the translation whatever the inputs'
 /// order, names and values; then `real_points`, the real inputs at which the
 /// program runs, which certify the real-axis evaluation there (a signed
-/// zero's side of a cut, a predicate's branch). SymJIT gives a negated real
-/// a -0 imaginary part where Symbolica's evaluator gives +0 (`sqrt(-x)` at
-/// x > 0: -i sqrt(x) against +i sqrt(x)), so a real probe placed on a cut
-/// refuses a correct translation; the former real probes, assigned by input
-/// index, made the verdict depend on the parameters' declaration order.
+/// zero's side of a cut, a predicate's branch). The former real probes,
+/// assigned by input index, put arguments on cuts at arbitrary points and
+/// made the verdict depend on the parameters' declaration order; at real
+/// inputs the plane takes exact arithmetic's side of a cut by construction
+/// (`symjit_plane::canonical_cut_row`, M-SM MS-MASTERS: before it, SymJIT's
+/// negated real had a -0 imaginary part where Symbolica's evaluator has +0,
+/// `sqrt(-x)` at x > 0: -i sqrt(x) against +i sqrt(x)).
+/// The rows run together, then each in a call of its own, as a batch of
+/// equal rows runs them: a SIMD block of equal lanes (the padding copies
+/// the last row) runs SymJIT's SIMD code, which a block whose lanes take
+/// different branches replays in scalar code. CM05's parameter program gave
+/// NaN in SIMD only (M-SM MS-MASTERS, DESIGN risk 13).
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
-    mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
+    evaluator: &mut BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
     real_points: &[Vec<f64>],
 ) -> RusticolResult<Option<PlaneMismatch>> {
@@ -232,8 +282,11 @@ fn verify_plane(
     evaluator
         .evaluate_batch(&values, &mut expected, rows)
         .map_err(|e| invalid(format!("plane check: {e}")))?;
-    let got = evaluate_plane_application(plane, shape, &values, rows)?;
-    Ok(first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
+    // One load (one compilation) for every call, as the runtime's kernel.
+    let mut kernel = BinaryPlane::load(plane, shape)?;
+    let mut got = vec![Complex::new(0.0, 0.0); rows * outputs];
+    kernel.evaluate(&values, &mut got, rows)?;
+    let mixed = first_mismatch(&expected, &got, outputs).map(|mut mismatch| {
         if let PlaneProbe::Row { row, real_axis, .. } = &mut mismatch.probe {
             if *row >= OFF_AXIS {
                 *row -= OFF_AXIS;
@@ -241,7 +294,33 @@ fn verify_plane(
             }
         }
         mismatch
-    }))
+    });
+    if mixed.is_some() {
+        return Ok(mixed);
+    }
+    let scales = output_scales(&expected, outputs);
+    let mut got = vec![Complex::new(0.0, 0.0); outputs];
+    for row in 0..rows {
+        kernel.evaluate(&values[row * inputs..][..inputs], &mut got, 1)?;
+        if let Some(mut mismatch) = first_mismatch_at(
+            &expected[row * outputs..][..outputs],
+            &got,
+            outputs,
+            &scales,
+        ) {
+            if let PlaneProbe::Row {
+                row: probe,
+                real_axis,
+                ..
+            } = &mut mismatch.probe
+            {
+                *real_axis = row >= OFF_AXIS;
+                *probe = if row >= OFF_AXIS { row - OFF_AXIS } else { row };
+            }
+            return Ok(Some(mismatch));
+        }
+    }
+    Ok(None)
 }
 
 /// `rows` rows of `inputs` complex probe values off the real axis: real parts
@@ -276,9 +355,13 @@ fn first_mismatch(
     got: &[Complex<f64>],
     outputs: usize,
 ) -> Option<PlaneMismatch> {
-    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
-        values.iter().flat_map(|z| [z.re, z.im]).collect()
-    };
+    first_mismatch_at(expected, got, outputs, &output_scales(expected, outputs))
+}
+
+/// Per output the largest finite part of `expected` (row-major over
+/// `outputs` complex outputs per row): [`first_mismatch`]'s scales.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn output_scales(expected: &[Complex<f64>], outputs: usize) -> Vec<f64> {
     let width = outputs.max(1);
     let mut scales = vec![0.0_f64; width];
     for (index, z) in expected.iter().enumerate() {
@@ -288,6 +371,23 @@ fn first_mismatch(
             }
         }
     }
+    scales
+}
+
+/// [`first_mismatch`] with given per-output `scales` (the plane check's
+/// single-row SIMD calls take those of all its rows, so a part that cancels
+/// to rounding in one row is measured against its output's size).
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn first_mismatch_at(
+    expected: &[Complex<f64>],
+    got: &[Complex<f64>],
+    outputs: usize,
+    scales: &[f64],
+) -> Option<PlaneMismatch> {
+    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
+        values.iter().flat_map(|z| [z.re, z.im]).collect()
+    };
+    let width = outputs.max(1);
     let (expected, got) = (parts(expected), parts(got));
     for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
         let scale = scales[(index / 2) % width];
@@ -359,6 +459,43 @@ fn require(condition: bool, message: &str) -> RusticolResult<()> {
 
 fn exact(value: &str) -> RusticolResult<Rational> {
     parse_rational(value).map_err(|error| invalid(error.message()))
+}
+
+/// The key of the complex-mass master refusal (M-SM MS-MASTERS).
+pub const COMPLEX_MASS_MASTER: &str = "complex-mass-master";
+/// The smallest |Im m²| / Re m² a complex pole mass may take at a batch's
+/// parameters in a carrier that guards it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]).
+pub const COMPLEX_MASS_MASTER_RATIO: f64 = 1e-150;
+
+/// The complex-mass master guard (M-SM MS-MASTERS) on a pole mass's square
+/// `re + i im` (plan mass `index`) at a batch's parameters: refused, as a
+/// model-parameter error naming `complex-mass-master`, when
+/// `0 < |im| < 1e-150 re`. Only double-double calls it
+/// ([`TreeCarrier::COMPLEX_MASS_MASTER_GUARD`]): its C0 turned non-finite
+/// there (CM01 at 1e-155, 1e-160 and 1e-300 of the masses, intermittently),
+/// while binary64 and arbitrary precision equal the zero-width value. A
+/// deliberate refusal of unphysical widths, with no upstream track (no CM
+/// row reaches it). An exactly real pole mass (`im = 0`, a zero width) is
+/// the real-mass limit and passes.
+fn require_complex_mass_master(index: usize, re: &Rational, im: &Rational) -> RusticolResult<()> {
+    if im.is_zero() || re.is_zero() {
+        return Ok(());
+    }
+    let ratio = (im.abs() / re.abs()).to_f64();
+    if ratio >= COMPLEX_MASS_MASTER_RATIO {
+        return Ok(());
+    }
+    let (re64, im64) = (re.to_f64(), im.to_f64());
+    Err(RusticolError::model_parameter(format!(
+        "{COMPLEX_MASS_MASTER}: the complex pole mass m = {:.6} (m^2 = {re64:e} \
+         {im64:+e} i; loop mass {index}) has |Im m^2| / Re m^2 = {ratio:e} at \
+         these model parameters, below 1e-150: its width is below 1e-150 of \
+         the mass, where the double-double complex-mass master integrals are \
+         unreliable. Instead: evaluate in binary64 or arbitrary precision, give \
+         that width at least 1e-150 of its mass, or zero",
+        re64.abs().sqrt()
+    )))
 }
 
 // ------------------------------------------------------------------ file form
@@ -2361,7 +2498,7 @@ impl TreeProgram {
             .any(|mass| matches!(mass, Some(MassSource::Complex(_))));
         let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
         let mut masses_imaginary = Vec::new();
-        for mass in &program.plan_masses {
+        for (index, mass) in program.plan_masses.iter().enumerate() {
             let (re, im) = match mass {
                 Some(MassSource::Input(index)) => {
                     (&values[*index] * &values[*index], Rational::from(0))
@@ -2380,7 +2517,11 @@ impl TreeProgram {
                 Some(MassSource::Complex(_)) => {
                     let value = derived_plan.next().expect("one value per output plan mass");
                     let (re, im) = (value.re.exact()?, value.im.exact()?);
-                    (&re * &re - &im * &im, Rational::from(2) * &re * &im)
+                    let squared = (&re * &re - &im * &im, Rational::from(2) * &re * &im);
+                    if T::COMPLEX_MASS_MASTER_GUARD {
+                        require_complex_mass_master(index, &squared.0, &squared.1)?;
+                    }
+                    squared
                 }
                 None => (Rational::from(0), Rational::from(0)),
             };
@@ -4039,6 +4180,11 @@ fn plane_propagator<T: Clone>(
 /// masses are carrier values (binary64 ones in binary64, as the tree
 /// runtime's own source records).
 pub trait TreeCarrier: Carrier + PartialOrd {
+    /// Whether `TreeProgram::bind` refuses a complex pole mass with
+    /// 0 < |Im m²| < 1e-150 Re m² (`require_complex_mass_master`): the
+    /// carrier whose masters failed there (double-double).
+    const COMPLEX_MASS_MASTER_GUARD: bool = false;
+
     /// The carrier value's exact rational (a finite value).
     fn exact(&self) -> RusticolResult<Rational>;
 
@@ -4094,6 +4240,8 @@ impl TreeCarrier for f64 {
 }
 
 impl TreeCarrier for DoubleFloat {
+    const COMPLEX_MASS_MASTER_GUARD: bool = true;
+
     fn exact(&self) -> RusticolResult<Rational> {
         // The unevaluated sum of its two binary64 parts.
         let parts = self.into_inner();

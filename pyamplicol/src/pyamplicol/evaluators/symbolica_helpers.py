@@ -42,6 +42,14 @@ def _symbolica_instruction_program_repr(exported: Any) -> str:
     load time; Rusticol registers only pyAmpliCol's scalar primitives, so any
     other non-built-in function fails closed in the compiler. A program
     without sub-evaluators or namespaced functions serializes as before.
+
+    Jumps and their targets (``if_else``, ``goto``, ``label``) are dropped:
+    every branch of a conditional is evaluated and its ``join`` (a bitwise
+    select) picks the value. SymJIT reads the program as straight-line
+    single-assignment code anyway; with the jumps its common-subexpression
+    elimination (2.27.3 to 2.28.2) can define a value shared with
+    straight-line code inside a branch the inputs do not take (the Rust
+    translation ``symjit_plane::is_control_flow``; M-SM MS-MASTERS).
     """
     if isinstance(exported, tuple):
         instructions, temporary_count, constants = exported
@@ -50,6 +58,7 @@ def _symbolica_instruction_program_repr(exported: Any) -> str:
     else:
         instructions = [_quote_function_name(row) for row in exported.instructions]
         temporary_count, constants = exported.temporary_count, exported.constants
+    instructions = [row for row in instructions if row[0] not in _CONTROL_KINDS]
     serialized_constants = ", ".join(
         re.sub(r"(?<![0-9])\U0001d456", "1\U0001d456", repr(value))
         for value in constants
@@ -63,6 +72,7 @@ _SLOT_KINDS = frozenset({"param", "out", "temp", "const"})
 _WRITING_KINDS = frozenset(
     {"add", "mul", "pow", "powf", "fun", "external_fun", "assign", "join"}
 )
+_CONTROL_KINDS = frozenset({"if_else", "goto", "label"})
 
 
 class _QuotedName:

@@ -1111,7 +1111,16 @@ width-carrying particle whose mass is not an external parameter
 scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
 masses in their native point inputs (the loop propagators read M^2 - i M W; the
 binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
-point inputs and relocate as any other artifact. An evaluation
+point inputs and relocate as any other artifact. A width changed at run time
+may be zero (the real-mass limit), which puts counterterm arguments on their
+branch cuts: an argument that is real when the zeroed widths vanish reads its
+real part there and every zero imaginary part of a cut argument is made
+positive, so every precision takes the principal value (checked against
+MadLoop CMS on `e- e+ > mu- mu+` with all, some and none of the widths zero;
+where MadLoop's double and quadruple precision disagree, pyAmpliCol's
+precisions agree with each other and with one of them). In double-double a width must
+stay at least 1e-150 of its mass, or be zero (`complex-mass-master` otherwise,
+a model-parameter error naming the plan mass). An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
 value that is not a finite decimal number (a number, or ASCII decimal text:
 surrounding whitespace and underscores are ignored, fractions and non-ASCII
@@ -1147,8 +1156,10 @@ check, arithmetic, model-parameter change, per-order partial, exact flavour
 member, correlated, resolved and catalogue call reads the stored programs, and a
 load takes a small fraction of the generation time. A process whose programs
 cannot be stored natively is refused at generation with the reason, never stored
-for a regeneration at load. The SymJIT IR is always compiled at
--O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+for a regeneration at load. The SymJIT IR of the kernels is compiled at -O2,
+whatever `evaluator.jit.optimization_level` says (a program whose -O2 code fails
+the generation's plane check is kept at level 0 instead: a SymJIT SIMD defect,
+see the portability guide), and that of the parameter program at level 0. The
 artifact holds no absolute path, user or host name of the generating host; a
 copy moved to another directory, user or machine loads without regeneration and,
 with the same pyAmpliCol build (Python package and native extension), gives
@@ -1156,13 +1167,14 @@ bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
 AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
 levels (checked under emulation) run the saved states and agree to rounding
 ([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
-Binary64 evaluation needs no Symbolica licence, except for loops routed to
-the exact engine at light masses (above: they use pyAmpliCol's own Symbolica
-key, which expires on 2028-01-01, after which they need a personal licence);
-double-double and arbitrary precision use pyAmpliCol's own Symbolica key as
-well. The native SDKs (C, C++, Fortran, Rust) open a v2 artifact through
-`rusticol_virtual_open` and evaluate binary64 virtuals, bitwise equal to the
-Python API, without a licence (with the same exception):
+Binary64 evaluation needs no Symbolica licence, at any model parameters, pole
+selection and scale, except for loops routed to the exact engine at light
+masses (above: they use pyAmpliCol's own Symbolica key, which expires on
+2028-01-01, after which they need a personal licence); double-double and
+arbitrary precision use pyAmpliCol's own Symbolica key as well. The native SDKs
+(C, C++, Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and
+evaluate binary64 virtuals, bitwise equal to the Python API, without a licence
+(with the same exception):
 `rusticol_virtual_set_poles(handle, poles)` takes the same pole selections as
 the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
 (its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and

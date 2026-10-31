@@ -417,12 +417,16 @@ def _held_evaluations(
     carriers: list[tuple[str, int | None]],
     extra_env: dict[str, str] | None = None,
     point: dict | None = None,
+    parameters: dict[str, str] | None = None,
+    poles: str | None = None,
 ) -> tuple[dict, list[subprocess.CompletedProcess]]:
     """One unlicensed ``evaluate`` process per (arithmetic, digits), all at
     once, while ``RestrictedPermit`` holds the user's permit: a process that
     completes touched no Symbolica state needing the permit (the permit
     record's positive control says the hold discriminates). ``point``: the
-    points file's content (default: one of the tool's points)."""
+    points file's content (default: one of the tool's points); ``parameters``:
+    model parameter values every process evaluates at; ``poles``: the pole
+    selection (default: the API's)."""
 
     points = scratch / "points.json"
     points.write_text(json.dumps(point or portability.points(legs, 1)))
@@ -445,6 +449,10 @@ def _held_evaluations(
             ]
             if digits is not None:
                 command += ["--precision", str(digits)]
+            for name, value in (parameters or {}).items():
+                command += ["--parameter", f"{name}={value}"]
+            if poles is not None:
+                command += ["--poles", poles]
             running.append(
                 subprocess.Popen(
                     command,
@@ -670,8 +678,24 @@ plan = generated.plan_json
 plan = plan.encode() if isinstance(plan, str) else plan
 digest = lambda data: hashlib.sha256(data).hexdigest()
 members = generated.native.members()
+# The parameter planes' values at one real row of their inputs (hex).
+from symbolica import Evaluator
+from pyamplicol import _rusticol
+values = {}
+for prefix in ("", "scaleless-"):
+    if prefix + "parameters.symjit" not in members:
+        continue
+    state = bytes(members[prefix + "parameters.bin"])
+    shape = Evaluator.load(state).get_instructions()
+    row = [0.75 + 0.125 * k for k in range(shape.input_count)]
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        bytes(members[prefix + "parameters.symjit"]), shape.input_count,
+        shape.output_count, [x for v in row for x in (v, 0.0)], 1,
+    )
+    values[prefix + "parameters.symjit"] = [float(x).hex() for x in flat]
 Path(out).write_text(json.dumps(
-    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()}}
+    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()},
+     "values": values}
 ))
 """
 
@@ -683,8 +707,11 @@ def test_native_members_do_not_depend_on_the_model_cache(
     """g g > g g generated in two fresh interpreters from the UFO source, one
     with an empty model cache and one with the session's warm cache: the plan
     and every native member are byte-identical, except the parameter
-    program's plane application, whose SymJIT call tags are random
-    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py). The
+    programs' plane applications (the process's and its scaleless
+    companion's), whose SymJIT call tags are random
+    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py; the
+    companion's calls are the cut-argument canonicalisation's, MS-MASTERS);
+    their values at one real row are bitwise the same. The
     compiled and the cached model list their helper functions in different
     orders; the parameter program names them in sorted order, so its saved
     state is the same."""
@@ -724,7 +751,11 @@ def test_native_members_do_not_depend_on_the_model_cache(
         for name, digest in cold["members"].items()
         if warm_run["members"][name] != digest
     )
-    assert differing in ([], ["parameters.symjit"]), differing
+    planes = {"parameters.symjit", "scaleless-parameters.symjit"}
+    assert set(differing) <= planes, differing
+    # Their values are bitwise the same.
+    assert cold["values"].keys() == planes, cold["values"].keys()
+    assert cold["values"] == warm_run["values"]
 
 
 @pytest.mark.loop_physics
@@ -1026,6 +1057,203 @@ def test_binary64_loop_evaluation_touches_no_symbolica_state(loop_artifact, tmp_
     for run in runs:
         assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
         assert RESTRICTED not in run.stdout + run.stderr
+
+
+@pytest.mark.loop_physics
+def test_binary64_parameter_changes_need_no_key(loop_artifact, tmp_path):
+    """Binary64 evaluates the stored parameter program's plane at any model
+    parameters with no Symbolica (DESIGN §12.1 (e)): the translation
+    canonicalises a cut argument's zero imaginary part
+    (``symjit_plane::canonical_cut_row``), so there is
+    nothing to check at run time. g g > g g on loop_sm completes unlicensed
+    with the native key disabled while the permit is held at a new alpha_s,
+    a new top mass and with the Z, W or Higgs width set to 0 (each of which
+    needed the key under the former run-time side check, MS-MASTERS
+    rounds 1-4)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    changes = (
+        {"aS": "0.12"},
+        {"MT": "172"},
+        {"WZ": "0"},
+        {"WW": "0"},
+        {"WH": "0"},
+    )
+    for index, parameters in enumerate(changes):
+        scratch = tmp_path / f"change-{index}"
+        scratch.mkdir()
+        permit, (run,) = _held_evaluations(
+            artifact,
+            "gg",
+            scratch,
+            4,
+            [("double", None)],
+            NO_NATIVE_KEY,
+            parameters=parameters,
+        )
+        assert permit["verified"], permit
+        output = run.stdout[-2000:] + run.stderr[-2000:]
+        assert run.returncode == 0, (parameters, output)
+        assert RESTRICTED not in output, (parameters, output)
+
+
+def _ew_selftest_point(expected: dict, indices) -> dict:
+    """The points file of the shipped EW self-test's MadLoop points
+    ``indices`` (``expected.json``), each at its own scale."""
+
+    return {
+        "schema": portability.SCHEMA,
+        "kind": "points",
+        "legs": 4,
+        "points": [
+            [[float(c).hex() for c in p] for p in expected["points"][k]]
+            for k in indices
+        ],
+        "mu_r2": [float(expected["mu_r2"][k]).hex() for k in indices],
+    }
+
+
+@pytest.mark.loop_physics
+def test_binary64_ew_evaluations_need_no_key(tmp_path):
+    """The shipped EW self-test artifact (e- e+ > e- e+ [QED] on
+    loop_qcd_qed_sm; its counterterms read log(-MZ^2/mu_R^2) and MW's square
+    root of a difference, branch cuts of the parameters) evaluates MadLoop's
+    second and third points at their own scales (mu_R^2 = 4.9e5 and 1.96e6)
+    in binary64 with the native key disabled while the permit is held, for
+    every pole selection (the split selections' regulated pass included),
+    bitwise equal to the keyed run and equal to double-double (the exact
+    states) by the binary64 rule of observables; so are a changed MZ, MW
+    and LogSwitch = 0 (each of which needed the key under the former
+    run-time side check). The per-output check of the stored parameter plane
+    at such values: ``test_ew_parameter_plane_equals_its_state_off_the_``
+    ``generation_values``."""
+
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+
+    root = selftest.fixture_root()
+    artifact = tmp_path / "artifact"
+    shutil.copytree(root / "artifact", artifact)
+    expected = json.loads((root / "expected.json").read_text(encoding="utf-8"))
+    point = _ew_selftest_point(expected, (1, 2))
+
+    def run(name, carrier, env, poles, parameters=None):
+        scratch = tmp_path / name
+        scratch.mkdir()
+        permit, (process,) = _held_evaluations(
+            artifact,
+            selftest.NAME,
+            scratch,
+            4,
+            [(carrier, None)],
+            env,
+            point=point,
+            poles=poles,
+            parameters=parameters,
+        )
+        assert permit["verified"], permit
+        output = process.stdout[-2000:] + process.stderr[-2000:]
+        assert process.returncode == 0, (name, output)
+        assert RESTRICTED not in output, (name, output)
+        return json.loads((scratch / f"0-{carrier}.json").read_text())["results"]
+
+    def agree(binary64, exact):
+        binary64, exact = _leaves(binary64), _leaves(exact)
+        assert len(binary64) == len(exact) > 0
+        scale = max(abs(v) for v in exact)
+        # The binary64 rule of observables (1e-12, HANDOFF §0.5): a cut side
+        # taken differently moves them at O(1e-5) and more.
+        pairs = zip(binary64, exact, strict=True)
+        return all(abs(a - b) <= 1e-12 * scale for a, b in pairs)
+
+    for poles in ("all", "none", "uv", "ir"):
+        off = run(f"{poles}-off", "double", NO_NATIVE_KEY, poles)
+        assert off == run(f"{poles}-keyed", "double", None, poles), poles
+        if poles == "all":
+            assert agree(off, run("all-dd", "double-double", None, "all"))
+    for index, parameters in enumerate(
+        ({"MZ": "91.19"}, {"MW": "80.5"}, {"LogSwitch": "0"})
+    ):
+        off = run(f"change-{index}", "double", NO_NATIVE_KEY, "all", parameters)
+        dd = run(f"change-{index}-dd", "double-double", None, "all", parameters)
+        assert agree(off, dd), parameters
+
+
+@pytest.mark.loop_fast
+def test_ew_parameter_plane_equals_its_state_off_the_generation_values():
+    """The shipped EW self-test artifact's stored binary64 parameter plane
+    equals Symbolica's binary64 evaluation of its exact state output by
+    output (1e-12 of each output's size, the plane check's criterion) at
+    parameter values the generation never saw: new scales, alpha_s and
+    alpha, the epsIR = 0 of the split pole selections' regulated pass,
+    LogSwitch = 0, new masses, and MW = 100 > MZ, which puts MW's square
+    root of a difference on its cut (with SymJIT's own signed zeros the
+    plane took the other side there, output 2; MS-MASTERS round 5 makes the
+    translation take exact arithmetic's side). This is the run-time
+    behaviour: binary64 runs the stored plane unchecked."""
+
+    import numpy as np
+    import symbolica
+
+    from pyamplicol import _rusticol
+    from pyamplicol._internal import selftest_virtual_ew as selftest
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+    for name in ("truth", "equal", "less", "less_equal", "real_part", "imaginary_part"):
+        symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+    (pacbin,) = (selftest.fixture_root() / "artifact").glob(
+        "processes/*/loop-runtime.pacbin"
+    )
+    trees = read_native_process(pacbin, read_plan(pacbin)).trees
+    record = trees.program["parameters"]
+    names = list(record["names"])
+    base = {
+        name: float(Fraction(value))
+        for name, value in zip(names, record["defaults"], strict=True)
+    }
+    rows = [[base[name] for name in names]]
+    for change in (
+        {"MU_R": 10.0},
+        {"MU_R": 700.0},
+        {"MU_R": 1400.0},
+        {"MU_R": 1e5},
+        {"aS": 0.05},
+        {"aS": 0.2},
+        {"aEWM1": 132.5},
+        {"epsIR": 0.0},
+        {"LogSwitch": 0.0},
+        {"MT": 172.5},
+        {"MZ": 91.19},
+        {"MW": 100.0},
+    ):
+        assert set(change) <= set(names), change
+        rows.append([{**base, **change}[name] for name in names])
+    evaluator = symbolica.Evaluator.load(trees.parameters)
+    outputs = evaluator.get_instructions().output_count
+    rows = np.ascontiguousarray(rows, dtype=np.complex128)
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    expected = expected.reshape(len(rows), outputs)
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        trees.planes[-1],
+        len(names),
+        outputs,
+        rows.view(np.float64).ravel().tolist(),
+        len(rows),
+    )
+    got = np.asarray(flat).view(np.complex128).reshape(len(rows), outputs)
+    finite = np.isfinite(expected)
+    scale = np.where(finite, np.abs(expected), 0).max(axis=0)
+    same = (
+        (got == expected)
+        | (np.isnan(got) & np.isnan(expected))
+        | (np.abs(got - expected) <= 1e-12 * scale)
+    )
+    assert same.all(), [(int(r), int(o)) for r, o in np.argwhere(~same)[:8]]
+    # MW = 100 reaches a cut: an output real at the defaults is complex there.
+    assert ((expected[0].imag == 0) & (expected[-1].imag != 0)).any()
 
 
 @pytest.mark.loop_physics

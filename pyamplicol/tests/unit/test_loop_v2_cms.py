@@ -381,7 +381,11 @@ def test_cm10_top_width_with_python_inputs_equals_madloop_cms(cm10):
                 [row["finite"], row["single_pole"], row["double_pole"]],
                 alpha_s,
             )
-            assert max(errors) <= tolerance, (precision.arithmetic, k, errors)
+            assert all(e <= tolerance for e in errors), (
+                precision.arithmetic,
+                k,
+                errors,
+            )
     # The recommended stability checks (a rotation and the rescaled reduction,
     # which scales the complex m^2 with the other dimensionful inputs) bound
     # the binary64 error (campaign rule 3: error <= 10 E).
@@ -705,7 +709,7 @@ def test_cm01_mumu_with_python_inputs_equals_madloop_cms(
                 errors = _laurent_errors(
                     [x.real for x in laurent], born_reference, theirs, 1 / 132.0
                 )
-                assert max(errors) <= tolerance, (block, carrier, k, errors)
+                assert all(e <= tolerance for e in errors), (block, carrier, k, errors)
         for k in range(len(expected["points"])):
             # Double-double against arbitrary precision (§1.3).
             dd, ap = exact["double-double", k], exact["arbitrary", k]
@@ -757,11 +761,13 @@ def _sector_key(orders) -> tuple[tuple[str, int], ...]:
     )
 
 
-def _check_sectors(slice_, reference, model, carriers, points):
+def _check_sectors(slice_, reference, model, carriers, points, executor=None):
     """Per point and per squared-order sector of a MadLoop CMS row: the Born,
     the set of the virtual's sectors, their sum and each sector's Laurent
     coefficients in the campaign metric (the correction's coupling: alpha_s
-    for a QCD sector, alpha_Gmu ~ 1/132 for an EW one and the sum)."""
+    for a QCD sector, alpha_Gmu ~ 1/132 for an EW one and the sum). With
+    ``executor`` (a ``NativeExecutor``: binary64 only) its points instead of
+    the slice's Python inputs."""
 
     from pyamplicol.loops.v2.assemble import Precision
 
@@ -776,12 +782,19 @@ def _check_sectors(slice_, reference, model, carriers, points):
         )
         for k in points:
             row = reference["rows"][k]
-            result = slice_.evaluate(
-                reference["points"][k],
-                str(Fraction(reference["mu_r"][k]) ** 2),
-                parameters=parameters,
-                precision=precision,
-            )
+            scale = str(Fraction(reference["mu_r"][k]) ** 2)
+            if executor is not None:
+                assert carrier == "double", carrier
+                (result,) = executor.evaluate(
+                    [reference["points"][k]], [scale], parameters=parameters
+                )
+            else:
+                result = slice_.evaluate(
+                    reference["points"][k],
+                    scale,
+                    parameters=parameters,
+                    precision=precision,
+                )
             born = sum(complex(v).real for v in result.born.values())
             assert abs(born - row["born"]) <= tolerance * abs(row["born"])
             virtual = {
@@ -797,7 +810,8 @@ def _check_sectors(slice_, reference, model, carriers, points):
                 [total["finite"], total["single_pole"], total["double_pole"]],
                 1 / 132.0,
             )
-            assert max(errors) <= tolerance, (carrier, k, "total", errors)
+            # all(), not max(): max([0.0, nan]) is 0.0 (a NaN pole passed).
+            assert all(e <= tolerance for e in errors), (carrier, k, "total", errors)
             for sector in row["sectors"]["loop"]:
                 laurent = virtual[_sector_key(sector)]
                 qcd = sector["QCD"] > sector["born_sector"]["QCD"]
@@ -807,13 +821,13 @@ def _check_sectors(slice_, reference, model, carriers, points):
                     [sector["finite"], sector["single_pole"], sector["double_pole"]],
                     float(parameters["aS"]) if qcd else 1 / 132.0,
                 )
-                assert max(errors) <= tolerance, (carrier, k, sector, errors)
+                assert all(e <= tolerance for e in errors), (carrier, k, sector, errors)
 
 
-# The CM rows whose native point inputs ``_check_cms_split`` checks too: with
-# native inputs CM05's QCD^4 QED^4 finite part is NaN at every point, in
-# "all" as well and already on the slice before MS-POLES (its poles agree
-# with Python inputs; a complex-mass master defect, MS-MASTERS).
+# The CM rows whose native point inputs ``_check_cms_split`` checks here;
+# CM05's native lane is checked against MadLoop CMS, split included, in
+# ``test_loop_v2_master_census.py`` (its parameter program's plane is the
+# level-0 one: SymJIT's optimised SIMD code gave NaN for one output, MS-MASTERS).
 NATIVE_SPLIT_ROWS = ("uux_emep_cms", "gg_ttx_cms")
 
 
@@ -836,7 +850,12 @@ def _check_cms_split(slice_, reference, model, lanes=("python", "native")):
     }
     point = reference["points"][0]
     scale = str(Fraction(reference["mu_r"][0]) ** 2)
-    native = NativeExecutor(slice_, forward=False, inputs="native")
+    # Only a native lane exports native inputs.
+    native = (
+        NativeExecutor(slice_, forward=False, inputs="native")
+        if "native" in lanes
+        else None
+    )
 
     def run(lane, poles):
         if lane == "python":
@@ -966,4 +985,4 @@ def test_cm09_tagged_photon_with_python_inputs_equals_madloop_cms(
                     ]
                 )
             errors = native_cms._sector_errors(result, row, abs(r * born), want)
-            assert max(errors) <= 1e-8, (precision.arithmetic, k, errors)
+            assert all(e <= 1e-8 for e in errors), (precision.arithmetic, k, errors)
