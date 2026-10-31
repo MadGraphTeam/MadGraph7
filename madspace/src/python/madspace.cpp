@@ -393,6 +393,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file"),
             py::arg("param_card"),
             py::arg("parameters") = std::unordered_map<std::string, double>{},
+            py::arg("index") = -1,
             py::return_value_policy::reference_internal,
             pydoc::doc("Context::load_matrix_element")
         )

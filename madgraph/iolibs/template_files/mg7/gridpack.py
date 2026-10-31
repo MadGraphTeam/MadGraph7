@@ -172,6 +172,11 @@ def main() -> None:
         help="run even if the madspace version differs from the one used to "
              "generate the gridpack (can lead to errors or incorrect results)"
     )
+    parser.add_argument(
+        "--done_file", type=str, default=None,
+        help="create this file once the run has finished, which a batch job "
+             "can be told from a killed one by"
+    )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
         "--madspace_cpu_mode",
@@ -316,10 +321,19 @@ def main() -> None:
         entry = entry if isinstance(entry, list) else ["", entry]
         kind, path, parameters = (entry + [{}])[:3]
         load_custom_function(ms, contexts, device_types, kind, path, parameters)
+    # The channels refer to a matrix element by its position, after the custom
+    # functions. A gridpack from a subset of the subprocesses lists the ones it
+    # needs; older gridpacks load all of them.
+    me_paths = madspace_data["matrix_elements"]
+    me_indices = madspace_data.get("matrix_element_indices", range(len(me_paths)))
+    me_offset = len(madspace_data.get("custom_functions", []))
     for context, backend in zip(contexts, backends):
-        for me_path in madspace_data["matrix_elements"]:
+        for me_index in sorted(me_indices):
             context.load_matrix_element(
-                me_path.format(device=backend, fptype=fptype), param_card_path, me_parameters
+                me_paths[me_index].format(device=backend, fptype=fptype),
+                param_card_path,
+                me_parameters,
+                index=me_offset + me_index,
             )
 
     # set up generators
@@ -385,6 +399,9 @@ def main() -> None:
         data["columns"] = ["rwgt_%d" % i for i in systematics.weight_ids]
         with open(os.path.join(run_path, "events.weights.json"), "w") as f:
             json.dump(data, f, indent=1)
+    if args.done_file:
+        with open(os.path.join(_INVOCATION_DIR, args.done_file), "w") as f:
+            f.write("done\n")
 
 
 def _pdf_search_paths(stored_path):

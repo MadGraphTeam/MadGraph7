@@ -3464,6 +3464,30 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(custom_bin, 0o755)
 
+            merge_bin = os.path.join("bin", "merge_gridpacks")
+            with open(merge_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.merge_gridpacks import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(merge_bin, 0o755)
+
+            combine_bin = os.path.join("bin", "combine_cluster_runs")
+            with open(combine_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.combine_cluster import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(combine_bin, 0o755)
+
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
     # driven from a shell that never sourced anything MadGraph-related.

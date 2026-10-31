@@ -1616,6 +1616,51 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertEqual(
                 tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
 
+    def test_subprocess_selection(self):
+        card = bannermod.RunCardMG7()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [])
+        card.set("phasespace.subprocess_selection", [3, 1])
+        card.check_validity()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [3, 1])
+        for invalid in ([1, 1], [-1]):
+            card.set("phasespace.subprocess_selection", invalid)
+            with self.assertRaises(bannermod.InvalidRunCard):
+                card.check_validity()
+
+    def test_cluster_section(self):
+        import io
+        import tomllib
+        card = bannermod.RunCardMG7()
+        output = io.StringIO()
+        card.write(output)
+        section = tomllib.loads(output.getvalue())['cluster']
+        # off by default, and only the main options are written out
+        self.assertFalse(section['enable'])
+        self.assertEqual(section['mode'], 'full')
+        self.assertEqual(section['train_device'], [])
+        self.assertNotIn('nb_retry', section)
+        # the gridpack card of a gridpack run knows nothing of the cluster
+        output = io.StringIO()
+        card.write_gridpack_card(output)
+        self.assertNotIn('cluster', tomllib.loads(output.getvalue()))
+
+    def test_cluster_validity(self):
+        card = bannermod.RunCardMG7()
+        card.set("cluster.enable", True)
+        card.set("cluster.train_device", ["cuda:1"])
+        card.set("cluster.deploy_device", ["cpu"])
+        card.check_validity()
+        for key, value in (("cluster.events_per_job", 0),
+                           ("cluster.subprocesses_per_job", 0),
+                           ("cluster.deploy_device", ["tpu"]),
+                           ("cluster.train_device", ["cuda:x"]),
+                           ("phasespace.subprocess_selection", [1])):
+            card = bannermod.RunCardMG7()
+            card.set("cluster.enable", True)
+            card.set(key, value)
+            with self.assertRaises(bannermod.InvalidRunCard, msg=key):
+                card.check_validity()
+
     def test_gzip_configuration(self):
         card = bannermod.RunCardMG7()
         card.set("run.use_pigz", "auto")

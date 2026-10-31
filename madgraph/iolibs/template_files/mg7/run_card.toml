@@ -55,6 +55,34 @@ temp_output_dir = %(gridpack.temp_output_dir)s
 # output files; "" creates a new run folder in Events
 output_dir = %(gridpack.output_dir)s
 
+[cluster]
+# Run on a batch system: the subprocesses are trained in parallel jobs, their
+# gridpacks are merged, and the events are generated in parallel jobs from the
+# merged gridpack. Off by default, whatever the global run mode.
+enable = %(cluster.enable)s
+# options: full (both passes, events combined), gridpack_only (the merged gridpack is the result)
+mode = %(cluster.mode)s
+# options: auto (cluster_type of the MadGraph configuration), local_parallel (this machine),
+# condor, pbs, sge, lsf, ge, slurm, htcaas, htcaas2
+type = %(cluster.type)s
+parallel_jobs = %(cluster.parallel_jobs)s # jobs at once with type local_parallel; -1 uses every core
+# training pass; an empty device keeps the [run] device, an empty queue the configured one
+train_device = %(cluster.train_device)s
+train_queue = %(cluster.train_queue)s
+train_walltime = %(cluster.train_walltime)s
+# e.g. "--gres=gpu:1" for slurm, "request_gpus = 1" for condor
+train_extra_args = %(cluster.train_extra_args)s
+subprocesses_per_job = %(cluster.subprocesses_per_job)s # subprocesses (merge groups) per job
+# true: every channel keeps the max weight of its training job, the statistically correct
+# choice; false: every generation job estimates it on the fly
+fix_max_weight = %(cluster.fix_max_weight)s
+# event generation pass
+deploy_device = %(cluster.deploy_device)s
+deploy_queue = %(cluster.deploy_queue)s
+deploy_walltime = %(cluster.deploy_walltime)s
+deploy_extra_args = %(cluster.deploy_extra_args)s
+events_per_job = %(cluster.events_per_job)s # [generation] events are split into jobs of this size
+
 [beam]
 # beam 1 moves along +z; events and eta cuts are in this lab frame
 ebeam1 = %(beam.ebeam1)s

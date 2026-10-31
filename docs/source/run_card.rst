@@ -144,6 +144,68 @@ See :doc:`gridpacks` for details.
     ``Events/<run_name>_NN``. If set, no run folder is created.
 
 
+[cluster]
+---------
+
+Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
+It is off by default. See :doc:`cluster` for how it works.
+
+``enable`` (``false``)
+    Run on a batch system. Independent of the ``run_mode`` of the MadGraph configuration.
+
+``mode`` (``"full"``)
+    ``full`` runs both passes and combines the events. ``gridpack_only`` only trains, and
+    the merged gridpack is the result.
+
+``type`` (``"auto"``)
+    The batch system: ``condor``, ``pbs``, ``sge``, ``lsf``, ``ge``, ``slurm``,
+    ``htcaas``, ``htcaas2``, or ``local_parallel`` to run the jobs on this machine. ``auto``
+    takes ``cluster_type`` of the MadGraph configuration.
+
+``parallel_jobs`` (``-1``)
+    Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of
+    each job are divided accordingly if ``cpu_thread_pool_size`` is ``-1``.
+
+``train_device`` (``[]``), ``deploy_device`` (``[]``)
+    The ``[run]`` ``device`` of the training and of the generation jobs. An empty list
+    keeps the ``[run]`` device. Use ``train_device = ["cuda"]`` and
+    ``deploy_device = ["cpu"]`` to train on GPUs and generate on CPUs.
+
+``train_queue`` (``""``), ``deploy_queue`` (``""``)
+    The queue (partition) of the jobs. ``""`` takes ``cluster_queue`` of the MadGraph
+    configuration.
+
+``train_walltime`` (``""``), ``deploy_walltime`` (``""``)
+    The walltime of the jobs, in the format of the batch system. Used for ``slurm`` and
+    ``condor``.
+
+``train_extra_args`` (``""``), ``deploy_extra_args`` (``""``)
+    Further arguments of the submit command, for example ``"--gres=gpu:1"`` for
+    ``slurm``, or ``"-l select=1:ngpus=1"`` for ``pbs``. For ``condor`` they are lines of
+    the submit file separated by ``;``, for example ``"request_gpus = 1; request_memory =
+    8GB"``.
+
+``subprocesses_per_job`` (``1``)
+    The number of subprocesses (merge groups with ``merge_subprocesses``) that are
+    trained together in one job. Raise it for a process with many small subprocesses.
+
+``fix_max_weight`` (``true``)
+    ``true``: the training jobs store the maximum weight of every channel, as for a
+    gridpack with ``run_mode = "fix_max_weight"``, and all generation jobs unweight
+    against it. This is the statistically correct choice. ``false``: every generation job
+    estimates the maximum weights on its own, which saves time in the training.
+
+``events_per_job`` (``100000``)
+    The events of one generation job. The ``[generation]`` ``events`` are split into
+    ``ceil(events / events_per_job)`` jobs of almost equal size.
+
+A few more options are hidden: ``nb_retry`` (``1``, how often a failed job is submitted
+again), ``retry_wait`` (``300``, seconds a job is given to deliver its output),
+``status_update`` (``[600, 30]``, seconds between status checks), ``temp_path`` (the
+``cluster_temp_path`` of the configuration) and ``keep_job_files`` (``false``, keep the
+event files of the generation jobs).
+
+
 [beam]
 ------
 
