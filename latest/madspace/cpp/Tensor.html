@@ -373,6 +373,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -503,6 +504,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -909,6 +911,12 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace6Tensor4castE8DataType">
+<span id="_CPPv3NK8madspace6Tensor4castE8DataType"></span><span id="_CPPv2NK8madspace6Tensor4castE8DataType"></span><span id="madspace::Tensor::cast__DataTypeC"></span><span class="target" id="classmadspace_1_1Tensor_1ae29a791a9f48ab50cefc3c1f87d1a000"></span><a class="reference internal" href="#_CPPv4N8madspace6TensorE" title="madspace::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">cast</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">DataType</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">dtype</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace6Tensor4castE8DataType" title="Link to this definition">¶</a><br /></dt>
+<dd><p>A contiguous CPU copy with the element type converted to <code class="docutils literal notranslate"><span class="pre">dtype</span></code>, or the CPU tensor itself if it already has that type. </p>
+</dd></dl>
+
+<dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4I0EN8madspace6Tensor4zeroEvRK1D">
 <span id="_CPPv3I0EN8madspace6Tensor4zeroERK1D"></span><span id="_CPPv2I0EN8madspace6Tensor4zeroERK1D"></span><span class="k"><span class="pre">template</span></span><span class="p"><span class="pre">&lt;</span></span><span class="k"><span class="pre">typename</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">D</span></span></span><span class="p"><span class="pre">&gt;</span></span><br /><span class="target" id="classmadspace_1_1Tensor_1a4ee0fdba70f39474a682fba0c5864527"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">zero</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="#_CPPv4I0EN8madspace6Tensor4zeroEvRK1D" title="madspace::Tensor::zero::D"><span class="n"><span class="pre">D</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">device</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN8madspace6Tensor4zeroEvRK1D" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Sets every element to zero. </p>
@@ -1140,6 +1148,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace6Tensor17split_and_reshapeERKNSt6vectorI5SizesEE"><code class="docutils literal notranslate"><span class="pre">split_and_reshape()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4I0ENK8madspace6Tensor3cpuE6TensorRK1D"><code class="docutils literal notranslate"><span class="pre">cpu()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace6Tensor3cpuEv"><code class="docutils literal notranslate"><span class="pre">cpu()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace6Tensor4castE8DataType"><code class="docutils literal notranslate"><span class="pre">cast()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4I0EN8madspace6Tensor4zeroEvRK1D"><code class="docutils literal notranslate"><span class="pre">zero()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace6Tensor4zeroEv"><code class="docutils literal notranslate"><span class="pre">zero()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4I0EN8madspace6Tensor9copy_fromEvRK6TensorRK1D"><code class="docutils literal notranslate"><span class="pre">copy_from()</span></code></a></li>

@@ -373,6 +373,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -503,6 +504,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -691,6 +693,13 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec">
+<span id="_CPPv3N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec"></span><span id="_CPPv2N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec"></span><span id="madspace::FunctionBuilder::precision_instruction__ssCR.ValueVecCR"></span><span class="target" id="classmadspace_1_1FunctionBuilder_1ab0e4b3de5962f4072919eb0166c787b2"></span><span class="n"><span class="pre">ValueVec</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">precision_instruction</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">string</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">name</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">ValueVec</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">args</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Calls the float32 or float64 variant <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_float32</span></code> / <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_float64</span></code> of an instruction, chosen by the first non-literal float argument. </p>
+<p>Float64 literals are converted for a float32 call. </p>
+</dd></dl>
+
+<dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace15FunctionBuilder14current_streamEv">
 <span id="_CPPv3NK8madspace15FunctionBuilder14current_streamEv"></span><span id="_CPPv2NK8madspace15FunctionBuilder14current_streamEv"></span><span id="madspace::FunctionBuilder::current_streamC"></span><span class="target" id="classmadspace_1_1FunctionBuilder_1ab633ff48f560c401a8eea217da3ea8d7"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">current_stream</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace15FunctionBuilder14current_streamEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Index of the execution stream new instructions are added to. </p>
@@ -791,6 +800,7 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder6globalERKNSt6stringE8DataTypeRKNSt6vectorIiEE"><code class="docutils literal notranslate"><span class="pre">global()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder11instructionERKNSt6stringERK8ValueVec"><code class="docutils literal notranslate"><span class="pre">instruction()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder11instructionE14InstructionPtrRK8ValueVec"><code class="docutils literal notranslate"><span class="pre">instruction()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec"><code class="docutils literal notranslate"><span class="pre">precision_instruction()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace15FunctionBuilder14current_streamEv"><code class="docutils literal notranslate"><span class="pre">current_stream()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder18set_current_streamENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">set_current_stream()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace15FunctionBuilder8functionEv"><code class="docutils literal notranslate"><span class="pre">function()</span></code></a></li>

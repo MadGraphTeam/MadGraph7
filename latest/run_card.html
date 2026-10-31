@@ -373,6 +373,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -503,6 +504,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -1126,6 +1128,10 @@ function. The activations are <code class="docutils literal notranslate"><span c
 <dt><code class="docutils literal notranslate"><span class="pre">discrete_hidden_dim</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">discrete_layers</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">discrete_activation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;leaky_relu&quot;</span></code>)</dt><dd><p>Size and activation of the discrete network.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">cwnet_hidden_dim</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">cwnet_layers</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span></code>), <code class="docutils literal notranslate"><span class="pre">cwnet_activation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;leaky_relu&quot;</span></code>)</dt><dd><p>Size and activation of the channel weight network.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">nn_float_precision</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;float32&quot;</span></code>)</dt><dd><p>Floating-point precision of the weights and the evaluation of all networks,
+<code class="docutils literal notranslate"><span class="pre">float32</span></code> or <code class="docutils literal notranslate"><span class="pre">float64</span></code>. The rest of the computation, including the network
+outputs, softmaxes and Jacobians, stays in double precision.</p>
 </dd>
 </dl>
 </section>

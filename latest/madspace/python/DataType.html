@@ -373,6 +373,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -503,6 +504,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -625,11 +627,12 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">DataType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.DataType" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Element data type of a compute-graph Value.</p>
-<p><code class="docutils literal notranslate"><span class="pre">dt_int</span></code> and <code class="docutils literal notranslate"><span class="pre">dt_float</span></code> are ordinary integer and floating-point tensors. <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> marks a value that instead carries a list of batch sizes, used to split and recombine batches in multi-channel functions.</p>
+<p><code class="docutils literal notranslate"><span class="pre">dt_int32</span></code>, <code class="docutils literal notranslate"><span class="pre">dt_float32</span></code> and <code class="docutils literal notranslate"><span class="pre">dt_float64</span></code> are ordinary integer and floating-point tensors. <code class="docutils literal notranslate"><span class="pre">batch_sizes</span></code> marks a value that instead carries a list of batch sizes, used to split and recombine batches in multi-channel functions.</p>
 <p>Members:</p>
 <blockquote>
-<div><p>int</p>
-<p>float</p>
+<div><p>int32</p>
+<p>float32</p>
+<p>float64</p>
 <p>batch_sizes</p>
 </div></blockquote>
 <p>Overloaded function.</p>
@@ -639,17 +642,22 @@
 </ol>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.DataType.batch_sizes">
-<span class="sig-name descname"><span class="pre">batch_sizes</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.batch_sizes:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.DataType.batch_sizes" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">batch_sizes</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.batch_sizes:</span> <span class="pre">3&gt;</span></span><a class="headerlink" href="#madspace.DataType.batch_sizes" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="madspace.DataType.float">
-<span class="sig-name descname"><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.float:</span> <span class="pre">1&gt;</span></span><a class="headerlink" href="#madspace.DataType.float" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="madspace.DataType.float32">
+<span class="sig-name descname"><span class="pre">float32</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.float32:</span> <span class="pre">1&gt;</span></span><a class="headerlink" href="#madspace.DataType.float32" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="madspace.DataType.int">
-<span class="sig-name descname"><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.int:</span> <span class="pre">0&gt;</span></span><a class="headerlink" href="#madspace.DataType.int" title="Link to this definition">¶</a></dt>
+<dt class="sig sig-object py" id="madspace.DataType.float64">
+<span class="sig-name descname"><span class="pre">float64</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.float64:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.DataType.float64" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.DataType.int32">
+<span class="sig-name descname"><span class="pre">int32</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;DataType.int32:</span> <span class="pre">0&gt;</span></span><a class="headerlink" href="#madspace.DataType.int32" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py property">
@@ -724,8 +732,9 @@
 <li><a class="reference internal" href="#">DataType</a><ul>
 <li><a class="reference internal" href="#madspace.DataType"><code class="docutils literal notranslate"><span class="pre">DataType</span></code></a><ul>
 <li><a class="reference internal" href="#madspace.DataType.batch_sizes"><code class="docutils literal notranslate"><span class="pre">DataType.batch_sizes</span></code></a></li>
-<li><a class="reference internal" href="#madspace.DataType.float"><code class="docutils literal notranslate"><span class="pre">DataType.float</span></code></a></li>
-<li><a class="reference internal" href="#madspace.DataType.int"><code class="docutils literal notranslate"><span class="pre">DataType.int</span></code></a></li>
+<li><a class="reference internal" href="#madspace.DataType.float32"><code class="docutils literal notranslate"><span class="pre">DataType.float32</span></code></a></li>
+<li><a class="reference internal" href="#madspace.DataType.float64"><code class="docutils literal notranslate"><span class="pre">DataType.float64</span></code></a></li>
+<li><a class="reference internal" href="#madspace.DataType.int32"><code class="docutils literal notranslate"><span class="pre">DataType.int32</span></code></a></li>
 <li><a class="reference internal" href="#madspace.DataType.value"><code class="docutils literal notranslate"><span class="pre">DataType.value</span></code></a></li>
 </ul>
 </li>

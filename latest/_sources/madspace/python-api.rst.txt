@@ -110,6 +110,7 @@ The typed value model and the builder API used to record and compile functions f
    python/Value
    python/batch_float_array
    python/batch_four_vec_array
+   python/fuse_instructions
    python/multichannel_batch_size
 
 Driver and runtime

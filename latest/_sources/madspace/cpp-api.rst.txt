@@ -107,6 +107,7 @@ The typed value model and the builder API used to record and compile functions f
    cpp/Value
    cpp/batch_float_array
    cpp/batch_four_vec_array
+   cpp/fuse_instructions
    cpp/multichannel_batch_size
 
 Driver and runtime

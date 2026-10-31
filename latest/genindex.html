@@ -371,6 +371,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -501,6 +502,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -951,10 +953,10 @@
 </li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.combine_thread_count">combine_thread_count (madspace.GeneratorConfig property)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_compact_npy">combine_to_compact_npy() (madspace.EventGenerator method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_lhe">combine_to_lhe() (madspace.EventGenerator method)</a>
 </li>
         <li><a href="madspace/python/EventGenerator.html#madspace.EventGenerator.combine_to_lhe_npy">combine_to_lhe_npy() (madspace.EventGenerator method)</a>
@@ -980,6 +982,10 @@
         <li><a href="madspace/python/Context.html#madspace.Context">Context (class in madspace)</a>
 </li>
         <li><a href="madspace/python/AdamOptimizer.html#madspace.AdamOptimizer.context">context() (madspace.AdamOptimizer method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.convert_float32">convert_float32() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.convert_float64">convert_float64() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/Context.html#madspace.Context.copy_globals_from">copy_globals_from() (madspace.Context method)</a>
 </li>
@@ -1327,7 +1333,9 @@
         </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="madspace/python/DataType.html#madspace.DataType.float">float (madspace.DataType attribute)</a>
+        <li><a href="madspace/python/DataType.html#madspace.DataType.float32">float32 (madspace.DataType attribute)</a>
+</li>
+        <li><a href="madspace/python/DataType.html#madspace.DataType.float64">float64 (madspace.DataType attribute)</a>
 </li>
         <li><a href="madspace/python/Flow.html#madspace.Flow">Flow (class in madspace)</a>
 </li>
@@ -1372,6 +1380,8 @@
         <li><a href="madspace/python/FunctionGenerator.html#madspace.FunctionGenerator">FunctionGenerator (class in madspace)</a>
 </li>
         <li><a href="madspace/python/FunctionRuntime.html#madspace.FunctionRuntime">FunctionRuntime (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/fuse_instructions.html#madspace.fuse_instructions">fuse_instructions() (in module madspace)</a>
 </li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.fxfx">fxfx (madspace.MLMClustering attribute)</a>
 
@@ -1603,7 +1613,7 @@
 </li>
         <li><a href="madspace/python/Function.html#madspace.Function.instructions">instructions (madspace.Function property)</a>
 </li>
-        <li><a href="madspace/python/DataType.html#madspace.DataType.int">int (madspace.DataType attribute)</a>
+        <li><a href="madspace/python/DataType.html#madspace.DataType.int32">int32 (madspace.DataType attribute)</a>
 </li>
         <li><a href="madspace/python/Integrand.html#madspace.Integrand">Integrand (class in madspace)</a>
 </li>
@@ -2021,7 +2031,7 @@
 </li>
         <li><a href="madspace/cpp/ChannelWeightNetwork.html#_CPPv4N8madspace20ChannelWeightNetworkE">madspace::ChannelWeightNetwork (C++ class)</a>
 </li>
-        <li><a href="madspace/cpp/ChannelWeightNetwork.html#_CPPv4N8madspace20ChannelWeightNetwork20ChannelWeightNetworkENSt6size_tENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationERKNSt6stringEb">madspace::ChannelWeightNetwork::ChannelWeightNetwork (C++ function)</a>
+        <li><a href="madspace/cpp/ChannelWeightNetwork.html#_CPPv4N8madspace20ChannelWeightNetwork20ChannelWeightNetworkENSt6size_tENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationERKNSt6stringEb8DataType">madspace::ChannelWeightNetwork::ChannelWeightNetwork (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelWeightNetwork.html#_CPPv4NK8madspace20ChannelWeightNetwork18initialize_globalsE10ContextPtrNSt8optionalINSt8uint64_tEEE">madspace::ChannelWeightNetwork::initialize_globals (C++ function)</a>
 </li>
@@ -2331,7 +2341,7 @@
 </li>
         <li><a href="madspace/cpp/DiscreteFlow.html#_CPPv4NK8madspace12DiscreteFlow13condition_dimEv">madspace::DiscreteFlow::condition_dim (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/DiscreteFlow.html#_CPPv4N8madspace12DiscreteFlow12DiscreteFlowERKNSt6vectorINSt6size_tEEERKNSt6stringERKNSt6vectorINSt6size_tEEENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationE">madspace::DiscreteFlow::DiscreteFlow (C++ function)</a>
+        <li><a href="madspace/cpp/DiscreteFlow.html#_CPPv4N8madspace12DiscreteFlow12DiscreteFlowERKNSt6vectorINSt6size_tEEERKNSt6stringERKNSt6vectorINSt6size_tEEENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationE8DataType">madspace::DiscreteFlow::DiscreteFlow (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/DiscreteFlow.html#_CPPv4NK8madspace12DiscreteFlow18initialize_globalsE10ContextPtrNSt8optionalINSt8uint64_tEEE">madspace::DiscreteFlow::initialize_globals (C++ function)</a>
 </li>
@@ -2619,7 +2629,7 @@
 </li>
         <li><a href="madspace/cpp/Flow.html#_CPPv4NK8madspace4Flow13condition_dimEv">madspace::Flow::condition_dim (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/Flow.html#_CPPv4N8madspace4Flow4FlowENSt6size_tENSt6size_tERKNSt6stringENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationEb">madspace::Flow::Flow (C++ function)</a>
+        <li><a href="madspace/cpp/Flow.html#_CPPv4N8madspace4Flow4FlowENSt6size_tENSt6size_tERKNSt6stringENSt6size_tENSt6size_tENSt6size_tEN3MLP10ActivationEb8DataType">madspace::Flow::Flow (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Flow.html#_CPPv4NK8madspace4Flow21initialize_from_vegasE10ContextPtrRKNSt6stringENSt8optionalINSt8uint64_tEEE">madspace::Flow::initialize_from_vegas (C++ function)</a>
 </li>
@@ -2671,6 +2681,8 @@
 </li>
         <li><a href="madspace/cpp/FunctionBuilder.html#_CPPv4N8madspace15FunctionBuilder12output_rangeEiRK8ValueVec">madspace::FunctionBuilder::output_range (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/FunctionBuilder.html#_CPPv4N8madspace15FunctionBuilder21precision_instructionERKNSt6stringERK8ValueVec">madspace::FunctionBuilder::precision_instruction (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/FunctionBuilder.html#_CPPv4N8madspace15FunctionBuilder7productERK8ValueVec">madspace::FunctionBuilder::product (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/FunctionBuilder.html#_CPPv4N8madspace15FunctionBuilder18set_current_streamENSt6size_tE">madspace::FunctionBuilder::set_current_stream (C++ function)</a>
@@ -2692,6 +2704,8 @@
         <li><a href="madspace/cpp/FunctionGenerator.html#_CPPv4NK8madspace17FunctionGenerator12return_typesEv">madspace::FunctionGenerator::return_types (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorD0Ev">madspace::FunctionGenerator::~FunctionGenerator (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/fuse_instructions.html#_CPPv4N8madspace17fuse_instructionsERK8Function">madspace::fuse_instructions (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/GeneratorBatchJob.html#_CPPv4N8madspace17GeneratorBatchJobE">madspace::GeneratorBatchJob (C++ struct)</a>
 </li>
@@ -2817,7 +2831,7 @@
 </li>
         <li><a href="madspace/cpp/GradientClipper.html#_CPPv4N8madspace15GradientClipperE">madspace::GradientClipper (C++ class)</a>
 </li>
-        <li><a href="madspace/cpp/GradientClipper.html#_CPPv4N8madspace15GradientClipper15GradientClipperEv">madspace::GradientClipper::GradientClipper (C++ function)</a>
+        <li><a href="madspace/cpp/GradientClipper.html#_CPPv4N8madspace15GradientClipper15GradientClipperE8DataType">madspace::GradientClipper::GradientClipper (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/hip_device.html#_CPPv4N8madspace10hip_deviceENSt6size_tE">madspace::hip_device (C++ function)</a>
 </li>
@@ -3201,8 +3215,6 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config20fixed_cwnet_fractionE">madspace::MadnisTraining::Config::fixed_cwnet_fraction (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config28generator_target_size_factorE">madspace::MadnisTraining::Config::generator_target_size_factor (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config31gpu_generator_batch_granularityE">madspace::MadnisTraining::Config::gpu_generator_batch_granularity (C++ member)</a>
@@ -3211,6 +3223,8 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config19grad_clip_thresholdE">madspace::MadnisTraining::Config::grad_clip_threshold (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config26integration_history_lengthE">madspace::MadnisTraining::Config::integration_history_length (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config13learning_rateE">madspace::MadnisTraining::Config::learning_rate (C++ member)</a>
@@ -3467,9 +3481,11 @@
 </li>
         <li><a href="madspace/cpp/MLP.html#_CPPv4NK8madspace3MLP20last_layer_bias_nameEv">madspace::MLP::last_layer_bias_name (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/MLP.html#_CPPv4N8madspace3MLP3MLPENSt6size_tENSt6size_tENSt6size_tENSt6size_tE10ActivationRKNSt6stringE">madspace::MLP::MLP (C++ function)</a>
+        <li><a href="madspace/cpp/MLP.html#_CPPv4N8madspace3MLP3MLPENSt6size_tENSt6size_tENSt6size_tENSt6size_tE10ActivationRKNSt6stringE8DataType">madspace::MLP::MLP (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MLP.html#_CPPv4NK8madspace3MLP10output_dimEv">madspace::MLP::output_dim (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/MLP.html#_CPPv4NK8madspace3MLP9precisionEv">madspace::MLP::precision (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MomentumPreprocessing.html#_CPPv4N8madspace21MomentumPreprocessingE">madspace::MomentumPreprocessing (C++ class)</a>
 </li>
@@ -4097,6 +4113,8 @@
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor9byte_sizeEv">madspace::Tensor::byte_size (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor4castE8DataType">madspace::Tensor::cast (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4I0ENK8madspace6Tensor10contiguousE6TensorNSt6size_tERK1D9AllocHint">madspace::Tensor::contiguous (C++ function)</a>, <a href="madspace/cpp/Tensor.html#_CPPv4I0ENK8madspace6Tensor10contiguousE6TensorRK1D9AllocHint">[1]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor10contiguousE9AllocHint">[2]</a>, <a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor10contiguousENSt6size_tE">[3]</a>
 </li>
         <li><a href="madspace/cpp/Tensor.html#_CPPv4NK8madspace6Tensor15contiguous_dimsEv">madspace::Tensor::contiguous_dims (C++ function)</a>
@@ -4393,7 +4411,7 @@
 </li>
         <li><a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value4typeE">madspace::Value::type (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/Value.html#_CPPv4I_10ScalarTypeEN8madspace5Value5ValueERKNSt6vectorI1TEERKNSt6vectorIiEE">madspace::Value::Value (C++ function)</a>, <a href="madspace/cpp/Value.html#_CPPv4I_10ScalarTypeEN8madspace5Value5ValueERKNSt6vectorINSt6vectorI1TEEEE">[1]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE4Type12LiteralValuei">[2]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE4Typei">[3]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE8me_int_t">[4]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueEd">[5]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueEv">[6]</a>
+        <li><a href="madspace/cpp/Value.html#_CPPv4I_11LiteralTypeEN8madspace5Value5ValueERKNSt6vectorI1TEERKNSt6vectorIiEE">madspace::Value::Value (C++ function)</a>, <a href="madspace/cpp/Value.html#_CPPv4I_11LiteralTypeEN8madspace5Value5ValueERKNSt6vectorINSt6vectorI1TEEEE">[1]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE4Type12LiteralValuei">[2]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE4Typei">[3]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueE8me_int_t">[4]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueEd">[5]</a>, <a href="madspace/cpp/Value.html#_CPPv4N8madspace5Value5ValueEv">[6]</a>
 </li>
         <li><a href="madspace/cpp/Variation.html#_CPPv4N8madspace9VariationE">madspace::Variation (C++ struct)</a>
 </li>
@@ -4460,6 +4478,20 @@
 </li>
         </ul></li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul">matmul() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_elu">matmul_elu() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_gelu">matmul_gelu() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_leaky_relu">matmul_leaky_relu() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_relu">matmul_relu() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_sigmoid">matmul_sigmoid() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_softplus">matmul_softplus() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.matmul_to_float64">matmul_to_float64() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/Context.html#madspace.Context.matrix_element">matrix_element() (madspace.Context method)</a>
 
@@ -5029,6 +5061,8 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.pop">pop() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/MLP.html#madspace.MLP.precision">precision() (madspace.MLP method)</a>
+</li>
         <li><a href="madspace/python/ChannelWeightNetwork.html#madspace.ChannelWeightNetwork.preprocessing">preprocessing() (madspace.ChannelWeightNetwork method)</a>
 </li>
         <li><a href="madspace/python/Verbosity.html#madspace.Verbosity.pretty">pretty (madspace.Verbosity attribute)</a>
@@ -5189,10 +5223,10 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.reduce_sum_vector">reduce_sum_vector() (madspace.FunctionBuilder method)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.reference_mask">reference_mask() (madspace.MatrixElement method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.region_sizes">region_sizes (madspace.AlphaSGrid property)</a>
 
         <ul>
@@ -5233,7 +5267,11 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.rqs_forward">rqs_forward() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.rqs_forward_with_float32">rqs_forward_with_float32() (madspace.FunctionBuilder method)</a>
+</li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.rqs_inverse">rqs_inverse() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.rqs_inverse_with_float32">rqs_inverse_with_float32() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.rqs_reshape">rqs_reshape() (madspace.FunctionBuilder method)</a>
 </li>
@@ -5322,6 +5360,8 @@
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.select_int">select_int() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.select_vector">select_vector() (madspace.FunctionBuilder method)</a>
+</li>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.select_with_float32">select_with_float32() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/PrettyBox.html#madspace.PrettyBox.set_cell">set_cell() (madspace.PrettyBox method)</a>
 </li>

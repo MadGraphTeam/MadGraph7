@@ -373,6 +373,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -503,6 +504,7 @@
 <li class="toctree-l2"><a class="reference internal" href="Value.html">Value</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_float_array.html">batch_float_array</a></li>
 <li class="toctree-l2"><a class="reference internal" href="batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="fuse_instructions.html">fuse_instructions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multichannel_batch_size.html">multichannel_batch_size</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AdamOptimizer.html">AdamOptimizer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ChannelEventGenerator.html">ChannelEventGenerator</a></li>
@@ -627,9 +629,14 @@
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace15GradientClipper15GradientClipperEv">
-<span id="_CPPv3N8madspace15GradientClipper15GradientClipperEv"></span><span id="_CPPv2N8madspace15GradientClipper15GradientClipperEv"></span><span id="madspace::GradientClipper::GradientClipper"></span><span class="target" id="classmadspace_1_1GradientClipper_1a4a86be58e559063d3d7046b5d95afe73"></span><span class="sig-name descname"><span class="n"><span class="pre">GradientClipper</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace15GradientClipper15GradientClipperEv" title="Link to this definition">¶</a><br /></dt>
-<dd></dd></dl>
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace15GradientClipper15GradientClipperE8DataType">
+<span id="_CPPv3N8madspace15GradientClipper15GradientClipperE8DataType"></span><span id="_CPPv2N8madspace15GradientClipper15GradientClipperE8DataType"></span><span id="madspace::GradientClipper::GradientClipper__DataType"></span><span class="target" id="classmadspace_1_1GradientClipper_1a04dbf5f543c66266c387f6e922d98877"></span><span class="sig-name descname"><span class="n"><span class="pre">GradientClipper</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">DataType</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">dtype</span></span><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="n"><span class="pre">DataType</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">dt_float64</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace15GradientClipper15GradientClipperE8DataType" title="Link to this definition">¶</a><br /></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dtype</strong> – Float type of the gradients; the norm is computed in float64. </p>
+</dd>
+</dl>
+</dd></dl>
 
 </div>
 </dd></dl>
@@ -693,7 +700,7 @@
             <ul>
 <li><a class="reference internal" href="#">GradientClipper</a><ul>
 <li><a class="reference internal" href="#_CPPv4N8madspace15GradientClipperE"><code class="docutils literal notranslate"><span class="pre">madspace::GradientClipper</span></code></a><ul>
-<li><a class="reference internal" href="#_CPPv4N8madspace15GradientClipper15GradientClipperEv"><code class="docutils literal notranslate"><span class="pre">GradientClipper()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace15GradientClipper15GradientClipperE8DataType"><code class="docutils literal notranslate"><span class="pre">GradientClipper()</span></code></a></li>
 </ul>
 </li>
 </ul>
