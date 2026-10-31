@@ -52,7 +52,7 @@ c
 c
 c     Rest frame in which the matrix-elements are evaluated (polarization).
 c     Bit n of frame_id is set for each leg n listed in me_frame; see
-c     mapid() and boost_to_me_frame() in boost_to_frame.f. The default
+c     mapid() and boost_to_me_frame() in me_frame_boost.f. The default
 c     me_frame=[1,2] gives frame_id=6, which means "no boost".
 c
       integer frame_id

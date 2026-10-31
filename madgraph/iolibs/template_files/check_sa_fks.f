@@ -8,12 +8,20 @@ C       - the spin-correlated Born       BORNTILDE
 C       - the color/charge-linked Borns  B_ij
 C     The link topology (which (m,n) leg pairs are real links) is read
 C     at run time from born_links.dat, written by the exporter.
+C     The matrix elements are evaluated in the frame of the helicities
+C     (me_frame): frame_id is set by me_frame_sa.inc, written by the
+C     exporter from --me_frame or --density (0, i.e. no boost, without).
 C     ******************************************************************
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'orders.inc'
       REAL*8 P(0:3,NEXTERNAL-1)
       REAL*8 PMASS(NEXTERNAL-1)
+C     P boosted to the frame of the helicities, and the legs defining it
+      REAL*8 PF(0:3,NEXTERNAL-1)
+      INTEGER IDS(NEXTERNAL-1)
+      INTEGER FRAME_ID
+      COMMON/TO_FRAME_ME/FRAME_ID
       REAL*8 ZERO
       PARAMETER (ZERO=0D0)
       INCLUDE 'coupl.inc'
@@ -107,6 +115,10 @@ C     keep the point above threshold so RAMBO never fails, even if the user
 C     asks for an energy below the sum of the final-state masses
       IF (4D0*TOTMASS.GT.SQRTS) SQRTS=4D0*TOTMASS
       CALL GET_MOMENTA(SQRTS,PMASS,P)
+C     the same boost as sborn_frame/sborn_sf_frame in the NLO code
+      INCLUDE 'me_frame_sa.inc'
+      CALL GET_FRAME_MASK_BORN(IDS)
+      CALL BOOST_TO_ME_FRAME(P,NEXTERNAL-1,IDS,PF)
 
 C     whether the soft links of this configuration are colour links (a
 C     gluon goes soft, [QCD]) or charge links (a photon goes soft, [QED])
@@ -145,13 +157,13 @@ C     evaluate the Born building blocks NCALLS times (NCALLS>1 only for the
 C     launch --timings mode); the values are identical, so we keep the last
 C     ones and print them once below.
       DO ICALL=1,NCALLS
-        CALL SBORN(P,BORN)
+        CALL SBORN(PF,BORN)
         BORNTILDE=0D0
         DO J=1,NSPLITORDERS
           BORNTILDE=BORNTILDE+DBLE(ANS_CNT(2,J))
         ENDDO
         DO ILINK=1,NLINKS
-          CALL SBORN_SF(P,MLIST(ILINK),NLIST(ILINK),WGT)
+          CALL SBORN_SF(PF,MLIST(ILINK),NLIST(ILINK),WGT)
           WGTLIST(ILINK)=WGT
         ENDDO
       ENDDO
@@ -212,6 +224,9 @@ C     key m*NEXTERNAL+n is injective since leg numbers run 1..NEXTERNAL-1.
       DO ILINK=1,NTOT
         WRITE(*,*) 'B_ij ', MLIST(ILINK), NLIST(ILINK), WGTLIST(ILINK)
       ENDDO
+C     with --density: the spin-density matrices (check_sa_fks_density.f);
+C     empty otherwise
+      INCLUDE 'density_sa_call.inc'
 
       END
 

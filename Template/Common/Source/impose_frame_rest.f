@@ -25,7 +25,7 @@ c     mass as a separate argument anyway.
 c
 c     This lives in Template/Common/Source because it had to be got right
 c     in four places -- Template/LO/SubProcesses/genps.f,
-c     Template/NLO/SubProcesses/boost_to_frame.f and both copies in
+c     Template/NLO/SubProcesses/me_frame_boost.f and both copies in
 c     MadSpin/src/driver.f -- and was for a long time got right in only
 c     one. Keep it here rather than inlining it again.
 c

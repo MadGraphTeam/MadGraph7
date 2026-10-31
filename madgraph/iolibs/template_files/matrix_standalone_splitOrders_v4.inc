@@ -546,7 +546,7 @@ C
       RETURN
       END
 
-     SUBROUTINE  %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, MU_R2, INTER_SUM)
+     SUBROUTINE  %(density_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, MU_R2, INTER_SUM)
 c     P momenta
 c     NHEL base of helicity that are not changing
 c     POS(N_CHNGING): position of the changing helicity
@@ -630,7 +630,7 @@ C
             if(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10 !BYPASS COMPUTATION FOR HELICITY
         ENDDO
         TMP_INTER(:,:) = 0
-        call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+        call  %(density_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
 C       Support for polarised beam: reweight the initial-state helicity
 C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
 C       the process has two incoming legs -- the same shared library
@@ -666,7 +666,7 @@ C           in BLOCK DATA BEAMPOL_DEFAULT.
 
 
 
-      SUBROUTINE  %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
+      SUBROUTINE  %(density_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
 c     P momenta
 c     NHEL base of helicity that are not changing
 c     POS(N_CHNGING): position of the changing helicity

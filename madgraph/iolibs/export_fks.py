@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 import glob
+import itertools
 import json
 import logging
 import os
@@ -764,6 +765,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'genps_fks.f',
                      'boostwdir2.f',
                      'boost_to_frame.f',
+                     'me_frame_boost.f',
                      'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
@@ -2325,8 +2327,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         file = file % replace_dict
 
-        # Write the file
-        writer.writelines(file)
+        # Write the file. 'density': the spin-density-matrix routines of the
+        # FKS standalone output with --density (docs/nlo_density_matrix_plan.md)
+        writer.writelines(file,
+                          context={'density': bool(self.opt.get('fks_density'))})
 
         return len(list([call for call in helas_calls if call.find('#') != 0])), ncolor, \
                 replace_dict['nAmpSplitOrders'], replace_dict['nSqAmpSplitOrders']
@@ -5699,12 +5703,138 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     (born_links.dat) so that 'launch' can build and run a lightweight
     Born-only 'check_fks' executable printing, for one phase-space point,
     the Born B, the spin-correlated Born BORNTILDE and the linked Borns B_ij.
+
+    With --density=i,j (legs numbered as in the process definition) the
+    output also targets the spin-density matrix of those massive final-state
+    legs (docs/nlo_density_matrix_plan.md): each P directory gets
+    density_info.inc, and keeps its virtual, whose MadLoop code then computes
+    the density matrix too. --me_frame=... sets the frame the helicities are
+    defined in, by default the rest frame of the density legs.
     """
+
+    def __init__(self, *args, **opts):
+        super(ProcessExporterFortranFKS_SA, self).__init__(*args, **opts)
+        # Our own copy of the output options: the 'density' entry is set per
+        # P directory below (in Born leg positions, for the MadLoop virtual),
+        # and must not leak into the dict the caller holds.
+        self.opt['output_options'] = dict(self.opt.get('output_options') or {})
+        self.cmd_options = self.opt['output_options']
+
+    def density_legs_born(self, matrix_element):
+        """The Born positions of the --density legs of this P directory, in
+        the order the user gave them ([] without --density). Each must be a
+        massive final-state particle: the density matrix of a massless or an
+        initial-state leg is not defined at NLO (see help polarization)."""
+        user_legs = self.opt.get('fks_density') or []
+        if not user_legs:
+            return []
+        born_proc = matrix_element.born_me.get('processes')[0]
+        born_legs = born_proc.get('legs')
+        model = born_proc.get('model')
+        user_order = self.get_user_leg_order(matrix_element)
+        positions = []
+        for n in user_legs:
+            if n not in user_order:
+                raise InvalidCmd('--density=%s: there is no leg %d in %s.'
+                    % (','.join(str(i) for i in user_legs), n,
+                       born_proc.nice_string(print_weighted=False)))
+            pos = user_order.index(n) + 1
+            leg = born_legs[pos - 1]
+            particle = model.get_particle(leg.get('id'))
+            if not leg.get('state'):
+                raise InvalidCmd('--density: leg %d (%s) is in the initial '
+                    'state. Only massive final-state particles can carry the '
+                    'density matrix.' % (n, particle.get_name()))
+            if particle.get('mass').upper() == 'ZERO':
+                raise InvalidCmd('--density: leg %d (%s) is massless. Only '
+                    'massive final-state particles can carry the density '
+                    'matrix: the helicity of a massless one is not defined '
+                    'across a collinear splitting.' % (n, particle.get_name()))
+            positions.append(pos)
+        return positions
+
+    @staticmethod
+    def get_user_leg_order(matrix_element):
+        """user_order[i-1] is the number, in the process as the user wrote it,
+        of the Born leg at position i (see write_frame_info_file)."""
+        nexternal_born = len(matrix_element.born_me.get('processes')[0].get('legs'))
+        user_order = list(getattr(matrix_element, 'user_leg_order', []))
+        if len(user_order) != nexternal_born:
+            user_order = list(range(1, nexternal_born + 1))
+        return user_order
+
+    def me_frame_legs(self, matrix_element):
+        """The legs (user numbering) defining the frame of the helicities:
+        --me_frame if given, else the density legs, else none (no boost).
+        A frame built from part of the initial state, or mixing initial- and
+        final-state legs, is refused: it is not infrared safe at NLO (the
+        same rule as for me_frame in the NLO run_card)."""
+        legs = self.opt.get('fks_me_frame') or self.opt.get('fks_density') or []
+        ninitial = len([l for l in matrix_element.born_me.get('processes')[0].get('legs')
+                        if not l.get('state')])
+        initial = [n for n in legs if n <= ninitial]
+        if initial and (len(initial) < ninitial or len(legs) > len(initial)):
+            raise InvalidCmd('--me_frame=%s: a frame built from part of the '
+                'initial state, or from initial- and final-state legs together, '
+                'is not infrared safe at NLO. Use final-state legs only.'
+                % ','.join(str(n) for n in legs))
+        return legs
+
+    def write_density_info_file(self, filename, matrix_element, positions):
+        """density_info.inc: the legs carrying the density matrix (Born
+        positions) and their helicity combinations, in the convention of
+        GET_DENSITY: ALLOW_HEL_B((I-1)*N_CHANGING_B+K) is the helicity of leg
+        POS_B(K) in combination I; and the common block of the projector W
+        (BLOCK DATA DENSITY_PROJ_DATA in born.f switches it off)."""
+        hel_per_part = matrix_element.born_me.get_helicity_per_particle()
+        changing_hels = [hel_per_part[pos - 1] for pos in positions]
+        combos = list(itertools.product(*changing_hels))
+        lines = ['integer n_changing_b, n_comb_b',
+                 'parameter (n_changing_b=%d, n_comb_b=%d)' % (len(positions), len(combos)),
+                 'integer pos_b(n_changing_b)',
+                 'parameter (pos_b=(/%s/))' % ','.join('%d' % p for p in positions),
+                 'integer allow_hel_b(n_changing_b*n_comb_b)',
+                 'parameter (allow_hel_b=(/%s/))' % ','.join('%d' % h for c in combos for h in c),
+                 '',
+                 'c the projector W of the density legs: with dens_w_on, the',
+                 'c matrix elements return Tr(W rho) instead of the helicity sum',
+                 'complex*16 dens_w(n_comb_b,n_comb_b)',
+                 'logical dens_w_on',
+                 'common/c_density_proj/dens_w,dens_w_on']
+        writers.FortranWriter(filename).writelines(lines)
+
+    def write_me_frame_sa_file(self, filename, matrix_element):
+        """me_frame_sa.inc: sets frame_id in the standalone Born driver, which
+        does not read a run_card. Same encoding as the NLO run_card: bit n is
+        set for each leg n of the frame, n numbered as in the user's process
+        (frame_info.inc maps it to the Born positions); 0 means no boost."""
+        frame_id = sum(2**n for n in self.me_frame_legs(matrix_element))
+        writers.FortranWriter(filename).writelines(['frame_id=%d' % frame_id])
 
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                  me_ntot, path=os.getcwd(), OLP='MadLoop'):
         """Run the regular FKS generation, then drop in the standalone
         Born driver and its data files."""
+        # The MadLoop virtual is written inside the super() call: hand it the
+        # density legs in the Born numbering of this directory (the virtual
+        # uses the Born ordering, checked below).
+        density_pos = self.density_legs_born(matrix_element)
+        if density_pos:
+            virt_me = matrix_element.virt_matrix_element
+            if virt_me:
+                born_ids = [l.get('id') for l in
+                            matrix_element.born_me.get('processes')[0].get('legs')]
+                virt_ids = [l.get('id') for l in
+                            virt_me.get('processes')[0].get('legs')]
+                if born_ids != virt_ids:
+                    raise InvalidCmd('--density: the virtual of %s orders '
+                        'its legs differently from the Born (%s vs %s).' %
+                        (matrix_element.born_me.get('processes')[0].nice_string(),
+                         virt_ids, born_ids))
+            self.cmd_options['density'] = ','.join('%d' % p for p in density_pos)
+        else:
+            self.cmd_options.pop('density', None)
+
         result = super(ProcessExporterFortranFKS_SA, self).\
             generate_directories_fks(matrix_element, fortran_model, me_number,
                                      me_ntot, path, OLP)
@@ -5712,6 +5842,23 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         borndir = "P%s" % \
             matrix_element.born_me.get('processes')[0].shell_string()
         born_path = os.path.join(path, borndir)
+
+        # the frame of the helicities, set by the driver (no run_card there)
+        self.write_me_frame_sa_file(os.path.join(born_path, 'me_frame_sa.inc'),
+                                    matrix_element)
+        # the call of the density-matrix check from check_sa_fks.f
+        call = open(os.path.join(born_path, 'density_sa_call.inc'), 'w')
+        if density_pos:
+            self.write_density_info_file(
+                os.path.join(born_path, 'density_info.inc'),
+                matrix_element, density_pos)
+            shutil.copy(os.path.join(_file_path,
+                            'iolibs/template_files/check_sa_fks_density.f'),
+                        os.path.join(born_path, 'check_sa_fks_density.f'))
+            call.write('      CALL CHECK_BORN_DENSITY(PF)\n')
+        else:
+            call.write('C     no --density\n')
+        call.close()
 
         # masses of the born external legs (used by the driver to build the
         # phase-space point with RAMBO)
@@ -5736,10 +5883,12 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         if self.opt.get('fks_limits'):
             # keep the real-emission / counterterm chain that
             # test_soft_col_limits links; only the virtuals are never used
-            self.drop_virtuals(born_path)
+            # (except for the density matrix, which needs the virtual's)
+            if not density_pos:
+                self.drop_virtuals(born_path)
         else:
             # strip the Born directory down to just what 'check_fks' needs
-            self.trim_born_dir(born_path)
+            self.trim_born_dir(born_path, keep_virtuals=bool(density_pos))
 
         return result
 
@@ -5760,7 +5909,8 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     # b_sf_*.f is globbed because the count is process dependent (a pure [QED]
     # Born has none) and check_sa_fks.f is the driver we just copied in.
     check_fks_sources = ('check_sa_fks.f', 'born.f', 'sborn_sf.f',
-                         'splitorders_stuff.f', 'orderstags_glob.f')
+                         'splitorders_stuff.f', 'orderstags_glob.f',
+                         'me_frame_boost.f', 'check_sa_fks_density.f')
     # the build file plus the run-time inputs the driver reads (the
     # param_card.dat symlink and the link-topology data file), and the files
     # the 'launch' flow itself touches in each P* directory. born_leshouche.inc
@@ -5768,9 +5918,9 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     # whose get_pid_final_initial_states() reads born_leshouche.inc from every
     # P* directory to force the final-state widths to zero.
     check_fks_runtime = ('makefile', 'param_card.dat', 'born_links.dat',
-                         'born_leshouche.inc')
+                         'born_leshouche.inc', 'density_info.inc')
 
-    def trim_born_dir(self, born_path):
+    def trim_born_dir(self, born_path, keep_virtuals=False):
         """Delete every file in born_path that 'check_fks' does not need.
 
         The Born-only check links only the FKSSA objects (born, sborn_sf, the
@@ -5785,6 +5935,11 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         keep = set(self.check_fks_sources) | set(self.check_fks_runtime)
         keep |= set(os.path.basename(f)
                     for f in glob.glob(os.path.join(born_path, 'b_sf_*.f')))
+        if keep_virtuals:
+            # the density matrix of the virtual comes from its MadLoop code
+            keep |= set(os.path.basename(f) for f in
+                        glob.glob(os.path.join(born_path, 'V[0-9]*')))
+            keep.add('MadLoop5_resources')
         # follow the 'include' statements of the compiled sources so that no
         # needed .inc is dropped (a missed one would only surface as a build
         # failure, which the acceptance suite would catch, but be safe here)
@@ -5892,6 +6047,16 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             finalize(matrix_elements, history, mg5options, flaglist)
         subproc = os.path.join(self.dir_path, 'SubProcesses')
         open(os.path.join(subproc, 'check_sa_fks_mode'), 'w').write('1\n')
+        if self.opt.get('fks_density'):
+            # The density matrix of the virtual needs the colour flows of every
+            # helicity: helicities equal up to a sign must not be merged (2).
+            for path in (pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'),
+                         pjoin(subproc, 'MadLoopParams.dat')):
+                if not os.path.isfile(path):
+                    continue
+                ml_card = banner_mod.MadLoopParam(path)
+                ml_card['HelicityFilterLevel'] = min(ml_card['HelicityFilterLevel'], 1)
+                ml_card.write(path)
         # the P*/makefile 'include's these run-time option files; the Born
         # 'check_fks' target does not use their content, so empty stubs are
         # enough to let make resolve the includes without a full run setup
@@ -5919,11 +6084,17 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         alpha_s(MZ). The built-in set keeps LHAPDF out of the check."""
         super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
                                                                   history)
-        if not self.opt.get('fks_limits'):
+        # the frame of the helicities (--me_frame, or the --density legs),
+        # read from the run_card by test_soft_col_limits
+        frame = self.opt.get('fks_me_frame') or self.opt.get('fks_density')
+        if not self.opt.get('fks_limits') and not frame:
             return
         for name in ('run_card_default.dat', 'run_card.dat'):
             path = pjoin(self.dir_path, 'Cards', name)
             run_card = banner_mod.RunCardNLO(path)
-            run_card['pdlabel'] = 'nn23nlo'
-            run_card['reweight_pdf'] = [False]
+            if self.opt.get('fks_limits'):
+                run_card['pdlabel'] = 'nn23nlo'
+                run_card['reweight_pdf'] = [False]
+            if frame:
+                run_card.set('me_frame', list(frame), user=True)
             run_card.write(path)

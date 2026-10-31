@@ -397,6 +397,11 @@ C     and the powers RPOW(K) = (G/SAVED_G)**K used by BORN_GSCALE
       LOGICAL COUP_CHANGED, GSCALED
       SAVE SAVED_G
       DATA SAVED_G /0D0/
+## if(density) {
+C     the density-matrix projector W (DENS_W, DENS_W_ON)
+      include "density_info.inc"
+      COMPLEX*16 TW(NSQAMPSO)
+## }
 C ----------
 C BEGIN CODE
 C ----------
@@ -449,6 +454,11 @@ C     split order gets its power), instead of recomputing
             endif
          enddo
       endif
+## if(density) {
+C     the cached result is that of W = 1; a projected one is not cached
+      CALL DENSITY_W_INIT()
+      IF (DENS_W_ON) BORN_CACHE_OK=.FALSE.
+## }
 C     A repeated call: the same momenta as the last evaluation (the
 C     amplitudes are cached), the same FKS configuration, and nothing
 C     has touched the cached amplitudes since (BORN_CACHE_OK, reset by
@@ -497,6 +507,21 @@ C     AMP2/JAMP2 are still those of the last evaluation.
           ANS(2,I) = 0D0
       ENDDO
       hel_fac=1d0
+## if(density) {
+C     Projected on the density legs: Tr(W rho) instead of the helicity
+C     sum (W = 1). RHO is filled with the W-weighted colour density, so
+C     the colour-linked Borns (SB_SF_LINK) are projected as well.
+      IF (DENS_W_ON) THEN
+        CALL BORN_RHO_W(P1,TW)
+        DO I=1,NSQAMPSO
+          ANS(2,I)=TW(I)
+        ENDDO
+C       not a call of the helicity filter set up: a later unprojected
+C       call must still find NTRY < 2 if it is the first one
+        NTRY(nFKSprocess)=NTRY(nFKSprocess)-1
+        GOTO 100
+      ENDIF
+## }
 C     The JAMPs of every helicity are summed into the colour density
 C     RHO (BORN_RHO_ADD); the Born and the colour-linked Borns are then
 C     traces of RHO with their colour matrix. The Born of each helicity
@@ -530,6 +555,9 @@ C     is only needed on the first call, to find the good helicities.
 	  ENDIF
         ENDIF
       ENDDO
+## if(density) {
+ 100  CONTINUE
+## }
       CALL BORN_RHO_TRACE(0,BORNRHO)
       DO I=1,NSQAMPSO
       ANS(1,I)=BORNRHO(I)/DBLE(IDEN)
@@ -541,6 +569,9 @@ C     is only needed on the first call, to find the good helicities.
       BORN_CACHE_ANS(:,:)=ANS(:,:)
       BORN_CACHE_NFKS=nFKSprocess
       BORN_CACHE_OK=.TRUE.
+## if(density) {
+      IF (DENS_W_ON) BORN_CACHE_OK=.FALSE.
+## }
       END
 
 
@@ -1288,6 +1319,375 @@ C this is to avoid fake non-zero contributions
       return
       END
 
+## if(density) {
+C ----------------------------------------------------------------------
+C Spin-density matrix of the Born, for the legs POS_B
+C (density_info.inc), summed over the helicities of every other leg
+C (docs/nlo_density_matrix_plan.md).
+C Element (C1,C2) of a combination pair is
+C     sum_rest sum_ij S_ij J_i(C1,rest) conj(J_j(C2,rest)) / IDEN
+C with S the Born colour matrix (ILINK=0) or that of a colour link, J
+C the Born JAMPs (GET_AMP_BORN, GET_JAMP_BORN), contracted by
+C BORN_COLOR_CONTRACT. The elements C1 <= C2 are packed row by row:
+C (1,1),(1,2),...,(1,N),(2,2),..., as GET_DENSITY at LO.
+C ----------------------------------------------------------------------
+
+      SUBROUTINE BORN_DENS_TABLES(HELIDX, NREST, REPHEL)
+C The Born helicity configurations (rows of the NHEL table) grouped by
+C the helicities of the legs that do not carry the density matrix (the
+C "rest"): HELIDX(C,R) is the configuration with the rest R and the
+C density legs in their combination C; REPHEL(R) = HELIDX(1,R).
+      IMPLICIT NONE
+      include "nexternal.inc"
+      include "density_info.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER HELIDX(N_COMB_B,NCOMB), NREST, REPHEL(NCOMB)
+      INTEGER I,IHEL,JHEL,C,K
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+      INTEGER NH(NEXTERNAL-1)
+      LOGICAL ISFIRST, SAME
+      NREST=0
+      DO IHEL=1,NCOMB
+        ISFIRST=.TRUE.
+        DO K=1,N_CHANGING_B
+          IF (NHEL(POS_B(K),IHEL).NE.ALLOW_HEL_B(K)) ISFIRST=.FALSE.
+        ENDDO
+        IF (.NOT.ISFIRST) CYCLE
+        NREST=NREST+1
+        REPHEL(NREST)=IHEL
+        DO C=1,N_COMB_B
+          NH(:)=NHEL(:,IHEL)
+          DO K=1,N_CHANGING_B
+            NH(POS_B(K))=ALLOW_HEL_B((C-1)*N_CHANGING_B+K)
+          ENDDO
+          HELIDX(C,NREST)=0
+          DO JHEL=1,NCOMB
+            SAME=.TRUE.
+            DO I=1,NEXTERNAL-1
+              IF (NHEL(I,JHEL).NE.NH(I)) SAME=.FALSE.
+            ENDDO
+            IF (SAME) HELIDX(C,NREST)=JHEL
+          ENDDO
+          IF (HELIDX(C,NREST).EQ.0) THEN
+            WRITE(*,*) 'ERROR: Born helicity not found:', NH
+            STOP 1
+          ENDIF
+        ENDDO
+      ENDDO
+      END
+
+
+      SUBROUTINE BORN_DENS_FLIP(GLU_IJ, NREST, REPHEL, RFLIP, H0)
+C The rest R' of the rest R with the helicity of leg GLU_IJ (the FKS
+C mother, a gluon) flipped: RFLIP(R) = R', or 0 if the helicity of
+C GLU_IJ in R is not H0 = NHEL(GLU_IJ,1), the one BORN starts from (the
+C spin-correlated Born pairs the H0 and -H0 JAMPs).
+      IMPLICIT NONE
+      include "nexternal.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER GLU_IJ, NREST, REPHEL(NCOMB), RFLIP(NCOMB), H0
+      INTEGER I,R,R2
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+      LOGICAL SAME
+      H0=NHEL(GLU_IJ,1)
+      DO R=1,NREST
+        RFLIP(R)=0
+        IF (NHEL(GLU_IJ,REPHEL(R)).NE.H0) CYCLE
+        DO R2=1,NREST
+          SAME=NHEL(GLU_IJ,REPHEL(R2)).EQ.-H0
+          DO I=1,NEXTERNAL-1
+            IF (I.NE.GLU_IJ.AND.NHEL(I,REPHEL(R2)).NE.NHEL(I,REPHEL(R))) SAME=.FALSE.
+          ENDDO
+          IF (SAME) RFLIP(R)=R2
+        ENDDO
+        IF (RFLIP(R).EQ.0) THEN
+          WRITE(*,*) 'ERROR: flipped FKS-gluon helicity not found'
+          STOP 1
+        ENDIF
+      ENDDO
+      END
+
+
+      SUBROUTINE BORN_DENS_JAMPS(P, USE_SAVED, JALL)
+C The Born JAMPs of every helicity configuration. With USE_SAVED (the
+C call from SBORN) the amplitudes are shared with BORN through saveamp:
+C taken from it if the Born was already computed at these momenta
+C (calculatedBorn), stored in it otherwise; and AMP2/JAMP2 are summed
+C over the helicities as in BORN. JAMP2 gives the colour-flow fractions
+C of the MC counterterms (get_mbar): they stay those of the helicity sum,
+C so that the projected MC counterterm is linear in W.
+      IMPLICIT NONE
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d)
+      REAL*8 P(0:3,NEXTERNAL-1)
+      LOGICAL USE_SAVED
+      COMPLEX*16 JALL(NCOLOR,NAMPSO,NCOMB)
+      INTEGER I,IHEL
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+      INTEGER NH(NEXTERNAL-1)
+      COMPLEX*16 AMP(NGRAPHS)
+      double complex saveamp(ngraphs,max_bhel)
+      common/to_saveamp/saveamp
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      Double Precision amp2(ngraphs), jamp2(0:ncolor,0:nampso)
+      common/to_amps_born/  amp2,       jamp2
+      INTEGER J, M
+      DO IHEL=1,NCOMB
+        IF (USE_SAVED.AND.calculatedBorn) THEN
+          AMP(1:NGRAPHS)=saveamp(1:NGRAPHS,IHEL)
+        ELSE
+          NH(:)=NHEL(:,IHEL)
+          CALL GET_AMP_BORN(P,NH,AMP)
+          IF (USE_SAVED) saveamp(1:NGRAPHS,IHEL)=AMP(1:NGRAPHS)
+        ENDIF
+        CALL GET_JAMP_BORN(AMP,JALL(1,1,IHEL))
+        IF (USE_SAVED) THEN
+          DO J=1,NGRAPHS
+            amp2(J)=amp2(J)+AMP(J)*DCONJG(AMP(J))
+          ENDDO
+          DO M=1,NAMPSO
+            DO J=1,NCOLOR
+              jamp2(J,M)=jamp2(J,M)+JALL(J,M,IHEL)*DCONJG(JALL(J,M,IHEL))
+            ENDDO
+          ENDDO
+        ENDIF
+      ENDDO
+      END
+
+
+      SUBROUTINE BORN_RHO_W(P, TW)
+C For SBORN with the projector W on (DENS_W_ON): fills the colour
+C density RHO of BORN_RHO_ADD with
+C   RHO(ij,K) = Re sum_rest sum_(C1,C2) W(C2,C1) J_i(C1) conj(J_j(C2))
+C (W = 1 gives back the helicity sum), so that the Born and the colour-
+C linked Borns are Tr(W rho) through BORN_RHO_TRACE, and returns in TW
+C the projected spin-correlated Born, sum W(C2,C1) T(C1,C2) (not
+C divided by IDEN, as ANS(2,:) of BORN).
+      IMPLICIT NONE
+      include "nexternal.inc"
+      include "density_info.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      REAL*8 P(0:3,NEXTERNAL-1)
+      COMPLEX*16 TW(NSQAMPSO)
+      COMPLEX*16 JALL(NCOLOR,NAMPSO,NCOMB), JW(NCOLOR,NAMPSO,N_COMB_B)
+      COMPLEX*16 RES(NSQAMPSO), ZTEMP
+      INTEGER HELIDX(N_COMB_B,NCOMB), NREST, REPHEL(NCOMB), RFLIP(NCOMB)
+      INTEGER R,C1,C2,I,J,M,N,K,CF_INDEX,GLU_IJ,H0
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+      logical force_ijglu_zero
+      common /to_force_ijglu/ force_ijglu_zero
+      INTEGER SQSOINDEXB
+%(ij_lines)s
+      CALL BORN_DENS_TABLES(HELIDX, NREST, REPHEL)
+      CALL BORN_DENS_JAMPS(P, .TRUE., JALL)
+      CALL BORN_RHO_RESET()
+      DO R=1,NREST
+C       JW(:,:,C2) = sum_C1 W(C2,C1) J(C1)
+        JW(:,:,:)=(0d0,0d0)
+        DO C2=1,N_COMB_B
+          DO C1=1,N_COMB_B
+            IF (DENS_W(C2,C1).NE.(0d0,0d0)) JW(:,:,C2)=JW(:,:,C2)+DENS_W(C2,C1)*JALL(:,:,HELIDX(C1,R))
+          ENDDO
+        ENDDO
+        DO M=1,NAMPSO
+          DO N=1,NAMPSO
+            K=SQSOINDEXB(M,N)
+            CF_INDEX=0
+            DO I=1,NCOLOR
+              DO J=I,NCOLOR
+                CF_INDEX=CF_INDEX+1
+                ZTEMP=(0d0,0d0)
+                DO C2=1,N_COMB_B
+                  ZTEMP=ZTEMP+JW(I,M,C2)*DCONJG(JALL(J,N,HELIDX(C2,R)))
+                ENDDO
+                RHO(CF_INDEX,K)=RHO(CF_INDEX,K)+DBLE(ZTEMP)
+              ENDDO
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+C     the spin-correlated Born
+      TW(:)=(0d0,0d0)
+      GLU_IJ=IJ_VALUES(NFKSPROCESS)
+      IF (FORCE_IJGLU_ZERO) GLU_IJ=0
+      IF (GLU_IJ.EQ.0) RETURN
+      CALL BORN_DENS_FLIP(GLU_IJ, NREST, REPHEL, RFLIP, H0)
+      DO R=1,NREST
+        IF (RFLIP(R).EQ.0) CYCLE
+        DO C1=1,N_COMB_B
+          DO C2=1,N_COMB_B
+            IF (DENS_W(C2,C1).EQ.(0d0,0d0)) CYCLE
+            CALL BORN_COLOR_CONTRACT(0,JALL(1,1,HELIDX(C1,RFLIP(R))),JALL(1,1,HELIDX(C2,R)),RES)
+            TW(:)=TW(:)+DENS_W(C2,C1)*RES(:)
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+
+      SUBROUTINE GET_DENSITY_BORN(P, RHOD)
+C The density matrix of the Born (RHOD(:,0)) and of the colour-linked
+C Borns (RHOD(:,ILINK), ILINK numbered as in born_links.dat and
+C SB_SF_LINK), summed over the split orders, divided by IDEN.
+C Tr RHOD(:,0) is SBORN, Tr RHOD(:,ILINK) is SB_SF_LINK(ILINK) (all
+C split orders).
+      IMPLICIT NONE
+      include "nexternal.inc"
+      include "density_info.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NLINKS
+      PARAMETER (NCOLOR=%(ncolor)d, NLINKS=%(nlinks)d)
+      INTEGER NPACK
+      PARAMETER (NPACK=N_COMB_B*(N_COMB_B+1)/2)
+      REAL*8 P(0:3,NEXTERNAL-1)
+      COMPLEX*16 RHOD(NPACK,0:NLINKS)
+      COMPLEX*16 JALL(NCOLOR,NAMPSO,NCOMB), RES(NSQAMPSO)
+      INTEGER HELIDX(N_COMB_B,NCOMB), NREST, REPHEL(NCOMB)
+      INTEGER R,C1,C2,L,SOL,IDEN
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+%(den_factor_lines)s
+      IDEN=IDEN_VALUES(NFKSPROCESS)
+      CALL BORN_DENS_TABLES(HELIDX, NREST, REPHEL)
+      CALL BORN_DENS_JAMPS(P, .FALSE., JALL)
+      RHOD(:,:)=(0d0,0d0)
+      DO R=1,NREST
+        SOL=0
+        DO C1=1,N_COMB_B
+          DO C2=C1,N_COMB_B
+            SOL=SOL+1
+            DO L=0,NLINKS
+              CALL BORN_COLOR_CONTRACT(L,JALL(1,1,HELIDX(C1,R)),JALL(1,1,HELIDX(C2,R)),RES)
+              RHOD(SOL,L)=RHOD(SOL,L)+SUM(RES)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+      RHOD(:,:)=RHOD(:,:)/DBLE(IDEN)
+      END
+
+
+      SUBROUTINE GET_DENSITY_BORNTILDE(P, T, TP)
+C The two transition densities of the spin-correlated Born, for the FKS
+C mother GLU_IJ of the current FKS configuration (a gluon of helicity H0
+C in the Born, -H0 flipped):
+C   T(C1,C2)  = sum_rest sum_ij S_ij J_i(C1,-H0) conj(J_j(C2,H0)) / IDEN
+C   TP(C1,C2) = sum_rest sum_ij S_ij J_i(C1,H0) conj(J_j(C2,-H0)) / IDEN
+C summed over the split orders. The trace of T is BORNTILDE, and for a
+C hermitian W, Tr(W TP) = conj(Tr(W T)). Zero if GLU_IJ = 0.
+      IMPLICIT NONE
+      include "nexternal.inc"
+      include "density_info.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d)
+      REAL*8 P(0:3,NEXTERNAL-1)
+      COMPLEX*16 T(N_COMB_B,N_COMB_B), TP(N_COMB_B,N_COMB_B)
+      COMPLEX*16 JALL(NCOLOR,NAMPSO,NCOMB), RES(NSQAMPSO)
+      INTEGER HELIDX(N_COMB_B,NCOMB), NREST, REPHEL(NCOMB), RFLIP(NCOMB)
+      INTEGER R,C1,C2,IDEN,GLU_IJ,H0
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+      logical force_ijglu_zero
+      common /to_force_ijglu/ force_ijglu_zero
+%(den_factor_lines)s
+%(ij_lines)s
+      T(:,:)=(0d0,0d0)
+      TP(:,:)=(0d0,0d0)
+      GLU_IJ=IJ_VALUES(NFKSPROCESS)
+      IF (FORCE_IJGLU_ZERO) GLU_IJ=0
+      IF (GLU_IJ.EQ.0) RETURN
+      IDEN=IDEN_VALUES(NFKSPROCESS)
+      CALL BORN_DENS_TABLES(HELIDX, NREST, REPHEL)
+      CALL BORN_DENS_FLIP(GLU_IJ, NREST, REPHEL, RFLIP, H0)
+      CALL BORN_DENS_JAMPS(P, .FALSE., JALL)
+      DO R=1,NREST
+        IF (RFLIP(R).EQ.0) CYCLE
+        DO C1=1,N_COMB_B
+          DO C2=1,N_COMB_B
+            CALL BORN_COLOR_CONTRACT(0,JALL(1,1,HELIDX(C1,RFLIP(R))),JALL(1,1,HELIDX(C2,R)),RES)
+            T(C1,C2)=T(C1,C2)+SUM(RES)
+            CALL BORN_COLOR_CONTRACT(0,JALL(1,1,HELIDX(C1,R)),JALL(1,1,HELIDX(C2,RFLIP(R))),RES)
+            TP(C1,C2)=TP(C1,C2)+SUM(RES)
+          ENDDO
+        ENDDO
+      ENDDO
+      T(:,:)=T(:,:)/DBLE(IDEN)
+      TP(:,:)=TP(:,:)/DBLE(IDEN)
+      END
+
+
+      SUBROUTINE DENSITY_W_INIT()
+C Reads, once, the projector W from the file density_w.dat if it exists
+C (as written by 'launch' for the limit test of each element of the
+C density matrix): one line 'C1 C2 Re Im' per non-zero element W(C1,C2).
+C Without the file the projector stays off.
+      IMPLICIT NONE
+      include "density_info.inc"
+      LOGICAL DONE
+      DATA DONE /.FALSE./
+      SAVE DONE
+      INTEGER C1, C2
+      DOUBLE PRECISION WR, WI
+      IF (DONE) RETURN
+      DONE=.TRUE.
+      OPEN(UNIT=81,FILE='density_w.dat',STATUS='OLD',ERR=20)
+      DENS_W(:,:)=(0d0,0d0)
+ 10   READ(81,*,END=15,ERR=15) C1, C2, WR, WI
+      DENS_W(C1,C2)=DCMPLX(WR,WI)
+      GOTO 10
+ 15   CLOSE(81)
+      DENS_W_ON=.TRUE.
+      WRITE(*,*) 'Density matrix: projector W read from density_w.dat'
+ 20   RETURN
+      END
+
+
+      SUBROUTINE GET_DENSITY_BORN_NLINKS(N)
+C The number of colour links: the last index of RHOD (GET_DENSITY_BORN)
+      IMPLICIT NONE
+      INTEGER N
+      N=%(nlinks)d
+      END
+
+
+      BLOCK DATA DENSITY_PROJ_DATA
+C The projector W is off by default: every routine returns the sum over
+C the helicities of the density legs, as without --density.
+      IMPLICIT NONE
+      include "density_info.inc"
+      DATA DENS_W_ON /.FALSE./
+      END
+
+## }
 
       BLOCK DATA GOODHELS
       INTEGER     NCOMB

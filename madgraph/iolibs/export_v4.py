@@ -6123,9 +6123,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     # write_matrix_element_v4
     #===========================================================================
     def write_matrix_element_v4(self, writer, matrix_element, fortran_model,
-                                write=True, proc_prefix='', return_replace_dict=False):
+                                write=True, proc_prefix='', return_replace_dict=False,
+                                density_prefix=None):
         """Export a matrix element to a matrix.f file in MG4 standalone format
-        if write is on False, just return the replace_dict and not write anything."""
+        if write is on False, just return the replace_dict and not write anything.
+        density_prefix names GET_DENSITY/GET_ALL_INTER of the split-orders
+        template (default: proc_prefix). MadLoop's born_matrix.f moves them out
+        of the way of the virtual's own GET_DENSITY."""
 
         if not matrix_element.get('processes') or \
                not matrix_element.get('diagrams'):
@@ -6419,6 +6423,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 fa_func_name, n_table, flav_table_flat,
                 nexternal_decl=bs_nexternal)
 
+        replace_dict['density_prefix'] = replace_dict['proc_prefix'] \
+                         if density_prefix is None else density_prefix
         replace_dict['template_file'] = pjoin(_file_path, 'iolibs', 'template_files', matrix_template)
         replace_dict['template_file2'] = pjoin(_file_path, \
                                    'iolibs/template_files/split_orders_helping_functions.inc')
@@ -14173,6 +14179,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         amcatnlo_options['running'] = cmd._curr_model.get('running_elements')
         amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
         amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
+        amcatnlo_options['fks_density'] = getattr(cmd, '_fks_density', None)
+        amcatnlo_options['fks_me_frame'] = getattr(cmd, '_fks_me_frame', None)
         logger.info("Writing out the FKS Born building blocks in a standalone format")
         amcatnlo_options['export_format']='FKS5_optimized'
         return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)

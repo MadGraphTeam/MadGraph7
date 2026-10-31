@@ -45,6 +45,10 @@ C     These are constants related to the split orders
       INTEGER    NSO, NSQUAREDSO, NAMPSO
 	  PARAMETER (NSO=%(nSO)d, NSQUAREDSO=%(nSquaredSO)d, NAMPSO=%(nAmpSO)d)
 
+## if(UseDensity) {
+      LOGICAL STORE_DENSITY_JAMPS
+      COMMON/%(proc_prefix)sDENSITY_STORE/STORE_DENSITY_JAMPS
+## }
 ##if(ComputeColorFlows) {
 C The variables below are just used in the context of a JAMP consistency check turned off by default.
       LOGICAL DIRECT_ME_COMPUTATION, ME_COMPUTATION_FROM_JAMP
@@ -620,6 +624,9 @@ C We should compute the color flow either if it contributes to the final result 
 IF (((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP).OR.((H.EQ.USERHEL.OR.USERHEL.EQ.-1).and.(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)))) THEN
 C The cumulative quantities must only be computed if that helicity contributes according to user request (second argument of the subroutine below).
   CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS(HEL_MULT)  
+## if(UseDensity) {
+  IF (STORE_DENSITY_JAMPS) CALL %(proc_prefix)sSTORE_JAMP(H)
+## }
   IF(ME_COMPUTATION_FROM_JAMP) THEN
     CALL %(proc_prefix)sCOMPUTE_RES_FROM_JAMP(BUFFRES,HEL_MULT)
     IF(((.NOT.DIRECT_ME_COMPUTATION).AND.ME_COMPUTATION_FROM_JAMP)) THEN

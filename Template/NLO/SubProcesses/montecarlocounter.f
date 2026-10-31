@@ -2869,6 +2869,8 @@ c the same method
 
       double precision pboost(0:3)
       logical me_boosted
+      integer frame_id
+      common/to_frame_me/frame_id
 
       double precision xi_i_fks_ev,y_ij_fks_ev,t
       double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
@@ -2916,8 +2918,15 @@ C check if momenta have to be rotated
 c The R_y(pi) flip only put a j_fks=2 mother back on +z, meaningless once the
 c mother is off the beam axis; dropped under a frame, as in sborncol_isr. Do
 c not reinstate: it would flip the polarisation axis of a leg at rest.
+c "Under a frame" means whenever one is requested (frame_id.ne.0), not only
+c when its boost is non-trivial: a frame that coincides with the Born c.m.
+c (e.g. me_frame=[3,4] for p p > w+ z) is not boosted, but rotating the Born
+c still rotates the helicity states the frame defines, which changes the
+c off-diagonal elements of a spin-density matrix (and sborncol_isr, the ME
+c counterterm, never rotates the Born).
       if ((ileg.eq.1.or.ileg.eq.2) .and.
-     &    (j_fks.eq.2 .and. nexternal-1.ne.3) .and. .not.me_boosted) then
+     &    (j_fks.eq.2 .and. nexternal-1.ne.3) .and. .not.me_boosted
+     &    .and. frame_id.eq.0) then
 c Rotation according to innerpin.m. Use rotate_invar() if a more 
 c general rotation is needed.
 c Exclude 2->1 (at the Born level) processes: matrix elements are

@@ -407,14 +407,17 @@ c because otherwise fresh random will be used...
                   call set_cms_stuff(-100)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx)
               else
+c The reference (the soft limit) does not depend on i: it is the one
+c computed above on the counter-event kinematics. Recomputing it here
+c would compare the single xmcsubt_wrap call below with itself.
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
                   call xmcsubt_wrap(p,xi_i_fks_ev,y_ij_fks_ev,fx)
-                  fxl(i)=fx*wgt
-                  wfxl(i)=jac_cnt(0)
+                  fxl(i)=fxl(1)
+                  wfxl(i)=wfxl(1)
                   do iamp=1,amp_split_size
-                     fxl_split(i,iamp) = amp_split_mc(iamp)*jac_cnt(0)
-                     wfxl_split(i,iamp)=jac_cnt(0)
+                     fxl_split(i,iamp) = fxl_split(1,iamp)
+                     wfxl_split(i,iamp)= wfxl_split(1,iamp)
                   enddo
                endif
                limit(i)=fx*wgt
@@ -586,6 +589,9 @@ c
             enddo
 
             call set_cms_stuff(-100)
+c No new phase-space point in between, so clear the 'xmcsubt done' bit
+c by hand: with ilim=0 the call above was already an xmcsubt_wrap one.
+            MCcntcalled=0
             if (ilim.eq.2) then
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx)
             else
@@ -632,14 +638,15 @@ c
                   call set_cms_stuff(-100)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx)
                else
+c Same as in the soft test: the collinear limit is the i=1 reference.
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
                   call xmcsubt_wrap(p,xi_i_fks_ev,y_ij_fks_ev,fx)
-                  fxl(i)=fx*wgt
-                  wfxl(i)=jac_cnt(0)
+                  fxl(i)=fxl(1)
+                  wfxl(i)=wfxl(1)
                   do iamp=1,amp_split_size
-                     fxl_split(i,iamp) = amp_split_mc(iamp)*jac_cnt(1)
-                     wfxl_split(i,iamp) = jac_cnt(1)
+                     fxl_split(i,iamp) = fxl_split(1,iamp)
+                     wfxl_split(i,iamp) = wfxl_split(1,iamp)
                   enddo
                endif
                limit(i)=fx*wgt
