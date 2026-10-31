@@ -635,6 +635,13 @@ c111      logical set_goodjet(n_max_cl) ! variable for debugging unset call
       integer fsnum(2),ida(2),imo,jcode
       logical chclusold,fail,increasecode
       save chclusold
+      logical checked_jet_flavours
+      data checked_jet_flavours/.false./
+      save checked_jet_flavours
+      integer idup(nexternal,maxproc,maxsproc)
+      integer mothup(2,nexternal)
+      integer icolup(2,nexternal,maxflow,maxsproc)
+      include 'leshouche.inc'
       integer tmpindex
       integer pdgm, pdgid1, pdgid2
 
@@ -671,6 +678,34 @@ c
 c     First time, cluster according to this config and store jets
 c     (following times, only accept configurations if the same partons
 c      are flagged as jets)
+c     The clustering labels (ipdgcl) and the jet memo are kept per
+c     subprocess, not per flavour combination: the combinations grouped
+c     in a subprocess must agree on which legs are jets. They do not when
+c     a massless quark is above maxjetflavor (e.g. massless b with
+c     maxjetflavor=4), and the matching would then use the cuts, jets
+c     and PDF ratios of another flavour (#456).
+      if(.not.checked_jet_flavours.and.ickkw.gt.0)then
+         checked_jet_flavours=.true.
+         do k=1,maxsproc
+            do m=2,maxproc
+               if(idup(1,m,k).eq.0) cycle
+               do i=1,nexternal
+                  if(isjet(idup(i,m,k)).neqv.isjet(idup(i,1,k)))then
+                     open(unit=26,file='../../../error',status='unknown')
+                     write(26,*) 'Error: matching (ickkw>0) needs ',
+     $                 'maxjetflavor to include every massless quark: ',
+     $                 'pdg ',idup(i,m,k),' and ',idup(i,1,k),
+     $                 ' share a subprocess but only one is a jet'
+                     write(*,*) 'Error: matching (ickkw>0) needs ',
+     $                 'maxjetflavor to include every massless quark: ',
+     $                 'pdg ',idup(i,m,k),' and ',idup(i,1,k),
+     $                 ' share a subprocess but only one is a jet'
+                     stop 1
+                  endif
+               enddo
+            enddo
+         enddo
+      endif
       chclusold=chcluster
       if(njetstore(iconfig).eq.-1)then
          chcluster=.true.
@@ -756,7 +791,7 @@ c        jlast is last parton on this side This means
 c        the last cluster which is still QCD.
          jlast(i)=0
 c        jcentral is the central scale vertex on this side. i.e it stops
-c        when the T channel particles is not colored anymore.
+c        when the T channel particle is not colored anymore.
          jcentral(i)=0
 c        qcdline gives whether this IS line is QCD
          qcdline(i)=isqcd(ipdgcl(ibeam(i),igraphs(1),iproc))
@@ -1156,7 +1191,7 @@ c     We have a qcd line going through the whole event, use single scale
             endif
          endif
       endif
-      if(.not. fixed_fac_scale1.or. fixed_fac_scale2) then
+      if(.not.fixed_fac_scale1.or..not.fixed_fac_scale2) then
          if(.not.fixed_fac_scale1) q2fact(1)=scalefact**2*q2fact(1)
          if(.not.fixed_fac_scale2) q2fact(2)=scalefact**2*q2fact(2)
          if (.not.keepq2bck)then
@@ -1395,6 +1430,9 @@ c     q2bck holds the central q2fact scales
       real*8 q2bck(2)
       integer njets,iqjets(nexternal)
       common /to_rw/jlast,njetstore,iqjetstore,njets,iqjets,q2bck
+c     per-event copy of q2bck (set in update_scale_coupling_ivec)
+      double precision all_q2bck(2,VECSIZE_MEMMAX)
+      common /to_rw_vec/all_q2bck
       integer idup(nexternal,maxproc,maxsproc)
       integer mothup(2,nexternal)
       integer icolup(2,nexternal,maxflow,maxsproc)
@@ -1444,7 +1482,7 @@ c     ipart gives external particle number chain
 
       if(ickkw.le.0.and..not.use_syst) return
 
-c   Set mimimum kt scale, depending on highest mult or not
+c   Set minimum kt scale, depending on highest mult or not
       if(hmult.or.ickkw.eq.1)then
         pt2min=0
       else
@@ -1466,37 +1504,37 @@ c     Guard against invalid subprocess selection (can happen if IPSEL is unset)
          rewgt = 0d0
          return
       endif
-c     Set incoming particle identities
-      ipdgcl(1,igraphs(1),iproc)=idup(1,ipsel,iproc)
-      ipdgcl(2,igraphs(1),iproc)=idup(2,ipsel,iproc)
-      if (btest(mlevel,2)) then
-         write(*,*) 'Set particle identities: ',
-     $        1,ipdgcl(1,igraphs(1),iproc),
-     $        ' and ',
-     $        2,ipdgcl(2,igraphs(1),iproc)
-
-      endif
-      
+c     The flavours of this event are those of row IPSEL of leshouche.inc,
+c     as in DSIG. The rows always carry physical pdg codes (merged legs such
+c     as 81 are expanded per flavour), while FLAVOR(:) only holds the
+c     position of the coupling-class representative (see cluster).
+      do j=1,2
+         if(abs(idup(j,ipsel,iproc)).ge.81.and.
+     $        abs(idup(j,ipsel,iproc)).le.83)then
+            write(*,*) 'Error: rewgt: merged particle ',idup(j,ipsel,iproc),
+     $           ' in leshouche.inc (row ',ipsel,'): no physical pdg for',
+     $           ' the PDF of beam ',j
+            stop 1
+         endif
+      enddo
 
       if(ickkw.le.0)then
 c     Store pdf information for systematics studies (initial)
          if(use_syst)then
             do j=1,2
                 n_pdfrw(j,ivec)=1
-                if(abs(ipdgcl(j,igraphs(1),iproc)).eq.81) then
-                   i_pdgpdf(1,j,ivec)=abs(flavor(j))*sign(1,ipdgcl(j,igraphs(1),iproc))
-                else
-                   i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
-                endif
+                i_pdgpdf(1,j,ivec)=idup(j,ipsel,iproc)
                 s_xpdf(1,j,ivec)=xbk(ib(j))
                 s_qpdf(1,j,ivec)=sqrt(q2fact(j))
             enddo
            endif
-         asref=0 ! usefull for syscalc
+         asref=0 ! useful for syscalc
          goto 100
       endif
 
 
+c     restore q2bck of this event (set by the first call to setclscales)
+      q2bck(:) = all_q2bck(:,ivec)
       if(.not.setclscales(p,.true., ivec, flavor)) then ! assign the correct id information.(preserve q2bck)
 c         write(*,*) "Fail to cluster the events from the rewgt function"
 c         stop 1
@@ -1505,6 +1543,19 @@ c         stop 1
       endif
       vec_igraph(ivec) = igraphs(1)  ! save MLM-matched graph for this event
 
+c     Set the identities of the incoming partons and of the jets of the
+c     clustered graph to the flavours of this event: setclscales leaves there
+c     the representative of the coupling class of a grouped subprocess (e.g.
+c     d for s s~ > z, u for c c~ > z), which would otherwise enter the PDF
+c     ratios, the Sudakov factors and the pdfrwt information below. Other
+c     legs are left as set by cluster (nothing below reads their flavour).
+      do i=1,nexternal
+         if(i.le.2.or.isjet(idup(i,ipsel,iproc)))
+     $        ipdgcl(ishft(1,i-1),igraphs(1),iproc)=idup(i,ipsel,iproc)
+         if (btest(mlevel,2))
+     $        write(*,*) 'Set particle identities: ',
+     $        i,ipdgcl(ishft(1,i-1),igraphs(1),iproc)
+      enddo
 
 c     Store pdf information for systematics studies (initial)
 c     need to be done after      setclscales since that one clean the syscalc value
@@ -1568,12 +1619,6 @@ c     Prepare for resetting q2fact based on PDF reweighting
 c     Prepare checking for parton vertices
       do i=1,nexternal
          j=ishft(1,i-1)
-c        Set jet identities according to chosen subprocess
-         if(isjet(idup(i,ipsel,iproc)))
-     $        ipdgcl(j,igraphs(1),iproc)=idup(i,ipsel,iproc)
-         if (btest(mlevel,2))
-     $        write(*,*) 'Set particle identities: ',
-     $        i,ipdgcl(j,igraphs(1),iproc)
          if(i.le.2)then
             goodjet(j)=isparton(ipdgcl(j,igraphs(1),iproc))
          elseif(iqjets(i).gt.0) then
@@ -1843,15 +1888,9 @@ c     Need to multiply by: initial PDF, alpha_s^n_qcd to get
 c     factor in front of matrix element
          do i=1,2
             if (lpp(IB(i)).ne.0) then
-                if( abs(i_pdgpdf(1,i,ivec)).ne.81)then
                 s_rwfact(ivec)=s_rwfact(ivec)*pdg2pdf(abs(lpp(IB(i))),
      $           i_pdgpdf(1,i,ivec)*sign(1,lpp(IB(i))),IB(i),
      $           s_xpdf(1,i,ivec),s_qpdf(1,i,ivec))
-            else
-                s_rwfact(ivec)=s_rwfact(ivec)*pdg2pdf(abs(lpp(IB(i))),
-     $           abs(flavor(i))*sign(1, i_pdgpdf(1,i,ivec))*sign(1,lpp(IB(i))),IB(i),
-     $           s_xpdf(1,i,ivec),s_qpdf(1,i,ivec))
-            endif
             endif
          enddo
          if (asref.gt.0d0.and.n_qcd(ivec).le.nexternal)then
@@ -1865,41 +1904,40 @@ c            s_rwfact=0d0
       end
 
       subroutine update_scale_coupling(p, flavor, wgt)
-          use model_object
+c     Scalar version. P must be the momenta seen by the matrix element,
+c     i.e. after the symmetry permutation and mirroring of DSIGPROC.
       implicit none
-
-C
-C     PARAMETERS
-C
-      real*8 PI
-      parameter( PI = 3.14159265358979323846d0 )
-
-      include 'genps.inc'
-
       include 'nexternal.inc'
-      include 'maxamps.inc'
-c     include 'vector.inc' ! defines VECSIZE_MEMMAX
-      include 'cluster.inc'     ! includes vector.inc that defines VECSIZE_MEMMAX
-      include 'run.inc'
-      include 'coupl.inc' ! needs VECSIZE_MEMMAX (defined in vector.inc)
-C      include 'maxparticles.inc'
-
+      double precision p(0:3,nexternal), wgt
       integer flavor(nexternal)
-      double precision all_p(4*maxdim/3+14,1), all_wgt(1)
-      double precision p(4*maxdim/3+14), wgt
-      double precision all_q2fact(2,1)
-      integer flavor_vec(nexternal,1)
-      integer i
-      all_p(:,1) = p(:)
-      all_wgt(1) = wgt
-      flavor_vec(:,1) = flavor
-      call update_scale_coupling_vec(all_p, all_wgt,all_q2fact, 1, flavor_vec)
-      wgt = all_wgt(1)
+      double precision q2fact_dum(2)
+      call update_scale_coupling_ivec(p, flavor, wgt, q2fact_dum, 1)
       return
       end
 
       
       subroutine update_scale_coupling_vec(all_p, all_wgt,all_q2fact, VECSIZE_USED, flavor_vec)
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      double precision all_p(4*maxdim/3+14,*), all_wgt(*)
+      double precision all_q2fact(2,*)
+      integer flavor_vec(nexternal,*)
+      integer i, VECSIZE_USED
+
+      do i =1, VECSIZE_USED
+         call update_scale_coupling_ivec(all_p(1,i), flavor_vec(1,i),
+     &        all_wgt(i), all_q2fact(1,i), i)
+      enddo
+      return
+      end
+
+
+      subroutine update_scale_coupling_ivec(p, flavor, wgt, q2fact_out, ivec)
+c     Set the scales (and the xqcut veto) of event IVEC and update the
+c     couplings accordingly. P must be the momenta seen by the matrix
+c     element, with ICONFIG and IPROC/IMIRROR set for that event, and
+c     FLAVOR the flavours of the event.
           use model_object
       implicit none
 
@@ -1918,11 +1956,10 @@ c     include 'vector.inc' ! defines VECSIZE_MEMMAX
       include 'coupl.inc' ! needs VECSIZE_MEMMAX (defined in vector.inc)
 C      include 'maxparticles.inc'
 
-      double precision all_p(4*maxdim/3+14,*), all_wgt(*)
-      double precision all_q2fact(2,*)
-      integer flavor_vec(nexternal,*)
-      integer i,j,k, VECSIZE_USED
+      double precision p(0:3,nexternal), wgt
       integer flavor(nexternal)
+      double precision q2fact_out(2)
+      integer ivec
 
       logical setclscales
       external setclscales
@@ -1932,59 +1969,55 @@ C      include 'maxparticles.inc'
 
       double precision all_scale(VECSIZE_MEMMAX)
       common/to_scale_vec/all_scale
+
+c     scale passed to the model: the extra running scale (mue_over_ref)
+c     of the running Wilson coefficients follows muR through it
+      double precision model_scale
+      common /model_scale/model_scale
+c     Common block for reweighting info
+c     q2bck holds the central q2fact scales
+      integer jlast(2)
+      integer njetstore(lmaxconfigs),iqjetstore(nexternal-2,lmaxconfigs)
+      real*8 q2bck(2)
+      integer njets,iqjets(nexternal)
+      common /to_rw/jlast,njetstore,iqjetstore,njets,iqjets,q2bck
+c     per-event copy of q2bck (restored in rewgt)
+      double precision all_q2bck(2,VECSIZE_MEMMAX)
+      common /to_rw_vec/all_q2bck
       
-c     integer firsttime
-c      data firsttime/.true./
-c      save firsttime
       if(.not.fixed_ren_scale) then
          scale = 0d0
+         call set_ren_scale(p,scale)
+         if(scale.gt.0)then
+            G = SQRT(4d0*PI*ALPHAS(scale))
+            all_scale(ivec) = scale
+            model_scale = scale
+         endif
       endif
-      do i =1, VECSIZE_USED
 
-         if(.not.fixed_ren_scale) then
-            call set_ren_scale(all_p(1,i),scale)
-            if(scale.gt.0)then
-               G = SQRT(4d0*PI*ALPHAS(scale))
-               all_scale(i) = scale
-            endif
-         endif
+      if(.not.fixed_fac_scale1.or..not.fixed_fac_scale2) then
+         call set_fac_scale(p,q2fact)
+      endif
 
-         if(.not.fixed_fac_scale1.or..not.fixed_fac_scale2) then
-            call set_fac_scale(all_p(1,i),q2fact)
-         endif
-
-c        Copy flavor array for this event from flavor_vec
-         do j=1,nexternal
-            flavor(j)=flavor_vec(j,i)
-         enddo
-
-         if(.not.setclscales(all_p(1,i) , .false., i, flavor))then
-            all_wgt(i) = 0d0
-         else
-            all_q2fact(1,i) = q2fact(1)
-            all_q2fact(2,i) = q2fact(2)
-            vec_igraph(i) = igraphs(1)
-         endif
-c         call save_cl_val_to(i)
-c      endif
+      if(.not.setclscales(p, .false., ivec, flavor))then
+         wgt = 0d0
+      else
+         q2fact_out(1) = q2fact(1)
+         q2fact_out(2) = q2fact(2)
+         vec_igraph(ivec) = igraphs(1)
+      endif
+      all_q2bck(:,ivec) = q2bck(:)
 
 c     Set couplings in model files
-        if(.not.fixed_ren_scale.or..not.fixed_couplings) then
-           if (.not.fixed_couplings)then
-              write(*,*) 'form factor with fixed_couplings not supported anymore'
-              write(*,*) ' please update model to use lorentz structure        '
-              stop 5
-c              pp(:)=all_p(:,i)
-           endif
-           call update_as_param(i)
-        endif
+      if(.not.fixed_ren_scale.or..not.fixed_couplings) then
+         if (.not.fixed_couplings)then
+            write(*,*) 'form factor with fixed_couplings not supported anymore'
+            write(*,*) ' please update model to use lorentz structure        '
+            stop 5
+         endif
+         call update_as_param(ivec)
+      endif
 
-c      IF (FIRSTTIME) THEN
-c        FIRSTTIME=.FALSE.
-c        write(6,*) 'alpha_s for scale ',scale,' is ', G**2/(16d0*atan(1d0))
-c      ENDIF
-
-      enddo
       return
       end
       

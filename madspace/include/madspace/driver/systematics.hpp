@@ -44,6 +44,22 @@ struct SystematicsConfig {
     std::vector<double> mur{1.};
     /// Factorization scale factors; `1.0` is the nominal point.
     std::vector<double> muf{1.};
+    /// Emission scale factors of an MLM merged sample, madevent's `alpsfact`:
+    /// the alpha_s of every clustering vertex is evaluated at the factor times
+    /// the vertex scale. `1.0` is the nominal point; the other values are
+    /// written in an "Emission scale variation" group. Only for events whose
+    /// record carries the vertex scales (ParticleRecord::f_alphas_scales).
+    std::vector<double> alps{1.};
+    /// If true, the events may carry an MLM pdf reweighting ladder
+    /// (ParticleRecord::f_pdf_ladder): every parton of the PDF set is then
+    /// made available, since a ladder step can be any of them.
+    bool pdf_ladder = false;
+    /// Range the varied scales of the pdf ladder are clamped to, normally
+    /// the Q range of the PDF grid, where LHAPDF freezes the density for
+    /// madevent; `0` disables a bound.
+    double ladder_min_scale = 0.;
+    /// See @ref ladder_min_scale.
+    double ladder_max_scale = 0.;
     /// If true, vary every `(mur, muf)` combination; if false, vary one
     /// factor at a time.
     bool together = true;
@@ -97,13 +113,21 @@ struct Variation {
     /// Dynamical scale choice; `-1` for the scale the events were generated
     /// with.
     int dyn = -1;
+    /// Emission scale factor of the MLM alpha_s vertices (madevent's
+    /// `alpsfact`); `1` for the nominal vertex scales.
+    double alps = 1.;
     /// Whether this is a scale variation (a non-nominal `mur`, `muf` or `dyn`
     /// at the nominal PDF member).
     bool is_scale() const {
         return pdf_index == -1 && (mur != 1. || muf != 1. || dyn != -1);
     }
+    /// Whether this is an emission scale variation (a non-nominal `alps` at
+    /// the nominal scales and PDF member).
+    bool is_emission() const { return pdf_index == -1 && !is_scale() && alps != 1.; }
     /// Whether this is the nominal point (nominal scale and PDF member).
-    bool is_nominal() const { return pdf_index == -1 && !is_scale(); }
+    bool is_nominal() const {
+        return pdf_index == -1 && !is_scale() && !is_emission();
+    }
 };
 
 /// The variations belonging to one PDF set, for computing an uncertainty band.
@@ -154,6 +178,10 @@ public:
      * @param me_flavor_remap  `me_flavor_remap[subprocess][flavor_index]` is
      *                         the flavor passed to that subprocess's matrix
      *                         element.
+     * @param nominal_pdf2     PDF of the second beam when its set differs from
+     *                         @p nominal_pdf (which is then the first beam's).
+     *                         PDF member variations are then dropped with a
+     *                         warning; the scale variations use both sets.
      */
     SystematicsCalculator(
         const SystematicsConfig& config,
@@ -162,7 +190,8 @@ public:
         const std::optional<AlphaSGrid>& nominal_alpha_s,
         ContextPtr context = nullptr,
         const std::vector<std::optional<MatrixElement>>& matrix_elements = {},
-        const nested_vector2<me_int_t>& me_flavor_remap = {}
+        const nested_vector2<me_int_t>& me_flavor_remap = {},
+        const std::optional<PdfGrid>& nominal_pdf2 = std::nullopt
     );
 
     /// The configuration passed to the constructor.
@@ -181,6 +210,9 @@ public:
     /// Indices into @ref variations of the scale variations (the envelope
     /// group).
     std::vector<std::size_t> scale_variation_indices() const;
+    /// Indices into @ref variations of the MLM emission scale variations
+    /// (their own envelope group).
+    std::vector<std::size_t> emission_variation_indices() const;
     /// The PDF groups, one per set with members among @ref variations.
     std::vector<PdfGroupInfo> pdf_groups() const;
 
@@ -257,6 +289,7 @@ private:
     ContextPtr _context;
     std::string _prefix;
     std::optional<PdfEvaluator> _nominal_pdf;  // has_pdf only
+    std::optional<PdfEvaluator> _nominal_pdf2; // second beam, if its set differs
     std::vector<PdfEvaluator> _member_pdfs;    // one per member
     std::vector<RuntimePtr> _alpha_s_runtimes; // index 0: nominal set
     std::vector<std::optional<MatrixElementData>> _matrix_elements;

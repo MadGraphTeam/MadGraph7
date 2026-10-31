@@ -120,10 +120,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # Default cards for the optional post-processing tools
                      # (Pythia8/Delphes/MadSpin/reweight/analysis) so that
                      # bin/generate_events can offer to enable and edit them.
+                     # The reweight card is the MG7 one: it documents both
+                     # reweighting backends (classic module, MadtRex).
                      'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
-                                  ['madspin_card_default.dat', 'reweight_card_default.dat',
+                                  ['madspin_card_default.dat',
                                    'density_card_default.dat',
                                    'delphes_card_default.dat']) +
+                              relative_path_list(mg7_templates, ['reweight_card_default.dat']) +
                               relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
                                   ['pythia8_card_default.dat',
                                    'madanalysis5_parton_card_default.dat',
@@ -189,7 +192,18 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV (default from OM's tutorial) - add a debug printout
     def __init__(self, *args, **kwargs):
         self.in_madevent_mode = False # see MR #747
-        args[1]["me_lib_format"] = pjoin("lib", "libmadmatrix_{process_id}_{{device}}.so")
+        # {model} is resolved by ProcessExporterMG7.generate_subprocess_directory()
+        # alongside {process_id}, from the matrix element's own model -- same
+        # sanitized name (get_model_name()) used for MADMATRIX_LIB/
+        # MADMATRIX_COMMONLIB's %(model)s in madmatrix.mk. {{device}}/{{fptype}}
+        # stay literal ("{device}"/"{fptype}") in the resulting me_path: which
+        # concrete BACKEND/FPTYPE a given process directory was compiled for is
+        # a per-build choice made when the libraries are compiled and loaded
+        # (see compile_matrix_elements() in mg7/launch.py), not something
+        # subprocesses.json commits to at generation time.
+        args[1]["me_lib_format"] = pjoin(
+            "lib", "libmadmatrix_{model}_{process_id}_{{device}}_{{fptype}}.so"
+        )
         super().__init__(*args, **kwargs)
         # Honor the output command's --mask=True|False (flavor-mask
         # optimization for grouped/merged flavors). Default: enabled.
@@ -359,11 +373,67 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         # the model, e.g. for the widths set to 'auto' in the param_card
         self.write_model_reference(model)
 
+    # What a caller evaluating the libraries one phase-space point at a time
+    # (madmatrix.density, used by MadSpin) needs to find the library and the
+    # flavor index of a given process
+    processes_file = 'madmatrix_processes.json'
+
+    def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
+        if not hasattr(self, 'processes_of_subprocess'):
+            self.processes_of_subprocess = []
+        self.processes_of_subprocess.append((
+            [[leg.get('id') for leg in process.get_legs_with_decays()]
+             for process in matrix_element.get('processes')],
+            # the legs marked off-shell ('*'), evaluated at the invariant mass of
+            # their momentum (offshell_mass, backend/*/SigmaKin.cc)
+            sorted(wf.get('number_external')
+                   for wf in matrix_element.get_external_wavefunctions()
+                   if wf.get('offshell')),
+            self.scale_dependence(matrix_element)))
+        return out
+
+    @staticmethod
+    def scale_dependence(matrix_element):
+        """What makes the matrix element depend on the renormalisation scale
+        beyond alpha_s: the couplings and the masses/widths it uses that depend
+        on MU_R, and the running elements of the model. The libraries compute
+        their couplings from G alone and keep MU_R at its param-card value,
+        while the Fortran output sets MU_R from the event scale
+        (UPDATE_AS_PARAM2): a caller passing per-event scales needs the
+        Fortran one when this is not empty."""
+        model = matrix_element.get('processes')[0].get('model')
+        scale_keys = [key for key in model.get('couplings')
+                      if 'MU_R' in key]
+        scale_coups = set(coup.name for key in scale_keys
+                          for coup in model.get('couplings')[key])
+        used = set()
+        for entry in matrix_element.get_used_couplings():
+            for coup in (entry if isinstance(entry, list) else [entry]):
+                if isinstance(coup, str):
+                    used.add(coup.lstrip('-'))
+                else:
+                    used.add(coup.get('name'))
+                    used.update(str(c).lstrip('-')
+                                for c in coup.get('flavors').values())
+        reasons = sorted(used & scale_coups)
+        scale_params = set(param.name for key, params in model.get('parameters').items()
+                           if 'MU_R' in key for param in params)
+        for wf in matrix_element.get_all_wavefunctions():
+            for name in (wf.get('mass'), wf.get('width')):
+                if name in scale_params and name not in reasons:
+                    reasons.append(name)
+        if model.get('running_elements'):
+            reasons.append('running elements of the model')
+        return reasons
+
     def finalize(self, *args, **kwargs):
-        # We disable this since we don't need subprocesses.json either
-        # (but --hel_recycling still needs its warm-up, which can only run once
-        # every P* directory is complete and buildable)
+        # no subprocesses.json (nor anything else the mg7 launcher needs), only
+        # the --hel_recycling warm-up, which can only run once every P* directory
+        # is complete and buildable, and the process table of the standalone
+        # libraries
         self._run_hel_recycling_warmups()
+        self.write_processes_file()
 
     def _run_hel_recycling_warmups(self):
         """For each --hel_recycling P* directory: build a probe of the ordinary
@@ -442,3 +512,37 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
+
+    def write_processes_file(self):
+        """SubProcesses/madmatrix_processes.json: per subprocess, its library
+        (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
+        '{backend}' and '{fptype}', as for the common library, common_library),
+        its legs, the processes it evaluates, its off-shell legs
+        and, per flavor index, every pdg combination (in the leg order of the
+        process) that this index stands for, and what of it depends on the
+        renormalisation scale beyond alpha_s (scale_dependence)."""
+        import json
+        subprocesses = []
+        for info, (processes, offshell, scale) in zip(self.process_info,
+                                                      getattr(self, 'processes_of_subprocess', [])):
+            path = os.path.basename(info['path'])
+            flavors = []
+            for flavor in info['flavors']:
+                while len(flavors) <= flavor['index']:
+                    flavors.append([])
+                flavors[flavor['index']].extend(list(pdgs) for pdgs in flavor['options'])
+            subprocesses.append({
+                'path': path,
+                'library': 'libmadmatrix{libtag}_%s_%s_{backend}_{fptype}.so'
+                           % (self.lib_model_name, path),
+                'ninitial': len(info['incoming']),
+                'legs': list(info['incoming']) + list(info['outgoing']),
+                'processes': processes,
+                'offshell': offshell,
+                # what depends on MU_R besides alpha_s (scale_dependence)
+                'scale_dependence': scale,
+                'flavors': flavors})
+        with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
+            json.dump({'common_library': 'libmadmatrix_common{libtag}_%s_{backend}_{fptype}.so'
+                                         % self.lib_model_name,
+                       'subprocesses': subprocesses}, fsock, indent=1)

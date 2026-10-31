@@ -47,7 +47,7 @@ import aloha.create_aloha as create_aloha
 
 import madgraph.iolibs.export_python as export_python
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.file_writers as writers
 
@@ -67,7 +67,7 @@ import madgraph.various.progressbar as pbar
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 from madgraph.interface.madevent_interface import MadLoopInitializer
 from madgraph.interface.common_run_interface import AskforEditCard
@@ -75,7 +75,7 @@ from madgraph import MG5DIR, InvalidCmd, MadGraph5Error
 
 from madgraph.iolibs.files import cp
 
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx
@@ -99,7 +99,7 @@ def clean_added_globals(to_clean):
 # Fake interface to be instancied when using process_checks from tests instead.
 #===============================================================================
 class FakeInterface(object):
-    """ Just an 'option container' to mimick the interface which is passed to the
+    """ Just an 'option container' to mimic the interface which is passed to the
     tests. We put in only what is now used from interface by the test:
     cmd.options['fortran_compiler']
     cmd.options['cpp_compiler']
@@ -348,7 +348,7 @@ class MatrixElementEvaluator(object):
             fsock = open('output%s.py' % process.shell_string(), 'w')
             text = """
 import madgraph
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx
@@ -753,7 +753,7 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
             stands for multiple precision and can either be a bool or an integer
             to specify the mode."""
 
-        # Instanciate a MadLoopParam card
+        # Instantiate a MadLoopParam card
         file = open(pjoin(dir_name,'MadLoopParams.dat'), 'r')
         MLCard = bannermod.MadLoopParam(file)
 
@@ -1757,7 +1757,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
 
             # Flag to know if the run was interrupted or not
             interrupted = False
-            # Flag to know wheter the run for one specific PS point got an IOError
+            # Flag to know whether the run for one specific PS point got an IOError
             # and must be retried
             retry = 0
             # We do not use a for loop because we want to manipulate the updater.
@@ -2142,7 +2142,7 @@ def generate_loop_matrix_element(process_definition, reuse, output_path=None,
         # we return nothing
         return time.time()-start, None        
     if not amplitude.get('diagrams'):
-        # Not matrix eleemnt for this process
+        # Not matrix element for this process
         return time.time()-start, None
 
     # Make sure to disable loop_optimized_output when considering loop induced 
@@ -2260,7 +2260,7 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
         # Use high required accuracy in COLLIER's requirement if not specified
         if 'COLLIERRequiredAccuracy' not in MLoptions:
             MLoptions['COLLIERRequiredAccuracy']=1e-13
-        # Use loop-direction switching as stability test if not specifed (more reliable)
+        # Use loop-direction switching as stability test if not specified (more reliable)
         if 'COLLIERUseInternalStabilityTest' not in MLoptions:
             MLoptions['COLLIERUseInternalStabilityTest']=False
         # Finally we *must* forbid the use of COLLIER global cache here, because it
@@ -5331,13 +5331,13 @@ def check_unitary_feynman(processes_unit, processes_feynm, processes_axial=None,
 def check_complex_mass_scheme(process_line, param_card=None, cuttools="",tir={}, 
          cmd = FakeInterface(), output_path=None, MLOptions = {}, options={}):
     """Check complex mass scheme consistency in the offshell region of s-channels
-    detected for this process, by varying the expansion paramer consistently
+    detected for this process, by varying the expansion parameter consistently
     with the corresponding width and making sure that the difference between
     the complex mass-scheme and the narrow-width approximation is higher order.
     """
 
     if not isinstance(process_line, str):
-        raise InvalidCmd("Proces definition must be given as a stirng for this check")
+        raise InvalidCmd("Process definition must be given as a string for this check")
 
     # Generate a list of unique processes in the NWA scheme
     cmd.do_set('complex_mass_scheme False', log=False)
@@ -5495,7 +5495,7 @@ def check_complex_mass_scheme(process_line, param_card=None, cuttools="",tir={},
                                            evaluator,
     # This empty list 'opt' will be passed to the check_complex_mass_scheme_process
     # function which will fill it with the specification of the particle for which
-    # the the complex mass scheme must be checked. The fact that it is a list
+    # the complex mass scheme must be checked. The fact that it is a list
     # at this stage tells the function check_complex_mass_scheme_process that
     # we are doing nwa. It will then be converted to a dictionary when doing cms.
                                            opt = cached_information,
@@ -5974,7 +5974,7 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
     @misc.mute_logger()
     def get_width(PDG, lambdaCMS, param_card):
         """ Returns the width to use for particle with absolute PDG 'PDG' and
-        for the the lambdaCMS value 'lambdaCMS' using the cache if possible."""
+        for the lambdaCMS value 'lambdaCMS' using the cache if possible."""
 
         # If an unstable particle is in the external state, then set its width
         # to zero and don't cache the result of course.
@@ -6013,9 +6013,11 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
                 # 2-body decay is the maximum that should be considered for NLO check.
                 # The default 1% accuracy is not enough when pushing to small
                 # lambdaCMS values, we need 1 per mil at least.
+                # MadEvent integrates it: the check works on the model of its
+                # evaluator, which madspace has not been validated on.
                 command = '%s --output=%s'%(particle_name,pjoin(path,'tmp.dat'))+\
                     ' --path=%s --body_decay=2'%pjoin(path,'tmp.dat')+\
-                    ' --precision_channel=0.001'
+                    ' --precision_channel=0.001 --engine=madevent'
 #                misc.sprint(command)
                 param_card.write(pjoin(options['output_path'],'tmp.dat'))
                 # The MG5 command get_width will change the cmd._curr_model
@@ -6034,7 +6036,7 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
                 try:
                     tmp_param_card = check_param_card.ParamCard(pjoin(path,'tmp.dat'))
                 except:
-                    raise MadGraph5Error('Error occured during width '+\
+                    raise MadGraph5Error('Error occurred during width '+\
                        'computation with command:\n   compute_widths %s'%command)                   
                 width = tmp_param_card['decay'].get(PDG).value
 #                misc.sprint('lambdaCMS checked is', lambdaCMS,
@@ -6264,7 +6266,7 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
         param_card = options['cached_param_card'][mode][0]
         name2block = options['cached_param_card'][mode][1]
 
-    # Already add the coupling order for this sqaured ME.
+    # Already add the coupling order for this squared ME.
     if loop_order != -1 and (loop_order+born_order)%2 != 0:
         raise MadGraph5Error('The summed squared matrix element '+\
                               " order '%d' is not even."%(loop_order+born_order))
@@ -6366,7 +6368,7 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
             # to be there.
             evaluator.full_model.set_parameters_and_couplings(
                                                       param_card=new_param_card)
-            # Now compute or recyle all widths
+            # Now compute or recycle all widths
             for decay in new_param_card['decay'].keys():
                 if mode=='CMS':
                     new_width = get_width(abs(decay[0]), lambdaCMS, 
@@ -6888,7 +6890,7 @@ def CMS_save_path(extension, cms_res, used_model, opts, output_path=None):
 
 def output_complex_mass_scheme(result,output_path, options, model, output='text'):
     """ Outputs nicely the outcome of the complex mass scheme check performed
-    by varying the width in the offshell region of resonances found for eahc process.
+    by varying the width in the offshell region of resonances found for each process.
     Output just specifies whether text should be returned or a list of failed
     processes. Use 'concise_text' for a consise report of the results."""
     
@@ -6903,7 +6905,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
     # (i.e. if the test still pas with diff_lambda_power=2) then the NLO test
     # will not be sensitive to the CMS implementation details.
     diff_lambda_power = options['diff_lambda_power']
-    # DISLAIMER:
+    # DISCLAIMER:
     # The CMS check is non trivial to automate and it is actually best done
     # manually by looking at plots for various implementation of the CMS.
     # The automatic check performed here with the default parameters below
@@ -6936,7 +6938,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
     # the right to start considering its value. Notice that it cannot be larger
     # than the CMS_test_threshold
     consideration_threshold = min(CMS_test_threshold/10.0, 0.05)
-    # Number of values groupes with the median technique to avoid being
+    # Number of values grouped with the median technique to avoid being
     # sensitive to unstabilities
     group_val = 3
     # Starting from which value, relative to the averaged diff, should one consider
@@ -7055,7 +7057,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
             logger.warning('The apparent scaling of the squared amplitude'+
              'seems inconsistent w.r.t to detected value '+
              '(%i vs %i). %i will be used.'%(expected,bpower,bpower)+
-             ' This happend for process %s and resonance %s'%(proc, res))
+             ' This happened for process %s and resonance %s'%(proc, res))
         return bpower    
 
     def check_stability(ME_values, lambda_values, lambda_scaling, values_name):
@@ -7272,7 +7274,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
         CMScheck_values = DiffData[cms_check_data_range:]
 
         # For the purpose of checking the stability of the tale, we now do
-        # the consideration_threshold scan from the *left* and if we finsih
+        # the consideration_threshold scan from the *left* and if we finish
         # before the end, it means that there is an unstable region.
         if scan_index >= 0:            
             # try to find the numerical instability region
@@ -7292,7 +7294,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
                 # Proceed to th next block of data
                 scan_index -= 1
 
-            # Now report here the unstability found
+            # Now report here the instability found
             if unstability_found:
                 unstab_check=CMScheck_values[scan_index:]
                 relative_array = [val > CMScheck_values[scan_index-1] for 

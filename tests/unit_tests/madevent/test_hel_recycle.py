@@ -166,10 +166,19 @@ class TestCppDialect(unittest.TestCase):
                          args)
 
     def test_fixing_a_helicity_replaces_the_table_read(self):
+        """The external wavefunctions take a helicity per SIMD lane: the row's
+        own goes in every lane"""
         args = self.dialect.arguments(self.EXTERNAL)
         fixed = self.dialect.set_external_helicity(list(args), -1)
-        self.assertEqual(fixed[2], '-1')
+        self.assertEqual(fixed[2], '( fptype_amp_sv{} + -1 )')
         self.assertEqual(fixed[:2] + fixed[3:], args[:2] + args[3:])
+        # the per-lane helicity of the plain code is the same slot
+        lane = self.EXTERNAL.replace('cHel[ihel][2]', 'hel_sv[2]')
+        self.assertNotEqual(lane, self.EXTERNAL)
+        lane_args = self.dialect.arguments(lane)
+        self.assertEqual(self.dialect.external_helicity_leg(lane_args),
+                         self.dialect.external_helicity_leg(args))
+        self.assertEqual(self.dialect.set_external_helicity(list(lane_args), -1), fixed)
 
     def test_an_amplitude_says_which_diagram_it_is(self):
         """Every amplitude writes the same scratch, so the name cannot"""

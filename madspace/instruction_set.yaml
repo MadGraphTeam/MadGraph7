@@ -231,6 +231,7 @@ sub:
   dims: 0
 
 mul:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -644,7 +645,7 @@ boost_beam:
       type: [float, n, 4]
       desc: "momenta in the partonic center-of-mass frame"
     - name: masses
-      type: [float, n]
+      type: [float, single, n]
       desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
@@ -664,7 +665,7 @@ boost_beam_inverse:
       type: [float, n, 4]
       desc: "momenta in the lab frame"
     - name: masses
-      type: [float, n]
+      type: [float, single, n]
       desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
@@ -701,7 +702,7 @@ r_to_x1x2:
       type: [float]
       desc: "partonic invariant mass squared"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
   outputs:
     - name: x1
@@ -724,7 +725,7 @@ x1x2_to_r:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
   outputs:
     - name: r
@@ -744,10 +745,10 @@ r_to_x1x2_window:
       type: [float]
       desc: "partonic invariant mass squared"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
     - name: y_max
-      type: [float]
+      type: [float, single]
       desc: "largest allowed absolute rapidity of the partonic system"
   outputs:
     - name: x1
@@ -770,10 +771,10 @@ x1x2_to_r_window:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: s_lab
-      type: [float]
+      type: [float, single]
       desc: "hadronic invariant mass squared"
     - name: y_max
-      type: [float]
+      type: [float, single]
       desc: "largest allowed absolute rapidity of the partonic system"
   outputs:
     - name: r
@@ -802,7 +803,7 @@ diff_cross_section:
       type: [float]
       desc: "matrix element value"
     - name: e_cm2
-      type: [float]
+      type: [float, single]
       desc: "squared center-of-mass energy"
   outputs:
     - name: result
@@ -889,13 +890,13 @@ com_cos_theta_window:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: pt_min
-      type: [float]
+      type: [float, single]
       desc: "lower bound on the transverse momentum of the products"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the first product, negative for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the second product, negative for none"
   outputs:
     - name: r_out
@@ -927,13 +928,13 @@ com_cos_theta_window_inverse:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: pt_min
-      type: [float]
+      type: [float, single]
       desc: "lower bound on the transverse momentum of the products"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the first product, negative for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the second product, negative for none"
   outputs:
     - name: r_cos_theta
@@ -1211,6 +1212,53 @@ two_to_three_particle_scattering_inverse:
       type: [float]
       desc: "Jacobian of the mapping"
   desc: "Inverse of `two_to_three_particle_scattering`. Building block of @ref TwoToThreeParticleScattering."
+
+two_to_three_branch_choice:
+  inputs:
+    - name: phi_choice_in
+      type: [int]
+      desc: "sampled branch selector, used when both solutions pass"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: p12
+      type: [float, 4]
+      desc: "momentum of the system of the first and second outgoing particles"
+    - name: p3
+      type: [float, 4]
+      desc: "momentum of the already-generated third particle"
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range"
+    - name: u_c
+      type: [float]
+      desc: "1 - u"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing particle"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing particle"
+    - name: etmin_1
+      type: [float]
+      desc: "transverse-energy floor of the first outgoing momentum"
+    - name: etmin_2
+      type: [float]
+      desc: "transverse-energy floor of the second outgoing momentum"
+  outputs:
+    - name: phi_choice
+      type: [int]
+      desc: "branch selector to use: a passing solution"
+    - name: factor
+      type: [float]
+      desc: "weight factor for a uniformly sampled selector: 1 if both solutions pass, 1/2 if one does, 0 if none"
+    - name: inv_factor
+      type: [float]
+      desc: "inverse of the factor, 0 if no solution passes"
+  desc: "Choice of the azimuthal solution of the 2 to 3 step that passes the transverse-energy cuts, as in AmpliCol. Building block of @ref TwoToThreeParticleScattering."
 
 double_t_scattering:
   inputs:
@@ -1554,13 +1602,13 @@ t_rapidity_clamp:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the peeled particle, negative or 100 and above for none"
   outputs:
     - name: t_min_out
@@ -1604,13 +1652,13 @@ t1_rapidity_clamp_doublet:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t1_min_out
@@ -1648,13 +1696,13 @@ t2_rapidity_clamp_doublet:
       type: [float]
       desc: "momentum fraction of beam 2"
     - name: beam_sign
-      type: [float]
+      type: [float, single]
       desc: "+1 if pa is beam 1, -1 if it is beam 2"
     - name: y_max1
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
     - name: y_max2
-      type: [float]
+      type: [float, single]
       desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
   outputs:
     - name: t2_min_out
@@ -2009,10 +2057,10 @@ s23_arcsine_sample:
       type: [float]
       desc: "upper kinematic limit of the 2-3 invariant mass squared"
     - name: power
-      type: [float]
+      type: [float, single]
       desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass of the sampling, as in @ref Invariant"
   outputs:
     - name: u
@@ -2047,10 +2095,10 @@ s23_arcsine_sample_inverse:
       type: [float]
       desc: "upper kinematic limit of the 2-3 invariant mass squared"
     - name: power
-      type: [float]
+      type: [float, single]
       desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass of the sampling, as in @ref Invariant"
   outputs:
     - name: r
@@ -2067,7 +2115,7 @@ invariants_from_momenta:
       type: [float, n, 4]
       desc: "external four-momenta"
     - name: factors
-      type: [float, m, n]
+      type: [float, single, m, n]
       desc: "coefficient matrix selecting the invariant combinations"
   outputs:
     - name: invariants
@@ -2081,13 +2129,13 @@ sde2_channel_weights:
       type: [float, m]
       desc: "propagator invariants"
     - name: masses
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator masses per channel"
     - name: widths
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator widths per channel"
     - name: indices
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "invariant index feeding each propagator"
   outputs:
     - name: channel_weights
@@ -2101,16 +2149,16 @@ subchannel_weights:
       type: [float, m]
       desc: "propagator invariants"
     - name: masses
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator masses per channel"
     - name: widths
-      type: [float, c, n]
+      type: [float, single, c, n]
       desc: "propagator widths per channel"
     - name: indices
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "invariant index feeding each propagator"
     - name: on_shell
-      type: [int, c, n]
+      type: [int, single, c, n]
       desc: "flag marking on-shell propagators per channel"
     - name: group_sizes
       type: [int, single, g]
@@ -2130,10 +2178,10 @@ apply_subchannel_weights:
       type: [float, n]
       desc: "weight per subchannel"
     - name: channel_indices
-      type: [int, d]
+      type: [int, single, d]
       desc: "channel index per diagram"
     - name: subchannel_indices
-      type: [int, d]
+      type: [int, single, d]
       desc: "subchannel index per diagram"
   outputs:
     - name: channel_weights_out
@@ -2215,7 +2263,7 @@ momenta_to_x1x2:
       type: [float, n, 4]
       desc: "external four-momenta"
     - name: e_cm
-      type: [float]
+      type: [float, single]
       desc: "hadronic center-of-mass energy"
   outputs:
     - name: x1
@@ -2290,10 +2338,10 @@ breit_wigner_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: s_min
       type: [float]
@@ -2316,10 +2364,10 @@ breit_wigner_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: s_min
       type: [float]
@@ -2342,13 +2390,13 @@ flat_window_breit_wigner_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: window
-      type: [float]
+      type: [float, single]
       desc: "half-width of the flattened window, in units of the width"
     - name: s_min
       type: [float]
@@ -2371,13 +2419,13 @@ flat_window_breit_wigner_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "resonance mass"
     - name: width
-      type: [float]
+      type: [float, single]
       desc: "resonance width"
     - name: window
-      type: [float]
+      type: [float, single]
       desc: "half-width of the flattened window, in units of the width"
     - name: s_min
       type: [float]
@@ -2400,7 +2448,7 @@ stable_invariant:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: s_min
       type: [float]
@@ -2423,7 +2471,7 @@ stable_invariant_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: s_min
       type: [float]
@@ -2446,10 +2494,10 @@ stable_invariant_nu:
       type: [float]
       desc: "random number in [0, 1]"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: nu
-      type: [float]
+      type: [float, single]
       desc: "exponent of the power law"
     - name: s_min
       type: [float]
@@ -2472,10 +2520,10 @@ stable_invariant_nu_inverse:
       type: [float]
       desc: "invariant value"
     - name: mass
-      type: [float]
+      type: [float, single]
       desc: "pole mass"
     - name: nu
-      type: [float]
+      type: [float, single]
       desc: "exponent of the power law"
     - name: s_min
       type: [float]
@@ -2647,10 +2695,10 @@ cut_one:
       type: [float]
       desc: "observable value"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound"
   outputs:
     - name: w
@@ -2664,10 +2712,10 @@ cut_all:
       type: [float, n]
       desc: "observable values"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound applied to each observable"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound applied to each observable"
   outputs:
     - name: w
@@ -2681,10 +2729,10 @@ cut_any:
       type: [float, n]
       desc: "observable values"
     - name: min
-      type: [float]
+      type: [float, single]
       desc: "lower bound applied to each observable"
     - name: max
-      type: [float]
+      type: [float, single]
       desc: "upper bound applied to each observable"
   outputs:
     - name: w
@@ -2739,6 +2787,252 @@ scale_partonic_energy:
       desc: "the energy scale"
   desc: "Dynamical scale set to the partonic center-of-mass energy. See @ref EnergyScale."
 
+mlm_clustering_hadronic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+    - name: cm_energy
+      type: [float, single]
+      desc:
+    - name: jet_scale_scheme
+      type: [int, single]
+      desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
+      desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
+
+  vectorized: False
+
+mlm_clustering_leptonic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+    - name: cm_energy
+      type: [float, single]
+      desc:
+    - name: jet_scale_scheme
+      type: [int, single]
+      desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
+    - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
+    - name: pdf_reweighting
+      type: [int, single]
+      desc: "0 off, 1 the pdf ladder under scale_scheme madevent, 2 also under clustering_mean"
+    - name: clustering_measure
+      type: [int, single]
+      desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
+    - name: flavor_index
+      type: [int]
+      desc: sampled flavour of the event, i.e. the row of leg_flavors that applies to it
+    - name: leg_flavors
+      type: [int, single, f]
+      desc: abs pdg id of every external leg per flavour, row-major; a row of zeros (or a flavor_index past the table) leaves every clustering allowed
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
+      desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+    - name: pdf_scale1
+      type: [float]
+      desc: scale the beam-1 density is evaluated at, below fact_scale1 when reweighting
+    - name: pdf_scale2
+      type: [float]
+      desc: scale the beam-2 density is evaluated at, below fact_scale2 when reweighting
+    - name: pdf_rw_flavor
+      type: [int, n-1]
+      desc: flavour class of the beam line at each pdf reweighting step
+    - name: pdf_rw_x
+      type: [float, n-1]
+      desc: momentum fraction of the beam line at each step, relative to the beam
+    - name: pdf_rw_q_num
+      type: [float, n-1]
+      desc: scale the density is reweighted to at each step
+    - name: pdf_rw_q_den
+      type: [float, n-1]
+      desc: scale the density is reweighted from at each step
+    - name: pdf_rw_active
+      type: [float, n-1]
+      desc: one where a step contributes a pdf ratio, zero for an inert slot
+    - name: pdf_rw_beam
+      type: [float, n-1]
+      desc: which beam each step sits on, as 0 or 1
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
+
+  vectorized: False
+
 ---
 title: Chili
 
@@ -2754,10 +3048,10 @@ chili_forward:
       type: [float, n]
       desc: "mass of each final-state particle"
     - name: pt_min
-      type: [float, n]
+      type: [float, single, n]
       desc: "minimum transverse momentum per final-state particle"
     - name: y_max
-      type: [float, n]
+      type: [float, single, n]
       desc: "maximum rapidity per final-state particle"
   outputs:
     - name: p_ext
@@ -2780,10 +3074,10 @@ chili_inverse:
       type: [float, n]
       desc: "mass of each final-state particle"
     - name: pt_min
-      type: [float, n]
+      type: [float, single, n]
       desc: "minimum transverse momentum per final-state particle"
     - name: y_max
-      type: [float, n]
+      type: [float, single, n]
       desc: "maximum rapidity per final-state particle"
   outputs:
     - name: r
@@ -2869,7 +3163,53 @@ interpolate_alpha_s:
 ---
 title: Normalizing flows and MLPs
 
+convert_float32:
+  inputs:
+    - name: in1
+      type: [float64, ...]
+      desc: "double-precision tensor"
+  outputs:
+    - name: out
+      type: [float32, ...]
+      desc: "the input rounded to single precision"
+  dims: 0
+  vectorized: False
+  differentiable: True
+  desc: "Converts a tensor to single precision. Used at the boundaries of single-precision @ref MLP networks."
+
+convert_float64:
+  inputs:
+    - name: in1
+      type: [float32, ...]
+      desc: "single-precision tensor"
+  outputs:
+    - name: out
+      type: [float64, ...]
+      desc: "the input in double precision"
+  dims: 0
+  vectorized: False
+  differentiable: True
+  desc: "Converts a tensor to double precision. Used at the boundaries of single-precision @ref MLP networks."
+
+matmul_to_float64:
+  inputs:
+    - name: x
+      type: [float32, n]
+      backward_arg: True
+    - name: weight
+      type: [float32, single, m, n]
+      backward_arg: True
+    - name: bias
+      type: [float32, single, m]
+  outputs:
+    - name: y
+      type: [float64, m]
+  custom_op: True
+  differentiable: True
+  desc: "Single-precision affine map whose result is converted to double precision. Equivalent to @ref convert_float64 applied to the output of @ref matmul, but the GPU backend fuses the bias addition and the conversion, and the backward pass fuses the gradient conversion with the bias gradient. Used for the last layer of single-precision @ref MLP networks."
+
 matmul:
+  precision: [float32, float64]
   inputs:
     - name: x
       type: [float, n]
@@ -2890,7 +3230,164 @@ matmul:
   differentiable: True
   desc: "Affine layer y = weight x + bias. Building block of @ref MLP."
 
+matmul_relu:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [ReluActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref relu, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref relu applied to the output of @ref matmul."
+
+matmul_leaky_relu:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [LeakyReluActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref leaky_relu, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref leaky_relu applied to the output of @ref matmul."
+
+matmul_elu:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [EluActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref elu, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref elu applied to the output of @ref matmul."
+
+matmul_gelu:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [GeluActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref gelu, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref gelu applied to the output of @ref matmul."
+
+matmul_sigmoid:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [SigmoidActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref sigmoid, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref sigmoid applied to the output of @ref matmul."
+
+matmul_softplus:
+  precision: [float32, float64]
+  inputs:
+    - name: x
+      type: [float, n]
+      desc: "input vector"
+      backward_arg: True
+    - name: weight
+      type: [float, single, m, n]
+      desc: "weight matrix"
+      backward_arg: True
+    - name: bias
+      type: [float, single, m]
+      desc: "bias vector"
+  outputs:
+    - name: linear
+      type: [float, m]
+      desc: "the affine transform of the input"
+    - name: y
+      type: [float, m]
+      desc: "the activated affine transform"
+  custom_op: matmul_activation
+  custom_op_args: [SoftplusActivation]
+  differentiable: True
+  desc: "@ref matmul followed by @ref softplus, with the bias addition and the activation in one kernel. Produced by the GPU backend's lowering of @ref softplus applied to the output of @ref matmul."
+
 relu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2904,6 +3401,7 @@ relu:
   desc: "Element-wise ReLU activation. Building block of @ref MLP."
 
 leaky_relu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2917,6 +3415,7 @@ leaky_relu:
   desc: "Element-wise leaky ReLU activation. Building block of @ref MLP."
 
 elu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2930,6 +3429,7 @@ elu:
   desc: "Element-wise ELU activation. Building block of @ref MLP."
 
 gelu:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2943,6 +3443,7 @@ gelu:
   desc: "Element-wise GELU activation. Building block of @ref MLP."
 
 sigmoid:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2957,6 +3458,7 @@ sigmoid:
   desc: "Element-wise sigmoid activation. Building block of @ref MLP."
 
 scaled_tanh:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -2971,6 +3473,7 @@ scaled_tanh:
   desc: "Element-wise scaled hyperbolic tangent activation. Building block of @ref MLP."
 
 softplus:
+  precision: [float32, float64]
   inputs:
     - name: in1
       type: [float, ...]
@@ -3060,6 +3563,52 @@ rqs_inverse:
   differentiable: True
   dims: 2
   desc: "Applies a rational-quadratic spline in the inverse direction. Building block of @ref Flow."
+
+rqs_forward_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "values to transform"
+    - name: condition
+      type: [float, n, 6]
+      desc: "packed spline parameters"
+  outputs:
+    - name: output
+      type: [float, n]
+      desc: "transformed values"
+    - name: det
+      type: [float, n]
+      desc: "per-element Jacobian"
+    - name: output32
+      type: [float32, n]
+      desc: "the transformed values in single precision"
+  differentiable: True
+  dims: 2
+  vectorized: False
+  desc: "@ref rqs_forward that also returns its output in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref rqs_forward."
+
+rqs_inverse_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "values to transform"
+    - name: condition
+      type: [float, n, 6]
+      desc: "packed spline parameters"
+  outputs:
+    - name: output
+      type: [float, n]
+      desc: "transformed values"
+    - name: det
+      type: [float, n]
+      desc: "per-element Jacobian"
+    - name: output32
+      type: [float32, n]
+      desc: "the transformed values in single precision"
+  differentiable: True
+  dims: 2
+  vectorized: False
+  desc: "@ref rqs_inverse that also returns its output in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref rqs_inverse."
 
 softmax:
   inputs:
@@ -3199,6 +3748,7 @@ permute_momenta:
     - name: output
       type: [float, n, 4]
       desc: "permuted momenta"
+  vectorized: False
   desc: "Reorders momenta according to a stored permutation selected per event. Building block of @ref MultiChannelMapping."
 
 gather:
@@ -3223,7 +3773,7 @@ gather_int:
       type: [int]
       desc: "index to select"
     - name: choices
-      type: [int, n]
+      type: [int, single, n]
       desc: "vector of choices"
   outputs:
     - name: output
@@ -3266,7 +3816,7 @@ select:
       type: [float, n]
       desc: "source vector"
     - name: indices
-      type: [int, m]
+      type: [int, single, m]
       desc: "indices to gather"
       backward_arg: True
   outputs:
@@ -3275,6 +3825,26 @@ select:
       desc: "gathered entries"
   differentiable: True
   desc: "Gathers several entries from a float vector by index."
+
+select_with_float32:
+  inputs:
+    - name: input
+      type: [float, n]
+      desc: "source vector"
+    - name: indices
+      type: [int, single, m]
+      desc: "indices to gather"
+      backward_arg: True
+  outputs:
+    - name: output
+      type: [float, m]
+      desc: "gathered entries"
+    - name: output32
+      type: [float32, m]
+      desc: "the gathered entries in single precision"
+  differentiable: True
+  vectorized: False
+  desc: "@ref select that also returns the gathered entries in single precision, so that the conversion does not need a separate kernel. Produced by the GPU backend's lowering of @ref convert_float32 applied to the output of @ref select."
 
 select_vector:
   inputs:

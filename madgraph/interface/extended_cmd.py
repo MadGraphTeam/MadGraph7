@@ -855,7 +855,7 @@ class BasicCmd(OriginalCmd):
                 tmp += data
                 tmp = os.path.expanduser(os.path.expandvars(tmp))
                 out.append(tmp)
-                # Reinitialize tmp in case there is another differen argument
+                # Reinitialize tmp in case there is another different argument
                 # containing escape characters
                 tmp = ''
             else:
@@ -1772,7 +1772,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             
     
     def stop_on_keyboard_stop(self):
-        """action to perform to close nicely on a keyboard interupt"""
+        """action to perform to close nicely on a keyboard interrupt"""
         pass # dummy function
             
     def exec_cmd(self, line, errorhandling=False, printcmd=True, 
@@ -2068,7 +2068,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
     do_exit = do_quit
 
     def do_help(self, line):
-        """Not in help: propose some usefull possible action """
+        """Not in help: propose some useful possible action """
                 
         # if they are an argument use the default help
         if line:
@@ -2247,7 +2247,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
     def write_configuration(self, filepath, basefile, basedir, to_keep):
         """Write the configuration file"""
         # We use the default configuration file as a template.
-        # to ensure that all configuration information are written we 
+        # to ensure that all configuration information is written we
         # keep track of all key that we need to write.
 
         logger.info('save configuration file to %s' % filepath)
@@ -2838,7 +2838,7 @@ class ControlSwitch(SmartQuestion):
        color_for_XXXX(value)   -> return the representation on the screen for value
        get_cardcmd_for_XXXX(value)> return the command to run to customize the cards to 
                                   match the status
-       print_options_XXXX()    -> return the text to disply below "other options"
+       print_options_XXXX()    -> return the text to display below "other options"
                                   default is other possible value (ordered correctly)
 
        consistency_XX_YY(val_XX, val_YY)
@@ -2906,8 +2906,12 @@ class ControlSwitch(SmartQuestion):
         allowed_args = [ repr(i)+';' for i in range(1, 1+len(self.to_control))] 
         for key in self.switch:
             allowed_args += ['%s=%s;' % (key,s) for s in self.get_allowed(key)]
-        # adding special mode
-        allowed_args += [key[4:]+';' for key in dir(self) if key.startswith('ans_')]
+        # adding special mode ('@' is spelled '__at__' in the method name, e.g.
+        # ans_amc__at__nlo: accept the spelling users type as well as that one)
+        special = [key[4:] for key in dir(self) if key.startswith('ans_')]
+        allowed_args += [name+';' for name in special]
+        allowed_args += [name.replace('__at__', '@')+';' for name in special
+                         if '__at__' in name]
         allowed_args += [arg[:-1] for arg in allowed_args if arg[-1] == ';']
         if 'allow_arg' in opts:
             allowed_args += opts['allow_arg']
@@ -2918,7 +2922,7 @@ class ControlSwitch(SmartQuestion):
         self.options = self.mother_interface.options
 
     def special_check_answer_in_input_file(self, line, default):
-        """this is called after the standard check if the asnwer were not valid
+        """this is called after the standard check if the answer were not valid
            in particular all input in the auto-completion have been already validated.
            (this include all those with ans_xx and the XXXX=YYY for YYY in self.get_allowed(XXXX)
            We just check here the XXXX = YYYY for YYYY not in self.get_allowed(XXXX)
@@ -3109,7 +3113,7 @@ class ControlSwitch(SmartQuestion):
         
     def get_cardcmd(self):
         """ return the list of command that need to be run to have a consistent 
-            set of cards with the switch value choosen """
+            set of cards with the switch value chosen """
         
         switch = self.answer
         cmd= []
@@ -3511,7 +3515,7 @@ class ControlSwitch(SmartQuestion):
         logger.info("   You can type 'help NAME' for more help on a given switch")
         logger.info("")
         logger.info("  Special keyword:", '$MG:BOLD')
-        logger.info("    %s" % '\t'.join([p[4:] for p in dir(self) if p.startswith('ans_')]) )
+        logger.info("    %s" % '\t'.join([p[4:].replace('__at__', '@') for p in dir(self) if p.startswith('ans_')]) )
         logger.info("    type 'help  XXX' for more information")
         if list_command:
             super(ControlSwitch, self).do_help(line)
@@ -3553,12 +3557,12 @@ class ControlSwitch(SmartQuestion):
         2. The lower band (typically └========┘
         3. The line without conflict │ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │
         4. The line with    conflict │ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │
-        # Be carefull to include the size of the color flag for the switch
+        # Be careful to include the size of the color flag for the switch
         green/red/yellow are  adding 9 in length
 
         line should be like '│ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │'
 
-           the total lenght of the line (for defining the upper/lower line)
+           the total length of the line (for defining the upper/lower line)
            available key : nb
                            descrip
                            name
@@ -3866,7 +3870,7 @@ class CmdFile(file):
         self.lines = self.text.split('\n')
     
     def readline(self, *arg, **opt):
-        """readline method treating correctly a line whithout \n at the end
+        """readline method treating correctly a line without \n at the end
            (add it)
         """
         if self.lines:

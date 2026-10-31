@@ -3,6 +3,7 @@
 #include "madspace/phasespace/channel_weight_network.hpp"
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/discrete_sampler.hpp"
 #include "madspace/phasespace/flow.hpp"
@@ -45,6 +46,8 @@ namespace madspace {
  *   `float`, shape `(batch,)` – scales and momentum fractions.
  * - `random` – `float`, shape `(batch, mapping.random_dim())` – the underlying
  *   random numbers.
+ * - `bias` – `float`, shape `(batch,)` – the event bias, present only with a
+ *   custom bias. `weight` then includes the bias factor.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -57,6 +60,8 @@ public:
     /// The optional adaptive sampler for a set of discrete choices.
     using AdaptiveDiscrete =
         std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
+    /// The optional parton density: an LHAPDF grid or a user-supplied library.
+    using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
 
     /// The @ref MatrixElement inputs an `Integrand` supplies.
     inline static const std::vector<MatrixElement::MatrixElementInput>
@@ -91,7 +96,8 @@ public:
      *                                          the flavour choice.
      * @param pid_options                       Allowed initial-parton flavour
      *                                          combinations.
-     * @param pdf_grid                          Optional shared @ref PdfGrid.
+     * @param pdf_grid                          Optional shared @ref PdfGrid or
+     *                                          @ref CustomPdf.
      * @param running_coupling                  Optional shared
      *                                          @ref RunningCoupling.
      * @param energy_scale                      Optional shared @ref EnergyScale.
@@ -112,6 +118,9 @@ public:
      *                                          rescale the weight accordingly.
      * @param partial_weights                   If true, emit the per-factor
      *                                          weights for buffered unweighting.
+     *                                          Ignored under MLM pdf
+     *                                          reweighting, whose densities are
+     *                                          not at the factorisation scale.
      * @param channel_indices                   Global indices of this
      *                                          integrand's channels.
      * @param active_flavors                    Flavour indices this integrand
@@ -126,6 +135,26 @@ public:
      * @param flavor_per_subproc_remap          Per-sub-process flavour remap.
      * @param compressed_channel_weight_count   Channel-weight entries kept per
      *                                          event.
+     * @param custom_bias                       Optional user-supplied event
+     *                                          bias of type CustomFunction::bias.
+     *                                          Its PDG-id options must match
+     *                                          @p pid_options.
+     * @param pdf_grid2                         PDF of the second beam when it
+     *                                          differs from @p pdf_grid (which
+     *                                          is then the first beam's). Its
+     *                                          globals must be registered with
+     *                                          the prefix @ref pdf2_prefix.
+     *                                          Not allowed with a @ref CustomPdf,
+     *                                          which receives the beam index.
+     * @param mlm_history_qcd_power             Power of alpha_s in |M|^2 when it
+     *                                          is the same for every diagram,
+     *                                          -1 otherwise. With an MLM history
+     *                                          picked per diagram, the matrix
+     *                                          element at the scales of that
+     *                                          history is then the first
+     *                                          evaluation rescaled by the alpha_s
+     *                                          and PDF ratios instead of a second
+     *                                          evaluation.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -134,7 +163,7 @@ public:
         const AdaptiveDiscrete& discrete_sym = std::monostate{},
         const AdaptiveDiscrete& discrete_flavor = std::monostate{},
         const nested_vector2<me_int_t>& pid_options = {},
-        const std::optional<PdfGrid>& pdf_grid = std::nullopt,
+        const PdfSource& pdf_grid = std::monostate{},
         const std::optional<RunningCoupling>& running_coupling = std::nullopt,
         const std::optional<EnergyScale>& energy_scale = std::nullopt,
         const std::optional<PropagatorChannelWeights>& prop_chan_weights = std::nullopt,
@@ -155,8 +184,14 @@ public:
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
-        std::size_t compressed_channel_weight_count = 50
+        std::size_t compressed_channel_weight_count = 50,
+        const std::optional<CustomFunction>& custom_bias = std::nullopt,
+        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
+        int mlm_history_qcd_power = -1
     );
+    /// Globals prefix under which the second beam's PDF grid is registered
+    /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
+    inline static const std::string pdf2_prefix = "beam2";
     /// Total number of particles, incoming and outgoing.
     std::size_t particle_count() const { return _mapping.particle_count(); }
     /// Whether the integrand emits the @ref MadnisLoss training quantities.
@@ -220,10 +255,34 @@ private:
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
     NamedVector<Type> compute_channel_part_ret_types() const;
+    // Whether build_channel_part multiplies anything into weight_after_cuts:
+    // flavor or mirror sampling, or the merging weights and the scale veto of
+    // the history over every diagram. The common part leaves weight_after_cuts
+    // out of its product otherwise, as it is then one by construction.
+    bool has_channel_weight_after_cuts() const;
     NamedVector<Value>
     build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
     NamedVector<Value>
     build_common_part(FunctionBuilder& fb, const NamedVector<Value>& channel_out) const;
+    // The beam densities at the scales an MLM or dynamical scale choice
+    // produced, for the sampled flavour.
+    std::array<Value, 2> evaluate_pdfs(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id
+    ) const;
+    // The factors an MLM clustering puts on the event weight: the merging cut,
+    // the alpha_s and the pdf reweighting, each with its veto. With `ladder`,
+    // also the pdf reweighting ladder itself, as the systematics need it to
+    // vary it (see emits_pdf_ladder in integrand.cpp).
+    ValueVec mlm_weights(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id,
+        NamedVector<Value>* ladder = nullptr
+    ) const;
 
     PhaseSpaceMapping _mapping;
     std::vector<DifferentialCrossSection> _diff_xs;
@@ -232,9 +291,35 @@ private:
     AdaptiveDiscrete _discrete_flavor;
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
+    // with different PDFs per beam: each leg's density from the other beam,
+    // for the events whose orientation is mirrored
+    std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
+    // The pdf reweighting asks for densities the flavour sampling never does:
+    // the flavour of a beam line partway up the clustering ladder. One density
+    // over every flavour that can turn up there, picked per event by index.
+    std::optional<PartonDensity> _pdf_rw;
+    // Flavour class (as the mlm kernel emits it) and sampled flavour option to
+    // an index into that density, flattened as class * option_count + option,
+    // with the class offsets alongside so that the two can be added as ints.
+    std::vector<me_int_t> _pdf_rw_table;
+    std::vector<me_int_t> _pdf_rw_class_offsets;
+    // pdg id of each parton of _pdf_rw, as a float for gather
+    std::vector<double> _pdf_rw_pdgs;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
+    // One row with a 1 for every matrix-element diagram the MLM clustering has
+    // a history of its own for, used to restrict the per-event diagram pick.
+    nested_vector2<double> _mlm_diagram_mask;
+    // MLMClustering::diagram_start_states padded to the matrix element's
+    // diagram count, so that any diagram the pick can return has an entry.
+    std::vector<me_int_t> _mlm_start_states;
+    // see mlm_history_qcd_power in the constructor; -1 re-evaluates
+    int _mlm_history_qcd_power = -1;
+    // abs pdg id of every external leg per flavour option, row-major, for the
+    // clusterings that only exist for some flavours of a merged subprocess.
+    // Empty when the clustering does not depend on the flavours.
+    std::vector<me_int_t> _mlm_leg_flavors;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;
     std::optional<ChannelWeightNetwork> _chan_weight_net;
@@ -253,12 +338,13 @@ private:
     nested_vector2<double> _active_flavors_mask;
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
-    std::vector<me_int_t> _flavor_mirror;
+    std::vector<double> _flavor_mirror_factors;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;
     std::vector<me_int_t> _flavor_subproc_indices;
     std::vector<me_int_t> _flavor_per_subproc_remap;
+    std::optional<CustomFunction> _custom_bias;
 
     friend class IntegrandProbability;
     friend class IntegrandChannelPart;

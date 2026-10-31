@@ -6,20 +6,59 @@
 #include <string>
 
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/tar.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
 
+/// Read a tensor from the npy file `file`.
 Tensor load_tensor(const std::string& file);
+/// Write `tensor` to the npy file `file`.
 void save_tensor(const std::string& file, Tensor tensor);
+/// Read a tensor from the npy file `name` inside the tar archive `tar`.
+Tensor load_tensor(TarReader& tar, const std::string& name);
+/// Append `tensor` as an npy file called `name` to the tar archive `tar`.
+void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
+
+// Peeks a .npy event file's own field descriptor (its header's "descr"
+// entry) without needing to already know its layout -- returns the field
+// names in declaration order (particle-level fields duplicated per particle
+// slot with a "partN_" prefix, matching full_descr()'s own naming). Used
+// where a file's actual layout has caller-optional fields the reader needs
+// to auto-detect before committing to a DataLayout to open it with (eg
+// LHE event records, which may or may not carry
+// x1/fact_scale1/x2/fact_scale2/partial_weight_product depending on whether
+// [generation] systematics was enabled when the file was written).
+std::vector<std::string> peek_npy_field_names(const std::string& file);
 
 struct FieldLayout {
-    static constexpr const char* i32 = "<i4";
-    static constexpr const char* f64 = "<f8";
+    enum Type { i32, f64 };
 
     std::string name;
-    const char* type;
+    Type type;
     int group;
+
+    /// Size of a field of the given type in bytes.
+    static constexpr std::size_t size(Type type) {
+        switch (type) {
+        case i32:
+            return 4;
+        case f64:
+            return 8;
+        }
+        throw std::logic_error("unknown field type");
+    }
+
+    /// numpy type string of a field of the given type.
+    static constexpr const char* dtype(Type type) {
+        switch (type) {
+        case i32:
+            return "<i4";
+        case f64:
+            return "<f8";
+        }
+        throw std::logic_error("unknown field type");
+    }
 };
 
 template <typename T>
@@ -51,6 +90,14 @@ public:
     static constexpr int f_particle_data = 1;
     static constexpr int f_lhe_particle = 2;
     static constexpr int f_clustering = 4;
+    // MLM alpha_s reweighting: the scale of the clustering vertex stored on
+    // outgoing particle 2 + i is vertex i's. Only kept in the combined buffer
+    // the systematics read, never written to an event file.
+    static constexpr int f_alphas_scales = 8;
+    // MLM pdf reweighting ladder: step s (each one that can carry a pdf
+    // ratio) on particle s, each beam's leading density on particle 0 and 1.
+    // Like f_alphas_scales only in the combined buffer, for the systematics.
+    static constexpr int f_pdf_ladder = 16;
 
     static std::vector<FieldLayout> layout(int fields) {
         std::vector<FieldLayout> ret;
@@ -87,6 +134,21 @@ public:
         if (fields & f_clustering) {
             ret.push_back({"cluster_scale", FieldLayout::f64, 1});
         }
+        if (fields & f_alphas_scales) {
+            ret.push_back({"alphas_scale", FieldLayout::f64, 2});
+        }
+        if (fields & f_pdf_ladder) {
+            ret.insert(
+                ret.end(),
+                {
+                    {"ladder_x", FieldLayout::f64, 3},
+                    {"ladder_pdg", FieldLayout::f64, 3},
+                    {"ladder_q", FieldLayout::f64, 3},
+                    {"ladder_info", FieldLayout::f64, 3},
+                    {"ladder_lead_q", FieldLayout::f64, 3},
+                }
+            );
+        }
         return ret;
     }
 
@@ -116,8 +178,20 @@ public:
 
     // clustering data
     UnalignedRef<double> cluster_scale() { return &_data[_offsets[0] + 0]; }
+    // scale alpha_s was evaluated at for one MLM clustering vertex, see
+    // f_alphas_scales
+    UnalignedRef<double> alphas_scale() { return &_data[_offsets[1] + 0]; }
+    // pdf reweighting ladder, see f_pdf_ladder, as madevent books it for its
+    // systematics: per step the line's flavour, its momentum fraction before
+    // the step's z and the scale the step takes it to; ladder_info is
+    // active + 2 beam.
+    UnalignedRef<double> ladder_x() { return &_data[_offsets[2] + 0]; }
+    UnalignedRef<double> ladder_pdg() { return &_data[_offsets[2] + 8]; }
+    UnalignedRef<double> ladder_q() { return &_data[_offsets[2] + 16]; }
+    UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 24]; }
+    UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 32]; }
 
-    void from_lhe_particle(const LHEParticle& particle) {
+    void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;
         lhe_status_code() = particle.status_code;
         lhe_mother1() = particle.mother1;
@@ -131,6 +205,9 @@ public:
         lhe_mass() = particle.mass;
         lhe_lifetime() = particle.lifetime;
         lhe_spin() = particle.spin;
+        if (has_clustering) {
+            cluster_scale() = particle.cluster_scale;
+        }
     }
 
 private:
@@ -149,13 +226,13 @@ public:
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
+    static constexpr int f_bias = 256;
+    static constexpr int f_matrix_element = 512;
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
-    static std::vector<FieldLayout> layout(
-        int fields,
-        const std::vector<int>& syst_weight_ids = {}
-    ) {
+    static std::vector<FieldLayout>
+    layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
         if (fields & f_weight) {
             ret.push_back({"weight", FieldLayout::f64, 0});
@@ -214,6 +291,12 @@ public:
                 ret.push_back({std::format("rwgt_{}", id), FieldLayout::f64, 7});
             }
         }
+        if (fields & f_bias) {
+            ret.push_back({"bias", FieldLayout::f64, 8});
+        }
+        if (fields & f_matrix_element) {
+            ret.push_back({"matrix_element", FieldLayout::f64, 9});
+        }
         return ret;
     }
 
@@ -257,6 +340,12 @@ public:
         return &_data[_offsets[6] + 8 * index];
     }
 
+    // event bias, divided out of the weight when the channels are combined
+    UnalignedRef<double> bias() { return &_data[_offsets[7] + 0]; }
+
+    // squared matrix element the event was generated with, before PDFs and flux
+    UnalignedRef<double> matrix_element() { return &_data[_offsets[8] + 0]; }
+
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;
         lhe_weight() = event.weight;
@@ -284,14 +373,7 @@ public:
                 size = 0;
                 std::size_t group_index = 0;
                 for (auto& field : layout) {
-                    std::size_t field_size;
-                    if (field.type == FieldLayout::i32) {
-                        field_size = 4;
-                    } else if (field.type == FieldLayout::f64) {
-                        field_size = 8;
-                    } else {
-                        std::logic_error("unknown type");
-                    }
+                    std::size_t field_size = FieldLayout::size(field.type);
                     if (field.group > group_index) {
                         offsets.resize(field.group);
                         offsets.back() = size;
@@ -422,6 +504,11 @@ public:
     void clear();
     std::size_t particle_count() const { return _particle_count; }
     std::size_t event_count() const { return _event_count; }
+    // The DataLayout this file was actually constructed with -- lets a
+    // reader that only has an already-open EventFile& (not the layout that
+    // was used to open it) build a matching EventBuffer, rather than having
+    // to independently know/recompute the same layout itself.
+    const DataLayout& layout() const { return _layout; }
     ~EventFile();
 
     void write(EventBuffer& buffer) {
@@ -469,6 +556,7 @@ private:
     std::size_t _event_size;
     Mode _mode;
     bool _delete_on_close;
+    DataLayout _layout;
 };
 
 } // namespace madspace

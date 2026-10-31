@@ -26,7 +26,7 @@ import logging
 import logging.config
 if sys.version_info < (3, 12):
    sys.exit('MadGraph7 works with python 3.12 or higher.\n\
-              Please upgrade your version of python.')
+              Please upgrade your version of Python.')
 
 
 import os
@@ -233,7 +233,7 @@ try:
         else:
             cmd_line.cmdloop()
 except KeyboardInterrupt:
-    print('writting history and quit on KeyboardInterrupt') 
+    print('writing history and quit on KeyboardInterrupt')
     pass
 
 try:

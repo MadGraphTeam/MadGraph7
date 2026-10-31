@@ -863,6 +863,80 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         for i, line in enumerate(solution):
             self.assertEqual(line, result[i])
 
+
+    def get_tchannel_calls(self, matrix_element, export_format,
+                           output_options=None, options=None):
+        """helas calls written by the standalone exporter"""
+
+        # the exporter monkey-patches the HelasCallWriter: restore it
+        self.addCleanup(setattr, helas_call_writers.HelasCallWriter,
+                        'customize_argument_for_all_other_helas_object',
+                        helas_call_writers.HelasCallWriter.__dict__[
+                            'customize_argument_for_all_other_helas_object'])
+        exporter = export_v4.ProcessExporterFortranSA('',
+                        {'export_format': export_format,
+                         'output_options': output_options or {}},
+                        format=export_format)
+        fortran_model = helas_call_writers.FortranUFOHelasCallWriter(\
+            self.mybasemodel, options=options or {})
+        replace_dict = exporter.write_matrix_element_v4(None,
+                        matrix_element, fortran_model, write=False)
+        return replace_dict['helas_calls'].split('\n'), fortran_model
+
+    def test_UFO_fortran_tchannel_width_standalone_rw(self):
+        """Test that the t-channel width is set to zero, using the fk_ tagging
+        of madevent, for the reweighting and MadSpin outputs (standalone_rw,
+        standalone_msP/msF, standalone with --zerowidth_tchannel=True) but not
+        for standalone"""
+
+        solution =['CALL VXXXXX(P(0,1),zero,NHEL(1),-1,W(1))',
+                   'CALL VXXXXX(P(0,2),wmas,NHEL(2),-1,W(2))',
+                   'CALL VXXXXX(P(0,3),zero,NHEL(3),+1,W(3))',
+                   'CALL VXXXXX(P(0,4),wmas,NHEL(4),+1,W(4))',
+                   'CALL VXXXXX(P(0,5),zmas,NHEL(5),+1,W(5))',
+                   'CALL VVVV1_4(W(1),W(3),W(2),GC_51,wmas,wwid,W(6))',
+                   '# Amplitude(s) for diagram number 1',
+                   'CALL VVV1_0(W(6),W(4),W(5),GC_12,AMP(1))',
+                   'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas,wwid,W(6))',
+                   '# Amplitude(s) for diagram number 2',
+                   'CALL VVV1_0(W(2),W(6),W(5),GC_12,AMP(2))']
+        zeroed = list(solution)
+        zeroed[8] = 'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas, ZERO,W(6))'
+
+        # (format, output options, writer options): t-channel W width zeroed?
+        for export_format, output_options, options, zero in [
+                ('standalone_fortran', None, None, False),
+                ('standalone_fortran', {'zerowidth_tchannel': 'True'}, None, True),
+                ('standalone_rw', None, None, True),
+                ('standalone_rw', {'zerowidth_tchannel': 'False'}, None, False),
+                ('standalone_rw', None, {'zerowidth_tchannel': False}, False),
+                ('standalone_msP', None, None, True),
+                ('standalone_msF', None, None, True)]:
+            result, fortran_model = self.get_tchannel_calls(self.mymatrixelement,
+                                    export_format, output_options, options)
+            self.assertEqual(zeroed if zero else solution, result)
+            self.assertEqual(fortran_model.width_tchannel_set_tozero, zero)
+
+    def test_UFO_fortran_tchannel_width_decay(self):
+        """No width is set to zero in a decay (is_t_channel assumes two initial
+        particles), also when the output mixes it with 2 > n processes"""
+
+        legs = base_objects.LegList([base_objects.Leg({'id':23, 'state':False}),
+                                     base_objects.Leg({'id':24, 'state':True}),
+                                     base_objects.Leg({'id':-24, 'state':True}),
+                                     base_objects.Leg({'id':22, 'state':True}),
+                                     base_objects.Leg({'id':22, 'state':True})])
+        decay = helas_objects.HelasMatrixElement(diagram_generation.Amplitude(
+                base_objects.Process({'legs':legs, 'model':self.mybasemodel})))
+
+        result, fortran_model = self.get_tchannel_calls(decay, 'standalone_rw')
+        propagators = [call for call in result if 'wmas,' in call and 'XXXXX' not in call]
+        self.assertTrue(propagators)
+        for call in propagators:
+            self.assertIn('wmas,wwid,', call)
+        self.assertFalse(fortran_model.width_tchannel_set_tozero)
+        self.assertTrue(fortran_model.options['zerowidth_tchannel'])
+
         
     def test_UFO_CPP_helas_call_writer(self):
         """Test automatic generation of UFO helas calls in C++"""
@@ -989,7 +1063,7 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         
 
 class UFOHELASCALLWriterComplexMass(unittest.TestCase):
-    """testing the writting in case of complex mass scheme"""
+    """testing the writing in case of complex mass scheme"""
 
     @test_aloha.set_global(cms=True) 
     def setUp(self):
@@ -1238,11 +1312,11 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                            key=lambda wf: wf.get('number_external'))
         self.assertEqual(
             writer.get_external(externals[0], externals[0]).strip(),
-            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][0], -1, '
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[0], -1, '
             'cFlavors[iflavor][0], aloha_obj[0], 0, 1 );')
         self.assertEqual(
             writer.get_external(externals[2], externals[2]).strip(),
-            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][2], +1, '
+            'vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., hel_sv[2], +1, '
             'cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
 
     def test_massive_vector_keeps_vxxxxx(self):
@@ -1301,3 +1375,146 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                     self.assertFalse(requested({'axial_gauge': 'True'}, warn=True))
         finally:
             aloha.unitary_gauge = old
+
+
+class CombineNameHashTest(unittest.TestCase):
+    """The name of a long combined ALOHA routine is a hash of the names of
+    the combined Lorentz structures: the call site (an amplitude, with the
+    '%(tags)s' placeholder still to be filled) and ALOHA (which writes the
+    routine) must hash the same string."""
+
+    def test_long_amplitude_name_matches_the_routine(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFVV%d' % i for i in (110, 1110, 111, 114, 115, 131, 132, 141, 142, 193, 194)]
+        # name written by ALOHA for the amplitude routine
+        written = combine_name('FFVV1010', others, 0, [])
+        self.assertTrue(written.startswith('ALOHA_'))
+        # name of the call, the tags being known only when the call is written
+        call = combine_name('FFVV1010', others, 0, [], unknown_tag=True)
+        self.assertIn('%(tags)s', call)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+
+    def test_short_amplitude_name_is_not_hashed(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFV2']
+        written = combine_name('FFV1', others, 0, [])
+        call = combine_name('FFV1', others, 0, [], unknown_tag=True)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+        self.assertNotIn('ALOHA_', written)
+
+    def test_long_wavefunction_name_matches_the_routine(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFVV%d' % i for i in (110, 1110, 111, 114, 115, 131, 132, 141, 142, 193, 194)]
+        written = combine_name('FFVV1010', others, 3, [])
+        call = combine_name('FFVV1010', others, 3, [], unknown_tag=True)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+
+
+class TestZeroWidthPdgs(unittest.TestCase):
+    """output standalone_fortran --zerowidth_decay=: the HelasCallWriter writes the listed
+    propagators with a zero width, and the standalone exporter decides per
+    matrix element which of the listed particles apply."""
+
+    class _WF(object):
+        def __init__(self, pdg, width, t_channel=False):
+            self.data = {'pdg_code': pdg, 'width': width}
+            self.t_channel = t_channel
+        def get(self, key):
+            return self.data[key]
+        def get_call_key(self):
+            return 'key'
+        def is_t_channel(self):
+            return self.t_channel
+
+    CALL = 'CALL FFV1_1(W(1,3),W(1,1),GC_11,MDL_MT,MDL_WT,W(1,5))'
+
+    def _writer(self, zero):
+        writer = helas_call_writers.HelasCallWriter()
+        writer.zerowidth_pdgs = frozenset(zero)
+        writer['wavefunctions']['key'] = lambda wf: self.CALL
+        return writer
+
+    def test_listed_propagator_gets_zero_width(self):
+        call = self._writer([6]).get_wavefunction_call(self._WF(-6, 'MDL_WT'))
+        self.assertEqual(call, 'CALL FFV1_1(W(1,3),W(1,1),GC_11,MDL_MT, ZERO,W(1,5))')
+
+    def test_other_propagators_are_untouched(self):
+        for zero in ([], [24]):
+            self.assertEqual(self._writer(zero).get_wavefunction_call(
+                self._WF(6, 'MDL_WT')), self.CALL)
+
+    def test_the_mass_is_never_touched(self):
+        """Only the width argument: a width name that is a prefix of the mass
+        name (or equal to nothing in the call) must not hit the mass."""
+        writer = self._writer([6])
+        writer['wavefunctions']['key'] = lambda wf: \
+            'CALL FFV1_1(W(1,3),W(1,1),GC_11,MDL_WT2,MDL_WT,W(1,5))'
+        self.assertEqual(writer.get_wavefunction_call(self._WF(6, 'MDL_WT')),
+                         'CALL FFV1_1(W(1,3),W(1,1),GC_11,MDL_WT2, ZERO,W(1,5))')
+
+    class _Leg(dict):
+        pass
+
+    class _Proc(object):
+        def __init__(self, ids, ninitial):
+            self.legs = []
+            for i, pid in enumerate(ids):
+                leg = TestZeroWidthPdgs._Leg(id=pid, state=i >= ninitial)
+                self.legs.append(leg)
+            self.ninitial = ninitial
+        def get(self, key):
+            return self.legs
+        def get_ninitial(self):
+            return self.ninitial
+
+    class _ME(object):
+        def __init__(self, *procs):
+            self.procs = list(procs)
+        def get(self, key):
+            return self.procs
+
+    def _active(self, option, *procs):
+        class Exporter(object):
+            get_zerowidth_pdgs = export_v4.ProcessExporterFortranSA.get_zerowidth_pdgs
+        exporter = Exporter()
+        exporter.cmd_options = {} if option is None else {'zerowidth_decay': option}
+        return exporter.get_zerowidth_pdgs(self._ME(*procs))
+
+    def test_production_uses_the_listed_final_state_particles(self):
+        ttz = self._Proc([-11, 11, 6, -6, 23], 2)
+        self.assertEqual(self._active('6,24', ttz), frozenset([6]))
+        self.assertEqual(self._active('6,23', ttz), frozenset([6, 23]))
+
+    def test_a_decay_uses_its_decaying_particle_only(self):
+        """The W of t > e+ ve b keeps its width even when 24 is listed; the
+        top of t > w+ b g is zeroed."""
+        self.assertEqual(self._active('6,24', self._Proc([6, -11, 12, 5], 1)),
+                         frozenset([6]))
+        self.assertEqual(self._active('24', self._Proc([6, -11, 12, 5], 1)),
+                         frozenset())
+        self.assertEqual(self._active('6,24', self._Proc([-24, 11, -12], 1)),
+                         frozenset([24]))
+
+    def test_true_takes_every_external_particle(self):
+        """True: the decaying particle of a decay (never the W it
+        propagates), every final-state particle of a production."""
+        for option in (True, 'True', 'true'):
+            self.assertEqual(self._active(option, self._Proc([6, -11, 12, 5], 1)),
+                             frozenset([6]))
+            self.assertEqual(self._active(option, self._Proc([6, 24, 5, 21], 1)),
+                             frozenset([6]))
+            self.assertEqual(self._active(option,
+                                          self._Proc([-11, 11, 6, -6, 23], 2)),
+                             frozenset([6, 23]))
+        for option in (False, 'False'):
+            self.assertEqual(self._active(option, self._Proc([6, 24, 5, 21], 1)),
+                             frozenset())
+
+    def test_no_option_no_zero(self):
+        self.assertEqual(self._active(None, self._Proc([6, 24, 5, 21], 1)),
+                         frozenset())
+        self.assertEqual(self._active('', self._Proc([6, 24, 5, 21], 1)),
+                         frozenset())

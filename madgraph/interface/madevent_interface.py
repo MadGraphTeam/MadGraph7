@@ -46,7 +46,7 @@ root_path = os.path.split(root_path)[0]
 if __name__ == '__main__':
     sys.path.insert(0, os.path.join(root_path,'bin'))
 
-# usefull shortcut
+# useful shortcut
 pjoin = os.path.join
 # Special logger for the Cmd Interface
 logger = logging.getLogger('madevent.stdout') # -> stdout
@@ -89,7 +89,7 @@ else:
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
-    import models.check_param_card as check_param_card
+    import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
     from madgraph import InvalidCmd, MadGraph5Error, MG5DIR, ReadWrite
 
@@ -223,7 +223,7 @@ class CmdExtended(common_run.CommonRunCmd):
         return self.history_header % misc.get_time_info()
     
     def stop_on_keyboard_stop(self):
-        """action to perform to close nicely on a keyboard interupt"""
+        """action to perform to close nicely on a keyboard interrupt"""
         try:
             if hasattr(self, 'cluster'):
                 logger.info('rm jobs on queue')
@@ -507,7 +507,7 @@ class HelpToCmd(object):
         logger.info("   if RUN is 'all', then all run will be cleaned.")
         logger.info("   The optional argument precise which part should be cleaned.")
         logger.info("   By default we clean all the related files but the banners.")
-        logger.info("   the optional '-f' allows to by-pass all security question")
+        logger.info("   the optional '-f' allows you to bypass all security questions")
         logger.info("   The banner can be remove only if all files are removed first.")
 
 class AskRun(cmd.ControlSwitch):
@@ -523,8 +523,8 @@ class AskRun(cmd.ControlSwitch):
     def __init__(self, question, line_args=[], mode=None, force=False,
                                                                   *args, **opt):
         
-        self.check_available_module(opt['mother_interface'].options)
         self.me_dir = opt['mother_interface'].me_dir
+        self.check_available_module(opt['mother_interface'].options)
         super(AskRun,self).__init__(self.to_control, opt['mother_interface'],
                                      *args, **opt)
         
@@ -555,6 +555,18 @@ class AskRun(cmd.ControlSwitch):
         if not MADEVENT or ('mg5_path' in options and options['mg5_path']):
             self.available_module.add('MadSpin')
             if misc.has_f2py() or options['f2py_compiler']:
+                self.available_module.add('reweight')
+
+        # An MG7 output reweights with the classic module or with MadtRex
+        # (see madgraph/various/reweight_backend.py): reweighting is
+        # available when either one can run.
+        self.reweight_env = None
+        if not MADEVENT and os.path.exists(pjoin(self.me_dir, 'Cards', 'run_card.toml')):
+            from madgraph.various import reweight_backend
+            self.reweight_env = reweight_backend.probe_environment(
+                self.me_dir, dict(options, mg5_path=options.get('mg5_path') or MG5DIR),
+                has_f2py='reweight' in self.available_module)
+            if reweight_backend.available_backends(self.reweight_env):
                 self.available_module.add('reweight')
 
 #   old mode to activate the shower            
@@ -907,7 +919,16 @@ class AskRun(cmd.ControlSwitch):
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
             return self.allowed_reweight
-        self.allowed_reweight = ['OFF', 'ON', 'density']
+        if self.reweight_env is not None:
+            # MG7 output: ON is auto; then the backends that can run here
+            from madgraph.various import reweight_backend
+            backends = reweight_backend.available_backends(self.reweight_env)
+            self.allowed_reweight = ['OFF', 'ON'] + backends
+            if 'classic' not in backends:
+                return self.allowed_reweight
+            self.allowed_reweight.append('density')
+        else:
+            self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
@@ -920,13 +941,7 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' in self.available_module:
             if os.path.exists(pjoin(self.me_dir,'Cards','reweight_card.dat')):
-                reweightcard = open(pjoin(self.me_dir,'Cards','reweight_card.dat'), 'r')
-                content = reweightcard.read()
-                if 'change particle_in_density_matrix' in content:
-                    self.switch['reweight'] = 'density'
-                else:
-                    self.switch['reweight'] = 'ON'
-                reweightcard.close()
+                self.switch['reweight'] = self.switch_value_from_card_reweight()
             else:
                 self.switch['reweight'] = 'OFF'
         else:
@@ -934,6 +949,9 @@ class AskRun(cmd.ControlSwitch):
 
     def get_cardcmd_for_reweight(self, value):
         """set some command to run before allowing the user to modify the cards."""
+        if value in ['classic', 'madtrex']:
+            # the two backends of an MG7 output read the same card as ON
+            value = 'ON'
         if value in ['density']:
             content_rwgt_card = open(pjoin(self.me_dir, "Cards", "reweight_card.dat"), "r")
             if 'change particle_in_density_matrix' in content_rwgt_card.read():
@@ -961,14 +979,26 @@ class AskRun(cmd.ControlSwitch):
 
     def switch_value_from_card_reweight(self):
         """re-derive the reweight switch (ON vs density) from the content of
-        reweight_card.dat (called after the user has edited the cards)."""
+        reweight_card.dat (called after the user has edited the cards). For
+        an MG7 output, a "change backend classic|madtrex" line of the card
+        gives that backend (when it can run here)."""
 
         path = pjoin(self.me_dir, 'Cards', 'reweight_card.dat')
         if not os.path.exists(path):
             return None
         with open(path) as fsock:
-            if 'change particle_in_density_matrix' in fsock.read():
-                return 'density'
+            content = fsock.read()
+        if 'change particle_in_density_matrix' in content:
+            return 'density'
+        if getattr(self, 'reweight_env', None) is not None:
+            # a backend picked in the question outranks the card's line
+            # (the run warns when the two disagree)
+            current = getattr(self, 'switch', {}).get('reweight')
+            if current in ('classic', 'madtrex'):
+                return current
+            match = re.search(r'^\s*change\s+backend\s+(\w+)', content, re.M | re.I)
+            if match and match.group(1).lower() in self.get_allowed_reweight():
+                return match.group(1).lower()
         return 'ON'
 
 
@@ -1149,7 +1179,7 @@ class CheckValidForCmd(object):
                 
         if args[0] in ['timeout']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('timeout values should be a integer')   
+                raise self.InvalidCmd('timeout values should be an integer')
             
     def check_open(self, args):
         """ check the validity of the line """
@@ -1285,7 +1315,7 @@ class CheckValidForCmd(object):
             self.help_survey()
             raise self.InvalidCmd('Too many argument for %s command' % cmd)
         elif not args:
-            # No run name assigned -> assigned one automaticaly 
+            # No run name assigned -> assigned one automatically
             self.set_run_name(self.find_available_run_name(self.me_dir))
         else:
             self.set_run_name(args[0], None,'parton', True)
@@ -1365,7 +1395,7 @@ class CheckValidForCmd(object):
 
         elif not args[0].isdigit():
             self.help_multi_run()
-            raise self.InvalidCmd("The first argument of multi_run should be a integer.")
+            raise self.InvalidCmd("The first argument of multi_run should be an integer.")
         #pass nb run to an integer
         nb_run = args.pop(0)
         args.insert(0, int(nb_run))
@@ -2187,7 +2217,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
                                                             final=final, **opt)
 
         if not final:
-            return self.options # the return is usefull for unittest
+            return self.options # the return is useful for unittest
 
 
         # Treat each expected input
@@ -2444,7 +2474,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
             run_card = banner_mod.RunCard(pjoin(self.me_dir, 'Cards', 'run_card.dat'), consistency=False)
         if not run_card.scan_set:
             if not args:
-                # No run name assigned -> assigned one automaticaly 
+                # No run name assigned -> assigned one automatically
                 self.set_run_name(self.find_available_run_name(self.me_dir), None, 'parton')
             else:
                 self.set_run_name(args[0], None, 'parton', True)
@@ -3012,7 +3042,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         self.Gdirs = None
 
         if not args:
-            # No run name assigned -> assigned one automaticaly 
+            # No run name assigned -> assigned one automatically
             self.set_run_name(self.find_available_run_name(self.me_dir))
         else:
             self.set_run_name(args[0], reload_card=True)
@@ -3055,7 +3085,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         for P_path in SubProcesses.get_subP(self.me_dir):
             ids = SubProcesses.get_subP_ids(P_path)
             # due to grouping we need to compute the ratio factor for the 
-            # ungroup resutls (that we need here). Note that initial particles
+            # ungroup results (that we need here). Note that initial particles
             # grouping are not at the same stage as final particle grouping
             nb_output = len(ids) / (len(set([p[0] for p in ids])))
             results_text = open(pjoin(P_path, run_name + '_results.dat')).read()
@@ -3114,6 +3144,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
 
         decay_lines = []
         comment = collections.defaultdict(str)
+        # the widths still on auto ('DECAY 6 auto --nlo'), which another call of
+        # compute_widths is to compute: they must come out as they went in
+        pending_auto = {}
         line_number = 0
         # Read and remove all decays from the param_card                     
         while line_number < len(param_card):
@@ -3130,6 +3163,12 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         particle = int(line[1])
                         width = float(line[2])
                     except Exception:
+                        try:
+                            auto_value = ' '.join(line[2:line.index('#')] if '#' in line else line[2:])
+                            if auto_value.lower().startswith('auto'):
+                                pending_auto[int(line[1])] = auto_value
+                        except ValueError:
+                            pass
                         particle = 0
                 # Read BRs for this decay
                 line = param_card[line_number]
@@ -3166,6 +3205,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         param_card.append("#\n#*************************")
         param_card.append("#      Decay widths      *")
         param_card.append("#*************************")
+        for key in sorted(pending_auto):
+            param_card.append("#\n#      PDG        Width")
+            param_card.append("DECAY  %i  %s # %s" % (key, pending_auto[key], comment[key]))
         for key in sorted(decay_info.keys()):
             width = sum([r for p,r in decay_info[key]])
             param_card.append("#\n#      PDG        Width")
@@ -3291,6 +3333,36 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
     
 
     ############################################################################      
+    def check_mlm_massless_b(self, run_card):
+        """MLM matching with a massless quark among the external particles
+        requires maxjetflavor to include it (5 for a massless b). Otherwise
+        the quark is not a jet: nothing regulates its collinear region, and a
+        subprocess grouping it with lighter quarks is cut and reweighted as if
+        it were the lighter quark (#456)."""
+
+        if run_card['ickkw'] != 1 or run_card['maxjetflavor'] >= 5:
+            return
+        heaviest, Pname = 0, None
+        for Pdir in self.get_Pdir():
+            pmass = {}
+            for line in open(pjoin(Pdir, 'pmass.inc')):
+                found = re.search(r'PMASS\((\d+)\)\s*=\s*(\S+)', line, re.I)
+                if found:
+                    pmass[int(found.group(1))] = found.group(2).upper()
+            for ids in SubProcesses.get_subP_ids(Pdir):
+                for i, pdg in enumerate(ids):
+                    if run_card['maxjetflavor'] < abs(pdg) <= 5 and \
+                            abs(pdg) > heaviest and pmass.get(i+1) == 'ZERO':
+                        heaviest, Pname = abs(pdg), os.path.basename(Pdir)
+        if heaviest:
+            name = {4: 'c', 5: 'b'}.get(heaviest, str(heaviest))
+            raise banner_mod.InvalidRunCard(
+                'MLM matching (ickkw=1) with a massless %s quark (%s) requires '
+                'maxjetflavor=%s (set to %s): the %s must then be treated as a '
+                'jet. Set maxjetflavor to %s, or use a model with a massive %s.'
+                % (name, Pname, heaviest,
+                   run_card['maxjetflavor'], name, heaviest, name))
+
     def do_treatcards(self, line, mode=None, opt=None):
         """Advanced commands: create .inc files from param_card.dat/run_card.dat"""
 
@@ -3390,6 +3462,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             else:
                 run_card = self.run_card
             self.run_card = run_card
+            self.check_mlm_massless_b(run_card)
             if self.cluster:
                 self.cluster.modify_interface(self)
             if self.ninitial == 1:
@@ -3477,7 +3550,7 @@ Beware that this can be dangerous for local multicore runs.""")
             self.MadLoopparam.set('WriteOutFilters',False, changeifuserset=False)
             
             # The conservative settings below for 'CTModeInit' and 'ZeroThres'
-            # help adress issues for processes like g g > h z, and g g > h g
+            # help address issues for processes like g g > h z, and g g > h g
             # where there are some helicity configuration heavily suppressed 
             # (by several orders of magnitude) so that the helicity filter 
             # needs high numerical accuracy to correctly handle this spread in
@@ -3547,14 +3620,14 @@ Beware that this can be dangerous for local multicore runs.""")
     with the lorentz rotation stability test. The number of these rotations to be used will be reset to 
     zero by MadLoop. You can avoid this by changing the parameter 'FORCE_ML_HELICITY_SUM' int he matrix<i>.f
     files to be .TRUE. so that the sum over helicity configurations is performed within MadLoop (in which case
-    the helicity of final state particles cannot be speicfied in the LHE file.""")
+    the helicity of final state particles cannot be specified in the LHE file.""")
                 self.MadLoopparam.set('NRotations_DP',0,changeifuserset=False)
                 self.MadLoopparam.set('NRotations_QP',0,changeifuserset=False)
             else:
                 # When MC-ing over helicities, the manual TIR cache clearing is
                 # not necessary, so that one can use the lorentz check
                 # Using NRotations_DP=1 slows down the code by close to 100%
-                # but it is typicaly safer.
+                # but it is typically safer.
                 # self.MadLoopparam.set('NRotations_DP',0,changeifuserset=False)
                 # Revert to the above to be slightly less robust but twice faster.
                 self.MadLoopparam.set('NRotations_DP',1,changeifuserset=False)
@@ -3764,7 +3837,7 @@ Beware that this can be dangerous for local multicore runs.""")
         subproc = [l.strip() for l in open(pjoin(self.me_dir,'SubProcesses', 
                                                                  'subproc.mg'))]
     
-        # cleanning the previous job
+        # cleaning the previous job
         for nb_proc,subdir in enumerate(subproc):
             subdir = subdir.strip()
             Pdir = pjoin(self.me_dir, 'SubProcesses', subdir)
@@ -3792,15 +3865,15 @@ Beware that this can be dangerous for local multicore runs.""")
         if survey_statistics:
             x_improve.run_statistics = survey_statistics
         
-        x_improve.launch() # create the ajob for the refinment.
+        x_improve.launch() # create the ajob for the refinement.
         if not self.history or 'refine' not in self.history[-1]:
             cross, error = x_improve.update_html() #update html results for survey
             if  cross == 0:
                 return
             logger.info("- Current estimate of cross-section: %s +- %s" % (cross, error))
         if isinstance(x_improve, gen_ximprove.gen_ximprove_v4):
-            # Non splitted mode is based on writting ajob so need to track them
-            # Splitted mode handle the cluster submition internally.
+            # Non split mode is based on writing ajob so need to track them
+            # Split mode handle the cluster submission internally.
             for nb_proc,subdir in enumerate(subproc):
                 subdir = subdir.strip()
                 Pdir = pjoin(self.me_dir, 'SubProcesses',subdir)
@@ -3841,7 +3914,7 @@ Beware that this can be dangerous for local multicore runs.""")
         
         if isinstance(x_improve, gen_ximprove.gen_ximprove_v4):
             # the merge of the events.lhe is handle in the x_improve class
-            # for splitted runs. (and partly in store_events).        
+            # for split runs. (and partly in store_events).
             combine_runs.CombineRuns(self.me_dir)
             self.refine_mode = "old"
         else:
@@ -4456,26 +4529,51 @@ Beware that this can be dangerous for local multicore runs.""")
         else:
             hepmc_version = self.get_auto_hepmc_version()
 
+        # The jet rates of an MLM shower (Main:InternalAnalysis) split per jet
+        # sample (InternalAnalysis:jetSamples), for the DJR plots: a main164
+        # that cannot do it is patched (misc.patch_pythia8_main164_djrs).
+        jet_sample_djrs = bool(PY8_Card['Main:InternalAnalysis']) and \
+                                  bool(PY8_Card['InternalAnalysis:jetSamples'])
+        executable = None
+        if jet_sample_djrs:
+            try:
+                executable = self._get_pythia8_main164(hepmc_format,
+                                                       hepmc_version, True)
+            except self.InvalidCmd as error:
+                logger.warning('main164 could not be built to split the jet rates ' +
+                    'per jet sample, the DJR plots show their sum only:\n%s' % error)
+        if executable is None:
+            executable = self._get_pythia8_main164(hepmc_format, hepmc_version, False)
+        # a main164 that does not know the setting would refuse it
+        if not misc.pythia8_main164_knows_jet_samples(executable):
+            PY8_Card.vetoParamWriteOut('InternalAnalysis:jetSamples')
+        return executable
+
+    def _get_pythia8_main164(self, hepmc_format, hepmc_version, jet_sample_djrs):
+        """get_pythia8_main164 for a given HepMC version, falling back to the
+        version Pythia8 was configured with under HEPMCoutput:format = auto."""
+
         try:
-            return self.get_pythia8_main164_for(hepmc_version)
+            return self.get_pythia8_main164_for(hepmc_version, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             if hepmc_format != 'auto':
                 raise self.InvalidCmd(str(error))
             logger.warning('%s\nPythia8 writes the HepMC version it was '% error +
                            'configured with instead.')
         try:
-            return self.get_pythia8_main164_for(None)
+            return self.get_pythia8_main164_for(None, jet_sample_djrs)
         except (MadGraph5Error, OSError) as error:
             raise self.InvalidCmd(str(error))
 
-    def get_pythia8_main164_for(self, hepmc_version):
+    def get_pythia8_main164_for(self, hepmc_version, jet_sample_djrs=False):
         """main164 writing HepMC<hepmc_version> events (None: the version
         Pythia8 was configured with), see misc.get_pythia8_main164."""
 
         return misc.get_pythia8_main164(self.options['pythia8_path'],
                           fallback_dir=pjoin(self.me_dir, 'lib', 'PY8_main164'),
                           hepmc_version=hepmc_version,
-                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3))
+                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3),
+                          jet_sample_djrs=jet_sample_djrs)
 
     def setup_Pythia8RunAndCard(self, PY8_Card, run_type):
         """ Setup the Pythia8 Run environment and card. In particular all the process and run specific parameters
@@ -4552,7 +4650,7 @@ Beware that this can be dangerous for local multicore runs.""")
                                          'custom fifo file at:\n  %s'%fifo_path)
                     else:
                         raise InvalidCmd(
-"""The fifo path speficied for the PY8 parameter 'HEPMCoutput:file':
+"""The fifo path specified for the PY8 parameter 'HEPMCoutput:file':
    %s
 already exists and is not a fifo file."""%fifo_path)
                 else:
@@ -4564,7 +4662,7 @@ already exists and is not a fifo file."""%fifo_path)
             logger.warning('User disabled the HepMC output of Pythia8.')
             HepMC_event_output = None
         else:
-            raise InvalidCmd("Unknow HEPMCoutput:file setting, hepmc/hepmc.gz/hepmcremove/fifo")
+            raise InvalidCmd("Unknown HEPMCoutput:file setting, hepmc/hepmc.gz/hepmcremove/fifo")
 
         # We specify by hand all necessary parameters, so that there is no
         # need to read parameters from the Banner.
@@ -4608,7 +4706,7 @@ already exists and is not a fifo file."""%fifo_path)
             # Use the parameter maxjetflavor for JetMatching:nQmatch which specifies
             # up to which parton must be matched.Merging:nQuarksMerge
             PY8_Card.MadGraphSet('JetMatching:nQmatch',self.run_card['maxjetflavor'])
-            # For MLM, a cone radius of 1.0 is to be prefered.
+            # For MLM, a cone radius of 1.0 is to be preferred.
             PY8_Card.MadGraphSet('JetMatching:coneRadius',1.0)
             # And the value of etaj_max is already infinity by default.
             # PY8_Card.MadGraphSet('JetMatching:etaJetMax',1000.0)
@@ -4619,6 +4717,16 @@ already exists and is not a fifo file."""%fifo_path)
                 logger.info("No user-defined value for Pythia8 parameter "+
             "'JetMatching:nJetMax'. Setting it automatically to %d."%nJetMax)
                 PY8_Card.MadGraphSet('JetMatching:nJetMax',nJetMax, force=True)
+            # the differential jet rates of the showered events, from which
+            # the DJR plots of the run are made (create_plot)
+            if 'main:internalanalysis' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('Main:InternalAnalysis', True)
+            # and per jet sample (the 0/1/2-jet contributions)
+            if 'internalanalysis:jetsamples' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:jetSamples', True)
+            if PY8_Card['Main:InternalAnalysis'] and \
+                    'internalanalysis:output' not in PY8_Card.user_set:
+                PY8_Card.MadGraphSet('InternalAnalysis:output', './djrs.dat')
             # cite the shower-kt MLM scheme only when it is actually enabled
             if common_run.citation is not None and \
                PY8_Card['JetMatching:doShowerKt'.lower()]:
@@ -4630,7 +4738,7 @@ already exists and is not a fifo file."""%fifo_path)
             # Make sure the user correctly filled in the lowest order process to be considered
             if PY8_Card['Merging:Process']=='<set_by_user>':
                 raise self.InvalidCmd('When running CKKWl merging, the user must'+
-                    " specifiy the option 'Merging:Process' in pythia8_card.dat.\n"+
+                    " specify the option 'Merging:Process' in pythia8_card.dat.\n"+
                     "Read section 'Defining the hard process' of "+\
                     "http://home.thep.lu.se/~torbjorn/pythia81html/CKKWLMerging.html for more information.")
 
@@ -4796,8 +4904,6 @@ already exists and is not a fifo file."""%fifo_path)
                                                     'pythia8_card_default.dat'))
         PY8_Card.read(pjoin(self.me_dir, 'Cards', 'pythia8_card.dat'),
                                                                   setter='user')
-        pythia_main = self.get_pythia8_main164(PY8_Card)
-        
         run_type = 'default'
         merged_run_types = ['MLM','CKKW']
         if int(self.run_card['ickkw'])==1:
@@ -4808,6 +4914,9 @@ already exists and is not a fifo file."""%fifo_path)
 
         # Edit the card and run environment according to the run specification
         HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type)
+        # after the setup: an MLM shower writes the jet rates (InternalAnalysis),
+        # which selects a main164 that also splits them per jet sample
+        pythia_main = self.get_pythia8_main164(PY8_Card)
 
 
         if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
@@ -4883,7 +4992,7 @@ already exists and is not a fifo file."""%fifo_path)
 
         if is_HepMC_output_fifo:
             logger.info(
-"""Pythia8 is set to output HEPMC events to to a fifo file.
+"""Pythia8 is set to output HEPMC events to a fifo file.
 You can follow PY8 run with the following command (in a separate terminal):
     tail -f %s"""%pythia_log )
             py8_log = open( pythia_log,'w')
@@ -4928,7 +5037,7 @@ You can follow PY8 run with the following command (in a separate terminal):
                             "'Main:numberOfEvents' than the total number of events available (%d)"%n_available_events+\
                             ' in the event file:\n %s'%pjoin(self.me_dir,'Events',self.run_name,PY8_Card.subruns[0]['Beams:LHEF']))
 
-                # Implement a security to insure a minimum numbe of events per job
+                # Implement a security to insure a minimum number of events per job
                 if self.options['run_mode']==2:
                     min_n_events_per_job = 100
                 elif self.options['run_mode']==1:
@@ -4956,6 +5065,23 @@ You can follow PY8 run with the following command (in a separate terminal):
                     raise self.InvalidCmd('Pythia8 shower interrupted with return'+\
                         ' code %d.\n'%ret_code+\
                         'You can find more information in this log file:\n%s'%pythia_log)
+                # main164's differential jet rates (an MLM sample), in mb: to
+                # the <tag>_djrs.dat in pb that the DJR plots are made from
+                djr_file = pjoin(self.me_dir,'Events',self.run_name,'djrs.dat')
+                if os.path.isfile(djr_file):
+                    try:
+                        djr_HwU = histograms.HwUList.from_pythia8_main164(
+                                                          djr_file, scale=1e9)
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        djr_HwU = None
+                    if djr_HwU is not None:
+                        djr_HwU.output(pjoin(self.me_dir,'Events',self.run_name,'djrs'),
+                                                                     format='HwU')
+                        shutil.move(pjoin(self.me_dir,'Events',self.run_name,'djrs.HwU'),
+                            pjoin(self.me_dir,'Events',self.run_name,'%s_djrs.dat'%tag))
+                        os.remove(djr_file)
             else:
                 if self.run_card['event_norm']=='sum':
                     logger.error("")
@@ -5157,9 +5283,28 @@ tar -czf split_$1.tar.gz split_$1
                 # djr plots
                 djr_HwU = None
                 n_added = 0
-                for split_dir in split_dirs:
+                for i_split, split_dir in enumerate(split_dirs):
                     djr_file = pjoin(split_dir,'djrs.dat')
                     if not os.path.isfile(djr_file):
+                        continue
+                    # Pythia8's main164 writes its own, simpler histfile (see
+                    # HwUList.from_pythia8_main164): only the summed
+                    # histograms, without the per-sample cross sections, in mb
+                    # and normalised to the full cross section in each job
+                    try:
+                        new_djr_HwU = histograms.HwUList.from_pythia8_main164(
+                            djr_file, scale=1e9 * partition_for_PY8[i_split]
+                                                    / float(sum(partition_for_PY8)))
+                    except Exception as error:
+                        logger.warning('Could not read the DJR histograms in %s: %s',
+                                                                 djr_file, error)
+                        continue
+                    if new_djr_HwU is not None:
+                        if djr_HwU is None:
+                            djr_HwU = new_djr_HwU
+                        else:
+                            for i, hist in enumerate(djr_HwU):
+                                djr_HwU[i] = hist + new_djr_HwU[i]
                         continue
                     xsecs = self.extract_cross_sections_from_DJR(djr_file)
                     if len(xsecs)>0:
@@ -5340,7 +5485,7 @@ tar -czf split_$1.tar.gz split_$1
                         PY8_extracted_information['Ntry'] = self.parse_PY8_log_file(
                         pjoin(self.me_dir,'Events', self.run_name,'%s_pythia8.log' % tag))      
                 else:
-                    logger.warning('Pythia8 cross-section could not be retreived.\n'+
+                    logger.warning('Pythia8 cross-section could not be retrieved.\n'+
                        'Try turning parallelization off by setting the option nb_core to 1. YYYYY')
 
             if not any(PY8_extracted_information[_] is None for _ in ['sigma_m','Nacc','Ntry']):
@@ -5367,7 +5512,7 @@ tar -czf split_$1.tar.gz split_$1
                 if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
                     PY8_extracted_information['cross_sections'] = self.extract_cross_sections_from_DJR(djr_output)
                 else:
-                    logger.warning('Pythia8 merged cross-sections could not be retreived.\n'+
+                    logger.warning('Pythia8 merged cross-sections could not be retrieved.\n'+
                        'Try turning parallelization off by setting the option nb_core to 1.XXXXX')
                     PY8_extracted_information['cross_sections'] = {} 
                     
@@ -5951,7 +6096,7 @@ tar -czf split_$1.tar.gz split_$1
         if run == 'all':
             # Check first if they are not a run with a name run.
             if os.path.exists(pjoin(self.me_dir, 'Events', 'all')):
-                logger.warning('A run with name all exists. So we will not supress all processes.')
+                logger.warning('A run with name all exists. So we will not suppress all processes.')
             else:
                 for match in misc.glob(pjoin('*','*_banner.txt'), pjoin(self.me_dir, 'Events')):
                     run = match.rsplit(os.path.sep,2)[1]
@@ -5999,7 +6144,7 @@ tar -czf split_$1.tar.gz split_$1
                     if os.path.exists(pjoin(self.me_dir, 'HTML', run,'plots_parton.html')):
                         to_delete.append(pjoin(self.me_dir, 'HTML', run,'plots_parton.html'))                       
                     if nb_rm != len(to_delete):
-                        logger.warning('Be carefull that partonic information are on the point to be removed.')
+                        logger.warning('Be careful: partonic information is about to be removed.')
         if 'all' in mode:
             pass # delete everything
         else:
@@ -6109,7 +6254,7 @@ tar -czf split_$1.tar.gz split_$1
     def do_syscalc(self, line):
         """Evaluate systematics variation weights for a given run"""
 
-        # Since in principle, all systematics run are already done automaticaly
+        # Since in principle, all systematics run are already done automatically
         self.store_result()
         args = self.split_arg(line)
         # Check argument's validity
@@ -6777,7 +6922,7 @@ tar -czf split_$1.tar.gz split_$1
 
         def get_last_tag(self, level):
             # Return the tag of the previous run having the required data for this
-            # tag/run to working wel.
+            # tag/run to working well.
             if level == 'parton':
                 return
             elif level in ['pythia','pythia8','madanalysis5_parton','madanalysis5_hadron']:
@@ -6905,7 +7050,7 @@ tar -czf split_$1.tar.gz split_$1
             
     ############################################################################
     def save_random(self):
-        """save random number in appropirate file"""
+        """save random number in appropriate file"""
 
         fsock = open(pjoin(self.me_dir, 'SubProcesses','randinit'),'w')
         fsock.writelines('r=%s\n' % self.random)
@@ -7440,7 +7585,7 @@ class GridPackCmd(MadEventCmd):
         self.last_mode=''
 
     def save_random(self):
-        """save random number in appropirate file"""
+        """save random number in appropriate file"""
 
         if not self.readonly:
             fsock = open(pjoin(self.me_dir, 'SubProcesses','randinit'),'w')
@@ -7577,7 +7722,7 @@ class GridPackCmd(MadEventCmd):
                       'ngran':self.granularity, 'readonly': self.readonly,
                       'nprocs': self.nprocs, 'maxevts': self.maxevts}
         x_improve = gen_ximprove.gen_ximprove_gridpack(self, refine_opt)
-        x_improve.launch() # create the ajob for the refinment and run those!
+        x_improve.launch() # create the ajob for the refinement and run those!
         self.gscalefact = x_improve.gscalefact #store jacobian associate to the gridpack 
         
         
@@ -7695,7 +7840,7 @@ class GridPackCmd(MadEventCmd):
         Gdirs = self.get_Gdir()
         Gdirs.sort()
         for Gdir in Gdirs:
-            #mfactor already taken into accoun in auto_dsig.f
+            #mfactor already taken into account in auto_dsig.f
             if os.path.exists(pjoin(Gdir, 'events.lhe')):
                 result = sum_html.OneResult('')
                 result.read_results(pjoin(Gdir, 'results.dat'))
@@ -7824,7 +7969,7 @@ class MadLoopInitializer(object):
         if hel_config is different than -1 then check_sa.f is configured so to
         evaluate only the specified helicity.
         If mu_r > 0.0, then the renormalization constant value will be hardcoded
-        directly in check_sa.f, if is is 0 it will be set to Sqrt(s) and if it
+        directly in check_sa.f, if it is 0 it will be set to Sqrt(s) and if it
         is < 0.0 the value in the param_card.dat is used.
         If the split_orders target (i.e. the target squared coupling orders for 
         the computation) is != -1, it will be changed in check_sa.f via the
@@ -7910,7 +8055,7 @@ class MadLoopInitializer(object):
         # Use the presence of the file born_matrix.f to decide if it is a 
         # loop-induced process or not. It's not crucial, but just that because
         # of the dynamic adjustment of the ref scale used for deciding what are
-        # the zero contributions, more points are neeeded for loop-induced.
+        # the zero contributions, more points are needed for loop-induced.
         if not os.path.isfile(pjoin(run_dir,'born_matrix.f')):
             if len(attempts)>=1 and attempts[0]<8:
                 attempts[0]=8
@@ -7976,7 +8121,7 @@ class MadLoopInitializer(object):
                 MLCard.set('CTModeInit',4)
                 MLCard.set('ZeroThres',1e-11)
             else:
-                # Restore the default double precision intialization params
+                # Restore the default double precision initialization params
                 MLCard.set('CTModeInit',1)
                 MLCard.set('ZeroThres',1e-9)
             # Plus one because the filter are written on the next PS point after
@@ -8051,7 +8196,7 @@ class MadLoopInitializer(object):
     @staticmethod
     def init_MadLoop(proc_dir, n_PS=None, subproc_prefix='PV', MG_options=None,
                                                               interface = None):
-        """Advanced commands: Compiles and run MadLoop on RAMBO random PS points to initilize the
+        """Advanced commands: Compiles and run MadLoop on RAMBO random PS points to initialize the
         filters."""
 
         logger.debug('Compiling Source materials necessary for MadLoop '+
@@ -8158,7 +8303,7 @@ if '__main__' == __name__:
     import sys
     if sys.version_info < (3, 12):
         sys.exit('MadGraph/MadEvent 5 works only with python 3.12 or later).\n'+\
-               'Please upgrate your version of python.')
+               'Please upgrade your version of Python.')
 
     import os
     import optparse
@@ -8245,9 +8390,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

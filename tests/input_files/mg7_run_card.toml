@@ -2,14 +2,12 @@
 run_name = "run"
 # list of devices; options: cpu, cuda, hip (an optional device index can be added, e.g. "cuda:1")
 device = ["cpu"]
-# SIMD width used by the 'cpu' devices (ignored by cuda/hip)
+# SIMD width of the matrix elements (madmatrix) on the 'cpu' devices (ignored by cuda/hip)
 # options: auto (widest width supported by the host), scalar, simd_128, simd_256, simd_512, avx512y
 cpu_mode = "scalar"
-# options:
-#   -1 to choose automatically
-#   on x86: 1, 4, 8
-#   on Apple silicon: 1, 2
-simd_vector_size = -1
+# SIMD width of the phase-space sampling (madspace) on the 'cpu' devices
+# options: auto (simd_512, then simd_256 on x86; scalar on ARM), scalar, simd_128 (ARM only), simd_256, avx512y, simd_512
+madspace_cpu_mode = "auto"
 # pool sizes: -1 sets count automatically based on number of CPUs
 cpu_thread_pool_size = -1
 gpu_thread_pool_size = 1
@@ -23,6 +21,10 @@ save_gridpack = false
 include_source = false
 include_madspace = true
 include_madspace_source = false
+compress = false
+run_mode = "minimal"
+temp_output_dir = ""
+output_dir = ""
 
 [beam]
 e_cm = 1000.0
@@ -106,6 +108,9 @@ discrete_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmo
 cwnet_hidden_dim = 64
 cwnet_layers = 3
 cwnet_activation = "leaky_relu" # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
+
+# precision of all networks
+nn_float_precision = "float32" # options: float32, float64
 
 # training parameters
 train_batches = 1000

@@ -26,11 +26,13 @@ struct ManagerContext {
 void deleter(struct DLManagedTensor* self) noexcept {
     ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
     try {
-        std::uintptr_t free_stream = context->tensor.stream().value_or(0);
-        if (free_stream != context->stream) {
-            context->tensor.device()->order_streams(
-                reinterpret_cast<void*>(context->stream),
-                reinterpret_cast<void*>(free_stream)
+        auto device = context->tensor.device();
+        auto stream = context->tensor.stream();
+        void* free_stream =
+            stream ? reinterpret_cast<void*>(*stream) : device->default_free_stream();
+        if (free_stream != reinterpret_cast<void*>(context->stream)) {
+            device->order_streams(
+                reinterpret_cast<void*>(context->stream), free_stream
             );
         }
     } catch (...) {
@@ -210,9 +212,9 @@ std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
     case DeviceType::cpu:
         return {kDLCPU, 0};
     case DeviceType::cuda:
-        return {kDLCUDA, 0};
+        return {kDLCUDA, tensor.device()->device_index()};
     case DeviceType::hip:
-        return {kDLROCM, 0};
+        return {kDLROCM, tensor.device()->device_index()};
     default:
         throw std::logic_error("unreachable");
     }
@@ -258,10 +260,13 @@ py::object madspace_py::tensor_to_dlpack(
     } else {
         DLDataType dtype;
         switch (tensor.dtype()) {
-        case DataType::dt_float:
+        case DataType::dt_float32:
+            dtype = {kDLFloat, 32, 1};
+            break;
+        case DataType::dt_float64:
             dtype = {kDLFloat, 64, 1};
             break;
-        case DataType::dt_int:
+        case DataType::dt_int32:
             dtype = {kDLInt, 32, 1};
             break;
         default:
@@ -408,18 +413,20 @@ Tensor madspace_py::dlpack_to_tensor(
     bool is_batch_sizes =
         expected_type ? expected_type->dtype == DataType::batch_sizes : false;
     DataType dtype;
-    if (dl_tensor->dtype.code == kDLFloat && dl_tensor->dtype.bits == 64 &&
+    if (dl_tensor->dtype.code == kDLFloat &&
+        (dl_tensor->dtype.bits == 32 || dl_tensor->dtype.bits == 64) &&
         dl_tensor->dtype.lanes == 1) {
-        dtype = DataType::dt_float;
-        if (expected_type && expected_type->dtype != DataType::dt_float) {
+        dtype =
+            dl_tensor->dtype.bits == 32 ? DataType::dt_float32 : DataType::dt_float64;
+        if (expected_type && expected_type->dtype != dtype) {
             throw std::invalid_argument(
                 std::format("Argument {}: got unexpected dtype", arg_index + 1)
             );
         }
     } else if (dl_tensor->dtype.code == kDLInt && dl_tensor->dtype.bits == 32 &&
                dl_tensor->dtype.lanes == 1) {
-        dtype = DataType::dt_int;
-        if (expected_type && expected_type->dtype != DataType::dt_int &&
+        dtype = DataType::dt_int32;
+        if (expected_type && expected_type->dtype != DataType::dt_int32 &&
             !is_batch_sizes) {
             throw std::invalid_argument(
                 std::format("Argument {}: got unexpected dtype", arg_index + 1)
@@ -437,7 +444,7 @@ Tensor madspace_py::dlpack_to_tensor(
     } else {
         throw std::invalid_argument(
             std::format(
-                "Argument {}: input dtype must be 64-bit float or 32-bit int",
+                "Argument {}: input dtype must be 32/64-bit float or 32-bit int",
                 arg_index + 1
             )
         );
@@ -530,7 +537,7 @@ Tensor madspace_py::dlpack_to_tensor(
                 std::format(
                     "Argument {}: wrong input dimension. Expected {}, got {}",
                     arg_index + 1,
-                    expected_type->shape.size() + 1,
+                    expected_type->shape.size() + is_batch,
                     dl_tensor->ndim
                 )
             );
@@ -556,7 +563,7 @@ Tensor madspace_py::dlpack_to_tensor(
         }
         if (expected_type) {
             for (int j = is_batch; j < dl_tensor->ndim; ++j) {
-                if (shape.at(j) != expected_type->shape.at(j - is_batch)) {
+                if (dl_tensor->shape[j] != expected_type->shape.at(j - is_batch)) {
                     throw std::invalid_argument(
                         std::format(
                             "Argument {}, dimension {}: shape mismatch. Expected {}, "
@@ -564,7 +571,7 @@ Tensor madspace_py::dlpack_to_tensor(
                             arg_index + 1,
                             j,
                             expected_type->shape.at(j - is_batch),
-                            shape.at(j)
+                            dl_tensor->shape[j]
                         )
                     );
                 }
@@ -578,6 +585,8 @@ Tensor madspace_py::dlpack_to_tensor(
             deleter = [managed_ptr]() {
                 auto ptr = static_cast<DLManagedTensorVersioned*>(managed_ptr);
                 if (ptr->deleter) {
+                    // the producer may be freed on a worker thread without the GIL
+                    PythonGuard guard;
                     ptr->deleter(ptr);
                 }
             };
@@ -585,6 +594,7 @@ Tensor madspace_py::dlpack_to_tensor(
             deleter = [managed_ptr]() {
                 auto ptr = static_cast<DLManagedTensor*>(managed_ptr);
                 if (ptr->deleter) {
+                    PythonGuard guard;
                     ptr->deleter(ptr);
                 }
             };
@@ -616,6 +626,8 @@ std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
     ProducerStream producer_stream(args);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
+    // a Python matrix element called from a worker thread needs the GIL
+    py::gil_scoped_release release;
     return runtime->run(inputs);
 }
 
@@ -626,8 +638,10 @@ FunctionRuntime::call_with_grad(
     ProducerStream producer_stream(args);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
-    auto [outputs, loc_grad, eval_grad] =
-        runtime->run_with_grad(inputs, input_requires_grad);
+    auto [outputs, loc_grad, eval_grad] = [&] {
+        py::gil_scoped_release release;
+        return runtime->run_with_grad(inputs, input_requires_grad);
+    }();
     std::vector<std::optional<Tensor>> local_grads;
     for (auto& grad : loc_grad) {
         if (grad) {
@@ -687,8 +701,10 @@ FunctionRuntime::call_backward(
     }
     // TODO: checks here
     Runtime* runtime = get_runtime(*this, expected_device);
-    auto [ret_in_grads, ret_glob_grads] =
-        runtime->run_backward(arg_out, arg_locals, eval_grad);
+    auto [ret_in_grads, ret_glob_grads] = [&] {
+        py::gil_scoped_release release;
+        return runtime->run_backward(arg_out, arg_locals, eval_grad);
+    }();
     std::vector<std::optional<Tensor>> input_grads;
     for (auto& grad : ret_in_grads) {
         if (grad) {

@@ -1,7 +1,9 @@
 #include "madspace/phasespace/color_ordered_mapping.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 
 #include "madspace/util.hpp"
@@ -76,9 +78,77 @@ std::size_t n_block_randoms_for_set_size(std::size_t k) {
     return 2 + 2 * (k - 2);
 }
 
-std::size_t n_discrete_for_set_size(std::size_t k) {
-    // One discrete two-solution choice per 2->3 peel (all peels after the first).
+// A side of exactly two particles is one 2->3 step off the opposite beam when
+// the other side is not empty (AmpliCol), else a 2->2 peel.
+bool two_particle_step(std::size_t k, std::size_t k_other) {
+    return k == 2 && k_other > 0;
+}
+
+std::size_t n_discrete_for_set_size(std::size_t k, std::size_t k_other) {
+    // One discrete two-solution choice per 2->3 step: every peel after the first,
+    // and the single step of a side of two particles.
+    if (two_particle_step(k, k_other)) {
+        return 1;
+    }
     return (k >= 2) ? (k - 2) : 0;
+}
+
+// s in [s_min, s_max], sampled with the given Invariant, and its weight. The
+// cut-aware bounds of a mass can leave an empty range, which gets zero weight
+// (and a small width, so that the sampling stays finite).
+std::array<Value, 2> sample_mass(
+    FunctionBuilder& fb, const Invariant& invariant, Value r, Value s_min, Value s_max
+) {
+    auto ok = fb.cut_one(fb.sub(s_max, s_min), Value(0.), Value(1e300));
+    auto width = fb.max(fb.mul(s_min, Value(1e-10)), Value(1e-300));
+    auto res =
+        invariant.build_forward(fb, {r}, {s_min, fb.max(s_max, fb.add(s_min, width))});
+    return {res["invariant"], fb.mul(res["det"], ok)};
+}
+
+std::array<Value, 2> recover_mass(
+    FunctionBuilder& fb, const Invariant& invariant, Value s, Value s_min, Value s_max
+) {
+    auto ok = fb.cut_one(fb.sub(s_max, s_min), Value(0.), Value(1e300));
+    auto width = fb.max(fb.mul(s_min, Value(1e-10)), Value(1e-300));
+    auto res =
+        invariant.build_inverse(fb, {s}, {s_min, fb.max(s_max, fb.add(s_min, width))});
+    return {res["random"], fb.mul(res["det"], ok)};
+}
+
+// Range of the squared mass s_a of a system a that makes up the full final
+// state together with a system b, from the energies in the partonic frame,
+// E_a = (s_hat + s_a - s_b) / (2 sqrt(s_hat)) >= e_min_a and the same for b
+// (AmpliCol's gent_one_step). e_min is a floor on the transverse mass: the sum
+// of those of the particles, and the square root of the mass floor. With s_b
+// still to be sampled (m_b empty) its floor and e_min_b bound it.
+std::array<Value, 2> full_system_mass_range(
+    FunctionBuilder& fb,
+    Value e_cm,
+    Value floor_a,
+    Value e_min_a,
+    Value floor_b,
+    Value e_min_b,
+    std::optional<Value> m_b
+) {
+    auto lower = fb.add(
+        m_b ? fb.square(*m_b) : floor_b,
+        fb.mul(e_cm, fb.sub(fb.add(e_min_a, e_min_a), e_cm))
+    );
+    auto s_min = fb.max(floor_a, lower);
+    Value s_max;
+    if (m_b) {
+        // s_b + s_hat - 2 sqrt(s_hat) e_b, as (sqrt(s_hat) - e_b)^2 + s_b - e_b^2:
+        // without a cut e_b = m_b, and the range of a heavy b keeps its
+        // relative precision
+        auto e_b = fb.max(*m_b, e_min_b);
+        s_max = fb.add(
+            fb.square(fb.sub(e_cm, e_b)), fb.mul(fb.sub(*m_b, e_b), fb.add(*m_b, e_b))
+        );
+    } else {
+        s_max = fb.square(fb.sub(e_cm, e_min_b));
+    }
+    return {s_min, s_max};
 }
 
 double mat_at(const std::vector<std::vector<double>>& m, std::size_t i, std::size_t j) {
@@ -130,6 +200,20 @@ static bool has_any_cut(
     return false;
 }
 
+// Power of the momentum transfers and s23 invariants of the chain: as given,
+// else 1 with cuts (AmpliCol) and 0.8 without, where their ranges reach zero
+// and 1/|x| would pile the points up at the regulator of Invariant.
+static double chain_power(
+    const ColorOrderedMapping::Options& options,
+    const std::vector<double>& pt_min,
+    const std::vector<std::vector<double>>& m_inv_min,
+    const std::vector<std::vector<double>>& dr_min
+) {
+    return options.chain_invariant_power.value_or(
+        has_any_cut(pt_min, m_inv_min, dr_min) ? 1. : 0.8
+    );
+}
+
 double ColorOrderedMapping::pt2(std::size_t i) const {
     double p = (i < _pt_min.size()) ? _pt_min.at(i) : 0.0;
     return p * p;
@@ -157,6 +241,53 @@ double ColorOrderedMapping::cut_floor(const std::vector<std::size_t>& subset) co
     // subsets.
     double scaling = (subset.size() == _n_out) ? npart / (npart - 1.0) : 0.5;
     return cut * scaling;
+}
+
+std::array<Value, 2> ColorOrderedMapping::set_floors(
+    FunctionBuilder& fb, const std::vector<std::size_t>& set, const ValueVec& m_out
+) const {
+    Value mass_sum = m_out.at(set.at(0));
+    for (std::size_t i = 1; i < set.size(); ++i) {
+        mass_sum = fb.add(mass_sum, m_out.at(set.at(i)));
+    }
+    auto floor = fb.square(mass_sum);
+    double fl = cut_floor(set);
+    if (fl > 0.0) {
+        floor = fb.max(floor, Value(fl));
+    }
+    if (!_has_cut) {
+        return {floor, fb.sqrt(floor)};
+    }
+    auto e_min = fb.sqrt(fb.add(fb.square(m_out.at(set.at(0))), Value(pt2(set.at(0)))));
+    for (std::size_t i = 1; i < set.size(); ++i) {
+        e_min = fb.add(
+            e_min,
+            fb.sqrt(fb.add(fb.square(m_out.at(set.at(i))), Value(pt2(set.at(i)))))
+        );
+    }
+    return {floor, fb.max(e_min, fb.sqrt(floor))};
+}
+
+std::array<Value, 2> ColorOrderedMapping::rest_mass_range(
+    FunctionBuilder& fb,
+    const std::vector<std::size_t>& s,
+    std::size_t j,
+    Value prev_mass,
+    Value e_cm,
+    const ValueVec& m_out
+) const {
+    // rest system {s[j+1], ..., s[k-1]} after peeling s[j] off a system of
+    // mass prev_mass
+    std::vector<std::size_t> rest(s.begin() + j + 1, s.end());
+    auto [floor, e_min] = set_floors(fb, rest, m_out);
+    if (_use_single_chain && j == 0) {
+        // the rest and the first particle make up the full final state
+        auto [floor_p, e_min_p] = set_floors(fb, {s.at(0)}, m_out);
+        return full_system_mass_range(
+            fb, e_cm, floor, e_min, floor_p, e_min_p, m_out.at(s.at(0))
+        );
+    }
+    return {floor, fb.square(fb.sub(prev_mass, m_out.at(s.at(j))))};
 }
 
 // A set of particles is bounded by the largest of their bounds when each has
@@ -200,40 +331,27 @@ ColorOrderedMapping::RapidityBounds ColorOrderedMapping::rapidity_bounds(
 }
 
 ColorOrderedMapping::ColorOrderedMapping(
-    const std::vector<std::size_t>& color_order,
-    double t_invariant_power,
-    double s_invariant_power,
+    const Options& options,
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
     const std::vector<std::vector<double>>& dr_min,
-    bool arcsine_s23,
     const std::vector<double>& y_max
 ) :
     ColorOrderedMapping(
-        rapidity_bounds(color_order, y_max),
-        color_order,
-        t_invariant_power,
-        s_invariant_power,
-        pt_min,
-        m_inv_min,
-        dr_min,
-        arcsine_s23
+        rapidity_bounds(options.color_order, y_max), options, pt_min, m_inv_min, dr_min
     ) {}
 
 ColorOrderedMapping::ColorOrderedMapping(
     const RapidityBounds& bounds,
-    const std::vector<std::size_t>& color_order,
-    double t_invariant_power,
-    double s_invariant_power,
+    const Options& options,
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
-    const std::vector<std::vector<double>>& dr_min,
-    bool arcsine_s23
+    const std::vector<std::vector<double>>& dr_min
 ) :
     Mapping(
         "ColorOrderedMapping",
         [&] {
-            auto [s1, s2] = split_sets_from_color_order(color_order);
+            auto [s1, s2] = split_sets_from_color_order(options.color_order);
             bool use_single_chain = s1.empty() || s2.empty();
             bool use_double_t =
                 !use_single_chain && ((s1.size() == 1) != (s2.size() == 1));
@@ -251,8 +369,8 @@ ColorOrderedMapping::ColorOrderedMapping(
                 n_block_randoms_for_set_size(s2.size());
             std::size_t total =
                 n_set_masses + n_intermediate_masses + n_central + n_walk;
-            std::size_t n_discrete =
-                n_discrete_for_set_size(s1.size()) + n_discrete_for_set_size(s2.size());
+            std::size_t n_discrete = n_discrete_for_set_size(s1.size(), s2.size()) +
+                n_discrete_for_set_size(s2.size(), s1.size());
             NamedVector<Type> input_types;
             for (std::size_t i = 0; i < total; ++i) {
                 input_types.push_back(std::format("random{}", i), batch_float);
@@ -265,7 +383,7 @@ ColorOrderedMapping::ColorOrderedMapping(
             return input_types;
         }(),
         [&] {
-            std::size_t n_out = color_order.size() - 2;
+            std::size_t n_out = options.color_order.size() - 2;
             NamedVector<Type> output_types;
             for (std::size_t i = 0; i < n_out + 2; ++i) {
                 output_types.push_back(std::format("momentum{}", i), batch_four_vec);
@@ -273,7 +391,7 @@ ColorOrderedMapping::ColorOrderedMapping(
             return output_types;
         }(),
         [&] {
-            std::size_t n_out = color_order.size() - 2;
+            std::size_t n_out = options.color_order.size() - 2;
             NamedVector<Type> cond_types{{"com_energy", batch_float}};
             for (std::size_t i = 0; i < n_out; ++i) {
                 cond_types.push_back(std::format("mass{}", i), batch_float);
@@ -285,15 +403,16 @@ ColorOrderedMapping::ColorOrderedMapping(
             return cond_types;
         }()
     ),
-    _n_out(color_order.size() - 2),
+    _n_out(options.color_order.size() - 2),
     _pt_min(pt_min),
     _m_inv_min(m_inv_min),
     _dr_min(dr_min),
     _has_cut(has_any_cut(pt_min, m_inv_min, dr_min)),
     _rapidity_window(bounds.active()),
+    _mass_invariant(0.5),
     _com_scattering(
         true,
-        t_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
@@ -302,11 +421,15 @@ ColorOrderedMapping::ColorOrderedMapping(
         1.
     ),
     _lab_scattering(
-        false, t_invariant_power, 0., 0., has_any_cut(pt_min, m_inv_min, dr_min)
+        false,
+        chain_power(options, pt_min, m_inv_min, dr_min),
+        0.,
+        0.,
+        has_any_cut(pt_min, m_inv_min, dr_min)
     ),
     _chain_scattering(
         false,
-        t_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
@@ -315,21 +438,36 @@ ColorOrderedMapping::ColorOrderedMapping(
         bounds.chain_beam_sign
     ),
     _two_to_three(
-        t_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
-        s_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
-        arcsine_s23,
-        true
+        true,
+        true,
+        false,
+        options.cut_aware_branch
+    ),
+    _two_to_three_beam(
+        chain_power(options, pt_min, m_inv_min, dr_min),
+        0.,
+        0.,
+        chain_power(options, pt_min, m_inv_min, dr_min),
+        0.,
+        0.,
+        has_any_cut(pt_min, m_inv_min, dr_min),
+        true,
+        true,
+        true,
+        options.cut_aware_branch
     ),
     _double_t(
-        t_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
-        t_invariant_power,
+        chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
         has_any_cut(pt_min, m_inv_min, dr_min),
@@ -337,7 +475,7 @@ ColorOrderedMapping::ColorOrderedMapping(
         bounds.double_t ? bounds.central2 : -1.,
         1.
     ) {
-    auto [s1, s2] = split_sets_from_color_order(color_order);
+    auto [s1, s2] = split_sets_from_color_order(options.color_order);
     _set1 = s1;
     _set2 = s2;
     _use_single_chain = s1.empty() || s2.empty();
@@ -351,8 +489,8 @@ ColorOrderedMapping::ColorOrderedMapping(
     std::size_t n_walk = n_block_randoms_for_set_size(s1.size()) +
         n_block_randoms_for_set_size(s2.size());
     _random_dim = n_set_masses + n_intermediate_masses + n_central + n_walk;
-    _discrete_dim =
-        n_discrete_for_set_size(s1.size()) + n_discrete_for_set_size(s2.size());
+    _discrete_dim = n_discrete_for_set_size(s1.size(), s2.size()) +
+        n_discrete_for_set_size(s2.size(), s1.size());
 }
 
 Mapping::Result ColorOrderedMapping::build_forward_impl(
@@ -470,35 +608,31 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
             m_set1 = fb.sqrt(m2);
         }
     } else {
-        Value mass_sum_set1 = masses_of(_set1);
-        Value mass_sum_set2 = masses_of(_set2);
+        // Composite masses: set1 first, then set2 in what is left. Both make up
+        // the full final state, so the energies of the two sides bound them
+        // (AmpliCol's shatminmax and gent_one_step), with the mass and
+        // transverse-mass floors of the cuts.
+        auto [floor1, e_min1] = set_floors(fb, _set1, m_out);
+        auto [floor2, e_min2] = set_floors(fb, _set2, m_out);
         if (_set1.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set1);
-            // Cut floor: composite invariant mass must clear the cut-implied
-            // minimum (gen23 invm_min) in addition to the kinematic minimum.
-            double floor1 = cut_floor(_set1);
-            if (floor1 > 0.0) {
-                s_min = fb.max(s_min, Value(floor1));
-            }
-            auto s_max = fb.square(fb.sub(e_cm, mass_sum_set2));
-            auto res =
-                _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
-            m_set1 = fb.sqrt(res["invariant"]);
-            dets.push_back(res["det"]);
+            auto [s_min, s_max] = full_system_mass_range(
+                fb, e_cm, floor1, e_min1, floor2, e_min2, std::nullopt
+            );
+            auto [s, det] =
+                sample_mass(fb, _mass_invariant, next_random(), s_min, s_max);
+            m_set1 = fb.sqrt(s);
+            dets.push_back(det);
         } else {
             m_set1 = m_out.at(_set1.at(0));
         }
         if (_set2.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set2);
-            double floor2 = cut_floor(_set2);
-            if (floor2 > 0.0) {
-                s_min = fb.max(s_min, Value(floor2));
-            }
-            auto s_max = fb.square(fb.sub(e_cm, m_set1));
-            auto res =
-                _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
-            m_set2 = fb.sqrt(res["invariant"]);
-            dets.push_back(res["det"]);
+            auto [s_min, s_max] = full_system_mass_range(
+                fb, e_cm, floor2, e_min2, floor1, e_min1, m_set1
+            );
+            auto [s, det] =
+                sample_mass(fb, _mass_invariant, next_random(), s_min, s_max);
+            m_set2 = fb.sqrt(s);
+            dets.push_back(det);
         } else {
             m_set2 = m_out.at(_set2.at(0));
         }
@@ -555,23 +689,12 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
         }
         Value prev_mass = m_set;
         for (std::size_t j = 0; j < k - 2; ++j) {
-            Value m_min = m_out.at(s.at(j + 1));
-            for (std::size_t i = j + 2; i < k; ++i) {
-                m_min = fb.add(m_min, m_out.at(s.at(i)));
-            }
-            auto s_min = fb.square(m_min);
-            // Cut floor for the rest system {s[j+1], ..., s[k-1]}.
-            std::vector<std::size_t> rest_sub(s.begin() + j + 1, s.end());
-            double fl = cut_floor(rest_sub);
-            if (fl > 0.0) {
-                s_min = fb.max(s_min, Value(fl));
-            }
-            auto s_max = fb.square(fb.sub(prev_mass, m_out.at(s.at(j))));
-            auto r =
-                _uniform_invariant.build_forward(fb, {next_random()}, {s_min, s_max});
-            Value m_rest = fb.sqrt(r["invariant"]);
+            auto [s_min, s_max] = rest_mass_range(fb, s, j, prev_mass, e_cm, m_out);
+            auto [s_rest, det] =
+                sample_mass(fb, _mass_invariant, next_random(), s_min, s_max);
+            Value m_rest = fb.sqrt(s_rest);
             res.push_back(m_rest);
-            dets.push_back(r["det"]);
+            dets.push_back(det);
             prev_mass = m_rest;
         }
         return res;
@@ -592,8 +715,10 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
 
     auto walk =
         [&](const std::vector<std::size_t>& s,
+            std::size_t k_other,
             Value P_set,
             Value R_b,
+            Value beam_own,
             Value beam_other,
             const ValueVec& rest_masses) {
             std::size_t k = s.size();
@@ -601,10 +726,36 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
                 p_out.at(s.at(0)) = P_set;
                 return;
             }
-            Value R_a = fb.sub(P_set, R_b);
             auto etmin_particle = [&](std::size_t idx) {
                 return fb.sqrt(fb.add(fb.square(m_out.at(idx)), Value(pt2(idx))));
             };
+            if (two_particle_step(k, k_other)) {
+                // AmpliCol's gen23_one_step(set(i), inext, i, 3 - i): p1 = s[0]
+                // with t1 = (beam_own - p1)^2, p2 = s[1] with the momentum
+                // transfer (p2 - beam_other)^2, the two invariants next to the
+                // beams in the color order.
+                ValueVec cond{beam_own, P_set, beam_other};
+                if (_has_cut) {
+                    cond.push_back(etmin_particle(s.at(0)));
+                    cond.push_back(etmin_particle(s.at(1)));
+                    cond.push_back(Value(0.));
+                    cond.push_back(Value(0.));
+                }
+                auto ks = _two_to_three_beam.build_forward(
+                    fb,
+                    {next_discrete(),
+                     next_random(),
+                     next_random(),
+                     m_out.at(s.at(0)),
+                     m_out.at(s.at(1))},
+                    cond
+                );
+                p_out.at(s.at(0)) = ks.at(0);
+                p_out.at(s.at(1)) = ks.at(1);
+                dets.push_back(ks["det"]);
+                return;
+            }
+            Value R_a = fb.sub(P_set, R_b);
             ValueVec etmin_suffix;
             if (_has_cut) {
                 etmin_suffix.resize(k);
@@ -677,10 +828,10 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
         };
 
     if (!_set1.empty()) {
-        walk(_set1, P_set1, R_b_for_set1, pb, rest_masses_set1);
+        walk(_set1, _set2.size(), P_set1, R_b_for_set1, pa, pb, rest_masses_set1);
     }
     if (!_set2.empty()) {
-        walk(_set2, P_set2, R_b_for_set2, pa, rest_masses_set2);
+        walk(_set2, _set1.size(), P_set2, R_b_for_set2, pb, pa, rest_masses_set2);
     }
 
     // Assemble outputs: momentum0, momentum1 = beams; momentum_{2+i} = outgoing i.
@@ -795,34 +946,28 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
             m_set1 = fb.sqrt(invariants.at(idx_m2_set1));
         }
     } else {
-        Value mass_sum_set1 = masses_of(_set1);
-        Value mass_sum_set2 = masses_of(_set2);
+        auto [floor1, e_min1] = set_floors(fb, _set1, m_out);
+        auto [floor2, e_min2] = set_floors(fb, _set2, m_out);
         if (_set1.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set1);
-            double floor1 = cut_floor(_set1);
-            if (floor1 > 0.0) {
-                s_min = fb.max(s_min, Value(floor1));
-            }
-            auto s_max = fb.square(fb.sub(e_cm, mass_sum_set2));
+            auto [s_min, s_max] = full_system_mass_range(
+                fb, e_cm, floor1, e_min1, floor2, e_min2, std::nullopt
+            );
             auto m2_set1 = invariants.at(idx_m2_set1);
-            auto res = _uniform_invariant.build_inverse(fb, {m2_set1}, {s_min, s_max});
-            random_out.push_back(res["random"]);
-            dets.push_back(res["det"]);
+            auto [r, det] = recover_mass(fb, _mass_invariant, m2_set1, s_min, s_max);
+            random_out.push_back(r);
+            dets.push_back(det);
             m_set1 = fb.sqrt(m2_set1);
         } else {
             m_set1 = m_out.at(_set1.at(0));
         }
         if (_set2.size() >= 2) {
-            auto s_min = fb.square(mass_sum_set2);
-            double floor2 = cut_floor(_set2);
-            if (floor2 > 0.0) {
-                s_min = fb.max(s_min, Value(floor2));
-            }
-            auto s_max = fb.square(fb.sub(e_cm, m_set1));
+            auto [s_min, s_max] = full_system_mass_range(
+                fb, e_cm, floor2, e_min2, floor1, e_min1, m_set1
+            );
             auto m2_set2 = invariants.at(idx_m2_set2);
-            auto res = _uniform_invariant.build_inverse(fb, {m2_set2}, {s_min, s_max});
-            random_out.push_back(res["random"]);
-            dets.push_back(res["det"]);
+            auto [r, det] = recover_mass(fb, _mass_invariant, m2_set2, s_min, s_max);
+            random_out.push_back(r);
+            dets.push_back(det);
             m_set2 = fb.sqrt(m2_set2);
         } else {
             m_set2 = m_out.at(_set2.at(0));
@@ -904,22 +1049,11 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
             // the (sqrt of the) actual recovered m2 at each step.
             Value prev_mass = m_set;
             for (std::size_t j = 0; j < k - 2; ++j) {
-                Value m_min = m_out.at(s.at(j + 1));
-                for (std::size_t i = j + 2; i < k; ++i) {
-                    m_min = fb.add(m_min, m_out.at(s.at(i)));
-                }
-                auto s_min = fb.square(m_min);
-                // Identical cut floor to the forward pass.
-                std::vector<std::size_t> rest_sub(s.begin() + j + 1, s.end());
-                double fl = cut_floor(rest_sub);
-                if (fl > 0.0) {
-                    s_min = fb.max(s_min, Value(fl));
-                }
-                auto s_max = fb.square(fb.sub(prev_mass, m_out.at(s.at(j))));
+                auto [s_min, s_max] = rest_mass_range(fb, s, j, prev_mass, e_cm, m_out);
                 auto m2 = invariants.at(idx_start + j);
-                auto res = _uniform_invariant.build_inverse(fb, {m2}, {s_min, s_max});
-                random_out.push_back(res["random"]);
-                dets.push_back(res["det"]);
+                auto [r, det] = recover_mass(fb, _mass_invariant, m2, s_min, s_max);
+                random_out.push_back(r);
+                dets.push_back(det);
                 prev_mass = fb.sqrt(m2);
             }
         };
@@ -937,19 +1071,39 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
     // Phase 3 inverse: peel-off walks (mirror the forward restructure: first peel
     // projects the own-side beam R_a, 2->3 peels project beam_other = 3-i side).
     auto walk_inverse =
-        [&](
-            const std::vector<std::size_t>& s, Value P_set, Value R_b, Value beam_other
-        ) {
+        [&](const std::vector<std::size_t>& s,
+            std::size_t k_other,
+            Value P_set,
+            Value R_b,
+            Value beam_own,
+            Value beam_other) {
             std::size_t k = s.size();
             if (k == 1) {
+                return;
+            }
+            auto etmin_particle = [&](std::size_t idx) {
+                return fb.sqrt(fb.add(fb.square(m_out.at(idx)), Value(pt2(idx))));
+            };
+            if (two_particle_step(k, k_other)) {
+                ValueVec cond{beam_own, P_set, beam_other};
+                if (_has_cut) {
+                    cond.push_back(etmin_particle(s.at(0)));
+                    cond.push_back(etmin_particle(s.at(1)));
+                    cond.push_back(Value(0.));
+                    cond.push_back(Value(0.));
+                }
+                auto rs = _two_to_three_beam.build_inverse(
+                    fb, {p_outgoing(s.at(0)), p_outgoing(s.at(1))}, cond
+                );
+                discrete_out.push_back(rs.at(0));
+                random_out.push_back(rs.at(1));
+                random_out.push_back(rs.at(2));
+                dets.push_back(rs["det"]);
                 return;
             }
             Value R_a = fb.sub(P_set, R_b);
             // ETmin suffix sums for the recoil chain (see forward walk); only built
             // when cuts are active.
-            auto etmin_particle = [&](std::size_t idx) {
-                return fb.sqrt(fb.add(fb.square(m_out.at(idx)), Value(pt2(idx))));
-            };
             ValueVec etmin_suffix;
             if (_has_cut) {
                 etmin_suffix.resize(k);
@@ -1011,10 +1165,10 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
         };
 
     if (!_set1.empty()) {
-        walk_inverse(_set1, P_set1, R_b_for_set1, pb);
+        walk_inverse(_set1, _set2.size(), P_set1, R_b_for_set1, pa, pb);
     }
     if (!_set2.empty()) {
-        walk_inverse(_set2, P_set2, R_b_for_set2, pa);
+        walk_inverse(_set2, _set1.size(), P_set2, R_b_for_set2, pb, pa);
     }
 
     // input_types is [random0..random_{N-1}, discrete0..discrete_{M-1}], so the

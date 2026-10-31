@@ -33,7 +33,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.various.misc as misc
-import models.import_ufo as models
+import madgraph.models.import_ufo as models
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))

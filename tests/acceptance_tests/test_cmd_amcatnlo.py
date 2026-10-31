@@ -216,7 +216,7 @@ class MECmdShell(IOTests.IOTestManager):
 
     def test_raise_invalid_path_hwpp(self):
         """test that an exception is raised when trying to shower with hwpp without
-        having set the corresponding pahts"""
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
@@ -241,7 +241,7 @@ class MECmdShell(IOTests.IOTestManager):
 
     def test_raise_invalid_path_py8(self):
         """test that an exception is raised when trying to shower with py8 without
-        having set the corresponding pahts"""
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
@@ -596,62 +596,78 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_02/alllogs_2.html' % self.path))
 
 
-    def notest_eft_running_nlo(self):
-        """check that  gives the correct result"""
-        
+    def test_eft_running_nlo(self):
+        """aMC@NLO output of a model with running Wilson coefficients (running.py):
+        run-card keys, generated code, and the effect of the extra scale on the
+        Born interference (fixed extra scale, then dynamical extra scale)"""
+
         mg_cmd = MGCmd.MasterCmd()
         mg_cmd.no_notification()
-        mg_cmd.run_cmd('set automatic_html_opening False --save')
+        mg_cmd.run_cmd('set automatic_html_opening False --no_save')
         mg_cmd.run_cmd('import model %s/tests/input_files/SMEFTatNLO_running-NLO' % madgraph.MG5DIR)
-        mg_cmd.run_cmd('generate p p > t t~ NP=2 NP^2==2 QCD=2 QED=0 [QCD]')
-        mg_cmd.run_cmd('output %s/'% self.path)
-        #self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.path)
-        #self.cmd_line.no_notification()
-        #self.cmd_line.exec_cmd('set automatic_html_opening False')
-        
-        #check validity of the default run_card
-        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards','run_card.dat'))
+        mg_cmd.run_cmd('generate p p > t t~ QED=0 NP^2<=2 [QCD]')
+        mg_cmd.run_cmd('output %s/' % self.path)
 
-        #f = open(pjoin(self.path, 'Cards','run_card.dat'),'r')
-        #print(f.read())
-        self.assertTrue('fixed_extra_scale' not in run_card.user_set)
-        self.assertTrue('mue_ref_fixed' in run_card.user_set)
-        self.assertTrue('mue_over_ref' not in  run_card.user_set)
+        # the three keys of the extra scale are in the run_card and editable
+        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards', 'run_card.dat'))
+        for key in ['fixed_extra_scale', 'mue_ref_fixed', 'mue_over_ref']:
+            self.assertIn(key, run_card.user_set)
+            self.assertNotIn(key, run_card.system_only)
         self.assertTrue(run_card['fixed_extra_scale'])
-        
-        
+        self.assertEqual(run_card['mue_over_ref'], 1.)
 
-        cwd = os.getcwd()
-        import subprocess
-        if logging.getLogger('madgraph').level <= 20:
-            stdout=None
-            stderr=None
-        else:
-            devnull =open(os.devnull,'w')
-            stdout=devnull
-            stderr=devnull
+        # generated code: the running routines must not include the vector.inc
+        # of the madevent output, the multiple precision routine follows the
+        # extra scale of the double precision one, and muR is passed to the model
+        couplings = open(pjoin(self.path, 'Source', 'MODEL', 'couplings.f')).read()
+        self.assertNotIn('vector.inc', couplings)
+        self.assertIn('C_RUNNING_1', couplings)
+        self.assertIn('GOTHER_MP', couplings)
+        self.assertIn('CALL MP_C_RUNNING_1(GOTHER_EFF)', couplings)
+        setscales = open(pjoin(self.path, 'SubProcesses', 'setscales.f')).read()
+        self.assertIn('model_scale=muR', setscales)
 
-        if logging.getLogger('madgraph').level > 20:
-            stdout = devnull
-        else:
-            stdout= None
+        # Born interference of the four-fermion operators only: select the
+        # squared orders (NP, QCD, QED) = (2, 2, 0) in FKS_params.dat
+        fks = open(pjoin(self.path, 'Cards', 'FKS_params.dat')).read()
+        fks = re.sub(r'(?m)^#SelectedCouplingOrders\n0\n-1 -1\n',
+                     '#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        self.assertIn('#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        open(pjoin(self.path, 'Cards', 'FKS_params.dat'), 'w').write(fks)
 
+        def set_run_card(**options):
+            card = open(pjoin(self.path, 'Cards', 'run_card.dat')).read()
+            for key, value in options.items():
+                card, nb = re.subn(r'(?mi)^(\s*)\S+(\s*=\s*%s\b)' % key,
+                                   lambda m: '%s%s%s' % (m.group(1), value, m.group(2)), card)
+                self.assertEqual(nb, 1, key)
+            open(pjoin(self.path, 'Cards', 'run_card.dat'), 'w').write(card)
 
-        subprocess.call([pjoin(self.path, 'bin','generate_events'),'aMC@LO', '-p', '-f'],            
-                         cwd=pjoin(self.path),
-                         stdout=stdout,stderr=stdout)
+        def run_lo(name):
+            out = subprocess.run([pjoin(self.path, 'bin', 'generate_events'), 'LO', '-f',
+                                  '--name=%s' % name], cwd=self.path,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True).stdout
+            found = re.findall(r'Total cross section:\s+(\S+)\s+\+-\s+(\S+)\s+pb', out)
+            self.assertTrue(found, out[-2000:])
+            return float(found[-1][0]), float(found[-1][1])
 
+        # the Wilson coefficients of the param_card are given at Q = 172.5 GeV:
+        # no running for mue = 172.5, running up to 2 TeV otherwise
+        set_run_card(dynamical_scale_choice=3, fixed_extra_scale='True',
+                     mue_ref_fixed=172.5, req_acc_FO=0.005)
+        norun, norun_err = run_lo('norun')
+        set_run_card(mue_ref_fixed=2000.)
+        fixed, fixed_err = run_lo('fixed')
+        set_run_card(fixed_extra_scale='False', mue_over_ref=1.0)
+        dyn, dyn_err = run_lo('dyn')
 
-
-        results = self.load_result('run_01_LO')[0]
-
-
-        val1 = results['cross']
-        err1 = results['error']
-
-        target = 617.7542699925228 # THIS IS NOT PURE INTERFERENCE...
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
-                        (target, val1, err1))
+        for val, err in [(norun, norun_err), (fixed, fixed_err), (dyn, dyn_err)]:
+            self.assertTrue(val != 0. and err < 0.02 * abs(val), (val, err))
+        # the extra scale matters: running from 172.5 GeV up to 2 TeV changes the interference
+        # (the dynamical scale, H_T/2 ~ 0.3 TeV here, runs little and is only required to work)
+        self.assertTrue(abs(norun - fixed) > 5 * (norun_err ** 2 + fixed_err ** 2) ** 0.5,
+                        (norun, fixed))
 
 
     def test_generate_events_lo_hw6_stdhep(self):

@@ -82,7 +82,7 @@ C     reset the amp_split array
       DO I = 1, NSQAMPSO
         IF (KEEP_ORDER(I)) THEN
           ANS_SUMMED = ANS_SUMMED + ANS(I)
-C         keep track of the separate pieces correspoinding to
+C         keep track of the separate pieces corresponding to
 C          different coupling combinations
           DO J = 1, NSPLITORDERS
             AMP_ORDERS(J) = GETORDPOWFROMINDEX1(J, I)
@@ -172,11 +172,13 @@ C
       DATA GOODHEL/NCOMB*.FALSE./
       INTEGER NTRY
       DATA NTRY/0/
+      INCLUDE 'real_matrix_weights.inc'
       DATA IDEN/36/
 C     ----------
 C     BEGIN CODE
 C     ----------
       NTRY=NTRY+1
+      IF (GET_REAL_DIAGRAM_WEIGHTS) REAL_AMP2(:)=0D0
       DO I=0,NSQAMPSO
         ANS(I) = 0D0
       ENDDO
@@ -222,6 +224,17 @@ C         add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C     the diagram weights sum over the helicities computed after the
+C     first point (good ones, not identical to an earlier one), also
+C     at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(:)=0D0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_1(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
@@ -279,6 +292,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       TYPE(ALOHA) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(0)
+      INCLUDE 'real_matrix_weights.inc'
 C     
 C     FUNCTION
 C     
@@ -320,6 +334,13 @@ C     Amplitude(s) for diagram number 4
       CALL FFV1_1(W(2),W(5),GC_11,ZERO,ZERO,W(8))
 C     Amplitude(s) for diagram number 5
       CALL FFV1_0(W(1),W(8),W(7),GC_11,AMP(5))
+      IF (GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(1)=REAL_AMP2(1)+AMP(1)*DCONJG(AMP(1))
+        REAL_AMP2(2)=REAL_AMP2(2)+AMP(2)*DCONJG(AMP(2))
+        REAL_AMP2(3)=REAL_AMP2(3)+AMP(3)*DCONJG(AMP(3))
+        REAL_AMP2(4)=REAL_AMP2(4)+AMP(4)*DCONJG(AMP(4))
+        REAL_AMP2(5)=REAL_AMP2(5)+AMP(5)*DCONJG(AMP(5))
+      ENDIF
 C     JAMPs contributing to orders QCD=3 QED=0
       JAMP(1,1) = (1.666666666666667D-01)*AMP(2)+(1.666666666666667D
      $ -01)*AMP(3)
@@ -499,5 +520,12 @@ C
 
       NSQSO=NSQAMPSO
 
+      END
+
+
+      BLOCK DATA INITIALIZE_REAL_DIAGRAM_WEIGHTS
+      IMPLICIT NONE
+      INCLUDE 'real_matrix_weights.inc'
+      DATA GET_REAL_DIAGRAM_WEIGHTS /.FALSE./
       END
 

@@ -10,7 +10,7 @@ c     -- EVA@LP/NLP: Bigaran & Ruiz [arXiv:2502.07878]
 c     /* ********************************************************* *
 c     /* ********************************************************* *      
 c     function eva_fX_to_vHEL(gg2,gL2,gR2,fLpol,mv2,x,mu2,ebeam,ievo,evaorder):
-c     call electroweak PDF for for vector boson (HEL=0,+,-) from fermion
+c     call electroweak PDF for vector boson (HEL=0,+,-) from fermion
 c     with fractional (0<pol<1) LH (RH) polarization of fLpol (1-fLpol)
 c     - fLpol = 0.5d0 = parent fermion is spin-averaged
 c     /* ********************************************************* *
