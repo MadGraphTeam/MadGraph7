@@ -96,6 +96,7 @@ recursion's partials equal the sites of the lowered rules
 
 from __future__ import annotations
 
+import itertools
 from collections import defaultdict
 from collections.abc import Callable, Container, Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -528,6 +529,12 @@ class CoefficientLowering:
 
         if compiled.raw_loop_model is None:
             raise ValueError("counterterm coefficients need the model's NLO sidecar")
+        from ..model_cms import scheme_metadata
+
+        # The complex-mass scheme's run-time widths (``_RealArguments``).
+        self.widths = frozenset(
+            (scheme_metadata(compiled) or {}).get("widths", {}).values()
+        )
         bindings = compiled.raw_loop_model.metadata.get("function_bindings", {})
         self._helpers = {int(record): str(name) for name, record in bindings.items()}
         identities = dict(identities or {})
@@ -1753,6 +1760,7 @@ def _referenced_scalars(
         {references[name][:2] for name in read},
         fixed_parameters,
         coefficients._standard,
+        widths=coefficients.widths,
     )
     zeros = [
         Replacement(E(f"UFO::{{}}::{name}"), E("0"))
@@ -1889,6 +1897,8 @@ def coefficient_plan(
     outputs: Iterable[tuple[str, int]],
     fixed_parameters: Mapping[str, Any],
     standard: Mapping[int, str] | None = None,
+    *,
+    widths: Container[str] = (),
 ) -> _CoefficientPlan:
     """The scalar plan (``scalar_bindings.prepare_scalar_bindings``) of the
     Laurent coefficients ``outputs`` ((name, epsilon power); CT scalars or
@@ -1902,7 +1912,8 @@ def coefficient_plan(
     are structural zeros); outputs that are not finite, as expressions or in
     binary64 at the model's default card, are ``nonfinite`` (M2: never
     lowered, the rules reading them are refused when a tree of the request
-    can hold them)."""
+    can hold them). ``widths`` are the complex-mass scheme's run-time width
+    names (``_RealArguments``'s zero-width projections)."""
 
     from dataclasses import replace as replaced
     from decimal import Decimal
@@ -1959,9 +1970,15 @@ def coefficient_plan(
     ]
     if not selected:
         return _CoefficientPlan(None, zero, frozenset(nonfinite))
+    reals = {free.input_symbols[i] for i in kept if free.external_types[i] == "real"}
     real = _RealArguments(
-        {free.input_symbols[i] for i in kept if free.external_types[i] == "real"},
+        reals,
         library,
+        widths=[
+            free.input_symbols[i]
+            for i in kept
+            if free.external_names[i] in widths and free.input_symbols[i] in reals
+        ],
     )
     plan = replaced(
         free,
@@ -2029,12 +2046,36 @@ class _RealArguments:
     normalised at runtime: the form of the native lane's counterterm and
     field couplings (``native_trees._parameter_program``), whose other
     arguments are off the negative real axis or not exactly real.
+
+    ``widths`` are the run-time width inputs of a complex-mass scheme. A
+    branch-cut argument that is not manifestly real but is real wherever
+    some of its widths vanish (its rational normal form with those widths
+    at zero is manifestly real, ``zero_width_cases``) reads its real
+    projection at run time when they are all exactly zero:
+    ``if(equal(w1, 0) equal(w2, 0) ..., real_part(z), z)``. Its imaginary
+    part is then zero in exact arithmetic, but the evaluator may compute it
+    through complex factors of the other widths that cancel only exactly
+    (the G_mu UFO's MZ^4 - 4 MT^2 MZ^2 written through cw^2 = MW^2 / MZ^2,
+    CM01 at WZ = WT = 0 with WW != 0): its rounding residue, of either sign
+    and in every precision, would decide the side of the cut. The test is
+    on the exact inputs, the value is unchanged but for that residue, and
+    the side is MadLoop's (whose Fortran keeps the zero imaginary part
+    exact and takes +0).
     """
 
-    def __init__(self, reals: Iterable[Any], library: Any, *, signed: bool = False):
+    def __init__(
+        self,
+        reals: Iterable[Any],
+        library: Any,
+        *,
+        signed: bool = False,
+        widths: Iterable[Any] = (),
+    ):
         from symbolica import Expression
 
         self.signed = signed
+        self.widths = tuple(widths)
+        self._zero_width: dict[Any, tuple[tuple[Any, ...], ...]] = {}
         self._nonnegative: dict[Any, bool] = {}
         # helper head name -> (parameters, body), for ``cut_parameters``.
         self._bodies = {
@@ -2185,8 +2226,11 @@ class _RealArguments:
         elif kind == AtomType.Pow:
             base, exponent = children
             number = _exact_number(exponent)
-            if (number is None or number.denominator != 1) and self._wrapped(base):
-                base = self.real_part(base)
+            if number is None or number.denominator != 1:
+                if self._wrapped(base):
+                    base = self.real_part(base)
+                else:
+                    base = self._at_zero_widths(next(iter(atom)), base)
             found = base**exponent
         else:
             name = atom.get_name()
@@ -2201,25 +2245,31 @@ class _RealArguments:
                     else None
                 )
                 children = [
-                    self._argument(child, normalised)
+                    self._argument(child, normalised, original)
                     if cuts is None or index in cuts
                     else child
-                    for index, child in enumerate(children)
+                    for index, (child, original) in enumerate(
+                        zip(children, atom, strict=True)
+                    )
                 ]
             found = symbols.qualified(name)(*children)
         self._done[atom] = found
         return found
 
-    def _argument(self, atom: Any, normalised: bool) -> Any:
+    def _argument(self, atom: Any, normalised: bool, original: Any = None) -> Any:
         """A branch-cut function's argument on MadLoop's side: the real
-        projection of a compound manifestly real one; for the helpers
-        MadLoop normalises (``normalised``), a runtime +0 for a vanishing
-        imaginary part of any other one that is not an exact number."""
+        projection of a compound manifestly real one, and of one real at
+        vanishing widths where they vanish (``_at_zero_widths``; ``original``
+        is the argument before its own arguments were processed); for the
+        helpers MadLoop normalises (``normalised``), a runtime +0 for a
+        vanishing imaginary part of any other one that is not an exact
+        number."""
 
         from symbolica import AtomType
 
         if self._wrapped(atom):
             return self.real_part(atom)
+        atom = self._at_zero_widths(atom if original is None else original, atom)
         if self.signed:
             return atom
         if normalised and atom.get_type() != AtomType.Num and not self.is_real(atom):
@@ -2228,6 +2278,59 @@ class _RealArguments:
                 self.real_part(atom),
                 atom,
             )
+        return atom
+
+    def zero_width_cases(self, atom: Any) -> tuple[tuple[Any, ...], ...]:
+        """The minimal sets of ``widths`` at whose zero ``atom`` is real: its
+        rational normal form (``together``) with them at zero is manifestly
+        real (``_real_at_zero``); none for a manifestly real ``atom``."""
+
+        from symbolica import Expression, Replacement
+
+        found = self._zero_width.get(atom)
+        if found is not None:
+            return found
+        cases: list[tuple[Any, ...]] = []
+        present = [w for w in self.widths if atom.contains(w)]
+        if present and not self.is_real(atom):
+            for size in range(1, len(present) + 1):
+                for subset in itertools.combinations(present, size):
+                    if any(set(case) <= set(subset) for case in cases):
+                        continue
+                    zero = atom.replace_multiple(
+                        [Replacement(w, Expression.num(0)) for w in subset]
+                    )
+                    if self._real_at_zero(zero.together()):
+                        cases.append(subset)
+        found = self._zero_width[atom] = tuple(cases)
+        return found
+
+    def _real_at_zero(self, atom: Any) -> bool:
+        """``is_real``, with a fractional power of a manifestly non-negative
+        real (a pole mass at zero width, (M^2)^(1/2)) real too."""
+
+        from symbolica import AtomType
+
+        kind = atom.get_type()
+        if kind == AtomType.Pow:
+            base, exponent = list(atom)
+            number = _exact_number(exponent)
+            if number is not None and number.denominator != 1:
+                return self._real_at_zero(base) and self.is_nonnegative(base)
+            return number is not None and self._real_at_zero(base)
+        if kind in (AtomType.Add, AtomType.Mul):
+            return all(self._real_at_zero(child) for child in atom)
+        return self.is_real(atom)
+
+    def _at_zero_widths(self, original: Any, atom: Any) -> Any:
+        """``atom`` (``original`` with its arguments processed), read through
+        its real projection where the widths of a ``zero_width_cases`` set
+        are all exactly zero."""
+
+        cases = self.zero_width_cases(original) if self.widths else ()
+        for case in reversed(cases):
+            condition = reduce(mul, (self.equal(w, self.zero) for w in case))
+            atom = self.choose(condition, self.real_part(atom), atom)
         return atom
 
     def _wrapped(self, atom: Any) -> bool:

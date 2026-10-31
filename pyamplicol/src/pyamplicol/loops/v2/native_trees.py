@@ -1532,8 +1532,17 @@ def _parameter_program(
     # its zero imaginary part is the sign of a negated real's, -0 in the
     # binary64 plane application and +0 in Symbolica's evaluator (the plane
     # check's real point, ``_request_points``). The projection keeps every
-    # value; the arguments that are not manifestly real keep their form.
+    # value; the arguments that are not manifestly real keep their form,
+    # except that under the complex-mass scheme one real wherever some of
+    # the run-time widths vanish reads its real projection when they do
+    # (``_RealArguments.zero_width_cases``: its exactly zero imaginary part
+    # may come out as a rounding residue of either sign otherwise, CM01 at
+    # WZ = WT = 0 with WW != 0).
     sides: dict[int, Any] = {}
+    from ..model_cms import scheme_metadata
+
+    scheme = scheme_metadata(slice_.compiled) or {}
+    width_names = set(scheme.get("widths", {}).values())
 
     def madloop_side(p: int, value: Any) -> Any:
         found = sides.get(p)
@@ -1548,7 +1557,16 @@ def _parameter_program(
                 )
                 if kind == "real"
             }
-            found = sides[p] = _RealArguments(reals, plan.program.library, signed=True)
+            widths = [
+                symbol
+                for symbol, name in zip(
+                    plan.input_symbols, plan.external_names, strict=True
+                )
+                if name in width_names and symbol in reals
+            ]
+            found = sides[p] = _RealArguments(
+                reals, plan.program.library, signed=True, widths=widths
+            )
         return found(value)
 
     def column_value(
