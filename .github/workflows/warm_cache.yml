@@ -361,6 +361,14 @@ jobs:
          with:
            tools: lhapdf
 
+       # The downloaded PDF archives (those above, plus the ones "install
+       # lhapdf6" fetches, one of them twice as *.tar.gz.1) stayed next to the
+       # unpacked sets: ~330 MB of already compressed data, so ~330 MB of every
+       # cache built on top of this one. Only the unpacked sets are read.
+       - name: Drop the PDF archives before the cache is saved
+         if: steps.cache-lhapdf.outputs.cache-hit != 'true'
+         run: rm -fv /home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF/*.tar.gz*
+
   pythia8_cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
@@ -472,6 +480,13 @@ jobs:
          with:
            tools: boost
 
+       # The unpacked boost source/build tree (boost/boost_1_74_0, 1.2 GB) was
+       # cached too. eMELA and HEPToolInstaller only use the installed
+       # boost/include and boost/lib, which the check above just verified.
+       - name: Drop the boost source tree before the cache is saved
+         if: steps.cache-boost.outputs.cache-hit != 'true'
+         run: rm -rf /home/runner/.cache/HEPtools/boost/boost_[0-9]*/
+
   emela_cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
@@ -529,6 +544,12 @@ jobs:
          uses: ./.github/actions/check_heptools
          with:
            tools: boost emela
+
+       # grids.tar.gz (115 MB, compressed) stayed next to the unpacked
+       # EMELA/share grids that eMELA reads (checked above).
+       - name: Drop the eMELA grid archive before the cache is saved
+         if: steps.cache-eMELA.outputs.cache-hit != 'true'
+         run: rm -fv /home/runner/.cache/HEPtools/EMELA/grids.tar.gz
 
 #  delete_lhapdf_cache:
 #     runs-on: ${{ matrix.os }}
