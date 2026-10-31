@@ -143,16 +143,17 @@ to the personal license or to the restricted mode, as the Python side does.
   Model parameters, the renormalisation scale and the pole selection can
   change freely without Symbolica. The binary64 parameter program
   (couplings, counterterm couplings and masses as functions of the model
-  parameters) is never checked at run time: at real parameter values it
-  takes the side of every branch cut (`log`, `sqrt`, a power) that exact
-  arithmetic, double-double and MadLoop take, by construction (the zero
-  imaginary part of a branch-cut argument is made positive, so a width set
-  to zero or a mass moving a logarithm's argument onto its cut takes the
-  principal value, `log(-x) = log(x) + iπ`; its complex products are
-  rounded as Symbolica's evaluator rounds them, so a product that is real
-  in exact arithmetic stays real), and it evaluates every branch of a model
-  helper's conditional (`recms`, `reglog`, `grreglog`, ...) and selects the
-  one the parameters pick.
+  parameters) is never checked at run time. The zero imaginary part of a
+  branch-cut argument (`log`, `sqrt`, a power) is made positive, so an
+  argument on its cut takes the principal value, `log(-x) = log(x) + iπ`;
+  under the complex-mass scheme an argument that is real when some widths
+  are zero reads its real part when they are, in every precision (its
+  imaginary part could otherwise come out as a rounding residue of either
+  sign); and every branch of a model helper's conditional (`recms`,
+  `reglog`, `grreglog`, ...) is evaluated and the one the parameters pick is
+  selected. Checked against MadLoop and double-double/arbitrary precision
+  on the complex-mass control `e- e+ > mu- mu+` at zero, partial-zero
+  (54 random rows) and physical widths.
 - Double-double and arbitrary-precision virtual evaluation decode saved
   Symbolica evaluator states natively under the package key, so they also
   run in concurrent unlicensed processes.

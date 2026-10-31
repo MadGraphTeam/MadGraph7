@@ -1113,9 +1113,12 @@ masses in their native point inputs (the loop propagators read M^2 - i M W; the
 binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
 point inputs and relocate as any other artifact. A width changed at run time
 may be zero (the real-mass limit), which puts counterterm arguments on their
-branch cuts: every precision takes the side exact arithmetic and MadLoop take
-there (binary64 too: its compiled parameter program makes the zero imaginary
-part of every branch-cut argument positive). In double-double a width must
+branch cuts: an argument that is real when the zeroed widths vanish reads its
+real part there and every zero imaginary part of a cut argument is made
+positive, so every precision takes the principal value (checked against
+MadLoop CMS on `e- e+ > mu- mu+` with all, some and none of the widths zero;
+where MadLoop's double and quadruple precision disagree, pyAmpliCol's
+precisions agree with each other and with one of them). In double-double a width must
 stay at least 1e-150 of its mass, or be zero (`complex-mass-master` otherwise,
 a model-parameter error naming the plan mass). An evaluation
 (the Python API and the native SDKs alike) refuses an empty parameter name, a
