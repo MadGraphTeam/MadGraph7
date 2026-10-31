@@ -2236,6 +2236,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         '    using A_ACCESS [[maybe_unused]] = HostAccessAmplitudes;\n'
         '    using CD_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using CI_ACCESS [[maybe_unused]] = HostAccessCouplingsFixed;\n'
+        '    using CDPF_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
 
     def hel_recycling_chunk_size(self, nstmt):
