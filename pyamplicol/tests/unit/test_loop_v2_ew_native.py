@@ -22,11 +22,11 @@ cut whenever the probe made MW > MZ and refused a correct translation,
 depending on the declaration order (loop_sm with MW a card input; the G_mu
 EW counterterms c_UVepemA1EW and UV_GTTLEW). Since M-SM MS-MASTERS the
 translation makes the zero imaginary part of every cut argument +0
-(``symjit_plane::canonical_cut_row``), so at real
-inputs the plane takes exact arithmetic's side of a cut, MadLoop's +0 side
-(as ``ct_recursion._RealArguments`` projects the counterterms' real
-arguments for every evaluator), wherever the parameters put an argument;
-the real-axis row checks it at the request's values. A real point where the
+(``symjit_plane::canonical_cut_row``), MadLoop's +0 side (as
+``ct_recursion._RealArguments`` projects the counterterms' real arguments
+for every evaluator, and under the complex-mass scheme the arguments real
+at zero widths where they are zero); the real-axis row checks it at the
+request's values. A real point where the
 two evaluators still disagree stays the listed refusal ``plane-mismatch``.
 
 Nightly: g g > t t~ EW and e- e+ > mu- mu+ (G_mu UFO) and u u~ > d d~ with
