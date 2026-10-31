@@ -184,7 +184,7 @@ fn a_plane_takes_the_exact_side_of_a_cut() {
     for level in [2, 0] {
         let (bytes, inputs, outputs) =
             crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
-                &binary64, level, false,
+                &binary64, level, false, false,
             )
             .expect("a plane application");
         let mut plane = Kernel::Plane(Box::new(

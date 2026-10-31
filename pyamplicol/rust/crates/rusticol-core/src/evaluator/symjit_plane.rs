@@ -818,26 +818,56 @@ fn seal_generated_plane_application(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
 ))]
+///
+/// `textbook` (a program run at real inputs, the parameter program; level 0
+/// only): its complex products and sums in the order and rounding of
+/// Symbolica's binary64 evaluator ([`textbook_row`]).
 pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
     evaluator: &symbolica::evaluate::ExpressionEvaluator<symbolica::domains::float::Complex<f64>>,
     opt_level: u8,
     compress: bool,
+    textbook: bool,
 ) -> RusticolResult<(Vec<u8>, usize, usize)> {
     let exported = evaluator.export_instructions();
     let (inputs, outputs) = (exported.input_count, exported.output_count);
     let program = InlinedProgram::of(&exported)?;
+    let translation = Translation {
+        canonical: true,
+        textbook,
+    };
     Ok((
-        compile_inlined_program(&program, (inputs, outputs), opt_level, compress, true)?,
+        compile_inlined_program(
+            &program,
+            (inputs, outputs),
+            opt_level,
+            compress,
+            translation,
+        )?,
         inputs,
         outputs,
     ))
 }
 
+/// The plane translation's departures from SymJIT's own reading of a
+/// Symbolica program ([`compile_inlined_program`]).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+#[derive(Clone, Copy, Debug)]
+struct Translation {
+    /// Cut arguments canonicalised ([`canonical_cut_row`]; production).
+    canonical: bool,
+    /// Complex products and sums in Symbolica's order and rounding
+    /// ([`textbook_row`]; the parameter program).
+    textbook: bool,
+}
+
 /// [`compile_symbolica_evaluator_to_plane_application_bytes`] of an inlined
-/// program of `shape` (inputs, outputs); `canonical`: with the cut
-/// arguments canonicalised ([`canonical_cut_row`]; production), else as
-/// SymJIT translates them (the tests' control). Either way the program's
-/// control flow is flattened ([`is_control_flow`]).
+/// program of `shape` (inputs, outputs) with the departures of
+/// `translation` from SymJIT's own reading (without them: the tests'
+/// controls). Either way the program's control flow is flattened
+/// ([`is_control_flow`]).
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -847,11 +877,30 @@ fn compile_inlined_program(
     (inputs, outputs): (usize, usize),
     opt_level: u8,
     compress: bool,
-    canonical: bool,
+    translation: Translation,
 ) -> RusticolResult<Vec<u8>> {
+    use symbolica::evaluate::{Instruction as I, Slot};
     use symjit::{Composer, Translator};
+    if translation.textbook && opt_level != 0 {
+        return Err(RusticolError::invalid_argument(format!(
+            "a plane in Symbolica's arithmetic order compiles at level 0 (asked {opt_level}): \
+             SymJIT's peephole pass fuses products and sums into FMAs"
+        )));
+    }
     let layout = SymjitPlaneLayout::complex(inputs, outputs);
     let config = explicit_plane_config(true, opt_level, compress)?;
+    // The canonicalisation's temporaries follow the program's, the textbook
+    // rows' follow those (one per argument of the widest call).
+    let cut_room = program
+        .rows
+        .iter()
+        .filter_map(|row| match row {
+            I::Fun(_, call, _) => Some(call.2.len()),
+            I::Powf(..) => Some(1),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0);
     let application = guard_symjit_panic(
         || -> Result<Application, String> {
             let mut translator = Translator::new(config);
@@ -860,8 +909,25 @@ fn compile_inlined_program(
                     .append_constant(num_complex::Complex::new(value.re, value.im))
                     .map_err(|error| error.to_string())?;
             }
+            let textbook = Textbook {
+                first: program.temporaries + cut_room,
+                minus_one: Slot::Const(program.constants.len()),
+                unit: Slot::Const(program.constants.len() + 1),
+                constants: &program.constants,
+            };
+            if translation.textbook {
+                for value in [(-1.0, 0.0), (0.0, 1.0)] {
+                    translator
+                        .append_constant(num_complex::Complex::new(value.0, value.1))
+                        .map_err(|error| error.to_string())?;
+                }
+            }
             for row in program.rows.iter().filter(|row| !is_control_flow(row)) {
-                match canonical
+                if translation.textbook && textbook_row(&mut translator, row, &textbook)? {
+                    continue;
+                }
+                match translation
+                    .canonical
                     .then(|| canonical_cut_row(&mut translator, row, program.temporaries))
                     .transpose()?
                     .flatten()
@@ -881,6 +947,130 @@ fn compile_inlined_program(
         ))
     })?;
     seal_generated_plane_application(application, layout)
+}
+
+/// The slots of the textbook rows ([`textbook_row`]): its temporaries from
+/// `first` on, the constants -1 and i appended to the program's.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct Textbook<'a> {
+    first: usize,
+    minus_one: symbolica::evaluate::Slot,
+    unit: symbolica::evaluate::Slot,
+    constants: &'a [symbolica::domains::float::Complex<f64>],
+}
+
+/// A product or a sum of more than two terms as Symbolica's binary64
+/// evaluator computes it, or `false` for any other row (the parameter
+/// program; [`Translation::textbook`]). Both fold their arguments from the
+/// left, as the evaluator does (SymJIT sums and multiplies a balanced
+/// tree), and a product of two complex factors is
+/// (a c - b d) + i (a d + b c) with each real product rounded, from the
+/// factors' parts (SymJIT's `real`/`imaginary`, real registers) and real
+/// arithmetic, which level 0 does not fuse. SymJIT's own complex product
+/// takes a d + b c as fma(a, d, b c): exact arithmetic's zero, as in
+/// z conj(z), keeps the rounding error of b c as an imaginary part, and on
+/// a negative real it sends a `sqrt`, `log` or power to the other side of
+/// its cut than Symbolica's evaluator, double-double, arbitrary precision
+/// and MadLoop, whose rounded products cancel exactly. CM01 (e- e+ > mu- mu+
+/// [QED], complex-mass scheme) at run-time WT = WZ = 0 with WW nonzero: a
+/// counterterm coupling's square root of -9.3e8 - 3.7e-9 i, finite part
+/// +2.2e-3 against -5.6e-3; at widths of 1e-100 of the masses the error
+/// swamped the widths (M-SM MS-MASTERS). A factor known real (Symbolica's
+/// leading `reals`, a constant without imaginary part) keeps SymJIT's
+/// product, which is exact there.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn textbook_row(
+    translator: &mut symjit::Translator,
+    row: &symbolica::evaluate::Instruction,
+    textbook: &Textbook<'_>,
+) -> Result<bool, String> {
+    use symbolica::evaluate::{Instruction as I, Slot};
+    use symjit::Composer;
+    let temporary = |k: usize| symjit_slot(&Slot::Temp(textbook.first + k));
+    let accumulator = Slot::Temp(textbook.first + 12);
+    fn error(error: impl std::fmt::Display) -> String {
+        error.to_string()
+    }
+    let real_constant =
+        |slot: &Slot| matches!(*slot, Slot::Const(i) if textbook.constants[i].im == 0.0);
+    match row {
+        I::Mul(o, args, reals) if args.len() >= 2 => {
+            let mut left = args[0];
+            let mut left_real = *reals >= 1 || real_constant(&left);
+            for (k, right) in args.iter().enumerate().skip(1) {
+                let destination = if k + 1 == args.len() { *o } else { accumulator };
+                let right_real = k < *reals || real_constant(right);
+                let (o, x, y) = (
+                    symjit_slot(&destination),
+                    symjit_slot(&left),
+                    symjit_slot(right),
+                );
+                if left_real || right_real {
+                    translator.append_mul(&o, &[x, y], 0).map_err(error)?;
+                } else {
+                    let (minus_one, unit) = (
+                        symjit_slot(&textbook.minus_one),
+                        symjit_slot(&textbook.unit),
+                    );
+                    for (t, part, z) in [
+                        (0, "symbolica_real", x),
+                        (1, "symbolica_imag", x),
+                        (2, "symbolica_real", y),
+                        (3, "symbolica_imag", y),
+                    ] {
+                        translator
+                            .append_fun(&temporary(t), part, &[z], false)
+                            .map_err(error)?;
+                    }
+                    for (t, a, b) in [(4, 0, 2), (5, 1, 3), (7, 0, 3), (8, 1, 2)] {
+                        translator
+                            .append_mul(&temporary(t), &[temporary(a), temporary(b)], 0)
+                            .map_err(error)?;
+                    }
+                    translator
+                        .append_mul(&temporary(6), &[minus_one, temporary(5)], 0)
+                        .map_err(error)?;
+                    translator
+                        .append_add(&temporary(9), &[temporary(4), temporary(6)], 0)
+                        .map_err(error)?;
+                    translator
+                        .append_add(&temporary(10), &[temporary(7), temporary(8)], 0)
+                        .map_err(error)?;
+                    translator
+                        .append_mul(&temporary(11), &[unit, temporary(10)], 0)
+                        .map_err(error)?;
+                    translator
+                        .append_add(&o, &[temporary(9), temporary(11)], 0)
+                        .map_err(error)?;
+                }
+                left = destination;
+                left_real &= right_real;
+            }
+            Ok(true)
+        }
+        I::Add(o, args, _) if args.len() > 2 => {
+            let mut left = args[0];
+            for (k, right) in args.iter().enumerate().skip(1) {
+                let destination = if k + 1 == args.len() { *o } else { accumulator };
+                translator
+                    .append_add(
+                        &symjit_slot(&destination),
+                        &[symjit_slot(&left), symjit_slot(right)],
+                        0,
+                    )
+                    .map_err(error)?;
+                left = destination;
+            }
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 /// Whether a row is a jump or a jump target (`IfElse`, `Goto`, `Label`),
@@ -2009,8 +2199,12 @@ mod tests {
                 let values: Vec<f64> = point.iter().flat_map(|&v| [v, 0.0]).collect();
                 for level in [0, 2] {
                     for is_canonical in [true, false] {
+                        let translation = Translation {
+                            canonical: is_canonical,
+                            textbook: false,
+                        };
                         let bytes =
-                            compile_inlined_program(&program, (5, 1), level, false, is_canonical)
+                            compile_inlined_program(&program, (5, 1), level, false, translation)
                                 .expect("compiles");
                         let got = evaluate_plane_application_bytes(&bytes, 5, 1, &values, 1)
                             .expect("evaluates");
@@ -2046,6 +2240,82 @@ mod tests {
             control_misses.iter().all(|&(text, ..)| text != texts[5]),
             "{control_misses:?}"
         );
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn textbook_products_keep_exact_cancellations() {
+        // log(-x y) and sqrt(-x y) at conjugate inputs x = a + i b, y = a - i b:
+        // x y is real in exact arithmetic and in Symbolica's evaluator (its
+        // rounded cross products cancel), so -x y sits on the cuts' upper
+        // side. In Symbolica's arithmetic order (`textbook_row`, the
+        // parameter program's) the plane equals the evaluator at every
+        // point; SymJIT's FMA product (the control) leaves the rounding error
+        // of a b as an imaginary part and takes the lower side at some.
+        use symbolica::atom::AtomCore;
+        use symbolica::domains::float::Complex;
+        let _unlock = crate::licence::unlock();
+        let symbols: Vec<_> = ["x", "y"]
+            .iter()
+            .map(|n| symbolica::parse!(&format!("pyamplicol_symjit_tests::{n}")))
+            .collect();
+        let mut control_misses = 0;
+        for text in ["log(-{x}*{y})", "sqrt(-{x}*{y})*{x}"] {
+            let source = text
+                .replace("{x}", "pyamplicol_symjit_tests::x")
+                .replace("{y}", "pyamplicol_symjit_tests::y");
+            let evaluator = symbolica::parse!(&source)
+                .evaluator(&symbols)
+                .build()
+                .expect("an evaluator");
+            let mut binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
+            let program = InlinedProgram::of(&binary64.export_instructions()).expect("inlined");
+            let compiled = |textbook: bool| {
+                let translation = Translation {
+                    canonical: true,
+                    textbook,
+                };
+                compile_inlined_program(&program, (2, 1), 0, false, translation).expect("compiles")
+            };
+            let (textbook, control) = (compiled(true), compiled(false));
+            for k in 0..32 {
+                let (a, b) = (0.3 + 0.1 * f64::from(k), 0.11 + 0.7 * f64::from(k));
+                let input = [Complex::new(a, b), Complex::new(a, -b)];
+                let mut expected = [Complex::new(0.0, 0.0)];
+                binary64.evaluate(&input, &mut expected);
+                let values = [a, b, a, -b];
+                let close = |got: &[f64]| {
+                    let scale = expected[0].re.abs().max(expected[0].im.abs());
+                    (got[0] - expected[0].re).abs() <= 1e-13 * scale
+                        && (got[1] - expected[0].im).abs() <= 1e-13 * scale
+                };
+                let got = evaluate_plane_application_bytes(&textbook, 2, 1, &values, 1)
+                    .expect("evaluates");
+                assert!(
+                    close(&got),
+                    "{text} at a = {a}, b = {b}: {got:?} {expected:?}"
+                );
+                let got = evaluate_plane_application_bytes(&control, 2, 1, &values, 1)
+                    .expect("evaluates");
+                control_misses += usize::from(!close(&got));
+            }
+        }
+        assert!(
+            control_misses > 0,
+            "the FMA control never takes the other side"
+        );
+        // Above level 0 SymJIT's peephole would fuse the textbook rows.
+        let translation = Translation {
+            canonical: true,
+            textbook: true,
+        };
+        let program = InlinedProgram {
+            rows: Vec::new(),
+            constants: Vec::new(),
+            temporaries: 0,
+            next_label: 0,
+        };
+        assert!(compile_inlined_program(&program, (1, 1), 2, false, translation).is_err());
     }
 
     const MODEL: &str = "
