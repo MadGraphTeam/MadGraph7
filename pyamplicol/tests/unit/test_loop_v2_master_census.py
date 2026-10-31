@@ -29,6 +29,7 @@ reruns any row's census and carrier comparison.
 
 from __future__ import annotations
 
+import itertools
 import json
 import math
 from dataclasses import replace
@@ -216,6 +217,44 @@ def _totals(result) -> dict[str, list[Decimal]]:
     return {"born": [born], "virtual": virtual}
 
 
+def _plane_against_state(executor, parameter_sets) -> float:
+    """The stored binary64 parameter plane (``NativeTrees.planes[-1]``)
+    against the exact state's binary64 Symbolica evaluator at each set of
+    parameter values (the record's defaults for the others): the largest
+    difference relative to each output's largest value over the sets."""
+
+    import numpy as np
+    from symbolica import Evaluator
+
+    from pyamplicol import _rusticol
+
+    trees = executor.exported.trees
+    record = trees.program["parameters"]
+    names = record["names"]
+    rows = [
+        [
+            complex(float(Fraction(str(values.get(name, default)))))
+            for name, default in zip(names, record["defaults"], strict=True)
+        ]
+        for values in parameter_sets
+    ]
+    exact = np.asarray(
+        Evaluator.load(bytes(trees.parameters)).evaluate_complex(rows),
+        dtype=np.complex128,
+    )
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        bytes(trees.planes[-1]),
+        len(names),
+        exact.shape[1],
+        np.asarray(rows, dtype=np.complex128).view(np.float64).ravel().tolist(),
+        len(rows),
+    )
+    plane = np.asarray(flat, dtype=np.float64).view(np.complex128)
+    scale = np.abs(exact).max(axis=0)
+    difference = np.abs(plane.reshape(exact.shape) - exact)
+    return float((difference / np.where(scale > 0, scale, 1.0)).max())
+
+
 @pytest.mark.loop_nightly
 def test_cm01_masters_avoid_the_known_complex_mass_defects(
     loop_gmu_ufo, loop_native, tmp_path
@@ -231,12 +270,20 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
     against MadLoop's 1.8e-3), a -0 imaginary part from SymJIT's negation;
     the translation now makes every cut argument's zero imaginary part +0
-    (``symjit_plane::canonical_cut_row``), with nothing
-    checked at run time, and every carrier equals MadLoop's
-    zero-width virtual (to 1e-8), as at widths of 1e-100 and 1e-152 of the
-    masses in binary64 and arbitrary precision; double-double, whose C0
-    turned non-finite below 1e-150, refuses 1e-152 with
-    ``complex-mass-master``. Generation about 5 min, 10 GB."""
+    (``symjit_plane::canonical_cut_row``). At WT = WZ = 0 alone (WW, WH
+    nonzero) and at widths of 1e-100 of the masses, SymJIT's FMA complex
+    product left the rounding error of an exactly real product as an
+    imaginary part, which flipped a counterterm coupling's square root
+    (finite part +2.2e-3 against double-double's -5.6e-3); the parameter
+    program's products and sums now follow Symbolica's evaluation order and
+    rounding (``symjit_plane::textbook_row``). Nothing is checked at run
+    time: every carrier equals MadLoop's zero-width virtual (to 1e-8), as at
+    widths of 1e-100 and 1e-152 of the masses in binary64 and arbitrary
+    precision; double-double, whose C0 turned non-finite below 1e-150,
+    refuses 1e-152 with ``complex-mass-master``; the stored plane equals
+    its exact state at every subset of the widths at zero and at the tiny
+    widths, and binary64 = double-double at WT = WZ = 0. Generation about
+    5 min, 10 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -303,6 +350,37 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
         evaluate(tiny, Precision.double_double())
     found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
     assert found.bites()["tiny-width"], found.record()
+
+    # Some widths zero: the stored plane equals its exact state at every
+    # subset of the four widths at zero and at the tiny scalings, and
+    # binary64 = double-double at WT = WZ = 0 (finite part +2.2e-3 against
+    # -5.6e-3 with SymJIT's FMA complex products, symjit_plane::textbook_row).
+    finite = reference["finite"]
+    physical = {**GMU_PARAMETERS, **finite["widths"]}
+    subsets = [
+        dict.fromkeys(subset, "0")
+        for size in range(len(masses) + 1)
+        for subset in itertools.combinations(sorted(masses), size)
+    ]
+    sets = [{**physical, **change} for change in [*subsets, small, tiny]]
+    assert _plane_against_state(executor, sets) <= 1e-9
+    partial = {**physical, "WT": "0", "WZ": "0"}
+    runs = [
+        [
+            _totals(result)
+            for result in executor.evaluate(
+                finite["points"],
+                ["1000000"] * len(finite["points"]),
+                parameters=partial,
+                precision=precision,
+            )
+        ]
+        for precision in (Precision.double(), Precision.double_double())
+    ]
+    difference = max(
+        _difference(mine, theirs, 1 / 132.0) for mine, theirs in zip(*runs, strict=True)
+    )
+    assert difference <= 1e-8, difference
 
 
 @pytest.mark.loop_nightly

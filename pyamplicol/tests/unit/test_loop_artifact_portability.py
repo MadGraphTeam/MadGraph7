@@ -678,8 +678,24 @@ plan = generated.plan_json
 plan = plan.encode() if isinstance(plan, str) else plan
 digest = lambda data: hashlib.sha256(data).hexdigest()
 members = generated.native.members()
+# The parameter planes' values at one real row of their inputs (hex).
+from symbolica import Evaluator
+from pyamplicol import _rusticol
+values = {}
+for prefix in ("", "scaleless-"):
+    if prefix + "parameters.symjit" not in members:
+        continue
+    state = bytes(members[prefix + "parameters.state"])
+    shape = Evaluator.load(state).get_instructions()
+    row = [0.75 + 0.125 * k for k in range(shape.input_count)]
+    flat = _rusticol._evaluate_symjit_plane_application_v2(
+        bytes(members[prefix + "parameters.symjit"]), shape.input_count,
+        shape.output_count, [x for v in row for x in (v, 0.0)], 1,
+    )
+    values[prefix + "parameters.symjit"] = [float(x).hex() for x in flat]
 Path(out).write_text(json.dumps(
-    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()}}
+    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()},
+     "values": values}
 ))
 """
 
@@ -694,7 +710,8 @@ def test_native_members_do_not_depend_on_the_model_cache(
     programs' plane applications (the process's and its scaleless
     companion's), whose SymJIT call tags are random
     (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py; the
-    companion's calls are the cut-argument canonicalisation's, MS-MASTERS). The
+    companion's calls are the cut-argument canonicalisation's, MS-MASTERS);
+    their values at one real row are bitwise the same. The
     compiled and the cached model list their helper functions in different
     orders; the parameter program names them in sorted order, so its saved
     state is the same."""
@@ -736,6 +753,9 @@ def test_native_members_do_not_depend_on_the_model_cache(
     )
     planes = {"parameters.symjit", "scaleless-parameters.symjit"}
     assert set(differing) <= planes, differing
+    # Their values are bitwise the same.
+    assert cold["values"].keys() == planes, cold["values"].keys()
+    assert cold["values"] == warm_run["values"]
 
 
 @pytest.mark.loop_physics

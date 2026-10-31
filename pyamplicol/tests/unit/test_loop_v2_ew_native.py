@@ -156,6 +156,36 @@ def test_plane_takes_the_exact_side_at_a_real_point_on_a_cut(loop_native):
 
 
 @pytest.mark.loop_fast
+def test_parameter_planes_keep_exactly_real_products_real(loop_native):
+    """log(-x y) and sqrt(-x y) at conjugate complex inputs x = a + i b,
+    y = a - i b: the product is real in exact arithmetic and in Symbolica's
+    evaluator (its rounded cross products cancel), so -x y is on the cuts'
+    upper side. A program with real points (the parameter program) is
+    compiled with its products and sums in Symbolica's order and rounding
+    (``symjit_plane::textbook_row``), so its plane equals the evaluator at
+    every point, at level 0 whatever level is asked; SymJIT's FMA product
+    left the rounding error of a b as an imaginary part, which took the
+    lower side at some points (CM01 at run-time WT = WZ = 0, M-SM
+    MS-MASTERS)."""
+
+    from symbolica import Evaluator
+
+    state = _state(["log(-x*y)", "sqrt(-x*y)*x"])
+    rows = np.array(
+        [[0.3 + 0.1 * k + (0.11 + 0.7 * k) * 1j] * 2 for k in range(32)],
+        dtype=np.complex128,
+    )
+    rows[:, 1] = np.conj(rows[:, 1])
+    expected = np.asarray(Evaluator.load(state).evaluate_complex(rows.tolist()))
+    for level in (0, 2):
+        plane, inputs, outputs = loop_native.compile_v2_plane(
+            state, level, False, [[1.0, 1.0]]
+        )
+        got = _plane_values(plane, inputs, outputs, rows)
+        assert np.allclose(got, expected, rtol=1e-13, atol=0), (level, got - expected)
+
+
+@pytest.mark.loop_fast
 def test_plane_check_needs_a_real_point_for_branch_cuts_of_its_inputs(
     loop_native,
 ):

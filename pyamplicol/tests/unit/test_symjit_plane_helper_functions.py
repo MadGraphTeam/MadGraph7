@@ -158,8 +158,9 @@ def test_untaken_branches_define_no_shared_values() -> None:
     straight-line code (other helpers' bodies): SymJIT's common-subexpression
     elimination (2.27.3 to 2.28.2) assigned the shared value at its first
     occurrence, inside the branch, so where the branch is not taken the
-    straight-line uses read an unset temporary (CM01 at run-time widths
-    WT = WZ = 0, M-SM MS-MASTERS; ``upstream/symjit-cse-across-branches``).
+    straight-line uses read an unset temporary (found while localising
+    CM01's zero-width defect, M-SM MS-MASTERS;
+    ``upstream/symjit-cse-across-branches``).
     Both translations drop the jumps (``Join`` selects), so the planes equal
     Symbolica on either side of the condition, at the parameter program's
     level 0 and at level 2, with the plane check given only the taken side."""
