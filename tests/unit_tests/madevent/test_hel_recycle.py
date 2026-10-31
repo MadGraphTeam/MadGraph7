@@ -1009,3 +1009,49 @@ class TestGoodHelIds(unittest.TestCase):
         nhel = self.recycled_nhel_lines(False)
         self.assertOriginalIds(nhel, self.ALL_HEL)
         self.assertEqual(min(nhel.values()), 1)
+
+
+class TestFortranRecyclerRegression(unittest.TestCase):
+    """madevent's own recycler (the Fortran output, on by default in every
+    madevent run) shares its algorithm with the C++ dialect: the DAG, the good-
+    helicity and vanishing-amplitude filters and the P1N split plan. Its output
+    must not change with that sharing. Each case is a matrix1_orig.f and
+    template_matrix1.f of a madevent output, the arguments gen_ximprove passes
+    (good helicities, vanishing amplitudes, vanishing (helicity, amplitude)
+    pairs, gauge) and the matrix1_optim.f that main's recycler wrote for them
+    before the C++ work (tests/input_files/hel_recycle_fortran); the cases run
+    one after the other in this process, as the P directories of one output
+    do in gen_ximprove."""
+
+    CASES = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                         os.pardir, 'input_files', 'hel_recycle_fortran')
+
+    def test_the_fortran_output_is_unchanged(self):
+        import json
+        cases = sorted(os.listdir(self.CASES))
+        self.assertEqual(len(cases), 5)
+        tmpdir = tempfile.mkdtemp()
+        try:
+            for case in cases:
+                src = os.path.join(self.CASES, case)
+                args = json.load(open(os.path.join(src, 'recycler_args.json')))
+                recycler = hel_recycle.HelicityRecycler(
+                    args['good_hels'], args['bad_amps'],
+                    [tuple(pair) for pair in args['bad_amps_perhel']],
+                    gauge=args['gauge'])
+                recycler.hel_filt = True
+                recycler.amp_splt = True
+                recycler.amp_filt = True
+                out = os.path.join(tmpdir, case + '_optim.f')
+                recycler.set_input(os.path.join(src, 'matrix1_orig.f'))
+                recycler.set_output(out)
+                recycler.set_template(os.path.join(src, 'template_matrix1.f'))
+                recycler.generate_output_file()
+                del recycler
+                with open(os.path.join(src, 'matrix1_optim.f')) as fsock:
+                    expected = fsock.read()
+                with open(out) as fsock:
+                    got = fsock.read()
+                self.assertEqual(got, expected, 'the recycled Fortran of %s changed' % case)
+        finally:
+            shutil.rmtree(tmpdir)
