@@ -2365,7 +2365,7 @@ fks_final_massless_radiate:
     - name: det_xi
       type: [float]
       desc: "Jacobian of (xi_hat, y, r_phi) to the (n+1)-body phase space in units of the n-body one, divided by xi"
-  desc: "FKS emission off a massless final-state parton, as generate_momenta_massless_final of MadGraph's genps_fks.f, except that the angle of i to i + j comes from its exact sine and cosine instead of the law of cosines (which loses up to half the digits of small angles). The sum of i and j has the direction of the Born emitter and the other final-state momenta are boosted along it with @ref fks_recoil_boost, at fixed partonic energy. Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
+  desc: "FKS emission off a massless final-state parton, as generate_momenta_massless_final of MadGraph's genps_fks.f, except that the angle of i to i + j comes from its exact sine and cosine instead of the law of cosines, and the direction of the Born emitter from its components instead of the cosine of its polar angle (both lose up to half the digits of small angles). The sum of i and j has the direction of the Born emitter and the other final-state momenta are boosted along it with @ref fks_recoil_boost, at fixed partonic energy. Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
 
 fks_final_massless_cluster:
   inputs:

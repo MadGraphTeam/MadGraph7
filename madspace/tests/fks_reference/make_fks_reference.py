@@ -14,7 +14,8 @@ The JSON layout, with Fortran conventions kept (1-based particle indices,
 counter-event index k = -2..2 stored at position k + 2, momenta as
 (E, px, py, pz) in the partonic c.m. frame):
 
-    process, commit, nexternal, nincoming, ndim, lpp, ebeam
+    process, subprocess, genps_fks_sha (git blob hash of genps_fks.f),
+    nexternal, nincoming, ndim, lpp, ebeam
     configs[]: nfks, i_fks, j_fks, pdg, masses, points[]
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
@@ -41,13 +42,16 @@ MG_ROOT = os.path.realpath(os.path.join(HERE, "..", "..", ".."))
 OUT_DIR = os.path.join(HERE, "..", "test_data", "fks")
 
 # name -> MadGraph process. Together they cover massless and massive
-# final-state emitters and initial-state emitters, with and without PDFs.
+# final-state emitters and initial-state emitters, with and without PDFs,
+# and massless final-state emitters (gluon and quark) in a hadronic process
+# with spectators of different kinds.
 # The subprocess list drops beam-mirrored copies (None keeps all).
 PROCESSES = {
     "epem_uuxg": ("e+ e- > u u~ g [QCD]", None),
     "epem_ttx": ("e+ e- > t t~ [QCD]", None),
     "pp_epem": ("p p > e+ e- [QCD]", ["P0_uux_emep"]),
     "pp_ttx": ("p p > t t~ [QCD]", ["P0_gg_ttx", "P0_uux_ttx"]),
+    "pp_epemj": ("p p > e+ e- j [QCD]", ["P0_uux_emepg", "P0_ug_uemep"]),
 }
 
 
@@ -60,18 +64,17 @@ def run(cmd, cwd, log, stdin=None):
 
 def generate(name, process, work):
     out = os.path.join(work, name)
-    if os.path.isdir(os.path.join(out, "SubProcesses")):
-        return out
-    script = os.path.join(work, f"{name}.mg")
-    with open(script, "w") as f:
-        f.write("set automatic_html_opening False\n")
-        f.write(f"generate {process}\n")
-        f.write(f"output standalone_fortran {out} --fks --limits\n")
-    run(
-        ["python3", os.path.join(MG_ROOT, "bin", "madgraph"), script],
-        work,
-        os.path.join(work, f"{name}_mg.log"),
-    )
+    if not os.path.isdir(os.path.join(out, "SubProcesses")):
+        script = os.path.join(work, f"{name}.mg")
+        with open(script, "w") as f:
+            f.write("set automatic_html_opening False\n")
+            f.write(f"generate {process}\n")
+            f.write(f"output standalone_fortran {out} --fks --limits\n")
+        run(
+            ["python3", os.path.join(MG_ROOT, "bin", "madgraph"), script],
+            work,
+            os.path.join(work, f"{name}_mg.log"),
+        )
     run(
         ["make", "-j8"],
         os.path.join(out, "Source"),
@@ -171,8 +174,13 @@ def main():
     parser.add_argument("--keep", help="keep the generated outputs in this directory")
     args = parser.parse_args()
 
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=MG_ROOT, capture_output=True, text=True
+    # identifies the Fortran the data come from without changing with every
+    # commit of the repository
+    genps_fks_sha = subprocess.run(
+        ["git", "hash-object", "Template/NLO/SubProcesses/genps_fks.f"],
+        cwd=MG_ROOT,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     os.makedirs(OUT_DIR, exist_ok=True)
     work = args.keep or tempfile.mkdtemp(prefix="fks_reference_")
@@ -184,7 +192,7 @@ def main():
             if keep is not None and sub not in keep:
                 continue
             data = parse(dump(pdir, args.points, os.path.join(work, f"{sub}.log")))
-            data.update(process=process, subprocess=sub, commit=commit)
+            data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))

@@ -18,6 +18,7 @@ Invertible maps between the unit hypercube and physical phase space; each also r
    python/DiscreteFlow
    python/DiscreteSampler
    python/DoubleT
+   python/FKSRadiation
    python/FastRamboMapping
    python/Flow
    python/Invariant

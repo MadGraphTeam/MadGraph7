@@ -18,6 +18,7 @@ Invertible maps between the unit hypercube and physical phase space; each also r
    cpp/DiscreteFlow
    cpp/DiscreteSampler
    cpp/DoubleT
+   cpp/FKSRadiation
    cpp/FastRamboMapping
    cpp/Flow
    cpp/Invariant

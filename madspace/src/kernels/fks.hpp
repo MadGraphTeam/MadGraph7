@@ -13,16 +13,20 @@ inline constexpr double FKS_STINY = 1e-6;
 inline constexpr double FKS_CTINY = 5e-7;
 
 // cos, sin of the polar angle and azimuth of a three-momentum, as getangles in
-// genps_fks.f: a vector along +z (or of zero length) has azimuth zero
+// genps_fks.f: a vector on the z axis (or of zero length) has azimuth zero.
+// Unlike getangles, the sines come from the transverse components, since
+// sqrt(1 - cos^2) loses half the digits of the polar angle near the axis.
 template <typename T>
 KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> fks_angles(FourMom<T> p) {
-    auto len2 = p[1] * p[1] + p[2] * p[2] + p[3] * p[3];
-    auto cth = where(len2 == 0., FVal<T>(1.), p[3] / sqrt(max(len2, EPS2)));
-    auto pole = cth >= 1.;
-    auto sth = where(pole, FVal<T>(0.), sqrt(max(1. - cth * cth, 0.)));
-    auto phi = atan2(p[2], p[1]);
-    auto cphi = where(pole, FVal<T>(1.), cos(phi));
-    auto sphi = where(pole, FVal<T>(0.), sin(phi));
+    auto pt2 = p[1] * p[1] + p[2] * p[2];
+    auto len = sqrt(max(pt2 + p[3] * p[3], EPS2));
+    auto pt = sqrt(pt2);
+    auto axis = pt2 == 0.;
+    auto pt_safe = where(axis, FVal<T>(1.), pt);
+    auto cth = where(axis, where(p[3] < 0., FVal<T>(-1.), FVal<T>(1.)), p[3] / len);
+    auto sth = pt / len;
+    auto cphi = where(axis, FVal<T>(1.), p[1] / pt_safe);
+    auto sphi = where(axis, FVal<T>(0.), p[2] / pt_safe);
     return {cth, sth, cphi, sphi};
 }
 
