@@ -105,7 +105,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     from_template = {'.': relative_path_list(home_path, ['COPYRIGHT', 'COPYING', 'COPYING.LESSER']),
                      'src': relative_path_list(madmatrix_templates, [
-                         'read_slha.h', 'read_slha.cc'
+                         'read_slha.h', 'read_slha.cc',
+                         # --hel_recycling: the per-thread tables, shared by the subprocess libraries
+                         'HelRecyclingScratch.h', 'HelRecyclingScratch.cc'
                      ]),
                      # Backend-owned skeleton files live only under backend/<variant>/ now
                      # (see backend_variants below); only genuinely backend-agnostic files

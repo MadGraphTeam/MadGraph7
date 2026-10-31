@@ -40,6 +40,10 @@
 #include <limits>
 #include <vector>
 
+#if __has_include( "HelRecycling.inc" ) and !defined MG_HR_PROBE
+#include "HelRecyclingScratch.h" // --hel_recycling: the per-thread tables, shared by the subprocess libraries
+#endif
+
 namespace madmatrix
 {
   using namespace ProcessData;
@@ -482,6 +486,8 @@ namespace madmatrix
                        cxtype_amp_sv* jampTmpAll_sv,     // scratch: shared sub-expressions of every row (fold mode)
                        cxtype_amp_sv* jampAll_sv,        // output: jamps of every row (fold, expanded)
                        fptype_amp_sv* numAll_sv,         // output: |amp|^2 by diagram of every row (fold, expanded)
+                       fptype_momenta_sv* pvec_sv,       // scratch: momenta of the wavefunction slots, [hrNwf][np4]
+                       cxtype_amp_sv* w_sv,              // scratch: the wavefunction slots, [hrNwf][nw6]
                        bool storeChannelWeights,
                        const int ievt00 )                // input: first event number in current C++ event page
   {
@@ -496,13 +502,11 @@ namespace madmatrix
     // one wavefunction slot per COPY, which is more than the nwf of one row and
     // far fewer than one row's worth per row. A big process has thousands of
     // them (g g > t t~ g g g: 4826, 1.0 MB at simd_128), more than the stack of a worker
-    // thread (512 kB on macOS), so they live on the heap, once per thread.
-    static thread_local std::vector<fptype_momenta_sv> pvec_sv( (size_t)hrNwf * np4 );
-    static thread_local std::vector<cxtype_amp_sv> w_sv( (size_t)hrNwf * nw6 );
+    // thread (512 kB on macOS), so they live in the scratch area of hr_page.
     static thread_local std::vector<ALOHAOBJ> aloha_objs( hrNwf );
     ALOHAOBJ* aloha_obj = aloha_objs.data();
     for( int iwf = 0; iwf < hrNwf; iwf++ )
-      aloha_obj[iwf] = ALOHAOBJ{ pvec_sv.data() + (size_t)iwf * np4, w_sv.data() + (size_t)iwf * nw6 };
+      aloha_obj[iwf] = ALOHAOBJ{ pvec_sv + (size_t)iwf * np4, w_sv + (size_t)iwf * nw6 };
     cxtype_amp_sv amp_sv[1]; // every amplitude goes through this one scratch, then into the tables
     fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
     // the vertex with one leg left off, shared by every row that differs only in
@@ -515,9 +519,10 @@ namespace madmatrix
     // The fold and expanded modes add into their tables, which start every page
     // at zero. The rows mode stores into its amplitude table, and every page
     // stores the same (row, amplitude) entries: those it never stores (an
-    // amplitude that vanishes at a row) keep the zero the table was allocated
-    // with (hr_page), so it is not cleared -- for g g > t t~ g g g at simd_128
-    // that would be 15 MB of writes per call on a path bound by memory traffic.
+    // amplitude that vanishes at a row) keep the zero hr_page's scratch area
+    // gives the table whenever this library takes the area over, so it is not
+    // cleared -- for g g > t t~ g g g at simd_128 that would be 15 MB of writes
+    // per call on a path bound by memory traffic.
 #ifndef MGONGPU_HR_ROWS
     for( int i = 0; i < nHrRows * nParity * njampso; i++ ) jampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     for( int i = 0; i < nHrRows * nParity * hrNtmp; i++ ) jampTmpAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
@@ -613,37 +618,61 @@ namespace madmatrix
   {
     using E_ACCESS = HostAccessMatrixElements;
     (void)MEs_ighel2;
+    // The tables of the page, the wavefunction slots and the jamps of every
+    // helicity for BLAS: MBs for a big process, in this thread's scratch area
+    // (HelRecyclingScratch.h), which every recycled subprocess library of the
+    // output shares rather than each keeping its own per thread. The rows mode
+    // relies on its table being zero where a page stores nothing: the area
+    // gives it zeroed whenever this library takes it over.
+    constexpr auto hr_round = []( size_t bytes ) { return ( bytes + 63 ) / 64 * 64; };
 #ifdef MGONGPU_HR_ROWS
-    // value-initialised, i.e. zero, once per thread: calculate_all_jamps relies on it
-    static thread_local std::vector<cxtype_amp_sv> ampAll( (size_t)nHrRows * nParity * hrNamp );
-    cxtype_amp_sv* ampAll_sv = ampAll.data();
+    constexpr size_t ampBytes = hr_round( (size_t)nHrRows * nParity * hrNamp * sizeof( cxtype_amp_sv ) );
+    constexpr size_t tableBytes = ampBytes;
+    constexpr size_t zeroedBytes = tableBytes;
+#else
+    constexpr size_t tmpBytes = hr_round( (size_t)nHrRows * nParity * ( hrNtmp > 0 ? hrNtmp : 1 ) * sizeof( cxtype_amp_sv ) );
+    constexpr size_t jampBytes = hr_round( (size_t)nHrRows * nParity * njampso * sizeof( cxtype_amp_sv ) );
+    constexpr size_t numBytes = hr_round( (size_t)nHrRows * nParity * ndiagrams * sizeof( fptype_amp_sv ) );
+    constexpr size_t tableBytes = tmpBytes + jampBytes + numBytes;
+    constexpr size_t zeroedBytes = 0; // the fold and expanded modes clear their tables every page
+#endif
+    constexpr size_t pvecBytes = hr_round( (size_t)hrNwf * np4 * sizeof( fptype_momenta_sv ) );
+    constexpr size_t wBytes = hr_round( (size_t)hrNwf * nw6 * sizeof( cxtype_amp_sv ) );
+#if defined MGONGPU_CPP_HAS_BLAS and !defined MGONGPU_HR_NO_BLAS
+    constexpr size_t blasBytes = ColorMatrixData::shouldUseBlas ? hr_round( (size_t)ncomb * nParity * ncolor * sizeof( cxtype_sv ) ) : 0;
+#else
+    constexpr size_t blasBytes = 0;
+#endif
+    static const char hrOwner = 0; // its address names this library to the scratch area
+    char* scratch = static_cast<char*>( hr_thread_scratch( tableBytes + pvecBytes + wBytes + blasBytes, zeroedBytes, &hrOwner ) );
+#ifdef MGONGPU_HR_ROWS
+    cxtype_amp_sv* ampAll_sv = reinterpret_cast<cxtype_amp_sv*>( scratch );
     cxtype_amp_sv* jampTmpAll_sv = nullptr;
     cxtype_amp_sv* jampAll_sv = nullptr;
     fptype_amp_sv* numAll_sv = nullptr;
 #else
-    static thread_local std::vector<cxtype_amp_sv> jampTmpAll( (size_t)nHrRows * nParity * ( hrNtmp > 0 ? hrNtmp : 1 ) );
-    static thread_local std::vector<cxtype_amp_sv> jampAll( (size_t)nHrRows * nParity * njampso );
-    static thread_local std::vector<fptype_amp_sv> numAll( (size_t)nHrRows * nParity * ndiagrams );
     cxtype_amp_sv* ampAll_sv = nullptr;
-    cxtype_amp_sv* jampTmpAll_sv = jampTmpAll.data();
-    cxtype_amp_sv* jampAll_sv = jampAll.data();
-    fptype_amp_sv* numAll_sv = numAll.data();
+    cxtype_amp_sv* jampTmpAll_sv = reinterpret_cast<cxtype_amp_sv*>( scratch );
+    cxtype_amp_sv* jampAll_sv = reinterpret_cast<cxtype_amp_sv*>( scratch + tmpBytes );
+    fptype_amp_sv* numAll_sv = reinterpret_cast<fptype_amp_sv*>( scratch + tmpBytes + jampBytes );
 #endif
+    fptype_momenta_sv* pvec_sv = reinterpret_cast<fptype_momenta_sv*>( scratch + tableBytes );
+    cxtype_amp_sv* w_sv = reinterpret_cast<cxtype_amp_sv*>( scratch + tableBytes + pvecBytes );
     calculate_all_jamps( allmomenta, allcouplings, iflavorVec, ampAll_sv, jampTmpAll_sv, jampAll_sv, numAll_sv,
-                         storeChannelWeights, ievt00 );
+                         pvec_sv, w_sv, storeChannelWeights, ievt00 );
 #if defined MGONGPU_CPP_HAS_BLAS and !defined MGONGPU_HR_NO_BLAS
     // The color matrix does not depend on the helicity: for a large-enough one
     // the jamps of every good helicity go to BLAS in one call (see sigmaKin).
     if( ColorMatrixData::shouldUseBlas )
     {
-      static thread_local std::vector<cxtype_sv> ghelJamp_sv( (size_t)ncomb * nParity * ncolor );
+      cxtype_sv* ghelJamp_sv = reinterpret_cast<cxtype_sv*>( scratch + tableBytes + pvecBytes + wBytes );
       for( int ighel = 0; ighel < cNGoodHel; ighel++ )
       {
-        cxtype_sv* jamp_sv = ghelJamp_sv.data() + (size_t)ighel * nParity * ncolor;
+        cxtype_sv* jamp_sv = ghelJamp_sv + (size_t)ighel * nParity * ncolor;
         for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>();
         hr_row( cGoodHel[ighel], ampAll_sv, jampAll_sv, numAll_sv, jamp_sv, storeChannelWeights, allNumerators, jamp2_sv, ievt00 );
       }
-      color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
+      color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv, cNGoodHel, ievt00 );
       return;
     }
 #endif
