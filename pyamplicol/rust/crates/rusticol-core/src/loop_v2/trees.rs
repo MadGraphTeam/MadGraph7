@@ -126,14 +126,9 @@ pub fn compile_plane_application_checked(
 ) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
     let evaluator = binary64_evaluator(saved)?;
-    // A program run at real inputs (the parameter program) compiles at
-    // level 0 with its products and sums in Symbolica's arithmetic order
-    // (`symjit_plane::textbook_row`), whatever level is asked.
-    let textbook = !real_points.is_empty();
-    let opt_level = if textbook { 0 } else { opt_level };
     let compile = |level: u8| {
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
-            &evaluator, level, compress, textbook,
+            &evaluator, level, compress,
         )
     };
     let (plane, inputs, outputs) = compile(opt_level)?;

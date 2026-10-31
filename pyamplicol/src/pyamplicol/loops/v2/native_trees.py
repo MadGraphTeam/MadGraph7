@@ -34,9 +34,7 @@ the same program for the native executor (``rusticol-core``
   default ``jit_optimization_level``, or level 0 where -O2 fails the plane
   check; the parameter program at level 0; ``_plane_applications``),
   compiled from the saved state's own binary64 evaluator (cut arguments
-  canonicalised, control flow flattened; the parameter program's products
-  and sums in the evaluator's order and rounding) and checked against it
-  natively
+  canonicalised, control flow flattened) and checked against it natively
   (``compile_v2_plane``); the native lane runs them in binary64, recompiled
   for the loading CPU, and touches no Symbolica state, so binary64 needs no
   licence (DESIGN §3.7); DoubleFloat and arbitrary precision run the exact
@@ -240,11 +238,9 @@ class NativeTrees:
 # at a probe row is compiled at level 0 instead and kept if that passes
 # (``loop_v2::trees::compile_plane_application_checked``: SymJIT's AVX/AVX-512
 # complex-product defect, ``upstream/symjit-simd-complex-times-alias``). The
-# parameter program (the state with real points) always compiles at level 0
-# (the native forces it, with the products and sums in Symbolica's
-# arithmetic order, ``symjit_plane::textbook_row``): it runs once per batch
-# (or scale), and level 0 has no peephole pass, so its code does not depend
-# on the defect on any CPU class it is relocated to.
+# parameter program (the state with real points) always compiles at level 0:
+# it runs once per batch (or scale), and level 0 has no peephole pass, so its
+# code does not depend on the defect on any CPU class it is relocated to.
 # Both levels are storage-v4 IR recompiled at load at their stored level
 # (DESIGN §15 risk 13).
 _PLANE_OPTIMIZATION_LEVEL = 2
