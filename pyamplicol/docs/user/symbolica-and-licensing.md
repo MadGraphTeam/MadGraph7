@@ -148,7 +148,9 @@ to the personal license or to the restricted mode, as the Python side does.
   arithmetic, double-double and MadLoop take, by construction (the zero
   imaginary part of a branch-cut argument is made positive, so a width set
   to zero or a mass moving a logarithm's argument onto its cut takes the
-  principal value, `log(-x) = log(x) + iπ`).
+  principal value, `log(-x) = log(x) + iπ`), and it evaluates every branch
+  of a model helper's conditional (`recms`, `reglog`, `grreglog`, ...)
+  and selects the one the parameters pick.
 - Double-double and arbitrary-precision virtual evaluation decode saved
   Symbolica evaluator states natively under the package key, so they also
   run in concurrent unlicensed processes.

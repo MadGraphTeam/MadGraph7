@@ -30,9 +30,11 @@ the same program for the native executor (``rusticol-core``
   interfered with the Born per sector (``loop_v2::interference``).
 
 * **carriers**: every kernel and the parameter program also come as a
-  binary64 SymJIT plane application (storage-v4 IR at -O2, the default
-  ``jit_optimization_level``; ``_plane_applications``), compiled from the
-  saved state's own binary64 evaluator and checked against it natively
+  binary64 SymJIT plane application (storage-v4 IR: the kernels at -O2, the
+  default ``jit_optimization_level``, or level 0 where -O2 fails the plane
+  check; the parameter program at level 0; ``_plane_applications``),
+  compiled from the saved state's own binary64 evaluator (cut arguments
+  canonicalised, control flow flattened) and checked against it natively
   (``compile_v2_plane``); the native lane runs them in binary64, recompiled
   for the loading CPU, and touches no Symbolica state, so binary64 needs no
   licence (DESIGN §3.7); DoubleFloat and arbitrary precision run the exact
@@ -156,11 +158,12 @@ NATIVE_EXPORT_REFUSALS = (
         "aliased registers, CM05; M-SM MS-MASTERS) takes the level-0 plane "
         "instead and is not refused",
         "WP3.2 EWI-N (ew-native)",
-        "a request whose values put such an argument on its cut: the argument "
-        "on MadLoop's +0 side in every evaluator (as the counterterm lowering "
-        "takes it, ct_recursion._RealArguments) with the first model that "
-        "needs it; a SymJIT defect found by the check: an upstream fix "
-        "(upstream/symjit-simd-complex-times-alias) and its release pinned",
+        "a predicate branch or a rounding-level imaginary part the plane takes "
+        "differently at the request's values: the exact evaluator's branch in "
+        "the translation, with the first model that needs it; a SymJIT defect "
+        "found by the check: an upstream fix (upstream/symjit-simd-complex-"
+        "times-alias, upstream/symjit-cse-across-branches) and its release "
+        "pinned",
     ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
