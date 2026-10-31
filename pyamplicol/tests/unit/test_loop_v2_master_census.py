@@ -29,7 +29,6 @@ reruns any row's census and carrier comparison.
 
 from __future__ import annotations
 
-import itertools
 import json
 import math
 from dataclasses import replace
@@ -232,19 +231,23 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     electroweak UV counterterm couplings' branch cuts (finite part 3.9e-5
     against MadLoop's 1.8e-3), a -0 imaginary part from SymJIT's negation;
     the translation now makes every cut argument's zero imaginary part +0
-    (``symjit_plane::canonical_cut_row``). At WT = WZ = 0 alone (WW, WH
-    nonzero) and at widths of 1e-100 of the masses, SymJIT's FMA complex
-    product left the rounding error of an exactly real product as an
-    imaginary part, which flipped a counterterm coupling's square root
-    (finite part +2.2e-3 against double-double's -5.6e-3); the parameter
-    program's products and sums now follow Symbolica's evaluation order and
-    rounding (``symjit_plane::textbook_row``). Nothing is checked at run
-    time: every carrier equals MadLoop's zero-width virtual (to 1e-8), as at
-    widths of 1e-100 and 1e-152 of the masses in binary64 and arbitrary
-    precision; double-double, whose C0 turned non-finite below 1e-150,
-    refuses 1e-152 with ``complex-mass-master``; binary64 = double-double
-    at every subset of the widths at zero, at the small widths and at
-    WT = WZ = 0 with another W width. Generation about 5 min, 10 GB."""
+    (``symjit_plane::canonical_cut_row``). Every carrier equals MadLoop's
+    zero-width virtual (to 1e-8), as at widths of 1e-100 and 1e-152 of the
+    masses in binary64 and arbitrary precision; double-double, whose C0
+    turned non-finite below 1e-150, refuses 1e-152 with
+    ``complex-mass-master``.
+
+    Some widths zero (``required/msm/cm01_zero_widths.json``): at WZ = WT = 0
+    with WW != 0 the G_mu UFO's MZ^4 - 4 MT^2 MZ^2 reaches its square root
+    through cw^2 = MW^2 / MZ^2, so its imaginary part, zero in exact
+    arithmetic, came out as a rounding residue of either sign in every
+    carrier (arbitrary precision flipped with its digits, MadLoop's double
+    and quadruple precision differ at three of 54 fuzz rows); such an
+    argument now reads its real projection when its widths are zero
+    (``ct_recursion._RealArguments.zero_width_cases``). Binary64,
+    double-double and AP(32) equal MadLoop CMS there (to 1e-8), and equal
+    each other where MadLoop's two precisions differ, taking the side of one
+    of them. Generation about 5 min, 10 GB."""
 
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -312,39 +315,38 @@ def test_cm01_masters_avoid_the_known_complex_mass_defects(
     found = slice_census(executor, points, scales, {**GMU_PARAMETERS, **tiny})
     assert found.bites()["tiny-width"], found.record()
 
-    # Some widths zero: binary64 = double-double at every subset of the four
-    # widths at zero, at the small widths and at another W width (finite
-    # part +2.2e-3 against -5.6e-3 at WT = WZ = 0 with SymJIT's FMA complex
-    # products, symjit_plane::textbook_row; first finite point). Symbolica's
-    # own binary64 evaluator is no reference there: at WW = 4.74 its rounding
-    # leaves the exactly real argument of a square root a residue that puts
-    # it on the cut's lower side.
-    finite = reference["finite"]
-    physical = {**GMU_PARAMETERS, **finite["widths"]}
-    changes = [
-        dict.fromkeys(subset, "0")
-        for size in range(len(masses) + 1)
-        for subset in itertools.combinations(sorted(masses), size)
-    ]
-    changes += [small, {"WT": "0", "WZ": "0", "WW": "4.742503533466689"}]
-    for change in changes:
-        runs = [
-            [
-                _totals(result)
-                for result in executor.evaluate(
-                    finite["points"][:1],
-                    ["1000000"],
-                    parameters={**physical, **change},
-                    precision=precision,
-                )
-            ]
-            for precision in (Precision.double(), Precision.double_double())
-        ]
-        difference = max(
-            _difference(mine, theirs, 1 / 132.0)
-            for mine, theirs in zip(*runs, strict=True)
+    # Some widths zero: every carrier equals MadLoop CMS (whose double and
+    # quadruple precision agree there), and where MadLoop's two precisions
+    # take different sides of a cut the carriers agree with each other and
+    # with one of them.
+    partial = json.loads((FIXTURES / "required/msm/cm01_zero_widths.json").read_text())
+    physical = {**GMU_PARAMETERS, **block["widths"]}
+    carriers = (Precision.double(), Precision.double_double(), Precision.arbitrary(32))
+
+    def virtual(row, precision):
+        (result,) = executor.evaluate(
+            [partial["point"]],
+            [str(Fraction(row["mu_r"]) ** 2)],
+            parameters={**physical, **row["parameters"]},
+            precision=precision,
         )
-        assert difference <= 1e-8, (change, difference)
+        return _totals(result)
+
+    for row in partial["rows"]:
+        madloop = {
+            "born": [Decimal(row["born"])],
+            "virtual": [Decimal(x) for x in row["full"]],
+        }
+        for precision in carriers:
+            difference = _difference(virtual(row, precision), madloop, 1 / 132.0)
+            assert difference <= 1e-8, (row["row"], precision.arithmetic, difference)
+    for tag, row in partial["madloop_double_and_quadruple_differ"].items():
+        finite = [virtual(row, precision)["virtual"][0] for precision in carriers]
+        assert max(abs(x - finite[2]) for x in finite) <= 1e-8 * abs(finite[2]), tag
+        assert any(
+            abs(finite[2] - Decimal(row[key])) <= Decimal("1e-8") * abs(finite[2])
+            for key in ("finite_double", "finite_quadruple")
+        ), (tag, finite)
 
 
 @pytest.mark.loop_nightly

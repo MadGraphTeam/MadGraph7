@@ -303,6 +303,76 @@ def test_counterterm_couplings_take_madloops_side_of_real_cuts(loop_native):
         assert np.allclose(got, expected, rtol=1e-14, atol=0), (got, expected)
 
 
+@pytest.mark.loop_fast
+def test_cut_arguments_real_at_zero_widths_read_their_real_part_there(loop_native):
+    """Under the complex-mass scheme a branch-cut argument that is real
+    wherever some of its widths vanish reads its real projection when they
+    are exactly zero (``ct_recursion._RealArguments.zero_width_cases``). The
+    G_mu UFO's MZ^4 - 4 MT^2 MZ^2 reaches the evaluator through
+    cw^2 = MW^2 / MZ^2: at WZ = WT = 0 it is real, but its imaginary part
+    comes out as a rounding residue of either sign (WW != 0), which put the
+    square root on either side of its cut (CM01, M-SM MS-MASTERS). The
+    projected form takes +i (MZ^2 (4 MT^2 - MZ^2))^(1/2) at every W width, in
+    the evaluator and the plane, and equals the original at physical
+    widths."""
+
+    from types import SimpleNamespace
+
+    from symbolica import E, Expression, S
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.ct_recursion import _RealArguments
+
+    predicates = {
+        name: symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+        for name in ("equal", "real_part", "imaginary_part")
+    }
+    library = SimpleNamespace(
+        predicates=predicates,
+        choose=symbols.qualified("symbolica::if"),
+        zero=E("0"),
+        helpers={},
+    )
+    inputs = mw, mz, mt, ww, wz, wt = S(
+        "ewz_mw", "ewz_mz", "ewz_mt", "ewz_ww", "ewz_wz", "ewz_wt"
+    )
+    i = Expression.I
+    mw2, mz2, mt2 = mw**2 - i * mw * ww, mz**2 - i * mz * wz, mt**2 - i * mt * wt
+    argument = mz2**2 * (mw2 - 4 * mt2 * mw2 / mz2) / mw2
+    cut = argument ** E("1/2")
+    side = _RealArguments(set(inputs), library, signed=True, widths=[wz, ww, wt])
+    assert side.zero_width_cases(argument) == ((wz, wt),)
+    projected = side(cut)
+    condition = predicates["equal"](wz, E("0")) * predicates["equal"](wt, E("0"))
+    real = predicates["real_part"](argument)
+    assert projected == library.choose(condition, real, argument) ** E("1/2")
+
+    def evaluator(expression):
+        return Expression.evaluator_multiple(
+            [expression], list(inputs), jit_compile=False
+        )
+
+    widths = (2.09291, 4.742503533466689, 0.1, 1e-5, 0.35782832177278456)
+    rows = [[80.419, 91.188, 173.3, w, 0.0, 0.0] for w in widths]
+    physical = [80.419, 91.188, 173.3, 2.09291, 2.49877, 1.37758]
+    complex_rows = [[complex(x) for x in row] for row in [*rows, physical]]
+    exact = 1j * (91.188**2 * (4 * 173.3**2 - 91.188**2)) ** 0.5
+    # The control: residues of either sign put the original on both sides.
+    residues = np.asarray(evaluator(argument).evaluate_complex(complex_rows[:-1]))
+    assert np.any(residues[:, 0].imag != 0), residues
+    original = np.asarray(evaluator(cut).evaluate_complex(complex_rows))[:, 0]
+    assert np.any(original[:-1].imag < 0), original
+    values = np.asarray(evaluator(projected).evaluate_complex(complex_rows))[:, 0]
+    state = bytes(evaluator(projected).save())
+    plane, count, outputs = loop_native.compile_v2_plane(state, 0, False, rows[:1])
+    for got in (values, _plane_values(plane, count, outputs, complex_rows)[:, 0]):
+        assert np.allclose(got[:-1], exact, rtol=1e-12, atol=0), got
+        assert np.allclose(got[-1], original[-1], rtol=1e-14, atol=0), got
+
+
 # ------------------------------------------------- electroweak processes
 
 
