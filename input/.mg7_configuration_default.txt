@@ -64,6 +64,7 @@
 #!  If None: try to use pigz if available on the system, fall back to gzip otherwise.
 #!  If False: use gzip
 #!  If True: use pigz
+#! MG7 process runs and gridpacks use [run] use_pigz in their TOML run card.
 # use_pigz = None
 
 #! Time allowed to answer question (if no answer takes default value)

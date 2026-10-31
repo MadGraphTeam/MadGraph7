@@ -35,7 +35,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import copy
 import array
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 from madgraph import MG5DIR
 
 class testFKSHelasObjects(unittest.TestCase):
@@ -197,7 +197,7 @@ class testFKSHelasObjects(unittest.TestCase):
 
     def test_fks_helas_multi_process_ppz_loonly(self):
         """tests the LOonly NLO mode. In particular test that no
-        reals are generated and that the get_nexternal_ninitial funciton
+        reals are generated and that the get_nexternal_ninitial function
         returns the values as if the reals were generated.
         """
         p= [21, 1, 2, 3, 4, -1, -2, -3, -4]

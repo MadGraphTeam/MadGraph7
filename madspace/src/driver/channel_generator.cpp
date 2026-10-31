@@ -21,6 +21,12 @@ int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_
     if (index_map.contains("subprocess_index")) {
         flags |= EventRecord::f_subproc_index;
     }
+    if (index_map.contains("bias")) {
+        flags |= EventRecord::f_bias;
+    }
+    if (index_map.contains("matrix_element")) {
+        flags |= EventRecord::f_matrix_element;
+    }
     return flags;
 }
 
@@ -30,6 +36,12 @@ int particle_extra_flags(
     int flags = 0;
     if (index_map.contains("cluster_scales")) {
         flags |= ParticleRecord::f_clustering;
+    }
+    if (index_map.contains("alphas_scales")) {
+        flags |= ParticleRecord::f_alphas_scales;
+    }
+    if (index_map.contains("ladder_x")) {
+        flags |= ParticleRecord::f_pdf_ladder;
     }
     return flags;
 }
@@ -318,11 +330,38 @@ void ChannelEventGenerator::init_field_indices() {
     } else {
         _field_indices.partial_weight_product = -1;
     }
+    if (index_map.contains("cluster_scales")) {
+        _field_indices.cluster_scales = index_map.at("cluster_scales");
+    } else {
+        _field_indices.cluster_scales = -1;
+    }
+    if (index_map.contains("alphas_scales")) {
+        _field_indices.alphas_scales = index_map.at("alphas_scales");
+    } else {
+        _field_indices.alphas_scales = -1;
+    }
+    if (index_map.contains("ladder_x")) {
+        const char* names[] = {
+            "ladder_x",
+            "ladder_pdg",
+            "ladder_q",
+            "ladder_info",
+            "ladder_lead_q",
+        };
+        for (std::size_t k = 0; k < _field_indices.ladder.size(); ++k) {
+            _field_indices.ladder[k] = index_map.at(names[k]);
+        }
+    } else {
+        _field_indices.ladder.fill(-1);
+    }
     if (index_map.contains("subprocess_index")) {
         _field_indices.subprocess_index = index_map.at("subprocess_index");
     } else {
         _field_indices.subprocess_index = -1;
     }
+    _field_indices.bias = index_map.contains("bias") ? index_map.at("bias") : -1;
+    _field_indices.matrix_element =
+        index_map.contains("matrix_element") ? index_map.at("matrix_element") : -1;
     _field_indices.random = index_map.at("random");
     _field_indices.rest = _field_indices.random + 1;
 }
@@ -352,6 +391,7 @@ void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
     _unweighted_count = _weight_file.event_count();
     _unweighted_accept_count = accept_count;
     _status.count_unweighted = accept_count;
+    _expected_unweighted = accept_count;
 }
 
 void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
@@ -361,7 +401,14 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
         if (w_view[i] != 0) {
             ++sample_count_after_cuts;
         }
-        _cross_section.push(w_view[i]);
+        // With a bias b the weights are w b: the absolute integral, which drives
+        // the adaptation, unweighting and channel allocation, keeps the bias,
+        // while the reported cross section divides it out.
+        double weight = w_view[i];
+        if (_field_indices.bias != -1 && weight != 0.) {
+            weight /= job.biases.view<double, 1>()[i];
+        }
+        _cross_section.push(weight);
         _abs_cross_section.push(std::abs(w_view[i]));
     }
     _status.mean = _cross_section.mean();
@@ -414,6 +461,7 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
         }
     }
     _best_rsd = std::min(rsd, _best_rsd);
+    _status.iters_without_improvement = _iters_without_improvement;
     ++_status.iterations;
 }
 
@@ -556,6 +604,9 @@ void ChannelEventGenerator::start_job(
                 throw std::runtime_error("job cancelled");
             }
             job.weights = job.events.at(_field_indices.weight).cpu();
+            if (_field_indices.bias != -1) {
+                job.biases = job.events.at(_field_indices.bias).cpu();
+            }
             // observable_histograms/vegas_histogram/discrete_histogram don't consume
             // random numbers, so they're never seeded.
             if (runtimes.observable_histograms) {
@@ -638,7 +689,10 @@ std::size_t ChannelEventGenerator::next_vegas_batch_size() {
 
 void ChannelEventGenerator::clear_events() {
     _status.count_unweighted = 0;
-    _max_weight = 0;
+    _expected_unweighted = 0;
+    if (!_max_weight_fixed) {
+        _max_weight = 0;
+    }
     _unweighted_count = 0;
     _unweighted_accept_count = 0;
     _status.count_opt = 0;
@@ -656,7 +710,11 @@ void ChannelEventGenerator::clear_events() {
 }
 
 void ChannelEventGenerator::update_max_weight(Tensor weights) {
-    if (_status.count_unweighted > _config.freeze_max_weight_after) {
+    // Freeze on the expected unweighted count of the committed generate stages
+    // rather than on count_unweighted: the latter is advanced by the unweight
+    // stages, whose commits interleave with the generate stages depending on
+    // thread timing, which made the freeze point (and the run) timing-dependent.
+    if (_max_weight_fixed || _expected_unweighted > _config.freeze_max_weight_after) {
         return;
     }
 
@@ -676,6 +734,13 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
     apply_truncation_budget();
+    // expected accepted events of this job, against the max weight it will be
+    // unweighted with (see prepare_unweight_job)
+    if (_max_weight > 0) {
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            _expected_unweighted += std::min(std::abs(w_view[i]) / _max_weight, 1.);
+        }
+    }
 }
 
 void ChannelEventGenerator::set_target_count(std::size_t target_count) {
@@ -686,8 +751,8 @@ void ChannelEventGenerator::set_target_count(std::size_t target_count) {
     // (e.g. generate()'s round-one seed) would otherwise never be corrected: a
     // channel that has met its smaller target is not revisited. Tighten the cap
     // now; unweight_all() re-unweights the whole file against it at the end.
-    if (target_count < old_target && _max_weight != 0 &&
-        _status.count_unweighted <= _config.freeze_max_weight_after) {
+    if (target_count < old_target && _max_weight != 0 && !_max_weight_fixed &&
+        _expected_unweighted <= _config.freeze_max_weight_after) {
         apply_truncation_budget();
     }
 }
@@ -708,6 +773,7 @@ void ChannelEventGenerator::apply_truncation_budget() {
         if (w_sum / w > max_truncation) {
             if (_max_weight < w) {
                 _status.count_unweighted *= _max_weight / w;
+                _expected_unweighted *= _max_weight / w;
                 _max_weight = w;
                 _unweighted_count = 0;
                 _unweighted_accept_count = 0;
@@ -791,6 +857,69 @@ void ChannelEventGenerator::write_events(
         }
     }
 
+    if (_field_indices.cluster_scales != -1) {
+        auto cluster_view =
+            unweighted_events.at(_field_indices.cluster_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = cluster_view[i];
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.alphas_scales != -1) {
+        // vertex i on outgoing particle 2 + i; there is one vertex less than
+        // there are outgoing particles, the remaining slots hold zero
+        auto alphas_view =
+            unweighted_events.at(_field_indices.alphas_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = alphas_view[i];
+            std::size_t vertex_count = scales.size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.alphas_scale() =
+                    j >= 2 && j - 2 < vertex_count ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.ladder[0] != -1) {
+        auto slot_view = [&](std::size_t k) {
+            return unweighted_events.at(_field_indices.ladder[k]).view<double, 2>();
+        };
+        auto x_view = slot_view(0), pdg_view = slot_view(1), q_view = slot_view(2),
+             info_view = slot_view(3), lead_q_view = slot_view(4);
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            std::size_t slot_count = x_view[i].size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                bool has_slot = j < slot_count;
+                particle.ladder_x() = has_slot ? x_view[i][j] : 0.;
+                particle.ladder_pdg() = has_slot ? pdg_view[i][j] : 0.;
+                particle.ladder_q() = has_slot ? q_view[i][j] : 0.;
+                particle.ladder_info() = has_slot ? info_view[i][j] : 0.;
+                particle.ladder_lead_q() = j < 2 ? lead_q_view[i][j] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.bias != -1) {
+        auto bias_view = unweighted_events.at(_field_indices.bias).view<double, 1>();
+        for (std::size_t i = 0; i < bias_view.size(); ++i) {
+            event_buffer.event(i).bias() = bias_view[i];
+        }
+    }
+
+    if (_field_indices.matrix_element != -1) {
+        auto me_view =
+            unweighted_events.at(_field_indices.matrix_element).view<double, 1>();
+        for (std::size_t i = 0; i < me_view.size(); ++i) {
+            event_buffer.event(i).matrix_element() = me_view[i];
+        }
+    }
+
     if (_field_indices.subprocess_index != -1) {
         auto subproc_view =
             unweighted_events.at(_field_indices.subprocess_index).view<me_int_t, 1>();
@@ -809,9 +938,23 @@ void ChannelEventGenerator::write_events(
 
 void ChannelEventGenerator::save(const std::string& file_name) const {
     std::ofstream f(file_name);
+    f << to_json();
+}
+
+std::string ChannelEventGenerator::to_json(bool include_estimates) const {
     json j;
     j = *this;
-    f << j.dump();
+    if (include_estimates) {
+        j["max_weight"] = _max_weight;
+        double error = _abs_cross_section.error();
+        if (_abs_cross_section.count() > 1 && std::isfinite(error) && error > 0) {
+            j["abs_integral"] = {{"mean", _abs_cross_section.mean()}, {"error", error}};
+            j["integral"] = {
+                {"mean", _cross_section.mean()}, {"error", _cross_section.error()}
+            };
+        }
+    }
+    return j.dump();
 }
 
 ChannelEventGenerator ChannelEventGenerator::load(
@@ -822,7 +965,23 @@ ChannelEventGenerator ChannelEventGenerator::load(
     const GeneratorConfig& config
 ) {
     std::ifstream f(channel_file);
-    json channel = json::parse(f);
+    if (!f) {
+        throw std::runtime_error(std::format("Could not open file '{}'", channel_file));
+    }
+    std::string text(
+        (std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()
+    );
+    return load_json(text, contexts, event_file, weight_file, config);
+}
+
+ChannelEventGenerator ChannelEventGenerator::load_json(
+    const std::string& channel_json,
+    const std::vector<ContextPtr>& contexts,
+    const std::string& event_file,
+    const std::string& weight_file,
+    const GeneratorConfig& config
+) {
+    json channel = json::parse(channel_json);
     std::optional<Function> hist_function;
     std::vector<Histogram> histograms;
     if (!channel.at("histogram_function").is_null()) {
@@ -838,7 +997,7 @@ ChannelEventGenerator ChannelEventGenerator::load(
         }
     }
 
-    return ChannelEventGenerator(
+    ChannelEventGenerator generator(
         contexts,
         channel.at("particle_count").get<std::size_t>(),
         channel.at("integrand_channel_function").get<Function>(),
@@ -853,6 +1012,71 @@ ChannelEventGenerator ChannelEventGenerator::load(
         config,
         histograms
     );
+    if (channel.contains("max_weight") && channel.at("max_weight").get<double>() > 0) {
+        generator.set_fixed_max_weight(channel.at("max_weight").get<double>());
+    }
+    if (channel.contains("abs_integral")) {
+        generator.set_abs_integral_prior(
+            channel.at("abs_integral").at("mean").get<double>(),
+            channel.at("abs_integral").at("error").get<double>()
+        );
+    }
+    if (channel.contains("integral")) {
+        generator.set_integral_prior(
+            channel.at("integral").at("mean").get<double>(),
+            channel.at("integral").at("error").get<double>()
+        );
+    }
+    return generator;
+}
+
+void ChannelEventGenerator::set_fixed_max_weight(double max_weight) {
+    if (!(max_weight > 0)) {
+        throw std::invalid_argument("The fixed maximum weight must be positive");
+    }
+    _max_weight = max_weight;
+    _max_weight_fixed = true;
+    _unweighted_count = 0;
+    _unweighted_accept_count = 0;
+}
+
+void ChannelEventGenerator::set_abs_integral_prior(double mean, double error) {
+    if (!(mean > 0) || !(error > 0) || !std::isfinite(mean) || !std::isfinite(error)) {
+        throw std::invalid_argument("The integral prior must be positive and finite");
+    }
+    _abs_integral_prior = {mean, error};
+}
+
+void ChannelEventGenerator::set_integral_prior(double mean, double error) {
+    if (!std::isfinite(mean) || !std::isfinite(error) || error < 0) {
+        throw std::invalid_argument("The integral prior must be finite");
+    }
+    _integral_prior = {mean, error};
+}
+
+bool ChannelEventGenerator::uses_integral_prior() const {
+    double error = _abs_cross_section.error();
+    return _abs_integral_prior &&
+        (_abs_cross_section.count() < 2 || !std::isfinite(error) || !(error > 0));
+}
+
+std::pair<double, double> ChannelEventGenerator::integral_prior() const {
+    return _integral_prior ? *_integral_prior : *_abs_integral_prior;
+}
+
+double ChannelEventGenerator::abs_integral_estimate() const {
+    double mean = _abs_cross_section.mean();
+    if (!_abs_integral_prior) {
+        return mean;
+    }
+    auto [prior_mean, prior_error] = *_abs_integral_prior;
+    double error = _abs_cross_section.error();
+    if (uses_integral_prior()) {
+        return prior_mean;
+    }
+    double prior_weight = 1. / (prior_error * prior_error);
+    double weight = 1. / (error * error);
+    return (prior_mean * prior_weight + mean * weight) / (prior_weight + weight);
 }
 
 void madspace::to_json(nlohmann::json& j, const ChannelEventGenerator& channel) {

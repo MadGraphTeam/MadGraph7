@@ -35,6 +35,10 @@ public:
         std::size_t dependency_count_backward;
         DummyAllocHints<false> output_alloc_hints;
         DummyAllocHints<true> input_grad_alloc_hints;
+        // inputs whose gradient is never used (literals, integer locals); the
+        // backward kernels write it to batch-sized scratch memory instead of a
+        // broadcast gradient, see backward_batch_foreach
+        std::vector<bool> discard_input_grad;
     };
 
     CpuRuntime(const Function& function, ContextPtr context, bool concurrent);
@@ -70,6 +74,7 @@ private:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads
     ) const;
+    TensorVec collect_outputs(const TensorVec& locals) const;
     std::pair<TensorVec, TensorVec> run_backward_concurrent(
         const TensorVec& output_grads,
         const TensorVec& stored_locals,
@@ -79,6 +84,8 @@ private:
 
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
+    // unpadded copies of the outputs that are literals, empty for the others
+    TensorVec _literal_outputs;
     std::vector<bool> _copy_output_grads;
     std::size_t _input_count;
     TensorVec _locals_init;
@@ -86,6 +93,7 @@ private:
     SizeVec _grad_global_indices;
     std::vector<Sizes> _grad_global_shapes;
     std::size_t _grad_global_total_size;
+    DataType _grad_global_dtype = DataType::dt_float64;
     ContextPtr _context;
     ThreadResource<MixMaxRandom>& _rand_gens;
     bool _concurrent;

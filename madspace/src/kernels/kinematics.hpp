@@ -12,7 +12,7 @@ constexpr double INV_GEV2_TO_PB = 0.38937937217186e9;
 template <typename T>
 struct FourMom {
     KERNELSPEC FVal<T>& operator[](int i) { return p[i]; }
-    KERNELSPEC FVal<T>& operator[](int i) const { return p[i]; }
+    KERNELSPEC const FVal<T>& operator[](int i) const { return p[i]; }
     FVal<T> p[4];
 };
 
@@ -213,6 +213,16 @@ KERNELSPEC FVal<T> esquare(FourMom<T> p) {
 // q_t == 0, and turned the azimuth by an arbitrary angle, often pi/2, whenever
 // the two sides rounded q_t differently.)
 template <typename T>
+KERNELSPEC FVal<T> ldot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[0] * p2[0] - p1[1] * p2[1] - p1[2] * p2[2] - p1[3] * p2[3];
+}
+
+template <typename T>
+KERNELSPEC FVal<T> edot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[1] * p2[1] + p1[2] * p2[2] + p1[3] * p2[3];
+}
+
+template <typename T>
 KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
     auto qq = sqrt(max(esquare<T>(q), FVal<T>(1e-300)));
     auto neg = q[3] < 0.;
@@ -355,8 +365,7 @@ KERNELSPEC FourMom<T> boost(FourMom<T> k, FourMom<T> p_boost, FVal<T> sign) {
 }
 
 template <typename T>
-KERNELSPEC FourMom<T>
-boost_light_cone(
+KERNELSPEC FourMom<T> boost_light_cone(
     FourMom<T> k, FVal<T> k_mass2, FourMom<T> p_boost, FVal<T> p_mass2, FVal<T> sign
 ) {
     // Same boost as `boost`, for a momentum k of known mass^2 k_mass2, written
@@ -389,12 +398,10 @@ boost_light_cone(
     auto k_plus_direct = k[0] + k_par;
     auto k_minus_direct = k[0] - k_par;
     auto forward = k_par >= 0.;
-    auto k_plus = where(
-        forward, k_plus_direct, trans2 / max(k_minus_direct, FVal<T>(EPS2))
-    );
-    auto k_minus = where(
-        forward, trans2 / max(k_plus_direct, FVal<T>(EPS2)), k_minus_direct
-    );
+    auto k_plus =
+        where(forward, k_plus_direct, trans2 / max(k_minus_direct, FVal<T>(EPS2)));
+    auto k_minus =
+        where(forward, trans2 / max(k_plus_direct, FVal<T>(EPS2)), k_minus_direct);
 
     auto k_plus_new = exp_y * k_plus;
     auto k_minus_new = exp_my * k_minus;
@@ -435,10 +442,9 @@ KERNELSPEC Pair<FourMom<T>, FourMom<T>> boost_two_body(
 }
 
 template <typename T>
-KERNELSPEC void
-boost_beam(
+KERNELSPEC void boost_beam(
     FIn<T, 2> q,
-    FIn<T, 1> masses,
+    FSIn<T, 1> masses,
     FVal<T> x1,
     FVal<T> x2,
     FVal<T> sign,
@@ -476,12 +482,10 @@ boost_beam(
         auto trans2 = m2 + pt2;
         auto q_plus_direct = q0 + q3;
         auto q_minus_direct = q0 - q3;
-        auto q_plus = where(
-            q3 >= 0., q_plus_direct, trans2 / max(q_minus_direct, FVal<T>(EPS2))
-        );
-        auto q_minus = where(
-            q3 < 0., q_minus_direct, trans2 / max(q_plus_direct, FVal<T>(EPS2))
-        );
+        auto q_plus =
+            where(q3 >= 0., q_plus_direct, trans2 / max(q_minus_direct, FVal<T>(EPS2)));
+        auto q_minus =
+            where(q3 < 0., q_minus_direct, trans2 / max(q_plus_direct, FVal<T>(EPS2)));
         auto p_plus = e_plus * q_plus;
         auto p_minus = e_minus * q_minus;
         // Only for a momentum that is on its mass shell to rounding. The
@@ -491,8 +495,8 @@ boost_beam(
         // gained, and it keeps the linear boost.
         auto on_shell =
             fabs(q_plus_direct * q_minus_direct - trans2) <= 1e-13 * q0 * q0;
-        auto light_cone = (q_plus_direct >= 0.) & (q_minus_direct >= 0.) & on_shell &
-            (lin_0 < q0);
+        auto light_cone =
+            (q_plus_direct >= 0.) & (q_minus_direct >= 0.) & on_shell & (lin_0 < q0);
         p_out_i[0] = where(light_cone, 0.5 * (p_plus + p_minus), lin_0);
         p_out_i[1] = q1;
         p_out_i[2] = q2;
@@ -522,10 +526,10 @@ boost_beam(
             auto lin_0 = q0 * cosh_rap + q3 * sinh_rap;
             auto lin_3 = q3 * cosh_rap + q0 * sinh_rap;
             auto is_best = best_i == IVal<T>(static_cast<int>(i));
-            shift_0 = shift_0 +
-                where(is_best, FVal<T>(0.), FVal<T>(p_out[i][0]) - lin_0);
-            shift_3 = shift_3 +
-                where(is_best, FVal<T>(0.), FVal<T>(p_out[i][3]) - lin_3);
+            shift_0 =
+                shift_0 + where(is_best, FVal<T>(0.), FVal<T>(p_out[i][0]) - lin_0);
+            shift_3 =
+                shift_3 + where(is_best, FVal<T>(0.), FVal<T>(p_out[i][3]) - lin_3);
             best_lin_0 = where(is_best, lin_0, best_lin_0);
             best_lin_3 = where(is_best, lin_3, best_lin_3);
         }
@@ -562,10 +566,17 @@ KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_cs(
     FourMom<T> p1_com;
     auto e1_com = 0.5 * (m_tot + ed);
     p1_com[0] = max(e1_com, 0.);
-    p1_com[3] =
-        -(m1 * m1 + ma_2 + t_abs - 2. * p1_com[0] * pa_com[0]) / (2.0 * pa_com_mag);
-    auto pt2 = pp * pp - p1_com[3] * p1_com[3];
-    auto pt = sqrt(max(pt2, 0.));
+    // p1 along pa at |t| = t_lo, against it at t_lo + 4 |pa| pp. t_lo through
+    // E - p = m^2 / (E + p), and p1_z, p1_t from the distances to the ends of
+    // the range: pp^2 - p1_z^2 cancels near an end, and differently with FMA
+    auto plus_a = pa_com[0] + pa_com_mag;
+    auto plus_1 = p1_com[0] + pp;
+    auto t_lo = (plus_a - plus_1) * (m1 * m1 / plus_1 - ma_2 / plus_a);
+    auto pa_2 = 2. * pa_com_mag;
+    auto to_lo = (t_abs - t_lo) / pa_2;
+    auto to_hi = (t_lo + 2. * pa_2 * pp - t_abs) / pa_2;
+    p1_com[3] = 0.5 * (to_hi - to_lo);
+    auto pt = sqrt(max(to_lo * to_hi, 0.));
     p1_com[1] = pt * cos_phi;
     p1_com[2] = pt * sin_phi;
 
@@ -603,17 +614,15 @@ KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> phi_m1_m2_from_p1com(
 // Kernels
 
 template <typename T>
-KERNELSPEC void
-kernel_boost_beam(
-    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+KERNELSPEC void kernel_boost_beam(
+    FIn<T, 2> p1, FSIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
 ) {
     boost_beam<T>(p1, masses, x1, x2, 1.0, p_out);
 }
 
 template <typename T>
-KERNELSPEC void
-kernel_boost_beam_inverse(
-    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+KERNELSPEC void kernel_boost_beam_inverse(
+    FIn<T, 2> p1, FSIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
 ) {
     boost_beam<T>(p1, masses, x1, x2, -1.0, p_out);
 }
@@ -635,7 +644,7 @@ template <typename T>
 KERNELSPEC void kernel_r_to_x1x2(
     FIn<T, 0> r,
     FIn<T, 0> s_hat,
-    FIn<T, 0> s_lab,
+    FSIn<T, 0> s_lab,
     FOut<T, 0> x1,
     FOut<T, 0> x2,
     FOut<T, 0> det
@@ -648,7 +657,7 @@ KERNELSPEC void kernel_r_to_x1x2(
 
 template <typename T>
 KERNELSPEC void kernel_x1x2_to_r(
-    FIn<T, 0> x1, FIn<T, 0> x2, FIn<T, 0> s_lab, FOut<T, 0> r, FOut<T, 0> det
+    FIn<T, 0> x1, FIn<T, 0> x2, FSIn<T, 0> s_lab, FOut<T, 0> r, FOut<T, 0> det
 ) {
     auto tau = x1 * x2;
     auto log_tau = log(tau);
@@ -665,8 +674,8 @@ template <typename T>
 KERNELSPEC void kernel_r_to_x1x2_window(
     FIn<T, 0> r,
     FIn<T, 0> s_hat,
-    FIn<T, 0> s_lab,
-    FIn<T, 0> y_max,
+    FSIn<T, 0> s_lab,
+    FSIn<T, 0> y_max,
     FOut<T, 0> x1,
     FOut<T, 0> x2,
     FOut<T, 0> det
@@ -684,8 +693,8 @@ template <typename T>
 KERNELSPEC void kernel_x1x2_to_r_window(
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> s_lab,
-    FIn<T, 0> y_max,
+    FSIn<T, 0> s_lab,
+    FSIn<T, 0> y_max,
     FOut<T, 0> r,
     FOut<T, 0> det
 ) {
@@ -705,7 +714,7 @@ KERNELSPEC void kernel_diff_cross_section(
     FIn<T, 0> pdf1,
     FIn<T, 0> pdf2,
     FIn<T, 0> matrix_element,
-    FIn<T, 0> e_cm2,
+    FSIn<T, 0> e_cm2,
     FOut<T, 0> result
 ) {
     result = INV_GEV2_TO_PB * matrix_element * pdf1 * pdf2 /
@@ -782,6 +791,10 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin(
     FVal<T> etmin_1,
     FVal<T> etmin_2
 ) {
+    // squared masses recomputed from momenta (inverse direction) can be slightly
+    // negative; clamp them so that the square roots below cannot give NaN
+    m1_2 = max(m1_2, 0.);
+    m2_2 = max(m2_2, 0.);
     auto pt_tot2 = p_tot[1] * p_tot[1] + p_tot[2] * p_tot[2];
     auto s = lsquare<T>(p_tot);
     auto piir0 = sqrt(max(s, 0.) + pt_tot2);
@@ -894,9 +907,9 @@ KERNELSPEC void kernel_t_rapidity_clamp(
     FIn<T, 0> m2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t_min_out,
     FOut<T, 0> t_max_out
 ) {
@@ -964,9 +977,9 @@ KERNELSPEC void kernel_t1_rapidity_clamp_doublet(
     FIn<T, 0> etmin_2,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t1_min_out,
     FOut<T, 0> t1_max_out
 ) {
@@ -1050,9 +1063,9 @@ KERNELSPEC void kernel_t2_rapidity_clamp_doublet(
     FIn<T, 0> t1_abs,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FIn<T, 0> beam_sign,
-    FIn<T, 0> y_max1,
-    FIn<T, 0> y_max2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
     FOut<T, 0> t2_min_out,
     FOut<T, 0> t2_max_out
 ) {
@@ -1132,7 +1145,7 @@ KERNELSPEC void kernel_t_inv_value_and_min_max_cut(
 
 template <typename T>
 KERNELSPEC void kernel_invariants_from_momenta(
-    FIn<T, 2> p_ext, FIn<T, 2> factors, FOut<T, 1> invariants
+    FIn<T, 2> p_ext, FSIn<T, 2> factors, FOut<T, 1> invariants
 ) {
     for (std::size_t i = 0; i < invariants.size(); ++i) {
         auto factors_i = factors[i];
@@ -1290,7 +1303,7 @@ kernel_mirror_momenta(FIn<T, 2> p_ext, IIn<T, 0> mirror, FOut<T, 2> p_out) {
 
 template <typename T>
 KERNELSPEC void
-kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0> x2) {
+kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FSIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0> x2) {
     x1 = 2. * p_ext[0][0] / e_cm;
     x2 = 2. * p_ext[1][0] / e_cm;
 }
@@ -1302,7 +1315,7 @@ kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0
 // definition as madevent's boost_to_frame (Template/LO/SubProcesses/genps.f).
 template <typename T>
 KERNELSPEC void
-kernel_boost_to_frame(FIn<T, 2> p_ext, IIn<T, 1> frame_mask, FOut<T, 2> p_out) {
+kernel_boost_to_frame(FIn<T, 2> p_ext, ISIn<T, 1> frame_mask, FOut<T, 2> p_out) {
     FourMom<T> p_boost{0., 0., 0., 0.};
     std::size_t selected_count = 0, selected_index = 0;
     for (std::size_t i = 0; i < p_ext.size(); ++i) {

@@ -33,7 +33,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 root_path = os.path.split(root_path)[0]
 sys.path.insert(0, root_path)
 
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
 import madgraph
@@ -97,8 +97,10 @@ class Switcher(object):
         # tutorial runs: they are deliberately not routed through self.cmd
         self.to_preserve += tutorial_mixin.mixin_command_names()
 
-        ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
-        
+        # only created when a command is missing, so that switching
+        # interface leaves no empty file in the user's directory
+        ff = None
+
         for key in dir(self):
             # by pass all not over-writable command
             if key in self.to_preserve:
@@ -112,12 +114,15 @@ class Switcher(object):
         return self.cmd.%(key)s(self, *args, **opts)
         
 """ % {'key': key}
-            logger.warning("""Command %s not define in the Master. 
+            if ff is None:
+                ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
+            logger.warning("""Command %s not define in the Master.
             The line to add to the master_interface.py are written in 'additional_command' file""" % key)
             ff.write(text)
             correct = False
-               
-            
+        if ff is not None:
+            ff.close()
+
         # Check that all function define in more than one subclass is define
         # in the Switcher or in one of the MasterClass
         define = {}
@@ -181,6 +186,14 @@ class Switcher(object):
         res=loopRE.search(re.split(r'\s\-\-', line,1)[0])
         if res:
             orders=res.group('orders').split() if res.group('orders') else []
+            # interference of two amplitude sets (keyword case-insensitive):
+            # 'left [LIxtree=QCD] right' is a loop-induced process, routed
+            # like [noborn=], 'left [treextree] right' a tree-level one.
+            interference = MGcmd.interference_mode_of(res.group('option'), orders)
+            if interference == 'LIxtree':
+                return ('NLO', 'LIxtree', orders if res.group('option') else [])
+            elif interference == 'treextree':
+                return ('tree', 'treextree', [])
             if res.group('option') and len(res.group('option').split())==1:
                 if res.group('option').split()[0]=='tree':
                     return ('tree',res.group('option').split()[0],orders)
@@ -219,11 +232,15 @@ class Switcher(object):
                     self.change_principal_cmd('aMC@NLO', allow_switch)
                 elif nlo_mode in ['virt', 'sqrvirt']:
                     self.change_principal_cmd('MadLoop', allow_switch)
-                elif nlo_mode == 'noborn': 
+                elif nlo_mode in ['noborn', 'LIxtree']:
+                    # LIxtree: loop-induced amplitude interfered with a tree.
+                    # Report a malformed line before the model is touched.
+                    if nlo_mode == 'LIxtree':
+                        MGcmd.split_interference_line(proc_line)
                     if self.current_interface == "MadGraph":
                         allow_switch = True
                     self.change_principal_cmd('MadLoop', allow_switch)
-                    self.cmd.validate_model(self, loop_type=nlo_mode,
+                    self.cmd.validate_model(self, loop_type='noborn',
                                                             coupling_type=orders)
                     self.change_principal_cmd('MadGraph', allow_switch)
                     return self.cmd.create_loop_induced(self, line, *args, **opts)
@@ -836,7 +853,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
         else:
             # put default options since 
             # in the web the local file is not used
-            # in download the default file is more usefull
+            # in download the default file is more useful
             files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):

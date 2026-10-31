@@ -43,13 +43,17 @@ c   output argument
 c
     integer ihel, icol
 c
-c global (due to reading writting) 
+c global (due to reading writing)
 c
 C       Good-helicity filter is per (helicity, flavor, subprocess): a helicity
 C       that is zero for one merged flavor but non-zero for another must not be
 C       dropped, so GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
+C       NTRY is also kept per beam orientation (IM = IMIRROR), so that each
+C       orientation gets its own MAXTRIES scan: a helicity can vanish in one
+C       orientation only (e.g. q q~ > z with the Z at rest), and in vector mode
+C       the first MAXTRIES events can all share one orientation.
         LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-	    INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+	    INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
         common/BLOCK_GOODHEL/NTRY,GOODHEL
 
 C  
@@ -97,6 +101,7 @@ C
     
     INTEGER IMIRROR, IPROC
     COMMON/TO_MIRROR/ IMIRROR,IPROC
+    INTEGER IM
 
 c       included vi run.inc    
 c       double precision tmin_for_channel	
@@ -129,7 +134,10 @@ C ----------
 C BEGIN CODE
 C ----------
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
-    NTRY(IFLAV,%(proc_id)s)=NTRY(IFLAV,%(proc_id)s)+1
+C   beam orientation of this event (1 if the caller did not set TO_MIRROR)
+    IM = IMIRROR
+    IF (IM.NE.2) IM = 1
+    NTRY(IM,IFLAV,%(proc_id)s)=NTRY(IM,IFLAV,%(proc_id)s)+1
      
     IF (multi_channel) THEN
         DO I=1,NDIAGS
@@ -149,7 +157,7 @@ C ----------
 !   If HEL_PICKED==-1, this means that calls to other matrix<i> where in initialization mode as well for the helicity.
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
       DO I=1,NCOMB
-         IF (GOODHEL(I,IFLAV,%(proc_id)s) .OR. NTRY(IFLAV,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
+         IF (GOODHEL(I,IFLAV,%(proc_id)s) .OR. NTRY(IM,IFLAV,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
             T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
@@ -159,7 +167,7 @@ C ----------
             TS(I)=T
          ENDIF
       ENDDO
-      IF(NTRY(IFLAV,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
+      IF(NTRY(IM,IFLAV,%(proc_id)s).EQ.(MAXTRIES+1).and.DS_get_dim_status('Helicity').ne.-1) THEN
          call reset_cumulative_variable() ! avoid biais of the initialization
       ENDIF
       IF (ISUM_HEL.NE.0) then
@@ -176,7 +184,7 @@ C ----------
 			CALL DS_SET_GRID_MODE('Helicity','init')
           endif
 	  ELSE
-        IF(NTRY(IFLAV,%(proc_id)s).LE.MAXTRIES)THEN
+        IF(NTRY(IM,IFLAV,%(proc_id)s).LE.MAXTRIES)THEN
            DO I=1,NCOMB
 	      IF(init_mode) THEN
                   IF (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
@@ -185,11 +193,11 @@ C ----------
 	      ELSE IF (.NOT.GOODHEL(I,IFLAV,%(proc_id)s) .AND. (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB)) THEN
                  GOODHEL(I,IFLAV,%(proc_id)s)=.TRUE.
                  NGOOD = NGOOD +1
-                 PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,TS(I)*NCOMB/ANS,' in event ',NTRY(IFLAV,%(proc_id)s)
+                 PRINT *,'Added good helicity ',I, 'for process %(proc_id)s flavor ',IFLAV,' mirror ',IM,TS(I)*NCOMB/ANS,' in event ',NTRY(IM,IFLAV,%(proc_id)s)
               ENDIF
            ENDDO
 		endif
-        IF(NTRY(IFLAV,%(proc_id)s).EQ.MAXTRIES)THEN
+        IF(NTRY(IM,IFLAV,%(proc_id)s).EQ.MAXTRIES)THEN
            ISHEL=MIN(ISUM_HEL,NGOOD)
         ENDIF
       ENDIF

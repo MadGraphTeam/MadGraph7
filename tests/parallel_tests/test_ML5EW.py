@@ -507,7 +507,7 @@ class ML5EWTest(unittest.TestCase):
                filename = 'ptest_long_sm_vs_hcr_%s'%proc, chosen_runner = 'HCR')
 
     #===========================================================================
-    # Now the long checks against results previsouly generated in MadLoop 5.
+    # Now the long checks against results previously generated in MadLoop 5.
     #===========================================================================
 
 #   ('g g > h t t~',{'QCD':2,'QED':1},['QCD'],{'QCD':6,'QED':2})

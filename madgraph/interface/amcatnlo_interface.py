@@ -52,14 +52,15 @@ import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.loop.loop_base_objects as loop_base_objects
+import madgraph.core.base_objects as base_objects
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 
 import madgraph.various.cluster as cluster
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner_mod
-import models.model_reader as model_reader
-#usefull shortcut
+import madgraph.models.model_reader as model_reader
+#useful shortcut
 pjoin = os.path.join
 
 
@@ -635,6 +636,16 @@ generating the process (see arXiv:1804.10017).""" % (corr, ', '.join(resonances)
                         args.remove(a)
                         break
 
+            if any(a.startswith('--diagram_filter') for a in args):
+                raise self.InvalidCmd("--diagram_filter is not supported for "
+                    "NLO (FKS) generation: use --tree_diagram_filter (Born "
+                    "and real emission diagrams) and/or --loop_diagram_filter "
+                    "(loop diagrams).")
+            tree_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--tree_diagram_filter')
+            loop_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--loop_diagram_filter')
+
             line = ' '.join(args[1:])
 
         # convert the single $ to $$ automatically
@@ -700,7 +711,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             for o in myprocdef['model'].get_coupling_orders():
                 if o not in list(myprocdef['orders'].keys()):
                     myprocdef['orders'][o] = self.options['default_unset_couplings']
-                    logger.warning(('%s order is missing in the process definition. It will be set to "default unser couplings": %s\n' + \
+                    logger.warning(('%s order is missing in the process definition. It will be set to "default user couplings": %s\n' + \
                                    'If this is not what you need, please regenerate with the correct orders.') % (o,myprocdef['orders'][o]))
 
         # raise a warning if squared-orders constraints are not of the '<=' kind
@@ -709,9 +720,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # this is in case no orders have been passed
         if not myprocdef['squared_orders'] and not myprocdef['orders']:
-            # find the minimum weighted order, then extract the values for the varius
+            # find the minimum weighted order, then extract the values for the various
             # couplings in the model
-            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef)
+            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef,
+                                                           tree_diagram_filter)
             if not weighted:
                 raise MadGraph5Error('\nProcess orders cannot be determined automatically. \n' + \
                                       'Please specify them from the command line.')
@@ -779,7 +791,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # check that all the couplings of the model have been constrained
         # in the squared orders, otherwise set the others to zero
-        for o in myprocdef['model'].get('coupling_orders'):
+        # (not the hidden order an interference process adds to the model)
+        model_orders = base_objects.visible_orders(
+                                     myprocdef['model'].get('coupling_orders'))
+        for o in model_orders:
             if o not in myprocdef['squared_orders'].keys():
                 logger.warning('No squared order constraint for order %s. Setting to 0' % o)
                 myprocdef['squared_orders'][o] = 0 
@@ -788,7 +803,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # split all orders in the model, for the moment it's the simplest solution
         # mz02/2014
         #if proc_type[1] != 'only':
-        myprocdef['split_orders'] += [o for o in myprocdef['model'].get('coupling_orders') \
+        myprocdef['split_orders'] += [o for o in model_orders \
                 if o not in myprocdef['split_orders']]
 
         # now set the squared orders
@@ -831,12 +846,12 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     ord in myprocdef['perturbation_couplings']])
         # if [orders] have not been specified, 
         # finally set perturbation_couplings to **all** the coupling orders 
-        # avaliable in the model.
+        # available in the model.
         # This is necessary because when doing EW corrections one only specifies
         # squared-orders constraints. In that case, all kind of splittings/loop-particles
         # must be included
         if not myprocdef['orders'] and self.options['nlo_mixed_expansion']:
-            myprocdef['perturbation_couplings'] = list(myprocdef['model']['coupling_orders'])
+            myprocdef['perturbation_couplings'] = list(model_orders)
 
         self._curr_proc_defs.append(myprocdef)
 
@@ -871,7 +886,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'ncores_for_proc_gen': self.ncores_for_proc_gen,
                        'ewsudakov': self.ewsudakov,
                        'nlo_mixed_expansion': self.options['nlo_mixed_expansion'],
-                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
+                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None,
+                       'diagram_filter': tree_diagram_filter,
+                       'loop_diagram_filter': loop_diagram_filter}
 
         fksproc =fks_base.FKSMultiProcess(myprocdef,fks_options)
         try:
@@ -1240,7 +1257,7 @@ _launch_parser.add_option("-f", "--force", default=False, action='store_true',
 _launch_parser.add_option("-c", "--cluster", default=False, action='store_true',
                             help="Submit the jobs on the cluster")
 _launch_parser.add_option("-i", "--interactive", default=False, action='store_true',
-                            help="Use interactive consol")
+                            help="Use the interactive console")
 _launch_parser.add_option("-m", "--multicore", default=False, action='store_true',
                             help="Submit the jobs on multicore mode")
 _launch_parser.add_option("-x", "--nocompile", default=False, action='store_true',
