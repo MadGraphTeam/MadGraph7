@@ -685,7 +685,7 @@ values = {}
 for prefix in ("", "scaleless-"):
     if prefix + "parameters.symjit" not in members:
         continue
-    state = bytes(members[prefix + "parameters.state"])
+    state = bytes(members[prefix + "parameters.bin"])
     shape = Evaluator.load(state).get_instructions()
     row = [0.75 + 0.125 * k for k in range(shape.input_count)]
     flat = _rusticol._evaluate_symjit_plane_application_v2(
