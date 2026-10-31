@@ -895,11 +895,9 @@ fn compile_inlined_program(
 /// subexpressions shared by the straight-line statements but rewrites every
 /// occurrence, those inside a branch too, and defines the shared value at
 /// its first occurrence, which can lie in a branch the inputs do not take;
-/// later reads then see an unset temporary. CM01 (e- e+ > mu- mu+ [QED],
-/// complex-mass scheme) at run-time widths WT = WZ = 0: the counterterm
-/// couplings' UFO helper bodies (`recms`, `reglog`, `grreglog`) put such
-/// definitions in untaken branches, finite part +2.2e-3 against -5.6e-3
-/// (M-SM MS-MASTERS; `upstream/symjit-cse-across-branches`).
+/// later reads then see an unset temporary (reproduced on a small program,
+/// `upstream/symjit-cse-across-branches`; found while localising CM01's
+/// run-time zero widths; M-SM MS-MASTERS).
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
