@@ -138,23 +138,73 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.spin
         );
     }
-    if (lo_info && lo_info->qcd_power >= 0 && lo_info->has_beam1 &&
-        lo_info->has_beam2) {
+    if (has_cluster_scales || has_scales) {
+        std::format_to(insert_iter, "<scales");
+    }
+    if (has_scales) {
         std::format_to(
             insert_iter,
-            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt>0</asrwt>\n"
-            "<pdfrwt beam=\"1\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
-            "<pdfrwt beam=\"2\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
-            "<totfact> 1.0</totfact>\n</mgrwt>\n",
-            lo_info->qcd_power,
-            lo_info->ren_scale,
-            lo_info->pdg1,
-            lo_info->x1,
-            lo_info->fact_scale1,
-            lo_info->pdg2,
-            lo_info->x2,
-            lo_info->fact_scale2
+            " mur=\"{:.6g}\" muf=\"{:.6g}\" muf1=\"{:.6g}\" muf2=\"{:.6g}\"",
+            mu_r,
+            std::max(mu_f1, mu_f2),
+            mu_f1,
+            mu_f2
         );
+    }
+    if (has_cluster_scales) {
+        for (std::size_t i = 1; auto& particle : particles) {
+            if (particle.status_code == 1) {
+                std::format_to(
+                    insert_iter, " pt_clust_{}=\"{:.5f}\"", i, particle.cluster_scale
+                );
+            }
+            ++i;
+        }
+    }
+    if (has_cluster_scales || has_scales) {
+        std::format_to(insert_iter, "></scales>\n");
+    }
+    if (lo_info && lo_info->qcd_power >= 0 && lo_info->has_beam1 &&
+        lo_info->has_beam2) {
+        // as madevent's unwgt.f writes it: the alpha_s power left at mu_R and
+        // the vertex scales, then per beam n, the n pdgs, x and scales
+        int n_vertices = static_cast<int>(lo_info->asrwt.size());
+        std::format_to(
+            insert_iter,
+            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt> {}",
+            lo_info->qcd_power - n_vertices,
+            lo_info->ren_scale,
+            n_vertices
+        );
+        for (double scale : lo_info->asrwt) {
+            std::format_to(insert_iter, " {:.8e}", scale);
+        }
+        buffer += "</asrwt>\n";
+        std::array<int, 2> pdg{lo_info->pdg1, lo_info->pdg2};
+        std::array<double, 2> x{lo_info->x1, lo_info->x2};
+        std::array<double, 2> q{lo_info->fact_scale1, lo_info->fact_scale2};
+        for (std::size_t b = 0; b < 2; ++b) {
+            bool ladder = !lo_info->ladder_pdgs[b].empty();
+            std::size_t n = ladder ? lo_info->ladder_pdgs[b].size() : 1;
+            std::format_to(insert_iter, "<pdfrwt beam=\"{}\"> {}", b + 1, n);
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {}", ladder ? lo_info->ladder_pdgs[b][e] : pdg[b]
+                );
+            }
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {:.8e}", ladder ? lo_info->ladder_x[b][e] : x[b]
+                );
+            }
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {:.8e}", ladder ? lo_info->ladder_q[b][e] : q[b]
+                );
+            }
+            buffer += "</pdfrwt>\n";
+        }
+        buffer += "<totfact> 1.0</totfact>\n</mgrwt>\n";
     }
     if (!rwgt.empty()) {
         buffer += "<rwgt>\n";
@@ -583,6 +633,13 @@ void LHECompleter::complete_event_data(
         ++particle_index;
     }
 
+    // The flavor tables list the incoming legs in leg order, and a mirrored
+    // event has them the other way round on the beams. LHE wants particle 1 to
+    // come from beam 1, moving along +z.
+    if (n_in == 2 && event.particles.at(0).pz < 0.) {
+        std::swap(event.particles.at(0), event.particles.at(1));
+    }
+
     auto find_propagators = _propagator_index_and_count.find(
         cantor_pairing(subprocess_index, diagram_index, color_index)
     );
@@ -619,8 +676,7 @@ void LHECompleter::complete_event_data(
         // negative m_min would instead turn it into a large positive floor and
         // reject nearly everything, so a wider window would write *fewer*
         // resonances than a narrow one.
-        double m_min =
-            std::max(0., propagator.mass - _bw_cutoff * propagator.width);
+        double m_min = std::max(0., propagator.mass - _bw_cutoff * propagator.width);
         double m_max = propagator.mass + _bw_cutoff * propagator.width;
         if (m2 > m_min * m_min && m2 < m_max * m_max) {
             auto [color, anti_color] = prop_color;

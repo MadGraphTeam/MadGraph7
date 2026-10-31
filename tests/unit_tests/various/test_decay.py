@@ -25,8 +25,8 @@ import cmath
 
 import tests.unit_tests as unittest
 import madgraph.core.base_objects as base_objects
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 import madgraph.iolibs.save_model as save_model
 import madgraph.iolibs.drawing_eps as drawing_eps
 import madgraph.iolibs.import_v4 as import_v4
@@ -718,7 +718,7 @@ class Test_DecayModel2(unittest.TestCase):
         )
 
 
-        # Test the embeded set in __init__
+        # Test the embedded set in __init__
         self.assertIsInstance(
             self.decay_model.get('particles'),
             decay_objects.DecayParticleList
@@ -1790,7 +1790,7 @@ class Test_Channel(unittest.TestCase):
         w_evmu.get('legs')[1].set('id', 14)
 
 
-        # Update informations in model
+        # Update information in model
         for new_inter_id in [800, 900, 1000, 1100, 1200]:
             self.my_testmodel.get('interactions').append(\
                 base_objects.Interaction({'id':new_inter_id }))
@@ -2240,7 +2240,7 @@ class Test_Channel(unittest.TestCase):
             final_ids = set([l.get('id') for l in c.get_final_legs()])
             if final_ids == set([-5, 5, 23]):
                 h_zz_zbb = c
-            # Distiguish h > ww > w t b~ from h > tt~ > t w b~
+            # Distinguish h > ww > w t b~ from h > tt~ > t w b~
             if final_ids == set([-5, 6, -24]) \
                     and abs(c['vertices'][-1]['legs'][0]['id']) == 24:
                 h_ww_wtb = c
@@ -3518,7 +3518,7 @@ class Test_AbstractModel(unittest.TestCase):
 
         # Test for setting existing particle
         ab_model.add_ab_particle(-6)
-        # Check if new particle is in paticles, abstract_particles_dict,
+        # Check if new particle is in particles, abstract_particles_dict,
         # and particle_dict of Model
         self.assertEqual(len(ab_model['abstract_particles_dict'][(2,3,False)]),
                          3)
@@ -3537,7 +3537,7 @@ class Test_AbstractModel(unittest.TestCase):
         # Test for setting new particle
         ab_model.add_ab_particle(999)
 
-        # Check if new particle is in paticles and abstract_particles_dict
+        # Check if new particle is in particles and abstract_particles_dict
         self.assertIn(
             (4,6, True),
             list(ab_model['abstract_particles_dict'].keys())
@@ -3747,7 +3747,7 @@ class Test_AbstractModel(unittest.TestCase):
         # The real inter_type is strictly sorted tuple
         inter_type = (inter_type[0], inter_type[1], inter_type[2])
 
-        # Check if new interaction is in paticles and abstract_particles_dict
+        # Check if new interaction is in particles and abstract_particles_dict
         self.assertEqual(len(ab_model['abstract_interactions_dict'][inter_type]),  
                          2)
         new_inter = ab_model['abstract_interactions_dict'][inter_type][-1]

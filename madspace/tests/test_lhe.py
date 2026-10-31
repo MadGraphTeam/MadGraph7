@@ -8,6 +8,9 @@ from pytest import approx
 
 import madspace as ms
 
+# LHE events are built and completed on the host
+pytestmark = pytest.mark.cpu_only
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Copy of PROC_tt_decay/SubProcesses/subprocesses.json (a hadronically decaying
 # ttbar process), checked in here since the PROC_tt_decay output directory
@@ -410,6 +413,33 @@ def test_external_flavors_are_valid_options(lhe_completer, mapping, subproc_meta
             lhe_completer.complete_event_data(event, 0, 0, 0, flavor_index, 0, rand_gen)
             pdgs = tuple(p.pdg_id for p in external_particles(event))
             assert pdgs in options
+
+
+def test_first_incoming_particle_moves_along_plus_z(lhe_completer, mapping):
+    """A beam-swapped event (py, pz -> -py, -pz) is written with the incoming
+    particles swapped, record and all, so particle 1 comes from beam 1."""
+    p_ext = sample_external_momenta(mapping, 30, seed=5)
+    for row in p_ext:
+        assert row[0][3] > 0
+        mirrored = row.copy()
+        mirrored[:, 2:] *= -1
+        events = []
+        for momenta in (row, mirrored):
+            event = build_event(momenta)
+            lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.MixMaxRandom(11))
+            events.append(event)
+        plain, swapped = events
+        assert swapped.particles[0].pz > 0
+        for field in ("pdg_id", "color", "anti_color", "spin"):
+            assert getattr(swapped.particles[0], field) == getattr(
+                plain.particles[1], field
+            )
+            assert getattr(swapped.particles[1], field) == getattr(
+                plain.particles[0], field
+            )
+        assert momentum(swapped.particles[0]) == approx(
+            momentum(plain.particles[1]) * [1, 1, -1, -1]
+        )
 
 
 def test_save_load_roundtrip(lhe_completer, mapping):

@@ -832,12 +832,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if 'L' not in self.tag:
                 # each term of an assembled routine has its own denominator
                 # (they are 'const' declarations in the same scope): 'denomname'
-                # is the bare declared name at denom precision, 'coeff' is the
-                # same value cast down to vertex precision for the wavefunction
-                # formulas below
+                # is already at vertex precision, so the wavefunction formulas
+                # below use it as it is
                 denomsuffix = coup_name[4:] if self.combined_part else ''
                 denomname = 'denom%s' % denomsuffix
-                coeff = 'static_cast<cxtype_amp_sv>(%s)' % denomname
+                coeff = denomname
                 mydict = {}
                 if self.type2def['pointer_coup'] in ['*']:
                     mydict['pre_coup'] = '(*'
@@ -848,37 +847,41 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
                 if self.nodeclare:
-                    mydict['declnamedenom'] = 'const cxtype_denom_sv %s' % denomname # AV cast down to cxtype_amp_sv in wavefunction formulas
+                    mydict['declnamedenom'] = 'const cxtype_amp_sv %s' % denomname
                 else:
                     mydict['declnamedenom'] = denomname # AV
                     self.declaration.add(('complex', denomname))
                 # Need to add the unary operator before the coupling (OM fix for #825).
                 # pre_coup/post_coup wrap %(coup)s, so open the cast in pre_coup and
                 # close it in post_coup (the Ccoeff sign carrier multiplies from outside).
+                coup_vertex = '%s%s%s' % (mydict['pre_coup'], coup_name, mydict['post_coup'])
                 if has_coup: # but in case where the coupling is not used (one)
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
                 else:
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
+                # Custom denominators: divided at denom precision.
+                prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
+                # Standard propagator: madmatrix::denom keeps only P^2 - Re(m^2) at denom precision.
+                # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
+                coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
+                propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
                         # the P1N routines of the amplitude split carry the
                         # identity propagator, as the integer 1
                         if str(self.routine.denominator) == '1':
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s;\n' % mydict) # AV
+                            out.write('    %s = static_cast<cxtype_amp_sv>( %s%s%s );\n' % (mydict['declnamedenom'], mydict['pre_coup'], coup_name, mydict['post_coup']))
                         else:
                             mydict['denom'] = self.denominator_in_denom_precision(
                                                    str(self.routine.denominator))
-                            out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( %(denom)s );\n' % mydict) # AV
+                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
                     else:
-                        mydict['cId'] = 'cId'  # once per combined
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        # same formula for all the FPTYPE confs
-                        out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
-                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict) # AV
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s, W%(i)s' % mydict)))
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
@@ -898,7 +901,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                    out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] *dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - ( static_cast<fptype_denom>(M%(i)s) * static_cast<fptype_denom>(M%(i)s) ) );\n' % mydict) # AV
+                    # Complex mass: M carries the width.
+                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator('M%(i)s' % mydict)))
                     if arith_doubleexpansion:
                         out.write('#endif\n')
                         out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
@@ -916,9 +920,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 self.declaration.add((ptype,'P%s' % self.outgoing))
             else:
                 coeff = 'COUP'
-            shift = 1 - 1 #to correspond to the shift in fortran indicies with -1 for C++
+            shift = 1 - 1 #to correspond to the shift in fortran indices with -1 for C++
             if fd_gauge and "S" in self.outname:
-                shift = 5 - 1 #to correspond to the shift in fortran indicies with -1 for C++
+                shift = 5 - 1 #to correspond to the shift in fortran indices with -1 for C++
             for ind in numerator.listindices():
                 # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
                 # the slot is fixed by the spin of this structure, the name by
@@ -1077,7 +1081,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # used mainly for FD gauge
     def write_combined_cc(self, lor_names, offshell=None, sym=True, mode=''):
         """Return the content of the .cc file linked to multiple lorentz call."""
-        # Set some usefull command
+        # Set some useful command
         if offshell is None:
             offshell = self.offshell
 
@@ -1098,7 +1102,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # write head - momenta - body - foot
         text = StringIO()
         routine = StringIO()
-        data = {}  # for the formating of the line
+        data = {}  # for the formatting of the line
 
 
         # write header
@@ -1362,7 +1366,29 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
 
     # AV - overload export_cpp.UFOModelConverterCPP method (improve formatting)
     def write_set_parameters(self, params):
-        res = self.super_write_set_parameters_donotfixMajorana(params)
+        # Independent, SLHA-card-level parameters (self.params_ext_names) get
+        # an inline check for a runtime override (e.g. set by name via the
+        # UMAMI set_parameter interface) ahead of their normal SLHA-driven
+        # assignment; every other parameter/coupling is unaffected. NB: this
+        # must NOT be folded into super_write_set_parameters_donotfixMajorana,
+        # since write_hardcoded_parameters() calls that method directly and
+        # requires each parameter's expr to remain a single plain assignment.
+        res_strings = []
+        for param in params:
+            # 'aS' is excluded here even though it is SLHA-card-level: its
+            # assignment is entirely commented out below (by name-matching on
+            # a plain "  aS = ..." line), since this backend always retrieves
+            # alphaS event-by-event (as G) rather than from the param card.
+            # Wrapping it in an override check would break that name-match.
+            if param.name in self.params_ext_names and param.name != 'aS':
+                res_strings.append(
+                    'if (m_param_overrides.find("%s") != m_param_overrides.end())\n'
+                    '%s = m_param_overrides["%s"];\nelse\n%s' %
+                    (param.name, param.name, param.name, param.expr))
+            else:
+                res_strings.append(param.expr)
+        res = "\n".join(res_strings)
+        res = res.replace('ABS(','std::abs(') # for SMEFT #614 and #616
         res = res.replace('(','( ')
         res = res.replace(')',' )')
         res = res.replace('+',' + ')
@@ -1504,8 +1530,33 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         else: return '\n' + '\n'.join(res_strings) + '\n' if res_strings else '\n'
 
     # AV - replace export_cpp.UFOModelConverterCPP method (add hardcoded parameters and couplings)
+    def used_dependent_parameters(self):
+        """The names of the aS-dependent parameters the dependent couplings of
+        the process need, directly or through one another.
+
+        computeDependentCouplings_fromG recomputes them event by event from G,
+        so writing every aS-dependent parameter of the model there costs work
+        per event, and breaks the build when an unused one calls a UFO
+        function the generated code does not define: loop_sm's R2/UV
+        counterterm parameters use COND, reglog and mdl_complexi, while the
+        tree-level couplings need only G."""
+        identifier = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+        by_name = dict((param.name, param) for param in self.params_dep)
+        todo = [name for coup in self.coups_dep.values()
+                for name in identifier.findall(coup.expr) if name in by_name]
+        used = set()
+        while todo:
+            name = todo.pop()
+            if name in used:
+                continue
+            used.add(name)
+            todo.extend(other for other in identifier.findall(by_name[name].expr)
+                        if other in by_name)
+        return used
+
     def super_generate_parameters_class_files(self):
         """Create the content of the Parameters_model.h and .cc files"""
+        params_dep_used = self.used_dependent_parameters()
         # First of all, identify which extra independent parameters must be made available through CPU static and GPU constant memory in BSM models
         # because they are used in the event by event calculation of alphaS-dependent couplings
         bsmparam_indep_real_used = []
@@ -1525,6 +1576,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Add BSM parameters which are needed to compute dependent parameters
             # Note: this was later added to also fix EFT processes (related to #616)
             for pardep in self.params_dep:
+                if pardep.name not in params_dep_used:
+                    continue
                 if param.name in pardep.expr:
                 ###if param.name in pardep.expr: # this is not enough, see review of PR #824 and mg5amcnlo#90
                     if param.type == 'real':
@@ -1574,6 +1627,31 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         replace_dict['set_independent_couplings'] = self.write_set_parameters(self.coups_indep)
         replace_dict['set_dependent_parameters'] = self.write_set_parameters(self.params_dep)
         replace_dict['set_dependent_couplings'] = self.write_set_parameters(list(self.coups_dep.values()))
+        # NB: unlike the plain (mg7_v5) backend, dependent (aS-dependent) parameters
+        # and couplings are NOT persistent members of this Parameters class at all
+        # (their declarations are commented out above): they are recomputed fresh
+        # every event batch by computeDependentCouplings(), bypassing the Parameters
+        # singleton entirely. Only independent parameters/couplings (and never 'aS',
+        # whose declaration is likewise commented out) can be registered here.
+        # Two separate calls/maps, not one combined list into one map: model
+        # parameters (mdl_*) always stay plain cxsmpl<double> (registered
+        # into m_complex_model_params below), while independent couplings
+        # (GC_*) are cxtype -- FPTYPE-templated, so possibly cxsmpl<float>
+        # -- and go into m_complex_params instead. A single combined
+        # registration into one map only compiled by accident at FPTYPE=m/d
+        # (where cxtype happens to also be cxsmpl<double>) and failed to
+        # compile at FPTYPE=f -- see write_register_parameters()'s own doc
+        # comment.
+        replace_dict['register_parameters'] = \
+                               self.write_register_parameters(
+                                   [p for p in self.params_indep if p.name != 'aS'],
+                                   [n for n in self.params_ext_names if n != 'aS'],
+                                   complex_map_name='m_complex_model_params') + \
+                               '\n' + \
+                               self.write_register_parameters(self.coups_indep, [])
+        replace_dict['register_slha_keys'] = \
+                               self.write_register_slha_keys(
+                                   [e for e in self.params_ext_slha if e[0] != 'aS'])
         print_params_indep = [ line.replace('std::cout','//std::cout') + ' // now retrieved event-by-event (as G) from Fortran (running alphas #373)'
                                if '"aS =' in line else
                                line for line in self.write_print_parameters(self.params_indep).split('\n') ]
@@ -1618,6 +1696,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             foundG = False
             for pdep in self.params_dep:
                 ###misc.sprint(pdep.type, pdep.name) 
+                if foundG and pdep.name not in params_dep_used:
+                    # not needed by any dependent coupling of the process
+                    continue
                 line = '    ' + self.write_hardcoded_parameters([pdep]).rstrip('\n')
                 ###misc.sprint(line)
                 if not foundG:
@@ -1892,7 +1973,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
-        for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
+        ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
         super().__init__(*args, **kwargs)
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
@@ -1958,6 +2039,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
         # hardcoded per-process like the rest of calculate_jamps.
         self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
+        replace_dict['refreshExternalMasses_lines'] = \
+                               self.get_refresh_external_masses_lines(self.matrix_elements[0])
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
         replace_dict['hel_amps_cc'] = '#include \"HelAmps_%s.cc\"' % self.model_name # AV
@@ -2492,7 +2575,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write('\n'.join(lines))
         ff.close()
 
-    # seperate process constants to one truth file
+    # separate process constants to one truth file
     def edit_processdata(self):
         """Generate ProcessData.h"""
         template = open(pjoin(self.template_path, 'madmatrix', 'ProcessData.h'), 'r').read()
@@ -2775,7 +2858,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # but maybe not for something else.
         nb_diag = max(config[0] for config in config_subproc_map)
         ndigits = str(int(math.log10(nb_diag))+1+1) # the additional +1 is for the -sign
-        # Output which diagrams correspond ot a channel to get information for valid color
+        # Output which diagrams correspond to a channel to get information for valid color
         lines = []
         for diag in range(1, nb_diag+1):
             if diag in diag_to_iconfig:
@@ -2963,6 +3046,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for part in matrix_element.get_external_wavefunctions():
             initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
         return '\n'.join(initProc_lines)
+
+    # Companion to get_initProc_lines: the same external-mass list, but pushed into an
+    # arbitrary "masses" vector instead of m_masses, for CPPProcess::refreshExternalMasses()
+    # (called after umami_set_parameter() overrides a mass so UMAMI_META_MASSES stays in sync;
+    # see madgraph/iolibs/template_files/madmatrix/umami.cc).
+    def get_refresh_external_masses_lines(self, matrix_element):
+        """Get refreshExternalMasses_lines for function definition for CPPProcess::refreshExternalMasses"""
+        lines = ['    // Set external particle masses for this matrix element']
+        for part in matrix_element.get_external_wavefunctions():
+            lines.append('    masses.push_back( m_pars->%s );' % part.get('mass'))
+        return '\n'.join(lines)
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix helicity order and improve formatting)
     def get_helicity_matrix(self, matrix_element):
@@ -3200,10 +3294,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                     'COUPs[%s], %s' % (alias[coup], '1.0' if not sign else '-1.0')) 
             elif name == 'flvCOUPs_dep':
                 # dependent (running-alphas) flavored coupling: instantiate the vertex
-                # routine with CD_ACCESS (the default in the call is CI_ACCESS, as for the
-                # ordinary running couplings) so get_coupling_def reads the per-event AOSOA
-                # values gathered into flvCOUPs_dep with the right per-flavor stride.
-                call = call.replace('CI_ACCESS', 'CD_ACCESS')
+                # routine with CDPF_ACCESS, the access to the values gathered into
+                # flvCOUPs_dep (each backend's SigmaKin.cc defines it: CD_ACCESS on the
+                # CPU, a one-event buffer on the GPU, where a thread is one event), so
+                # get_coupling_def reads them with the right per-flavor stride.
+                call = call.replace('CI_ACCESS', 'CDPF_ACCESS')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s[%s], %s' % (name, alias[coup], '1.0' if not sign else '-1.0'))
             elif name == 'flvCOUPs':
@@ -3217,6 +3312,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
             if newcoup:
                 self.couplings2order = self.couporderdep | self.couporderindep
+        if 'flvCOUPs_dep[' in call and ('CDPF_ACCESS' not in call or re.search(r'\bCOUPs\[|flvCOUPs\[', call)):
+            # one access type per vertex routine: CDPF_ACCESS cannot also read the
+            # all-events buffer of an ordinary running coupling (on the GPU)
+            raise Exception('a vertex mixing a running flavored coupling with another running coupling is not supported: %s' % call)
         model.cudacpp_wanted_ordered_couplings = self.wanted_ordered_dep_couplings + self.wanted_ordered_indep_couplings + self.wanted_ordered_flv_couplings
         return call
 
@@ -3809,8 +3908,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # Specify namespace for Helas calls
         call = call + '( momenta,'
         if argument.get('spin') != 1:
-            # For non-scalars, need mass and helicity
-            call = call + 'm_pars->%s, cHel[ihel][%d],'
+            # For non-scalars, need mass and helicity. A massive leg marked
+            # off-shell ('*', MadSpin's decaying particles) takes the invariant
+            # mass of its momentum, as the Fortran output does (offshell_mass in
+            # backend/*/SigmaKin.cc, per event in every backend); a massless one
+            # keeps its zero mass rather than a rounding error. 'offshell' is
+            # part of the call key, but the leg number and the mass are wf's own:
+            # argument is whichever wavefunction first had this key.
+            if argument.get('offshell') and str(wf.get('mass')).upper() != 'ZERO':
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), hel_sv[%%d],' \
+                    % (wf.get('number_external') - 1)
+            else:
+                call = call + 'm_pars->%s, hel_sv[%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'
@@ -3873,7 +3982,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
         First the call string is generated, using a dictionary to go
         from the spin state of the calling wavefunction and its
-        mothers, or the mothers of the amplitude, to difenrentiate wich call is
+        mothers, or the mothers of the amplitude, to differentiate which call is
         done.
 
         Then the call function is generated, as a lambda which fills

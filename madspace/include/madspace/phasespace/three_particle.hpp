@@ -174,6 +174,23 @@ public:
      *                          holds it more precisely than pa + pb - p3 (a
      *                          soft system next to the beams) keeps that
      *                          precision.
+     * @param incoming_recoil   If true, `momentum3` is an incoming momentum
+     *                          k (the other beam), and the second invariant is
+     *                          the momentum transfer @f$(p_2 - k)^2 \le 0@f$
+     *                          instead of @f$(p_2 + p_3)^2@f$; its absolute
+     *                          value is sampled. With @p has_cut it is bounded
+     *                          by @f$|(p_2 - k)^2| \ge \texttt{etmin\_2}^2@f$,
+     *                          the `drcut` and `s23_min_cut` conditions are
+     *                          not used. Requires @p p12_condition. AmpliCol
+     *                          builds a side of two particles this way, with
+     *                          the opposite beam as the previous emission.
+     * @param cut_aware_branch  With @p has_cut, form both azimuthal solutions
+     *                          and keep the one passing the transverse-energy
+     *                          floors `etmin_1`, `etmin_2` (AmpliCol's
+     *                          gen23_one_step): `discrete_choice` only picks
+     *                          when both pass. The weight assumes
+     *                          `discrete_choice` is sampled uniformly; with a
+     *                          learned distribution of it, leave this off.
      */
     TwoToThreeParticleScattering(
         double t_invariant_power = 0,
@@ -184,7 +201,9 @@ public:
         double s_width = 0,
         bool has_cut = false,
         bool arcsine_s23 = true,
-        bool p12_condition = false
+        bool p12_condition = false,
+        bool incoming_recoil = false,
+        bool cut_aware_branch = false
     );
 
     /// Number of discrete inputs (1): which of the two two-body solutions.
@@ -204,12 +223,23 @@ private:
 
     std::array<Value, 3>
     split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // Sampled and kinematic range of the second invariant: s23 itself, or
+    // |(p2 - k)^2| for an incoming recoil. Arguments: the kinematic range of
+    // s23 and the conditions.
+    std::array<Value, 4> sampling_ranges(
+        FunctionBuilder& fb,
+        Value s23_min,
+        Value s23_max,
+        const NamedVector<Value>& conditions
+    ) const;
     Invariant _t_invariant;
     Invariant _s_invariant;
     double _s_power, _s_mass;
     bool _has_cut;
     bool _arcsine_s23;
     bool _p12_condition;
+    bool _incoming_recoil;
+    bool _cut_aware_branch;
 };
 
 } // namespace madspace

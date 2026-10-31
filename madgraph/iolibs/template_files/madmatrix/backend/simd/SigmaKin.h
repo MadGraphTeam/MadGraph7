@@ -35,6 +35,9 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( const bool* isGoodHel ); // input: isGoodHel[ncomb] - host array
 
+  int                    // output: nGoodHel as last set by sigmaKin_setGoodHel (0 before)
+  sigmaKin_getNGoodHel();
+
   void
   sigmaKin( const fptype_momenta* allmomenta,  // input: momenta[nevt*npar*4]
             const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
@@ -54,7 +57,11 @@ namespace madmatrix
             // input: when the |M|^2 keeps an interference (squared split orders, nampso > 1),
             // choose the helicity on |T_i| and return sign(T_i) * sum_j |T_j| as madevent does,
             // so that the chosen helicity is exact; false returns sum_j T_j (no effect otherwise)
-            const bool sampleSignedHelicity = false );
+            const bool sampleSignedHelicity = false,
+            // input: the helicity index [0,ncomb) of each event, which is then evaluated for that
+            // helicity alone (and returns its contribution to the helicity-summed |M|^2, see
+            // umami_matrix_element); nullptr, the default, sums over the good helicities
+            const int* allihel = nullptr );
 
   // Setters: called once by CPPProcess (P1-generated) to populate this file's
   // otherwise-internal storage, since it can no longer be written directly
@@ -66,6 +73,25 @@ namespace madmatrix
   void setBsmIndepParam( const double* values, int n );
   // Window (in widths) of the $-excluded propagators, the run card bw_cutoff
   void setBwCutoff( const double bwcutoff );
+
+  // What the spin-density matrix (Density.cc) needs on top of sigmaKin: the
+  // jamps of one event page for any helicity combination hel[npar], the
+  // helicity table cHel[ncomb][npar] (row major) the combinations are built
+  // from, and the identical-particle factor of a flavor combination.
+  void
+  calculate_jamps( const short* hel,                 // input: helicity of each leg, hel[npar], of all events (if allihel == nullptr)
+                   const int* allihel,               // input: helicity index [0,ncomb) of each event[nevt] (nullptr: hel for all events)
+                   const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
+                   const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
+                   const unsigned int* iflavorVec,   // input: indices of the flavor combinations
+                   cxtype_amp_sv* allJamp_sv,        // output: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed)
+                   bool storeChannelWeights,
+                   fptype_amp* allNumerators,        // input/output: multichannel numerators[nevt]
+                   fptype_amp* allDenominators,      // input/output: multichannel denominators[nevt]
+                   fptype_amp_sv* jamp2_sv,          // output: jamp2 for the color choice (nullptr if disabled)
+                   const int ievt00 );               // input: first event number in the event page
+  const short* getHelicities();
+  int broken_symmetry_factor( const int iflavor );
 }
 
 #endif // SIGMAKIN_H

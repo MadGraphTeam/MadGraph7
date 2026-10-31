@@ -28,8 +28,8 @@ import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.various.process_checks as process_checks
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 
@@ -169,7 +169,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -221,7 +221,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -276,7 +276,7 @@ class TestColorSextetModel(unittest.TestCase):
         self.assertEqual(len(myamp.get('diagrams')), 5)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -312,7 +312,7 @@ class TestColorSextetModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -460,7 +460,7 @@ class TestColorTripletModel(unittest.TestCase):
         myamp = diagram_generation.Amplitude(myproc)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \
@@ -502,7 +502,7 @@ class TestColorTripletModel(unittest.TestCase):
         self.assertEqual(len(myamp.get('diagrams')), 5)
         matrix_element = helas_objects.HelasMatrixElement(myamp)
         
-        # First build a color representation dictionnary
+        # First build a color representation dictionary
         repr_dict = {}
         for l in myleglist:
             repr_dict[l.get('number')] = \

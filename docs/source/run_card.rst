@@ -49,15 +49,18 @@ fixed parameters. Their entries are described below.
     ``simd_256``, ``simd_512`` and ``avx512y``. ``auto`` picks the widest width the host
     supports.
 
+``madspace_cpu_mode`` (``"auto"``)
+    SIMD width of the phase-space sampling on ``cpu`` devices. Choose from ``auto``,
+    ``scalar``, ``simd_128`` (ARM only), ``simd_256``, ``avx512y`` and ``simd_512``.
+    ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
+    because the vectorized mode is currently slower there.
+
 ``precision`` (``"color32"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
     single precision throughout. ``color32`` evaluates the color algebra in single precision
     and everything else in double precision. ``denom64`` keeps the momenta and propagator
     denominators in double precision and uses single precision elsewhere.
 
-``simd_vector_size`` (``-1``)
-    Vector size of the CPU matrix elements. ``-1`` chooses automatically. Valid sizes are 1,
-    4 and 8 on x86 and 1 and 2 on Apple silicon.
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)
     Number of threads for each ``cpu`` device, each GPU device and for combining the
@@ -114,21 +117,52 @@ See :doc:`gridpacks` for details.
 ``include_madspace_source`` (``false``)
     Include the ``madspace`` source code.
 
+``compress`` (``false``)
+    Pack the gridpack into ``gridpack.tar.gz`` instead of leaving it as a directory.
+
+``run_mode`` (``"minimal"``)
+    How the run that creates the gridpack ends. Only used if ``save_gridpack`` is set.
+
+    - ``regular``: generate the events of the run, then store the gridpack.
+    - ``minimal``: no events. The gridpack is stored right after the MadNIS training or,
+      with VEGAS, once the grid of every channel has converged.
+    - ``fix_max_weight``: no events. Each channel runs until ``freeze_max_weight_after``
+      unweighted events are reached. Its maximum weight is then fixed in the gridpack,
+      and its integral is used to share the events between the channels. This can be
+      slow for channels with a low unweighting efficiency.
+
+    See :ref:`gridpack-run-mode`.
+
+``temp_output_dir`` (``""``)
+    Directory for the temporary npy files of the channels. ``""`` uses the output
+    directory. ``"auto"`` creates a new temporary directory for each run, see
+    :py:func:`tempfile.mkdtemp`. Its location can be set with the ``TMPDIR``
+    environment variable.
+
+``output_dir`` (``""``)
+    Directory for the output files. ``""`` creates a new run folder
+    ``Events/<run_name>_NN``. If set, no run folder is created.
+
 
 [beam]
 ------
 
-``e_cm`` (``13000.0``)
-    Center-of-mass energy in GeV. Units are accepted, for example ``"13 TeV"``.
+``ebeam1`` (``6500.0``), ``ebeam2`` (``6500.0``)
+    Energy of each beam in GeV, beam 1 moving along :math:`+z`. Units are accepted, for
+    example ``"7 TeV"``. The collision energy is :math:`2\sqrt{E_1 E_2}`. With different
+    energies the events are written, and the :math:`\eta` cuts applied, in this lab frame.
+    ``e_cm`` can still be read and set: ``set e_cm 13 TeV`` sets both beams to 6.5 TeV.
 
 ``leptonic`` (``false``)
-    Treat the beams as leptons: no PDFs are used and the partonic energy equals ``e_cm``.
-    This is set automatically for lepton-collider processes, together with ``e_cm = 1000``
-    and no jet cuts.
+    Treat the beams as leptons: no PDFs are used and the partonic energy equals the
+    collision energy. This is set automatically for lepton-collider processes, together
+    with 500 GeV beams and no jet cuts.
 
-``pdf`` (``"NNPDF40_lo_as_01180"``)
-    Name of the LHAPDF set. MG7 tries to download it if it is not installed. The default is
-    the 5-flavor NNPDF 4.0 LO set, which has 100 error members for the PDF variations.
+``pdf1`` (``"NNPDF40_lo_as_01180"``), ``pdf2`` (``"NNPDF40_lo_as_01180"``)
+    Name of the LHAPDF set of each beam. ``set beam.pdf X`` sets both. MG7 tries to
+    download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO set,
+    which has 100 error members for the PDF variations. With different sets on the two
+    beams the PDF member variations of ``[systematics]`` are dropped.
 
 ``fixed_ren_scale`` (``false``), ``fixed_fact_scale`` (``false``)
     Use the fixed values below instead of the dynamical scale choice. The two switches act
@@ -307,6 +341,33 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+[custom_functions]
+------------------
+
+User-written functions, created with ``bin/init_custom_func``. Each one is a shared
+library (``.so``) or a Python file (``.py``). Paths are relative to the process directory.
+An empty string disables the function. See :doc:`custom_functions` for details.
+
+``cut`` (``""``)
+    Custom cut, for example ``"lib/custom_cut.so"`` or ``"custom_cut/custom_cut.py"``. It
+    is applied on top of the ``[cuts]``.
+
+``scale`` (``""``)
+    Custom renormalization and factorization scales. They replace
+    ``dynamical_scale_choice``.
+
+``pdf`` (``""``)
+    Custom parton density. It replaces the PDF set, but :math:`\alpha_s` still comes from
+    ``[beam] pdf``. The systematics are disabled.
+
+``bias`` (``""``)
+    Custom event bias. Events are generated with the weight times the bias and written with
+    the weight divided by the bias.
+
+``<function>_parameters.<name>``
+    A parameter of a custom function, for example ``cut_parameters.pt_min = 30.0``. It replaces
+    the default value declared by the function. See :ref:`custom-function-parameters`.
 
 .. _run-card-multiparticles:
 
@@ -555,3 +616,8 @@ function. The activations are ``relu``, ``leaky_relu``, ``elu``, ``gelu``, ``sig
 
 ``cwnet_hidden_dim`` (``"auto"``), ``cwnet_layers`` (``3``), ``cwnet_activation`` (``"leaky_relu"``)
     Size and activation of the channel weight network.
+
+``nn_float_precision`` (``"float32"``)
+    Floating-point precision of the weights and the evaluation of all networks,
+    ``float32`` or ``float64``. The rest of the computation, including the network
+    outputs, softmaxes and Jacobians, stays in double precision.

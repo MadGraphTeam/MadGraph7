@@ -66,7 +66,9 @@ def _optional_numpy():
     return _numpy_module
 
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-sys.path.append(os.path.join(root_path)) 
+# only add root_path from bin/internal: in madgraph/ it would shadow models/ by madgraph/models
+if os.path.basename(os.path.dirname(os.path.realpath(__file__))) == 'internal':
+    sys.path.append(os.path.join(root_path))
 sys.path.append(os.path.join(root_path,os.pardir))
 try:
     # import from madgraph directory
@@ -1215,7 +1217,7 @@ class HwU(Histogram):
                                          weight_labels=weight_labels))
     
     def output(self, path=None, format='HwU', print_header=True):
-        """ Ouput this histogram to a file, stream or string if path is kept to
+        """ Output this histogram to a file, stream or string if path is kept to
         None. The supported format are for now. Chose whether to print the header
         or not."""
         
@@ -1534,7 +1536,7 @@ class HwU(Histogram):
         label_to_consider=[]
         if type == 'MERGING':
             # It is a list of list because we consider only the possibility of
-            # a single "central value" in this case, so the outtermost list is
+            # a single "central value" in this case, so the outermost list is
             # always of length 1.
             wgts_to_consider.append([ label for label in self.bins.weight_labels if \
                             HwU.get_HwU_wgt_label_type(label)=='merging_scale' ])
@@ -1542,7 +1544,7 @@ class HwU(Histogram):
 
         elif type == 'ALPSFACT':
             # It is a list of list because we consider only the possibility of
-            # a single "central value" in this case, so the outtermost list is
+            # a single "central value" in this case, so the outermost list is
             # always of length 1.
             wgts_to_consider.append([ label for label in self.bins.weight_labels if \
                             HwU.get_HwU_wgt_label_type(label)=='alpsfact' ])
@@ -1874,7 +1876,7 @@ class HwU(Histogram):
         """ Function to determine the optimal y-axis range when plotting 
         together the histos in histo_list and considering the weights 
         weight_labels. The option Kratio is present to allow for the couple of
-        tweaks necessary for the the K-factor ratio histogram y-range."""
+        tweaks necessary for the K-factor ratio histogram y-range."""
 
         # If no list of weight labels to consider is given, use them all.
         if labels is None:
@@ -3039,7 +3041,7 @@ class HwUList(histograms_PhysicsObjectList):
     number_line_colors_defined = 8
     
     def is_valid_element(self, obj):
-        """Test wether specified object is of the right type for this list."""
+        """Test whether specified object is of the right type for this list."""
 
         return isinstance(obj, HwU) or isinstance(obj, HwUList)
 
@@ -3198,6 +3200,73 @@ class HwUList(histograms_PhysicsObjectList):
 
         raise NameError("no histogram with name: %s" % name)
     
+    @staticmethod
+    def from_pythia8_main164(file_path, scale=1.0):
+        """The differential jet rates written by Pythia8's main164 with
+        Main:InternalAnalysis = on: a <histfile> holding, per run, the
+        histograms log10d01 ... log10d34 of the whole sample, one row per bin
+        with its lower edge and weighted content (and, from a main164 that
+        prints it, its uncertainty), and possibly the same per jet sample
+        (number of matrix-element partons) in <jetsample njet="n"> blocks
+        (InternalAnalysis:jetSamples). Returns the histograms of the first run
+        as a HwUList: the per-sample
+        ones, titled |JETSAMPLE@n as the plots expect, when the file has them,
+        the whole-sample ones otherwise; None when it holds none, or when it is
+        the former MG5aMC_PY8_interface format (whose <run> carries a weight
+        header), which parse_histos_from_PY8_XML_stream reads.
+
+        main164 up to 8.317 writes '<run id="0"">', which no XML parser takes,
+        so the file is read line by line. Every bin is multiplied by scale:
+        main164 fills in mb, each event weighted by sigma / (its own number of
+        events), so a job of a split run needs 1e9 n_job / n_total to give its
+        share in pb."""
+        totals, samples = HwUList([]), HwUList([])
+        current, sample, rows = None, None, []
+
+        def close():
+            if current is None or len(rows) < 2:
+                return
+            width = rows[1][0] - rows[0][0]
+            new_histo = HwU()
+            new_histo.process_histogram_name(
+                current if sample is None else '%s |JETSAMPLE@%d' % (current, sample))
+            new_histo.bins = BinList(weight_labels=['central', 'stat_error'])
+            for row in rows:
+                new_histo.bins.append(Bin((float(row[0]), float(row[0] + width)),
+                    {'central': float(row[1]) * scale,
+                     'stat_error': float(row[2]) * abs(scale) if len(row) > 2 else 0.0}))
+            (totals if sample is None else samples).append(new_histo)
+
+        with open(file_path) as stream:
+            for line in stream:
+                line = line.strip()
+                if line.startswith('<run') and 'header=' in line:
+                    return None
+                if line.startswith('</run'):
+                    break
+                # <jetsample>: main164 with InternalAnalysis:jetSamples;
+                # <jethistograms>: the first MadGraph7 patch of main164
+                block = re.match(r'<(?:jetsample|jethistograms)\s+njet="(-?\d+)"', line)
+                if block:
+                    sample = int(block.group(1))
+                    continue
+                if line.startswith('</jetsample') or line.startswith('</jethistograms'):
+                    sample = None
+                    continue
+                start = re.match(r'<histogram\s+name="([^"]*)"(?:\s+unit="([^"]*)")?', line)
+                if start:
+                    current = '%s %s' % (start.group(1), start.group(2) or '')
+                    rows = []
+                elif line.startswith('</histogram'):
+                    close()
+                    current = None
+                elif current is not None and line:
+                    columns = line.split()
+                    if len(columns) >= 2:
+                        rows.append([float(c) for c in columns[:3]])
+        histos = samples if len(samples) else totals
+        return histos if len(histos) else None
+
     def parse_histos_from_PY8_XML_stream(self, stream, run_id=None, 
             merging_scale=None, accepted_types_order=[], 
             consider_reweights='ALL', raw_labels=False):
@@ -3256,7 +3325,7 @@ class HwUList(histograms_PhysicsObjectList):
 
         # Now retrieve the header and save all weight labels as dictionaries
         # with key being properties and their values as value. If the property
-        # does not defined a value, then put None as a value
+        # does not define a value, then put None as a value
         all_weights = []
         for wgt_position, wgt_label in \
             enumerate(str(selected_run_node.getAttribute('header')).split(';')):
@@ -3584,7 +3653,7 @@ class HwUList(histograms_PhysicsObjectList):
           assigned_colours=None,
           _histogram_groups=None,
           _weight_schema=None):
-        """ Ouput this histogram to a file, stream or string if path is kept to
+        """ Output this histogram to a file, stream or string if path is kept to
         None. The supported format are for now. Chose whether to print the header
         or not."""
         
@@ -4326,7 +4395,7 @@ PLOTS = %s
         def get_uncertainty_lines(HwU_name, block_position, 
                            var_pos, color_index,title, ratio=False, band=False):
             """ Return a string line corresponding to the plotting of the
-            uncertainty. Band is to chose wether to display uncertainty with
+            uncertainty. Band is to chose whether to display uncertainty with
             a band or two lines."""
 
             # This perl substitution regular expression copies each line of the
@@ -4655,7 +4724,7 @@ plot \\"""
         (replacement_dic['origin_x'], replacement_dic['origin_y'],
          replacement_dic['size_x'], replacement_dic['size_y']) = layout_geometry.pop()
         replacement_dic['mytics'] = 10
-        # Use default choise for the main histogram
+        # Use default choice for the main histogram
         replacement_dic['set_ytics'] = 'set ytics auto'
         replacement_dic['set_format_x'] = "set format x ''" if \
           (len(self)-n_histograms>0 or not no_uncertainties) else "set format x"
@@ -4713,7 +4782,7 @@ plot \\"""
                 major_title += ', PDF=%s'%pdf[0].replace('_',r'\_')
 
             # Do not show uncertainties for individual jet samples (unless first
-            # or specified explicitely and uniquely)
+            # or specified explicitly and uniquely)
             if not (i!=0 and hasattr(histo,'jetsample') and histo.jetsample!=-1 and \
                not (jet_samples_to_keep and len(jet_samples_to_keep)==1 and 
                     jet_samples_to_keep[0] == histo.jetsample)):
@@ -4884,7 +4953,7 @@ r'%s dynamical\_scale\_choice=%s' % (title,mu[j])))
         replacement_dic['set_histo_label'] = \
          'set label "%s" font ",9" front at graph 0.03, graph 0.13' % tit
         # Simply don't add these lines if there are no uncertainties.
-        # This meant uncessary extra work, but I no longer car at this point
+        # This meant unnecessary extra work, but I no longer car at this point
         if not no_uncertainties:
             gnuplot_out.append(subhistogram_header%replacement_dic)
         
@@ -6431,7 +6500,7 @@ if __name__ == "__main__":
            '--HwU'           to output the histograms read to the raw HwU source.
            '--types=<type1>,<type2>,...' to keep only the type<i> when importing histograms.
            '--titles=<title1>,<title2>,...' to keep only the titles which have any of 'title<i>' in them (not necessarily equal to them)
-           '--n_ratios=<integer>' Specifies how many curves must be considerd for the ratios.
+           '--n_ratios=<integer>' Specifies how many curves must be considered for the ratios.
            '--no_open'       Turn off automatic processing/opening of plotting output.
            '--show_full'     to show the complete output of what was read.
            '--show_short'    to show a summary of what was read.
@@ -6450,7 +6519,7 @@ if __name__ == "__main__":
                              to take the ratio of plots with different extra weights specified.             
            '--keep_all_weights' This option specifies to keep in the HwU produced all the weights, even
                                 those which are not known (i.e. that is scale, PDF or merging variation)
-        For chosing what kind of variation you want to see on your plot, you can use the following options
+        For choosing what kind of variation you want to see on your plot, you can use the following options
            '--no_<type>'                   Turn off the plotting of variations of the chosen type
            '--only_<type>'                 Turn on only the plotting of variations of the chosen type
            '--variations=['<type1>',...]'  Turn on only the plotting of the variations of the list of chosen types
@@ -6672,7 +6741,7 @@ if __name__ == "__main__":
                 histo.type += '|'
             else:
                 histo.type = ''
-            # Firs option is to give a bit of the name of the source HwU file.     
+            # First option is to give a bit of the name of the source HwU file.
             #histo.type += " %s, #%d"%\
             #                       (os.path.basename(arg).split('.')[0][:3],i+1)
             # But it is more elegant to give just the number.
@@ -6824,7 +6893,7 @@ def fill_between_steps(x, y1, y2=0, h_align='right', ax=None, **kwargs):
         Array/vector or bottom values for filled area. Default is 0.
     **kwargs will be passed to the matplotlib fill_between() function.
     '''
-    # If no Axes opject given, grab the current one:
+    # If no Axes object given, grab the current one:
     if ax is None:
         ax = plt.gca()
 

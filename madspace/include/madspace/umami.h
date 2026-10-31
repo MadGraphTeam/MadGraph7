@@ -30,7 +30,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 0
+#define UMAMI_MINOR_VERSION 1
 
 typedef enum {
     /** operation was executed successfully */
@@ -51,6 +51,8 @@ typedef enum {
     UMAMI_ERROR_UNSUPPORTED_META,
     /** a mandatory matrix element input was not provided */
     UMAMI_ERROR_MISSING_INPUT,
+    /** the provided parameter name is not a known, settable parameter */
+    UMAMI_ERROR_UNKNOWN_PARAMETER,
 } UmamiStatus;
 
 typedef enum {
@@ -93,15 +95,27 @@ typedef enum {
     UMAMI_IN_DIAGRAM_INDEX,
     /** externally selected channel index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_CHANNEL_INDEX,
+    /** number of external legs, type: `int`, shape: `()` */
+    UMAMI_IN_PARTICLE_COUNT,
+    /** PDG ids of the external legs, type: `int`, shape: `(particle count)` */
+    UMAMI_IN_PDG_IDS,
+    /** momentum fraction of an incoming parton, type: `double`, shape: `()` */
+    UMAMI_IN_MOMENTUM_FRACTION,
+    /** energy scale, e.g. the factorization scale, type: `double`, shape: `()` */
+    UMAMI_IN_SCALE,
+    /** PDG id of a single parton, type: `int`, shape: `()` */
+    UMAMI_IN_PDG_ID,
+    /** index of the beam (0 or 1), type: `int`, shape: `()` */
+    UMAMI_IN_BEAM_INDEX,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_CHANNEL_INDEX + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_BEAM_INDEX + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */
     UMAMI_OUT_MATRIX_ELEMENT,
-    /** selected color index, type: `double`, shape: `(diagram count)` */
+    /** squared amplitudes of the diagrams, type: `double`, shape: `(diagram count)` */
     UMAMI_OUT_DIAGRAM_AMP2,
     /** selected color index, type: `int`, shape: `()` */
     UMAMI_OUT_COLOR_INDEX,
@@ -112,10 +126,24 @@ typedef enum {
     /** CUDA or HIP stream for asynchronous execution. Listed as an output as it is a
      * mutable pointer */
     UMAMI_OUT_GPU_STREAM,
+    /** value of a custom cut, 0 rejects the event, type: `double`, shape: `()` */
+    UMAMI_OUT_CUT,
+    /** custom renormalization scale, type: `double`, shape: `()` */
+    UMAMI_OUT_REN_SCALE,
+    /** custom factorization scale of the first incoming particle, type: `double`,
+       shape: `()` */
+    UMAMI_OUT_FACT_SCALE_1,
+    /** custom factorization scale of the second incoming particle, type: `double`,
+       shape: `()` */
+    UMAMI_OUT_FACT_SCALE_2,
+    /** value x f(x, Q) of a custom parton density, type: `double`, shape: `()` */
+    UMAMI_OUT_PDF,
+    /** value of a custom event bias, type: `double`, shape: `()` */
+    UMAMI_OUT_BIAS,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_GPU_STREAM + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_BIAS + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;
@@ -196,7 +224,7 @@ UmamiStatus umami_supported_outputs(bool const** supported, int* count);
  *
  * @param handle
  *     pointer to an instance of the subprocess. Has to be cleaned up by
- *     the caller with `free_subprocess`.
+ *     the caller with `umami_free`.
  * @param param_card_path
  *     path to the parameter file
  * @return
@@ -216,7 +244,8 @@ UmamiStatus umami_initialize(UmamiHandle* handle, char const* param_card_path);
  * @param parameter_imag
  *     imaginary part of the parameter value. Ignored for real valued parameters.
  * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ *     UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if "name" is not
+ *     a settable parameter, error code otherwise
  */
 UmamiStatus umami_set_parameter(
     UmamiHandle handle, char const* name, double parameter_real, double parameter_imag
@@ -235,7 +264,8 @@ UmamiStatus umami_set_parameter(
  *     pointer to double to return imaginary part of the parameter value. Ignored
  *     for real-valued parameters (i.e. you may pass a null pointer)
  * @return
- *     UMAMI_SUCCESS on success, error code otherwise
+ *     UMAMI_SUCCESS on success, UMAMI_ERROR_UNKNOWN_PARAMETER if "name" is not
+ *     a known parameter, error code otherwise
  */
 UmamiStatus umami_get_parameter(
     UmamiHandle handle, char const* name, double* parameter_real, double* parameter_imag

@@ -1,9 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/tensor.hpp"
@@ -13,6 +17,32 @@
 namespace madspace {
 
 /**
+ * Table of UMAMI entry points, one per function of the UMAMI C interface.
+ *
+ * Used to build a @ref MatrixElementApi without a shared library, with @ref
+ * Context::add_matrix_element. Each entry accepts a plain C function pointer
+ * or a capturing callable. `get_meta`, `initialize`, `matrix_element` and
+ * `free` are required. The others are optional: missing key queries report
+ * `UMAMI_ERROR_NOT_IMPLEMENTED`, and a missing `set_parameter` only fails if
+ * parameters have to be set.
+ */
+struct UmamiFunctions {
+    std::function<std::remove_pointer_t<decltype(&umami_get_meta)>> get_meta;
+    std::function<std::remove_pointer_t<decltype(&umami_supported_inputs)>>
+        supported_inputs;
+    std::function<std::remove_pointer_t<decltype(&umami_required_inputs)>>
+        required_inputs;
+    std::function<std::remove_pointer_t<decltype(&umami_supported_outputs)>>
+        supported_outputs;
+    std::function<std::remove_pointer_t<decltype(&umami_initialize)>> initialize;
+    std::function<std::remove_pointer_t<decltype(&umami_set_parameter)>> set_parameter;
+    std::function<std::remove_pointer_t<decltype(&umami_get_parameter)>> get_parameter;
+    std::function<std::remove_pointer_t<decltype(&umami_matrix_element)>>
+        matrix_element;
+    std::function<std::remove_pointer_t<decltype(&umami_free)>> free;
+};
+
+/**
  * Loaded UMAMI shared library for one matrix element.
  *
  * UMAMI (Unified MAtrix eleMent Interface) is madspace's uniform way of
@@ -20,8 +50,9 @@ namespace madspace {
  * MatrixElement for the compute-graph function built on top of it. A
  * `MatrixElementApi` dynamically loads the library, resolves its exported
  * UMAMI entry points, and exposes the metadata queries and the raw @ref call.
- * Obtained from @ref Context::load_matrix_element, never constructed
- * directly.
+ * Obtained from @ref Context::load_matrix_element, or from @ref
+ * Context::add_matrix_element for entry points given as @ref UmamiFunctions,
+ * never constructed directly.
  *
  * **References**
  * - [1] S. Hageböck et al., "Data-parallel leading-order event generation in
@@ -36,7 +67,7 @@ public:
     /// Device the underlying library was built for.
     DeviceType device_type() const {
         UmamiDevice dev;
-        check_umami_status(_get_meta(UMAMI_META_DEVICE, &dev));
+        check_umami_status(_functions.get_meta(UMAMI_META_DEVICE, &dev));
         switch (dev) {
         case UMAMI_DEVICE_CPU:
             return DeviceType::cpu;
@@ -51,30 +82,31 @@ public:
     /// Number of external particles.
     std::size_t particle_count() const {
         int count;
-        check_umami_status(_get_meta(UMAMI_META_PARTICLE_COUNT, &count));
+        check_umami_status(_functions.get_meta(UMAMI_META_PARTICLE_COUNT, &count));
         return count;
     }
     /// Number of Feynman diagrams.
     std::size_t diagram_count() const {
         int count;
-        check_umami_status(_get_meta(UMAMI_META_DIAGRAM_COUNT, &count));
+        check_umami_status(_functions.get_meta(UMAMI_META_DIAGRAM_COUNT, &count));
         return count;
     }
     /// Number of helicity configurations.
     std::size_t helicity_count() const {
         int count;
-        check_umami_status(_get_meta(UMAMI_META_HELICITY_COUNT, &count));
+        check_umami_status(_functions.get_meta(UMAMI_META_HELICITY_COUNT, &count));
         return count;
     }
     /// Index of this matrix element in its @ref Context, in load order.
     std::size_t index() const { return _index; }
-    /// Path of the loaded UMAMI shared library.
+    /// Path of the loaded UMAMI shared library, or the name given to @ref
+    /// Context::add_matrix_element.
     const std::string& file_name() const { return _file_name; }
     /// UMAMI input keys this library can accept.
     std::vector<bool> supported_inputs() const {
         bool const* data;
         int count;
-        check_umami_status(_supported_inputs(&data, &count));
+        check_umami_status(_functions.supported_inputs(&data, &count));
         std::vector<bool> result(UMAMI_INPUT_KEY_COUNT, false);
         for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i) {
             result[i] = data[i];
@@ -85,7 +117,7 @@ public:
     std::vector<bool> required_inputs() const {
         bool const* data;
         int count;
-        check_umami_status(_required_inputs(&data, &count));
+        check_umami_status(_functions.required_inputs(&data, &count));
         std::vector<bool> supported = supported_inputs();
         for (int i = 0; i < count && i < UMAMI_INPUT_KEY_COUNT; ++i) {
             if (data[i] && !supported[i]) {
@@ -106,7 +138,7 @@ public:
     std::vector<bool> supported_outputs() const {
         bool const* data;
         int count;
-        check_umami_status(_supported_outputs(&data, &count));
+        check_umami_status(_functions.supported_outputs(&data, &count));
         std::vector<bool> result(UMAMI_OUTPUT_KEY_COUNT, false);
         for (int i = 0; i < count && i < UMAMI_OUTPUT_KEY_COUNT; ++i) {
             result[i] = data[i];
@@ -128,7 +160,7 @@ public:
         UmamiOutputKey const* output_keys,
         void* const* outputs
     ) const {
-        check_umami_status(_matrix_element(
+        check_umami_status(_functions.matrix_element(
             handle,
             count,
             stride,
@@ -145,6 +177,26 @@ public:
     /// Opaque per-thread UMAMI process handle, initialized on first use.
     void* process_instance() const { return _instances.get().get(); }
 
+    // The Device this api's library was loaded on (ie the owning Context's
+    // device). Callers driving umami_matrix_element() need this to know
+    // whether the inputs/outputs it exchanges have to be staged through
+    // device-resident buffers (cuda/hip) or can be passed as plain host
+    // pointers (cpu).
+    DevicePtr device() const noexcept { return _device; }
+
+    // Whether the loaded library actually implements umami_set_parameter/
+    // umami_get_parameter (both optional symbols; a library built without
+    // them still loads fine, it just can't be parameter-reweighted in place
+    // and set_parameter()/get_parameter() will throw UMAMI_ERROR_NOT_IMPLEMENTED
+    // if called anyway).
+    bool supports_set_parameter() const noexcept { return bool(_functions.set_parameter); }
+    bool supports_get_parameter() const noexcept { return bool(_functions.get_parameter); }
+
+    // Directly sets/reads physics parameters according to whatever
+    // convention the library has implemented.
+    void set_parameter(const std::string& name, double real, double imag = 0.0) const;
+    std::pair<double, double> get_parameter(const std::string& name) const;
+
 private:
     MatrixElementApi(
         const std::string& file,
@@ -154,22 +206,32 @@ private:
         std::size_t index = 0,
         const std::unordered_map<std::string, double>& parameters = {}
     );
+    MatrixElementApi(
+        UmamiFunctions functions,
+        const std::string& name,
+        const std::string& param_card,
+        ThreadPool& thread_pool,
+        DevicePtr device,
+        std::size_t index = 0,
+        const std::unordered_map<std::string, double>& parameters = {}
+    );
+    void init_functions(const std::unordered_map<std::string, double>& parameters);
+    void init_instances(
+        ThreadPool& thread_pool,
+        DevicePtr device,
+        const std::string& param_card,
+        const std::unordered_map<std::string, double>& parameters
+    );
 
     void check_umami_status(UmamiStatus status) const;
     [[noreturn]] void throw_error(const std::string& message) const;
     std::unique_ptr<void, std::function<void(void*)>> _shared_lib;
-    decltype(&umami_get_meta) _get_meta;
-    decltype(&umami_supported_inputs) _supported_inputs;
-    decltype(&umami_required_inputs) _required_inputs;
-    decltype(&umami_supported_outputs) _supported_outputs;
-    decltype(&umami_initialize) _initialize;
-    decltype(&umami_set_parameter) _set_parameter;
-    decltype(&umami_matrix_element) _matrix_element;
-    decltype(&umami_free) _free;
+    UmamiFunctions _functions;
     using InstanceType = std::unique_ptr<void, std::function<void(void*)>>;
     ThreadResource<InstanceType> _instances;
     std::string _file_name;
     std::size_t _index;
+    DevicePtr _device;
 
     friend class Context;
 };
@@ -217,6 +279,16 @@ public:
         const std::string& param_card,
         const std::unordered_map<std::string, double>& parameters = {}
     );
+    /// Add a matrix element from the UMAMI entry points in `functions`,
+    /// without a shared library. `name` identifies it in error messages, and
+    /// `param_card` and `parameters` are passed on as in @ref
+    /// load_matrix_element.
+    const MatrixElementApi& add_matrix_element(
+        UmamiFunctions functions,
+        const std::string& name,
+        const std::string& param_card = "",
+        const std::unordered_map<std::string, double>& parameters = {}
+    );
     /// Create and zero-initialize a new global named `name`.
     Tensor define_global(
         const std::string& name,
@@ -244,10 +316,11 @@ public:
     /// The matrix element previously loaded at position `index`; see @ref
     /// load_matrix_element.
     const MatrixElementApi& matrix_element(std::size_t index) const;
-    /// Write every global to `dir`, one `.npy` file per name.
-    void save_globals(const std::string& dir) const;
-    /// Define a global from every `.npy` file in `dir`, named after the file.
-    void load_globals(const std::string& dir);
+    /// Write every global to the tar archive `file`, as one `.npy` file per name.
+    void save_globals(const std::string& file) const;
+    /// Define a global from every `.npy` file in the tar archive `file`, named
+    /// after the file.
+    void load_globals(const std::string& file);
     /// The device every global and matrix element of this context lives on.
     DevicePtr device() { return _device; }
     /// The thread pool backing this context's device-local resources.

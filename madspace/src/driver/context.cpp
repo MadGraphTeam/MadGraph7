@@ -1,5 +1,6 @@
 #include "madspace/driver/context.hpp"
 
+#include <algorithm>
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -12,7 +13,18 @@ using namespace madspace;
 using json = nlohmann::json;
 
 namespace {
-UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) {
+    return UMAMI_ERROR_NOT_IMPLEMENTED;
+}
+
+// Fills `function` with the symbol `name` of `lib`, if it exists.
+template <typename R, typename... Args>
+void resolve_symbol(void* lib, const char* name, std::function<R(Args...)>& function) {
+    void* address = dlsym(lib, name);
+    if (address != nullptr) {
+        function = reinterpret_cast<R (*)(Args...)>(address);
+    }
+}
 thread_local std::optional<std::uintptr_t> current_caller_stream;
 } // namespace
 
@@ -24,7 +36,7 @@ MatrixElementApi::MatrixElementApi(
     std::size_t index,
     const std::unordered_map<std::string, double>& parameters
 ) :
-    _file_name(file), _index(index) {
+    _file_name(file), _index(index), _device(device) {
     _shared_lib = std::unique_ptr<void, std::function<void(void*)>>(
         dlopen(file.c_str(), RTLD_NOW), [file](void* lib) { dlclose(lib); }
     );
@@ -34,97 +46,85 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _get_meta = reinterpret_cast<decltype(&umami_get_meta)>(
-        dlsym(_shared_lib.get(), "umami_get_meta")
-    );
-    if (_get_meta == nullptr) {
-        throw std::runtime_error(
-            std::format("Did not find symbol umami_get_meta in shared object {}", file)
-        );
-    }
+    void* lib = _shared_lib.get();
+    resolve_symbol(lib, "umami_get_meta", _functions.get_meta);
+    resolve_symbol(lib, "umami_supported_inputs", _functions.supported_inputs);
+    resolve_symbol(lib, "umami_required_inputs", _functions.required_inputs);
+    resolve_symbol(lib, "umami_supported_outputs", _functions.supported_outputs);
+    resolve_symbol(lib, "umami_initialize", _functions.initialize);
+    resolve_symbol(lib, "umami_set_parameter", _functions.set_parameter);
+    resolve_symbol(lib, "umami_get_parameter", _functions.get_parameter);
+    resolve_symbol(lib, "umami_matrix_element", _functions.matrix_element);
+    resolve_symbol(lib, "umami_free", _functions.free);
+    init_functions(parameters);
+    init_instances(thread_pool, device, param_card, parameters);
+}
 
-    // These symbols are optional: implementations may not report which keys they
-    // support, in which case queries for that information fail with
-    // UMAMI_ERROR_NOT_IMPLEMENTED instead of the constructor throwing.
-    _supported_inputs = reinterpret_cast<decltype(&umami_supported_inputs)>(
-        dlsym(_shared_lib.get(), "umami_supported_inputs")
-    );
-    if (_supported_inputs == nullptr) {
-        _supported_inputs = umami_key_query_not_implemented;
-    }
+MatrixElementApi::MatrixElementApi(
+    UmamiFunctions functions,
+    const std::string& name,
+    const std::string& param_card,
+    ThreadPool& thread_pool,
+    DevicePtr device,
+    std::size_t index,
+    const std::unordered_map<std::string, double>& parameters
+) :
+    _functions(std::move(functions)), _file_name(name), _index(index) {
+    init_functions(parameters);
+    init_instances(thread_pool, device, param_card, parameters);
+}
 
-    _required_inputs = reinterpret_cast<decltype(&umami_required_inputs)>(
-        dlsym(_shared_lib.get(), "umami_required_inputs")
-    );
-    if (_required_inputs == nullptr) {
-        _required_inputs = umami_key_query_not_implemented;
+void MatrixElementApi::init_functions(
+    const std::unordered_map<std::string, double>& parameters
+) {
+    auto require = [&](bool present, const char* name) {
+        if (!present) {
+            throw_error(std::format("missing UMAMI function {}", name));
+        }
+    };
+    require(bool(_functions.get_meta), "umami_get_meta");
+    require(bool(_functions.initialize), "umami_initialize");
+    require(bool(_functions.matrix_element), "umami_matrix_element");
+    require(bool(_functions.free), "umami_free");
+    // Implementations may not report which keys they support; queries for that
+    // information then fail with UMAMI_ERROR_NOT_IMPLEMENTED.
+    if (!_functions.supported_inputs) {
+        _functions.supported_inputs = umami_key_query_not_implemented;
     }
-
-    _supported_outputs = reinterpret_cast<decltype(&umami_supported_outputs)>(
-        dlsym(_shared_lib.get(), "umami_supported_outputs")
-    );
-    if (_supported_outputs == nullptr) {
-        _supported_outputs = umami_key_query_not_implemented;
+    if (!_functions.required_inputs) {
+        _functions.required_inputs = umami_key_query_not_implemented;
     }
-
-    _initialize = reinterpret_cast<decltype(&umami_initialize)>(
-        dlsym(_shared_lib.get(), "umami_initialize")
-    );
-    if (_initialize == nullptr) {
-        throw std::runtime_error(
-            std::format(
-                "Did not find symbol umami_initialize in shared object {}", file
-            )
-        );
+    if (!_functions.supported_outputs) {
+        _functions.supported_outputs = umami_key_query_not_implemented;
     }
-
-    // Optional too, unless parameters have to be set (checked below).
-    _set_parameter = reinterpret_cast<decltype(&umami_set_parameter)>(
-        dlsym(_shared_lib.get(), "umami_set_parameter")
-    );
-    if (!parameters.empty() && _set_parameter == nullptr) {
-        throw std::runtime_error(
-            std::format(
-                "Did not find symbol umami_set_parameter in shared object {}", file
-            )
-        );
+    if (!parameters.empty()) {
+        require(bool(_functions.set_parameter), "umami_set_parameter");
     }
+}
 
-    _matrix_element = reinterpret_cast<decltype(&umami_matrix_element)>(
-        dlsym(_shared_lib.get(), "umami_matrix_element")
-    );
-    if (_matrix_element == nullptr) {
-        throw std::runtime_error(
-            std::format(
-                "Did not find symbol umami_matrix_element in shared object {}", file
-            )
-        );
-    }
-
-    _free =
-        reinterpret_cast<decltype(&umami_free)>(dlsym(_shared_lib.get(), "umami_free"));
-    if (_free == nullptr) {
-        throw std::runtime_error(
-            std::format("Did not find symbol umami_free in shared object {}", file)
-        );
-    }
-
+void MatrixElementApi::init_instances(
+    ThreadPool& thread_pool,
+    DevicePtr device,
+    const std::string& param_card,
+    const std::unordered_map<std::string, double>& parameters
+) {
     _instances = ThreadResource<InstanceType>(
         thread_pool,
         [this, device, param_card, parameters] {
             device->activate();
             void* instance;
-            check_umami_status(_initialize(&instance, param_card.c_str()));
+            check_umami_status(_functions.initialize(&instance, param_card.c_str()));
             for (const auto& [name, value] : parameters) {
-                UmamiStatus status = _set_parameter(instance, name.c_str(), value, 0.);
+                UmamiStatus status =
+                    _functions.set_parameter(instance, name.c_str(), value, 0.);
                 if (status != UMAMI_SUCCESS) {
-                    _free(instance);
+                    _functions.free(instance);
                     throw_error(std::format("could not set parameter {}", name));
                 }
             }
             return InstanceType(instance, [this, device](void* proc) {
                 device->activate();
-                _free(proc);
+                _functions.free(proc);
             });
         },
         std::nullopt,
@@ -149,6 +149,8 @@ void MatrixElementApi::check_umami_status(UmamiStatus status) const {
         throw_error("unsupported metadata key");
     case UMAMI_ERROR_MISSING_INPUT:
         throw_error("missing input");
+    case UMAMI_ERROR_UNKNOWN_PARAMETER:
+        throw_error("unknown or non-settable parameter");
     default:
         throw_error("unknown error");
     }
@@ -160,8 +162,23 @@ void MatrixElementApi::throw_error(const std::string& message) const {
     );
 }
 
-const MatrixElementApi&
-Context::load_matrix_element(
+void MatrixElementApi::set_parameter(const std::string& name, double real, double imag) const {
+    if (!_functions.set_parameter) {
+        check_umami_status(UMAMI_ERROR_NOT_IMPLEMENTED);
+    }
+    check_umami_status(_functions.set_parameter(process_instance(), name.c_str(), real, imag));
+}
+
+std::pair<double, double> MatrixElementApi::get_parameter(const std::string& name) const {
+    if (!_functions.get_parameter) {
+        check_umami_status(UMAMI_ERROR_NOT_IMPLEMENTED);
+    }
+    double real = 0.0, imag = 0.0;
+    check_umami_status(_functions.get_parameter(process_instance(), name.c_str(), &real, &imag));
+    return {real, imag};
+}
+
+const MatrixElementApi& Context::load_matrix_element(
     const std::string& file,
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters
@@ -170,6 +187,27 @@ Context::load_matrix_element(
     _matrix_elements.push_back(
         std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
             file,
+            param_card,
+            *_thread_pool,
+            _device,
+            _matrix_elements.size(),
+            parameters
+        ))
+    );
+    return *_matrix_elements.back().get();
+}
+
+const MatrixElementApi& Context::add_matrix_element(
+    UmamiFunctions functions,
+    const std::string& name,
+    const std::string& param_card,
+    const std::unordered_map<std::string, double>& parameters
+) {
+    _param_card_paths.push_back(param_card);
+    _matrix_elements.push_back(
+        std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
+            std::move(functions),
+            name,
             param_card,
             *_thread_pool,
             _device,
@@ -310,27 +348,31 @@ const MatrixElementApi& Context::matrix_element(std::size_t index) const {
     return *_matrix_elements.at(index).get();
 }
 
-void Context::save_globals(const std::string& dir) const {
-    namespace fs = std::filesystem;
-    fs::path dir_path(dir);
-    fs::create_directory(dir_path);
-
+void Context::save_globals(const std::string& file) const {
+    // sorted, so that the archive does not depend on the hash map order
+    std::vector<std::string> names;
+    names.reserve(_globals.size());
     for (auto& [name, tensor_and_grad] : _globals) {
-        auto& [tensor, requires_grad] = tensor_and_grad;
-        fs::path tensor_file = dir_path / name;
-        tensor_file += ".npy";
-        save_tensor(tensor_file, tensor);
+        names.push_back(name);
     }
+    std::sort(names.begin(), names.end());
+
+    TarWriter tar(file);
+    for (auto& name : names) {
+        save_tensor(tar, name + ".npy", _globals.at(name).first);
+    }
+    tar.close();
 }
 
-void Context::load_globals(const std::string& dir) {
-    namespace fs = std::filesystem;
-    for (auto& file : fs::directory_iterator(dir)) {
-        if (file.path().extension() != ".npy") {
+void Context::load_globals(const std::string& file) {
+    constexpr std::string_view extension = ".npy";
+    TarReader tar(file);
+    for (auto& file_name : tar.names()) {
+        if (!file_name.ends_with(extension)) {
             continue;
         }
-        std::string name = file.path().stem();
-        Tensor tensor = load_tensor(file.path());
+        std::string name = file_name.substr(0, file_name.size() - extension.size());
+        Tensor tensor = load_tensor(tar, file_name);
         Tensor global_tensor = define_global(
             name,
             tensor.dtype(),
@@ -364,7 +406,7 @@ Tensor Context::cached_tensor(std::size_t size) {
         }
     }
     std::size_t word_count = (size + 7) / 8;
-    Tensor new_tensor(DataType::dt_float, {word_count}, device());
+    Tensor new_tensor(DataType::dt_float64, {word_count}, device());
     tensors.insert(tensors.begin() + size_pos, new_tensor);
     return new_tensor;
 }

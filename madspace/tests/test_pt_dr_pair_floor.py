@@ -25,8 +25,9 @@ propagator decays into.
 
 import math
 
-import numpy as np
 import pytest
+import torch
+from madspace_testing import generator, rand
 
 import madspace as ms
 
@@ -85,22 +86,21 @@ def mapping(cuts=None, outgoing_masses=(0.0, 0.0, 0.0, 0.0)):
 
 
 def sample(mapping, seed=SEED, n=BATCH_SIZE):
-    rng = np.random.default_rng(seed)
-    p_ext, x1, x2, det = mapping.map_forward([rng.random((n, mapping.random_dim()))])
-    p_ext, x1, x2, det = (np.asarray(a) for a in (p_ext, x1, x2, det))
-    ok = np.isfinite(det) & np.all(np.isfinite(p_ext), axis=(1, 2))
-    return p_ext, x1, x2, np.where(ok, det, 0.0)
+    r = rand((n, mapping.random_dim()), generator=generator(seed))
+    p_ext, x1, x2, det = mapping.map_forward([r])
+    ok = torch.isfinite(det) & torch.isfinite(p_ext).all(dim=2).all(dim=1)
+    return p_ext, x1, x2, torch.where(ok, det, 0.0)
 
 
 def invariant_mass(p, i, j):
     """Mass of outgoing particles i and j (the beams sit at 0 and 1)."""
     total = p[:, i + 2, :] + p[:, j + 2, :]
-    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
-    return np.sqrt(np.maximum(m2, 0.0))
+    m2 = total[:, 0] ** 2 - torch.sum(total[:, 1:] ** 2, dim=1)
+    return torch.sqrt(torch.clamp(m2, min=0.0))
 
 
 def passes(cuts, p_ext):
-    return np.asarray(cuts(p_ext)).reshape(-1) > 0.5
+    return cuts(p_ext).reshape(-1) > 0.5
 
 
 # --------------------------------------------------------------------------
@@ -118,7 +118,7 @@ def test_bounds_hold_and_the_pair_bound_is_reached():
     assert keep.sum() > 1000
     m_ll = invariant_mass(p_ext, *LEPTONS)[keep]
     m_gg = invariant_mass(p_ext, *GLUONS)[keep]
-    sqrt_s_hat = CM_ENERGY * np.sqrt(x1 * x2)[keep]
+    sqrt_s_hat = CM_ENERGY * torch.sqrt(x1 * x2)[keep]
     assert m_ll.min() >= LEPTON_FLOOR * (1 - 1e-9)
     assert m_gg.min() >= GLUON_FLOOR * (1 - 1e-9)
     assert sqrt_s_hat.min() >= (2 * PT_LEPTON + 2 * PT_GLUON) * (1 - 1e-9)
@@ -130,10 +130,10 @@ def test_without_the_floors_the_sampler_goes_below_them():
     """The counterpart of the test below: without the cuts the sampler does put
     points under both floors, so the next test is not passing trivially."""
     p_ext, x1, x2, _ = sample(mapping())
-    assert np.mean(invariant_mass(p_ext, *LEPTONS) < LEPTON_FLOOR) > 0.01
-    assert np.mean(invariant_mass(p_ext, *GLUONS) < GLUON_FLOOR) > 0.01
-    sqrt_s_hat = CM_ENERGY * np.sqrt(x1 * x2)
-    assert np.mean(sqrt_s_hat < 2 * PT_LEPTON + 2 * PT_GLUON) > 0.01
+    assert (invariant_mass(p_ext, *LEPTONS) < LEPTON_FLOOR).double().mean() > 0.01
+    assert (invariant_mass(p_ext, *GLUONS) < GLUON_FLOOR).double().mean() > 0.01
+    sqrt_s_hat = CM_ENERGY * torch.sqrt(x1 * x2)
+    assert (sqrt_s_hat < 2 * PT_LEPTON + 2 * PT_GLUON).double().mean() > 0.01
 
 
 def test_cuts_bound_the_sampled_invariants():
@@ -143,7 +143,7 @@ def test_cuts_bound_the_sampled_invariants():
     p_ext, x1, x2, _ = sample(mapping(cuts()))
     m_ll = invariant_mass(p_ext, *LEPTONS)
     m_gg = invariant_mass(p_ext, *GLUONS)
-    sqrt_s_hat = CM_ENERGY * np.sqrt(x1 * x2)
+    sqrt_s_hat = CM_ENERGY * torch.sqrt(x1 * x2)
     for sampled, floor in [
         (m_ll, LEPTON_FLOOR),
         (m_gg, GLUON_FLOOR),
@@ -161,9 +161,8 @@ def propagator_weight(p_ext, x1, x2, det):
     s_hat = CM_ENERGY**2 * x1 * x2
     m_ll = invariant_mass(p_ext, *LEPTONS)
     m_gg = invariant_mass(p_ext, *GLUONS)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        weight = det / (m_ll**2 * m_gg**2 * s_hat)
-    return np.where(np.isfinite(weight), weight, 0.0)
+    weight = det / (m_ll**2 * m_gg**2 * s_hat)
+    return torch.where(torch.isfinite(weight), weight, 0.0)
 
 
 def test_cut_volume_is_unchanged_by_the_floors():
@@ -174,13 +173,17 @@ def test_cut_volume_is_unchanged_by_the_floors():
     n = 400_000
     p_free, x1, x2, det_free = sample(mapping(), seed=SEED, n=n)
     full = propagator_weight(p_free, x1, x2, det_free)
-    external = np.where(passes(c, p_free), full, 0.0)
+    external = torch.where(passes(c, p_free), full, 0.0)
     p_cut, y1, y2, det_cut = sample(mapping(c), seed=SEED + 1, n=n)
-    piped = np.where(passes(c, p_cut), propagator_weight(p_cut, y1, y2, det_cut), 0.0)
+    piped = torch.where(
+        passes(c, p_cut), propagator_weight(p_cut, y1, y2, det_cut), 0.0
+    )
 
-    error = math.sqrt(external.var() / n + piped.var() / n)
-    assert 0.0 < error < 0.02 * external.mean()
-    assert abs(external.mean() - piped.mean()) < 5.0 * error
+    error = math.sqrt(
+        external.var(correction=0).item() / n + piped.var(correction=0).item() / n
+    )
+    assert 0.0 < error < 0.02 * external.mean().item()
+    assert abs(external.mean() - piped.mean()).item() < 5.0 * error
     # the cuts remove nearly all of this integrand, so they and the floors
     # they imply are what the comparison is about
     assert external.mean() < 0.1 * full.mean()
@@ -200,10 +203,10 @@ def test_no_pair_floor_for_massive_legs():
     p_ext, x1, x2, _ = sample(mapping(cuts(), outgoing_masses=masses))
     m_gg = invariant_mass(p_ext, *GLUONS)
     assert m_gg.min() >= 2 * mass - 1e-6
-    assert np.mean(m_gg < GLUON_FLOOR) > 0.001
+    assert (m_gg < GLUON_FLOOR).double().mean() > 0.001
     # the massless pair keeps its floor
     assert invariant_mass(p_ext, *LEPTONS).min() >= LEPTON_FLOOR - 1e-6
-    sqrt_s_hat = CM_ENERGY * np.sqrt(x1 * x2)
+    sqrt_s_hat = CM_ENERGY * torch.sqrt(x1 * x2)
     transverse_mass_sum = 2 * PT_LEPTON + 2 * math.hypot(mass, PT_GLUON)
     assert sqrt_s_hat.min() >= transverse_mass_sum - 1e-6
 
@@ -214,5 +217,5 @@ def test_no_pair_floor_beyond_pi():
     r = 3.5
     p_ext, _, _, _ = sample(mapping(cuts(dr_gluon=r)))
     m_gg = invariant_mass(p_ext, *GLUONS)
-    assert np.mean(m_gg < pair_floor(PT_GLUON, PT_GLUON, r)) > 0.001
-    assert np.mean(m_gg < GLUON_FLOOR) > 0.001
+    assert (m_gg < pair_floor(PT_GLUON, PT_GLUON, r)).double().mean() > 0.001
+    assert (m_gg < GLUON_FLOOR).double().mean() > 0.001

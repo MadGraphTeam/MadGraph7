@@ -10,19 +10,20 @@ namespace {
 /// A per-particle 0/1 selector, 1 for every one-based particle number in
 /// `indices`. `what` names the setting the numbers came from, for the error.
 std::vector<me_int_t> particle_mask(
-    std::size_t particle_count,
-    const std::vector<me_int_t>& indices,
-    const char* what
+    std::size_t particle_count, const std::vector<me_int_t>& indices, const char* what
 ) {
     std::vector<me_int_t> mask(particle_count, 0);
     for (me_int_t index : indices) {
         if (index < 1 || std::cmp_greater(index, particle_count)) {
-            throw std::invalid_argument(std::format(
-                "{} particle {} out of range, this process has {} external particles",
-                what,
-                index,
-                particle_count
-            ));
+            throw std::invalid_argument(
+                std::format(
+                    "{} particle {} out of range, this process has {} external "
+                    "particles",
+                    what,
+                    index,
+                    particle_count
+                )
+            );
         }
         mask.at(index - 1) = 1;
     }
@@ -45,14 +46,12 @@ MatrixElement::MatrixElement(
         "MatrixElement",
         [&] {
             NamedVector<Type> arg_types;
-            bool found_momenta = false;
             for (auto input : inputs) {
                 switch (input) {
                 case momenta_in:
                     arg_types.push_back(
                         "momenta", batch_four_vec_array(particle_count)
                     );
-                    found_momenta = true;
                     break;
                 case alpha_s_in:
                     arg_types.push_back("alpha_s", batch_float);
@@ -84,12 +83,30 @@ MatrixElement::MatrixElement(
                 case channel_in:
                     arg_types.push_back("channel", batch_int);
                     break;
+                case particle_count_in:
+                    arg_types.push_back("particle_count", batch_int);
+                    break;
+                case pdg_ids_in:
+                    arg_types.push_back("pdg_ids", batch_int_array(particle_count));
+                    break;
+                case momentum_fraction_in:
+                    arg_types.push_back("momentum_fraction", batch_float);
+                    break;
+                case scale_in:
+                    arg_types.push_back("scale", batch_float);
+                    break;
+                case pdg_id_in:
+                    arg_types.push_back("pdg_id", batch_int);
+                    break;
+                case beam_index_in:
+                    arg_types.push_back("beam_index", batch_int);
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
             }
-            if (!found_momenta) {
-                throw std::invalid_argument("missing momentum input");
+            if (arg_types.size() == 0) {
+                throw std::invalid_argument("matrix element needs at least one input");
             }
             return arg_types;
         }(),
@@ -113,6 +130,24 @@ MatrixElement::MatrixElement(
                     break;
                 case diagram_index_out:
                     ret_types.push_back("diagram_index", batch_int);
+                    break;
+                case cut_out:
+                    ret_types.push_back("cut", batch_float);
+                    break;
+                case ren_scale_out:
+                    ret_types.push_back("ren_scale", batch_float);
+                    break;
+                case fact_scale1_out:
+                    ret_types.push_back("fact_scale1", batch_float);
+                    break;
+                case fact_scale2_out:
+                    ret_types.push_back("fact_scale2", batch_float);
+                    break;
+                case pdf_out:
+                    ret_types.push_back("pdf", batch_float);
+                    break;
+                case bias_out:
+                    ret_types.push_back("bias", batch_float);
                     break;
                 default:
                     throw std::invalid_argument("unknown output type");
@@ -207,6 +242,24 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case channel_in:
             input_key = UMAMI_IN_CHANNEL_INDEX;
             break;
+        case particle_count_in:
+            input_key = UMAMI_IN_PARTICLE_COUNT;
+            break;
+        case pdg_ids_in:
+            input_key = UMAMI_IN_PDG_IDS;
+            break;
+        case momentum_fraction_in:
+            input_key = UMAMI_IN_MOMENTUM_FRACTION;
+            break;
+        case scale_in:
+            input_key = UMAMI_IN_SCALE;
+            break;
+        case pdg_id_in:
+            input_key = UMAMI_IN_PDG_ID;
+            break;
+        case beam_index_in:
+            input_key = UMAMI_IN_BEAM_INDEX;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
         if (_sample_random_inputs &&
@@ -260,6 +313,24 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case diagram_index_out:
             output_key = UMAMI_OUT_DIAGRAM_INDEX;
+            break;
+        case cut_out:
+            output_key = UMAMI_OUT_CUT;
+            break;
+        case ren_scale_out:
+            output_key = UMAMI_OUT_REN_SCALE;
+            break;
+        case fact_scale1_out:
+            output_key = UMAMI_OUT_FACT_SCALE_1;
+            break;
+        case fact_scale2_out:
+            output_key = UMAMI_OUT_FACT_SCALE_2;
+            break;
+        case pdf_out:
+            output_key = UMAMI_OUT_PDF;
+            break;
+        case bias_out:
+            output_key = UMAMI_OUT_BIAS;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));

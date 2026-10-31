@@ -51,12 +51,11 @@ CASES = {
     "FastRamboMapping": dict(n_particles=4, massless=True, com=True),
     "TPropagatorMapping": dict(integration_order=[0], invariant_power=0.8, pt_min=[]),
     "ColorOrderedMapping": dict(
-        color_order=[0, 1, 2, 3],
-        t_invariant_power=0.8,
-        s_invariant_power=0.8,
+        options=ms.ColorOrderedMapping.Options([0, 1, 2, 3]),
         pt_min=[],
         m_inv_min=[],
         dr_min=[],
+        y_max=[],
     ),
     "MultiChannelMapping": dict(
         mappings=[ms.TwoBodyDecay(com=True), ms.TwoBodyDecay(com=True)]
@@ -132,7 +131,7 @@ def test_phasespace_mapping_both_constructors():
         invariant_power=0.8,
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         cuts=None,
-        color_order=None,
+        color_ordered=None,
     )
 
 

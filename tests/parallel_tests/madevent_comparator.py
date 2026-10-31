@@ -86,7 +86,7 @@ class MadEventComparator(me_comparator.MEComparator):
             logging.info("Cleaning code %s runner" % runner.name)
             runner.cleanup()
     def output_result(self, filename=None, tolerance=3e-02):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         def detect_type(data):
@@ -239,7 +239,7 @@ class MadEventComparatorGauge(me_comparator.MEComparatorGauge):
             runner.cleanup()
             
     def output_result(self, filename=None, tolerance=3e-03):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         def detect_type(data):

@@ -17,6 +17,7 @@ bool find_t_vertices(
     std::vector<int>& integration_order,
     std::vector<double>& _t_propagator_masses,
     std::vector<double>& _t_propagator_widths,
+    std::vector<int>& _t_propagator_pdg_ids,
     std::size_t current_index,
     int source_propagator
 ) {
@@ -49,6 +50,7 @@ bool find_t_vertices(
                         integration_order,
                         _t_propagator_masses,
                         _t_propagator_widths,
+                        _t_propagator_pdg_ids,
                         vertices.at(0) == current_index
                             ? vertices.at(1)
                             : vertices.at(0),
@@ -60,6 +62,7 @@ bool find_t_vertices(
                     auto& propagator = diagram.propagators().at(line_ref.index());
                     _t_propagator_masses.push_back(propagator.mass);
                     _t_propagator_widths.push_back(propagator.width);
+                    _t_propagator_pdg_ids.push_back(propagator.pdg_id);
                 } else {
                     out_lines.push_back(line_ref);
                 }
@@ -246,9 +249,15 @@ Diagram::Diagram(
             "Diagram must have one incoming particle (a decay) or two (a collision)"
         );
     }
-    if (outgoing_masses.size() < 2) {
+    // A collision may produce a single particle (p p > h): its one-particle
+    // phase space is a delta function in s_hat, which PhaseSpaceMapping
+    // integrates against the beam momentum fractions. A decay into one
+    // particle has nothing to integrate at all.
+    if (outgoing_masses.size() < (incoming_masses.size() == 2 ? 1 : 2)) {
         throw std::invalid_argument(
-            "Diagram must have at least two outgoing particles"
+            incoming_masses.size() == 2
+                ? "Diagram must have at least one outgoing particle"
+                : "A decay diagram must have at least two outgoing particles"
         );
     }
 
@@ -326,6 +335,7 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             integration_order,
             topo._t_propagator_masses,
             topo._t_propagator_widths,
+            topo._t_propagator_pdg_ids,
             diagram.incoming_vertices().at(1),
             -1
         );
@@ -491,7 +501,9 @@ Topology::propagator_momentum_terms(bool only_decays) const {
     }
     for (auto& decay : std::views::reverse(_decays)) {
         if (decay.index == 0) {
-            if (_t_integration_order.size() == 0) {
+            // In a 2 -> 1 topology the root is the outgoing particle itself:
+            // its invariant is fixed at its mass, so it is no propagator.
+            if (_t_integration_order.size() == 0 && decay.child_indices.size() != 0) {
                 std::vector<int> factors(n_ext);
                 for (std::size_t i = 0; i < n_in; ++i) {
                     factors.at(i) = 1;
