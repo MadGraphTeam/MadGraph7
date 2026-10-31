@@ -122,7 +122,7 @@ def mg_root():
 # parse_info_str
 #===============================================================================
 def parse_info_str(fsock):
-    """Parse a newline separated list of "param=value" as a dictionnary
+    """Parse a newline separated list of "param=value" as a dictionary
     """
 
     info_dict = {}
@@ -388,16 +388,23 @@ def which(program):
                 return exe_file
     return None
 
-def has_f2py():
-    has_f2py = False
-    if which('f2py'):
-        has_f2py = True
-    elif which('f2py%d.%d' %(sys.version_info.major, sys.version_info.minor)):
-        has_f2py = True
-    elif which('f2py%d' %(sys.version_info.major)):
-        has_f2py = True
+def default_f2py():
+    """The f2py to use when none is configured (f2py_compiler): the one
+    installed with this Python (next to sys.executable, e.g. in a virtual
+    environment), else f2pyX.Y, f2pyX or f2py on the PATH -- which may
+    belong to another Python, whose modules this one cannot import. None
+    when there is none."""
+    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+        path = os.path.join(os.path.dirname(sys.executable), name)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    for name in ('f2py%d.%d' % sys.version_info[:2], 'f2py%d' % sys.version_info[0], 'f2py'):
+        if which(name):
+            return name
+    return None
 
-    return has_f2py       
+def has_f2py():
+    return default_f2py() is not None
         
 #===============================================================================
 #  Activate dependencies if possible. Mainly for tests
@@ -1116,7 +1123,7 @@ def check_system_error(value=1):
                     return f(arg, *args, **opt)
                 # NO such file or directory
                 elif error.errno == 2:
-                    # raise a more meaningfull error message
+                    # raise a more meaningful error message
                     raise Exception('%s fails with no such file or directory' \
                                                                            % arg)            
                 # Checkpoint, requeued automatically
@@ -1175,13 +1182,13 @@ def copytree(src, dst, symlinks = False, ignore = None):
       shutil.copystat(src, dst)
     except PermissionError:
         if os.path.realpath(src).startswith('/cvmfs') and os.path.realpath(dst).startswith('/afs'):
-           # allowing missmatch from cvmfs to afs since sounds to not create issue --at least in general-- 
+           # allowing mismatch from cvmfs to afs since sounds to not create issue --at least in general--
            logger.critical(f'Ignoring that we could not copy permissions from {src} to {dst}')
         else:
            logger.critical(f'Permission error detected from {src} to {dst}.\n'+\
                           'If you are using WSL with windows partition, please try using python3.12\n'+\
                           'or avoid moving your data from the WSL partition to the UNIX one')
-           # we do not have enough experience in WSL to allow it to get trough.
+           # we do not have enough experience in WSL to allow it to get through.
            raise
       
   lst = os.listdir(src)
@@ -1239,7 +1246,7 @@ def tail(f, n, offset=None):
 
 def mkfifo(fifo_path):
     """ makes a piping fifo (First-in First-out) file and nicely intercepts 
-    error in case the file format of the target drive doesn't suppor tit."""
+    error in case the file format of the target drive doesn't support it."""
 
     try:
         os.mkfifo(fifo_path)
@@ -1420,7 +1427,7 @@ def gunzip(path, keep=False, stdout=None):
         if os.path.exists("%s.gz" % path):
             path = "%s.gz" % path
         else:
-            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exists" %\
+            raise Exception("%(path)s does not finish by .gz and the file %(path)s.gz does not exist" %\
                               {"path": path})         
 
     
@@ -1475,6 +1482,8 @@ def configure_gzip(configuration=None):
     configuration = {'use_pigz': None, 'nb_core': None} | configuration
 
     global _gzip_tool, _gzip_tool_supports_multithreading, _gzip_tool_max_cores
+    _gzip_tool_supports_multithreading = False
+    _gzip_tool_max_cores = None
 
     use_pigz = configuration['use_pigz']
     if use_pigz is None:
@@ -1482,15 +1491,16 @@ def configure_gzip(configuration=None):
         _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
     elif use_pigz:
         _gzip_tool = open_file.find_valid(['pigz'], 'pigz')
-        if not which(_gzip_tool):
-            logger.warning('Could not find valid `pigz` executable.')
+        if not _gzip_tool:
+            logger.warning('Could not find valid `pigz` executable; using gzip.')
+            _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
     else:
         _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
-        if not which(_gzip_tool):
+        if not _gzip_tool:
             logger.warning('Could not find valid `gzip` executable.')
 
     # If we use the pigz binary, enable multithreading support
-    if 'pigz' in _gzip_tool:
+    if _gzip_tool and 'pigz' in _gzip_tool:
         _gzip_tool_supports_multithreading = True
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
@@ -1504,16 +1514,30 @@ def configure_gzip(configuration=None):
 GZIP_COMPRESSLEVEL = 6
 
 
+def _remove_partial_gz(path):
+    """Delete the truncated archive left behind by a failed compression."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def gzip(path, stdout=None, error=True, forceexternal=False,
-         compresslevel=GZIP_COMPRESSLEVEL):
+         compresslevel=GZIP_COMPRESSLEVEL, keep=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
-    if os.path.getsize(path) > 256e6 or forceexternal:
+    if _gzip_tool and (os.path.getsize(path) > 256e6 or forceexternal):
+        command = [_gzip_tool]
         if _gzip_tool_supports_multithreading and _gzip_tool_max_cores is not None:
-            call([_gzip_tool, '-p', str(_gzip_tool_max_cores), '-f', path])
-        else:
-            call([_gzip_tool, '-f', path])
+            command += ['-p', str(_gzip_tool_max_cores)]
+        if keep:
+            command.append('-k')
+        if call(command + ['-f', path]) != 0:
+            _remove_partial_gz('%s.gz' % path)
+            if error:
+                raise RuntimeError('compressing %s with %s failed' % (path, _gzip_tool))
+            return
 
         if stdout:
             if not stdout.endswith(".gz"):
@@ -1532,21 +1556,26 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
         with open(path, 'rb') as fsock, \
              ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
             shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
-    except OverflowError:
-        gzip(path, stdout, error=error, forceexternal=True)
-    except Exception:
-        if error:
+    except BaseException as err:
+        # Only a complete archive may replace the source: a failed or
+        # interrupted copy leaves no truncated .gz and keeps the source.
+        _remove_partial_gz(stdout)
+        if isinstance(err, OverflowError):
+            if not _gzip_tool:
+                raise
+            return gzip(path, stdout, error=error, forceexternal=True,
+                        compresslevel=compresslevel, keep=keep)
+        if error or not isinstance(err, Exception):
             raise
-        else:
-            return
-    finally:
+        return
+    if not keep:
         os.remove(path)
     
 #
 # Global function to open supported file types
 #
 class open_file(object):
-    """ a convinient class to open a file """
+    """ a convenient class to open a file """
     
     web_browser = None
     eps_viewer = None
@@ -1726,7 +1755,7 @@ class open_file(object):
 def get_HEPTools_location_setter(HEPToolsDir,type):
     """ Checks whether mg5dir/HEPTools/<type> (which is 'lib', 'bin' or 'include')
     is in the environment paths of the user. If not, it returns a preamble that
-    sets it before calling the exectuable, for example:
+    sets it before calling the executable, for example:
        <preamble> ./my_exe
     with <preamble> -> DYLD_LIBRARY_PATH=blabla:$DYLD_LIBRARY_PATH"""
     
@@ -1853,8 +1882,132 @@ def get_pythia8_hepmc_flags(pythia8_path, hepmc_version, hepmc_paths=()):
     return '-I%s -L%s -Wl,-rpath,%s -l%s' % (pjoin(prefix, 'include'), libdir, libdir,
                                              'HepMC3' if hepmc_version == 3 else 'HepMC')
 
+# Version of the per-jet-sample DJR patch of main164 below. It is part of the
+# build stamp, so that a change to the patch rebuilds the patched main164.
+MAIN164_DJR_PATCH_VERSION = 2
+
+def pythia8_main164_writes_jet_sample_djrs(source):
+    """Whether a main164.cc can histogram the differential jet rates per jet
+    sample by itself (its InternalAnalysis:jetSamples setting)."""
+
+    return '"InternalAnalysis:jetSamples"' in source
+
+def pythia8_main164_knows_jet_samples(executable):
+    """Whether the main164 executable was built from a main164.cc that knows
+    InternalAnalysis:jetSamples (a Pythia8 setting it would refuse otherwise).
+    The source sits next to the executable, as get_pythia8_main164 builds it."""
+
+    try:
+        source = open(pjoin(os.path.dirname(executable), 'main164.cc')).read()
+    except (IOError, OSError):
+        return False
+    return pythia8_main164_writes_jet_sample_djrs(source)
+
+def patch_pythia8_main164_djrs(source):
+    """The main164.cc of Pythia8 with the change proposed to Pythia8: the
+    setting InternalAnalysis:jetSamples (default off) also writes the
+    differential jet rate histograms of its internal analysis per jet sample,
+    in <jetsample njet="n"> blocks after the totals of each <run>, and the
+    '<run id="0"">' of Pythia8 <= 8.318 is fixed. The jet sample is the
+    number of matrix-element partons of MLM matching (nMEpartons().first,
+    getProcessSubset().size() for shower-kT, npNLO() for FxFx), or
+    Merging:nRequested less Merging:nRecluster for merging.
+
+    Until a Pythia8 release has it, MadGraph7 builds this patched copy for
+    its MLM showers; Pythia8's own main164.cc is never modified. Returns None
+    when the source is not the main164.cc this was written against (Pythia8
+    8.316 to 8.318): the stock main164 is then used, and the DJR plots show
+    the summed histograms only."""
+
+    edits = [
+        ('  pythia.settings.addWord("InternalAnalysis:output", "analysis.dat");\n',
+         '  // Optionally also write the histograms of each jet sample separately.\n'
+         '  pythia.settings.addFlag("InternalAnalysis:jetSamples", false);\n'),
+        ("  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n",
+         "  // Optionally also for each jet sample, as known by merging or by\n"
+         "  // MadGraph-style (not Alpgen-style) jet matching.\n"
+         '  bool doJetSamples = pythia.flag("InternalAnalysis:jetSamples");\n'
+         "  shared_ptr<JetMatchingMadgraph> jetMatchingPtr\n"
+         "    = dynamic_pointer_cast<JetMatchingMadgraph>(jetMatchingHook.hook);\n"
+         "  vector<map<int, vector<Hist> > > jetSampleHists;\n"),
+        ('      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n',
+         "      jetSampleHists.push_back(map<int, vector<Hist> >());\n"),
+        ("        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n",
+         "        // Optionally also for the jet sample of the event: for jet matching\n"
+         "        // the number of matrix-element partons (only those to be matched\n"
+         "        // for shower-kT, those of the Born for FxFx), for merging the\n"
+         "        // requested number of jets less the reclustered ones.\n"
+         "        int nJetSample = -1;\n"
+         "        if (doJetSamples && jetMatchingPtr) {\n"
+         '          if (pythia.flag("JetMatching:doFxFx"))\n'
+         "            nJetSample = jetMatchingPtr->npNLO();\n"
+         '          else if (pythia.flag("JetMatching:doShowerKt"))\n'
+         "            nJetSample = jetMatchingPtr->getProcessSubset().size();\n"
+         "          else\n"
+         "            nJetSample = jetMatchingPtr->nMEpartons().first;\n"
+         "        } else if (doJetSamples && doMerging) {\n"
+         '          nJetSample = pythia.mode("Merging:nRequested")\n'
+         '            - pythia.mode("Merging:nRecluster");\n'
+         "        }\n"
+         "        if (nJetSample >= 0) {\n"
+         "          vector<Hist>& sampleHists = jetSampleHists.back()[nJetSample];\n"
+         "          if (sampleHists.empty())\n"
+         '            sampleHists = { Hist("d01", 100., 0., 3.),\n'
+         '              Hist("d12", 100., 0., 3.), Hist("d23", 100., 0., 3.),\n'
+         '              Hist("d34", 100., 0., 3.) };\n'
+         "          for (int iHist = 0; iHist < 4 && iHist < int(dij.size()); ++iHist)\n"
+         "            sampleHists[iHist].fill(log10(dij[iHist]), w);\n"
+         "        }\n"),
+    ]
+    for anchor, addition in edits:
+        if source.count(anchor) != 1:
+            return None
+        source = source.replace(anchor, anchor + addition)
+
+    run_header = '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
+    run_end = '      output << "</run>\\n";\n'
+    if source.count(run_header) != 1 or source.count(run_end) != 1:
+        return None
+    source = source.replace(run_header,
+                            '      output << "<run id=\\"" << i << "\\">\\n";\n')
+    source = source.replace(run_end,
+        "      // Optionally print the histograms of each jet sample.\n"
+        "      for (const auto& jetSample : jetSampleHists[i]) {\n"
+        '        output << "<jetsample njet=\\"" << jetSample.first << "\\">\\n";\n'
+        "        for (const Hist& hist : jetSample.second) {\n"
+        '          output << "<histogram name=\\"" << "log10" << hist.getTitle() << "\\""\n'
+        '                 << " unit=\\"" << "[]" << "\\""\n'
+        '                 << " weight=\\"" << "all" << "\\">\\n";\n'
+        "          hist.table(output, false, false);\n"
+        '          output << "</histogram>\\n";\n'
+        "        }\n"
+        '        output << "</jetsample>\\n";\n'
+        "      }\n"
+        "\n" + run_end)
+    return ('// Patched by MadGraph7 (version %d of the per-jet-sample DJR patch,\n'
+            '// see patch_pythia8_main164_djrs in madgraph/various/misc.py).\n'
+            % MAIN164_DJR_PATCH_VERSION) + source
+
+def _pythia8_main164_djr_source(examples):
+    """The patched main164.cc for per-jet-sample DJRs, or None when it is not
+    needed (the installed main164 does it) or not possible (an unknown
+    main164.cc), see patch_pythia8_main164_djrs."""
+
+    try:
+        source = open(pjoin(examples, 'main164.cc')).read()
+    except (IOError, OSError):
+        return None
+    if pythia8_main164_writes_jet_sample_djrs(source):
+        return None
+    patched = patch_pythia8_main164_djrs(source)
+    if patched is None:
+        logger.info('The main164 of this Pythia8 version cannot be patched to ' +
+                    'histogram the jet rates per jet sample: the DJR plots show ' +
+                    'their sum only.')
+    return patched
+
 def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
-                        hepmc_paths=()):
+                        hepmc_paths=(), jet_sample_djrs=False):
     """Return the path of a compiled main164, compiling it if needed.
 
     main164 is built in the Pythia8 examples directory with the Makefile that
@@ -1867,7 +2020,13 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
     with, a dedicated main164 is built against the HepMC installation found in
     hepmc_paths or next to Pythia8: in <examples>/main164_hepmc<version>, so
     that it is shared by all processes, or in <fallback_dir>_hepmc<version>
-    if the examples directory is read-only."""
+    if the examples directory is read-only.
+
+    With jet_sample_djrs, main164 histograms the jet rates of an MLM shower
+    per jet sample too: when the installed main164.cc does not, a patched copy
+    (patch_pythia8_main164_djrs) is built in the same way, in a directory
+    named with _djr appended. When the patch does not apply, the stock main164
+    is returned."""
 
     executable, examples = find_pythia8_main164(pythia8_path)
     if not examples:
@@ -1881,6 +2040,9 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
             '%s. MadGraph7 showers LO events with main164, an example program of ' % pythia8_path +
             "Pythia8 that exists since Pythia 8.311 (it can be installed with 'install pythia8').")
 
+    source = _pythia8_main164_djr_source(examples) if jet_sample_djrs else None
+
+    hepmc = None
     if hepmc_version and hepmc_version != pythia8_hepmc_version(examples):
         if not os.path.isfile(pjoin(examples, 'main164.cc')):
             raise MadGraph5Error('main164.cc cannot be found in %s, so that ' % examples +
@@ -1893,9 +2055,14 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
                 'no HepMC%d installation was found (it can be installed with ' % hepmc_version +
                 "'install %s'), and Pythia8 was configured with another version." % default)
         hepmc = (hepmc_version,) + hepmc
+
+    if hepmc or source:
+        suffix = ('_hepmc%d' % hepmc[0] if hepmc else '') + ('_djr' if source else '')
         stamp = _pythia8_main164_stamp(pythia8_path, examples, hepmc)
-        shared_dir = pjoin(examples, 'main164_hepmc%d' % hepmc_version)
-        local_dir = '%s_hepmc%d' % (fallback_dir, hepmc_version) if fallback_dir else None
+        if source:
+            stamp += '\ndjr patch %d' % MAIN164_DJR_PATCH_VERSION
+        shared_dir = pjoin(examples, 'main164' + suffix)
+        local_dir = fallback_dir + suffix if fallback_dir else None
         for build_dir in (shared_dir, local_dir):
             if build_dir and _pythia8_main164_is_built(build_dir, stamp):
                 return pjoin(build_dir, 'main164')
@@ -1905,9 +2072,10 @@ def get_pythia8_main164(pythia8_path, fallback_dir=None, hepmc_version=None,
             build_dir = local_dir
         else:
             raise MadGraph5Error('No writable directory to compile main164 ' +
-                                 'for HepMC%d.' % hepmc_version)
+                (('for HepMC%d.' % hepmc[0]) if hepmc else 'with per-jet-sample jet rates.'))
         return _compile_pythia8_main164(examples, build_dir, stamp,
-                                        _pythia8_main164_makefile_inc(examples, hepmc))
+                                        _pythia8_main164_makefile_inc(examples, hepmc),
+                                        source=source)
 
     if executable:
         return executable
@@ -2005,10 +2173,12 @@ def _pythia8_main164_is_built(build_dir, stamp):
     return os.path.isfile(pjoin(build_dir, 'main164')) and \
            os.path.isfile(stamp_file) and open(stamp_file).read() == stamp
 
-def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None):
+def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None,
+                             source=None):
     """Compile main164 in build_dir and return its path. If build_dir is not the
-    Pythia8 examples directory, main164.cc and the Makefile are copied there,
-    with makefile_inc as Makefile.inc, and the build is stamped."""
+    Pythia8 examples directory, main164.cc (or the given source in its place)
+    and the Makefile are copied there, with makefile_inc as Makefile.inc, and
+    the build is stamped."""
 
     executable = pjoin(build_dir, 'main164')
     stamp_file = pjoin(build_dir, 'BUILD_STAMP')
@@ -2020,6 +2190,9 @@ def _compile_pythia8_main164(examples, build_dir, stamp=None, makefile_inc=None)
             os.makedirs(build_dir)
         for name in ('main164.cc', 'Makefile'):
             shutil.copy(pjoin(examples, name), build_dir)
+        if source is not None:
+            with open(pjoin(build_dir, 'main164.cc'), 'w') as fsock:
+                fsock.write(source)
         with open(pjoin(build_dir, 'Makefile.inc'), 'w') as fsock:
             fsock.write(makefile_inc)
 
@@ -2165,10 +2338,10 @@ class misc(object):
         return sprint(*args, **opt)
 spirnt = sprint
 ################################################################################
-# function to check if two float are approximatively equal
+# function to check if two float are approximately equal
 ################################################################################
 def equal(a,b,sig_fig=6, zero_limit=True):
-    """function to check if two float are approximatively equal"""
+    """function to check if two float are approximately equal"""
     import math
 
     if isinstance(sig_fig, int):
@@ -2189,7 +2362,7 @@ def equal(a,b,sig_fig=6, zero_limit=True):
 
 ################################################################################
 # class to change directory with the "with statement"
-# Exemple:
+# Example:
 # with chdir(path) as path:
 #     pass
 ################################################################################
@@ -2209,7 +2382,7 @@ class chdir:
 ################################################################################
 
 def timeout(func, args=(), kwargs={}, timeout_duration=1, default=None):
-    '''This function will spwan a thread and run the given function using the args, kwargs and 
+    '''This function will spawn a thread and run the given function using the args, kwargs and
     return the given default value if the timeout_duration is exceeded 
     ''' 
     import threading
@@ -2665,7 +2838,7 @@ class EasterEgg(object):
             return ""
         
         text= """
-*                CONTIBUTOR OF THE DAY:                    *
+*                CONTRIBUTOR OF THE DAY:                    *
 """
         for author, year in to_add:
             one = "*  - %s (first contribution in %s)" % (author, year) 
@@ -2752,26 +2925,49 @@ def is_plugin_supported(obj):
     if name in plugin_support:
         return plugin_support[name]
     
-    # get MG5 version
+    # get the MadGraph7 version
     if '__mg5amcnlo__' in plugin_support:
         mg5_ver = plugin_support['__mg5amcnlo__']
     else:
         info = get_pkg_info()
         mg5_ver = info['version'].split('.')
-    try:
-        min_ver = obj.minimal_mg5amcnlo_version
-        max_ver = obj.maximal_mg5amcnlo_version
-        val_ver = obj.latest_validated_version
-    except:
-        logger.error("Plugin %s misses some required info to be valid. It is therefore discarded" % name)
+
+    # A MadGraph7 plugin gives the range of MadGraph7 versions it supports
+    # with minimal_mg7_version and maximal_mg7_version (and optionally
+    # latest_validated_mg7_version). The MG5_aMC@NLO attributes
+    # (minimal_mg5amcnlo_version, ...) refer to the MG5_aMC@NLO numbering,
+    # which can not be compared to the MadGraph7 one.
+    if hasattr(obj, 'minimal_mg7_version') or hasattr(obj, 'maximal_mg7_version'):
+        try:
+            min_ver = obj.minimal_mg7_version
+            max_ver = obj.maximal_mg7_version
+        except AttributeError:
+            logger.error("Plugin %s defines only one of minimal_mg7_version and "
+                         "maximal_mg7_version. It is therefore discarded" % name)
+            plugin_support[name] = False
+            return False
+        val_ver = getattr(obj, 'latest_validated_mg7_version',
+                          getattr(obj, 'latest_validated_version', None))
+    elif hasattr(obj, 'minimal_mg5amcnlo_version') and \
+                                    hasattr(obj, 'maximal_mg5amcnlo_version'):
+        logger.warning("Plugin %s only gives the MG5_aMC@NLO versions it supports "
+                       "(minimal_mg5amcnlo_version, maximal_mg5amcnlo_version). It "
+                       "is used without version check. Define minimal_mg7_version "
+                       "and maximal_mg7_version for MadGraph7." % name)
+        plugin_support[name] = True
+        return True
+    else:
+        logger.error("Plugin %s misses some required info to be valid "
+                     "(minimal_mg7_version, maximal_mg7_version). It is therefore "
+                     "discarded" % name)
         plugin_support[name] = False
-        return
+        return False
     
     logger.debug("Validating plugin against this version: %s." % '.'.join(str(i) for i in mg5_ver) )
     if get_older_version(min_ver, mg5_ver) == min_ver and \
        get_older_version(mg5_ver, max_ver) == mg5_ver:
         plugin_support[name] = True
-        if get_older_version(mg5_ver, val_ver) == val_ver:
+        if val_ver and get_older_version(mg5_ver, val_ver) == val_ver:
             logger.warning("""Plugin %s has marked as NOT being validated with this version: %s. 
 It has been validated for the last time with version: %s""",
 			   name, '.'.join(str(i) for i in mg5_ver), '.'.join(str(i) for i in val_ver) )
@@ -2852,43 +3048,85 @@ def plugin_import(module, error_msg, fcts=[]):
     else:
         return [getattr(_temp,name) for name in fcts]
 
+def iter_plugins(plugin_path, warning=False, only=None):
+    """yield (name, module) for each plugin of the plugin directories that can
+    be imported (with a warning for the others if warning is set). If only is
+    set, consider only the plugin of that name.
+    The support of the plugin for this version is not checked here."""
+
+    for plugpath in plugin_path:
+        plugindirname = os.path.basename(plugpath)
+        for plug in os.listdir(plugpath):
+            if only is not None and plug != only:
+                continue
+            if not os.path.exists(pjoin(plugpath, plug, '__init__.py')):
+                continue
+            try:
+                with stdchannel_redirected(sys.stdout, os.devnull):
+                    __import__('%s.%s' % (plugindirname, plug))
+            except Exception as error:
+                if warning:
+                    logger.warning("error detected in plugin: %s.", plug)
+                    logger.warning("%s", error)
+                continue
+            yield plug, sys.modules['%s.%s' % (plugindirname, plug)]
+
 def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
                        info=None):
     """return the class associated with keyname for a given plugin class
     if keyname is None, return all the name associated"""
     
     validname = []
-    for plugpath in plugin_path:
-        plugindirname = os.path.basename(plugpath)
-        for plug in os.listdir(plugpath):
-            if os.path.exists(pjoin(plugpath, plug, '__init__.py')):
-                try:
-                    with stdchannel_redirected(sys.stdout, os.devnull):
-                        __import__('%s.%s' % (plugindirname,plug))
-                except Exception as error:
-                    if warning:
-                        logger.warning("error detected in plugin: %s.", plug)
-                        logger.warning("%s", error)
-                    continue
-                plugin = sys.modules['%s.%s' % (plugindirname,plug)] 
-                if hasattr(plugin, target_type):
-                    if not is_plugin_supported(plugin):
-                        continue
-                    if keyname is None:
-                        validname += list(getattr(plugin, target_type).keys())
+    for plug, plugin in iter_plugins(plugin_path, warning):
+        if hasattr(plugin, target_type):
+            if not is_plugin_supported(plugin):
+                continue
+            if keyname is None:
+                validname += list(getattr(plugin, target_type).keys())
+            else:
+                if keyname in getattr(plugin, target_type):
+                    if not info:
+                        logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
                     else:
-                        if keyname in getattr(plugin, target_type):
-                            if not info:
-                                logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
-                            else:
-                                logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
-                            return getattr(plugin, target_type)[keyname]
+                        logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
+                    return getattr(plugin, target_type)[keyname]
                         
     if not keyname:
         return validname
     
     
     
+def plugin_diagram_filter(plugin_path, name):
+    """return the diagram filter function of the plugin called `name` (the
+    `new_diagram_filter` attribute of its __init__.py, a function
+    remove_diag(diag, model) returning True for the diagrams to remove; one
+    filter per plugin, selected by the name of the plugin).
+    If name is None, return the names of the plugins providing one.
+    Raise MadGraph5Error if the plugin does not provide a valid filter."""
+
+    if name is None:
+        return [plug for plug, plugin in iter_plugins(plugin_path)
+                if callable(getattr(plugin, 'new_diagram_filter', None)) and
+                   is_plugin_supported(plugin)]
+
+    if not name:
+        raise MadGraph5Error("No plugin name given for the diagram filter "
+                             "(--diagram_filter=PLUGINNAME).")
+    for plug, plugin in iter_plugins(plugin_path, warning=True, only=name):
+        if not hasattr(plugin, 'new_diagram_filter'):
+            raise MadGraph5Error("Plugin %s does not provide a diagram filter "
+                                 "(new_diagram_filter in its __init__.py)." % name)
+        if not is_plugin_supported(plugin):
+            raise MadGraph5Error("Plugin %s is not supported by this version "
+                                 "of MadGraph7." % name)
+        filter_fct = plugin.new_diagram_filter
+        if not callable(filter_fct):
+            raise MadGraph5Error("new_diagram_filter of plugin %s must be a "
+                   "function remove_diag(diag, model), not %r" % (name, filter_fct))
+        logger.info('Using diagram filter from plugin %s' % name, '$MG:BOLD')
+        return filter_fct
+    raise MadGraph5Error("No plugin '%s' found (or it can not be imported) to "
+                         "provide the diagram filter." % name)
 
 #===============================================================================
 # LHAPDF locations
@@ -3064,6 +3302,104 @@ def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
     return LhapdfPaths(config, data_paths, download_path)
 
 
+# Where 'lhapdf get' itself fetches the sets and the id index from.
+LHAPDF_SETS_URL = 'https://lhapdfsets.web.cern.ch/current'
+
+class LhapdfServerError(MadGraph5Error):
+    """The LHAPDF server refused a request (e.g. an unknown set name): asking
+    again, or with another client, gets the same answer."""
+
+def _fetch_url(url, path, timeout=60):
+    """Download *url* to *path*: urllib first, then curl/wget (e.g. for a
+    python without usable SSL certificates). Raises MadGraph5Error on failure."""
+
+    import urllib.request, urllib.error
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response, \
+                open(path, 'wb') as out:
+            shutil.copyfileobj(response, out)
+            # a dropped connection just ends the stream early
+            expected = response.headers.get('Content-Length')
+            if expected and out.tell() != int(expected):
+                raise IOError('truncated: got %d of %s bytes'
+                              % (out.tell(), expected))
+        return
+    except urllib.error.HTTPError as error:
+        raise LhapdfServerError('could not download %s: %s' % (url, error))
+    except Exception as error:
+        reason = error
+    for tool, cmd in (('curl', ['curl', '-fsL', url, '-o', path]),
+                      ('wget', ['wget', '-q', url, '-O', path])):
+        if which(tool) and subprocess.call(cmd) == 0:
+            return
+    raise MadGraph5Error('could not download %s: %s' % (url, reason))
+
+
+def download_lhapdf_set(pdf_set, target, base_url=LHAPDF_SETS_URL):
+    """Install the LHAPDF set *pdf_set* into the directory *target* straight
+    from the LHAPDF server, without needing LHAPDF itself (its .info and .dat
+    grids are all madspace reads). pdfsets.index comes along when *target* has
+    none, so an lhaid can be turned into a set name later. The set appears in
+    one rename, so an interrupted download never leaves a partial one behind.
+    Raises MadGraph5Error on failure."""
+
+    import tarfile
+    os.makedirs(target, exist_ok=True)
+    if os.path.isdir(pjoin(target, pdf_set)):
+        return pjoin(target, pdf_set)
+    tmpdir = tempfile.mkdtemp(prefix='.%s.' % pdf_set, dir=target)
+    try:
+        tarball = pjoin(tmpdir, '%s.tar.gz' % pdf_set)
+        for attempt in range(3):
+            try:
+                _fetch_url('%s/%s.tar.gz' % (base_url, pdf_set), tarball)
+                with tarfile.open(tarball) as tar:
+                    tar.extractall(tmpdir, filter='data')
+                break
+            except LhapdfServerError:
+                raise
+            except (MadGraph5Error, tarfile.TarError, EOFError, OSError) as error:
+                # a dropped or corrupted transfer: fetch it again
+                reason = error
+                logger.debug('download of %s failed: %s', pdf_set, reason)
+                shutil.rmtree(pjoin(tmpdir, pdf_set), ignore_errors=True)
+        else:
+            raise MadGraph5Error('could not install %s: %s' % (pdf_set, reason))
+        if not os.path.exists(pjoin(tmpdir, pdf_set, '%s.info' % pdf_set)):
+            raise MadGraph5Error('%s.tar.gz does not contain the set %s'
+                                 % (pdf_set, pdf_set))
+        try:
+            os.rename(pjoin(tmpdir, pdf_set), pjoin(target, pdf_set))
+        except OSError:
+            # another process installed it meanwhile
+            if not os.path.isdir(pjoin(target, pdf_set)):
+                raise
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    download_lhapdf_index(target, base_url)
+    return pjoin(target, pdf_set)
+
+
+def download_lhapdf_index(target, base_url=LHAPDF_SETS_URL):
+    """Fetch LHAPDF's pdfsets.index (lhaid -> set name) into *target* unless
+    it is already there. Returns its path, or None if it could not be had."""
+
+    index = pjoin(target, 'pdfsets.index')
+    if os.path.exists(index):
+        return index
+    try:
+        os.makedirs(target, exist_ok=True)
+        _fetch_url('%s/pdfsets.index' % base_url, index + '.part')
+        os.replace(index + '.part', index)
+        return index
+    except Exception as error:
+        logger.debug('could not download pdfsets.index: %s', error)
+        if os.path.exists(index + '.part'):
+            os.remove(index + '.part')
+        return None
+
+
 python_lhapdf=None
 def import_python_lhapdf(lhapdfconfig):
     """load the python module of lhapdf return None if it can not be loaded"""
@@ -3090,6 +3426,18 @@ def import_python_lhapdf(lhapdfconfig):
                 os.environ['LD_LIBRARY_PATH'] = lhapdf_libdir
             else:
                 os.environ['LD_LIBRARY_PATH'] = '%s:%s' %(lhapdf_libdir,os.environ['LD_LIBRARY_PATH'])
+        # LD_LIBRARY_PATH set now only reaches child processes: the python
+        # module (built without an rpath, e.g. by HEPTools) would not find
+        # libLHAPDF in this one. Load it first, globally, so it does.
+        for libname in ('libLHAPDF.so', 'libLHAPDF.dylib'):
+            libpath = os.path.join(lhapdf_libdir, libname)
+            if os.path.exists(libpath):
+                try:
+                    import ctypes
+                    ctypes.CDLL(libpath, mode=ctypes.RTLD_GLOBAL)
+                except OSError:
+                    pass
+                break
         try:
             candidates=[dirname for dirname in os.listdir(lhapdf_libdir) \
                             if os.path.isdir(os.path.join(lhapdf_libdir,dirname))]

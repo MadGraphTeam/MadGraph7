@@ -57,7 +57,7 @@ class ShowerCard(banner.RunCard):
     # var : {PYTHIA6: varpy6, HERWIG6: varhw6, HERWIGPP: varhwpp, PYTHIA8: varpy8}
     # where varpy, varhw6 and varhwpp are mc_dependent names
     # if a mc is not there, that variable is not supposed to be
-    # used / written for thar mc
+    # used / written for that mc
     names_dict = {}
     stdhep_dict = {'HERWIG6':'mcatnlo_hwan_stdhep.o', 'PYTHIA6':'mcatnlo_pyan_stdhep.o'}
     
@@ -331,7 +331,7 @@ class ShowerCard(banner.RunCard):
             output_file.write(self.text)
 
     def create_default_for_process(self, *args, **opts):
-        pass # will be usefull later on
+        pass # will be useful later on
 
     def write_card(self, shower, card_path):
         """write the shower_card for shower in card_path.

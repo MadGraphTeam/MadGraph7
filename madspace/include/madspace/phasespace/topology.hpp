@@ -192,6 +192,12 @@ public:
     const std::vector<double>& t_propagator_widths() const {
         return _t_propagator_widths;
     }
+    /// The pdg ids of the `t`-channel propagators, in the same order as
+    /// t_propagator_masses(). Needed to tell a QCD splitting off the initial
+    /// state from a QED/EW one.
+    const std::vector<int>& t_propagator_pdg_ids() const {
+        return _t_propagator_pdg_ids;
+    }
     /// The `s`-channel decay-tree nodes.
     const std::vector<Decay>& decays() const { return _decays; }
     /**
@@ -240,6 +246,7 @@ private:
     std::vector<std::size_t> _t_integration_order;
     std::vector<double> _t_propagator_masses;
     std::vector<double> _t_propagator_widths;
+    std::vector<int> _t_propagator_pdg_ids;
     std::vector<Decay> _decays;
     std::vector<std::size_t> _decay_integration_order;
     std::vector<std::size_t> _outgoing_indices;

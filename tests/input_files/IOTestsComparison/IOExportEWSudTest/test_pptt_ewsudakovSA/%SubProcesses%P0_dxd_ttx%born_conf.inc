@@ -9,7 +9,7 @@
       INTEGER TPRID(-MAX_BRANCHB_USED:-1, LMAXCONFIGSB_USED)
       LOGICAL GFORCEBW(-MAX_BRANCHB_USED : -1, LMAXCONFIGSB_USED)
 
-C     Here are the congifurations
+C     Here are the configurations
 C     Process: d~ d > t t~ [ LOonly = QCD QED ] QCD^2=6 QED^2=0
 C     Diagram 1, Amplitude 1
       DATA MAPCONFIG(   1)/   1/

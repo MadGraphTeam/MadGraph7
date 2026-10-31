@@ -104,10 +104,11 @@ def async_generate_born(args):
     loop_optimized = args[5]
     OLP = args[6]
     realmapout = args[7]
+    loop_filter = args[8]
 
     logger.info('Generating born %s' % \
             born.born_amp['process'].nice_string(print_weighted=False).replace('Process', 'process'))
-    #load informations on reals from temp files
+    #load information on reals from temp files
     helasreal_list = []
     amp_to_remove = []
     for amp in born.real_amps:
@@ -144,7 +145,10 @@ def async_generate_born(args):
         myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
 
         try:
-            myamp = loop_diagram_generation.LoopAmplitude(myproc)
+            myamp = loop_diagram_generation.LoopAmplitude(myproc,
+                                    loop_filter=loop_filter,
+                                    diagram_filter=getattr(born, 'diagram_filter', False),
+                                    loop_diagram_filter=getattr(born, 'loop_diagram_filter', False))
             has_loops = True
             born.virt_amp = myamp
         except InvalidCmd:
@@ -354,7 +358,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             bornmapin = []
             OLP=fksmulti['OLP']
             for i,born in enumerate(born_procs):
-                bornmapin.append([i,born,born_pdg_list,loop_orders,pdg_list,loop_optimized,OLP,realmapfiles])
+                bornmapin.append([i,born,born_pdg_list,loop_orders,pdg_list,loop_optimized,OLP,realmapfiles,
+                                  fksmulti['loop_filter']])
 
             try:
                 bornmapout = pool.map_async(async_generate_born,bornmapin).get(9999999)
@@ -959,7 +964,7 @@ class FKSHelasRealProcess(object): #test written
         initialization for HelasMatrixElement.
         Sets i/j fks and the permutation.
         real_me_list and real_amp_list are the lists of pre-generated matrix elements in 1-1 
-        correspondance with the amplitudes"""
+        correspondence with the amplitudes"""
         
         if fksrealproc != None:
             self.isfinite = False

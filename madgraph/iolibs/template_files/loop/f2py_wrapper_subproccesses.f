@@ -6,7 +6,7 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
-      CALL SETPARA(PATH)  !first call to setup the paramaters
+      CALL SETPARA(PATH)  !first call to set up the parameters
       RETURN
       END
 
@@ -131,6 +131,7 @@ CF2PY DOUBLE PRECISION, INTENT(IN) :: P(0:3, NEXTERNAL)
       RETURN
       END
 
+## if(has_density) {
       SUBROUTINE %(f2py_prefix)sPY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2, INTER, N_CHANGING, N_COMB, NPDG)
 
 CF2PY double precision, intent(in) :: p
@@ -157,5 +158,6 @@ CF2PY integer, intent(hide), depend(pdgs) :: NPDG = len(pdgs)
 
       RETURN
       END
+## }
 
 C     GET_ALL_INTER is not present, it can be added but is not practical to use outside of the main framework because of the way JAMPL_ALL is computed.

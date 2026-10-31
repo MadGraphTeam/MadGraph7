@@ -305,7 +305,7 @@ class Systematics(object):
         # For e+/e- type of collision initialise the running of alps
         if self.b1 == 0 == self.b2 or isEVA:
             try:
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
             except ImportError:
                 root_path = pjoin(root, os.pardir, os.pardir)
                 try:
@@ -316,7 +316,7 @@ class Systematics(object):
                     cmd = me_int.Cmd(root_path,force_run=True)                
                 if 'mg5_path' in cmd.options and cmd.options['mg5_path']:
                     sys.path.append(cmd.options['mg5_path'])
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
                 
             if not hasattr(self.banner, 'param_card'):
                 param_card = self.banner.charge_card('param_card')
@@ -612,7 +612,7 @@ class Systematics(object):
             try:
                 pdferr =  pdfset.uncertainty(values)
             except RuntimeError:
-                # the same error can happend to some other type of error like custom.
+                # the same error can happen to some other type of error like custom.
                 pass
             else:
                 resume.write( '#PDF %s: %g +%2.3g%% -%2.3g%%\n' % (pdfset.name, pdferr.central,percent(pdferr.errplus), percent(pdferr.errminus)))
@@ -1156,7 +1156,7 @@ class Systematics(object):
         elif(vPol==-1):
             return self.get_eva_stripped_pdf_vm(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         else:
-            raise SystematicsError("unknow EVA vPol: %s " % vPol)
+            raise SystematicsError("unknown EVA vPol: %s " % vPol)
         
     # scale dependence of f_V+ according to EVA accuracy
     def get_eva_stripped_pdf_vp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
@@ -1392,7 +1392,7 @@ def call_systematics(args, result=sys.stdout, running=True,
                 else:
                     opts[key] = values
         else:
-            raise SystematicsError("unknow argument %s" % arg)
+            raise SystematicsError("unknown argument %s" % arg)
 
     #load run_card and extract parameter if needed.
     if 'from_card' in opts:

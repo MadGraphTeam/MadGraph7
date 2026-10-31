@@ -211,7 +211,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0D0)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN
@@ -291,7 +291,7 @@ C     ----------
             ENDDO
 C           Default value of the kinematic matrix
             S_MAT(I,J)=DIFFSQ-M2L(I)-M2L(J)
-C           And we now test various thresholds. Normaly, at most one
+C           And we now test various thresholds. Normally, at most one
 C            applies.
             IF(ABS(M2L(I)).NE.0.0E0_16)THEN
               IF(ABS((DIFFSQ-M2L(I))/M2L(I)).LT.OSTHRES)THEN

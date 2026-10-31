@@ -54,7 +54,7 @@ $multiparticle
 
 process_template = string.Template("""\
 $process           #Process
-# Be carefull the coupling are here in MG5 convention
+# Be careful: the couplings are here in MG5 convention
 $coupling          
 end_coup           # End the couplings input
 """)

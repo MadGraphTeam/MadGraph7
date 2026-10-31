@@ -178,7 +178,7 @@ class CppDialect(Dialect):
         starts after a balanced <...> and commas inside it are not separators;
       - the result is not always the last argument: an external ends with its
         leg index (`..., aloha_obj[5], 4 );`);
-      - the helicity is `cHel[ihel][k]`, and a scalar external simply has no
+      - the helicity is `hel_sv[k]` (or `cHel[ihel][k]`), and a scalar external simply has no
         helicity argument at all rather than a slot to overwrite;
       - every amplitude writes the same scratch `&amp_fp[0]`, so the row an
         unfolded amplitude belongs to cannot be carried by its name. It is
@@ -201,7 +201,8 @@ class CppDialect(Dialect):
     EXT_END = '//HRENDEXT'
 
     _CALL = re.compile(r'^\s*([A-Za-z_]\w*)\s*[<(]')
-    _HELICITY = re.compile(r'cHel\s*\[\s*ihel\s*\]\s*\[\s*(\d+)\s*\]')
+    # the helicity of leg k: hel_sv[k] (one per SIMD lane), or cHel[ihel][k]
+    _HELICITY = re.compile(r'(?:cHel\s*\[\s*ihel\s*\]|hel_sv)\s*\[\s*(\d+)\s*\]')
     _SLOT = re.compile(r'^&?(?:aloha_obj|amp_fp)\s*\[')
 
     def __init__(self):
@@ -333,7 +334,9 @@ class CppDialect(Dialect):
         return None
 
     def helicity_literal(self, hel):
-        return '%d' % hel
+        # the external wavefunctions take a helicity per SIMD lane (fptype_amp_sv):
+        # the row's own, the same in every lane
+        return '( fptype_amp_sv{} + %d )' % hel
 
     def set_external_helicity(self, args, hel):
         for i, arg in enumerate(args):

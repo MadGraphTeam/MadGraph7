@@ -16,11 +16,120 @@
 
 from __future__ import absolute_import
 import os
+import gzip
+import tempfile
 import unittest
 import subprocess
 from unittest import mock
 import madgraph.various.misc as misc
 class TEST_misc(unittest.TestCase):
+
+    def test_gzip_keep_preserves_plain_source(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            misc.gzip(path, keep=True)
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+            with gzip.open(path + '.gz', 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+
+    def test_gzip_failure_keeps_source_and_leaves_no_archive(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            target = os.path.join(tmp, 'missing_dir', 'events.lhe.gz')
+            misc.gzip(path, stdout=target, error=False)
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+            self.assertFalse(os.path.exists(target))
+            with self.assertRaises(OSError):
+                misc.gzip(path, stdout=target, error=True)
+            self.assertTrue(os.path.exists(path))
+
+    def test_interrupted_gzip_removes_partial_archive(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        def truncated_copy(fsrc, fdst, length):
+            fdst.write(b'\x1f\x8b')
+            raise OSError('disk full')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            with mock.patch.object(misc.shutil, 'copyfileobj',
+                                   side_effect=truncated_copy):
+                misc.gzip(path, error=False)
+            self.assertFalse(os.path.exists(path + '.gz'))
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+
+    def test_external_gzip_failure_removes_partial_archive(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        def failing_tool(command, *args, **kwargs):
+            with open(command[-1] + '.gz', 'wb') as out:
+                out.write(b'\x1f\x8b')
+            return 1
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'events.lhe')
+                with open(path, 'wb') as out:
+                    out.write(b'<event>\n</event>\n')
+                with mock.patch.object(misc.open_file, 'find_valid',
+                                       return_value='gzip'), \
+                     mock.patch.object(misc, 'call', side_effect=failing_tool):
+                    misc.configure_gzip({'use_pigz': False})
+                    misc.gzip(path, forceexternal=True, error=False)
+                    self.assertFalse(os.path.exists(path + '.gz'))
+                    self.assertTrue(os.path.exists(path))
+                    with self.assertRaises(RuntimeError):
+                        misc.gzip(path, forceexternal=True, error=True)
+                    self.assertFalse(os.path.exists(path + '.gz'))
+                    self.assertTrue(os.path.exists(path))
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
+
+    def test_external_gzip_keep_passes_thread_limit(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'events.lhe')
+                with open(path, 'wb') as out:
+                    out.write(b'<event>\n</event>\n')
+                with mock.patch.object(misc.open_file, 'find_valid',
+                                       return_value='pigz'), \
+                     mock.patch.object(misc, 'call', return_value=0) as call:
+                    misc.configure_gzip({'use_pigz': True, 'nb_core': 2})
+                    misc.gzip(path, forceexternal=True, keep=True)
+                    call.assert_called_once_with(
+                        ['pigz', '-p', '2', '-k', '-f', path])
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
+
+    def test_configure_gzip_resets_pigz_threads(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        try:
+            with mock.patch.object(misc.open_file, 'find_valid',
+                                   side_effect=lambda choices, _: choices[0]):
+                misc.configure_gzip({'use_pigz': True, 'nb_core': 3})
+                self.assertEqual(misc._gzip_tool, 'pigz')
+                self.assertTrue(misc._gzip_tool_supports_multithreading)
+                self.assertEqual(misc._gzip_tool_max_cores, 3)
+                misc.configure_gzip({'use_pigz': False})
+                self.assertEqual(misc._gzip_tool, 'gzip')
+                self.assertFalse(misc._gzip_tool_supports_multithreading)
+                self.assertIsNone(misc._gzip_tool_max_cores)
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
     
     def test_equal(self):
         
@@ -144,6 +253,32 @@ class TEST_misc(unittest.TestCase):
             self.assertEqual(proc.wait(), 0)
 
 
+_HEPTOOLS_LHAPDF = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))), 'HEPTools', 'lhapdf6_py3', 'bin', 'lhapdf-config')
+
+
+@unittest.skipUnless(os.path.exists(_HEPTOOLS_LHAPDF), 'no HEPTools lhapdf6_py3')
+class TEST_import_python_lhapdf(unittest.TestCase):
+    """The HEPTools lhapdf python module has no rpath to libLHAPDF: setting
+    LD_LIBRARY_PATH from inside the process is too late for the loader, so
+    import_python_lhapdf loads the library itself first."""
+
+    def test_import_without_ld_library_path(self):
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.dirname(_HEPTOOLS_LHAPDF)))
+        env = dict(os.environ)
+        env.pop('LD_LIBRARY_PATH', None)
+        env.pop('PYTHONPATH', None)
+        code = ("import sys; sys.path.insert(0, %r)\n"
+                "import madgraph.various.misc as misc\n"
+                "module = misc.import_python_lhapdf(%r)\n"
+                "print(module.version())\n" % (root, _HEPTOOLS_LHAPDF))
+        result = subprocess.run([sys.executable, '-c', code], env=env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout.strip().splitlines()[-1], r'^\d+\.\d+')
+
+
 class TEST_pythia8_main164(unittest.TestCase):
     """main164, the Pythia8 driver of the LO shower, is found or compiled with
     the Makefile of the Pythia8 examples directory (a stub here)."""
@@ -165,9 +300,20 @@ class TEST_pythia8_main164(unittest.TestCase):
         os.chmod(self.examples, 0o755)
         shutil.rmtree(self.tmpdir)
 
-    def write_sources(self, mainMG=False, hepmc=2):
+    # the lines of Pythia8's main164.cc (8.316 to 8.318) that the
+    # per-jet-sample DJR patch anchors on
+    main164_djr_anchors = (
+        '  pythia.settings.addWord("InternalAnalysis:output", "analysis.dat");\n'
+        '  vector<Hist> d01Hists, d12Hists, d23Hists, d34Hists;\n'
+        '      d34Hists.push_back(Hist("d34", 100., 0., 3.));\n'
+        '        if (dij.size() > 3) d34Hists.back().fill(log10(dij[3]), w);\n'
+        '      output << "<run id=\\"" << i << "\\"" << "\\">\\n";\n'
+        '      d34Hists[i].table(output, false, false);\n'
+        '      output << "</run>\\n";\n')
+
+    def write_sources(self, mainMG=False, hepmc=2, source=None):
         with open(os.path.join(self.examples, 'main164.cc'), 'w') as fsock:
-            fsock.write('#!/bin/sh\necho main164\n')
+            fsock.write(source if source is not None else '#!/bin/sh\necho main164\n')
         rule = "mainMG: main164.cc\n\techo mainMG > main164; chmod +x main164\n" \
                                                                if mainMG else ''
         with open(os.path.join(self.examples, 'Makefile'), 'w') as fsock:
@@ -318,6 +464,67 @@ class TEST_pythia8_main164(unittest.TestCase):
                           os.path.realpath(os.path.join(prefix, 'lib'))))
         # a HepMC3 installation is not a HepMC2 one
         self.assertEqual(misc.find_hepmc(2, [prefix]), None)
+
+    def test_main164_djr_patch(self):
+        """the per-jet-sample split, the bin errors and the '<run id' fix are
+        patched in; an unknown source is left alone"""
+        patched = misc.patch_pythia8_main164_djrs(self.main164_djr_anchors)
+        self.assertIsNotNone(patched)
+        self.assertIn('pythia.settings.addFlag("InternalAnalysis:jetSamples", false);',
+                      patched)
+        self.assertIn('dynamic_pointer_cast<JetMatchingMadgraph>', patched)
+        self.assertIn('jetMatchingPtr->nMEpartons().first', patched)
+        self.assertIn('pythia.mode("Merging:nRecluster")', patched)
+        self.assertIn('<jetsample njet=', patched)
+        self.assertNotIn('<< "\\"" << "\\">', patched)
+        self.assertTrue(misc.pythia8_main164_writes_jet_sample_djrs(patched))
+        self.assertFalse(misc.pythia8_main164_writes_jet_sample_djrs(
+                                                    self.main164_djr_anchors))
+        self.assertIsNone(misc.patch_pythia8_main164_djrs('int main() {}\n'))
+
+    def test_jet_sample_djrs_build_a_patched_main164(self):
+        self.write_sources(source=self.main164_djr_anchors)
+        executable = misc.get_pythia8_main164(self.py8, jet_sample_djrs=True)
+        shared = os.path.join(self.examples, 'main164_djr')
+        self.assertEqual(executable, os.path.join(shared, 'main164'))
+        # the stub make copies the source: it is the patched one, which knows
+        # InternalAnalysis:jetSamples (the stock one does not)
+        self.assertIn('nMEpartons', open(executable).read())
+        self.assertTrue(misc.pythia8_main164_knows_jet_samples(executable))
+        self.assertFalse(misc.pythia8_main164_knows_jet_samples(
+            misc.get_pythia8_main164(self.py8)))
+        # Pythia8's own main164.cc is never modified
+        self.assertEqual(open(os.path.join(self.examples, 'main164.cc')).read(),
+                         self.main164_djr_anchors)
+        # built once
+        os.remove(os.path.join(shared, 'main164.cc'))
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         executable)
+        # the default one is not affected
+        self.assertEqual(misc.get_pythia8_main164(self.py8),
+                         os.path.join(self.examples, 'main164'))
+
+    def test_jet_sample_djrs_not_patched_when_not_needed_or_possible(self):
+        # a main164 that splits per jet sample by itself
+        self.write_sources(source=self.main164_djr_anchors +
+            '  pythia.settings.addFlag("InternalAnalysis:jetSamples", false);\n')
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         os.path.join(self.examples, 'main164'))
+        # a main164.cc the patch does not know: the stock one
+        os.remove(os.path.join(self.examples, 'main164'))
+        self.write_sources()
+        self.assertEqual(misc.get_pythia8_main164(self.py8, jet_sample_djrs=True),
+                         os.path.join(self.examples, 'main164'))
+        self.assertFalse(os.path.exists(os.path.join(self.examples, 'main164_djr')))
+
+    def test_jet_sample_djrs_with_another_hepmc_version(self):
+        self.write_sources(hepmc=2, source=self.main164_djr_anchors)
+        prefix = self.make_hepmc(3)
+        executable = misc.get_pythia8_main164(self.py8, hepmc_version=3,
+                                  hepmc_paths=[prefix], jet_sample_djrs=True)
+        self.assertEqual(executable, os.path.join(self.examples,
+                                                  'main164_hepmc3_djr', 'main164'))
+        self.assertIn('nMEpartons', open(executable).read())
 
     def test_same_hepmc_version_uses_the_default_main164(self):
         self.write_sources(hepmc=2)

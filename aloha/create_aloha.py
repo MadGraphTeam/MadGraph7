@@ -36,7 +36,7 @@ import aloha.aloha_lib as aloha_lib
 import aloha.aloha_object as aloha_object
 import aloha.aloha_parsers as aloha_parsers
 import aloha.aloha_fct as aloha_fct
-import models
+import madgraph.models as models
 try:
     import madgraph.iolibs.files as files
     import madgraph.various.misc as misc
@@ -464,7 +464,7 @@ in presence of majorana particle/flow violation"""
                     else:
                         massless = True
                         self.denominator = None
-                # 1D is a multiplication of standar propagator -> later
+                # 1D is a multiplication of standard propagator -> later
                 elif propa in [[],['1D']]:
                     massless = False
                     self.denominator = None
@@ -834,7 +834,7 @@ in presence of majorana particle/flow violation"""
 
 class CombineRoutineBuilder(AbstractRoutineBuilder):
     """A special builder for combine routine if needed to write those
-        explicitely.
+        explicitly.
     """
     def __init__(self, l_lorentz, model=None):
         """ initialize the run
@@ -1233,7 +1233,7 @@ class AbstractALOHAModel(dict):
                                          routines=routines)
             
         
-        # Build mutiple lorentz call
+        # Build multiple lorentz call
         for list_l_name, tag, outgoing in data:
             if len(list_l_name) ==1:
                 continue
@@ -1287,7 +1287,7 @@ class AbstractALOHAModel(dict):
                             
     def compute_aloha(self, builder, symmetry=None, routines=None, tag=[]):
         """ define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines."""
 
         name = builder.name
@@ -1319,7 +1319,7 @@ class AbstractALOHAModel(dict):
 
     def compute_aloha_without_kernel(self, builder, symmetry=None, routines=None):
         """define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines. 
         Compare to compute_aloha, each routines are computed independently.
         """
@@ -1358,7 +1358,7 @@ class AbstractALOHAModel(dict):
 #               pjoin(output_dir, 'additional_aloha_function.f') )
 #            else:
 #                logger.warning('''Some function present in the lorentz structure are 
-#                not recognized. Please edit the code to add the defnition of such function.''')
+#                not recognized. Please edit the code to add the definition of such a function.''')
 #                logger.info('list of missing fct: %s .' % \
 #                            ','.join([a[0] for a in aloha_lib.KERNEL.unknow_fct]))
 #        

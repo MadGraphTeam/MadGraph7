@@ -225,6 +225,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             "      INCLUDE 'genps.inc'",
             "      INCLUDE 'nexternal.inc'",
             "      INCLUDE 'maxamps.inc'",
+            "      INCLUDE 'vector.inc'",
             "      INCLUDE 'coupl.inc'",
             '      REAL*8 ZERO',
             '      PARAMETER (ZERO=0D0)',

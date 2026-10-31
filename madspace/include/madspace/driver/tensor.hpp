@@ -10,6 +10,8 @@
 #include <functional>
 #include <initializer_list>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace madspace {
@@ -74,6 +76,9 @@ public:
     const std::size_t* end() const { return &_values[_size]; }
     /// Append one more dimension.
     void push_back(std::size_t item) {
+        if (_size >= max_size) {
+            throw std::out_of_range("maximum dimension exceeded");
+        }
         _values[_size] = item;
         ++_size;
     }
@@ -95,7 +100,9 @@ public:
     }
 
 private:
-    std::size_t _values[max_size];
+    // zero beyond size(): a view with more dimensions than its tensor (see
+    // Tensor::view) must not read stale strides and shapes
+    std::size_t _values[max_size] = {};
     std::size_t _size;
 };
 
@@ -113,6 +120,9 @@ struct PackedTensorView {
     T* data;
     Sizes stride;
     Sizes shape;
+    /// Whether the data is a literal stored padded to the CPU SIMD vector size
+    /// (see @ref Tensor::is_simd_padded).
+    bool simd_padded = false;
 };
 
 /**
@@ -260,6 +270,8 @@ public:
     virtual void free(void* ptr) const = 0;
     /// Free a pointer returned by @ref allocate after the work queued on `stream`.
     virtual void free_on_stream(void* ptr, void* stream) const { free(ptr); }
+    /// Stream to free stream-ordered storage on if it has no known stream.
+    virtual void* default_free_stream() const { return nullptr; }
     /// Make work queued on `to` from now on wait for the work queued on `from`.
     virtual void order_streams(void* from, void* to) const {}
     /// Copy `size` bytes from `from` to `to`, both on this device.
@@ -278,6 +290,8 @@ public:
     virtual void sync_barrier() const {}
     /// The kind of device this is.
     virtual DeviceType device_type() const = 0;
+    /// Index of the device among those of its type, 0 for the CPU.
+    virtual int device_index() const { return 0; }
     /// Make this device current for the calling thread.
     virtual void activate() const = 0;
     /// One Adam optimizer update step; see @ref AdamOptimizer.
@@ -398,11 +412,14 @@ public:
         }) {
         impl->stream = stream;
         std::size_t stride_prod = 1;
-        bool first = true;
+        bool first = true, contiguous = true;
         impl->contiguous_dims = 0;
         for (auto [size_i, stride_i] : zip(shape, stride)) {
-            if (stride_i == stride_prod) {
+            // only the leading run of contiguous dimensions counts
+            if (contiguous && (stride_i == stride_prod || size_i == 1)) {
                 ++impl->contiguous_dims;
+            } else {
+                contiguous = false;
             }
             if (first && size_i == 1) {
                 impl->stride[0] = 0;
@@ -431,11 +448,7 @@ public:
     /// Single-value tensor holding `value`, allocated on `device`.
     template <ScalarType T>
     Tensor(T value, DevicePtr device, AllocHint hint = AllocHint::normal) :
-        impl(new TensorImpl{
-            std::is_same_v<T, me_int_t> ? DataType::dt_int : DataType::dt_float,
-            {1},
-            device
-        }) {
+        impl(new TensorImpl{dtype_of<T>(), {1}, device}) {
         auto size = init_stride();
         allocate(size, *device, hint);
         device->memcpy(impl->data, &value, sizeof(value));
@@ -446,11 +459,7 @@ public:
 
     template <ScalarType T, typename D>
     Tensor(T value, const D& device, AllocHint hint = AllocHint::normal) :
-        impl(new TensorImpl{
-            std::is_same_v<T, me_int_t> ? DataType::dt_int : DataType::dt_float,
-            {1},
-            device.device_ptr()
-        }) {
+        impl(new TensorImpl{dtype_of<T>(), {1}, device.device_ptr()}) {
         auto size = init_stride();
         allocate(size, device, hint);
         device.memcpy(impl->data, &value, sizeof(value));
@@ -464,8 +473,8 @@ public:
         impl(new TensorImpl{
             std::visit(
                 Overloaded{
-                    [](std::vector<me_int_t>) { return DataType::dt_int; },
-                    [](std::vector<double>) { return DataType::dt_float; },
+                    [](std::vector<me_int_t>) { return DataType::dt_int32; },
+                    [](std::vector<double>) { return DataType::dt_float64; },
                 },
                 std::get<1>(value)
             ),
@@ -514,6 +523,8 @@ public:
     /// Typed, dimension-checked view onto the data for direct element access.
     TensorView<T, dim> view() {
         check_impl();
+        check_view_dim(dim, impl->shape.size());
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -522,6 +533,8 @@ public:
     /// Typed, dimension-checked view onto the data for direct element access.
     const TensorView<T, dim> view() const {
         check_impl();
+        check_view_dim(dim, impl->shape.size());
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         return TensorView<T, dim>(data, impl->stride.data(), impl->shape.data());
     }
@@ -530,13 +543,16 @@ public:
     /// Like @ref view, with the leading `flatten_count` dimensions merged into one.
     PackedTensorView<T, dim> flat_view(std::size_t flatten_count) const {
         check_impl();
+        check_view_dtype<T>();
         T* data = static_cast<T*>(impl->data);
         if (flatten_count <= 1) {
-            return {data, impl->stride, impl->shape};
+            check_view_dim(dim, impl->shape.size());
+            return {data, impl->stride, impl->shape, impl->simd_padded};
         }
         if (flatten_count > impl->contiguous_dims) {
             throw std::invalid_argument("can only flatten contiguous dimensions");
         }
+        check_view_dim(dim, impl->shape.size() - flatten_count + 1);
         Sizes stride{1}, shape{1};
         std::size_t i = 0;
         for (; i < flatten_count; ++i) {
@@ -613,9 +629,11 @@ public:
     std::size_t dtype_size() const {
         check_impl();
         switch (impl->dtype) {
-        case DataType::dt_int:
+        case DataType::dt_int32:
             return sizeof(me_int_t);
-        case DataType::dt_float:
+        case DataType::dt_float32:
+            return sizeof(float);
+        case DataType::dt_float64:
             return sizeof(double);
         case DataType::batch_sizes:
             return 0;
@@ -628,7 +646,7 @@ public:
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
     /// Releases this reference; the tensor is empty afterwards.
-    void reset() { reset_on_stream(stream().value_or(0)); }
+    void reset() { reset_on_stream(stream()); }
 
     template <typename D>
     /// Releases this reference on `device`; the tensor is empty afterwards.
@@ -640,8 +658,9 @@ public:
         impl = nullptr;
     }
 
-    /// Releases this reference, freeing stream-ordered storage on `stream`.
-    void reset_on_stream(std::uintptr_t stream) {
+    /// Releases this reference, freeing stream-ordered storage on `stream` or, if
+    /// unknown, on the device's default free stream.
+    void reset_on_stream(std::optional<std::uintptr_t> stream) {
         if (impl == nullptr) {
             return;
         }
@@ -683,6 +702,9 @@ public:
     }
     /// A copy of this tensor on the CPU, or `*this` if it is already there.
     Tensor cpu() const { return cpu(*impl->device); }
+    /// A contiguous CPU copy with the element type converted to `dtype`, or the
+    /// CPU tensor itself if it already has that type.
+    Tensor cast(DataType dtype) const;
 
     template <typename D>
     /// Sets every element to zero.
@@ -733,7 +755,8 @@ public:
         return copy(*impl->device, hint);
     }
 
-    /// Whether the elements are stored without gaps in row-major order.
+    /// Whether the elements are stored without gaps in column-major (Fortran)
+    /// order, i.e. the first index varies fastest.
     bool is_contiguous() const { return impl->contiguous_dims == impl->shape.size(); }
 
     /// Number of leading dimensions that are contiguous.
@@ -784,6 +807,30 @@ public:
         return impl->ref_count.load() == 1;
     }
 
+    /// Maximum number of stored elements (value elements times lanes) of a
+    /// literal for which @ref simd_padded_literal pads the storage.
+    static constexpr std::size_t max_simd_padded_size = 512;
+
+    /**
+     * Literal constant for the CPU SIMD kernels.
+     *
+     * The tensor has batch size one and batch stride zero like any literal,
+     * but each element is stored `lanes` times in consecutive memory, one
+     * copy per SIMD vector lane, so that the vectorized kernels can read it
+     * with contiguous vector loads. Scalar code sees an ordinary broadcast
+     * tensor. Literals with more than @ref max_simd_padded_size stored
+     * elements, or `lanes` of one, are stored without padding.
+     */
+    static Tensor
+    simd_padded_literal(const LiteralValue& value, std::size_t lanes, DevicePtr device);
+
+    /// Whether this is a literal stored padded to the SIMD vector size, see
+    /// @ref simd_padded_literal. Views and copies of it are not padded.
+    bool is_simd_padded() const {
+        check_impl();
+        return impl->simd_padded;
+    }
+
 private:
     struct TensorImpl {
         DataType dtype;
@@ -799,6 +846,7 @@ private:
         SizeVec batch_sizes;
         bool stream_ordered = false;
         std::optional<std::uintptr_t> stream;
+        bool simd_padded = false;
 
         template <typename D>
         void reset(const D& device) {
@@ -816,13 +864,17 @@ private:
             delete this;
         }
 
-        void reset_on_stream(std::uintptr_t stream) {
+        void reset_on_stream(std::optional<std::uintptr_t> stream) {
             if (ref_count.fetch_sub(1, std::memory_order_acq_rel) != 1) {
                 return;
             }
             if (owns_data && data != nullptr) {
                 if (stream_ordered) {
-                    device->free_on_stream(data, reinterpret_cast<void*>(stream));
+                    device->free_on_stream(
+                        data,
+                        stream ? reinterpret_cast<void*>(*stream)
+                               : device->default_free_stream()
+                    );
                 } else {
                     device->free(data);
                 }
@@ -856,6 +908,28 @@ private:
     void check_impl() const {
         if (impl == nullptr) {
             throw std::runtime_error("empty tensor");
+        }
+    }
+
+    // a view of more dimensions than the tensor has reads strides and shapes that were
+    // never set: out-of-bounds accesses, silent on one platform, a memory fault on
+    // another (e.g. a kernel taking FIn<T, 1> for a tensor of declared rank 0)
+    static void check_view_dim(std::size_t view_dim, std::size_t tensor_dim) {
+        if (view_dim > tensor_dim) {
+            throw std::invalid_argument(
+                "view of dimension " + std::to_string(view_dim) +
+                " of a tensor of dimension " + std::to_string(tensor_dim)
+            );
+        }
+    }
+
+    // reading a tensor through the wrong element type gives garbage without an error
+    template <typename T>
+    void check_view_dtype() const {
+        if constexpr (ScalarType<T>) {
+            if (impl->dtype != dtype_of<T>() && impl->dtype != DataType::batch_sizes) {
+                throw std::invalid_argument("view element type does not match dtype");
+            }
         }
     }
 

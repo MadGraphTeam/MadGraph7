@@ -44,8 +44,9 @@ import madgraph.various.misc as misc
 import MadSpin.decay as madspin
 import madgraph.various.lhe_parser as lhe_parser
 import MadSpin.interface_madspin as interface_madspin
-import models.check_param_card as check_param_card
-import models.import_ufo as import_ufo
+import madmatrix.density as madmatrix_density
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.import_ufo as import_ufo
 
 
 from madgraph import MG5DIR, MadGraph5Error
@@ -81,7 +82,9 @@ def _borrow_decision_helpers(namespace):
                  '_announce_decay_output',
                  # sequential_accept_reject deals identical parents their
                  # channels once per production event, before any draw
-                 '_positional_deal', '_dealt_rank'):
+                 '_positional_deal', '_dealt_rank',
+                 # the offshell mass stage reshuffles with the recoil floor
+                 '_offshell_min_recoil', '_recoil_massless', '_model_massless'):
         namespace[name] = inspect.getattr_static(
             interface_madspin.MadSpinInterface, name)
 
@@ -1132,17 +1135,18 @@ class TestOnshellProductionNorm(unittest.TestCase):
             self.assertEqual(bool(stub.density_calls), boosted, kwargs)
             self.assertEqual(bool(stub.me_calls), not boosted, kwargs)
 
-    def test_the_density_runs_on_the_round_tripped_copy(self):
-        """rho_on is taken on ``Event(str(production))``, like
+    def test_the_density_runs_on_a_copy(self):
+        """rho_on is taken on ``production.copy()``, like
         ``_upfront_production``'s ``prod_off``, so both sides of the ratio see
-        the same %.10e truncation -- and the frame is re-derived from that copy
-        rather than carried over from the original.
+        the same momenta -- and the frame is re-derived from that copy rather
+        than carried over from the original.
 
-        The re-derivation is not cosmetic. ``frame_id`` selecting a single leg
-        stores that leg's momentum in ``rest_leg_mom``, and it is later matched
-        with ``==`` on floats (``_decay_frame_rest_leg``), so a boost built from
-        the untruncated original would silently stop matching and leave the leg
-        off the branch that forces it exactly to rest.
+        ``frame_id`` selecting a single leg stores that leg's momentum in
+        ``rest_leg_mom``, and it is later matched with ``==`` on floats
+        (``_decay_frame_rest_leg``). The copy used to be ``Event(str())``, which
+        truncates every momentum to %.10e, and a boost built from the original
+        then silently stopped matching; a structural copy carries the original's
+        doubles, so the leg matches whichever of the two the frame came from.
         """
         stub = self._stub(frame_id=8, prodpol={6: (0,)})   # leg 3 alone
         production = self._production()
@@ -1155,8 +1159,8 @@ class TestOnshellProductionNorm(unittest.TestCase):
         copied = [p for p in event if int(p.status) == 1][0]
         self.assertEqual(rest, (copied.E, copied.px, copied.py, copied.pz))
         original = [p for p in production if int(p.status) == 1][0]
-        self.assertNotEqual(rest, (original.E, original.px, original.py,
-                                   original.pz))
+        self.assertEqual(rest, (original.E, original.px, original.py,
+                                original.pz))
 
     def test_the_production_event_is_left_alone(self):
         """The norm is called on an event the caller goes on to reshuffle, so
@@ -1216,7 +1220,7 @@ class TestEvent(unittest.TestCase):
     
     
     def test_madspin_event(self):
-        """check the reading/writting of the events inside MadSpin"""
+        """check the reading/writing of the events inside MadSpin"""
         
         inputfile = open(pjoin(MG5DIR, 'tests', 'input_files', 'madspin_event.lhe'))
         
@@ -7067,6 +7071,275 @@ def _rambo_event(n, sqrts, masses, rng, boost=0.0):
     return evt
 
 
+class TestDecayLoopShortcuts(unittest.TestCase):
+    """The work the accept/reject no longer redoes on every trial: projections
+    with nothing to project, what a trial copy of the production event shares
+    with the event, the permutations of particles that are not identical, and
+    the python boost of a decay whose density the library boosts."""
+
+    MI = interface_madspin.MadSpinInterface
+
+    def _shortcuts(self, mc_mass_shell=False):
+        outer = self
+
+        class Stub(object):
+            _project_massless = outer.MI._project_massless
+            _hoisted_production = outer.MI._hoisted_production
+            _all_momenta = outer.MI._all_momenta
+            _decay_lab_boost = outer.MI._decay_lab_boost
+
+            def __init__(self):
+                self._input_on_mc_mass_shell = mc_mass_shell
+                self._revert_merged = {}
+                self.model = None
+                self.basis_calls = []
+                self.norm_calls = []
+
+            def _density_basis(self, production, decays_key):
+                self.basis_calls.append(production)
+                finals = [p for p in production if int(p.status) == 1]
+                return {'decays_key': decays_key, 'init_part': finals,
+                        'position': [3, 4]}
+
+            def _onshell_production_norm(self, production, static):
+                self.norm_calls.append(production)
+                return 7.0
+        return Stub()
+
+    def test_projection_only_on_a_monte_carlo_mass_shell(self):
+        momenta = [(1., 0., 0., 1.), (1., 0., 0., -1.), (1., .5, 0., 0.), (1., -.5, 0., 0.)]
+        called = []
+        original = lhe_parser.project_massless_partons
+        lhe_parser.project_massless_partons = lambda p, *a, **k: called.append(p) or p
+        try:
+            lo = self._shortcuts(mc_mass_shell=False)
+            self.assertIs(lo._project_massless(momenta, [21, 21, 6, -6], 2), momenta)
+            nlo = self._shortcuts(mc_mass_shell=True)
+            nlo._project_massless(momenta, [21, 21, 6, -6], 2, final_state=True)
+            self.assertEqual(len(called), 1)
+            # a decay was generated by MadSpin: never on a Monte-Carlo shell
+            decay = momenta[1:]
+            self.assertIs(nlo._project_massless(decay, [6, 5, 24], 1), decay)
+            self.assertEqual(len(called), 1)
+        finally:
+            lhe_parser.project_massless_partons = original
+
+    def test_hoisted_production_is_shared_by_the_copies(self):
+        stub = self._shortcuts()
+        source = _rambo_event(2, 800., [173., 173.], random.Random(3), boost=0.3)
+        trials = [source.copy(), source.copy()]
+        for trial in trials:
+            static, norm = stub._hoisted_production(source, trial, (6, -6))
+            self.assertEqual(norm, 7.0)
+            # the decaying particles are the copy's own, the ones it reshuffles
+            self.assertEqual([trial.index(p) for p in static['init_part']], [2, 3])
+            self.assertTrue(all(p.event is trial for p in static['init_part']))
+            self.assertEqual(static['position'], [3, 4])
+        self.assertEqual(stub.basis_calls, [source])
+        self.assertEqual(stub.norm_calls, [source])
+        # another set of decaying pdgs has its own entry
+        stub._hoisted_production(source, trials[0], (6,))
+        self.assertEqual(len(stub.basis_calls), 2)
+
+    def test_all_momenta_without_identical_particles(self):
+        stub = self._shortcuts()
+        tt = _rambo_event(2, 800., [173., 173.], random.Random(4), boost=0.2)
+        order = ((21, 21), (6, -6))
+        self.assertEqual(stub._all_momenta(tt, order), tt.get_all_momenta(order))
+        # a repeated pdg: get_all_momenta decides, as before
+        tttt = _rambo_event(4, 1500., [173.] * 4, random.Random(5), boost=0.2)
+        order = ((21, 21), (6, -6, 6, -6))
+        calls = []
+        full = tttt.get_all_momenta
+        tttt.get_all_momenta = lambda *a, **k: calls.append(a) or full(*a, **k)
+        self.assertEqual(stub._all_momenta(tttt, order), full(order))
+        self.assertEqual(len(calls), 1)
+
+    def test_decay_boost_left_to_the_library(self):
+        stub = self._shortcuts()
+        parent = lhe_parser.FourMomentum(250., 30., 40., 120.)
+
+        class Library(madmatrix_density.MadDensityLibrary):
+            def __init__(self, boosted):
+                self.boosted = boosted
+
+            @property
+            def supports_boost(self):
+                return self.boosted
+
+        stub.f2py_module = [None, Library(True)]
+        self.assertEqual(stub._decay_lab_boost(parent, None), (250., 30., 40., 120.))
+        # a frame_id boost, an old library, the fortran: boosted in python
+        self.assertIsNone(stub._decay_lab_boost(parent, parent))
+        stub.f2py_module = [None, Library(False)]
+        self.assertIsNone(stub._decay_lab_boost(parent, None))
+        stub.f2py_module = [None, object()]
+        self.assertIsNone(stub._decay_lab_boost(parent, None))
+
+
+class TestDensityBackendChoice(unittest.TestCase):
+    """decay_all_events_onshell.density_backend: madmatrix, unless the Fortran
+    is asked for, the production is loop induced (MadLoop) or the sample uses
+    the complex-mass scheme, whose madmatrix parameters do not compile."""
+
+    @staticmethod
+    def _choose(commandline, backend='madmatrix', cms=False, with_cmd=True):
+        stub = type('Stub', (), {})()
+        stub.options = {'density_backend': backend}
+        stub.mgcmd = type('Cmd', (), {'options': {'complex_mass_scheme': cms}})() \
+                     if with_cmd else None
+        return madspin.decay_all_events_onshell.density_backend(stub, commandline)
+
+    def test_choice(self):
+        self.assertEqual(self._choose('generate p p > t t~'), 'madmatrix')
+        self.assertEqual(self._choose('generate p p > t t~', backend='fortran'),
+                         'fortran')
+        self.assertEqual(self._choose('generate g g > z z [sqrvirt=QCD]'), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', with_cmd=False),
+                         'madmatrix')
+
+
+class TestDensityOutputFallback(unittest.TestCase):
+    """decay_all_events_onshell.output_density_me builds a madmatrix output
+    right away, while its processes are still the current ones, so that one
+    which does not compile (e.g. a model whose parameters the C++ code
+    generation cannot write) is replaced by the Fortran output."""
+
+    def _output(self, compile_error=None, scale_dependence=()):
+        import tempfile
+        import json
+        commands, builds = [], []
+
+        class Cmd(object):
+            options = {'nb_core': 1}
+
+            def exec_cmd(self, line, precmd=True):
+                commands.append(line)
+                if line.startswith('output standalone '):
+                    # the process table the madmatrix exporter writes
+                    sub = os.path.join(line.split()[2], 'SubProcesses')
+                    os.makedirs(sub, exist_ok=True)
+                    with open(os.path.join(sub, 'madmatrix_processes.json'), 'w') as f:
+                        json.dump({'subprocesses': [
+                            {'path': 'P1_gg_ttx',
+                             'scale_dependence': list(scale_dependence)}]}, f)
+
+        stub = type('Stub', (), {})()
+        stub.mgcmd = Cmd()
+        stub.mscmd = type('MSCmd', (), {'_ms_run_id': 3})()
+        stub.density_libtag = \
+            madspin.decay_all_events_onshell.density_libtag.__get__(stub)
+
+        def fake_compile(args, **opts):
+            builds.append((list(args), opts.get('cwd')))
+            if compile_error:
+                raise Exception(compile_error)
+
+        path = tempfile.mkdtemp()
+        original = madspin.misc.compile
+        madspin.misc.compile = fake_compile
+        try:
+            backend = madspin.decay_all_events_onshell.output_density_me(
+                stub, path, 'madmatrix', 'p')
+        finally:
+            madspin.misc.compile = original
+            if os.path.exists(path):
+                shutil.rmtree(path)
+        return backend, commands, builds, path
+
+    def test_built_right_away(self):
+        backend, commands, builds, path = self._output()
+        self.assertEqual(backend, 'madmatrix')
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertIn('LIBTAG=_ms3p', builds[0][0])
+        self.assertEqual(builds[0][1], os.path.join(path, 'SubProcesses'))
+
+    def test_build_failure_falls_back_to_fortran(self):
+        backend, commands, builds, _ = self._output(
+            "Parameters.h: error: use of undeclared identifier 'COND'")
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(len(builds), 1)
+        self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertTrue(commands[1].startswith('output standalone_fortran '))
+
+    def test_scale_dependence_falls_back_to_fortran(self):
+        """Couplings depending on MU_R: madmatrix would keep the card's MU_R
+        where the Fortran output takes each event's scale, so the Fortran
+        output is written instead, before anything is compiled."""
+        backend, commands, builds, _ = self._output(
+            scale_dependence=['running elements of the model'])
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(builds, [])
+        self.assertTrue(commands[1].startswith('output standalone_fortran '))
+
+
+class TestReusedDirectoryVersion(unittest.TestCase):
+    """_check_reused_version: a reused ms_dir must have been built by this
+    MadSpin version (cache format and MadGraph version); one stamped by
+    another version, or not stamped at all, is refused once it holds cached
+    material."""
+
+    MI = interface_madspin.MadSpinInterface
+
+    def setUp(self):
+        import tempfile
+        self.directory = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def _stub(self, ms_dir=True):
+        MI = self.MI
+
+        class Stub(object):
+            VERSION_STAMP = MI.VERSION_STAMP
+            MS_DIR_FORMAT = MI.MS_DIR_FORMAT
+            CACHED_MATERIAL = MI.CACHED_MATERIAL
+            _reused_directory = MI._reused_directory
+            _holds_cached_material = MI._holds_cached_material
+            _ms_dir_version = MI._ms_dir_version
+            _check_reused_version = MI._check_reused_version
+
+        stub = Stub()
+        stub.options = {'ms_dir': self.directory if ms_dir else '',
+                        'use_old_dir': False, 'curr_dir': self.directory}
+        return stub
+
+    def _stamp(self):
+        path = os.path.join(self.directory, self.MI.VERSION_STAMP)
+        return open(path).read() if os.path.exists(path) else None
+
+    def _cache(self):
+        open(os.path.join(self.directory, 'max_wgt'), 'w').write('1.0\n')
+
+    def test_first_use_is_stamped_and_reused(self):
+        stub = self._stub()
+        stub._check_reused_version()
+        self.assertEqual(self._stamp(), stub._ms_dir_version())
+        self._cache()
+        stub._check_reused_version()          # same version: reused
+
+    def test_unstamped_cache_is_refused(self):
+        self._cache()
+        self.assertRaisesRegex(interface_madspin.MadSpinStaleDirectory,
+                               'did not record its version',
+                               self._stub()._check_reused_version)
+
+    def test_other_version_is_refused(self):
+        self._cache()
+        open(os.path.join(self.directory, self.MI.VERSION_STAMP), 'w').write(
+            'format 0\nmadgraph 0.0.0\n')
+        self.assertRaisesRegex(interface_madspin.MadSpinStaleDirectory,
+                               'format 0, madgraph 0.0.0',
+                               self._stub()._check_reused_version)
+
+    def test_nothing_written_without_ms_dir(self):
+        self._stub(ms_dir=False)._check_reused_version()
+        self.assertIsNone(self._stamp())
+
+
 class TestMassShuffleKernel(unittest.TestCase):
     """Event.mass_shuffle_jacobian / mass_shuffle_frame: the RAMBO reshuffling
     jacobian evaluated from n numbers per particle, with no Event, no
@@ -7082,11 +7355,11 @@ class TestMassShuffleKernel(unittest.TestCase):
     POLE, WIDTH = 172.5, 1.4915
 
     def _frame_of(self, event):
-        """The frame the shipped path sees: _production_jacobian_for re-parses
-        the event from str(), which truncates every momentum to %.10e, so the
-        comparison is only algorithmic if the kernel starts from the same
-        truncated numbers."""
-        probe = lhe_parser.Event(str(event))
+        """The frame the shipped path sees: _production_jacobian_for works on
+        event.copy(), so the comparison is only algorithmic if the kernel starts
+        from the same numbers (it re-parsed str() once, which truncated every
+        momentum to %.10e)."""
+        probe = event.copy()
         finals = [p for p in probe if int(p.status) == 1]
         frame = lhe_parser.Event.mass_shuffle_frame(
             [lhe_parser.FourMomentum(p) for p in finals], probe.sqrts)
@@ -7785,6 +8058,8 @@ class TestPAUpFrontMass(unittest.TestCase):
                                 'density_keep_jacobian': keep_jac,
                                 'sequential_debug': False,
                                 'fixed_order': False,
+                                # t t~: no massless recoil, the floor is inert
+                                'offshell_min_recoil': 0.5,
                                 'beampol': [0., 0.], 'frame_id': 6})
                 # Z_k(m) = f(m) = exp(ALPHA * ln(m/pole)) is exactly the
                 # log-quadratic the tabulation fits, so the "perfect table"
@@ -8460,6 +8735,383 @@ class TestSequentialPoolLadder(unittest.TestCase):
         options = interface_madspin.MadSpinOptions()
         self.assertNotIn('sequential_decay', options)
         self.assertNotIn('keep_weight_for_polarization', options)
+
+
+class TestJointScanProductionDensity(unittest.TestCase):
+    """Which production density the joint max-weight scan contracts each draw
+    against.
+
+    Under PA/onshell rho_prod is evaluated at the on-shell momenta, so the scan
+    evaluates it on the first draw of a production event and reuses it. Offshell
+    (madspin/full) rho_prod is evaluated at the momenta reshuffled onto the
+    draw's own virtuality, so every draw needs its own -- which is what the
+    unweighting loop does. The scan once reused the first draw's rho there too,
+    and weighted every trial of the event by rho(m_1)/rho(m_j): on u u~ > z g,
+    one first draw near sqrt(shat) put a whole production event at 172x the
+    mean weight, and that event alone set the bound (152 trials per event).
+    """
+
+    EVENT = TestUnweightRangeWeightPaths.EVENT % 1.0
+
+    class _Stub(object):
+        _joint_maxwgt_range = \
+            interface_madspin.MadSpinInterface._joint_maxwgt_range
+
+        def __init__(self, spinmode):
+            self.options = interface_madspin.MadSpinOptions()
+            self.options['spinmode'] = spinmode
+            self.options['fixed_order'] = False
+            self.generate_all = type('GenerateAll', (), {'mode': 'density'})()
+            self.cached = []   # prod_density_cached, per call
+
+        def _density_pole_approximation(self):
+            return self.options['spinmode'] in ('PA', 'onshell')
+
+        def _density_needs_reshuffle(self, density_method):
+            return False
+
+        def _pure_interference(self):
+            return ''
+
+        def _weighted_decay(self):
+            return False
+
+        def _frame_boost(self, event):
+            return None
+
+        def get_decay_from_file(self, production, evt_decayfile, nb_remain):
+            return {}
+
+        def batch_decay_densities(self, production, trials):
+            return None     # take the per-trial path for every draw
+
+        def get_onshell_evt_and_wgt(self, production, decays, decay_dict,
+                                    prod_density_cached=None,
+                                    build_event=True, decay_densities=None):
+            self.cached.append(prod_density_cached)
+            return None, 1.0 + len(self.cached), 'rho%d' % len(self.cached)
+
+    def _scan(self, spinmode, nb_ps_point=5):
+        stub = self._Stub(spinmode)
+        events = [lhe_parser.Event(self.EVENT) for _ in range(2)]
+        per_event = stub._joint_maxwgt_range(events, 0, 2, {}, {}, 2,
+                                             nb_ps_point)
+        return stub, per_event
+
+    def test_offshell_evaluates_rho_on_every_draw(self):
+        for spinmode in ('madspin', 'full'):
+            stub, per_event = self._scan(spinmode)
+            self.assertEqual(len(stub.cached), 10)
+            self.assertEqual(stub.cached, [None] * 10, spinmode)
+            # the per-event maximum is over the draws' own weights
+            self.assertEqual(per_event, [6.0, 11.0])
+
+    def test_pole_approximation_reuses_the_onshell_rho(self):
+        for spinmode in ('PA', 'onshell'):
+            stub, per_event = self._scan(spinmode)
+            self.assertEqual(stub.cached,
+                             [None] + ['rho1'] * 4 + [None] + ['rho6'] * 4,
+                             spinmode)
+            self.assertEqual(per_event, [6.0, 11.0])
+
+
+class TestOffshellRecoilFloor(unittest.TestCase):
+    """offshell_min_recoil: the cut on RAMBO's chi that keeps the offshell
+    weight bounded when a massless particle recoils against the resonances.
+
+    For u u~ > z g at fixed shat the reshuffle onto a virtuality m scales the
+    gluon momentum by chi = (shat - m^2)/(shat - M^2) exactly, and the offshell
+    weight grows like 1/chi as m -> sqrt(shat) -- a divergent mean, which is
+    what made the max-weight bound of that process anything from 200 to 3600
+    times the mean weight.
+    """
+
+    MZ, SQRTS, BOOST = 91.188, 120.0, 0.6
+
+    def _event(self, gluon_mass=0.0):
+        """u u~ > z g at sqrt(shat) = SQRTS, the gluon at 60 degrees in the
+        partonic rest frame, boosted along z by BOOST (rapidity)."""
+        s = self.SQRTS ** 2
+        mg2 = gluon_mass ** 2
+        p = math.sqrt((s - (self.MZ + gluon_mass) ** 2)
+                      * (s - (self.MZ - gluon_mass) ** 2)) / (2 * self.SQRTS)
+        c, sn = 0.5, math.sqrt(0.75)
+        ch, sh = math.cosh(self.BOOST), math.sinh(self.BOOST)
+
+        def boosted(E, px, py, pz):
+            return (px, py, ch * pz + sh * E, ch * E + sh * pz)
+
+        half = self.SQRTS / 2
+        rows = [(2, -1, boosted(half, 0, 0, half), 0.0),
+                (-2, -1, boosted(half, 0, 0, -half), 0.0),
+                (23, 1, boosted(math.sqrt(p * p + self.MZ ** 2),
+                                -p * sn, 0, -p * c), self.MZ),
+                (21, 1, boosted(math.sqrt(p * p + mg2), p * sn, 0, p * c),
+                 gluon_mass)]
+        lines = ['<event>', ' 4  1 +1.0e+00 1.0e+02 7.5e-03 1.3e-01']
+        for pid, status, (px, py, pz, E), mass in rows:
+            mothers = '0 0' if status == -1 else '1 2'
+            lines.append(' %d %d %s 0 0 %.10e %.10e %.10e %.10e %.10e 0. 1.'
+                         % (pid, status, mothers, px, py, pz, E, mass))
+        lines.append('</event>')
+        return lhe_parser.Event('\n'.join(lines))
+
+    def _chi(self, m):
+        return (self.SQRTS ** 2 - m ** 2) / (self.SQRTS ** 2 - self.MZ ** 2)
+
+    def _with_mass(self, m, gluon_mass=0.0):
+        event = self._event(gluon_mass)
+        for particle in event:
+            if particle.pid == 23:
+                particle.new_mass = m
+        return event
+
+    def test_mass_shuffle_returns_chi(self):
+        event = self._event()
+        finals = [lhe_parser.FourMomentum(p) for p in event
+                  if int(p.status) == 1]
+        for m in (80.0, self.MZ, 105.0, 118.0):
+            _, jac, chi = lhe_parser.Event.mass_shuffle(
+                list(finals), event.sqrts, [m, 0.0], return_chi=True)
+            self.assertAlmostEqual(chi, self._chi(m), places=6)
+            # the default return is unchanged
+            _, jac2 = lhe_parser.Event.mass_shuffle(
+                list(finals), event.sqrts, [m, 0.0])
+            self.assertAlmostEqual(jac / jac2, 1.0, places=12)
+
+    def test_reshuffle_refuses_a_mass_set_below_the_floor(self):
+        """chi(118) = 0.30: refused, reported as 0, event untouched -- and not
+        retried, although _allow_retry is on (a retry would resample the mass
+        and silently change the distribution the floor defines)."""
+        event = self._with_mass(118.0)
+        before = str(event)
+        self.assertEqual(event.reshuffle_production(min_recoil=0.5), 0)
+        self.assertEqual(str(event), before)
+        self.assertEqual([p.new_mass for p in event if p.pid == 23], [118.0])
+
+    def test_reshuffle_above_the_floor_is_unchanged(self):
+        """chi(105) = 0.60: the floor is inert, the jacobian and momenta are
+        the ones the unfloored reshuffle gives."""
+        free, floored = self._with_mass(105.0), self._with_mass(105.0)
+        self.assertEqual(floored.reshuffle_production(min_recoil=0.5),
+                         free.reshuffle_production())
+        self.assertEqual(str(floored), str(free))
+        # and the floor never reaches the pole: chi >= 1/2 allows
+        # m^2 <= (shat + M^2)/2
+        edge = math.sqrt((self.SQRTS ** 2 + self.MZ ** 2) / 2)
+        self.assertGreater(edge, self.MZ)
+        self.assertNotEqual(
+            self._with_mass(0.999 * edge).reshuffle_production(min_recoil=0.5),
+            0)
+
+    class _Stub(object):
+        _offshell_min_recoil = \
+            interface_madspin.MadSpinInterface._offshell_min_recoil
+        _recoil_massless = interface_madspin.MadSpinInterface._recoil_massless
+        _model_massless = interface_madspin.MadSpinInterface._model_massless
+
+        def __init__(self, floor, model=None):
+            self.options = interface_madspin.MadSpinOptions()
+            self.options['offshell_min_recoil'] = floor
+            self.model = model
+
+    class _Model(object):
+        """The two questions _model_leg_is_massless asks: a gluon massless,
+        everything else massive."""
+        def get(self, key):
+            return None
+
+        def get_particle(self, pdg):
+            return {'mass': 'ZERO' if abs(pdg) == 21 else 'MZ'}
+
+    def test_the_default_floor(self):
+        # opt-in: the floor cuts the off-shell tail, so it is off unless asked
+        self.assertEqual(
+            interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.)
+
+    def test_the_floor_option(self):
+        self.assertEqual(self._Stub(0.5)._offshell_min_recoil(), 0.5)
+        self.assertEqual(self._Stub(0)._offshell_min_recoil(), 0.)
+        self.assertEqual(self._Stub(-1)._offshell_min_recoil(), 0.)
+
+    def test_floor_applies_to_a_massless_recoil_only(self):
+        """chi(118) = 0.30: refused with a massless gluon recoiling; a 5 GeV
+        recoil (a t t~-like threshold) keeps a bounded weight and the floor is
+        inert there (chi ~ 0.24 at 112 GeV)."""
+        self.assertEqual(
+            self._with_mass(118.0).reshuffle_production(min_recoil=0.5), 0)
+        heavy, free = (self._with_mass(112.0, gluon_mass=5.0) for _ in range(2))
+        jac = heavy.reshuffle_production(min_recoil=0.5)
+        self.assertNotEqual(jac, 0)
+        self.assertEqual(jac, free.reshuffle_production())
+
+    def test_floor_applies_to_a_recoil_on_a_shower_mass_shell(self):
+        """aMC@NLO writes its gluons with HERWIG6's 0.75 GeV Monte-Carlo
+        mass: massless all the same for the model (_recoil_massless), and soft
+        all the same when the Z is drawn up to sqrt(shat)."""
+        stub = self._Stub(0.5, self._Model())
+        self.assertNotEqual(self._with_mass(118.0, gluon_mass=0.75)
+                            .reshuffle_production(min_recoil=0.5), 0)
+        self.assertEqual(self._with_mass(118.0, gluon_mass=0.75)
+                         .reshuffle_production(
+                             min_recoil=0.5,
+                             recoil_massless=stub._recoil_massless), 0)
+
+    def _decayed_top_event(self):
+        """u u~ > t t~ at sqrt(shat) = 360 with the top already decayed in the
+        event, t (status 2) > b w+ (status 2) > u d~; MadSpin decays the t~."""
+        FM = lhe_parser.FourMomentum
+
+        def two_body(P, m1, m2, cth, phi):
+            M = P.mass
+            q = math.sqrt((M * M - (m1 + m2) ** 2) * (M * M - (m1 - m2) ** 2)) / (2 * M)
+            sth = math.sqrt(1 - cth * cth)
+            d = (sth * math.cos(phi), sth * math.sin(phi), cth)
+            a = FM(E=math.sqrt(m1 * m1 + q * q), px=q * d[0], py=q * d[1], pz=q * d[2])
+            b = FM(E=math.sqrt(m2 * m2 + q * q), px=-q * d[0], py=-q * d[1], pz=-q * d[2])
+            return a.boost(P), b.boost(P)
+
+        b1, b2 = FM(E=180., pz=180.), FM(E=180., pz=-180.)
+        top, antitop = two_body(b1 + b2, 172.6, 173.0, 0.35, 0.2)
+        bottom, w = two_body(top, 4.7, 80.2, -0.5, 1.1)
+        up, downbar = two_body(w, 0., 0., 0.1, 2.0)
+        rows = [(2, -1, 0, 0, b1, 0.), (-2, -1, 0, 0, b2, 0.),
+                (6, 2, 1, 2, top, 172.6), (-6, 1, 1, 2, antitop, 173.0),
+                (5, 1, 3, 3, bottom, 4.7), (24, 2, 3, 3, w, 80.2),
+                (2, 1, 6, 6, up, 0.), (-1, 1, 6, 6, downbar, 0.)]
+        lines = ['<event>', ' %d  1 +1.0e+00 1.0e+02 7.5e-03 1.3e-01' % len(rows)]
+        for pid, status, m1, m2, p, mass in rows:
+            lines.append(' %d %d %d %d 0 0 %.10e %.10e %.10e %.10e %.10e 0. 9.'
+                         % (pid, status, m1, m2, p.px, p.py, p.pz, p.E, mass))
+        lines.append('</event>')
+        return lhe_parser.Event('\n'.join(lines))
+
+    def test_floor_ignores_the_daughters_of_a_decayed_resonance(self):
+        """RAMBO rescales the massive t and t~ only: the massless u d~ of the
+        top's W move rigidly with the top and never go soft, so a t~ drawn
+        near threshold (chi(185) ~ 0.41) is not refused."""
+        event, free = self._decayed_top_event(), self._decayed_top_event()
+        for e in (event, free):
+            e[3].new_mass = 185.0
+        jac = event.reshuffle_production(min_recoil=0.5)
+        self.assertNotEqual(jac, 0)
+        self.assertEqual(jac, free.reshuffle_production())
+        self.assertEqual(str(event), str(free))
+
+    def test_a_redrawn_mass_set_keeps_the_floor(self):
+        """A first mass set above sqrt(shat) is redrawn (_allow_retry); the
+        redrawn one -- chi(118) = 0.30 -- is refused like any other."""
+        event = self._with_mass(125.0)
+        for particle in event:
+            if particle.pid == 23:
+                particle.reshuffle_info = (self.MZ, 2.4414, 54.567, 125.0)
+        original = inspect.getattr_static(lhe_parser.Event, 'generate_random_mass')
+        lhe_parser.Event.generate_random_mass = staticmethod(lambda *args: 118.0)
+        try:
+            self.assertEqual(event.reshuffle_production(min_recoil=0.5), 0)
+        finally:
+            lhe_parser.Event.generate_random_mass = original
+
+    # -- where the two offshell paths consume it ------------------------
+
+    DECAY = """<event>
+ 3  1 +1.0e+00 9.1e+01 7.5e-03 1.3e-01
+ 23 -1 0 0 0 0 0.0 0.0 0.0 91.188 91.188 0. 1.
+ -11 1 1 1 0 0 0.0 0.0 45.594 45.594 0.0 0. 1.
+ 11 1 1 1 0 0 0.0 0.0 -45.594 45.594 0.0 0. 1.
+</event>"""
+
+    class _PathStub(object):
+        _offshell_min_recoil = \
+            interface_madspin.MadSpinInterface._offshell_min_recoil
+        _recoil_massless = interface_madspin.MadSpinInterface._recoil_massless
+        _model_massless = interface_madspin.MadSpinInterface._model_massless
+        calculate_matrix_element_from_density = \
+            interface_madspin.MadSpinInterface \
+            .calculate_matrix_element_from_density
+        _upfront_production = \
+            interface_madspin.MadSpinInterface._upfront_production
+
+        def __init__(self, mass):
+            self.options = interface_madspin.MadSpinOptions()
+            # the floor is opt-in: these tests are about what it does when on
+            self.options['offshell_min_recoil'] = 0.5
+            self.f2py_module = [0, 0]   # skip the fortran setup
+            self._mass = mass
+            self.densities = 0
+
+        def _density_pole_approximation(self):
+            return False
+
+        def _density_do_reshuffle(self):
+            return True
+
+        def _density_basis(self, production, decays_key):
+            return {'decays_key': decays_key, 'position': [3],
+                    'allowed_hel': [], 'ncomb': 3, 'dimension': 3}
+
+        def _onshell_production_norm(self, production, prod_static):
+            return 2.0
+
+        def calculate_matrix_element(self, event):
+            return 3.0
+
+        def _polarization_weights_enabled(self):
+            return False
+
+        def _draw_mass_value(self, pdg, budget):
+            pole, width = 91.188, 2.4414
+            return self._mass, (pole, width, pole - 15 * width,
+                                min(pole + 15 * width, budget)), 0.9
+
+        def _frame_boost(self, event):
+            return None
+
+        def get_density(self, *args, **opts):
+            self.densities += 1
+            return 'rho'
+
+        def _check_production_density(self, event, density, stage=''):
+            pass
+
+    def _decays(self, m):
+        dec = lhe_parser.Event(self.DECAY)
+        dec[0].new_mass = m
+        dec[0].reshuffle_info = (91.188, 2.4414, 54.567, 120.0)
+        return {23: [dec]}
+
+    def test_joint_path_gives_a_zero_weight_below_the_floor(self):
+        """chi(118) = 0.30: the density contraction is never evaluated, the
+        weight is exactly 0 -- an ordinary rejection -- and the denominators
+        are the ones get_onshell_evt_and_wgt divides by."""
+        stub = self._PathStub(118.0)
+        production = self._event()
+        me, rho, prod_diag, dec_diag, jac = \
+            stub.calculate_matrix_element_from_density(
+                production, self._decays(118.0), {23: [2.4414, 91.188, 1, 3]})
+        self.assertEqual((me, rho, prod_diag, dec_diag, jac),
+                         (0.0, None, 2.0, 3.0, 0.0))
+        self.assertEqual(stub.densities, 0)
+        # the production was not reshuffled
+        self.assertEqual([p.mass for p in production if p.pid == 23],
+                         [self.MZ])
+
+    def test_sequential_mass_stage_redraws_below_the_floor(self):
+        """Offshell up-front mass set: below the floor the set is refused
+        (None -> the chain redraws it) before rho is evaluated; above it the
+        stage goes on to the offshell rho."""
+        order, slot_to_index = [0], {0: 0}
+        prod_static = {'position': [3], 'allowed_hel': [], 'ncomb': 3,
+                       'dimension': 3}
+        for mass, refused in ((118.0, True), (105.0, False)):
+            stub = self._PathStub(mass)
+            production = self._event()
+            particles = [p for p in production if int(p.status) == 1]
+            out = stub._upfront_production(production, order, particles,
+                                           slot_to_index, prod_static,
+                                           offshell=True)
+            self.assertEqual(out is None, refused, mass)
+            self.assertEqual(stub.densities, 0 if refused else 1, mass)
 
 
 class TestScanMaxwgtDecomposition(unittest.TestCase):
@@ -12989,6 +13641,153 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestDecayGenerationSeed(unittest.TestCase):
+    """``set seed`` has to pin the decay pools, whichever generator makes them.
+
+    With ``decay_generator mg7`` (the default) it did not: generate_events_mg7
+    never wrote ``run.seed``, so every pool ran with -1 = a fresh random seed,
+    and two runs of the same card on the same input differed from the first
+    event on -- in every spin mode. And in the density modes the seed was not
+    even the user's: run_onshell looked at ``self.seed`` (still None, ``set
+    seed`` fills options['seed']) and drew one from the Python RNG, so the log
+    said ``Will use seed 858043599`` for a card that said ``set seed 77``.
+    """
+
+    def _stub(self, seed, decay_generator='mg7', nb_channel=2):
+        """A MadSpin with the real seed handling and generate_events, over a
+        generate_events_mg7 that only records the seed it is handed. The decay
+        directories already exist, so no matrix element is generated."""
+        import tempfile
+        tmp = tempfile.mkdtemp(prefix='ms_seed_')
+        self.addCleanup(shutil.rmtree, tmp, True)
+        for i in range(nb_channel):
+            os.makedirs(pjoin(tmp, 'decay_6_%s' % i))
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _init_seed = interface._init_seed
+            _next_decay_seed = interface._next_decay_seed
+            generate_events = interface.generate_events
+            _reader_paths = staticmethod(interface._reader_paths)
+            _split_group_tag = interface._split_group_tag
+            _DECAY_GROUP_TAG = interface._DECAY_GROUP_TAG
+
+            def __init__(self):
+                self.seeds = []
+                self.do_set_calls = []
+
+            def do_set(self, line):
+                self.do_set_calls.append(line)
+                self.options[line.split()[0]] = int(line.split()[1])
+
+            def _mg7_available(self):
+                return True
+
+            def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01',
+                                    seed=None):
+                self.seeds.append((os.path.basename(decay_dir), run_name, seed))
+                return _FakeDecayFile([], name=pjoin(decay_dir, 'events.npy')), 1.0
+
+        class _P(object):
+            def get_name(self):
+                return 't'
+
+        class _M(object):
+            def get_particle(self, pdg):
+                return _P()
+
+        stub = Stub()
+        stub.options = {'seed': seed, 'decay_generator': decay_generator,
+                        'ms_dir': ''}
+        stub.seed = None
+        stub.history = []
+        stub.path_me = tmp
+        stub.model = _M()
+        stub.list_branches = {'t': ['t > w+ b'] * nb_channel}
+        return stub
+
+    def _generate(self, stub, **opts):
+        with misc.TMP_variable(interface_madspin.logger, 'info',
+                               lambda *a, **k: None):
+            stub.generate_events(6, 10, None, **opts)
+        return stub.seeds
+
+    # --------------------------------------------------- the user's own seed
+
+    def test_set_seed_is_used_as_it_is(self):
+        stub = self._stub(77)
+        stub._init_seed()
+        self.assertEqual(stub.seed, 77)
+        # already on the card, so nothing to record
+        self.assertEqual(stub.do_set_calls, [])
+        self.assertEqual(stub.history, [])
+
+    def test_without_set_seed_one_is_drawn_and_recorded(self):
+        """The banner has to say which seed reproduces the run."""
+        stub = self._stub(0)
+        stub._init_seed()
+        self.assertTrue(1 <= stub.seed <= 30081 * 30081)
+        self.assertEqual(stub.options['seed'], stub.seed)
+        self.assertEqual(stub.history, ['set seed %s' % stub.seed])
+
+    # ------------------------------------------------- one seed per generation
+
+    def test_each_generation_takes_the_next_seed(self):
+        stub = self._stub(77)
+        self.assertEqual([stub._next_decay_seed() for _ in range(3)],
+                         [77, 78, 79])
+
+    def test_the_seed_never_leaves_the_madevent_range(self):
+        """ranmar takes at most 30081*30081, and 0 means random to both
+        generators."""
+        stub = self._stub(30081 * 30081)
+        self.assertEqual(stub._next_decay_seed(), 30081 * 30081)
+        self.assertEqual(stub._next_decay_seed(), 1)
+
+    def test_every_mg7_pool_gets_a_seed_of_its_own(self):
+        """The regression proper: the mg7 generator is handed a seed, a
+        different one for each decay directory, and again a different one
+        for a refill of a pool already generated."""
+        stub = self._stub(77)
+        self._generate(stub)
+        self._generate(stub, restrict_file=[1], run_name='ms_refill_1')
+        self.assertEqual(stub.seeds,
+                         [('decay_6_0', 'run_01', 77),
+                          ('decay_6_1', 'run_01', 78),
+                          ('decay_6_1', 'ms_refill_1', 79)])
+
+    def test_the_same_card_gives_the_same_seeds(self):
+        self.assertEqual(self._generate(self._stub(77)),
+                         self._generate(self._stub(77)))
+        self.assertNotEqual(self._generate(self._stub(77)),
+                            self._generate(self._stub(78)))
+
+    def test_the_per_particle_fork_keeps_the_streams_apart(self):
+        """_generate_decays runs each decaying particle in a fork of its own,
+        and _generate_decay_entry keys self.seed on the particle there; the
+        mg7 pools have to follow it rather than restart from the card seed."""
+        import json
+        seeds = {}
+        state = random.getstate()
+        try:
+            for offset in (1, 2):
+                stub = self._stub(77)
+                stub.seed = 77
+                stub.mg5cmd = None
+                res = pjoin(stub.path_me, 'res.json')
+                with misc.TMP_variable(interface_madspin.logger, 'info',
+                                       lambda *a, **k: None):
+                    interface_madspin.MadSpinInterface._generate_decay_entry(
+                        stub, 6, {'nb_gen': 10, 'cumul': False}, 1, offset, res)
+                with open(res) as fsock:
+                    self.assertNotIn('error', json.load(fsock))
+                seeds[offset] = [s for _, _, s in stub.seeds]
+        finally:
+            random.setstate(state)
+        self.assertEqual(seeds[1], [1000080, 1000081])
+        self.assertEqual(seeds[2], [2000083, 2000084])
+
+
 class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
     """mg7 writes its decay pool as one ``events.npy`` and nothing splits it.
 
@@ -13122,6 +13921,15 @@ class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
         self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
         card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
         self.assertEqual(card['run']['output_format'], 'lhe_npy')
+
+    def test_the_run_card_carries_the_seed_it_is_given(self):
+        """Without it the pool ran with run.seed = -1, a fresh random seed on
+        every run, and the same card and input gave a different decayed
+        sample each time. See TestDecayGenerationSeed."""
+        self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT,
+                                          seed=1000080)
+        card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(card['run']['seed'], 1000080)
 
     def test_the_partial_width_comes_out_of_info_json(self):
         """A .npy has no <init> block, so the width comes from the run result
@@ -13446,6 +14254,135 @@ class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):
         options = interface_madspin.MadSpinOptions()
         self.assertEqual(sorted(options.allowed_value['decay_generator']),
                          ['madevent', 'mg7'])
+
+
+class TestAutoZeroWidthPA(unittest.TestCase):
+    """auto_zero_width_PA: with spinmode = PA the propagators of the particles
+    MadSpin decays are written with a zero width (output standalone_fortran
+    --zerowidth_decay=, see tests/unit_tests/iolibs/test_helas_call_writers.py and
+    the acceptance test test_standalone_zerowidth). Here: which particles,
+    the option passed to MG5, and the reuse guard."""
+
+    NAME2PDG = {'t': 6, 't~': -6, 'z': 23, 'w+': 24, 'w-': -24}
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_zero_width_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _interface(self, spinmode='PA', auto=True, branches=('t', 't~'),
+                   multiparticles=None, ms_dir=None, final_state=None):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            ZERO_WIDTH_STAMP = interface.ZERO_WIDTH_STAMP
+            _zero_width_pdgs = interface._zero_width_pdgs
+            _label_to_abs_pdgs = interface._label_to_abs_pdgs
+            _announce_zero_width = interface._announce_zero_width
+            _reused_directory = interface._reused_directory
+            _check_reused_zero_width = interface._check_reused_zero_width
+
+        class MG5(object):
+            _multiparticles = multiparticles or {}
+        stub = Stub()
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['spinmode'] = spinmode
+        stub.options['auto_zero_width_PA'] = auto
+        stub.options['ms_dir'] = ms_dir or ''
+        stub.options['curr_dir'] = ''
+        stub.model = {'name2pdg': self.NAME2PDG}
+        stub.mg5cmd = MG5()
+        stub.final_state = set(final_state or ())
+        stub.list_branches = dict((b, ['%s > x y' % b]) for b in branches)
+        return stub
+
+    def _option(self, mscmd):
+        class Gen(object):
+            zerowidth_decay_pdgs = \
+                madspin.decay_all_events_onshell.zerowidth_decay_pdgs
+        gen = Gen()
+        gen.mscmd = mscmd
+        return gen.zerowidth_decay_pdgs()
+
+    # ------------------------------------------------------------------
+    # which particles
+    # ------------------------------------------------------------------
+
+    def test_default_is_true(self):
+        self.assertTrue(interface_madspin.MadSpinOptions()['auto_zero_width_PA'])
+
+    def test_pa_zeroes_the_decayed_particles(self):
+        self.assertEqual(self._interface()._zero_width_pdgs(), [6])
+        self.assertEqual(self._interface(branches=('t', 'z'))
+                         ._zero_width_pdgs(), [6, 23])
+
+    def test_only_particles_of_the_production_final_state(self):
+        """The default card decays the z of every process: a sample without
+        a Z must keep its Z width."""
+        stub = self._interface(branches=('t', 't~', 'w+', 'z'),
+                               final_state=[6, -6, 24])
+        self.assertEqual(stub._zero_width_pdgs(), [6, 24])
+        stub.final_state = set()  # no proc_card: no restriction
+        self.assertEqual(stub._zero_width_pdgs(), [6, 23, 24])
+
+    def test_multiparticle_labels_count_for_all_members(self):
+        stub = self._interface(branches=('wpm',),
+                               multiparticles={'wpm': [24, -24]})
+        self.assertEqual(stub._zero_width_pdgs(), [24])
+
+    def test_nothing_outside_pa_or_when_switched_off(self):
+        for spinmode in ('madspin', 'full', 'onshell', 'none', 'madspin_v1',
+                         'onshell_v1'):
+            self.assertEqual(self._interface(spinmode=spinmode)
+                             ._zero_width_pdgs(), [])
+        self.assertEqual(self._interface(auto=False)._zero_width_pdgs(), [])
+
+    # ------------------------------------------------------------------
+    # what MG5 is asked for
+    # ------------------------------------------------------------------
+
+    def test_the_output_option(self):
+        self.assertEqual(self._option(self._interface(
+            branches=('t', 't~', 'w+'), final_state=[6, -6, 24])),
+            '6,24')
+        self.assertEqual(self._option(self._interface(auto=False)), '')
+        self.assertEqual(self._option(self._interface(spinmode='madspin')), '')
+        self.assertEqual(self._option(object()), '')
+
+    # ------------------------------------------------------------------
+    # reuse of an ms_dir
+    # ------------------------------------------------------------------
+
+    def test_cached_max_weight_with_another_setting_is_refused(self):
+        ms_dir = pjoin(self.tmpdir, 'ms_dir')
+        self._interface(ms_dir=ms_dir)._check_reused_zero_width()
+        self.assertEqual(open(pjoin(ms_dir, 'ms_zero_width.dat')).read(),
+                         '6\n')
+        open(pjoin(ms_dir, 'max_wgt'), 'w').write('1.0')
+        self._interface(ms_dir=ms_dir)._check_reused_zero_width()
+        for stub in (self._interface(ms_dir=ms_dir, auto=False),
+                     self._interface(ms_dir=ms_dir, branches=('t', 'z'))):
+            self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                              stub._check_reused_zero_width)
+
+    def test_an_unstamped_cache_means_no_zero_width(self):
+        ms_dir = pjoin(self.tmpdir, 'ms_dir')
+        os.makedirs(ms_dir)
+        open(pjoin(ms_dir, 'max_wgt'), 'w').write('1.0')
+        self._interface(ms_dir=ms_dir, auto=False)._check_reused_zero_width()
+        self._interface(ms_dir=ms_dir, spinmode='madspin')\
+            ._check_reused_zero_width()
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          self._interface(ms_dir=ms_dir)
+                          ._check_reused_zero_width)
+
+    def test_decay_gridpacks_alone_do_not_depend_on_it(self):
+        ms_dir = pjoin(self.tmpdir, 'ms_dir')
+        os.makedirs(pjoin(ms_dir, 'decay_6_1'))
+        self._interface(ms_dir=ms_dir)._check_reused_zero_width()
+        self.assertTrue(os.path.exists(pjoin(ms_dir, 'ms_zero_width.dat')))
 
 
 class TestDecayChainIdenticalFactor(unittest.TestCase):
@@ -14094,3 +15031,103 @@ class TestGlobalFlagGate(unittest.TestCase):
         self.assertEqual(calls, ['tree%d' % n for n in
                                  range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
                                        madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])
+
+
+class TestAllMomentaMergedAntiparticles(unittest.TestCase):
+    """_all_momenta's shortcut (no merged pdg repeated in the final state: one
+    assignment) has to see repeats the way get_all_momenta does, antiparticles
+    included: the merged map lists the members by their positive pdg only, so
+    u~ and s~ are both -81 only through the sign-aware lhe_parser.merged_pdg."""
+
+    MERGED = {1: 81, 2: 81, 3: 81, 4: 81}
+
+    # d~ g > w+ u~, w+ > c s~ : u~ (production) and s~ (W decay) are both -81
+    ANTI = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ -1 -1 0 0 0 501 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 501 502 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ 24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ -2 1 1 2 0 502 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ 4 1 3 3 503 0 50.0 10.0 20.0 120.0 0.0 0. 1.
+ -3 1 3 3 0 503 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    # the charge conjugate, d g > w- u, w- > c~ s : u and s are both 81
+    CONJ = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ 1 -1 0 0 501 0 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 502 501 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ -24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ 2 1 1 2 502 0 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ -4 1 3 3 0 503 50.0 10.0 20.0 120.0 0.0 0. 1.
+ 3 1 3 3 503 0 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    class _Stub(object):
+        _all_momenta = interface_madspin.MadSpinInterface._all_momenta
+
+        def __init__(self, merged):
+            self._revert_merged = merged
+
+    def test_merged_pdg(self):
+        self.assertEqual(lhe_parser.merged_pdg(2, self.MERGED), 81)
+        self.assertEqual(lhe_parser.merged_pdg(-3, self.MERGED), -81)
+        self.assertEqual(lhe_parser.merged_pdg(21, self.MERGED), 21)
+        self.assertEqual(lhe_parser.merged_pdg(-24, self.MERGED), -24)
+
+    def test_antiparticles_take_the_full_path(self):
+        stub = self._Stub(self.MERGED)
+        for text, order in ((self.ANTI, ((-81, 21), (-81, 81, -81))),
+                            (self.CONJ, ((81, 21), (81, -81, 81)))):
+            event = lhe_parser.Event(text)
+            full = event.get_all_momenta(order, merged_map=self.MERGED)
+            # u~ <-> s~ (or u <-> s) between the production and the W decay
+            self.assertEqual(len(full), 2)
+            self.assertEqual(len(stub._all_momenta(event, order)), len(full))
+
+
+class TestDensityLibtag(unittest.TestCase):
+    """_density_libtag: the madmatrix libraries are loaded with the LIBTAG this
+    run builds them with, not one guessed from the library names -- a reused
+    directory may hold the build of another run (another _ms_run_id) too."""
+
+    def setUp(self):
+        import tempfile
+        self.tree = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tree, 'lib'))
+
+    def tearDown(self):
+        shutil.rmtree(self.tree, ignore_errors=True)
+
+    def touch(self, tag):
+        open(os.path.join(self.tree, 'lib',
+                          'libmadmatrix_common%s_scalar.so' % tag), 'w').close()
+
+    def libtag(self, run_id, side='prod'):
+        stub = type('Stub', (), {'_ms_run_id': run_id})()
+        return interface_madspin.MadSpinInterface._density_libtag(stub, self.tree, side)
+
+    def test_shared_formula(self):
+        self.assertEqual(madspin.density_libtag(2, 'p'), '_ms2p')
+        stub = type('Stub', (), {})()
+        stub.mscmd = type('MSCmd', (), {'_ms_run_id': 2})()
+        self.assertEqual(
+            madspin.decay_all_events_onshell.density_libtag(stub, 'd'), '_ms2d')
+
+    def test_this_run_build_wins_over_another(self):
+        self.touch('_ms1p')
+        self.touch('_ms2p')
+        self.assertEqual(self.libtag(2), '_ms2p')
+        self.assertEqual(self.libtag(1), '_ms1p')
+
+    def test_only_another_run_build(self):
+        self.touch('_ms1d')
+        self.assertEqual(self.libtag(2, 'decay'), '_ms1d')
+
+    def test_no_build(self):
+        try:
+            self.libtag(2)
+        except madmatrix_density.MadDensityError as error:
+            self.assertIn('LIBTAG=_ms2p', str(error))
+        else:
+            self.fail('no library, yet a LIBTAG was found')

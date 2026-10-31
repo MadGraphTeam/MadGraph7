@@ -38,8 +38,8 @@ import madgraph.iolibs.files as files
 
 import madgraph.interface.master_interface as cmd_interface
 import madgraph.interface.madevent_interface as me_interface
-import models.check_param_card as card_reader
-import models.import_ufo as import_ufo
+import madgraph.models.check_param_card as card_reader
+import madgraph.models.import_ufo as import_ufo
 
 import madgraph.various.misc as misc
 import madgraph.various.misc as misc
@@ -47,7 +47,7 @@ from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 
 
 class DecayComparator(object):
-    """base object to run comparaison test"""
+    """base object to run comparison test"""
     
     def __init__(self, model):
         
