@@ -105,6 +105,7 @@ if TYPE_CHECKING:
         ReductionGroup,
         ResolvedEvaluation,
         Runtime,
+        TreeGradedEvaluation,
         TreeOrderEvaluation,
         WarmUpResult,
         benchmark,
@@ -140,6 +141,7 @@ if TYPE_CHECKING:
         CorrelatedValue,
         CorrelatorConfig,
         EmitGluon,
+        GradedCorrelatedEvaluation,
         SplitGluon,
     )
 
@@ -181,6 +183,7 @@ __all__ = [
     "GenerationPlan",
     "GenerationResult",
     "Generator",
+    "GradedCorrelatedEvaluation",
     "HelicityConfiguration",
     "LaurentCoefficients",
     "LoopConfig",
@@ -203,6 +206,7 @@ __all__ = [
     "RunConfig",
     "Runtime",
     "SplitGluon",
+    "TreeGradedEvaluation",
     "TreeOrderEvaluation",
     "VirtualArithmeticSpec",
     "VirtualColorContraction",
@@ -265,6 +269,7 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeGradedEvaluation",
     "TreeOrderEvaluation",
     "WarmUpResult",
 )
@@ -308,6 +313,7 @@ _PUBLIC_EXPORTS = {
             "CorrelatedValue",
             "CorrelatorConfig",
             "EmitGluon",
+            "GradedCorrelatedEvaluation",
             "SplitGluon",
         )
     },

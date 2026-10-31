@@ -302,6 +302,39 @@ in `evaluate`; per-point selectors (`helicity_by_point`,
 `color_flow_by_point`) are not accepted. Compiled, eager and on-the-fly
 artifacts raise `CompatibilityError`.
 
+## Split totals by power of N_c
+
+Tree artifacts generated with `color.accuracy = "strict-lc"` or
+`"strict-nlc"` (the formal 1/N_c expansion), or with full colour and
+`color.graded = true`, report their colour sum split by N_c degree.
+`evaluate_graded` returns, per point, the N_c^degree term of the expansion
+evaluated at N_c = 3, summed over the selected helicities:
+
+```python
+config = RunConfig(color=ColorConfig(accuracy="full", graded=True))
+runtime = Runtime.load(Generator(config).generate("u u~ > g g", "artifacts/uux_gg").output)
+graded = runtime.evaluate_graded(points)
+print(graded.degrees)             # (3, 2, 1, 0, -1): from the leading degree P down
+print(graded.reference_degree)    # 3 = n_g + n_qqbar
+leading = graded.for_degree(3)    # the strict LC value at every point
+beyond_lc = [total - lc for total, lc in zip(graded.total, leading, strict=True)]
+```
+
+`values` has shape `(point, degree)` and `total` sums the degrees of each
+point; for graded full colour it equals `evaluate`, for `strict-lc` and
+`strict-nlc` it is their truncated colour sum. A degree reached by the colour
+weights but cancelled by the amplitude relations (for example the U(1)
+decoupling of gluon traces) is reported with a value zero up to rounding. Per
+helicity, the same split is the colour axis of `evaluate_resolved`: one
+contracted component per degree, ID `color:nc-degree:<d>`, with `nc_degree`
+on the `ContractedColorComponent` of `runtime.physics`. `precision` behaves
+as in `evaluate`. Artifacts without N_c degrees (inherited `lc`/`nlc`,
+ungraded full colour) raise `CompatibilityError`. For correlated artifacts,
+`evaluate_correlated_graded(points, color_correlation=..., precision=...)`
+returns a `GradedCorrelatedEvaluation` of `CorrelatedValue` entries with the
+same layout; each connection's degrees decrease from its reference degree
+`n_g + n_qqbar + r - s`.
+
 ## Retain completed OTF preparation
 
 For an on-the-fly runtime, `runtime.save(path)` writes the completed cache
@@ -319,7 +352,8 @@ checkpoint an unfinished cold construction.
 ## Evaluate Born correlations
 
 Correlations require an explicit `Generator.generate(..., correlators=...)`
-declaration. They support **LC, NLC and full colour**, through a separate Python
+declaration. They support **LC, NLC, full colour and the strict (formal 1/N_c)
+`strict-lc`/`strict-nlc`**, through a separate Python
 direct, generic compiled exact executor. `color.accuracy` selects the correlated
 approximation. Supplying `correlators` retains complete underlying amplitudes
 and selects direct contraction and compiled generation. Ordinary generation
@@ -391,7 +425,9 @@ stages can be reused across different assignments. See the
 [two-axis example](../correlators.md#several-requests-and-several-phase-space-points)
 for request-centric and point-centric access. Ordinary `evaluate()` on the
 underlying correlated output remains full-colour; use the correlated `"born"`
-request when comparing its selected LC/NLC approximation.
+request when comparing its selected LC/NLC approximation. Strict correlated
+artifacts are graded throughout: ordinary `evaluate()` there gives the strict
+truncation of the Born, equal to the `"born"` request.
 
 The spin-vector mapping uses one-based public leg labels. Each value is a
 literal real or complex `(v0, vx, vy, vz)` vector, broadcast across the batch,

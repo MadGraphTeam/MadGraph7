@@ -49,8 +49,10 @@ from .results import (
     HelicityConfiguration,
     ProcessPhysics,
     ResolvedEvaluation,
+    TreeGradedEvaluation,
     TreeOrderEvaluation,
     WarmUpResult,
+    _sum_entries,
 )
 from .virtual_results import (
     ResolvedVirtualEvaluation,
@@ -1025,6 +1027,68 @@ class Runtime:
             )
         return result
 
+    def evaluate_graded(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int | None = None,
+    ) -> TreeGradedEvaluation:
+        """Return tree values split by power of N_c: ``values[point][degree]``.
+
+        Available for artifacts graded by power of N_c: tree artifacts of
+        ``color.accuracy = "strict-lc"`` or ``"strict-nlc"`` (the formal 1/N_c
+        expansion truncated at the leading degree P, or at P, P-1 and P-2),
+        or of full colour with ``color.graded`` (every degree). Each degree's
+        term is evaluated at N_c = 3 and summed over the selected helicities;
+        the degrees of a point sum to :meth:`evaluate` up to rounding. The
+        same split per helicity is the contracted colour axis of
+        :meth:`evaluate_resolved`. Precision follows :meth:`evaluate`.
+        """
+
+        if self.contribution_kind != "tree":
+            raise CompatibilityError("graded output is implemented for tree artifacts")
+        physics = self.physics
+        components = tuple(physics.contracted_color_components)
+        if not components or any(item.nc_degree is None for item in components):
+            raise CompatibilityError(
+                "graded output needs an artifact generated with "
+                "color.accuracy='strict-lc' or 'strict-nlc', or with "
+                "color.graded and full colour"
+            )
+        resolved = self.evaluate_resolved(
+            momenta, helicities=helicities, precision=precision
+        )
+        if not isinstance(resolved, ResolvedEvaluation):
+            raise EvaluationError("tree runtime returned an invalid resolved result")
+        slot = {
+            identifier: index for index, identifier in enumerate(resolved.color_ids)
+        }
+        try:
+            slots = tuple(slot[item.id] for item in components)
+        except KeyError as error:
+            raise EvaluationError(
+                "resolved evaluation does not report every N_c degree"
+            ) from error
+        values = tuple(
+            tuple(
+                _sum_entries(tuple(helicity[index] for helicity in point))
+                for index in slots
+            )
+            for point in resolved.values
+        )
+        degrees = tuple(int(cast(int, item.nc_degree)) for item in components)
+        return TreeGradedEvaluation(
+            values=values,
+            total=tuple(_sum_entries(point) for point in values),
+            degrees=degrees,
+            color_ids=tuple(resolved.color_ids[index] for index in slots),
+            color_accuracy=cast(
+                Literal["full", "strict-lc", "strict-nlc"], physics.color_accuracy
+            ),
+            reference_degree=degrees[0],
+        )
+
     def _diagnostic_project_onshell(
         self,
         momenta: Momenta,
@@ -1187,6 +1251,32 @@ class Runtime:
                 )
             return value
         return self._correlator_evaluator().evaluate(
+            momenta,
+            color_correlation=color_correlation,
+            helicities=_selector_ids(
+                helicities, expected_type=HelicityConfiguration, name="helicity"
+            ),
+            precision=_validate_precision(16 if precision is None else precision),
+            arithmetic="arbitrary" if arithmetic is None else arithmetic,
+        )
+
+    def evaluate_correlated_graded(
+        self,
+        momenta: Momenta,
+        *,
+        color_correlation: str = "born",
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+    ) -> _pyamplicol.GradedCorrelatedEvaluation:
+        """:meth:`evaluate_correlated` split by power of N_c (tree artifacts
+        graded by N_c: ``color.accuracy = "strict-lc"`` or ``"strict-nlc"``,
+        or full colour with ``color.graded``). ``values[point][degree]`` is
+        the N_c^degree term at N_c = 3; the degrees sum to ``total``."""
+
+        if self.contribution_kind != "tree":
+            raise CompatibilityError("graded correlations are implemented for trees")
+        return self._correlator_evaluator().evaluate_graded(
             momenta,
             color_correlation=color_correlation,
             helicities=_selector_ids(

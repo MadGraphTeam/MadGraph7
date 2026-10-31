@@ -64,6 +64,7 @@ if TYPE_CHECKING:
         ProcessPhysics,
         ReductionGroup,
         ResolvedEvaluation,
+        TreeGradedEvaluation,
         TreeOrderEvaluation,
         WarmUpResult,
     )
@@ -146,6 +147,7 @@ __all__ = [
     "Runtime",
     "RuntimeBackend",
     "RuntimeLoader",
+    "TreeGradedEvaluation",
     "TreeOrderEvaluation",
     "VirtualArithmeticSpec",
     "VirtualColorContraction",
@@ -222,6 +224,7 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeGradedEvaluation",
     "TreeOrderEvaluation",
     "WarmUpResult",
 )

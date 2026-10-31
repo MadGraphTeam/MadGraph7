@@ -131,6 +131,8 @@ class _ExactColorContractionEntry:
     right_group_id: int
     weight: _ComplexDecimal
     symmetry_factor: Decimal
+    # N_c degree of the term in a plan graded by power of N_c.
+    nc_degree: int | None = None
 
 
 def _json_integer(value: object) -> int:
@@ -3905,7 +3907,38 @@ def _validated_color_contraction_entry(
         symmetry_factor=_decimal(
             raw_entry.get("symmetry_factor", 1), "color symmetry factor"
         ),
+        nc_degree=(
+            None
+            if raw_entry.get("nc_degree") is None
+            else _json_integer(raw_entry.get("nc_degree"))
+        ),
     )
+
+
+def _contracted_color_slots(
+    colors: Sequence[Mapping[str, object]],
+) -> dict[int | None, int] | None:
+    """Colour slot of each contraction entry by its N_c degree: the one
+    contracted component (key None), or one per degree of a graded artifact;
+    None if the axis is not contracted."""
+
+    if not colors or any(color.get("kind") == "lc-flow" for color in colors):
+        return None
+    degrees = [color.get("nc_degree") for color in colors]
+    if all(degree is None for degree in degrees):
+        return {None: 0} if len(colors) == 1 else None
+    if any(degree is None for degree in degrees):
+        return None
+    return {_json_integer(degree): index for index, degree in enumerate(degrees)}
+
+
+def _contracted_color_slot(slots: Mapping[int | None, int], degree: int | None) -> int:
+    slot = slots.get(degree)
+    if slot is None:
+        raise ArtifactError(
+            f"color contraction entry of N_c degree {degree} has no color component"
+        )
+    return slot
 
 
 def _reduce_materialized_helicity(
@@ -4011,13 +4044,10 @@ def _reduce_materialized_helicity(
 
     contraction = amplitude_stage.get("color_contraction")
     if isinstance(contraction, Mapping):
-        if (
-            len(colors) != 1
-            or str(physics.get("color_accuracy")) == "lc"
-            or colors[0].get("kind") == "lc-flow"
-        ):
+        slots = _contracted_color_slots(colors)
+        if slots is None or str(physics.get("color_accuracy")) == "lc":
             raise ArtifactError("contracted color reduction requires one color axis")
-        total = _ZERO
+        totals = [_ZERO for _ in colors]
         for entry in _validated_color_contraction_entries(contraction, groups):
             left_id = entry.left_group_id
             right_id = entry.right_group_id
@@ -4027,12 +4057,12 @@ def _reduce_materialized_helicity(
             right = coherent[right_id]
             product_re = left[0] * right[0] + left[1] * right[1]
             product_im = left[1] * right[0] - left[0] * right[1]
-            total += (
+            totals[_contracted_color_slot(slots, entry.nc_degree)] += (
                 normalization
                 * entry.symmetry_factor
                 * (entry.weight[0] * product_re - entry.weight[1] * product_im)
             )
-        return (total,)
+        return tuple(totals)
     if contraction is not None:
         raise ArtifactError("color contraction metadata is not an object")
 
@@ -4144,11 +4174,13 @@ def _reduce_resolved(
         }
         full = [[_ZERO for _ in color_ids] for _ in helicity_ids]
         if isinstance(contraction, Mapping):
-            if len(color_ids) != 1:
+            slots = _contracted_color_slots(colors)
+            if slots is None:
                 raise ArtifactError(
                     "contracted color reduction requires one color axis"
                 )
             for entry in _validated_color_contraction_entries(contraction, groups):
+                slot = _contracted_color_slot(slots, entry.nc_degree)
                 left_id = entry.left_group_id
                 right_id = entry.right_group_id
                 left = coherent[left_id]
@@ -4187,7 +4219,7 @@ def _reduce_resolved(
                 for identifier, member_weight in zip(
                     contracted_members, member_weights, strict=True
                 ):
-                    full[helicity_index[identifier]][0] += (
+                    full[helicity_index[identifier]][slot] += (
                         contribution * member_weight / total_weight
                     )
         else:
