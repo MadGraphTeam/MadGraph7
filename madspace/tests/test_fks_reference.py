@@ -79,10 +79,32 @@ def test_event_kinematics(data):
             rtol=0,
             atol=1e-12 * scale**2,
         )
-        assert np.allclose(point["rad_p_ev"], p, rtol=0, atol=1e-13 * scale)
         assert len(point["x"]) == data["ndim"]
         count += 1
     assert count > 0
+
+
+def test_uncut_rerun(data):
+    """The rad_ entries rerun the FKS map on the Born of the point without the
+    lower bound tau_lower_bound that the cuts put on the partonic energy of
+    the real emission. They give a physical event, and the same one as the
+    main dump wherever the bound does not act, which is always the case for a
+    final-state emitter (the bound restricts xi and y of initial-state ones)."""
+    nin = data["nincoming"]
+    for conf, point in valid_points(data):
+        p = np.array(point["rad_p_ev"])
+        scale = p[:, 0].max()
+        assert np.allclose(p[:nin].sum(0), p[nin:].sum(0), rtol=0, atol=1e-12 * scale)
+        assert np.allclose(
+            minkowski_sq(p),
+            np.array(conf["masses"]) ** 2,
+            rtol=0,
+            atol=1e-12 * scale**2,
+        )
+        same_xi = abs(point["rad_xi_ev"] - point["xi_ev"]) <= 1e-12
+        assert same_xi or conf["j_fks"] <= nin
+        if same_xi:
+            assert np.allclose(p, point["p_ev"], rtol=0, atol=1e-12 * scale)
 
 
 def test_born_frame(data):
@@ -103,6 +125,7 @@ def test_born_frame(data):
 
 
 def test_counter_events(data):
+    """Counter-events of the uncut FKS map (the rad_ entries)."""
     nin = data["nincoming"]
     for conf, point in valid_points(data):
         i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
@@ -110,18 +133,22 @@ def test_counter_events(data):
         born_as_real = np.insert(p_born, i_fks, 0.0, axis=0)
         scale = p_born[:, 0].max()
         if point["rad_jac_cnt"][SOFT] > 0:
-            p_soft = np.array(point["p_cnt"][SOFT])
+            p_soft = np.array(point["rad_p_cnt"][SOFT])
             assert np.allclose(p_soft, born_as_real, rtol=0, atol=1e-10 * scale)
-            assert point["xi_cnt"][SOFT] == 0.0
+            assert point["rad_xi_cnt"][SOFT] == 0.0
         if point["rad_jac_cnt"][COLL] > 0:
-            p_coll = np.array(point["p_cnt"][COLL])
+            p_coll = np.array(point["rad_p_cnt"][COLL])
             mother = p_coll[i_fks] + p_coll[j_fks]
             spectators = [k for k in range(len(p_coll)) if k not in (i_fks, j_fks)]
             # xi_hat is shared, xi only for a final-state emitter (for an
             # initial-state one the upper bound of xi depends on y)
-            assert np.isclose(point["xi_hat_cnt"][COLL], point["xi_hat_ev"], rtol=1e-14)
+            assert np.isclose(
+                point["rad_xi_hat_cnt"][COLL], point["rad_xi_hat_ev"], rtol=1e-14
+            )
             if j_fks >= nin:
-                assert np.isclose(point["xi_cnt"][COLL], point["xi_ev"], rtol=1e-14)
+                assert np.isclose(
+                    point["rad_xi_cnt"][COLL], point["rad_xi_ev"], rtol=1e-14
+                )
                 # i and j collinear and summing to the Born emitter
                 assert np.allclose(mother, born_as_real[j_fks], atol=1e-10 * scale)
                 assert np.allclose(

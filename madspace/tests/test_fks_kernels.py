@@ -311,3 +311,145 @@ def test_final_massless_volume(n_out):
     mean, err = weight.mean(), weight.std() / math.sqrt(batch)
     mean_ref, err_ref = det_real.mean(), det_real.std() / math.sqrt(batch)
     assert abs(mean - mean_ref) < 5 * math.hypot(err, err_ref)
+
+
+# Emission off an incoming parton. The reference is the FKS map of genps_fks.f
+# without the lower bound on the partonic energy (the rad_ entries).
+
+
+def initial_radiate(xi_hat, y, r_phi, sqrt_s, x1_born, x2_born, beam_sign):
+    return run(
+        lambda fb, *args: fb.fks_initial_radiate(*args, beam_sign),
+        [F, F, F, F, F, F],
+        [V, V, V, F, F, F, F, F],
+        [xi_hat, y, r_phi, sqrt_s, x1_born, x2_born],
+    )
+
+
+def initial_recoil_boost(p, xi, y, r_phi, beam_sign):
+    n = p.shape[1]
+    return run(
+        lambda fb, *args: [fb.fks_initial_recoil_boost(*args, beam_sign)],
+        [ms.batch_four_vec_array(n), F, F, F],
+        [ms.batch_four_vec_array(n)],
+        [p, xi, y, r_phi],
+    )[0]
+
+
+def initial_real_from_born(p_born, i_fks, beam_sign, xi_hat, y, r_phi, x_born):
+    """Born momenta (batch, n, 4) in the Born c.m. frame -> real momenta, momentum
+    fractions and the outputs of fks_initial_radiate."""
+    sqrt_s = np.sqrt(
+        (p_born[:, 0] + p_born[:, 1])[:, 0] ** 2
+        - ((p_born[:, 0] + p_born[:, 1])[:, 1:] ** 2).sum(1)
+    )
+    p1, p2, p_i, x1, x2, xi, xi_max, det_xi = initial_radiate(
+        xi_hat, y, r_phi, sqrt_s, x_born[0], x_born[1], beam_sign
+    )
+    final = initial_recoil_boost(p_born[:, 2:], xi, y, r_phi, beam_sign)
+    real = np.concatenate([p1[:, None], p2[:, None], final], axis=1)
+    real = np.insert(real, i_fks, 0.0, axis=1)
+    real[:, i_fks] = p_i
+    return real, (x1, x2), xi, xi_max, det_xi
+
+
+def initial_points():
+    cases = []
+    for path in DATA:
+        with open(path) as f:
+            data = json.load(f)
+        for conf in data["configs"]:
+            if conf["j_fks"] > data["nincoming"]:
+                continue
+            points = [p for p in conf["points"] if p["jac"] > 0 and "rad_jac" in p]
+            if points:
+                name = os.path.basename(path)[:-5]
+                cases.append(
+                    pytest.param(data, conf, points, id=f"{name}-fks{conf['nfks']}")
+                )
+    return cases
+
+
+@pytest.mark.parametrize("data,conf,points", initial_points())
+def test_initial_matches_genps_fks(data, conf, points):
+    """Event and counter-events of an incoming emitter, with their momentum
+    fractions and radiation Jacobians."""
+    nex = data["nexternal"]
+    i_fks = conf["i_fks"] - 1
+    beam_sign = 1.0 if conf["j_fks"] == 1 else -1.0
+
+    def field(key):
+        return np.array([p[key] for p in points])
+
+    p_born = field("p_born")
+    x_born = tuple(field("xbjrk_born").T)
+    r = field("x")[:, -3:]
+    xi_hat, y, det_sample = xi_y_sample(r[:, 0], r[:, 1])
+    det_fortran_units = det_sample / ((1 - STINY) * (1 - CTINY))
+
+    # event and counter-events: position k + 2 for k = 0 (soft), 1 (collinear),
+    # 2 (both); for an incoming emitter only y = 1 is a collinear limit
+    for pos, xh, yy in [
+        (None, xi_hat, y),
+        (2, np.zeros_like(xi_hat), y),
+        (3, xi_hat, np.ones_like(y)),
+        (4, np.zeros_like(xi_hat), np.ones_like(y)),
+    ]:
+        if pos is None:
+            valid = np.ones(len(points), dtype=bool)
+            p_ref, x_ref = field("rad_p_ev"), field("rad_xbjrk_ev")
+            jac_ref, shat_ref = field("rad_jac"), field("rad_shat_ev")
+        else:
+            valid = np.array([p["rad_jac_cnt"][pos] > 0 for p in points])
+            p_ref = np.array([p["rad_p_cnt"][pos] for p in points])
+            x_ref = np.array([p["rad_xbjrk_cnt"][pos] for p in points])
+            jac_ref = np.array([p["rad_jac_cnt"][pos] for p in points])
+            shat_ref = np.array([p["rad_shat_cnt"][pos] for p in points])
+        if not valid.any():
+            continue
+        real, x, xi, xi_max, det_xi = initial_real_from_born(
+            p_born, i_fks, beam_sign, xh, yy, r[:, 2], x_born
+        )
+        scale = p_ref[:, :, 0].max(1)[:, None, None]
+        np.testing.assert_allclose(
+            (real / scale)[valid], (p_ref / scale)[valid], rtol=0, atol=1e-13
+        )
+        np.testing.assert_allclose(np.stack(x, 1)[valid], x_ref[valid], rtol=1e-13)
+        fortran = jac_ref / flux_factor(shat_ref, nex)
+        ours = det_xi / xi_max * det_fortran_units
+        np.testing.assert_allclose(ours[valid], fortran[valid], rtol=1e-12)
+
+
+def test_reference_has_initial_emitters():
+    assert len(initial_points()) > 0
+
+
+def test_initial_limits():
+    """Soft: the Born with a zero i, same momentum fractions. Collinear: i along
+    the beam of j, x of that beam rescaled by 1 / (1 - xi), the final state of the
+    Born and the other beam unchanged."""
+    batch = 50
+    p_born, _ = random_born(3, batch, seed=60)
+    rng = np.random.default_rng(61)
+    u = rng.random(batch)
+    x_born = (0.01**u, 0.01 ** (1 - u))
+    xi_hat, y, r_phi = rng.random(batch), 2 * rng.random(batch) - 1, rng.random(batch)
+    for beam_sign, beam in [(1.0, 0), (-1.0, 1)]:
+        soft, x, xi, _, det_soft = initial_real_from_born(
+            p_born, 4, beam_sign, np.zeros(batch), y, r_phi, x_born
+        )
+        assert (xi == 0).all() and np.isfinite(det_soft).all()
+        np.testing.assert_allclose(soft[:, 4], 0.0, atol=1e-12)
+        np.testing.assert_allclose(np.delete(soft, 4, axis=1), p_born, atol=1e-10)
+        np.testing.assert_allclose(np.stack(x, 1), np.stack(x_born, 1), rtol=1e-14)
+
+        coll, x, xi, _, _ = initial_real_from_born(
+            p_born, 4, beam_sign, xi_hat, np.ones(batch), r_phi, x_born
+        )
+        np.testing.assert_allclose(coll[:, 4, 1:3], 0.0, atol=1e-10)
+        assert (np.sign(coll[:, 4, 3]) == beam_sign).all()
+        np.testing.assert_allclose(x[beam], x_born[beam] / (1 - xi), rtol=1e-13)
+        np.testing.assert_allclose(x[1 - beam], x_born[1 - beam], rtol=1e-13)
+        np.testing.assert_allclose(
+            np.delete(coll, [0, 1, 4], axis=1), p_born[:, 2:], atol=1e-10
+        )

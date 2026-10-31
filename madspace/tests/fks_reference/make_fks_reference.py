@@ -24,7 +24,15 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
                xi_cnt, xi_hat_cnt, xiimax_cnt, xbjrk_ev, xbjrk_cnt, shat_ev,
                shat_cnt, tau_ev, ycm_ev, tau_cnt, ycm_cnt, kperp,
-               shat_born, tau_born, ycm_born, xbjrk_born, rad_p_ev
+               shat_born, tau_born, ycm_born, xbjrk_born,
+               rad_p_ev, rad_p_cnt, rad_xi_ev, rad_xi_hat_ev, rad_y_ev,
+               rad_xiimax_ev, rad_xi_cnt, rad_xi_hat_cnt, rad_xiimax_cnt,
+               rad_xbjrk_ev, rad_xbjrk_cnt, rad_shat_ev, rad_shat_cnt
+    The rad_ entries come from rerunning generate_FKS_kinematics on the Born
+    of the point with unit Born weights and without the lower bound
+    tau_lower_bound that the cuts put on the partonic energy of the real
+    emission (it restricts xi and y for an initial-state emitter). They are
+    the FKS map itself.
     Entries of counter-events that genps_fks.f did not generate keep the
     values it leaves behind (jac_cnt <= 0 marks them).
 """
@@ -165,6 +173,20 @@ def parse(text):
             point["rad_jac"], point["rad_jac_cnt"] = v[0], v[1:]
         elif key == "RADPEV":
             point["rad_p_ev"] = momenta(floats(rest))
+        elif key == "RADPCNT":
+            point.setdefault("rad_p_cnt", []).append(momenta(floats(rest[1:])))
+        elif key == "RADXI":
+            v = floats(rest)
+            point.update(rad_xi_ev=v[0], rad_xi_hat_ev=v[1], rad_y_ev=v[2])
+            point.update(rad_xiimax_ev=v[3], rad_xi_cnt=v[4:9])
+            point.update(rad_xi_hat_cnt=v[9:14], rad_xiimax_cnt=v[14:19])
+        elif key == "RADXBJ":
+            v = floats(rest)
+            point["rad_xbjrk_ev"] = v[:2]
+            point["rad_xbjrk_cnt"] = [v[2 + 2 * k : 4 + 2 * k] for k in range(5)]
+        elif key == "RADSHAT":
+            v = floats(rest)
+            point.update(rad_shat_ev=v[0], rad_shat_cnt=v[1:6])
     return data
 
 

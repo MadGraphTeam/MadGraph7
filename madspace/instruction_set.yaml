@@ -2437,6 +2437,153 @@ fks_recoil_boost_inverse:
   desc: "Inverse of @ref fks_recoil_boost."
 
 
+fks_initial_radiate:
+  inputs:
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of the FKS parton i in units of its upper bound xi_max"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j, in the centre-of-mass frame of the real emission"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy of the Born"
+    - name: x1_born
+      type: [float]
+      desc: "momentum fraction of beam 1 in the Born"
+    - name: x2_born
+      type: [float]
+      desc: "momentum fraction of beam 2 in the Born"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "incoming momentum along +z of the real emission, in the Born centre-of-mass frame"
+    - name: p_in2
+      type: [float, 4]
+      desc: "incoming momentum along -z of the real emission, in the Born centre-of-mass frame"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i, in the Born centre-of-mass frame"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1 in the real emission"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2 in the real emission"
+    - name: xi
+      type: [float]
+      desc: "energy fraction 2 E_i / sqrt(s) of i in the centre-of-mass frame of the real emission"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound of xi at this y, from x1 <= 1 and x2 <= 1"
+    - name: det_xi
+      type: [float]
+      desc: "Jacobian of (xi_hat, y, r_phi, x1_born, x2_born) to (x1, x2) and the (n+1)-body phase space, in units of the n-body one, divided by xi"
+  desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f without a lower bound on the partonic energy. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its centre-of-mass frame and boosted along z into the Born centre-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
+
+fks_initial_cluster:
+  inputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "incoming momentum along +z of the real emission, in the Born centre-of-mass frame"
+    - name: p_in2
+      type: [float, 4]
+      desc: "incoming momentum along -z of the real emission, in the Born centre-of-mass frame"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i, massless"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1 in the real emission"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2 in the real emission"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: sqrt_s
+      type: [float]
+      desc: "partonic centre-of-mass energy of the Born"
+    - name: x1_born
+      type: [float]
+      desc: "momentum fraction of beam 1 in the Born"
+    - name: x2_born
+      type: [float]
+      desc: "momentum fraction of beam 2 in the Born"
+    - name: xi_hat
+      type: [float]
+      desc: "energy fraction of i in units of xi_max"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i"
+    - name: xi_max
+      type: [float]
+      desc: "upper bound of xi"
+    - name: det_xi
+      type: [float]
+      desc: "inverse of det_xi of @ref fks_initial_radiate"
+  desc: "Inverse of @ref fks_initial_radiate. 1 - y and 1 + y come from the light-cone components of i, so that they keep their precision when i is collinear to a beam. The final state of the Born is mapped back with @ref fks_initial_recoil_boost_inverse."
+
+fks_initial_recoil_boost:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the Born, in its centre-of-mass frame"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the boosted momenta"
+  desc: "Transverse boost of the final state of the Born that gives it the transverse momentum -p_T of i in an FKS emission off an incoming parton, as genps_fks.f, with cosh(y) - 1 computed as sinh(y)^2 / (cosh(y) + 1). See @ref fks_initial_radiate."
+
+fks_initial_recoil_boost_inverse:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "final-state momenta of the real emission without i"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of the FKS parton i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and the incoming emitter j"
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuth of i about the beam axis"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the final-state momenta of the Born"
+  desc: "Inverse of @ref fks_initial_recoil_boost."
+
+
 ---
 title: Invariants
 

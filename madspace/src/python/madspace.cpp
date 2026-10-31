@@ -1015,10 +1015,11 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSRadiation, Mapping>(m, "FKSRadiation", pydoc::doc("FKSRadiation"))
         .def(
-            py::init<std::size_t, std::size_t, std::size_t>(),
+            py::init<std::size_t, std::size_t, std::size_t, bool>(),
             py::arg("born_particle_count"),
             py::arg("i_fks"),
             py::arg("j_fks"),
+            py::arg("leptonic") = false,
             pydoc::doc("FKSRadiation::FKSRadiation")
         )
         .def(
@@ -1032,7 +1033,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSRadiation::born_particle_count")
         )
         .def("i_fks", &FKSRadiation::i_fks, pydoc::doc("FKSRadiation::i_fks"))
-        .def("j_fks", &FKSRadiation::j_fks, pydoc::doc("FKSRadiation::j_fks"));
+        .def("j_fks", &FKSRadiation::j_fks, pydoc::doc("FKSRadiation::j_fks"))
+        .def("leptonic", &FKSRadiation::leptonic, pydoc::doc("FKSRadiation::leptonic"))
+        .def(
+            "initial_state",
+            &FKSRadiation::initial_state,
+            pydoc::doc("FKSRadiation::initial_state")
+        );
 
     py::classh<FastRamboMapping, Mapping>(
         m, "FastRamboMapping", pydoc::doc("FastRamboMapping")
