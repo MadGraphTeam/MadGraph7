@@ -15,6 +15,10 @@
 //! binary64; at the working precision itself they need the artifact
 //! constants converted at that precision (MadGraphTeam/pyamplicol#26), so
 //! those checks are `#[ignore]`d until then (`cargo test -- --ignored`).
+//! There the graded total agrees with the ordinary total as the resolved
+//! components do (about 5e-58 at 64 digits). The u d > u d shares are
+//! compared with 1e-30: the built-in model's U(1)-subtraction vertex
+//! coupling 1/3 limits that process, full colour included, to about 4e-34.
 //!
 //! Supply the artifacts with
 //! `pyamplicol generate 'u u~ > g g' DIR --color-accuracy full --color-graded
@@ -69,9 +73,13 @@ fn runtime(variable: &str) -> Option<NativeRuntime> {
     Some(NativeRuntime::load(PathBuf::from(path), None, None).unwrap())
 }
 
+/// Decimal digits, then the tolerances of the graded total against the
+/// ordinary total and of each degree's share against the exact value.
+type Tolerance = (u32, f64, f64);
+
 /// `working_precision`: compare the double-double and arbitrary-precision
-/// shares with `tolerances`; otherwise with binary64 at 1e-12.
-fn check(process: &str, variable: &str, tolerances: [(u32, f64); 2], working_precision: bool) {
+/// values with `tolerances`; otherwise with binary64 at 1e-12.
+fn check(process: &str, variable: &str, tolerances: [Tolerance; 2], working_precision: bool) {
     let Some(mut runtime) = runtime(variable) else {
         return;
     };
@@ -115,8 +123,12 @@ fn check(process: &str, variable: &str, tolerances: [(u32, f64); 2], working_pre
 
     // Double-double and arbitrary precision.
     let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
-    for (digits, tolerance) in tolerances {
-        let tolerance = if working_precision { tolerance } else { 1e-12 };
+    for (digits, total_tolerance, share_tolerance) in tolerances {
+        let (total_tolerance, share_tolerance) = if working_precision {
+            (total_tolerance, share_tolerance)
+        } else {
+            (1e-12, 1e-12)
+        };
         let graded = runtime
             .evaluate_graded_with_precision(&decimal, POINTS.len(), digits, None)
             .unwrap();
@@ -130,7 +142,7 @@ fn check(process: &str, variable: &str, tolerances: [(u32, f64); 2], working_pre
             let graded_total = Float::parse(&graded.totals[index], Some(BITS)).unwrap();
             let difference = (graded_total / &total - f(1)).norm().to_f64();
             assert!(
-                difference <= tolerance,
+                difference <= total_tolerance,
                 "{process} {digits} digits: graded total differs by {difference:e}"
             );
             for (degree, share) in expected(process, *point) {
@@ -139,7 +151,7 @@ fn check(process: &str, variable: &str, tolerances: [(u32, f64); 2], working_pre
                     Float::parse(&graded.values[index * degree_count + slot], Some(BITS)).unwrap();
                 let difference = (value / &total - share).norm().to_f64();
                 assert!(
-                    difference <= tolerance,
+                    difference <= share_tolerance,
                     "{process} {digits} digits, degree {degree}: share differs by {difference:e}"
                 );
             }
@@ -147,7 +159,9 @@ fn check(process: &str, variable: &str, tolerances: [(u32, f64); 2], working_pre
     }
 }
 
-const TOLERANCES: [(u32, f64); 2] = [(32, 1e-27), (64, 1e-58)];
+const TOLERANCES: [Tolerance; 2] = [(32, 1e-27, 1e-27), (64, 1e-55, 1e-55)];
+/// u d > u d: the shares are limited by the model's U(1) coupling 1/3.
+const QUARK_TOLERANCES: [Tolerance; 2] = [(32, 1e-27, 1e-27), (64, 1e-55, 1e-30)];
 
 #[test]
 fn graded_quark_antiquark_to_gluons_in_every_precision() {
@@ -186,7 +200,7 @@ fn graded_quark_scattering_at_working_precision() {
     check(
         "u d > u d",
         "RUSTICOL_GRADED_COLOUR_UD_UD",
-        TOLERANCES,
+        QUARK_TOLERANCES,
         true,
     );
 }
