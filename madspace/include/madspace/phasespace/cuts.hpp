@@ -74,6 +74,8 @@ public:
         std::size_t particle_count,
         const std::optional<CustomFunction>& custom_cut = std::nullopt
     );
+    /// True when there are neither cut items nor a custom cut.
+    bool empty() const { return _cut_data.empty() && !_custom_cut; }
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).

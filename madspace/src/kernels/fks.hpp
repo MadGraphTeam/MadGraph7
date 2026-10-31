@@ -792,5 +792,67 @@ KERNELSPEC void kernel_fks_initial_recoil_boost_inverse(
     fks_initial_recoil_boost<T>(p, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out);
 }
 
+// Light-cone components E + p_z and E - p_z of p_in1 + p_in2 - p_i, the system
+// recoiling against i in an emission off an incoming parton. It has zero
+// longitudinal momentum in the centre-of-mass frame of the Born, so their
+// ratio is exp(2 y_born) for the rapidity y_born of that frame. The incoming
+// momenta are along +-z. The smaller light-cone component of i comes from its
+// mass shell, as in @ref fks_initial_cluster.
+template <typename T>
+KERNELSPEC void kernel_fks_recoil_light_cone(
+    FIn<T, 1> p_in1, FIn<T, 1> p_in2, FIn<T, 1> p_i, FOut<T, 0> plus, FOut<T, 0> minus
+) {
+    auto p1 = load_mom<T>(p_in1);
+    auto p2 = load_mom<T>(p_in2);
+    auto pi = load_mom<T>(p_i);
+    auto pt2 = pi[1] * pi[1] + pi[2] * pi[2];
+    auto forward = pi[3] >= 0.;
+    auto big = where(forward, pi[0] + pi[3], pi[0] - pi[3]);
+    auto small = pt2 / max(big, EPS);
+    plus = (p1[0] + p1[3]) + (p2[0] + p2[3]) - where(forward, big, small);
+    minus = (p1[0] - p1[3]) + (p2[0] - p2[3]) - where(forward, small, big);
+}
+
+// Boost along z by the rapidity y = log(plus / minus) / 2, in light-cone
+// components: q_+ = E + p_z -> e^{+y} q_+, q_- = E - p_z -> e^{-y} q_-, the
+// larger of the two taken directly and the smaller from the mass shell,
+// q_+ q_- = m^2 + p_T^2, with the given mass (a negative one means unknown, and
+// that momentum is boosted linearly). Each momentum keeps its relative
+// precision in both components, in either direction of the boost, so the
+// centre-of-mass frame of the Born comes out of the lab frame as precisely as
+// it went in, whatever the rapidity. (boost_beam projects onto the mass shell
+// only the momenta whose energy decreases and hands the shifts to the hardest
+// one, which loses up to e^{2|y|} of relative precision in that momentum when
+// it is boosted out of the lab.)
+template <typename T>
+KERNELSPEC void kernel_fks_beam_boost(
+    FIn<T, 2> p, FSIn<T, 1> masses, FIn<T, 0> plus, FIn<T, 0> minus, FOut<T, 2> p_out
+) {
+    FVal<T> pl = plus, mi = minus;
+    auto e_plus = sqrt(pl / mi);
+    auto e_minus = sqrt(mi / pl);
+    auto cosh_rap = 0.5 * (e_plus + e_minus);
+    auto sinh_rap = 0.5 * (e_plus - e_minus);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        auto q = p[i];
+        auto q_out = p_out[i];
+        FVal<T> mass(masses[i]);
+        FVal<T> q0(q[0]), q1(q[1]), q2(q[2]), q3(q[3]);
+        auto trans2 = mass * mass + q1 * q1 + q2 * q2;
+        auto forward = q3 >= 0.;
+        auto big = where(forward, q0 + q3, q0 - q3);
+        auto small = trans2 / max(big, FVal<T>(EPS2));
+        auto p_plus = e_plus * where(forward, big, small);
+        auto p_minus = e_minus * where(forward, small, big);
+        auto known = mass >= 0.;
+        q_out[0] =
+            where(known, 0.5 * (p_plus + p_minus), q0 * cosh_rap + q3 * sinh_rap);
+        q_out[1] = q1;
+        q_out[2] = q2;
+        q_out[3] =
+            where(known, 0.5 * (p_plus - p_minus), q3 * cosh_rap + q0 * sinh_rap);
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

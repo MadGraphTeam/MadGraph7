@@ -1103,6 +1103,10 @@ std::pair<Value, Value> PhaseSpaceMapping::lab_fractions(
     };
 }
 
+std::vector<double> PhaseSpaceMapping::external_masses() const {
+    return lab_masses(_topology, _permutations);
+}
+
 Value PhaseSpaceMapping::to_lab(
     FunctionBuilder& fb,
     Value momenta,

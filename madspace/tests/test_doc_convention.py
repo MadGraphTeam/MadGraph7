@@ -48,6 +48,14 @@ CASES = {
         has_cut=False,
     ),
     "ChiliMapping": dict(n_particles=3, y_max=[], pt_min=[]),
+    "FKSMapping": dict(
+        born=ms.PhaseSpaceMapping(
+            [0.0] * 4, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo
+        ),
+        i_fks=4,
+        j_fks=2,
+        s_hat_min=0.0,
+    ),
     "FKSRadiation": dict(
         born_particle_count=5,
         i_fks=5,

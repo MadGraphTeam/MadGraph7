@@ -2747,6 +2747,46 @@ fks_initial_recoil_boost_inverse:
       desc: "the final-state momenta of the Born"
   desc: "Inverse of @ref fks_initial_recoil_boost."
 
+fks_recoil_light_cone:
+  inputs:
+    - name: p_in1
+      type: [float, 4]
+      desc: "incoming momentum along +z"
+    - name: p_in2
+      type: [float, 4]
+      desc: "incoming momentum along -z"
+    - name: p_i
+      type: [float, 4]
+      desc: "FKS parton i"
+  outputs:
+    - name: plus
+      type: [float]
+      desc: "E + p_z of p_in1 + p_in2 - p_i"
+    - name: minus
+      type: [float]
+      desc: "E - p_z of p_in1 + p_in2 - p_i"
+  desc: "Light-cone components of the system recoiling against i in an FKS emission off an incoming parton. It has zero longitudinal momentum in the centre-of-mass frame of the Born, so plus / minus = exp(2 y) for the rapidity y of that frame in the frame of the inputs. See @ref FKSMapping."
+
+fks_beam_boost:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta"
+    - name: masses
+      type: [float, single, n]
+      desc: "mass of each particle, or a negative value for a linear boost"
+    - name: plus
+      type: [float]
+      desc: "boost by the rapidity log(plus / minus) / 2"
+    - name: minus
+      type: [float]
+      desc: "see plus"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the boosted momenta"
+  desc: "Boost along the beam axis in light-cone components, the smaller one of each momentum from its mass shell, which keeps the relative precision of every momentum in both directions of the boost. Exchanging plus and minus gives the inverse. Unlike @ref boost_beam it does not lose precision when boosting out of the lab frame. See @ref FKSMapping."
+
 
 ---
 title: Invariants

@@ -1247,6 +1247,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("custom_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts#2")
         )
+        .def("empty", &Cuts::empty, pydoc::doc("Cuts::empty"))
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
@@ -1583,9 +1584,39 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PhaseSpaceMapping::mirror_beams")
         )
         .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
+        .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"))
         .def(
-            "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
+            "leptonic",
+            &PhaseSpaceMapping::leptonic,
+            pydoc::doc("PhaseSpaceMapping::leptonic")
+        )
+        .def(
+            "external_masses",
+            &PhaseSpaceMapping::external_masses,
+            pydoc::doc("PhaseSpaceMapping::external_masses")
         );
+
+    py::classh<FKSMapping, Mapping>(m, "FKSMapping", pydoc::doc("FKSMapping"))
+        .def(
+            py::init<const PhaseSpaceMapping&, std::size_t, std::size_t, double>(),
+            py::arg("born"),
+            py::arg("i_fks"),
+            py::arg("j_fks"),
+            py::arg("s_hat_min") = 0.,
+            pydoc::doc("FKSMapping::FKSMapping")
+        )
+        .def(
+            "random_dim", &FKSMapping::random_dim, pydoc::doc("FKSMapping::random_dim")
+        )
+        .def(
+            "particle_count",
+            &FKSMapping::particle_count,
+            pydoc::doc("FKSMapping::particle_count")
+        )
+        .def("i_fks", &FKSMapping::i_fks, pydoc::doc("FKSMapping::i_fks"))
+        .def("j_fks", &FKSMapping::j_fks, pydoc::doc("FKSMapping::j_fks"))
+        .def("born", &FKSMapping::born, pydoc::doc("FKSMapping::born"))
+        .def("radiation", &FKSMapping::radiation, pydoc::doc("FKSMapping::radiation"));
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")

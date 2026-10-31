@@ -222,6 +222,11 @@ public:
     double beam_rapidity() const { return _beam_rapidity; }
     /// Whether the mapping takes the `mirror_index` condition.
     bool mirror_beams() const { return _mirror_beams; }
+    /// Whether the PDF convolution is skipped (`x1` = `x2` = 1).
+    bool leptonic() const { return _leptonic; }
+    /// Masses of the particles in the order of the output momenta, the beams
+    /// first, or -1 for a position whose mass differs between permutations.
+    std::vector<double> external_masses() const;
     /// The cuts, applied to the lab-frame momenta.
     const Cuts& cuts() const { return _cuts; }
     /// True when the cuts exclude the whole region this mapping samples: a
