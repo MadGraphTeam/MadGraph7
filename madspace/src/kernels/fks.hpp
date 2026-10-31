@@ -262,19 +262,67 @@ fks_initial_xi_max(FVal<T> x1, FVal<T> x2, FVal<T> omy_beam, FVal<T> opy_beam) {
 // xi = xi_hat xi_max, s / (4 pi)^3 from d^3k / (2 E_k (2 pi)^3) and
 // 1 / (1 - xi) from dx1 dx2 = dx1_born dx2_born / (1 - xi)
 template <typename T>
-KERNELSPEC FVal<T> fks_initial_det_xi(FVal<T> s_born, FVal<T> xi_max, FVal<T> omx) {
+KERNELSPEC FVal<T> fks_initial_det_xi(FVal<T> s_born, FVal<T> xi_width, FVal<T> omx) {
     constexpr double norm = 2. * PI / ((4. * PI) * (4. * PI) * (4. * PI));
-    return norm * xi_max * s_born / max(omx * omx, EPS2);
+    return norm * xi_width * s_born / max(omx * omx, EPS2);
+}
+
+// Range of the emission off an incoming parton with a lower bound s_hat_min on
+// the partonic energy of the real emission, as tau_lower_bound in
+// genps_fks.f: xi >= xi_min = 1 - s_born / s_hat_min, and y restricted to where
+// xi_max(y) >= xi_min. With rho = 1 - xi_min, x1 <= 1 at xi_min bounds the
+// cosine y_beam of i to +z from above and x2 <= 1 from below,
+//   1 + y_upp = 2 (1 - x1^2) / (xi_min (1 + x1^2 / rho)),
+//   1 - y_upp = 2 (x1^2 - rho^2) / (rho xi_min (1 + x1^2 / rho)),
+//   1 + y_low = 2 (x2^2 - rho^2) / (xi_min (x2^2 + rho)),
+//   1 - y_low = 2 rho (1 - x2^2) / (xi_min (x2^2 + rho)),
+// each clamped to [-1, 1]. Returns xi_min, 1 -+ y at the upper and lower end
+// of the range of y, the cosine of i to the emitter j, and the width
+// y_upp - y_low of the range.
+template <typename T>
+KERNELSPEC Sextuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>, FVal<T>, FVal<T>>
+fks_initial_range(
+    FVal<T> s_born, FVal<T> x1b, FVal<T> x2b, FVal<T> s_hat_min, FVal<T> sign
+) {
+    auto active = s_hat_min > s_born;
+    auto s_min = where(active, s_hat_min, FVal<T>(1.));
+    auto rho = where(active, s_born / s_min, FVal<T>(1.));
+    auto xi_min = where(active, (s_min - s_born) / s_min, FVal<T>(0.));
+    auto xi_min_safe = where(active, xi_min, FVal<T>(1.));
+    auto d1 = xi_min_safe * (1. + x1b * x1b / rho);
+    auto d2 = xi_min_safe * (x2b * x2b + rho);
+    // the smaller of 1 -+ y at each end from its formula and the larger one as
+    // 2 minus it, so that 1 - y and 1 + y add up to 2 inside the range
+    auto omy_uf =
+        min(max(2. * (x1b - rho) * (x1b + rho) / (rho * d1), 0.), FVal<T>(2.));
+    auto opy_uf = min(2. * (1. - x1b) * (1. + x1b) / d1, FVal<T>(2.));
+    auto low_u = omy_uf <= opy_uf;
+    auto omy_u = where(active, where(low_u, omy_uf, 2. - opy_uf), FVal<T>(0.));
+    auto opy_u = where(active, where(low_u, 2. - omy_uf, opy_uf), FVal<T>(2.));
+    auto opy_lf = min(max(2. * (x2b - rho) * (x2b + rho) / d2, 0.), FVal<T>(2.));
+    auto omy_lf = min(2. * rho * (1. - x2b) * (1. + x2b) / d2, FVal<T>(2.));
+    auto low_l = opy_lf <= omy_lf;
+    auto opy_l = where(active, where(low_l, opy_lf, 2. - omy_lf), FVal<T>(0.));
+    auto omy_l = where(active, where(low_l, 2. - opy_lf, omy_lf), FVal<T>(2.));
+    auto plus = sign > 0.;
+    auto omy_hi = where(plus, omy_u, opy_l);
+    auto opy_hi = where(plus, opy_u, omy_l);
+    auto omy_lo = where(plus, omy_l, opy_u);
+    auto opy_lo = where(plus, opy_l, omy_u);
+    // width of the range of y from the smaller pair
+    auto width = where(omy_lo <= opy_hi, omy_lo - omy_hi, opy_hi - opy_lo);
+    return {xi_min, omy_hi, opy_hi, omy_lo, opy_lo, max(width, 0.)};
 }
 
 template <typename T>
 KERNELSPEC void kernel_fks_initial_radiate(
     FIn<T, 0> xi_hat,
-    FIn<T, 0> y,
+    FIn<T, 0> y_hat,
     FIn<T, 0> r_phi,
     FIn<T, 0> sqrt_s,
     FIn<T, 0> x1_born,
     FIn<T, 0> x2_born,
+    FSIn<T, 0> s_hat_min,
     FSIn<T, 0> beam_sign,
     FOut<T, 1> p_in1,
     FOut<T, 1> p_in2,
@@ -282,16 +330,30 @@ KERNELSPEC void kernel_fks_initial_radiate(
     FOut<T, 0> x1,
     FOut<T, 0> x2,
     FOut<T, 0> xi,
+    FOut<T, 0> y,
+    FOut<T, 0> xi_min,
     FOut<T, 0> xi_max,
     FOut<T, 0> det_xi
 ) {
-    FVal<T> xh = xi_hat, yv = y, rp = r_phi, rs_born = sqrt_s;
+    FVal<T> xh = xi_hat, yh = y_hat, rp = r_phi, rs_born = sqrt_s;
     FVal<T> x1b = x1_born, x2b = x2_born, sign(beam_sign);
-    auto yb = sign * yv;
-    auto omy_beam = 1. - yb;
-    auto opy_beam = 1. + yb;
+    auto s_born = rs_born * rs_born;
+
+    // y_hat in [-1, 1] mapped linearly onto the range of y, keeping 1 - y and
+    // 1 + y as sums of non-negative terms (y = y_hat without a bound)
+    auto range = fks_initial_range<T>(s_born, x1b, x2b, FVal<T>(s_hat_min), sign);
+    auto xmin = range.first;
+    auto width_y = range.sixth;
+    auto omy = range.second + width_y * 0.5 * (1. - yh);
+    auto opy = range.fifth + width_y * 0.5 * (1. + yh);
+    auto plus = sign > 0.;
+    auto omy_beam = where(plus, omy, opy);
+    auto opy_beam = where(plus, opy, omy);
+    auto yb = 0.5 * (opy_beam - omy_beam);
+
     auto xm = fks_initial_xi_max<T>(x1b, x2b, omy_beam, opy_beam);
-    auto xiv = xh * xm;
+    auto width_xi = max(xm - xmin, 0.);
+    auto xiv = xmin + width_xi * xh;
     auto omx = 1. - xiv;
     auto sq_omx = sqrt(max(omx, EPS2));
     auto rs = rs_born / sq_omx;
@@ -323,8 +385,10 @@ KERNELSPEC void kernel_fks_initial_radiate(
     x1 = x1b / (sq_omx * omega);
     x2 = x2b * omega / sq_omx;
     xi = xiv;
+    y = where(omy <= opy, 1. - omy, opy - 1.);
+    xi_min = xmin;
     xi_max = xm;
-    det_xi = fks_initial_det_xi<T>(rs_born * rs_born, xm, omx);
+    det_xi = fks_initial_det_xi<T>(s_born, width_xi, omx) * 0.5 * width_y;
 }
 
 template <typename T>
@@ -334,14 +398,17 @@ KERNELSPEC void kernel_fks_initial_cluster(
     FIn<T, 1> p_i,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
+    FSIn<T, 0> s_hat_min,
     FSIn<T, 0> beam_sign,
     FOut<T, 0> sqrt_s,
     FOut<T, 0> x1_born,
     FOut<T, 0> x2_born,
     FOut<T, 0> xi_hat,
-    FOut<T, 0> y,
+    FOut<T, 0> y_hat,
     FOut<T, 0> r_phi,
     FOut<T, 0> xi,
+    FOut<T, 0> y,
+    FOut<T, 0> xi_min,
     FOut<T, 0> xi_max,
     FOut<T, 0> det_xi
 ) {
@@ -365,7 +432,6 @@ KERNELSPEC void kernel_fks_initial_cluster(
     auto xiv = 2. * pi_dot_p / s;
     auto omy_beam = 2. * pi_dot_1 / pi_dot_p; // 1 - y_beam
     auto opy_beam = 2. * pi_dot_2 / pi_dot_p; // 1 + y_beam
-    auto yb = (pi_dot_2 - pi_dot_1) / pi_dot_p;
 
     auto omx = 1. - xiv;
     auto sq_omx = sqrt(max(omx, EPS2));
@@ -378,16 +444,29 @@ KERNELSPEC void kernel_fks_initial_cluster(
     auto xm = fks_initial_xi_max<T>(x1b, x2b, omy_beam, opy_beam);
     auto s_born = s * omx;
 
+    auto range = fks_initial_range<T>(s_born, x1b, x2b, FVal<T>(s_hat_min), sign);
+    auto xmin = range.first;
+    auto width_y = range.sixth;
+    auto positive = sign > 0.;
+    auto omy = where(positive, omy_beam, opy_beam);
+    auto opy = where(positive, opy_beam, omy_beam);
+    // distance from the upper end of the range of y, from the smaller pair
+    auto from_upp = where(omy <= opy, omy - range.second, range.third - opy);
+    auto width_xi = max(xm - xmin, 0.);
+
     auto rphi = atan2(pi[2], pi[1]) / (2. * PI);
     sqrt_s = sqrt(max(s_born, 0.));
     x1_born = x1b;
     x2_born = x2b;
-    xi_hat = xiv / max(xm, EPS);
-    y = sign * yb;
+    xi_hat = (xiv - xmin) / max(width_xi, EPS2);
+    y_hat = 1. - 2. * from_upp / max(width_y, EPS2);
     r_phi = where(rphi < 0., rphi + 1., rphi);
     xi = xiv;
+    y = where(omy <= opy, 1. - omy, opy - 1.);
+    xi_min = xmin;
     xi_max = xm;
-    det_xi = 1. / max(fks_initial_det_xi<T>(s_born, xm, omx), EPS2);
+    det_xi =
+        1. / max(fks_initial_det_xi<T>(s_born, width_xi, omx) * 0.5 * width_y, EPS2);
 }
 
 // Transverse boost of the final state of the Born along -(cos phi, sin phi, 0)

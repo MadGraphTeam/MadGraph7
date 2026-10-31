@@ -3,9 +3,9 @@ parton as a mapping.
 
 The reference points of test_data/fks (see test_fks_reference.py) give the
 real-emission momenta, momentum fractions and radiation Jacobian of the FKS map
-of genps_fks.f (the rad_ entries, without the lower bound the cuts put on the
-partonic energy) for a Born point and the last three entries of the unit-cube
-vector. The mapping must reproduce them, and its inverse the Born and the three
+of genps_fks.f, without (the rad_ entries) and with (cut_) the lower bound the
+cuts put on the partonic energy, for a Born point and the last three entries of
+the unit-cube vector. The mapping must reproduce them, and its inverse the Born and the three
 random numbers. The weight of the mapping is the full Jacobian, while
 genps_fks.f returns the radiation Jacobian times compute_flux without the
 factor xi, in units of xi_max and without the factors 1 - stiny and 1 - ctiny of
@@ -31,7 +31,51 @@ EPS = np.finfo(np.float64).eps
 TAU = 0.01
 
 
-def conditioning(r, born, momenta, i_fks, j_fks, x_born=None):
+def minkowski(a, b):
+    return a[..., 0] * b[..., 0] - (a[..., 1:] * b[..., 1:]).sum(-1)
+
+
+def initial_xi_max(x, omy, opy):
+    """Upper bound on xi from x <= 1 for a beam with Born fraction x, with
+    omy = 1 - y and opy = 1 + y for the cosine y of i to that beam."""
+    omx2, opx2, y = (1 - x) * (1 + x), 1 + x * x, 0.5 * (opy - omy)
+    disc = np.where(
+        y >= 0, (opx2 * omy) ** 2 + 16 * y * x * x, (opx2 * opy) ** 2 - 4 * y * omx2**2
+    )
+    return 4 * omx2 / (2 * omx2 + opx2 * opy + np.sqrt(np.maximum(disc, 0)))
+
+
+def initial_widths(born, momenta, i_fks, j_fks, x_born, s_hat_min):
+    """xi, xi_max, rho = s_born / s_hat_min (1 without a bound) and the widths
+    xi_max - xi_min and y_upp - y_low of the ranges of xi and y of the emission
+    off an incoming parton."""
+    p1, p2, p_i = momenta[:, 0], momenta[:, 1], momenta[:, i_fks]
+    p_in = p1 + p2
+    xi = 2 * minkowski(p_i, p_in) / minkowski(p_in, p_in)
+    omy = 2 * minkowski(p_i, p1) / minkowski(p_i, p_in)
+    opy = 2 - omy
+    x1, x2 = x_born
+    xi_max = np.minimum(initial_xi_max(x1, omy, opy), initial_xi_max(x2, opy, omy))
+    born_in = born[:, 0] + born[:, 1]
+    rho = np.ones_like(xi)
+    if s_hat_min > 0:
+        rho = np.minimum(minkowski(born_in, born_in) / s_hat_min, 1.0)
+    xi_min = 1 - rho
+    width_y = np.full_like(xi, 2.0)
+    bounded = xi_min > 0
+    if bounded.any():
+        xa, xb = (x1, x2) if j_fks == 0 else (x2, x1)
+        rho_b, xi_min_b = rho[bounded], xi_min[bounded]
+        xa, xb = xa[bounded], xb[bounded]
+        omy_u = (
+            2 * (xa - rho_b) * (xa + rho_b) / (rho_b * xi_min_b * (1 + xa * xa / rho_b))
+        )
+        opy_l = 2 * (xb - rho_b) * (xb + rho_b) / (xi_min_b * (xb * xb + rho_b))
+        width_y[bounded] = 2 - np.clip(omy_u, 0, 2) - np.clip(opy_l, 0, 2)
+    return xi, xi_max, rho, xi_max - xi_min, width_y
+
+
+def conditioning(r, born, momenta, i_fks, j_fks, x_born=None, s_hat_min=0.0):
     """Precision to which the real momenta determine the random numbers and the
     Jacobian.
 
@@ -46,12 +90,15 @@ def conditioning(r, born, momenta, i_fks, j_fks, x_born=None):
     eps / sin(theta_jbar) through the azimuth of the Born emitter, which sets
     the frame of phi and is ill defined for an emitter close to the beam axis.
     For an incoming emitter xi_max vanishes like 1 - x of the Born when an x of
-    the Born approaches 1, which a double resolves only to eps / (1 - x), so
-    xi_hat and the Jacobian are resolved to that relative precision too. This
-    is the conditioning of the variables (genps_fks.f uses the same), up to
-    rounding. Returns the bounds on r_xi and r_y, on r_phi and on
-    det det_inv - 1, with a margin of about 10 over what four million random
-    points need.
+    the Born approaches 1, which a double resolves only to eps / (1 - x)
+    relative. With a lower bound s_hat_min on the partonic energy, xi_hat =
+    (xi - xi_min) / (xi_max - xi_min) is resolved to eps xi / (xi_max - xi_min)
+    and the position of y in its range to eps / (y_upp - y_low), and both
+    widths vanish at the edges of the range of y. This is the conditioning of
+    the variables (genps_fks.f uses the same), up to rounding. Returns the
+    bounds on r_xi and r_y, on r_phi and on det det_inv - 1, with a margin of 4
+    or more over what five million random points per lower bound need. Where
+    r_xi or r_y is not resolved at all, det is not either.
     """
     r_xi, r_y = r[:, 0], r[:, 1]
     p_i = momenta[:, i_fks, 1:]
@@ -67,12 +114,27 @@ def conditioning(r, born, momenta, i_fks, j_fks, x_born=None):
     sin_axis = np.linalg.norm(np.cross(p_i, axis), axis=1) / (
         np.linalg.norm(p_i, axis=1) * np.linalg.norm(axis, axis=1)
     )
+    # amplification of absolute errors on xi and on the position of y in its
+    # range, which only matters (range_xi > xi_hat) with a bound
+    range_xi, range_y = 0.0, 1.0
     x_edge = 0.0
-    if x_born is not None:
+    if x_born is not None and j_fks < 2:
+        xi, xi_max, rho, width_xi, width_y = initial_widths(
+            born, momenta, i_fks, j_fks, x_born, s_hat_min
+        )
+        # xi to eps xi and, through s_born, xi_min to eps rho
+        range_xi = (xi + np.where(rho < 1, rho, 0.0)) / width_xi
+        range_y = 2 / width_y
+        x_edge = 10 * EPS * xi_max / width_xi / (1 - np.maximum(*x_born))
+    elif x_born is not None:
         x_edge = 10 * EPS / (1 - np.maximum(x_born[0], x_born[1]))
-    bound_r = 10 * EPS * (1 / r_y + STINY / r_xi) + x_edge + 1e-13
+    res_xi = 10 * EPS * (STINY + range_xi) / r_xi
+    res_y = 10 * EPS * range_y / r_y
+    bound_r = res_xi + res_y + x_edge + 1e-13
     bound_phi = 1000 * EPS / sin_axis + frame + 1e-12
-    bound_det = 10 * EPS * (1 / r_y**2 + STINY / r_xi**2) + x_edge + 1e-11
+    bound_det = res_xi / r_xi + res_y / r_y + x_edge + 1e-11
+    # no bound on the Jacobian where r_xi or r_y is not resolved at all
+    bound_det = np.where((res_xi < 0.1 * r_xi) & (res_y < 0.1 * r_y), bound_det, np.inf)
     return bound_r, bound_phi, bound_det
 
 
@@ -175,16 +237,28 @@ def reference_cases():
     return cases
 
 
+@pytest.mark.parametrize("prefix", ["rad", "cut"], ids=["uncut", "bounded"])
 @pytest.mark.parametrize("data,conf,points", reference_cases())
-def test_matches_genps_fks(data, conf, points):
+def test_matches_genps_fks(data, conf, points, prefix):
+    """Without (rad_) and with (cut_) the lower bound tau_lower_bound s_lab on
+    the partonic energy of the real emission, which only an incoming emitter
+    sees."""
     nex = data["nexternal"]
     i_fks, j_fks = conf["i_fks"] - 1, conf["j_fks"] - 1
     leptonic = data["lpp"] == [0, 0]
-    mapping = ms.FKSRadiation(nex - 1, i_fks, j_fks, leptonic=leptonic)
+    s_lab = 4 * data["ebeam"][0] * data["ebeam"][1]
+    taus = {p["tau_lower_bound"] for p in points}
+    assert len(taus) == 1
+    s_hat_min = taus.pop() * s_lab if prefix == "cut" else 0.0
+    mapping = ms.FKSRadiation(
+        nex - 1, i_fks, j_fks, leptonic=leptonic, s_hat_min=s_hat_min
+    )
     assert mapping.random_dim() == 3
     assert mapping.initial_state() == (j_fks < 2)
 
     def field(key):
+        if key.startswith("rad_"):
+            key = prefix + key[3:]
         return np.array([p[key] for p in points])
 
     p_born = field("p_born")
@@ -200,18 +274,20 @@ def test_matches_genps_fks(data, conf, points):
     if not leptonic:
         np.testing.assert_allclose(np.stack(x, 1), field("rad_xbjrk_ev"), rtol=1e-13)
 
+    # genps_fks.f leaves out the width xi_max - xi_min of the range of xi,
+    # with xi_min = 1 - s_born / s_hat_min for an incoming emitter below it
+    xi_min = np.zeros(len(points))
+    if j_fks < 2 and s_hat_min > 0:
+        xi_min = np.maximum(1 - field("shat_born") / s_hat_min, 0.0)
+    width = field("rad_xiimax_ev") - xi_min
     fortran = field("rad_jac") / flux_factor(field("rad_shat_ev"), nex)
-    expected = (
-        fortran
-        * field("rad_xi_ev")
-        * field("rad_xiimax_ev")
-        * (1 - STINY)
-        * (1 - CTINY)
-    )
+    expected = fortran * field("rad_xi_ev") * width * (1 - STINY) * (1 - CTINY)
     np.testing.assert_allclose(det, expected, rtol=1e-12)
 
     r_inv, born_inv, x_inv, det_inv = inverse(mapping, p_ev, x)
-    bound_r, bound_phi, bound_det = conditioning(r, p_born, p_ev, i_fks, j_fks, x_born)
+    bound_r, bound_phi, bound_det = conditioning(
+        r, p_born, p_ev, i_fks, j_fks, x_born, s_hat_min
+    )
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
     assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()
     np.testing.assert_allclose(born_inv / scale, p_born / scale, rtol=0, atol=1e-13)
@@ -280,25 +356,33 @@ INITIAL_LAYOUTS = [
 ]
 
 
+# lower bounds on the partonic energy of the real emission: none, and one above
+# every Born (which are at SQRT_S)
+S_HAT_MINS = [0.0, 1.5 * SQRT_S**2]
+
+
+@pytest.mark.parametrize("s_hat_min", S_HAT_MINS, ids=["uncut", "bounded"])
 @pytest.mark.parametrize("masses,i_fks,j_fks", INITIAL_LAYOUTS)
-def test_round_trip_initial(masses, i_fks, j_fks):
+def test_round_trip_initial(masses, i_fks, j_fks, s_hat_min):
     batch = 2000
     n_born = len(masses) + 2
     born, _, _ = rambo([0.0, 0.0] + masses, batch, seed=40 + n_born)
     x_born = random_born_x(batch, seed=41)
     r = np.random.default_rng(42).random((batch, 3))
-    mapping = ms.FKSRadiation(n_born, i_fks, j_fks)
+    mapping = ms.FKSRadiation(n_born, i_fks, j_fks, s_hat_min=s_hat_min)
     assert mapping.initial_state() and not mapping.leptonic()
     momenta, x, det = forward(mapping, r, born, x_born)
     x1, x2 = x
 
-    # the real emission: x <= 1, its partonic energy and its incoming momenta
-    # in the Born c.m. frame, which moves with the Born rapidity in the lab
+    # the real emission: x <= 1, its partonic energy above the bound and its
+    # incoming momenta in the Born c.m. frame, which moves with the Born
+    # rapidity in the lab
     assert ((x1 <= 1) & (x2 <= 1)).all()
     s_lab = SQRT_S**2 / TAU
     p_in = momenta[:, 0] + momenta[:, 1]
     s_real = p_in[:, 0] ** 2 - (p_in[:, 1:] ** 2).sum(1)
     np.testing.assert_allclose(s_real, x1 * x2 * s_lab, rtol=1e-12)
+    assert (s_real >= s_hat_min * (1 - 1e-12)).all()
     plus1 = momenta[:, 0, 0] + momenta[:, 0, 3]
     np.testing.assert_allclose(
         plus1, x1 * math.sqrt(s_lab) * np.sqrt(x_born[1] / x_born[0]), rtol=1e-12
@@ -330,7 +414,9 @@ def test_round_trip_initial(masses, i_fks, j_fks):
     assert (det > 0).all()
 
     r_inv, born_inv, x_inv, det_inv = inverse(mapping, momenta, x)
-    bound_r, bound_phi, bound_det = conditioning(r, born, momenta, i_fks, j_fks, x_born)
+    bound_r, bound_phi, bound_det = conditioning(
+        r, born, momenta, i_fks, j_fks, x_born, s_hat_min
+    )
     assert (np.abs(r_inv[:, :2] - r[:, :2]).max(1) <= bound_r).all()
     assert (azimuth_difference(r_inv[:, 2], r[:, 2]) <= bound_phi).all()
     np.testing.assert_allclose(
@@ -389,18 +475,22 @@ def test_volume(n_out, i_fks, j_fks):
     assert_same_mean(det_born * det, det_real)
 
 
+@pytest.mark.parametrize("s_hat_min", [0.0, 600.0**2], ids=["uncut", "bounded"])
 @pytest.mark.parametrize("j_fks", [0, 1])
-def test_volume_initial(j_fks):
+def test_volume_initial(j_fks, s_hat_min):
     """g g > t t~ at sqrt(s_lab) = SQRT_S times an emission off an incoming
-    gluon covers the phase space of g g > t t~ g, momentum fractions included,
-    once."""
+    gluon covers the phase space of g g > t t~ g with s_hat >= s_hat_min,
+    momentum fractions included, once. With the bound most Borns lie below it
+    (the threshold is 346 GeV)."""
     batch = 400000
     born, x_born, det_born = rambo([0.0, 0.0, 173.0, 173.0], batch, 50, False)
     r = np.random.default_rng(51).random((batch, 3))
-    mapping = ms.FKSRadiation(4, 4, j_fks)
-    _, _, det = forward(mapping, r, born, x_born)
-    _, _, det_real = rambo([0.0, 0.0, 173.0, 173.0, 0.0], batch, 52, False)
-    assert_same_mean(det_born * det, det_real)
+    mapping = ms.FKSRadiation(4, 4, j_fks, s_hat_min=s_hat_min)
+    _, x, det = forward(mapping, r, born, x_born)
+    assert (x[0] * x[1] * SQRT_S**2 >= s_hat_min * (1 - 1e-12)).all()
+    _, x_real, det_real = rambo([0.0, 0.0, 173.0, 173.0, 0.0], batch, 52, False)
+    above = x_real[0] * x_real[1] * SQRT_S**2 >= s_hat_min
+    assert_same_mean(det_born * det, det_real * above)
 
 
 @pytest.mark.parametrize(
@@ -425,3 +515,8 @@ def test_volume_initial(j_fks):
 def test_invalid_layouts(born_count, i_fks, j_fks, leptonic):
     with pytest.raises(ValueError):
         ms.FKSRadiation(born_count, i_fks, j_fks, leptonic=leptonic)
+
+
+def test_negative_s_hat_min():
+    with pytest.raises(ValueError):
+        ms.FKSRadiation(4, 4, 0, s_hat_min=-1.0)

@@ -27,6 +27,8 @@ c that make_fks_reference.py parses.
       double precision ycm_born,ycmhat,xbjrk_born(2),jac_rad
       double precision m(-max_branch:max_particles),m_born(nexternal-1)
       double precision pb(0:3),xjac0,xpswgt0,tau_lower_bound_save
+      integer irerun
+      character*3 pre
       double precision tau_Born_lower_bound,tau_lower_bound_resonance
      &     ,tau_lower_bound
       common/ctau_lower_bound/tau_Born_lower_bound
@@ -146,10 +148,11 @@ c that make_fks_reference.py parses.
      &           ,ycm_ev,(tau_cnt(k),k=-2,2),(ycm_cnt(k),k=-2,2)
             write (*,fmt) 'KPERP',(xij_kperp(j),j=0,3)
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
-c point with unit Born weights, and without the lower bound on the
-c partonic energy of the real emission that set_tau_min derives from the
-c cuts (tau_lower_bound, which restricts xi and y for an initial-state
-c emitter). This is the FKS map itself, the reference for madspace.
+c point with unit Born weights, once with the lower bound on the partonic
+c energy of the real emission that set_tau_min derives from the cuts
+c (tau_lower_bound, which restricts xi and y for an initial-state emitter;
+c the CUT entries) and once without it (the FKS map itself; the RAD
+c entries).
             if (jac_full.gt.0d0 .and. p_born_l(0,1).gt.0d0) then
                do j=0,3
                   pb(j)=p_born_l(j,1)+p_born_l(j,2)
@@ -183,28 +186,39 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
                      m_born(i)=emass(i+1)
                   endif
                enddo
-               xjac0=1d0
-               xpswgt0=1d0
-               tau_lower_bound_save=tau_lower_bound
-               tau_lower_bound=0d0
-               call generate_FKS_kinematics(x,ndim,xjac0,xpswgt0,stot
-     &              ,shat_born,sqrtshat_born,tau_born,ycm_born,ycmhat
-     &              ,xbjrk_born,.false.,m,m_born,jac_rad,p,pass)
                write (*,fmt) 'BORNX',shat_born,tau_born,ycm_born
      &              ,xbjrk_born(1),xbjrk_born(2)
-               write (*,fmt) 'RADJAC',jac_rad,(jac_cnt(k),k=-2,2)
-               tau_lower_bound=tau_lower_bound_save
-               write (*,fmt) 'RADPEV',((p(j,i),j=0,3),i=1,nexternal)
-               do k=-2,2
-                  write (*,'(a,1x,i0,1x,*(es25.17e3,1x))') 'RADPCNT',k
-     &                 ,((p1_cnt(j,i,k),j=0,3),i=1,nexternal)
+               write (*,fmt) 'TAULB',tau_lower_bound
+               tau_lower_bound_save=tau_lower_bound
+               do irerun=1,2
+                  if (irerun.eq.1) then
+                     pre='CUT'
+                     tau_lower_bound=tau_lower_bound_save
+                  else
+                     pre='RAD'
+                     tau_lower_bound=0d0
+                  endif
+                  xjac0=1d0
+                  xpswgt0=1d0
+                  call generate_FKS_kinematics(x,ndim,xjac0,xpswgt0,stot
+     &                 ,shat_born,sqrtshat_born,tau_born,ycm_born,ycmhat
+     &                 ,xbjrk_born,.false.,m,m_born,jac_rad,p,pass)
+                  write (*,fmt) pre//'JAC',jac_rad,(jac_cnt(k),k=-2,2)
+                  write (*,fmt) pre//'PEV',((p(j,i),j=0,3),i=1
+     &                 ,nexternal)
+                  do k=-2,2
+                     write (*,'(a,1x,i0,1x,*(es25.17e3,1x))') pre/
+     &                    /'PCNT',k,((p1_cnt(j,i,k),j=0,3),i=1
+     &                    ,nexternal)
+                  enddo
+                  write (*,fmt) pre//'XI',xi_i_fks_ev,xi_i_hat_ev
+     &                 ,y_ij_fks_ev,xiimax_ev,(xi_i_fks_cnt(k),k=-2,2)
+     &                 ,(xi_i_hat_cnt(k),k=-2,2),(xiimax_cnt(k),k=-2,2)
+                  write (*,fmt) pre//'XBJ',xbjrk_ev(1),xbjrk_ev(2)
+     &                 ,((xbjrk_cnt(j,k),j=1,2),k=-2,2)
+                  write (*,fmt) pre//'SHAT',shat_ev,(shat_cnt(k),k=-2,2)
                enddo
-               write (*,fmt) 'RADXI',xi_i_fks_ev,xi_i_hat_ev,y_ij_fks_ev
-     &              ,xiimax_ev,(xi_i_fks_cnt(k),k=-2,2)
-     &              ,(xi_i_hat_cnt(k),k=-2,2),(xiimax_cnt(k),k=-2,2)
-               write (*,fmt) 'RADXBJ',xbjrk_ev(1),xbjrk_ev(2)
-     &              ,((xbjrk_cnt(j,k),j=1,2),k=-2,2)
-               write (*,fmt) 'RADSHAT',shat_ev,(shat_cnt(k),k=-2,2)
+               tau_lower_bound=tau_lower_bound_save
             endif
          enddo
       enddo

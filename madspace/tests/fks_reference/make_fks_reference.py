@@ -19,20 +19,22 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
     configs[]: nfks, i_fks, j_fks, pdg, masses, points[]
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
-               rad_jac, rad_jac_cnt (generate_FKS_kinematics with unit Born
-               weights, i.e. radiation Jacobian times compute_flux),
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
                xi_cnt, xi_hat_cnt, xiimax_cnt, xbjrk_ev, xbjrk_cnt, shat_ev,
                shat_cnt, tau_ev, ycm_ev, tau_cnt, ycm_cnt, kperp,
-               shat_born, tau_born, ycm_born, xbjrk_born,
-               rad_p_ev, rad_p_cnt, rad_xi_ev, rad_xi_hat_ev, rad_y_ev,
-               rad_xiimax_ev, rad_xi_cnt, rad_xi_hat_cnt, rad_xiimax_cnt,
-               rad_xbjrk_ev, rad_xbjrk_cnt, rad_shat_ev, rad_shat_cnt
-    The rad_ entries come from rerunning generate_FKS_kinematics on the Born
-    of the point with unit Born weights and without the lower bound
-    tau_lower_bound that the cuts put on the partonic energy of the real
-    emission (it restricts xi and y for an initial-state emitter). They are
-    the FKS map itself.
+               shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
+               and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
+               prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
+               prefix_y_ev, prefix_xiimax_ev, prefix_xi_cnt, prefix_xi_hat_cnt,
+               prefix_xiimax_cnt, prefix_xbjrk_ev, prefix_xbjrk_cnt,
+               prefix_shat_ev, prefix_shat_cnt
+    The rad_ and cut_ entries come from rerunning generate_FKS_kinematics on
+    the Born of the point with unit Born weights (the jac entries are then
+    the radiation Jacobian times compute_flux), cut_ with and rad_ without
+    the lower bound tau_lower_bound (on tau = s_hat / s_lab) that the cuts
+    put on the partonic energy of the real emission. The bound restricts xi
+    and y for an initial-state emitter. rad_ is the FKS map itself, cut_
+    reproduces the production values.
     Entries of counter-events that genps_fks.f did not generate keep the
     values it leaves behind (jac_cnt <= 0 marks them).
 """
@@ -114,6 +116,41 @@ def momenta(values):
     return [values[i : i + 4] for i in range(0, len(values), 4)]
 
 
+RERUN_KEYS = ("JAC", "PEV", "PCNT", "XI", "XBJ", "SHAT")
+
+
+def parse_rerun(point, prefix, key, rest):
+    """The entries of the reruns of generate_FKS_kinematics, rad_ without and
+    cut_ with the lower bound tau_lower_bound."""
+    if key == "JAC":
+        v = floats(rest)
+        point[f"{prefix}_jac"], point[f"{prefix}_jac_cnt"] = v[0], v[1:]
+    elif key == "PEV":
+        point[f"{prefix}_p_ev"] = momenta(floats(rest))
+    elif key == "PCNT":
+        point.setdefault(f"{prefix}_p_cnt", []).append(momenta(floats(rest[1:])))
+    elif key == "XI":
+        v = floats(rest)
+        point.update(
+            {
+                f"{prefix}_xi_ev": v[0],
+                f"{prefix}_xi_hat_ev": v[1],
+                f"{prefix}_y_ev": v[2],
+                f"{prefix}_xiimax_ev": v[3],
+                f"{prefix}_xi_cnt": v[4:9],
+                f"{prefix}_xi_hat_cnt": v[9:14],
+                f"{prefix}_xiimax_cnt": v[14:19],
+            }
+        )
+    elif key == "XBJ":
+        v = floats(rest)
+        point[f"{prefix}_xbjrk_ev"] = v[:2]
+        point[f"{prefix}_xbjrk_cnt"] = [v[2 + 2 * k : 4 + 2 * k] for k in range(5)]
+    elif key == "SHAT":
+        v = floats(rest)
+        point[f"{prefix}_shat_ev"], point[f"{prefix}_shat_cnt"] = v[0], v[1:6]
+
+
 def parse(text):
     data = {"configs": []}
     conf = point = None
@@ -168,25 +205,10 @@ def parse(text):
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])
             point["xbjrk_born"] = v[3:5]
-        elif key == "RADJAC":
-            v = floats(rest)
-            point["rad_jac"], point["rad_jac_cnt"] = v[0], v[1:]
-        elif key == "RADPEV":
-            point["rad_p_ev"] = momenta(floats(rest))
-        elif key == "RADPCNT":
-            point.setdefault("rad_p_cnt", []).append(momenta(floats(rest[1:])))
-        elif key == "RADXI":
-            v = floats(rest)
-            point.update(rad_xi_ev=v[0], rad_xi_hat_ev=v[1], rad_y_ev=v[2])
-            point.update(rad_xiimax_ev=v[3], rad_xi_cnt=v[4:9])
-            point.update(rad_xi_hat_cnt=v[9:14], rad_xiimax_cnt=v[14:19])
-        elif key == "RADXBJ":
-            v = floats(rest)
-            point["rad_xbjrk_ev"] = v[:2]
-            point["rad_xbjrk_cnt"] = [v[2 + 2 * k : 4 + 2 * k] for k in range(5)]
-        elif key == "RADSHAT":
-            v = floats(rest)
-            point.update(rad_shat_ev=v[0], rad_shat_cnt=v[1:6])
+        elif key == "TAULB":
+            point["tau_lower_bound"] = float(rest[0])
+        elif key[:3] in ("RAD", "CUT") and key[3:] in RERUN_KEYS:
+            parse_rerun(point, key[:3].lower(), key[3:], rest)
     return data
 
 

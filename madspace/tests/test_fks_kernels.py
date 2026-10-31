@@ -314,15 +314,18 @@ def test_final_massless_volume(n_out):
 
 
 # Emission off an incoming parton. The reference is the FKS map of genps_fks.f
-# without the lower bound on the partonic energy (the rad_ entries).
+# without (the rad_ entries) and with (cut_) the lower bound on the partonic
+# energy.
 
 
-def initial_radiate(xi_hat, y, r_phi, sqrt_s, x1_born, x2_born, beam_sign):
+def initial_radiate(
+    xi_hat, y_hat, r_phi, sqrt_s, x1_born, x2_born, beam_sign, s_hat_min=0.0
+):
     return run(
-        lambda fb, *args: fb.fks_initial_radiate(*args, beam_sign),
+        lambda fb, *args: fb.fks_initial_radiate(*args, s_hat_min, beam_sign),
         [F, F, F, F, F, F],
-        [V, V, V, F, F, F, F, F],
-        [xi_hat, y, r_phi, sqrt_s, x1_born, x2_born],
+        [V, V, V, F, F, F, F, F, F, F],
+        [xi_hat, y_hat, r_phi, sqrt_s, x1_born, x2_born],
     )
 
 
@@ -336,21 +339,23 @@ def initial_recoil_boost(p, xi, y, r_phi, beam_sign):
     )[0]
 
 
-def initial_real_from_born(p_born, i_fks, beam_sign, xi_hat, y, r_phi, x_born):
+def initial_real_from_born(
+    p_born, i_fks, beam_sign, xi_hat, y_hat, r_phi, x_born, s_hat_min=0.0
+):
     """Born momenta (batch, n, 4) in the Born c.m. frame -> real momenta, momentum
-    fractions and the outputs of fks_initial_radiate."""
+    fractions, xi, y, the width xi_max - xi_min of its range and det_xi."""
     sqrt_s = np.sqrt(
         (p_born[:, 0] + p_born[:, 1])[:, 0] ** 2
         - ((p_born[:, 0] + p_born[:, 1])[:, 1:] ** 2).sum(1)
     )
-    p1, p2, p_i, x1, x2, xi, xi_max, det_xi = initial_radiate(
-        xi_hat, y, r_phi, sqrt_s, x_born[0], x_born[1], beam_sign
+    p1, p2, p_i, x1, x2, xi, y, xi_min, xi_max, det_xi = initial_radiate(
+        xi_hat, y_hat, r_phi, sqrt_s, x_born[0], x_born[1], beam_sign, s_hat_min
     )
     final = initial_recoil_boost(p_born[:, 2:], xi, y, r_phi, beam_sign)
     real = np.concatenate([p1[:, None], p2[:, None], final], axis=1)
     real = np.insert(real, i_fks, 0.0, axis=1)
     real[:, i_fks] = p_i
-    return real, (x1, x2), xi, xi_max, det_xi
+    return real, (x1, x2), xi, y, xi_max - xi_min, det_xi
 
 
 def initial_points():
@@ -370,16 +375,28 @@ def initial_points():
     return cases
 
 
+@pytest.mark.parametrize("prefix", ["rad", "cut"], ids=["uncut", "bounded"])
 @pytest.mark.parametrize("data,conf,points", initial_points())
-def test_initial_matches_genps_fks(data, conf, points):
+def test_initial_matches_genps_fks(data, conf, points, prefix):
     """Event and counter-events of an incoming emitter, with their momentum
-    fractions and radiation Jacobians."""
+    fractions and radiation Jacobians, without (rad_) and with (cut_) the lower
+    bound tau_lower_bound s_lab on the partonic energy of the real emission.
+    genps_fks.f leaves the width xi_max - xi_min of the range of xi out of its
+    Jacobian (see the top of the file)."""
     nex = data["nexternal"]
     i_fks = conf["i_fks"] - 1
     beam_sign = 1.0 if conf["j_fks"] == 1 else -1.0
+    s_lab = 4 * data["ebeam"][0] * data["ebeam"][1]
 
     def field(key):
+        if key.startswith("rad_"):
+            key = prefix + key[3:]
         return np.array([p[key] for p in points])
+
+    # s_hat_min is one per configuration (the same for all its points)
+    taus = {p["tau_lower_bound"] for p in points}
+    assert len(taus) == 1
+    s_hat_min = taus.pop() * s_lab if prefix == "cut" else 0.0
 
     p_born = field("p_born")
     x_born = tuple(field("xbjrk_born").T)
@@ -400,15 +417,15 @@ def test_initial_matches_genps_fks(data, conf, points):
             p_ref, x_ref = field("rad_p_ev"), field("rad_xbjrk_ev")
             jac_ref, shat_ref = field("rad_jac"), field("rad_shat_ev")
         else:
-            valid = np.array([p["rad_jac_cnt"][pos] > 0 for p in points])
-            p_ref = np.array([p["rad_p_cnt"][pos] for p in points])
-            x_ref = np.array([p["rad_xbjrk_cnt"][pos] for p in points])
-            jac_ref = np.array([p["rad_jac_cnt"][pos] for p in points])
-            shat_ref = np.array([p["rad_shat_cnt"][pos] for p in points])
+            valid = field("rad_jac_cnt")[:, pos] > 0
+            p_ref = field("rad_p_cnt")[:, pos]
+            x_ref = field("rad_xbjrk_cnt")[:, pos]
+            jac_ref = field("rad_jac_cnt")[:, pos]
+            shat_ref = field("rad_shat_cnt")[:, pos]
         if not valid.any():
             continue
-        real, x, xi, xi_max, det_xi = initial_real_from_born(
-            p_born, i_fks, beam_sign, xh, yy, r[:, 2], x_born
+        real, x, xi, _, width, det_xi = initial_real_from_born(
+            p_born, i_fks, beam_sign, xh, yy, r[:, 2], x_born, s_hat_min
         )
         scale = p_ref[:, :, 0].max(1)[:, None, None]
         np.testing.assert_allclose(
@@ -416,7 +433,7 @@ def test_initial_matches_genps_fks(data, conf, points):
         )
         np.testing.assert_allclose(np.stack(x, 1)[valid], x_ref[valid], rtol=1e-13)
         fortran = jac_ref / flux_factor(shat_ref, nex)
-        ours = det_xi / xi_max * det_fortran_units
+        ours = det_xi / width * det_fortran_units
         np.testing.assert_allclose(ours[valid], fortran[valid], rtol=1e-12)
 
 
@@ -435,7 +452,7 @@ def test_initial_limits():
     x_born = (0.01**u, 0.01 ** (1 - u))
     xi_hat, y, r_phi = rng.random(batch), 2 * rng.random(batch) - 1, rng.random(batch)
     for beam_sign, beam in [(1.0, 0), (-1.0, 1)]:
-        soft, x, xi, _, det_soft = initial_real_from_born(
+        soft, x, xi, _, _, det_soft = initial_real_from_born(
             p_born, 4, beam_sign, np.zeros(batch), y, r_phi, x_born
         )
         assert (xi == 0).all() and np.isfinite(det_soft).all()
@@ -443,7 +460,7 @@ def test_initial_limits():
         np.testing.assert_allclose(np.delete(soft, 4, axis=1), p_born, atol=1e-10)
         np.testing.assert_allclose(np.stack(x, 1), np.stack(x_born, 1), rtol=1e-14)
 
-        coll, x, xi, _, _ = initial_real_from_born(
+        coll, x, xi, _, _, _ = initial_real_from_born(
             p_born, 4, beam_sign, xi_hat, np.ones(batch), r_phi, x_born
         )
         np.testing.assert_allclose(coll[:, 4, 1:3], 0.0, atol=1e-10)

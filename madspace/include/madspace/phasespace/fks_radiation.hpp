@@ -33,8 +33,15 @@ namespace madspace {
  * transversely to recoil against @f$i@f$. It keeps zero longitudinal momentum,
  * so the event stays in the centre-of-mass frame of the Born.
  * @f$\xi_\mathrm{max}(y)@f$ is the largest @f$\xi@f$ with @f$x_1 \le 1@f$ and
- * @f$x_2 \le 1@f$. Unlike genps_fks.f, no lower bound on @f$\xi@f$ from the
- * cuts is applied.
+ * @f$x_2 \le 1@f$. With a lower bound @f$\hat s_\mathrm{min}@f$ on the
+ * partonic energy of the real emission (@p s_hat_min), as genps_fks.f derives
+ * from the cuts (tau_lower_bound), @f$\xi \ge \xi_\mathrm{min} = 1 - \bar
+ * s/\hat s_\mathrm{min}@f$ and @f$y@f$ is restricted to where
+ * @f$\xi_\mathrm{max}(y) \ge \xi_\mathrm{min}@f$, so that the map covers
+ * exactly the real emissions with @f$s \ge \hat s_\mathrm{min}@f$ and no
+ * sampling is wasted on the others. @f$\hat\xi@f$ and the variable @f$\hat y@f$
+ * that the random number gives are then mapped linearly onto the allowed
+ * ranges.
  *
  * The random numbers are mapped as
  * @f[
@@ -102,11 +109,16 @@ public:
     ///                             an incoming parton (0 or 1).
     /// @param leptonic             If true, the mapping has no momentum
     ///                             fractions, which an incoming emitter needs.
+    /// @param s_hat_min            Lower bound on the partonic energy squared
+    ///                             of the real emission, for an incoming
+    ///                             emitter (a final-state one leaves it
+    ///                             unchanged). 0 for none.
     FKSRadiation(
         std::size_t born_particle_count,
         std::size_t i_fks,
         std::size_t j_fks,
-        bool leptonic = false
+        bool leptonic = false,
+        double s_hat_min = 0.
     );
     /// Number of uniform random inputs consumed by the forward mapping (3).
     std::size_t random_dim() const { return 3; }
@@ -114,6 +126,7 @@ public:
     std::size_t i_fks() const { return _i_fks; }
     std::size_t j_fks() const { return _j_fks; }
     bool leptonic() const { return _leptonic; }
+    double s_hat_min() const { return _s_hat_min; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
 
@@ -144,6 +157,7 @@ private:
     std::size_t _i_fks;
     std::size_t _j_fks;
     bool _leptonic;
+    double _s_hat_min;
 };
 
 } // namespace madspace

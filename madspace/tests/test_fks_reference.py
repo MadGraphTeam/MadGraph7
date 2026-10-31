@@ -107,7 +107,20 @@ def test_uncut_rerun(data):
             assert np.allclose(p, point["p_ev"], rtol=0, atol=1e-12 * scale)
 
 
-def test_born_frame(data):
+def test_bounded_rerun(data):
+    """The cut_ entries rerun the FKS map on the Born of the point with the
+    lower bound tau_lower_bound kept, and so reproduce the event of the main
+    dump. Their radiation Jacobian equals the uncut one for a final-state
+    emitter."""
+    nin = data["nincoming"]
+    for conf, point in valid_points(data):
+        assert 0 <= point["tau_lower_bound"] < 1
+        p = np.array(point["cut_p_ev"])
+        scale = p[:, 0].max()
+        assert np.allclose(p, point["p_ev"], rtol=0, atol=1e-12 * scale)
+        assert np.allclose(point["cut_xi_ev"], point["xi_ev"], rtol=0, atol=1e-12)
+        if conf["j_fks"] > nin:
+            assert np.isclose(point["cut_jac"], point["rad_jac"], rtol=1e-12)
     nin = data["nincoming"]
     for conf, point in valid_points(data):
         p_born = np.array(point["p_born"])

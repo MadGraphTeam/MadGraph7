@@ -65,7 +65,11 @@ radiation_output_types(std::size_t born_particle_count, bool leptonic) {
 } // namespace
 
 FKSRadiation::FKSRadiation(
-    std::size_t born_particle_count, std::size_t i_fks, std::size_t j_fks, bool leptonic
+    std::size_t born_particle_count,
+    std::size_t i_fks,
+    std::size_t j_fks,
+    bool leptonic,
+    double s_hat_min
 ) :
     Mapping(
         "FKSRadiation",
@@ -78,7 +82,12 @@ FKSRadiation::FKSRadiation(
     _born_particle_count(born_particle_count),
     _i_fks(i_fks),
     _j_fks(j_fks),
-    _leptonic(leptonic) {}
+    _leptonic(leptonic),
+    _s_hat_min(s_hat_min) {
+    if (s_hat_min < 0.) {
+        throw std::invalid_argument("FKSRadiation: s_hat_min must not be negative");
+    }
+}
 
 Mapping::Result FKSRadiation::build_forward_impl(
     FunctionBuilder& fb,
@@ -200,11 +209,19 @@ Mapping::Result FKSRadiation::build_initial_forward(
     auto sqrt_s = fb.obs_sqrt_s(born);
     auto p_born = fb.unstack(born);
 
-    auto [xi_hat, y, det_sample] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
+    auto [xi_hat, y_hat, det_sample] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
     auto r_phi = inputs.at(2);
-    auto [p_in1, p_in2, p_i, x1, x2, xi, xi_max, det_xi] = fb.fks_initial_radiate(
-        xi_hat, y, r_phi, sqrt_s, inputs.at(4), inputs.at(5), beam_sign
-    );
+    auto [p_in1, p_in2, p_i, x1, x2, xi, y, xi_min, xi_max, det_xi] =
+        fb.fks_initial_radiate(
+            xi_hat,
+            y_hat,
+            r_phi,
+            sqrt_s,
+            inputs.at(4),
+            inputs.at(5),
+            _s_hat_min,
+            beam_sign
+        );
 
     ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
     auto boosted = fb.unstack(
@@ -224,16 +241,28 @@ Mapping::Result FKSRadiation::build_initial_inverse(
 ) const {
     double beam_sign = _j_fks == 0 ? 1. : -1.;
     auto p_real = fb.unstack(inputs.at(0));
-    auto [sqrt_s, x1_born, x2_born, xi_hat, y, r_phi, xi, xi_max, det_xi_inv] =
-        fb.fks_initial_cluster(
-            p_real.at(0),
-            p_real.at(1),
-            p_real.at(_i_fks),
-            inputs.at(1),
-            inputs.at(2),
-            beam_sign
-        );
-    auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y);
+    auto
+        [sqrt_s,
+         x1_born,
+         x2_born,
+         xi_hat,
+         y_hat,
+         r_phi,
+         xi,
+         y,
+         xi_min,
+         xi_max,
+         det_xi_inv] =
+            fb.fks_initial_cluster(
+                p_real.at(0),
+                p_real.at(1),
+                p_real.at(_i_fks),
+                inputs.at(1),
+                inputs.at(2),
+                _s_hat_min,
+                beam_sign
+            );
+    auto [r_xi, r_y, det_sample_inv] = fb.fks_xi_y_sample_inverse(xi_hat, y_hat);
 
     ValueVec final_state;
     for (std::size_t r = INCOMING_COUNT; r < _born_particle_count + 1; ++r) {

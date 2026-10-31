@@ -2441,10 +2441,10 @@ fks_initial_radiate:
   inputs:
     - name: xi_hat
       type: [float]
-      desc: "energy fraction of the FKS parton i in units of its upper bound xi_max"
-    - name: y
+      desc: "energy fraction of the FKS parton i, mapped linearly onto [xi_min, xi_max]"
+    - name: y_hat
       type: [float]
-      desc: "cosine of the angle between i and the incoming emitter j, in the centre-of-mass frame of the real emission"
+      desc: "cosine of the angle between i and the incoming emitter j in [-1, 1], mapped linearly onto the allowed range of y (y = y_hat without a bound)"
     - name: r_phi
       type: [float]
       desc: "random number for the azimuth of i about the beam axis"
@@ -2457,6 +2457,9 @@ fks_initial_radiate:
     - name: x2_born
       type: [float]
       desc: "momentum fraction of beam 2 in the Born"
+    - name: s_hat_min
+      type: [float, single]
+      desc: "lower bound on the partonic energy squared of the real emission (tau_lower_bound s_lab in genps_fks.f), 0 for none"
     - name: beam_sign
       type: [float, single]
       desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
@@ -2479,13 +2482,19 @@ fks_initial_radiate:
     - name: xi
       type: [float]
       desc: "energy fraction 2 E_i / sqrt(s) of i in the centre-of-mass frame of the real emission"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+    - name: xi_min
+      type: [float]
+      desc: "lower bound 1 - sqrt_s^2 / s_hat_min of xi, 0 if the Born is above the bound"
     - name: xi_max
       type: [float]
       desc: "upper bound of xi at this y, from x1 <= 1 and x2 <= 1"
     - name: det_xi
       type: [float]
-      desc: "Jacobian of (xi_hat, y, r_phi, x1_born, x2_born) to (x1, x2) and the (n+1)-body phase space, in units of the n-body one, divided by xi"
-  desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f without a lower bound on the partonic energy. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its centre-of-mass frame and boosted along z into the Born centre-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
+      desc: "Jacobian of (xi_hat, y_hat, r_phi, x1_born, x2_born) to (x1, x2) and the (n+1)-body phase space, in units of the n-body one, divided by xi"
+  desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its centre-of-mass frame and boosted along z into the Born centre-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y is restricted to where xi_max(y) >= xi_min, as genps_fks.f does with tau_lower_bound; the map then covers exactly the real emissions with s >= s_hat_min. Evaluated at xi_hat = 0 or y_hat = 1 it gives the soft and collinear counter-events where they exist (xi_min = 0, respectively y = 1 allowed). det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
 
 fks_initial_cluster:
   inputs:
@@ -2504,6 +2513,9 @@ fks_initial_cluster:
     - name: x2
       type: [float]
       desc: "momentum fraction of beam 2 in the real emission"
+    - name: s_hat_min
+      type: [float, single]
+      desc: "lower bound on the partonic energy squared of the real emission, 0 for none"
     - name: beam_sign
       type: [float, single]
       desc: "+1 if j comes from beam 1 (along +z), -1 if from beam 2"
@@ -2519,16 +2531,22 @@ fks_initial_cluster:
       desc: "momentum fraction of beam 2 in the Born"
     - name: xi_hat
       type: [float]
-      desc: "energy fraction of i in units of xi_max"
-    - name: y
+      desc: "energy fraction of i in units of the range [xi_min, xi_max]"
+    - name: y_hat
       type: [float]
-      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+      desc: "cosine of the angle between i and j in units of its allowed range"
     - name: r_phi
       type: [float]
       desc: "random number for the azimuth of i about the beam axis"
     - name: xi
       type: [float]
       desc: "energy fraction of i"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the centre-of-mass frame of the real emission"
+    - name: xi_min
+      type: [float]
+      desc: "lower bound of xi"
     - name: xi_max
       type: [float]
       desc: "upper bound of xi"
