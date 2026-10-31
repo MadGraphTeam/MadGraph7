@@ -30,6 +30,46 @@ use std::time::{Duration, Instant};
 
 pub const RECURRENCE_DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
 
+/// Plan runs on a GPU (`PACMAN_RECURRENCE_RUNNER`).
+#[cfg(feature = "pacman")]
+#[path = "direct_backend_pacman.rs"]
+mod pacman;
+
+/// The recurrence tile for the GPU runner (`RUSTICOL_TILE_POINTS` with `PACMAN_RECURRENCE_RUNNER`).
+#[cfg(feature = "pacman")]
+pub(super) fn pacman_gpu_tile_points() -> RusticolResult<Option<u32>> {
+    pacman::gpu_tile_points()
+}
+
+/// The amplitude planes cleared for the next plan run (the GPU zeroes them instead of uploading).
+#[cfg(feature = "pacman")]
+pub(super) fn pacman_note_cleared_amplitudes(ranges: &[std::ops::Range<usize>]) {
+    pacman::note_cleared_amplitudes(ranges);
+}
+
+#[cfg(feature = "pacman")]
+pub(super) fn pacman_forget_cleared_amplitudes() {
+    pacman::forget_cleared_amplitudes();
+}
+
+/// The LC replay's reduction on the GPU: `pacman_reduction_begin` before a plan run (false: no
+/// runner can reduce), `pacman_reduction_end` after it (true: the amplitudes stayed on the
+/// device, so reduce them with `pacman_reduce` instead of reading the host's planes).
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduction_begin() -> bool {
+    pacman::reduction_begin()
+}
+
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduction_end() -> bool {
+    pacman::reduction_end()
+}
+
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_reduce(planes: &[u32], weights: &[f64], output: &mut [f64]) -> RusticolResult<()> {
+    pacman::reduce(planes, weights, output)
+}
+
 pub const DIRECT_STATUS_OK: c_int = 0;
 
 thread_local! {
@@ -4061,6 +4101,21 @@ fn execute_direct_plan_with_clears_impl<
     let requires_contribution_stage_clear = (selected_sector_id.is_some()
         || plan.strategy() == RecurrenceStrategy::AllFlowUnion)
         && (!PREPARED_CLEARS || current_clear_stages.is_none_or(|stages| !stages.is_empty()));
+    #[cfg(feature = "pacman")]
+    if !observation_active
+        && let Some(result) = pacman::try_execute::<PREPARED_CLEARS>(
+            plan,
+            row_groups,
+            selected_sector_id,
+            executors,
+            workspace,
+            point_count,
+            requires_contribution_stage_clear,
+            current_clear_stages,
+        )
+    {
+        return result;
+    }
     let mut initialized_contribution_stage = None;
     for (group_index, descriptor) in row_groups.iter().enumerate() {
         if descriptor.role == DirectExecutorRole::Source

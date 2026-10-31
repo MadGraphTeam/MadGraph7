@@ -2950,6 +2950,60 @@ unsafe fn set_pre_scaled_current_pair(
     }
 }
 
+/// The op of a contribution executor in the pacman recurrence runner's words
+/// (`recurrence/direct_backend_pacman.rs`): 2 Weyl a, 3 Weyl b, 4 tensor–vector,
+/// 5 wedge, 6 colour-ordered three-vector; `None` for other executors.
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_contribution_op(call: DirectContributionExecutor) -> Option<u8> {
+    let ops: [(DirectContributionExecutor, u8); 5] = [
+        (execute_weyl_vector_to_weyl_positive_rows, 2),
+        (execute_weyl_vector_to_weyl_negative_rows, 3),
+        (execute_antisymmetric_tensor_vector_to_vector_rows, 4),
+        (execute_vector_wedge_vector_to_antisymmetric_tensor_rows, 5),
+        (execute_color_ordered_three_vector_rows, 6),
+    ];
+    ops.into_iter()
+        .find(|&(executor, _)| executor as usize == call as usize)
+        .map(|(_, op)| op)
+}
+
+/// The op of a finalization executor in the pacman recurrence runner's words:
+/// 7 Weyl a, 8 Weyl b, 9 Feynman vector propagator, 10 identity.
+#[cfg(feature = "pacman")]
+pub(crate) fn pacman_finalization_op(call: DirectFinalizationExecutor) -> Option<u8> {
+    let ops: [(DirectFinalizationExecutor, u8); 4] = [
+        (execute_weyl_propagator_positive_rows, 7),
+        (execute_weyl_propagator_negative_rows, 8),
+        (execute_feynman_vector_propagator_rows, 9),
+        (execute_identity_finalization_rows, 10),
+    ];
+    ops.into_iter()
+        .find(|&(executor, _)| executor as usize == call as usize)
+        .map(|(_, op)| op)
+}
+
+/// A contribution executor's context scale, as `execute_rows` computes it
+/// (every intrinsic's `BASE_SCALE` is 1).
+///
+/// # Safety
+///
+/// `context` is the context of a contribution executor of
+/// [`pacman_contribution_op`].
+#[cfg(feature = "pacman")]
+pub(crate) unsafe fn pacman_contribution_scale(
+    context: *const c_void,
+    parameters: DirectParameterView,
+) -> Option<(f64, f64)> {
+    if context.is_null() {
+        return None;
+    }
+    let context = unsafe { &*context.cast::<RecurrenceIntrinsicScale>() };
+    let scale = effective_context_scale(*context, parameters)
+        .ok()?
+        .mul(ComplexValue::new(1.0, 0.0));
+    Some((scale.re, scale.im))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -32,6 +32,12 @@ use super::evaluator::symjit_compiled_direct::{
 };
 #[cfg(feature = "f64-symjit")]
 use super::evaluator::{SymjitApplicationMetadata, validate_manifest_metadata};
+#[cfg(feature = "pacman")]
+use super::pacman_capture::{
+    ArenaRecorder, ArenaSource, CaptureLayout, CaptureMethod, CaptureSchedule, CaptureStage,
+};
+#[cfg(feature = "pacman")]
+use super::pacman_runner::{PacmanReduction, PacmanRunner};
 use super::sources::{ResolvedSourceWavefunction, RuntimeSourceState};
 use super::*;
 #[cfg(test)]
@@ -63,6 +69,24 @@ fn compiled_direct_cache_target_bytes() -> usize {
             .expect("compiled Direct test cache target must be bytes or hard-budget");
     }
     COMPILED_DIRECT_CACHE_TARGET_BYTES
+}
+
+/// `RUSTICOL_TILE_POINTS=N` (feature `tile-override`) for a tile that the
+/// cache target sizes to `points`: N where that leaves a single point (a
+/// footprint above the cache target), `None` elsewhere.
+fn compiled_direct_tile_override(points: u32) -> RusticolResult<Option<u32>> {
+    #[cfg(feature = "tile-override")]
+    if let Some(tile) = super::tile_override::tile_override()? {
+        let collapsed = points == 1;
+        // a runner needs many points per call: every tile gets N
+        #[cfg(feature = "pacman")]
+        let collapsed = collapsed || super::pacman_runner::requested();
+        if collapsed {
+            return Ok(Some(tile));
+        }
+    }
+    let _ = points;
+    Ok(None)
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -293,14 +317,22 @@ impl CompiledDirectTileSizing {
         let capacity = u32::try_from(self.effective_tile_capacity).map_err(|_| {
             RusticolError::integrity("compiled Direct-Arena tile capacity exceeds u32")
         })?;
-        Ok(deterministic_point_tile_size_with_cache_footprint(
-            capacity,
-            usize::MAX,
-            compiled_direct_cache_target_bytes(),
-            self.physical_scalar_values_per_point,
-            self.execution_scalar_values_per_point
-                .max(reduction_scalars),
-        )? as usize)
+        let tile = |cache_target_bytes| {
+            deterministic_point_tile_size_with_cache_footprint(
+                capacity,
+                usize::MAX,
+                cache_target_bytes,
+                self.physical_scalar_values_per_point,
+                self.execution_scalar_values_per_point
+                    .max(reduction_scalars),
+            )
+        };
+        let points = tile(compiled_direct_cache_target_bytes())?;
+        if compiled_direct_tile_override(points)?.is_some() {
+            // the whole execution tile, which the override sized
+            return Ok(tile(usize::MAX)? as usize);
+        }
+        Ok(points as usize)
     }
 }
 
@@ -409,21 +441,32 @@ fn compiled_direct_tile_sizing(
                 )? as usize;
                 (capacity, capacity)
             } else {
-                let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
+                let tiles = |point_cap, cache_target_bytes| -> RusticolResult<(usize, usize)> {
+                    let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
+                        point_cap,
+                        usize::MAX,
+                        cache_target_bytes,
+                        physical_scalar_values_per_point,
+                        execution_scalar_values_per_point,
+                    )? as usize;
+                    let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
+                        point_cap,
+                        usize::MAX,
+                        cache_target_bytes,
+                        physical_scalar_values_per_point,
+                        hot_scalar_values_per_point,
+                    )? as usize;
+                    Ok((execution_capacity, reduction_capacity))
+                };
+                let (execution_capacity, reduction_capacity) = tiles(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    usize::MAX,
                     compiled_direct_cache_target_bytes(),
-                    physical_scalar_values_per_point,
-                    execution_scalar_values_per_point,
-                )? as usize;
-                let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
-                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    usize::MAX,
-                    compiled_direct_cache_target_bytes(),
-                    physical_scalar_values_per_point,
-                    hot_scalar_values_per_point,
-                )? as usize;
-                (execution_capacity, reduction_capacity)
+                )?;
+                // the reduction tile is the smaller: its footprint includes the execution's
+                match compiled_direct_tile_override(reduction_capacity as u32)? {
+                    Some(points) => tiles(points, usize::MAX)?,
+                    None => (execution_capacity, reduction_capacity),
+                }
             }
         }
     };
@@ -478,6 +521,11 @@ pub(crate) struct CompiledDirectEnginePrototype {
     amplitude_component_count: usize,
     traffic: CompiledDirectPrototypeTraffic,
     allocation_counters: DirectArenaAllocationCounters,
+    #[cfg(feature = "pacman")]
+    pacman: Option<Box<ArenaRecorder>>,
+    /// Runs the leaves in their place (`PACMAN_RUNNER`).
+    #[cfg(feature = "pacman")]
+    pacman_runner: Option<Box<PacmanRunner>>,
 }
 
 impl CompiledDirectEnginePrototype {
@@ -523,6 +571,20 @@ impl CompiledDirectEnginePrototype {
         reduction_footprint: CompiledDirectReductionFootprint,
         layout_policy: CompiledDirectCurrentLayoutPolicy,
     ) -> RusticolResult<Self> {
+        #[cfg(feature = "pacman")]
+        let pacman_stages = stages
+            .iter()
+            .chain(std::iter::once(amplitude))
+            .map(|stage| CaptureStage {
+                label: stage.evaluator_label.clone(),
+                leaves: stage
+                    .compiled_plane_arena
+                    .iter()
+                    .flat_map(|direct| &direct.leaves)
+                    .map(|leaf| leaf.application_path.clone())
+                    .collect(),
+            })
+            .collect();
         if value_component_count == 0 || amplitude_component_count == 0 {
             return Err(RusticolError::integrity(
                 "compiled Direct-Arena prototype requires current and amplitude planes",
@@ -722,6 +784,32 @@ impl CompiledDirectEnginePrototype {
             .try_fold(allocation_counters, |total, leaf| {
                 total.checked_add(leaf.allocation_counters())
             })?;
+        #[cfg(feature = "pacman")]
+        let pacman_layout = CaptureLayout {
+            current_planes: current_layout.physical_component_count as usize,
+            amplitude_planes: amplitude_component_count,
+            momentum_planes: momentum_component_count,
+            model_parameters: model_parameter_count,
+            canonical_to_physical: current_layout.physical_map().to_vec(),
+            source_planes: source_components
+                .iter()
+                .map(|&component| current_layout.physical_map()[component])
+                .collect(),
+            stages: pacman_stages,
+        };
+        // SAFETY: as for the leaves above: the arena, momenta and zero plane
+        // are boxed allocations of the returned executor that never move
+        #[cfg(feature = "pacman")]
+        let pacman_runner = unsafe {
+            PacmanRunner::from_env(
+                &pacman_layout,
+                arena_view,
+                momenta.as_mut_ptr(),
+                zero_plane.as_ptr().cast_mut(),
+            )?
+        };
+        #[cfg(feature = "pacman")]
+        let pacman = ArenaRecorder::from_env(move || pacman_layout);
 
         Ok(Self {
             stages,
@@ -744,6 +832,10 @@ impl CompiledDirectEnginePrototype {
             amplitude_component_count,
             traffic: CompiledDirectPrototypeTraffic::default(),
             allocation_counters,
+            #[cfg(feature = "pacman")]
+            pacman,
+            #[cfg(feature = "pacman")]
+            pacman_runner,
         })
     }
 
@@ -1129,13 +1221,127 @@ impl CompiledDirectEnginePrototype {
     /// Execute the existing full schedule. No input packet, gather, output
     /// scatter, remap, or allocation occurs in this method.
     pub(crate) fn evaluate_all(&mut self, point_count: usize) -> RusticolResult<()> {
+        #[cfg(feature = "pacman")]
+        self.pacman_pre(CaptureMethod::All, None, point_count);
+        let result = self.run_schedule(
+            None,
+            point_count_u32(point_count, self.arena.active_point_count())?,
+        );
+        #[cfg(feature = "pacman")]
+        if result.is_ok() {
+            self.pacman_post(point_count);
+        }
+        result
+    }
+
+    /// Run `schedule` (`None`: the full schedule) on the tile: its leaves, or
+    /// with feature `pacman` the runner of `PACMAN_RUNNER` in their place.
+    fn run_schedule(
+        &mut self,
+        schedule: Option<&CompiledDirectValidatedSchedule>,
+        point_count: u32,
+    ) -> RusticolResult<()> {
+        let schedule = schedule.unwrap_or(&self.full_schedule);
+        #[cfg(feature = "pacman")]
+        if let Some(runner) = self.pacman_runner.as_mut() {
+            runner.run(
+                Some((
+                    &schedule.active_stage_leaves,
+                    &schedule.active_amplitude_leaves,
+                )),
+                self.parameter_re.as_slice(),
+                self.parameter_im.as_slice(),
+                point_count,
+            )?;
+            // the leaf calls the runner made, as the leaf loop counts them
+            let leaves = schedule
+                .active_stage_leaves
+                .iter()
+                .map(|leaves| leaves.len())
+                .sum::<usize>()
+                + schedule.active_amplitude_leaves.len();
+            for _ in 0..leaves {
+                self.traffic.leaf.record_call(1, point_count);
+            }
+            return self.traffic.leaf.validate_direct();
+        }
         evaluate_validated_schedule(
             &mut self.stages,
             &mut self.amplitude,
-            &self.full_schedule,
-            point_count_u32(point_count, self.arena.active_point_count())?,
+            schedule,
+            point_count,
             &mut self.traffic,
         )
+    }
+
+    /// Name the recorded arenas after `process` (feature `pacman`).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_set_process(&mut self, process: &str) {
+        if let Some(recorder) = self.pacman.as_mut() {
+            recorder.set_process(process);
+        }
+    }
+
+    /// Record the arena before the first leaf of a tile. `schedule` is `None`
+    /// for the full schedule (`All`) and for every leaf in order (`Correlated`).
+    #[cfg(feature = "pacman")]
+    fn pacman_pre(
+        &mut self,
+        method: CaptureMethod,
+        schedule: Option<&CompiledDirectValidatedSchedule>,
+        point_count: usize,
+    ) {
+        let Some(mut recorder) = self.pacman.take() else {
+            return;
+        };
+        if recorder.wants()
+            && point_count > 0
+            && point_count <= self.arena.active_point_count() as usize
+        {
+            let of = |schedule: &CompiledDirectValidatedSchedule| -> CaptureSchedule {
+                schedule
+                    .active_stage_leaves
+                    .iter()
+                    .map(|leaves| leaves.to_vec())
+                    .chain(std::iter::once(schedule.active_amplitude_leaves.to_vec()))
+                    .collect()
+            };
+            let schedule = match (method, schedule) {
+                (_, Some(schedule)) => of(schedule),
+                (CaptureMethod::All, None) => of(&self.full_schedule),
+                (_, None) => recorder.full_schedule(),
+            };
+            recorder.pre(method, schedule, &self.pacman_source(point_count));
+        }
+        self.pacman = Some(recorder);
+    }
+
+    /// Record the arena after the last leaf of a tile.
+    #[cfg(feature = "pacman")]
+    fn pacman_post(&mut self, point_count: usize) {
+        let Some(mut recorder) = self.pacman.take() else {
+            return;
+        };
+        recorder.post(&self.pacman_source(point_count));
+        self.pacman = Some(recorder);
+    }
+
+    #[cfg(feature = "pacman")]
+    fn pacman_source(&self, points: usize) -> ArenaSource<'_> {
+        let (current_re, current_im) = self.arena.current_slices();
+        let (amplitude_re, amplitude_im) = self.arena.amplitude_slices();
+        ArenaSource {
+            current_re,
+            current_im,
+            amplitude_re,
+            amplitude_im,
+            momenta: self.momenta.as_slice(),
+            zero: self.zero_plane.as_slice(),
+            parameter_re: self.parameter_re.as_slice(),
+            parameter_im: self.parameter_im.as_slice(),
+            stride: self.arena.point_stride() as usize,
+            points,
+        }
     }
 
     /// Replace every retained source slot of a declared leg by the literal
@@ -1188,6 +1394,21 @@ impl CompiledDirectEnginePrototype {
         memo: &mut CorrelatedStageMemo,
     ) -> RusticolResult<()> {
         let count = point_count_u32(point_count, self.arena.active_point_count())?;
+        #[cfg(feature = "pacman")]
+        self.pacman_pre(CaptureMethod::Correlated, None, point_count);
+        // A runner runs every leaf, as the memo's misses would: a hit only
+        // restores the outputs the same inputs gave before.
+        #[cfg(feature = "pacman")]
+        if let Some(runner) = self.pacman_runner.as_mut() {
+            runner.run(
+                None,
+                self.parameter_re.as_slice(),
+                self.parameter_im.as_slice(),
+                count,
+            )?;
+            self.pacman_post(point_count);
+            return Ok(());
+        }
         let leaf_count = self
             .stages
             .iter()
@@ -1292,6 +1513,8 @@ impl CompiledDirectEnginePrototype {
                 index += 1;
             }
         }
+        #[cfg(feature = "pacman")]
+        self.pacman_post(point_count);
         Ok(())
     }
 
@@ -1385,13 +1608,17 @@ impl CompiledDirectEnginePrototype {
         schedule: &CompiledDirectValidatedSchedule,
     ) -> RusticolResult<()> {
         self.clear_inactive_amplitude_components(schedule)?;
-        evaluate_validated_schedule(
-            &mut self.stages,
-            &mut self.amplitude,
-            schedule,
+        #[cfg(feature = "pacman")]
+        self.pacman_pre(CaptureMethod::Validated, Some(schedule), point_count);
+        let result = self.run_schedule(
+            Some(schedule),
             point_count_u32(point_count, self.arena.active_point_count())?,
-            &mut self.traffic,
-        )
+        );
+        #[cfg(feature = "pacman")]
+        if result.is_ok() {
+            self.pacman_post(point_count);
+        }
+        result
     }
 
     /// Execute an authenticated materialized-helicity schedule without
@@ -1406,13 +1633,21 @@ impl CompiledDirectEnginePrototype {
         point_count: usize,
         schedule: &CompiledDirectValidatedSchedule,
     ) -> RusticolResult<()> {
-        evaluate_validated_schedule(
-            &mut self.stages,
-            &mut self.amplitude,
-            schedule,
+        #[cfg(feature = "pacman")]
+        self.pacman_pre(
+            CaptureMethod::MaterializedHelicity,
+            Some(schedule),
+            point_count,
+        );
+        let result = self.run_schedule(
+            Some(schedule),
             point_count_u32(point_count, self.arena.active_point_count())?,
-            &mut self.traffic,
-        )
+        );
+        #[cfg(feature = "pacman")]
+        if result.is_ok() {
+            self.pacman_post(point_count);
+        }
+        result
     }
 
     fn clear_inactive_amplitude_components(
@@ -1492,6 +1727,30 @@ impl CompiledDirectEnginePrototype {
             self.arena.point_stride(),
             self.arena.active_point_count(),
         )
+    }
+
+    /// The reduction a runner of `PACMAN_RUNNER` applies when armed, if it
+    /// can (`None`: no runner, or one that leaves the reduction to Rusticol).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_reduction(&mut self) -> Option<&mut PacmanReduction> {
+        self.pacman_runner.as_mut()?.reduction()
+    }
+
+    /// The next evaluation's runner call applies the reduction.
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_arm_reduction(&mut self) {
+        if let Some(runner) = self.pacman_runner.as_mut() {
+            runner.arm_reduction();
+        }
+    }
+
+    /// The reduced values of the last evaluation into `out`; `false` if the
+    /// runner did not reduce (then `amplitude_planes` holds the amplitudes).
+    #[cfg(feature = "pacman")]
+    pub(crate) fn pacman_take_reduced(&mut self, out: &mut [f64]) -> bool {
+        self.pacman_runner
+            .as_mut()
+            .is_some_and(|runner| runner.take_values(out))
     }
 
     /// Explicit developer-only AoS extraction, excluded from measured leaf and
