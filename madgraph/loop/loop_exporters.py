@@ -2208,7 +2208,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         else:
             self.group_loops = (not self.get_context(matrix_element)['ComputeColorFlows'])\
                           and matrix_element.get('processes')[0].get('has_born')
-        
+
+        # 'loop_group_id' lives on the loop amplitudes and the ungrouped
+        # coefficient writer overwrites it, while the cached 'loop_groups' (and
+        # hence NLOOPGROUPS) is kept. Resync the ids, otherwise a grouped output
+        # following an ungrouped one of the same matrix element addresses
+        # LOOPCOEFS beyond NLOOPGROUPS and silently drops loop groups. The
+        # cached squared orders hold the max loop group id, so they go too.
+        if self.group_loops:
+            matrix_element.get('loop_groups')
+            matrix_element.update_loop_group_ids()
+            if hasattr(matrix_element, 'squared_orders'):
+                del matrix_element.squared_orders
+
         return self.group_loops
     
     def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
