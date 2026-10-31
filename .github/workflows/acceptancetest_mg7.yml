@@ -580,10 +580,30 @@ jobs:
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore_heptools_core
       - uses: ./.github/actions/restore-pip-cache
-      - name: install madtrex
+      # Like madspace, the madtrex/install prefix is cached content-addressed:
+      # on the madtrex sources and on the madspace sources it is built against
+      # (not madspace/install, restored above). Saved right after the build, so
+      # that a failing test below does not throw the build away.
+      - name: madtrex cache key
+        run: |
+            echo "MADTREX_KEY=madtrex-${{ runner.os }}-py$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')-${{ hashFiles('madtrex/**', 'madspace/**', '!madspace/install/**') }}" >> $GITHUB_ENV
+      - name: Restore madtrex install
+        id: cache-madtrex
+        uses: actions/cache/restore@v5
+        with:
+          path: madtrex/install
+          key: ${{ env.MADTREX_KEY }}
+      - name: install madtrex (only on cache miss)
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
         run: |
             cd $GITHUB_WORKSPACE
             python3 madtrex/install.py --yes -j 4
+      - name: Save madtrex install
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: madtrex/install
+          key: ${{ env.MADTREX_KEY }}
       - name: test_madtrex_standalone
         if: ${{ !cancelled() }}
         run: |
