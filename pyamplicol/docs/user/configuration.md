@@ -159,6 +159,20 @@ the default; other user labels are merged over model defaults.
 Broad products such as `p p > all all` can expand combinatorially. Prefer a
 narrow user-defined label for production scans.
 
+A process has one initial particle (a 1 -> n decay, `t > b w+`) or two. A
+decay is averaged over the decaying particle's helicities and colours only;
+its momenta are usually those of its rest frame. With
+`process.loop_coupling_orders` the one-loop decay (1 -> 2, 1 -> 3, QCD and
+electroweak) takes the decaying particle at its real mass with zero own
+width: fix that width to zero in `[loop.preparation] fixed_parameters`
+wherever the particle propagates (`WT = "0"` for `t > b w+ g`, as the
+`coloured-width` guard asks; an electroweak request asks it of every
+propagating width) and under the complex-mass scheme, which keeps external
+states stable (`cms-external-width`). Its field
+renormalisation is the model's, real on-shell (MadLoop's convention: the
+absorptive part of its self-energy at its mass is dropped). Decay chains
+(`t > b w+, w+ > e+ ve`) are refused (`madloop-syntax`).
+
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
 engine treats them as model-defined filtering and scheduling data and does not
