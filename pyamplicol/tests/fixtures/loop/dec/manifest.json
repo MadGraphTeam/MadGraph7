@@ -89,19 +89,21 @@
     "seconds": 1500,
     "rows": [
      "XX01",
+     "XX01@public",
      "XX02",
      "XX03",
-     "XX04",
-     "XX05"
+     "XX04"
     ],
     "file": "tests/unit/test_loop_v2_dec_nightly.py"
    },
    {
     "job": 2,
-    "seconds": 900,
+    "seconds": 1500,
     "rows": [
+     "XX05",
      "XX06",
      "XX07",
+     "XX07@public",
      "XX08"
     ],
     "file": "tests/unit/test_loop_v2_dec_nightly_2.py"
@@ -192,6 +194,24 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "alphas": {},
+   "variants": [
+    {
+     "name": "public",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "the public route: Generator on the shipped loop_sm, Runtime.evaluate of the stored artifact with the O1 checks",
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     },
+     "extras": [],
+     "route": "public",
+     "catani": "none"
+    }
+   ],
    "madloop_r2_called": [
     "R2_txbW"
    ]
@@ -730,6 +750,24 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "alphas": {},
+   "variants": [
+    {
+     "name": "public",
+     "gating": true,
+     "tier": "nightly",
+     "notes": "the public route: Generator on the shipped loop_sm, Runtime.evaluate of the stored artifact with the O1 checks",
+     "points": {
+      "nightly": [
+       0,
+       1,
+       2
+      ]
+     },
+     "extras": [],
+     "route": "public",
+     "catani": "none"
+    }
+   ],
    "madloop_r2_called": [
     "R2_GQQ",
     "R2_QQq",
