@@ -244,7 +244,7 @@ impl Reducer {
             sentinel_labels.sort_unstable();
             let key = (traces, sentinel_labels);
             if !self.fierz.contains_key(&key) {
-                let value = fierz(&key.0, &key.1);
+                let value = fierz_terms(&key.0, &key.1)?;
                 self.fierz.insert(key.clone(), value);
             }
             let ends: FastMap<Label, (Label, Label)> = sentinels.into_iter().collect();
@@ -647,160 +647,6 @@ fn fierz_reduce(
     out
 }
 
-/// `_fierz`: remove every repeated adjoint label (sentinels close open
-/// strings; a trace of one sentinel is a Kronecker delta).
-fn fierz(traces: &[Vec<Label>], sentinels: &[Label]) -> Vec<FierzTerm> {
-    let is_sentinel = |l: Label| sentinels.binary_search(&l).is_ok();
-    let trivial = |terms: Vec<FierzTerm>| -> Vec<FierzTerm> {
-        let mut out = Vec::with_capacity(terms.len());
-        for (coefficient, power, rows) in terms {
-            if rows.iter().any(|r| r.len() == 1 && !is_sentinel(r[0])) {
-                continue; // tr(tau^a) = 0
-            }
-            let empty = rows.iter().filter(|r| r.is_empty()).count() as i64;
-            out.push((
-                coefficient,
-                power + empty,
-                rows.into_iter().filter(|r| !r.is_empty()).collect(),
-            ));
-        }
-        combine(out)
-    };
-    let mut terms = trivial(vec![(Integer::one(), 0, traces.to_vec())]);
-    loop {
-        let (next, paired) = pair_simplify(terms);
-        terms = trivial(next);
-        let (next, duplicated) = duplicate_simplify(terms);
-        terms = trivial(next);
-        if !paired && !duplicated {
-            return terms;
-        }
-    }
-}
-
-/// `combine_nc_power_terms`: equal (power, sorted traces) summed, first-seen
-/// order, zeros dropped.
-fn combine(terms: Vec<FierzTerm>) -> Vec<FierzTerm> {
-    let mut index: FastMap<(i64, Vec<Vec<Label>>), usize> = FastMap::default();
-    let mut out: Vec<FierzTerm> = Vec::new();
-    for (coefficient, power, mut rows) in terms {
-        if coefficient.is_zero() {
-            continue;
-        }
-        rows.sort();
-        let key = (power, rows);
-        match index.get(&key) {
-            Some(&i) => out[i].0 += &coefficient,
-            None => {
-                index.insert(key.clone(), out.len());
-                out.push((coefficient, key.0, key.1));
-            }
-        }
-    }
-    out.retain(|t| !t.0.is_zero());
-    out
-}
-
-/// `trace_pair_simplify_nc_power`: per term, the first pair of traces with a
-/// common label is fused.
-fn pair_simplify(terms: Vec<FierzTerm>) -> (Vec<FierzTerm>, bool) {
-    let mut out = Vec::with_capacity(terms.len() * 2);
-    let mut changed = false;
-    for (coefficient, power, rows) in terms {
-        let mut found = None;
-        'search: for i in 0..rows.len() {
-            for j in i + 1..rows.len() {
-                for (a, label) in rows[i].iter().enumerate() {
-                    if let Some(b) = rows[j].iter().position(|other| other == label) {
-                        found = Some((i, j, a, b));
-                        break 'search;
-                    }
-                }
-            }
-        }
-        let Some((i, j, a, b)) = found else {
-            out.push((coefficient, power, rows));
-            continue;
-        };
-        let (first, second) = (&rows[i], &rows[j]);
-        let combined: Vec<Label> = first[..a]
-            .iter()
-            .chain(&second[b + 1..])
-            .chain(&second[..b])
-            .chain(&first[a + 1..])
-            .copied()
-            .collect();
-        let mut fused = vec![combined];
-        fused.extend(
-            rows.iter()
-                .enumerate()
-                .filter(|(k, _)| *k != i && *k != j)
-                .map(|(_, r)| r.clone()),
-        );
-        let negated = -&coefficient;
-        out.push((coefficient, power, fused));
-        let reduced: Vec<Vec<Label>> = rows
-            .iter()
-            .enumerate()
-            .map(|(k, r)| {
-                if k == i {
-                    r[..a].iter().chain(&r[a + 1..]).copied().collect()
-                } else if k == j {
-                    r[..b].iter().chain(&r[b + 1..]).copied().collect()
-                } else {
-                    r.clone()
-                }
-            })
-            .collect();
-        out.push((negated, power - 1, reduced));
-        changed = true;
-    }
-    (out, changed)
-}
-
-/// `trace_duplicate_simplify_nc_power`: per term, the first trace with a
-/// repeated label is split.
-fn duplicate_simplify(terms: Vec<FierzTerm>) -> (Vec<FierzTerm>, bool) {
-    let mut out = Vec::with_capacity(terms.len() * 2);
-    let mut changed = false;
-    for (coefficient, power, rows) in terms {
-        let mut found = None;
-        for (t, row) in rows.iter().enumerate() {
-            let mut seen: FastMap<Label, usize> = FastMap::default();
-            for (index, &label) in row.iter().enumerate() {
-                if let Some(&previous) = seen.get(&label) {
-                    found = Some((t, previous, index));
-                    break;
-                }
-                seen.insert(label, index);
-            }
-            if found.is_some() {
-                break;
-            }
-        }
-        let Some((t, first, second)) = found else {
-            out.push((coefficient, power, rows));
-            continue;
-        };
-        let row = &rows[t];
-        let (a, b, c) = (&row[..first], &row[first + 1..second], &row[second + 1..]);
-        let rest = rows
-            .iter()
-            .enumerate()
-            .filter(|(k, _)| *k != t)
-            .map(|(_, r)| r.clone());
-        let mut split = vec![a.iter().chain(c).copied().collect::<Vec<_>>(), b.to_vec()];
-        split.extend(rest.clone());
-        let negated = -&coefficient;
-        out.push((coefficient, power, split));
-        let mut joined = vec![a.iter().chain(b).chain(c).copied().collect::<Vec<_>>()];
-        joined.extend(rest);
-        out.push((negated, power - 1, joined));
-        changed = true;
-    }
-    (out, changed)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -809,63 +655,6 @@ mod tests {
         Product {
             traces: vec![labels.to_vec()],
             ..Product::one()
-        }
-    }
-
-    #[test]
-    fn tmp_unified_fierz_equals_the_rewrite() {
-        let mut state: u64 = 20261101;
-        let mut below = |n: usize| -> usize {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            ((state >> 33) as usize) % n.max(1)
-        };
-        for case in 0..3000 {
-            let internal = 1 + below(7);
-            let external = below(4);
-            let sentinels_n = below(3);
-            let mut labels: Vec<Label> = Vec::new();
-            for k in 0..internal {
-                labels.push(100 + k as Label);
-                labels.push(100 + k as Label);
-            }
-            for k in 0..external {
-                labels.push(1 + k as Label);
-            }
-            let sentinels: Vec<Label> = (0..sentinels_n).map(|k| 200 + k as Label).collect();
-            labels.extend(&sentinels);
-            for i in (1..labels.len()).rev() {
-                let j = below(i + 1);
-                labels.swap(i, j);
-            }
-            let mut cuts: Vec<usize> = (0..below(4)).map(|_| below(labels.len() + 1)).collect();
-            cuts.sort_unstable();
-            cuts.push(labels.len());
-            let mut previous = 0;
-            let traces: Vec<Vec<Label>> = cuts
-                .into_iter()
-                .map(|cut| {
-                    let t = labels[previous..cut].to_vec();
-                    previous = cut;
-                    t
-                })
-                .collect();
-            let old: FierzMap = {
-                let mut m = FierzMap::new();
-                for (c, p, rows) in fierz(&traces, &sentinels) {
-                    let mut rows: Vec<Vec<Label>> = rows.iter().map(|r| canonical_trace(r)).collect();
-                    rows.sort();
-                    let e = m.entry((p, rows)).or_insert_with(Integer::zero);
-                    *e = &*e + &c;
-                }
-                m.retain(|_, c| !c.is_zero());
-                m
-            };
-            let new: FierzMap = fierz_terms(&traces, &sentinels)
-                .unwrap()
-                .into_iter()
-                .map(|(c, p, rows)| ((p, rows), c))
-                .collect();
-            assert_eq!(old, new, "case {case}: {traces:?} {sentinels:?}");
         }
     }
 
@@ -907,29 +696,42 @@ mod tests {
     #[test]
     fn fierz_coefficients_are_exact_beyond_machine_words() {
         // Sums and negations past i64 (|c| = 2^63 needs 63 contracted pairs
-        // in a network, so the steps are exercised directly).
+        // in a network, so the accumulation step is exercised directly).
         let rows = vec![vec![1, 2]];
         let max = Integer::from(i64::MAX);
-        let summed = combine(vec![
-            (max.clone(), 0, rows.clone()),
-            (max.clone(), 0, rows.clone()),
-        ]);
-        assert_eq!(summed.len(), 1);
-        assert_eq!(summed[0].0, &max + &max);
-        assert_eq!(summed[0].0.to_string(), "18446744073709551614");
-        // -(i64::MIN) = 2^63, one past i64.
-        let (split, changed) = pair_simplify(vec![(
-            Integer::from(i64::MIN),
-            0,
-            vec![vec![1, -5, 2], vec![-5, 3]],
-        )]);
-        assert!(changed);
-        assert_eq!(split[1].0.to_string(), "9223372036854775808");
-        let (split, changed) =
-            duplicate_simplify(vec![(Integer::from(i64::MIN), 0, vec![vec![1, -5, 2, -5]])]);
-        assert!(changed);
-        assert_eq!(split[1].0.to_string(), "9223372036854775808");
-        assert!(combine(vec![(max.clone(), 0, rows.clone()), (-&max, 0, rows)]).is_empty());
+        let part = FierzMap::from([((0, rows.clone()), max.clone())]);
+        let mut out = FierzMap::new();
+        fierz_add(&mut out, &part, 0, 1);
+        fierz_add(&mut out, &part, 0, 1);
+        assert_eq!(out[&(0, rows.clone())].to_string(), "18446744073709551614");
+        let part = FierzMap::from([((0, rows.clone()), Integer::from(i64::MIN))]);
+        let mut out = FierzMap::new();
+        fierz_add(&mut out, &part, -1, -1);
+        // -(i64::MIN) = 2^63, one past i64, at N_c^-1.
+        assert_eq!(out[&(-1, rows)].to_string(), "9223372036854775808");
+    }
+
+    #[test]
+    fn open_strings_ride_along_closed_by_sentinels() {
+        // tr(S1 a 1) tr(a 2 S2) = tr(S1 2 S2 1) - 1/N tr(S1 1) tr(2 S2);
+        // tr(S1) is a Kronecker delta, tr(1) = 0, tr(a a S1) = C_F tr(S1).
+        let terms = fierz_terms(&[vec![9, 5, 1], vec![5, 2, 10]], &[9, 10]).unwrap();
+        assert_eq!(
+            terms,
+            vec![
+                (Integer::from(-1), -1, vec![vec![1, 9], vec![2, 10]]),
+                (Integer::one(), 0, vec![vec![1, 9, 2, 10]]),
+            ]
+        );
+        assert!(fierz_terms(&[vec![1], vec![9]], &[9]).unwrap().is_empty());
+        assert_eq!(
+            fierz_terms(&[vec![5, 5, 9]], &[9]).unwrap(),
+            vec![
+                (Integer::from(-1), -1, vec![vec![9]]),
+                (Integer::one(), 1, vec![vec![9]]),
+            ]
+        );
+        assert!(fierz_terms(&[vec![5, 5, 5, 1]], &[]).is_err());
     }
 
     #[test]
