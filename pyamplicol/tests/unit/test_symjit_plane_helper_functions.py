@@ -160,10 +160,11 @@ def test_untaken_branches_define_no_shared_values() -> None:
     occurrence, inside the branch, so where the branch is not taken the
     straight-line uses read an unset temporary (found while localising
     CM01's zero-width defect, M-SM MS-MASTERS;
-    ``upstream/symjit-cse-across-branches``).
-    Both translations drop the jumps (``Join`` selects), so the planes equal
-    Symbolica on either side of the condition, at the parameter program's
-    level 0 and at level 2, with the plane check given only the taken side."""
+    ``upstream/symjit-cse-across-branches``, fixed in 2.28.3 by
+    siravan/symjit#31). Both translations keep the jumps, and the planes
+    equal Symbolica on either side of the condition, at the parameter
+    program's level 0 and at level 2, with the plane check given only the
+    taken side."""
     from symbolica import Evaluator, Expression, FunctionDefinition, S
 
     from pyamplicol.loops.native import load_loop_native
@@ -197,7 +198,7 @@ def test_untaken_branches_define_no_shared_values() -> None:
     expected = np.asarray(Evaluator.load(state).evaluate_complex(rows))
     assert expected[1].tolist() == [3, 25, 27]
     program = _symbolica_instruction_program_repr(evaluator.get_instructions())
-    assert "if_else" not in program and "join" in program
+    assert "if_else" in program and "join" in program
     native = load_loop_native()
     for level in (0, 2):
         rust_application, inputs, outputs = native.compile_v2_plane(
@@ -285,19 +286,11 @@ def test_true_zero_constants_export() -> None:
     assert application
 
 
-SYMJIT_RANDOM_CALL_TAG = (
-    "SymJIT 2.27.3 tags every external call with a rand::random() constant "
-    "(compiler.rs translate_external_fun, against CSE), so the stored IR of a "
-    "program calling the scalar primitives differs between compilations; the "
-    "values do not, and a stored application recompiles to the same code at "
-    "every load (still in SymJIT 2.28.1 and v228 d37160b8; deterministic-tag "
-    "patch prepared in workspace/reports/engine-v2/upstream/"
-    "symjit-reproducible-external-calls, not filed yet)"
-)
-
-
-@pytest.mark.xfail(strict=True, reason=SYMJIT_RANDOM_CALL_TAG)
 def test_plane_applications_calling_primitives_are_byte_reproducible() -> None:
+    """Two compilations of a program calling a scalar primitive save the same
+    bytes: SymJIT 2.28.1 and later tag external calls deterministically and
+    write their sets and subroutines in a fixed order (siravan/symjit#26;
+    2.27.3 tagged every call with ``rand::random()``)."""
     from symbolica import Expression, S
 
     x, y = S("symjit_reproducible_x"), S("symjit_reproducible_y")

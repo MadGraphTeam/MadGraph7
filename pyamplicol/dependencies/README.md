@@ -3,7 +3,7 @@
 The `loop` development branch currently integrates Rust Symbolica 3.0.1,
 Numerica and Graphica from the tested
 [`9cdc294` integration fork](https://github.com/alphal00p/symbolica/commit/9cdc2949cdb153478c1eca0d40690dc0abfc616e),
-and SymJIT 2.27.3. These pins are recorded by Cargo. This is a source integration,
+and SymJIT 2.28.3. These pins are recorded by Cargo. This is a source integration,
 with Rust 1.96 or newer required; it is not a completed release dependency set.
 The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
 whose saved evaluators are tested against this core in all three arithmetic
@@ -53,7 +53,7 @@ pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
 upstream pins need a coherent update before use with the current tensor APIs.
 Release mode uses Python Symbolica **3.0.2** (Rust kernel 3.0.1) and SymJIT
-**2.27.3** (`release-lock.toml`). Historical candidate mode retains Symbolica
+**2.28.3** (`release-lock.toml`). Historical candidate mode retains Symbolica
 **3.0.0** and SymJIT **2.26.0** (`contributor-lock.toml`), so the two locks pin
 different versions; version numbers alone do not establish Python API
 compatibility. Candidate builds do not
@@ -90,7 +90,7 @@ The developer dashboard retains its pinned Ratatui 0.4.2 build and FFI checkout
 in both lanes; it is not a core runtime dependency.
 
 Release-equivalent builds use exact versions. `release-lock.toml` records Rust
-Symbolica 3.0.1 and SymJIT 2.27.3, and `Cargo.lock` records their resolution:
+Symbolica 3.0.1 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
 SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
 from the `9cdc294` integration fork through the root `Cargo.toml`'s
 `[patch.crates-io]`, the source patch that still fails the published-crate gate
