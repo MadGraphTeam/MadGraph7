@@ -73,6 +73,23 @@ pub struct CorrelatedEvaluation {
     pub history_ids: Vec<String>,
     pub spin_legs: Vec<usize>,
     pub diagnostics_json: String,
+    /// Double-double and arbitrary-precision evaluations: the exact values
+    /// (the Python API's `Decimal` results) as `[real, imaginary]` decimal
+    /// literals in the layout of `born` and `virtual_values` (absent poles
+    /// `None`); `born` and `virtual_values` then hold their nearest binary64
+    /// values.
+    pub decimal: Option<DecimalComplexValues>,
+}
+
+/// The exact complex values of an extended-precision correlated
+/// evaluation, at `digits` working digits of `arithmetic`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct DecimalComplexValues {
+    pub arithmetic: &'static str,
+    pub digits: u32,
+    pub born: Vec<[String; 2]>,
+    #[serde(rename = "virtual")]
+    pub virtual_values: Vec<Option<[String; 2]>>,
 }
 
 impl Runtime {
@@ -94,7 +111,10 @@ impl Runtime {
     pub fn correlated_shape(&self) -> CorrelatedShape {
         CorrelatedShape {
             histories: self.history_ids.len(),
-            born_orders: self.shape.born_orders,
+            born_orders: self
+                .observables
+                .as_ref()
+                .map_or(self.shape.born_orders, |axes| axes.born_orders),
             virtual_orders: self.shape.virtual_orders,
             epsilon_count: 3,
         }
@@ -167,19 +187,176 @@ impl Runtime {
         inputs.spin_sources = sources;
         self.evaluate_correlated_inputs(inputs, strategy)
     }
-    /// Correlated (directed colour and spin) virtuals were served by the
-    /// removed legacy engine's runtime; plan v4 SDK runtimes serve ordinary
-    /// virtuals, and correlated ones go through the Python API.
+    /// Every stored colour history (`born` first, the declared histories in
+    /// their order) in one batch, with the spin sources of `inputs` (one
+    /// declared spin class; none: the physical states): the Python API's
+    /// `evaluate_correlated_many` with one request per history, the same
+    /// spin vectors in each, in the runtime's arithmetic and pole selection.
     fn evaluate_correlated_inputs(
         &mut self,
-        _inputs: LoopInputs,
-        _strategy: Option<&str>,
+        inputs: LoopInputs,
+        strategy: Option<&str>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        Err(invalid(V4_ONLY_ORDINARY))
+        if let Some(strategy) = strategy {
+            v4_r2_strategy(strategy)?;
+        }
+        let axes = self.observables.clone().map_err(|reason| {
+            RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
+        })?;
+        let shape = CorrelatedShape {
+            born_orders: axes.born_orders,
+            ..self.correlated_shape()
+        };
+        let (poles, arithmetic) = (self.poles, self.arithmetic);
+        let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
+        let points = inputs.point_ids.len();
+        let spin_legs: Vec<usize> = inputs.spin_sources.keys().copied().collect();
+        let spins = if spin_legs.is_empty() {
+            Vec::new()
+        } else {
+            use rusticol_core::loop_v2::dress::parse_rational;
+            (0..points)
+                .map(|point| {
+                    inputs
+                        .spin_sources
+                        .iter()
+                        .map(|(leg, values)| {
+                            let component = |k: usize| -> RusticolResult<_> {
+                                let [re, im] = &values[4 * point + k];
+                                Ok((parse_rational(re)?, parse_rational(im)?))
+                            };
+                            Ok((
+                                *leg,
+                                [component(0)?, component(1)?, component(2)?, component(3)?],
+                            ))
+                        })
+                        .collect::<RusticolResult<BTreeMap<_, _>>>()
+                })
+                .collect::<RusticolResult<Vec<_>>>()?
+        };
+        let Engine::V4(native) = &mut self.engine;
+        let evaluation = match arithmetic {
+            Arithmetic::Double => {
+                let found =
+                    native.evaluate_columns("correlated", &momenta, &scales, &spins, poles.v2())?;
+                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+            }
+            _ => {
+                let found = native.evaluate_columns_extended(
+                    "correlated",
+                    &momenta,
+                    &scales,
+                    &spins,
+                    poles.v2(),
+                    arithmetic.v2(),
+                )?;
+                CorrelatedEvaluation::from_columns(inputs, shape, poles, arithmetic, found)?
+            }
+        };
+        Ok(CorrelatedEvaluation {
+            history_ids: self.history_ids.clone(),
+            spin_legs,
+            ..evaluation
+        })
+    }
+}
+
+/// A complex output (`complex(value)` / the Python API's
+/// `CorrelatedValue`) and, for the extended carriers, its literals.
+#[derive(Default)]
+struct Complexes {
+    values: Vec<Complex64>,
+    literals: Vec<Option<[String; 2]>>,
+}
+
+impl Complexes {
+    fn push<N: Output>(&mut self, value: Option<&C<N>>) {
+        match value {
+            Some(z) => {
+                self.values.push(Complex64 {
+                    real: z.re.double(),
+                    imag: z.im.double(),
+                });
+                self.literals
+                    .push(z.re.literal().zip(z.im.literal()).map(|(re, im)| [re, im]));
+            }
+            None => {
+                self.values.push(Complex64 {
+                    real: f64::NAN,
+                    imag: f64::NAN,
+                });
+                self.literals.push(None);
+            }
+        }
     }
 }
 
 impl CorrelatedEvaluation {
+    fn from_columns<N: Output>(
+        inputs: LoopInputs,
+        shape: CorrelatedShape,
+        poles: Poles,
+        arithmetic: Arithmetic,
+        points: Vec<ColumnPoint<N>>,
+    ) -> RusticolResult<Self> {
+        let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
+        let mut born = Complexes::default();
+        let mut virtual_values = Complexes::default();
+        for columns in points.into_iter().flatten() {
+            if columns.len() != shape.histories {
+                return Err(invalid(
+                    "the stored correlated columns are not the histories",
+                ));
+            }
+            for column in &columns {
+                for value in &column.born {
+                    born.push(Some(value));
+                }
+                for laurent in &column.virtual_values {
+                    for k in 0..shape.epsilon_count {
+                        virtual_values.push(laurent.get(k));
+                    }
+                }
+            }
+        }
+        let diagnostics_json = diagnostics(
+            &inputs.point_ids,
+            &successful_point_ids,
+            &failures,
+            poles,
+            arithmetic,
+        )?;
+        let decimal = (arithmetic != Arithmetic::Double).then(|| DecimalComplexValues {
+            arithmetic: arithmetic.name(),
+            digits: arithmetic.working_digits(),
+            born: born
+                .literals
+                .iter()
+                .cloned()
+                .map(|value| value.expect("a Born value"))
+                .collect(),
+            virtual_values: virtual_values.literals.clone(),
+        });
+        Ok(Self {
+            requested_point_ids: inputs.point_ids,
+            successful_point_ids,
+            statuses,
+            born: born.values,
+            virtual_values: virtual_values.values,
+            shape,
+            history_ids: vec![],
+            spin_legs: vec![],
+            diagnostics_json,
+            decimal,
+        })
+    }
+}
+
+impl CorrelatedEvaluation {
+    /// The `decimal` record as JSON (`null` for a binary64 evaluation).
+    pub fn decimal_json(&self) -> RusticolResult<String> {
+        serde_json::to_string(&self.decimal).map_err(serialization)
+    }
     pub fn spin_legs_json(&self) -> RusticolResult<String> {
         serde_json::to_string(&self.spin_legs).map_err(serialization)
     }

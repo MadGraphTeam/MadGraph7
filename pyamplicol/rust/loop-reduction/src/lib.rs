@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod runtime;
+pub mod v2_decimal;
 pub mod v2_runtime;
 
 
