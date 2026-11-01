@@ -739,9 +739,6 @@ def _v2_request(backend, context, index, born_dags=None):
     entry = context.expanded[index]
     process = entry.process_ir.process
     label = f"{entry.request.name!r} ({entry.request.expression})"
-    from pyamplicol.loops.v2.refusals import require_scattering
-
-    require_scattering(len(entry.process_ir.initial_legs), label)
     _require_declared_corrections(compiled, context.corrections)
     fixed = require_real_fixed_parameters(context.preparation.fixed_parameters)
     scheme = scheme_metadata(compiled)
