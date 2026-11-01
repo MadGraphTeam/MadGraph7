@@ -54,7 +54,9 @@ Mapping::Result MultiChannelMapping::build_impl(
         split_conditions.push_back(fb.batch_split(condition, counts));
     }
 
-    std::vector<ValueVec> split_outputs(output_types().size());
+    // the inverse returns the inputs of the forward map
+    const auto& result_types = inverse ? input_types() : output_types();
+    std::vector<ValueVec> split_outputs(result_types.size());
     ValueVec split_dets;
     std::size_t index = 0;
     for (auto& mapping : _mappings) {
@@ -82,7 +84,7 @@ Mapping::Result MultiChannelMapping::build_impl(
         cat_outputs.push_back(cat);
     }
     auto [det, _] = fb.batch_cat(split_dets);
-    return {{output_types().keys(), cat_outputs}, det};
+    return {{result_types.keys(), cat_outputs}, det};
 }
 
 MultiChannelFunction::MultiChannelFunction(
