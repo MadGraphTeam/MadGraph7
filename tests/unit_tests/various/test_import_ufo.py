@@ -2159,3 +2159,43 @@ class TestRestrictionDoesNotLeakIntoTheUFO(unittest.TestCase):
         self.assertIn('FFVV99', [l.name for l in model['lorentz']])
         self.assertEqual([l.name for l in self.library.all_lorentz],
                          ['FFVV1'])
+
+
+#===============================================================================
+# TestUnreadablePickle
+#===============================================================================
+class TestUnreadablePickle(unittest.TestCase):
+    """A model pickle that exists and is up to date but cannot be read (e.g. a
+    UFO directory on the macOS Desktop) used to make import_full_model crash:
+    files.read_from_file logs the I/O error and returns None, which was then
+    used as the model. It must fall back to the UFO files instead."""
+
+    def test_unreadable_pickle_falls_back_to_the_ufo(self):
+        import shutil
+        import tempfile
+        if hasattr(os, 'geteuid') and os.geteuid() == 0:
+            self.skipTest('file permissions are not enforced for root')
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # a name of its own: a model 'sm' imported by another test from
+            # another path cannot be loaded again under the same name
+            model_path = os.path.join(tmpdir, 'sm_unreadable_pickle')
+            shutil.copytree(import_ufo.find_ufo_path('sm'), model_path,
+                            ignore=shutil.ignore_patterns('py3_*.pkl'))
+            import_ufo.import_full_model(model_path)
+            pickles = [f for f in os.listdir(model_path)
+                       if f.startswith('py3_') and f.endswith('.pkl')]
+            self.assertTrue(pickles)
+            for name in pickles:
+                os.chmod(os.path.join(model_path, name), 0)
+            # a second import of the same path in the same session
+            import_ufo._import_once[:] = [entry for entry in
+                import_ufo._import_once if entry[0] != model_path]
+            model = import_ufo.import_full_model(model_path)
+            self.assertTrue(model.get('name').startswith('sm'))
+            self.assertTrue(model.get('particles'))
+        finally:
+            for root, _, filenames in os.walk(tmpdir):
+                for name in filenames:
+                    os.chmod(os.path.join(root, name), 0o644)
+            shutil.rmtree(tmpdir, ignore_errors=True)
