@@ -79,7 +79,7 @@ of them only.
 | `/ z` | `generation.particle_veto = ["Z"]` (internal lines, loops and counterterms) |
 | `p p > t t~` with a multiparticle label | the same expression: one artifact entry per subprocess (`p` and `j` are the model's massless quarks and gluon, so the b is in them on `no_b_mass`), each equal to its own single-process generation; load one with `Runtime.load(artifact, process="g g > t t~")` (the stable ID or the expression; the artifact records loop_sm's own spelling, `G G > t t~`, and any letter case selects it) |
 | `$ x`, `$$ x`, decay chains `a > b c, b > d e`, `@N` | not served |
-| `[noborn=QCD]` (loop-induced), `t > b w+` (decays) | not served (see the refusals below) |
+| `[noborn=QCD]` (loop-induced), `t > b w+ [virt=QCD]` (one-loop decays) | not served (see the refusals below); the tree-level decay `t > b w+` is a process |
 
 MG5_aMC syntax inside a process expression is refused with the key
 `madloop-syntax`, and the message names the run-card setting above.
@@ -122,7 +122,7 @@ starts with a listed key and names the remedy; `pyamplicol generate
 
 | Key | Request |
 | --- | --- |
-| `decay-process` | a 1 -> n decay (tree and one-loop requests alike) |
+| `decay-process` | a one-loop 1 -> n decay (tree-level decays are served; one-loop decays come with M-FINAL MF-DEC-2) |
 | `madloop-syntax` | MG5_aMC syntax in the process expression |
 | `loop-induced` | no Born amplitude within the coupling-order limits (`g g > h h`, `g g > z z`, ...) |
 | `coloured-width` | a coloured particle with a nonzero width in a tree current |
