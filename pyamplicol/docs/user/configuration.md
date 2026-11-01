@@ -1201,8 +1201,15 @@ the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
 model parameters (at open and through `rusticol_virtual_update_parameters`)
 follow the Python API's rules above, with the same messages
 (`RUSTICOL_VIRTUAL_INVALID_ARGUMENT`); the default R2 strategy `"auto"` selects
-the artifact's model R2; correlated, resolved and extended-precision calls go
-through the Python API. A
+the artifact's model R2; `rusticol_virtual_set_arithmetic(handle, arithmetic,
+digits)` selects binary64, double-double or arbitrary precision as the Python
+API's `arithmetic=`/`precision=` (equal `Decimal` values, as decimal literals
+through `rusticol_virtual_result_decimal_json`); helicity-resolved and colour-
+and spin-correlated calls (`request.resolved = 1`,
+`rusticol_virtual_evaluate_correlated[_with_sources]`) evaluate the process's
+stored observable columns, bitwise equal to the Python API's `evaluate_resolved`
+and `evaluate_correlated_many` in binary64. The stability rescue is the Python
+API's alone. A
 v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).

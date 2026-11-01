@@ -4,11 +4,11 @@
 > (2026-10-29, user ruling M-QCD Q3): the SDK opens plan v4 artifacts of the
 > v2 engine; a plan v1-v3 artifact (`rusticol.loop-runtime.v3`) is refused
 > with a compatibility error ("the legacy one-loop engine was removed ...;
-> regenerate the artifact"). Resolved, directed-colour (correlated) and
-> spin-source evaluations were served by the legacy runtime only: their entry
-> points remain in the ABI and refuse with the plan v4 reason (use the Python
-> API); the verification policy was removed (ABI version 2). Where the text
-> below describes resolved axes, it describes those refusing entry points.
+> regenerate the artifact"). A plan v4 process serves the ordinary,
+> helicity-resolved, colour-correlated and spin-correlated virtuals in
+> binary64, double-double and arbitrary precision (M-FINAL MF-SDK, below);
+> the verification policy was removed (ABI version 2) and the stability
+> rescue is the Python API's alone (user ruling Q9).
 
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
@@ -79,8 +79,9 @@ are quiet NaNs) or a split selection (`"uv"`: the poles are the bare loop's UV
 poles; `"ir"`: the renormalised virtual's IR poles), which also runs the
 stored companion of the certified-scaleless families; the finite part is the
 same in every selection, and every selection is bitwise the Python API's.
-Correlated, resolved and extended-precision evaluations of a plan v4
-process go through the Python API; plan v1-v3 handles accept `"all"` only.
+`rusticol_virtual_set_arithmetic` selects the arithmetic of later
+evaluations (below); resolved and correlated evaluations read the process's
+stored observable columns (below).
 The R2 strategy of a plan v4 process is the model's: `"auto"` (the default,
 `NULL`) and `"model"` select it, `"direct"` is refused.
 
@@ -215,14 +216,61 @@ these same outputs using UMAMI's bulk offset/count/stride layout. Its separate
 keys expose every squared order and Laurent coefficient, with mandatory lane
 statuses and no probability or finite-only tree fallback.
 
-## Correlated and spin-source entry points
+## Plan v4 extras: resolved, correlated, spin-source and extended precision
 
-`rusticol_virtual_evaluate_correlated` (grouped complex colour histories),
-its joint spin-source form and the matching C++, Fortran, Rust and UMAMI
-wrappers remain in the ABI. They were served by the removed legacy runtime
-and refuse a plan v4 process with the plan v4 reason: evaluate correlated,
-resolved and spin-source virtuals of plan v4 through the Python API
-(`evaluate_correlated`, `evaluate_correlated_many`, `evaluate_resolved`).
+A plan v4 process generated with its observable columns (every v2 artifact;
+`loops/v2/native_observables`) serves, from the stored columns and without
+Python, generation or a Symbolica licence in binary64, exactly what the Python
+API's `Runtime` returns:
+
+- **Helicity-resolved** (`request.resolved = 1`; Rust `evaluate(..., true,
+  ...)`; C++ `evaluate(..., resolved = true)`; Fortran `resolved=.true.`;
+  UMAMI `options.resolved = 1`): the Python API's `evaluate_resolved`, per
+  Born helicity row (the capabilities' `helicity_rows`, 1-based legs, ids
+  `h<i>`) and, at leading colour, per Born basis element (`basis-<b>`; one
+  contracted component at NLC and full colour), in the layout
+  point/order/helicity/colour/(epsilon). The shape's `helicities` and colour
+  component counts are those axes.
+- **Colour-correlated** (`rusticol_virtual_evaluate_correlated`): every stored
+  history in one batch, `born` (the inclusive Born metric) first, then the
+  declared histories (`rusticol_virtual_correlation_histories_json`), each
+  bitwise the Python API's `evaluate_correlated_many` with one request per
+  history; complex values, point/history/order/(epsilon).
+- **Spin-correlated** (`rusticol_virtual_evaluate_correlated_with_sources`):
+  the same with literal complex four-vectors on the legs of one declared spin
+  class (`spin_correlation_classes_json`), one row broadcast or one per
+  point, as the Python API's `CorrelatedRequest(history, spin_vectors)` with
+  the same vectors in every history (each source leg keeps its lowest
+  helicity row).
+- **Double-double and arbitrary precision**
+  (`rusticol_virtual_set_arithmetic(handle, "double-double", 0)` or
+  `(handle, "arbitrary", digits)`; `"double"` is the default): the Python API's
+  `arithmetic=` / `precision=`. The native executor runs in the carrier (the
+  generic reduction engine; MPFR at `max(digits + 20, 40)` working digits,
+  double-double at 52) and its outputs are assembled in Python's `Decimal`
+  arithmetic at the working digits, operation for operation, so the values
+  equal the Python API's `Decimal` results exactly:
+  `rusticol_virtual_result_decimal_json` (and
+  `rusticol_virtual_correlated_result_decimal_json`) return them as decimal
+  literals (`{"arithmetic", "digits", "born", "virtual"}`, the copy layouts,
+  absent poles `null`), and the double copies hold their nearest binary64
+  values. Ordinary, resolved and correlated evaluations take it; each
+  extended evaluation runs the exact tree states (Symbolica's evaluators),
+  like the Python API's.
+
+Every extra takes the handle's pole selection (`"all"`, `"none"`, `"uv"`,
+`"ir"`). Correlated and resolved calls of a batch of mixed `mu_r2` on a model
+whose Born couplings run with the scale are refused, as in the Python API
+(their batch is taken as given). A process stored without observable columns
+(an older build's artifact) or generated with a forced seed FFT
+(`colour contraction = "fft"`) refuses them with the reason; the capabilities
+JSON then names it (`observables_unavailable`). The C++, Fortran, packaged
+Rust (`rusticol::virtual_amplitudes`) and UMAMI wrappers expose the same
+calls (`set_arithmetic`, `decimal_json`). The controls are
+`examples/extras_v4.c`, `extras_v4.cpp`, `extras_v4.f90`, `extras_v4_umami.c`
+and `tests/v4_extras.rs`, which `tests/unit/test_loop_v2_sdk_extras.py`
+compares with the Python API on g g > t t~ and u u~ > d d~ g (binary64
+bitwise, the extended carriers' decimals exactly).
 
 ## glibc floor (Linux)
 
