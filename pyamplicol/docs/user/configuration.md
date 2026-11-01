@@ -532,10 +532,11 @@ two tolerances, `verify_successful`, and the CLI options `--stability-higher`,
 `--stability-relative-tolerance`, `--stability-absolute-tolerance` and
 `--verify-successful`) was removed with the legacy loop engine, the only one
 that served it: any value other than the defaults is refused ("evaluation.stability
-(the precision-rescue policy ...) was removed ..."), and a Python
-`VirtualStabilityPolicy` is refused by v2 runtimes at load. v2 evaluations
-return stability estimates instead and leave escalating the arithmetic to the
-caller (below).
+(the precision-rescue policy ...) was removed ..."). v2 evaluations return
+stability estimates instead and leave escalating the arithmetic to the caller
+(below); the built-in rescue is a Python API option only
+(`evaluate(..., stability=VirtualRescuePolicy())`,
+[Python API](python-api.md#stability-rescue-one-loop-virtuals)).
 
 ### The v2 loop engine
 
