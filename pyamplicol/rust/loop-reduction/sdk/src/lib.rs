@@ -14,7 +14,6 @@ use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::{
     V2Poles, V2Runtime, decimal_parameter, is_v2_artifact, named_parameters,
 };
-pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use serde::Serialize;
 use std::{collections::BTreeMap, path::Path};
 
@@ -33,6 +32,9 @@ fn product(values: &[usize]) -> RusticolResult<usize> {
 
 /// Point statuses are independent of function/ABI errors. A failed point has no
 /// numerical row. Ordinary success does not establish numerical accuracy.
+/// Plan v4 runtimes return `AccuracyNotEstablished` or `Failed`; `Verified`
+/// and `Rescued` keep their values but are never returned (the stability
+/// rescue is the Python API's).
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum PointStatus {
@@ -77,8 +79,8 @@ enum Engine {
 }
 
 const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved) \
-    binary64 virtuals with model R2; resolved, correlated, verified and \
-    rescued evaluations go through the Python API";
+    binary64 virtuals with model R2; resolved and correlated evaluations and \
+    the stability rescue go through the Python API";
 
 /// The refusal of a loop artifact of the removed legacy engine (the Python
 /// API's `LEGACY_LOOP_ARTIFACT_REMOVED`).
@@ -167,19 +169,8 @@ impl Runtime {
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
     ) -> RusticolResult<Self> {
-        Self::open_with_policy(path, process, parameters, r2_strategy, None)
-    }
-    /// Retain an explicit policy before exact source parameters are realized.
-    /// A per-call policy replaces this default only for that evaluation.
-    pub fn open_with_policy(
-        path: impl AsRef<Path>,
-        process: Option<&str>,
-        parameters: Option<&SourceOverrides>,
-        r2_strategy: &str,
-        policy: Option<&VerificationPolicy>,
-    ) -> RusticolResult<Self> {
         if is_v2_artifact(path.as_ref())? {
-            return Self::open_v4(path, process, parameters, r2_strategy, policy);
+            return Self::open_v4(path, process, parameters, r2_strategy);
         }
         let verified = rusticol_core::VerifiedArtifact::open(path.as_ref())?;
         let capabilities = &verified.manifest().runtime.required_runtime_capabilities;
@@ -202,12 +193,8 @@ impl Runtime {
         process: Option<&str>,
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
         v4_r2_strategy(r2_strategy)?;
-        if policy.is_some() {
-            return Err(invalid(V4_ONLY_ORDINARY));
-        }
         let mut native = V2Runtime::open(path, process, None)?;
         if let Some(values) = parameters {
             native.set_parameters(real_overrides(values)?)?;
@@ -243,11 +230,6 @@ impl Runtime {
     pub fn poles(&self) -> Poles {
         self.poles
     }
-    /// Plan v4 runtimes retain no verification policy (escalation is the
-    /// caller's, through the Python API).
-    pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
-        None
-    }
     /// Existing artifact metadata includes exact order pairings and schemes.
     pub fn metadata_json(&self) -> RusticolResult<String> {
         let Engine::V4(native) = &self.engine;
@@ -272,9 +254,8 @@ impl Runtime {
                 "color_components":self.color_components,
                 "color_component_semantics":"contracted colour",
                 "available_r2_strategies":["model"],
-                "r2_strategy":"model", "explicit_verification":false,
+                "r2_strategy":"model",
                 "source_only":true,
-                "retained_verification_policy":serde_json::Value::Null,
                 "normalization":"physical couplings and inclusive initial spin/color average"
             }))
             .map_err(serialization)
@@ -295,7 +276,7 @@ impl Runtime {
     /// Plan v4 runtimes keep no evaluation caches to clear.
     pub fn clear(&mut self) {}
     /// Binary64 inputs are encoded as their exact terminating decimal values,
-    /// so higher arithmetic retries preserve the original C/Rust input numbers.
+    /// so the native program reads the original C/Rust input numbers.
     pub fn evaluate(
         &mut self,
         momenta: &[f64],
@@ -303,7 +284,6 @@ impl Runtime {
         scales: &[f64],
         resolved: bool,
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
         let exact_momenta = momenta
             .iter()
@@ -319,11 +299,10 @@ impl Runtime {
             exact_scales,
             resolved,
             strategy,
-            policy,
         )
     }
     /// Decimal literals remain exact input snapshots; the returned carrier is
-    /// binary64, including any explicitly verified/rescued values.
+    /// binary64.
     pub fn evaluate_decimal(
         &mut self,
         momenta: Vec<String>,
@@ -331,14 +310,13 @@ impl Runtime {
         scales: Vec<String>,
         resolved: bool,
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         let Engine::V4(native) = &mut self.engine;
         if let Some(strategy) = strategy {
             v4_r2_strategy(strategy)?;
         }
-        if resolved || policy.is_some() {
+        if resolved {
             return Err(invalid(V4_ONLY_ORDINARY));
         }
         Evaluation::from_v4(native, inputs, self.shape, self.poles)
@@ -511,7 +489,7 @@ impl Evaluation {
         let diagnostics_json = serde_json::to_string(&serde_json::json!({
             "requested_point_ids":inputs.point_ids,
             "successful_point_ids":successful_point_ids,
-            "failures":failures, "verification":[],
+            "failures":failures,
             "r2_strategy":"model", "engine":"v2", "poles":poles.name(),
             "primary_color_contraction":"direct",
         }))

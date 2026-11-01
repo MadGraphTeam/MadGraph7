@@ -12,7 +12,6 @@
 
 pub mod runtime;
 pub mod v2_runtime;
-pub mod verification;
 
 
 use std::ops::Add;

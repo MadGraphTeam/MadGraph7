@@ -40,7 +40,7 @@ int main(int argc,char **argv) {
   rusticol_virtual_shape_info shape;
   check(rusticol_virtual_shape(runtime,&shape));
   if(shape.external_count != legs || shape.epsilon_count != 3) { fprintf(stderr,"shape\n"); return 1; }
-  rusticol_virtual_batch_request request={momenta,points*legs*4,points,NULL,scales,points,0,NULL,NULL};
+  rusticol_virtual_batch_request request={momenta,points*legs*4,points,NULL,scales,points,0,NULL};
   rusticol_virtual_result *result=NULL;
   check(rusticol_virtual_evaluate(runtime,&request,&result));
   rusticol_virtual_result_shape_info info;

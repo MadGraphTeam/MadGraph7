@@ -150,12 +150,11 @@ public:
     explicit VirtualRuntime(const std::string &path,
                             const std::optional<std::string> &process = std::nullopt,
                             const std::optional<std::string> &parameters_json = std::nullopt,
-                            const std::string &r2_strategy = "auto",
-                            const std::optional<std::string> &verification_json = std::nullopt) {
+                            const std::string &r2_strategy = "auto") {
         rusticol_virtual_handle *p = nullptr;
-        virtual_detail::check(rusticol_virtual_open_with_policy(path.c_str(),
+        virtual_detail::check(rusticol_virtual_open(path.c_str(),
             virtual_detail::optional_string(process), virtual_detail::optional_string(parameters_json),
-            r2_strategy.c_str(), virtual_detail::optional_string(verification_json), &p));
+            r2_strategy.c_str(), &p));
         handle_.reset(p);
     }
     VirtualRuntime(VirtualRuntime &&) noexcept = default;
@@ -193,8 +192,7 @@ public:
                                const std::vector<std::size_t> &legs,
                                const std::vector<std::complex<double>> &vectors,
                                const std::vector<std::uint64_t> &point_ids = {},
-                               const std::optional<std::string> &r2_strategy = std::nullopt,
-                               const std::optional<std::string> &verification_json = std::nullopt) {
+                               const std::optional<std::string> &r2_strategy = std::nullopt) {
         if (!point_ids.empty() && point_ids.size() != point_count)
             throw VirtualError("point_ids must have one entry per input point");
         std::vector<rusticol_virtual_complex64> pairs; pairs.reserve(vectors.size());
@@ -202,7 +200,7 @@ public:
         rusticol_virtual_spin_sources sources{legs.data(), legs.size(), pairs.data(), pairs.size()};
         rusticol_virtual_batch_request request{momenta.data(), momenta.size(), point_count,
             point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(), 0,
-            virtual_detail::optional_string(r2_strategy), virtual_detail::optional_string(verification_json)};
+            virtual_detail::optional_string(r2_strategy)};
         rusticol_virtual_correlated_result *p = nullptr;
         virtual_detail::check(rusticol_virtual_evaluate_correlated_with_sources(handle_.get(), &request, &sources, &p));
         return CorrelatedVirtualEvaluation(p);
@@ -210,13 +208,12 @@ public:
     CorrelatedVirtualEvaluation evaluate_correlated(const std::vector<double> &momenta, std::size_t point_count,
                                const std::vector<double> &mu_r2,
                                const std::vector<std::uint64_t> &point_ids = {},
-                               const std::optional<std::string> &r2_strategy = std::nullopt,
-                               const std::optional<std::string> &verification_json = std::nullopt) {
+                               const std::optional<std::string> &r2_strategy = std::nullopt) {
         if (!point_ids.empty() && point_ids.size() != point_count)
             throw VirtualError("point_ids must have one entry per input point");
         rusticol_virtual_batch_request request{momenta.data(), momenta.size(), point_count,
             point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(), 0,
-            virtual_detail::optional_string(r2_strategy), virtual_detail::optional_string(verification_json)};
+            virtual_detail::optional_string(r2_strategy)};
         rusticol_virtual_correlated_result *p = nullptr;
         virtual_detail::check(rusticol_virtual_evaluate_correlated(handle_.get(), &request, &p));
         return CorrelatedVirtualEvaluation(p);
@@ -235,15 +232,13 @@ public:
     VirtualEvaluation evaluate(const std::vector<double> &momenta, std::size_t point_count,
                                const std::vector<double> &mu_r2,
                                const std::vector<std::uint64_t> &point_ids = {}, bool resolved = false,
-                               const std::optional<std::string> &r2_strategy = std::nullopt,
-                               const std::optional<std::string> &verification_json = std::nullopt) {
+                               const std::optional<std::string> &r2_strategy = std::nullopt) {
         if (!point_ids.empty() && point_ids.size() != point_count)
             throw VirtualError("point_ids must have one entry per input point");
         rusticol_virtual_batch_request request{
             momenta.data(), momenta.size(), point_count,
             point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(),
-            resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy),
-            virtual_detail::optional_string(verification_json)};
+            resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
         rusticol_virtual_result *p = nullptr;
         virtual_detail::check(rusticol_virtual_evaluate(handle_.get(), &request, &p));
         return VirtualEvaluation(p);

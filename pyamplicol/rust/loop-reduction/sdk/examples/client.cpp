@@ -66,9 +66,6 @@ int main(int argc,char **argv) {
     assert(partial.successful_ids()==std::vector<std::uint64_t>({91,70}));
     assert(partial.statuses()==std::vector<std::uint32_t>({0,3,0}));
     assert(partial.shape().successful_points==2 && !partial.diagnostics_json().empty());
-    const std::string verify=R"({"higher":[{"arithmetic":"double-double","precision":null}],"relative_tolerance":"1e-8","absolute_tolerance":"1e-9","verify_successful":true})";
-    auto verified=runtime.evaluate(point,1,{1e6},{91},true,std::nullopt,verify);
-    assert(verified.statuses()==std::vector<std::uint32_t>({RUSTICOL_VIRTUAL_VERIFIED}));
     auto empty=runtime.evaluate({},0,{}, {},true);
     assert(empty.born().empty() && empty.virtual_values().empty() && empty.statuses().empty());
     try { runtime.evaluate(point,1,{1e6},{91,70}); assert(false); }
@@ -79,5 +76,5 @@ int main(int argc,char **argv) {
     runtime.clear(); runtime.close();
     auto retained=std::move(inclusive);
     assert(retained.born()==born && retained.virtual_values()==virt);
-    std::cout<<"native C++ "<<process<<" orders/poles/resolved/failures/verification/lifetime controls passed\n";
+    std::cout<<"native C++ "<<process<<" orders/poles/resolved/failures/lifetime controls passed\n";
 }

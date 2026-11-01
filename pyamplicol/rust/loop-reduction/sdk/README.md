@@ -4,12 +4,11 @@
 > (2026-10-29, user ruling M-QCD Q3): the SDK opens plan v4 artifacts of the
 > v2 engine; a plan v1-v3 artifact (`rusticol.loop-runtime.v3`) is refused
 > with a compatibility error ("the legacy one-loop engine was removed ...;
-> regenerate the artifact"). Resolved, directed-colour (correlated),
-> spin-source and verified/rescued evaluations were served by the legacy
-> runtime only: their entry points remain in the ABI and refuse with the
-> plan v4 reason (use the Python API). Where the text below describes
-> verification, rescue or resolved axes, it describes those refusing entry
-> points; their tests and example clients were removed.
+> regenerate the artifact"). Resolved, directed-colour (correlated) and
+> spin-source evaluations were served by the legacy runtime only: their entry
+> points remain in the ABI and refuse with the plan v4 reason (use the Python
+> API); the verification policy was removed (ABI version 2). Where the text
+> below describes resolved axes, it describes those refusing entry points.
 
 These additive Rust/C/C++/Fortran interfaces call the same `VirtualRuntime` used by the Python
 facade. It reads ordinary verified process artifacts and needs no Python process,
@@ -80,7 +79,7 @@ are quiet NaNs) or a split selection (`"uv"`: the poles are the bare loop's UV
 poles; `"ir"`: the renormalised virtual's IR poles), which also runs the
 stored companion of the certified-scaleless families; the finite part is the
 same in every selection, and every selection is bitwise the Python API's.
-Correlated, resolved, verified and extended-precision evaluations of a plan v4
+Correlated, resolved and extended-precision evaluations of a plan v4
 process go through the Python API; plan v1-v3 handles accept `"all"` only.
 The R2 strategy of a plan v4 process is the model's: `"auto"` (the default,
 `NULL`) and `"model"` select it, `"direct"` is refused.
@@ -119,37 +118,18 @@ equals its evaluation in a batch of its scale alone. The usual NLO models,
 whose scale enters the counterterms only, run one batch.
 
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
-It preserves every finite input's exact value for optional higher-precision
-verification. Standard fixed decimal formatting uses 1074 fractional places,
-the maximum denominator exponent of IEEE binary64, then removes redundant
-fractional zeros. This ingress cost belongs outside numerator/reducer/master
-timings. `evaluate_decimal` accepts original exact decimal strings directly.
-Neither method silently requests verification or rescue. `Runtime::open_with_policy`
-retains an explicit default before exact source parameters are evaluated.
-An evaluation-level policy replaces that default only for that call; omission
-inherits it, including after `clear()`.
+It reads every finite input as its exact value: standard fixed decimal
+formatting uses 1074 fractional places, the maximum denominator exponent of
+IEEE binary64, then removes redundant fractional zeros. This ingress cost
+belongs outside numerator/reducer/master timings. `evaluate_decimal` accepts
+original exact decimal strings directly.
 
 Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
-not established; explicit verification delegates the existing native policy,
-including exact source snapshots, increasing actual precision, subset retries,
-comparison of all components/axes and output-conversion checks. Detailed JSON
-records retain failures and attempt history. With a configured policy, a numerical
-global source-binding failure retains the original exact overrides/defaults and
-its failed primary stage when a configured higher carrier can realize them.
-That admission is not an accuracy claim: rescue still requires agreement of
-complete results at two successful levels and checked conversion to binary64.
-Malformed parameters and unrecoverable formula errors remain atomic function
-errors. Without a load-time policy, source binding keeps its eager behavior.
-
-The additive C entry point is `rusticol_virtual_open_with_policy`, with the same
-verification JSON accepted by batch requests. The installed dependency-free Rust
-wrapper has `open_with_policy(..., verification_json)`. C++ accepts the optional
-policy JSON as the final constructor argument; Fortran accepts it as the optional
-trailing `verification_json=` argument of `load`. Existing open signatures and
-positional Fortran calls remain valid. Capability JSON reports the retained
-policy; all ordinary, resolved, directed and spin-source evaluations preserve
-their full verification diagnostics.
+not established. The SDK has no verification policy (ABI version 2 dropped
+version 1's `rusticol_virtual_open_with_policy` and the batch request's
+`verification_json`, which plan v4 refused): stability estimates and the
+precision rescue are the Python API's (`stability=` on the native evaluate).
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed
@@ -158,8 +138,7 @@ overcomplete. Inclusive projected identity correlations and NLC/full retain one
 contracted component. The saved plan supplies component IDs and, for resolved LC,
 Born-column memberships. Summing helicity and component axes
 reconstructs the inclusive result. Helicity rows retain the inclusive initial spin
-average. Failures and precision rescue operate on whole original physical points,
-including every component and squared order in the agreement check.
+average. Failures operate on whole original physical points.
 The epsilon axis is always `(0,-1,-2)`, with physical couplings included.
 Catalogue JSON supplies the exact contributing Born/loop order pairs. These
 signed interference values are not probabilities.
@@ -176,7 +155,7 @@ C++17 callers include `include/rusticol_virtual.hpp` and use the move-only
 `VirtualError`; per-point numerical failures remain statuses in a successfully
 returned result. Each evaluation makes one C bulk call. Result copies to standard
 vectors retain the C axis order, and result ownership survives runtime moves,
-`clear()` and destruction. Exact parameter and verification JSON pass unchanged.
+`clear()` and destruction. Exact parameter JSON passes unchanged.
 For example, from this directory:
 
 ```sh
@@ -226,8 +205,8 @@ gfortran -std=f2018 examples/client.f90 rusticol_virtual.o \
 Both wrapper clients additionally accept the retained full-CKM source fixture
 with process `uudd`. Their three-order inclusive values check the committed
 MadLoop control, and each order's resolved helicity sum reconstructs all poles.
-Both exercise sparse IDs, real numerical failures with compact rows, explicit
-DoubleFloat verification, empty batches, exact parameter JSON and result
+Both exercise sparse IDs, real numerical failures with compact rows, empty
+batches, exact parameter JSON and result
 lifetimes. They call no Python interpreter. The ordinary SDK bundle includes
 these wrappers alongside the same combined archive.
 

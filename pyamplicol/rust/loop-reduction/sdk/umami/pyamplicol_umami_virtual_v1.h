@@ -35,7 +35,6 @@ enum pyamplicol_umami_virtual_v1_output_key {
 typedef struct {
     uint32_t resolved; /* 0 inclusive; 1 all saved helicities/colour components */
     const char *r2_strategy; /* NULL inherits the SDK handle */
-    const char *verification_json; /* NULL: no hidden verification/rescue */
 } pyamplicol_umami_virtual_v1_options;
 
 uint32_t pyamplicol_umami_virtual_v1_version(void);
