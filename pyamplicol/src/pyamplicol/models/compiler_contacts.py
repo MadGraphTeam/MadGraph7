@@ -525,7 +525,7 @@ def _contact_auxiliary_color(
     colors = tuple(particle.color for particle in particles)
     if all(color == 1 for color in colors):
         return 1
-    if "f(" in term.color_source or "d(" in term.color_source:
+    if any(head in term.color_source for head in ("f(", "d(", "T(")):
         return 8  # the summed adjoint index of a contact split
     remaining = abs(colors[remaining_leg])
     result = abs(colors[result_leg])
@@ -706,6 +706,7 @@ def _build_contact_decomposition_proof(
             term,
             result_leg,
             model_symbols=model_symbols,
+            particles=source_particles,
         )
         if color_split is None:
             unsupported.append(
@@ -798,7 +799,13 @@ def _contact_decomposition_split_proof(
         "1",
         "UFO::{}::Identity(1,2)",
     }
-    identities = "Identity(" in outer_color_source and not singlets
+    # Identity(pair, X) then a fundamental generator T(X, remaining, result).
+    identity_trilinear = (
+        "Identity(" in outer_color_source and "T(" in final_color_source
+    )
+    identities = (
+        "Identity(" in outer_color_source and not singlets and not identity_trilinear
+    )
     trilinear = "Identity(" in final_color_source and not identities and not singlets
     # A d-symbol (counterterm contacts) is totally symmetric: no parity.
     outer_signed = bool(outer_color_factor) and "f(" in outer_color_source
@@ -869,13 +876,19 @@ def _contact_decomposition_split_proof(
             outer_slot=outer_color_factor.index(color_dummy),
             final_slot=final_color_factor.index(color_dummy),
         )
-        if outer_color_factor and not identities and not trilinear and not singlets
+        if outer_color_factor
+        and not identities
+        and not trilinear
+        and not singlets
+        and not identity_trilinear
         else None
     )
     return CompiledContactDecompositionSplit(
         decomposition_kind=(
             "identity-singlets"
             if singlets
+            else "identity-trilinear"
+            if identity_trilinear
             else "two-identities"
             if identities
             else "trilinear-identity"
@@ -1048,6 +1061,7 @@ def _four_point_contact_color_split(
     result_leg: int,
     *,
     model_symbols: ModelSymbolRegistry | None = None,
+    particles: Sequence[CompiledParticleRecord] | None = None,
 ) -> (
     tuple[
         tuple[int, int],
@@ -1064,6 +1078,10 @@ def _four_point_contact_color_split(
     | None
 ):
     active_symbols = model_symbols or symbols.model("contact_color_parser")
+    if particles is not None:
+        generator = _generator_singlet_contact_split(term, result_leg, particles)
+        if generator is not None:
+            return generator
     counterterm_split = _counterterm_contact_color_split(term, result_leg)
     if counterterm_split is not None:
         return counterterm_split
@@ -1241,6 +1259,101 @@ def _counterterm_contact_color_split(
         1,
         outer,
         final,
+        dummy,
+        coefficient,
+    )
+
+
+_GENERATOR_COLOUR_FACTOR = re.compile(r"T\((?P<args>-?\d+(?:,-?\d+)*)\)")
+
+
+def _generator_singlet_contact_split(
+    term: CompiledVertexTerm,
+    result_leg: int,
+    particles: Sequence[CompiledParticleRecord],
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
+    """Split one fundamental generator ``T(a, i, j)`` on a four-point contact
+    whose fourth leg is a colour singlet (a quark pair, a gluon and a singlet:
+    HC_NLO_X0's qq~gX0 R2). The auxiliary carries the adjoint index ``X``
+    and is a boson: for a gluon or singlet result the quark pair joins it,
+    ``T(X, i, j)``, and ``Identity(X, r)`` passes it to the gluon or closes it
+    with the gluon into the singlet; for a quark result the gluon and the
+    singlet join it, ``Identity(a, X)``, and ``T(X, i, j)`` joins it with the
+    other quark into the result. ``particles`` are the contact's legs: the
+    generator's slots must hold an adjoint and a triplet-antitriplet pair and
+    the fourth leg must be a singlet, else None."""
+
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
+    numbers, generators = [], []
+    for text in compact.split("*"):
+        match = _GENERATOR_COLOUR_FACTOR.fullmatch(text)
+        if match is not None:
+            generators.append(tuple(int(value) for value in match["args"].split(",")))
+        elif re.fullmatch(r"-?\d+(?:/\d+)?", text):
+            numbers.append(text)
+        else:
+            return None
+    if len(generators) != 1:
+        return None
+    ((*legs,),) = generators
+    if len(legs) != 3 or len(set(legs)) != 3 or not set(legs) < {1, 2, 3, 4}:
+        return None
+    adjoint, triplet, antitriplet = legs
+    (singlet,) = {1, 2, 3, 4} - set(legs)
+    colours = [int(particle.color) for particle in particles]
+    if len(colours) != 4 or (
+        colours[adjoint - 1],
+        abs(colours[triplet - 1]),
+        abs(colours[antitriplet - 1]),
+        colours[singlet - 1],
+    ) != (8, 3, 3, 1):
+        return None
+    result = result_leg + 1
+    dummy = -1
+    coefficient = "*".join(numbers) if numbers else "1"
+    if result in (adjoint, singlet):
+        remaining = singlet if result == adjoint else adjoint
+        final_legs = (adjoint,) if result == singlet else (result,)
+        # The pair in UFO order (antitriplet, triplet): T(3,2,1) on the
+        # partial kernel's (left, right, auxiliary).
+        return (
+            (antitriplet - 1, triplet - 1),
+            remaining - 1,
+            "UFO::{}::T(3,2,1)",
+            "UFO::{}::Identity(1,2)",
+            1,
+            0,
+            (dummy, triplet, antitriplet),
+            (dummy, *final_legs),
+            dummy,
+            coefficient,
+        )
+    remaining = antitriplet if result == triplet else triplet
+    # T(X, i, j) on the final kernel's (auxiliary, remaining, result).
+    final_source = "UFO::{}::T(1,3,2)" if result == triplet else "UFO::{}::T(1,2,3)"
+    return (
+        (adjoint - 1, singlet - 1),
+        remaining - 1,
+        "UFO::{}::Identity(1,2)",
+        final_source,
+        0,
+        1,
+        (adjoint, dummy),
+        (dummy, triplet, antitriplet),
         dummy,
         coefficient,
     )
