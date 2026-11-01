@@ -1295,9 +1295,7 @@ class SiteClosure:
 
         import json
 
-        from pyamplicol.loops.native import load_loop_native
-
-        from .native_seeds import _decoded, _Networks
+        from .native_seeds import _Networks
 
         def rename(label):
             kind, value = label
@@ -1335,10 +1333,10 @@ class SiteClosure:
                 ids.append(b)
             contents.append([index, ids])
         spec = json.dumps({"factors": factors, "contents": contents}, separators=(",", ":"))
-        raw = load_loop_native().loop_root_colours(sorted(self._representations), spec)
+        raw = _loop_native().loop_root_colours(sorted(self._representations), spec)
         legs = self.legs
         for full, tensor in zip(missing, raw, strict=True):
-            self._colours[full] = _decoded(tensor, legs)
+            self._colours[full] = _native_tensor(tensor, legs)
 
     def _reading_sign(self, entry: Any, binding: Any) -> int:
         """The sign between the tree engine's reading of a vertex and the
@@ -1595,6 +1593,65 @@ class SiteClosure:
 
 def _open_last(label: int | None) -> tuple[bool, int]:
     return (label is None, 0 if label is None else label)
+
+
+_NATIVE: list[Any] = []
+
+
+def _loop_native() -> Any:
+    """The staged loop core (``loops.native.load_loop_native``), verified
+    once per process."""
+
+    if not _NATIVE:
+        from pyamplicol.loops.native import load_loop_native
+
+        _NATIVE.append(load_loop_native())
+    return _NATIVE[0]
+
+
+def _native_tensor(raw: Sequence[Any], legs: tuple[Any, ...]) -> ConnectedColorTensor:
+    """A natively reduced tensor (``(normalisation, terms)``, the reducer's
+    combined terms in canonical order) as ``native_seeds._decoded`` builds it.
+    Terms already combined (strictly increasing tensor and N_c power, no
+    empty or one-letter trace, no zero) skip ``ConnectedColorTensor``'s
+    combination, which would return them unchanged; any other input takes
+    the validated constructor."""
+
+    from pyamplicol.color.connections import OpenColorString
+
+    normalization, items = raw
+    terms = tuple(
+        TensorTerm(
+            ExactColorCoefficient(_rational(re), _rational(im)),
+            ColorTensor(
+                tuple(OpenColorString(f, tuple(a), af) for f, a, af in strings),
+                tuple(tuple(trace) for trace in traces),
+            ),
+            power,
+        )
+        for re, im, power, strings, traces in items
+    )
+    keys = [(term.tensor, term.nc_power) for term in terms]
+    if (
+        legs == tuple(sorted(legs))
+        and normalization >= 0
+        and all(a < b for a, b in zip(keys, keys[1:]))
+        and all(term.coefficient for term in terms)
+        and all(len(t) > 1 for term in terms for t in term.tensor.traces)
+    ):
+        tensor = object.__new__(ConnectedColorTensor)
+        object.__setattr__(tensor, "legs", legs)
+        object.__setattr__(tensor, "terms", terms)
+        object.__setattr__(tensor, "normalization_power", normalization)
+        return tensor
+    return ConnectedColorTensor(legs, terms, normalization)
+
+
+def _rational(text: str) -> Fraction:
+    """``Fraction(text)`` of the reducer's ``numerator/denominator`` text."""
+
+    numerator, _, denominator = text.partition("/")
+    return Fraction(int(numerator), int(denominator or 1))
 
 
 def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:

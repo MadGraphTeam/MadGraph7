@@ -641,14 +641,10 @@ class CountertermClosure:
             # Cells the lowered model leaves out cancel here too.
             cancelled = recursion.model.unlowered.get(rule_key(site.rule), {})
             powers = _powers(recursion, site)
+            component, orders = COMPONENT_BY_KIND[site.kind], site.orders
+            multiplicity = len(site.alternatives)
             for spec in closure.term_specs(site, cancelled):
-                batch.add_powers(
-                    spec,
-                    COMPONENT_BY_KIND[site.kind],
-                    powers,
-                    site.orders,
-                    len(site.alternatives),
-                )
+                batch.add_powers(spec, component, powers, orders, multiplicity)
         batch.flush()
         return cls(program, closure, tuple(sites), tuple(terms))
 
