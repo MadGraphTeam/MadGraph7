@@ -914,8 +914,11 @@ double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin
 correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
-colour); exact flavour grouping (`process.flavor_blind`: an identity-port member
-such as `s s~ > g g` of `d d~ > g g` is served by its representative). `poles`
+colour); exact process mappings (`process.flavor_blind`: a member related by a
+proved species substitution, a permutation within each side, or both, such as
+`s s~ > g g` or `s~ s > g g` of `d d~ > g g`, is served by its representative;
+`ProcessAlias` permutation aliases are published; correlations compose with
+the mapping; see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)). `poles`
 and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
 too (resolved estimates are per helicity row and colour component).
 

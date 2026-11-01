@@ -652,23 +652,18 @@ LOOP_CONFIGURATION_REFUSALS = (
         "none",
     ),
     LoopAdmissionRefusal(
-        "process-aliases",
-        "permutation aliases of a one-loop request (process aliases)",
-        "plan v4 artifacts publish no permutation-alias records",
-        "request each permuted process as its own entry",
-        "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
-    ),
-    LoopAdmissionRefusal(
         "process-group-analysis",
         "a numerical process-group analysis (process.analyze_process_groups) "
         "of a one-loop request",
-        "plan v4 artifacts group processes by an exact species-substitution "
-        "proof only (process.flavor_blind), never numerically",
-        "process.analyze_process_groups = 'none' (process.flavor_blind groups "
-        "identity-port flavour members exactly)",
+        "plan v4 artifacts map a process onto a stored one by exact relations "
+        "only (loops.v2.mapping: a permutation within each side, a species "
+        "substitution proved on the representative's source plan, or both), "
+        "never by a relation found only by numerical comparison",
+        "process.analyze_process_groups = 'none'; process.flavor_blind maps "
+        "exact flavour members and side permutations, ProcessAlias publishes "
+        "permutation aliases",
         "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
+        "none",
     ),
     LoopAdmissionRefusal(
         "direct-r2",

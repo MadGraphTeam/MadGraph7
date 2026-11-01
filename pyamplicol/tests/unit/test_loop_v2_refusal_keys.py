@@ -99,10 +99,10 @@ def _generator(text: str, path: Path):
     return Generator(resolve_config(path))
 
 
-def _processes(expression: str, aliases=()):
+def _processes(expression: str):
     from pyamplicol.api import ProcessRequest, ProcessSet
 
-    return ProcessSet((ProcessRequest.parse(expression, name="p"),), aliases)
+    return ProcessSet((ProcessRequest.parse(expression, name="p"),))
 
 
 def _compile(source: str, restriction: str | None = None):
@@ -124,17 +124,10 @@ def _single_blocker(plan, key: str) -> str:
 # ------------------------------------------------------- configuration keys
 
 
-def _aliases():
-    from pyamplicol.api.requests import ProcessAlias
-
-    return (ProcessAlias("q", "p", (1, 0, 2, 3)),)
-
-
-# key -> card settings (table text by section) and process-set aliases.
+# key -> card settings (table text by section).
 CONFIGURATION = {
     "fft-basis-trace": {"colour": 'contraction = "auto"\nfft_basis = "trace"'},
     "colour-selectors": {"process": "max_color_sectors = 1"},
-    "process-aliases": {"aliases": True},
     "process-group-analysis": {"process": 'analyze_process_groups = "numerical"'},
     "direct-r2": {"loop": 'r2_strategy = "direct"'},
     "relation-discovery": {
@@ -160,13 +153,12 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
     )
 
     settings = dict(CONFIGURATION[key])
-    aliases = _aliases() if settings.pop("aliases", False) else ()
     text = _card(tmp_path / "out", "u u~ > e- e+", **settings)
     if "r2_strategy" in settings.get("loop", ""):
         # r2_strategy is set once, in [loop].
         text = text.replace('r2_strategy = "model"\n', "", 1)
     generator = _generator(text, tmp_path / "card.toml")
-    plan = generator.plan(_processes("u u~ > e- e+", aliases))
+    plan = generator.plan(_processes("u u~ > e- e+"))
     features = [f for f in plan.unsupported_features if f.startswith(f"{key}: ")]
     assert features, plan.unsupported_features
     assert key in listed_configuration_keys()
@@ -174,7 +166,7 @@ def test_configuration_refusals_fire_in_the_dry_run_and_at_generation(tmp_path, 
         listed_configuration_keys()
     )
     with pytest.raises(GenerationError) as refused:
-        generator.generate(_processes("u u~ > e- e+", aliases), tmp_path / "out")
+        generator.generate(_processes("u u~ > e- e+"), tmp_path / "out")
     assert isinstance(refused.value, LoopRequestUnsupported)
     assert refused.value.key == plan.unsupported_features[0].split(":")[0]
     assert not (tmp_path / "out").exists()

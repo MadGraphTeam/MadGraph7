@@ -246,8 +246,16 @@ print(runtime.external_permutation)
 `process` may be a stable process ID, explicit alias ID, exact stored expression,
 or unique permutation-equivalent expression within each side. The loaded
 runtime exposes metadata in the requested public order.
-For correlated evaluation, load the stored process in its generated ordering;
-nonidentity aliases/permutations are not supported by that path yet.
+For correlated evaluation of a tree artifact, load the stored process in its
+generated ordering; nonidentity aliases/permutations are not supported by that
+path yet. A one-loop (virtual) artifact serves its aliases, side-permuted
+expressions and exact process-group members in its evaluation calls,
+correlated and resolved ones included: colour histories and spin legs are read
+on the selected process's legs and relabelled onto the stored process's, and a
+declared one whose relabelled image is not stored is not served. Helicity and
+colour-flow selection of such a mapped process is refused; select on the
+stored process (see
+[Process grouping](process-grouping.md#one-loop-virtual-artifacts)).
 
 ## Evaluate totals and resolved components
 
