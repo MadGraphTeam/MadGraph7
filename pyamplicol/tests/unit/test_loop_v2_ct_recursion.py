@@ -1150,11 +1150,15 @@ def test_recursion_equals_site_closure(
 # The tree runtime keeps the U(1)-subtraction colour weight 1/N_c of
 # processes with several quark lines in binary64 (``GenericDAG.color_weight``,
 # wave01-open-minors), so their 200-bit Born is exact to ~1e-17 only.
+# Re-justified (MF-CLEAN): ~1e-17 is far below the ~1e-5 attention threshold
+# (precision is lax), so not a defect; the xfail pins it at the unchanged
+# 200-bit tolerance and flips if the tree weight becomes exact.
 _BINARY64_U1_WEIGHT = pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
     reason="tree runtime U(1)-subtraction colour weight is binary64 "
-    "(several quark lines): the 200-bit Born is exact to ~1e-17",
+    "(several quark lines): the 200-bit Born is exact to ~1e-17, below the "
+    "~1e-5 attention threshold, so kept as a pin, not a defect",
 )
 
 

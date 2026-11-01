@@ -27,7 +27,7 @@ fn overrides(values: &[(&str, &str)]) -> SourceOverrides {
 
 fn values(runtime: &mut Runtime) -> (Vec<f64>, Vec<f64>) {
     let result = runtime
-        .evaluate(&point(), &[0], &[1.0e6], false, None, None)
+        .evaluate(&point(), &[0], &[1.0e6], false, None)
         .unwrap();
     (result.born, result.virtual_values)
 }
