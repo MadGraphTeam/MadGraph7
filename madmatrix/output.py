@@ -418,6 +418,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                     logger.warning('hel_recycling warm-up found no helicity in %s; '
                                    'it is written without recycling.', name)
                     continue
+                # the GPU skipping of the vanishing amplitudes does not depend
+                # on the recycled CPU build, which can be declined for its size
+                try:
+                    nzero = exporter.write_gpu_zero_amps(good_hels, zero_perhel)
+                    if nzero:
+                        logger.info('hel_recycling: %s skips %d vanishing (helicity, '
+                                    'amplitude) pairs on GPU', name, nzero)
+                except Exception as err:
+                    logger.warning('hel_recycling: the GPU zero-amplitude table of %s '
+                                   'could not be written (%s); its GPU build skips '
+                                   'nothing.', name, err)
                 nrows = exporter.write_recycled(good_hels, zero_perhel)
                 if nrows is None:
                     continue        # declined, and said why

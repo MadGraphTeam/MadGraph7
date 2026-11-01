@@ -346,6 +346,11 @@ namespace madmatrix
 #else
 #define MG_HR_PROBE_AMP( NAMP )
 #endif
+  // The guards of a --hel_recycling output's calls, for the GPU's skipping of
+  // the amplitudes that vanish at a helicity (see backend/gpu/SigmaKin.cc): the
+  // recycled build here drops those its own way, the plain code computes all.
+#define MG_HR_WF( K ) true
+#define MG_HR_AMP( N ) true
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
@@ -458,6 +463,8 @@ namespace madmatrix
 
 #undef NUM_ATOMIC_ADD
 #undef MG_HR_PROBE_AMP
+#undef MG_HR_WF
+#undef MG_HR_AMP
 
   //--------------------------------------------------------------------------
 

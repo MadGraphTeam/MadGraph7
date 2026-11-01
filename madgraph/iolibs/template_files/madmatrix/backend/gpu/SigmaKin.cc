@@ -29,8 +29,12 @@
 #include "color_sum.h" // for DeviceAccessJamp
 #include "ColorData.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 
+#include <algorithm>
+#include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace madmatrix
@@ -180,16 +184,59 @@ namespace madmatrix
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.
 #define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
-// The --hel_recycling warm-up probe hook that a recycled output's diagram calls
-// carry after every amplitude: the probe and the recycled build are CPU only
-// (see backend/{cpu,simd}/SigmaKin.cc), so it is nothing here. The GPU backend
-// never builds the recycled block, by design: it makes every helicity row of an
-// event in one thread and keeps every amplitude of every row until the color
-// flows (g g > t t~ g g g: 3.9 MB of amplitudes and 0.5 MB of wavefunctions per
-// event), where a GPU thread holds one helicity of one event; and the GPU
-// already runs the helicities in parallel (blockIdx.y). A recycled output
-// built for cuda/hip is the plain matrix element (madmatrix.mk says so).
+
+  // --hel_recycling on GPU. The GPU backend never builds the recycled block of
+  // backend/{cpu,simd}/SigmaKin.cc, by design: it makes every helicity row of an
+  // event in one thread and keeps every amplitude of every row until the color
+  // flows (g g > t t~ g g g: 3.9 MB of amplitudes and 0.5 MB of wavefunctions per
+  // event), where a GPU thread holds one helicity of one event; and the GPU
+  // already runs the helicities in parallel (blockIdx.y). What carries over is
+  // the other half of recycling: an amplitude that vanishes at a helicity (a
+  // cancellation zero, or one that a gauge choice makes vanish) need not be
+  // computed there, nor any wavefunction that only such amplitudes read. All the
+  // threads of a block share one helicity (blockIdx.y, or ihel), so the guards
+  // MG_HR_WF/MG_HR_AMP that a recycled output's EvaluateDiagrams.inc puts on
+  // every call branch the same way across a warp: no divergence, less
+  // arithmetic, and an exact 0 where the plain build adds a rounding residual.
+  //
+  // HelZeroAmps.inc (written by the warm-up, see madmatrix/output.py) has the
+  // (helicity, amplitude) pairs that vanish AT THE PARAMETERS THE WARM-UP RAN AT,
+  // the graph of the guarded calls, and the bit of each call in the masks, -1 for
+  // the calls that vanish at no helicity: their guard is a compile-time true, so
+  // the kernel only branches where something can be skipped (a guard on every
+  // call cost 24% on g g > t t~ g g g). At run time sigmaKin_getGoodHel evaluates
+  // every amplitude of every helicity on its sample events (nothing skipped,
+  // MG_HR_PROBE_AMP records |amp|^2 of the ones that may vanish, and the largest
+  // |jamp|^2 is their scale), so that sigmaKin_setGoodHel keeps only the zeros
+  // that still vanish at the parameters of the run, says so if some do not
+  // (another param_card, typically: those are computed, as hr_row_or_plain does
+  // on the CPU; the run time can find fewer zeros, never more), and derives from
+  // them the masks of dcHrAlive, per helicity row of cHel. Until it has run, or
+  // with one helicity per event (allihel, where the threads of a warp differ),
+  // nothing is skipped.
+#if __has_include( "HelZeroAmps.inc" )
+#define MGONGPU_HR_GPU 1
+#include "HelZeroAmps.inc" // namespace hrgpu: the zero list and the graph
+  static_assert( hrgpu::ncomb == ncomb, "HelZeroAmps.inc is not for this process" );
+  constexpr int hrNwords = ( hrgpu::nbits + 31 ) / 32; // the calls that can be skipped (hrgpu::wfBit, hrgpu::ampBit)
+#if MGONGPU_HR_MASK_BYTES <= 16384
+  __device__ __constant__ unsigned int dcHrAlive[ncomb][hrNwords]; // read uniformly by a warp: the constant cache broadcasts it
+#else
+  __device__ unsigned int dcHrAlive[ncomb][hrNwords]; // too big for the 64 kB of constant memory
+#endif
+  __device__ __constant__ int dcHrOn = 0;      // 0: nothing is skipped (the masks are not set)
+  static std::vector<char> hstHrAliveRun;      // [ncomb][namp]: seen alive by the last sigmaKin_getGoodHel
+  static bool hstHrProbed = false;             // hstHrAliveRun holds a scan
+#define MG_HR_BIT( B ) ( ( B ) < 0 || hrAll || ( ( dcHrAlive[ihel][( ( B ) < 0 ? 0 : ( B ) ) >> 5] >> ( ( B ) & 31 ) ) & 1u ) )
+#define MG_HR_WF( K ) MG_HR_BIT( hrgpu::WfBit<( K )>::value )
+#define MG_HR_AMP( N ) MG_HR_BIT( hrgpu::AmpBit<( N )>::value )
+#define MG_HR_PROBE_AMP( NAMP ) \
+  if( hrgpu::AmpBit<( NAMP )>::value >= 0 && hrProbe != nullptr ) hrProbe[( NAMP ) * nevt + ievt] = cxabs2( amp_sv[0] )
+#else
+#define MG_HR_WF( K ) true
+#define MG_HR_AMP( N ) true
 #define MG_HR_PROBE_AMP( NAMP )
+#endif
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
@@ -211,7 +258,8 @@ namespace madmatrix
                    fptype_amp* colAllJamp2s,           // output: allJamp2s[ncolor_flow][nevt] super-buffer, sum over col/hel (nullptr to disable)
                    const int nevt,                     // input: #events (nevt == ndim == gpublocks*gputhreads)
                    const int nhel,                     // input: #helicities in the allJamps super-buffer (nGoodHel, or 1 with allihel)
-                   const bool processAllHelicities )   // input: if true, use blockIdx.y to index helicities
+                   const bool processAllHelicities,    // input: if true, use blockIdx.y to index helicities
+                   fptype_amp* hrProbe )               // output: |amp|^2[namp][nevt] of every amplitude, nothing skipped (nullptr: --hel_recycling skips, see above)
   /* clang-format on */
   {
     using M_ACCESS = DeviceAccessMomenta;         // non-trivial access: buffer includes all events
@@ -239,6 +287,12 @@ namespace madmatrix
     // The helicities of the external legs for this event, as the external wavefunctions take them
     fptype_amp_sv hel_sv[npar];
     for( int ipar = 0; ipar < npar; ipar++ ) hel_sv[ipar] = cHel[ihel][ipar];
+#ifdef MGONGPU_HR_GPU
+    // skip nothing when probing, with one helicity per event, or before the masks are set
+    const bool hrAll = hrProbe != nullptr || allihel != nullptr || !dcHrOn;
+#else
+    (void)hrProbe;
+#endif
 
     // Local TEMPORARY variables for a subset of Feynman diagrams in the given CUDA event
     // (ievt) [NB these variables are reused several times (and re-initialised each time)
@@ -330,6 +384,15 @@ namespace madmatrix
     // Scalar iflavor for the current event
     const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
 #include "EvaluateDiagrams.inc"
+#ifdef MGONGPU_HR_GPU
+    if( hrProbe != nullptr )
+    {
+      // the scale of the amplitudes probed, in slot 0 (amplitude numbers start at 1)
+      fptype_amp jampmax = 0;
+      for( int icol = 0; icol < njampso; icol++ ) jampmax = fpmax( jampmax, cxabs2( jamp_sv[icol] ) );
+      hrProbe[ievt] = jampmax;
+    }
+#endif
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
     // *** COLOR CHOICE BELOW ***
@@ -358,6 +421,8 @@ namespace madmatrix
 
 #undef NUM_ATOMIC_ADD
 #undef MG_HR_PROBE_AMP
+#undef MG_HR_WF
+#undef MG_HR_AMP
 
   //--------------------------------------------------------------------------
 
@@ -390,6 +455,25 @@ namespace madmatrix
     std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     unsigned int* devFlavorVec = nullptr;
     gpuMalloc( (void**)&devFlavorVec, maxtry * sizeof( unsigned int ) );
+    fptype_amp* hrProbe = nullptr; // --hel_recycling: |amp|^2 of every amplitude at the sample events
+#ifdef MGONGPU_HR_GPU
+    // An amplitude that may vanish is alive at a helicity once it is above
+    // zeroamp_tol of the largest color flow of that helicity at one sample event:
+    // the warm-up probe (backend/cpu/SigmaKin.cc) compares with the largest
+    // amplitude, which the kernel would have to record for every amplitude. A
+    // cancellation zero is a rounding residual of the largest amplitudes, and the
+    // color flows can be smaller than those, so the bound is looser than the
+    // warm-up's 1e-12; FPTYPE=f has residuals far above that, and only sees the
+    // zeros that are not even close. Too strict a bound only computes more.
+#if defined MGONGPU_FPTYPE_DOUBLE
+    constexpr double zeroamp_tol = 1e-10;
+#else
+    constexpr double zeroamp_tol = 1e-3;
+#endif
+    std::vector<fptype_amp> hstProbe( (size_t)hrgpu::namp * maxtry );
+    gpuMalloc( (void**)&hrProbe, hstProbe.size() * sizeof( fptype_amp ) );
+    hstHrAliveRun.assign( (size_t)ncomb * hrgpu::namp, 0 );
+#endif
     for( int iflav = 0; iflav < nmaxflavor; ++iflav )
     {
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
@@ -403,11 +487,24 @@ namespace madmatrix
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, nullptr, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, nOneHel, false );
+#ifdef MGONGPU_HR_GPU
+      gpuMemset( hrProbe, 0, hstProbe.size() * sizeof( fptype_amp ) ); // 0: not evaluated (a flavor guard)
+#endif
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, nullptr, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, nOneHel, false, hrProbe );
       gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       for( int ievt = 0; ievt < maxtry; ++ievt )
         helMEs[(size_t)ihel * maxtry0 + ievt] = hstMEs[ievt];
+#ifdef MGONGPU_HR_GPU
+      gpuMemcpy( hstProbe.data(), hrProbe, hstProbe.size() * sizeof( fptype_amp ), gpuMemcpyDeviceToHost );
+      for( int ievt = 0; ievt < maxtry; ++ievt )
+      {
+        const double jampmax = hstProbe[ievt]; // slot 0
+        for( int namp = 1; namp < hrgpu::namp; ++namp )
+          if( hrgpu::ampBit[namp] >= 0 && hstProbe[(size_t)namp * maxtry + ievt] > zeroamp_tol * zeroamp_tol * jampmax )
+            hstHrAliveRun[(size_t)ihel * hrgpu::namp + namp] = 1;
+      }
+#endif
     }
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
@@ -418,7 +515,83 @@ namespace madmatrix
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     gpuFree( devFlavorVec );
+#ifdef MGONGPU_HR_GPU
+    gpuFree( hrProbe );
+    hstHrProbed = true;
+#endif
   }
+
+  //--------------------------------------------------------------------------
+
+#ifdef MGONGPU_HR_GPU
+  // The masks of the guarded calls for the good helicities (see MGONGPU_HR_GPU
+  // above): an amplitude is skipped at a helicity if the warm-up found it
+  // vanishing there and the last getGoodHel did not see it alive, and a
+  // wavefunction if nothing that is computed at that helicity reads it. The
+  // graph is in code order, so one backward pass carries the liveness of the
+  // amplitudes up to every wavefunction they read, however indirectly.
+  // Returns the number of (helicity, amplitude) pairs skipped.
+  int
+  hr_set_masks( const int nGoodHel, const int* goodHel )
+  {
+    int on = 0, nskip = 0, nrevived = 0;
+    std::vector<unsigned int> masks( (size_t)ncomb * hrNwords, ~0u );
+    if( hstHrProbed )
+    {
+      std::vector<char> deadAmp( (size_t)ncomb * hrgpu::namp, 0 );
+      for( int izero = 0; izero < hrgpu::nzero; ++izero )
+      {
+        const int ihel = hrgpu::zeroAmp[izero][0], namp = hrgpu::zeroAmp[izero][1];
+        if( hstHrAliveRun[(size_t)ihel * hrgpu::namp + namp] )
+          nrevived++;
+        else
+          deadAmp[(size_t)ihel * hrgpu::namp + namp] = 1;
+      }
+      std::vector<char> aliveWf( hrgpu::nwf );
+      for( int ighel = 0; ighel < nGoodHel; ++ighel )
+      {
+        const int ihel = goodHel[ighel];
+        const char* dead = &deadAmp[(size_t)ihel * hrgpu::namp];
+        std::fill( aliveWf.begin(), aliveWf.end(), 0 );
+        for( int namp = 0; namp < hrgpu::namp; ++namp )
+          if( !dead[namp] )
+            for( int i = hrgpu::ampOffset[namp]; i < hrgpu::ampOffset[namp + 1]; ++i ) aliveWf[hrgpu::ampMother[i]] = 1;
+        for( int k = hrgpu::nwf - 1; k >= 0; --k )
+          if( aliveWf[k] )
+            for( int i = hrgpu::wfOffset[k]; i < hrgpu::wfOffset[k + 1]; ++i ) aliveWf[hrgpu::wfMother[i]] = 1;
+        // the run time finds a subset of the warm-up's zeros, so every call it
+        // skips has a bit (hrgpu::wfBit and ampBit hold the warm-up's union)
+        unsigned int* mask = &masks[(size_t)ihel * hrNwords];
+        auto clear = [mask]( int bit )
+        {
+          assert( bit >= 0 );
+          mask[bit >> 5] &= ~( 1u << ( bit & 31 ) );
+        };
+        for( int k = 0; k < hrgpu::nwf; ++k )
+          if( !aliveWf[k] ) clear( hrgpu::wfBit[k] );
+        for( int namp = 0; namp < hrgpu::namp; ++namp )
+          if( dead[namp] )
+          {
+            clear( hrgpu::ampBit[namp] );
+            nskip++;
+          }
+      }
+      on = 1;
+    }
+    gpuMemcpyToSymbol( dcHrAlive, masks.data(), masks.size() * sizeof( unsigned int ) );
+    gpuMemcpyToSymbol( dcHrOn, &on, sizeof( int ) );
+    if( nrevived > 0 )
+    {
+      static bool said = false;
+      if( !said )
+        printf( "INFO: %d (helicity, amplitude) pairs that the --hel_recycling warm-up found vanishing (at the\n"
+                "INFO: parameters of the output) do not vanish at these parameters: they are computed.\n",
+                nrevived );
+      said = true;
+    }
+    return nskip;
+  }
+#endif
 
   //--------------------------------------------------------------------------
 
@@ -439,6 +612,11 @@ namespace madmatrix
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
+#ifdef MGONGPU_HR_GPU
+    const int nskip = hr_set_masks( nGoodHel, goodHel );
+    if( getenv( "MG_DUMP_GOODHEL" ) != nullptr )
+      printf( "HEL/GPUSKIP: %d (helicity, amplitude) pairs skipped of %d\n", nskip, nGoodHel * hrgpu::namp );
+#endif
     return nGoodHel;
   }
 
@@ -776,7 +954,7 @@ namespace madmatrix
     bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     if( nhel > 0 && async )
     {
-      gpuLaunchKernel2D( calculate_jamps, gpublocks, nhel, gputhreads, ghelStreams[0], 0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true );
+      gpuLaunchKernel2D( calculate_jamps, gpublocks, nhel, gputhreads, ghelStreams[0], 0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true, nullptr );
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, true );
     }
     else if( nhel > 0 )
@@ -787,7 +965,7 @@ namespace madmatrix
         fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
         // NB: the numerators buffer has no helicity dimension: every helicity stream accumulates in place
         // into the same [nevt][ndiagrams] slot via atomicAdd. The denominators are derived later.
-        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false );
+        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false, nullptr );
       }
       // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, false );

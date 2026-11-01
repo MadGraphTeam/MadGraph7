@@ -1055,3 +1055,163 @@ class TestFortranRecyclerRegression(unittest.TestCase):
                 self.assertEqual(got, expected, 'the recycled Fortran of %s changed' % case)
         finally:
             shutil.rmtree(tmpdir)
+
+
+class TestGpuZeroAmplitudeGuards(unittest.TestCase):
+    """--hel_recycling on GPU (backend/gpu/SigmaKin.cc): the ordinary calls of
+    a recycled output put every wavefunction under MG_HR_WF( node ) and every
+    amplitude under MG_HR_AMP( number ), and the writer records which nodes
+    each of them reads (hr_gpu_graph). The GPU skips, at a helicity, the
+    amplitudes that vanish there and every node that no computed amplitude
+    reads, through that graph: it must be exactly what the calls read, slot
+    reuse and current sums included. Checked by replaying the calls slot by
+    slot."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm')
+
+    def calls(self, ids, hr_probe=True, merge_quartic=False):
+        import madgraph
+        import madgraph.core.base_objects as base_objects
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        from madmatrix import model_handling
+        saved = madgraph.merge_quartic_vertices
+        madgraph.merge_quartic_vertices = merge_quartic
+        try:
+            legs = base_objects.LegList(
+                [base_objects.Leg({'id': pdg, 'state': i > 1})
+                 for i, pdg in enumerate(ids)])
+            amplitude = diagram_generation.Amplitude(
+                base_objects.Process({'legs': legs, 'model': self.model}))
+            matrix_element = helas_objects.HelasMatrixElement(amplitude)
+            writer = model_handling.MadMatrixUFOHelasCallWriter(self.model)
+            writer.hr_probe = hr_probe
+            calls = writer.get_matrix_element_calls(
+                matrix_element, matrix_element.get_color_amplitudes(),
+                multi_channel_map=dict(
+                    (i + 1, [i]) for i in range(len(matrix_element.get('diagrams')))))
+        finally:
+            madgraph.merge_quartic_vertices = saved
+        return '\n'.join(calls).split('\n'), writer.hr_gpu_graph
+
+    def replay(self, lines, graph):
+        """Follow which node last wrote each aloha_obj slot, and compare what
+        every guarded call reads with the graph. Returns the counts of the
+        guarded wavefunctions and amplitudes."""
+        import re
+        wf_guard = re.compile(r'if\( MG_HR_WF\( (\d+) \) \) \{ (.*) \}$')
+        amp_guard = re.compile(r'if\( MG_HR_AMP\( (\d+) \) \)$')
+        slot = re.compile(r'aloha_obj\[(\d+)\]')
+        writer_of = {}
+        nwf, amps, pending = 0, set(), None
+        for line in lines:
+            line = line.strip()
+            match = wf_guard.match(line)
+            if match:
+                node, call = int(match.group(1)), match.group(2)
+                self.assertEqual(node, nwf, 'the nodes are numbered in code order')
+                nwf += 1
+                slots = [int(s) for s in slot.findall(call)]
+                reads = sorted(set(writer_of[s] for s in slots[:-1]))
+                self.assertEqual(reads, graph['wf'][node], call)
+                writer_of[slots[-1]] = node
+                continue
+            match = amp_guard.match(line)
+            if match:
+                pending = int(match.group(1))
+                continue
+            if '&amp_fp[0]' in line:
+                self.assertIsNotNone(pending, 'an amplitude without its guard: ' + line)
+                reads = sorted(set(writer_of[int(s)] for s in slot.findall(line)))
+                self.assertEqual(reads, graph['amp'][pending], line)
+                amps.add(pending)
+                pending = None
+                continue
+            self.assertNotIn('aloha_obj[', line.split('//')[0],
+                             'a wavefunction call without its guard: ' + line)
+        self.assertEqual(nwf, len(graph['wf']))
+        self.assertEqual(amps, set(graph['amp']))
+        return nwf, len(amps)
+
+    def test_massive_quarks(self):
+        lines, graph = self.calls([21, 21, 6, -6, 21])        # g g > t t~ g
+        self.assertEqual(self.replay(lines, graph), (18, 18))
+        # the first term of a shared color-flow sub-expression can be skipped,
+        # so each one starts from zero before its guard
+        self.assertIn('jampTmp_sv[1] = cxzero_sv<cxtype_amp_sv>();', [l.strip() for l in lines])
+
+    def test_current_sums(self):
+        # merge_quartic_vertices: an amplitude reads a sum of two currents,
+        # which is a node of its own
+        lines, graph = self.calls([21, 21, 21, 21, 21], merge_quartic='speed')
+        self.assertTrue(any('SUMW_1' in l or 'SUBW_1' in l for l in lines))
+        self.replay(lines, graph)
+
+    def test_off_without_recycling(self):
+        lines, graph = self.calls([21, 21, 6, -6, 21], hr_probe=False)
+        self.assertIsNone(graph)
+        self.assertFalse(any('MG_HR_' in l for l in lines))
+
+    def write(self, graph, good_hels, zeros, ncomb=8):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        class MatrixElement(object):
+            def get_helicity_combinations(self):
+                return ncomb
+        exporter = E.__new__(E)
+        exporter.path = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, exporter.path)
+        exporter.matrix_elements = [MatrixElement()]
+        exporter._hr_gpu_graph = graph
+        nzero = exporter.write_gpu_zero_amps(good_hels, zeros)
+        path = os.path.join(exporter.path, E.HR_GPU_FILE)
+        if not os.path.exists(path):
+            return nzero, None
+        with open(path) as fsock:
+            return nzero, fsock.read()
+
+    def test_table(self):
+        graph = {'wf': [[], [], [], [0, 1], [2, 3]],
+                 'amp': {1: [0, 2, 3], 3: [4], 4: [2]}}  # amplitude 2 is folded
+        # 1-based rows: (5, 1) is not a good helicity, amplitude 2 is never guarded
+        nzero, text = self.write(graph, [2, 3], [(3, 1), (2, 3), (5, 1), (2, 2), (3, 1)])
+        self.assertEqual(nzero, 2)
+        body = ' '.join(text.split())
+        for line in ('constexpr int ncomb = 8;', 'constexpr int nwf = 5;',
+                     'constexpr int namp = 5;', 'constexpr int nzero = 2;',
+                     # row 1 skips amplitude 3 and node 4, which only it reads;
+                     # row 2 skips amplitude 1, but its nodes 0, 2 and 3 are
+                     # read by amplitudes 3 and 4 there
+                     'constexpr int nbits = 3;',
+                     'constexpr short wfBit[nwf] = { -1, -1, -1, -1, 0 };',
+                     'constexpr short ampBit[namp] = { -1, 1, -1, 2, -1 };',
+                     # 0-based rows, sorted
+                     'zeroAmp[nzero][2] = { { 1, 3 }, { 2, 1 } };',
+                     'wfOffset[nwf + 1] = { 0, 0, 0, 0, 2, 4 };',
+                     'wfMother[] = { 0, 1, 2, 3 };',
+                     'ampOffset[namp + 1] = { 0, 0, 3, 3, 4, 5 };',
+                     'ampMother[] = { 0, 2, 3, 4, 2 };'):
+            self.assertIn(line, body)
+        self.assertIn('#define MGONGPU_HR_MASK_BYTES %d' % (4 * 8 * 1), text)
+
+    def test_dead_nodes(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        # 0 1 2 external; 3 = (0, 1); 4 = (3, 2); 5 = (0, 2)
+        graph = {'wf': [[], [], [], [0, 1], [3, 2], [0, 2]],
+                 'amp': {1: [4, 1], 2: [5, 1], 3: [3, 2]}}
+        self.assertEqual(E.hr_gpu_dead_nodes(graph, set()), set())
+        # node 4 only feeds amplitude 1; node 3 still feeds amplitude 3
+        self.assertEqual(E.hr_gpu_dead_nodes(graph, {1}), {4})
+        # without 1 and 3, node 3 goes, and with it what only it reads: nothing
+        # more, node 0 still feeds node 5
+        self.assertEqual(E.hr_gpu_dead_nodes(graph, {1, 3}), {3, 4})
+        self.assertEqual(E.hr_gpu_dead_nodes(graph, {1, 2, 3}), set(range(6)))
+
+    def test_nothing_to_skip(self):
+        graph = {'wf': [[], []], 'amp': {1: [0, 1]}}
+        # no zero: no file, and the GPU build is plain
+        self.assertEqual(self.write(graph, [1, 2], []), (None, None))
+        # no graph (a call it could not follow): the same
+        self.assertEqual(self.write(None, [1, 2], [(1, 1)]), (None, None))
