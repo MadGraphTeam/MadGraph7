@@ -256,7 +256,11 @@ emit_api_bundle = false
         if key in declared and not declared[key].mutable:
             assert declared[key].default_real == float(value), (row, key)
     runtime.set_model_parameters(
-        {k: float(v) for k, v in values.items() if k in declared and declared[k].mutable}
+        {
+            k: float(v)
+            for k, v in values.items()
+            if k in declared and declared[k].mutable
+        }
     )
     for point, reference in zip(fixture["points"], fixture["values"], strict=True):
         momenta = [[float(x) for x in leg] for leg in point]

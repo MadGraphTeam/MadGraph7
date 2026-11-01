@@ -1038,10 +1038,10 @@ mod tests {
     fn massive_dirac_spinor_at_rest_is_the_limit_along_plus_z() {
         use super::{ext_antiquark_dirac_massive, ext_quark_dirac_massive};
 
-        let mass = 173.0;
+        let mass: f64 = 173.0;
         for energy_sign in [1.0, -1.0] {
             let rest = [energy_sign * mass, 0.0, 0.0, 0.0];
-            let pz = 1.0e-9;
+            let pz: f64 = 1.0e-9;
             let moving = [
                 energy_sign * (mass * mass + pz * pz).sqrt(),
                 0.0,
@@ -1051,10 +1051,11 @@ mod tests {
             for helicity in [-1, 1] {
                 for spinor in [ext_quark_dirac_massive, ext_antiquark_dirac_massive] {
                     let at_rest = spinor(rest, helicity, mass);
-                    let norm: f64 = at_rest.iter().map(|z| z.norm_sqr()).sum();
+                    let norm: f64 = at_rest.iter().map(|z| z.re * z.re + z.im * z.im).sum();
                     assert!((norm - 2.0 * mass).abs() <= 1.0e-12 * mass, "{norm}");
                     for (left, right) in at_rest.into_iter().zip(spinor(moving, helicity, mass)) {
-                        assert!((left - right).norm() <= 1.0e-9, "{left} {right}");
+                        assert!((left.re - right.re).abs() <= 1.0e-9, "{left} {right}");
+                        assert!((left.im - right.im).abs() <= 1.0e-9, "{left} {right}");
                     }
                 }
             }
