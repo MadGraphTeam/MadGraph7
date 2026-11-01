@@ -493,6 +493,7 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
 @pytest.mark.parametrize(
     "key,expression,restriction,fixed",
     [
+        ("decay-process", "t > b w+", None, None),
         ("loop-induced", "g g > h h", None, None),
         ("coloured-width", "g g > t t~", None, {"WZ": "0"}),
     ],

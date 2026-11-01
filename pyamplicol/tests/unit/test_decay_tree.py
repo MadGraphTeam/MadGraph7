@@ -230,6 +230,14 @@ def test_decay_trees_equal_mg5_standalone(row, prepared_loop_sm, tmp_path):
     pack = prepared_loop_sm(fixture["pyamplicol_model"]["restriction"])
     output = tmp_path / row
     card = tmp_path / f"{row}.toml"
+    orders = fixture.get("coupling_orders")
+    policy = (
+        'coupling_order_policy = "explicit"\nmax_coupling_orders = {'
+        + ", ".join(f"{k} = {v}" for k, v in orders.items())
+        + "}"
+        if orders
+        else ""
+    )
     card.write_text(
         f"""
 action = "generate"
@@ -237,6 +245,7 @@ action = "generate"
 source = "{pack}"
 [process]
 entries = [{{expression = "{fixture["process"]}", name = "p"}}]
+{policy}
 [color]
 accuracy = "full"
 [generation]
