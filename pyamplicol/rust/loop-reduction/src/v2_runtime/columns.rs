@@ -992,3 +992,27 @@ impl V2Runtime {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_set_plan_takes_the_overlay_seed_fields_only() {
+        let base =
+            br#"{"families":[1,2],"seeds":[3],"columns":[4],"big":123456789012345678901234567890}"#;
+        // `null`: the process plan's own seed records serve the set.
+        assert_eq!(plan_of(base, b"null").unwrap(), base.to_vec());
+        let overlay = br#"{"seeds":[30],"columns":[40,41],"column_rows":null,"families":[9]}"#;
+        let merged: BTreeMap<String, serde_json::Value> =
+            serde_json::from_slice(&plan_of(base, overlay).unwrap()).unwrap();
+        // Seed fields replaced, a null field removed, other fields kept
+        // (the overlay's non-seed fields are ignored), large integers intact.
+        assert_eq!(merged["seeds"], serde_json::json!([30]));
+        assert_eq!(merged["columns"], serde_json::json!([40, 41]));
+        assert!(!merged.contains_key("column_rows"));
+        assert_eq!(merged["families"], serde_json::json!([1, 2]));
+        let text = String::from_utf8(plan_of(base, overlay).unwrap()).unwrap();
+        assert!(text.contains("123456789012345678901234567890"));
+    }
+}

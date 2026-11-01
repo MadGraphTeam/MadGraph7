@@ -55,7 +55,8 @@ fn v4_extras_follow_the_python_api() {
         .unwrap(),
     )
     .unwrap();
-    let output = std::env::var("PYAMPLICOL_V4_EXTRAS_OUTPUT").expect("set PYAMPLICOL_V4_EXTRAS_OUTPUT");
+    let output =
+        std::env::var("PYAMPLICOL_V4_EXTRAS_OUTPUT").expect("set PYAMPLICOL_V4_EXTRAS_OUTPUT");
     let mut runtime = Runtime::open(&feed.artifact, Some(&feed.process), None, "auto").unwrap();
     let vectors: Vec<Complex64> = feed
         .spin

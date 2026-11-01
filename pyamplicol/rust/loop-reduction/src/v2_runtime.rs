@@ -44,8 +44,21 @@
 //! `_assemble`): bitwise the Python API's values. Catani's operator is not
 //! needed for the selection (it is the Python API's separate IR-pole
 //! prediction, `PointResult.ir_poles`, not a part of the values), so it is not
-//! formed here. The stored correlated and resolved columns are not served
-//! here (the Python API evaluates them, without regenerating).
+//! formed here.
+//!
+//! **Carriers** ([`V2Precision`]): binary64 as above, and double-double or
+//! arbitrary precision ([`V2Runtime::evaluate_extended`]), where the tree
+//! program and the executor run in the carrier (`DoubleFloat`, MPFR at the
+//! working digits; the generic reduction engine) and the outputs enter the
+//! assembly as their decimal texts in Python's `Decimal` arithmetic at the
+//! working digits (`v2_decimal`), operation for operation, as the Python
+//! API's `Runtime.evaluate(..., arithmetic=...)`: equal values.
+//!
+//! **Observable columns** (`columns`): the stored correlated, spin-source
+//! and resolved column sets of the process (`loops/v2/native_observables`),
+//! evaluated and assembled as the Python API's `evaluate_correlated_many`
+//! and `evaluate_resolved` in every carrier ([`V2Runtime::evaluate_columns`],
+//! [`V2Runtime::evaluate_columns_extended`]).
 //!
 //! **Model parameters** ([`V2Runtime::set_parameters`]) follow the Python
 //! API (`loops/v2/artifact.V2VirtualRuntime._checked_parameters`): the whole
