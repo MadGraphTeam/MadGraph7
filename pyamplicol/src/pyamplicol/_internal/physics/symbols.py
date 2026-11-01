@@ -8,7 +8,10 @@ from hashlib import sha256
 from threading import Lock
 from typing import Any
 
-_UFO_CANONICAL_NAMESPACE = "UFO::{}::"
+# A process-global ``UFO::`` head: the namespace ``UFO`` itself, not a name
+# ending in ``UFO`` (a model namespace such as ``model_HC_NLO_X0_UFO::``, from
+# a UFO directory named ``*_UFO``) nor a nested ``...::UFO::`` namespace.
+UFO_HEAD = re.compile(r"(?<![\w:])UFO::(?:\{\}::)?")
 # Symbolica's process-wide symbol table cannot handle concurrent S(...) calls.
 _SYMBOL_CONSTRUCTION_LOCK = Lock()
 _SYMBOL_CACHE: dict[tuple[str, bool], Any] = {}
@@ -89,11 +92,7 @@ class ModelSymbolRegistry:
 
         from symbolica import E
 
-        namespaced = str(source).replace(
-            _UFO_CANONICAL_NAMESPACE,
-            f"{self.namespace}::",
-        )
-        namespaced = namespaced.replace("UFO::", f"{self.namespace}::")
+        namespaced = UFO_HEAD.sub(f"{self.namespace}::", str(source))
         return E(namespaced)
 
     def expression_string(self, source: str) -> str:

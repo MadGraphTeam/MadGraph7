@@ -291,6 +291,82 @@ def require_feynman_gauge(compiled: Any, request: Any) -> None:
     )
 
 
+def massive_vector_loop_species(
+    compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
+) -> tuple[str, ...]:
+    """The massive vectors that can run in the loops of ``request``: the
+    non-vetoed physical spin-1 species of non-zero mass (``fixed`` may bind
+    it to zero) that are perturbative in a requested correction
+    (``species_orders``: |PDG| -> coupling orders, the prepared structure's
+    ``perturbative_species_orders``), by name."""
+
+    corrections = set(request_corrections(compiled, request))
+    veto = {abs(int(pdg)) for pdg in request.particle_veto}
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    fixed = request.fixed_parameters
+    records = {abs(int(record.pdg_code)): record for record in compiled.ir.particles}
+    names = set()
+    for pdg, orders in species_orders.items():
+        record = records.get(abs(int(pdg)))
+        if (
+            record is not None
+            and abs(int(pdg)) not in veto
+            and corrections & set(orders)
+            and int(record.spin) == VECTOR_SPIN
+            and int(record.ghost_number) == 0
+            and record.auxiliary_kind is None
+            and not is_zero(str(record.mass), parameters, fixed)
+        ):
+            names.add(str(record.name))
+    return tuple(sorted(names))
+
+
+def require_loop_gauge(
+    compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
+) -> None:
+    """Refuse ``request`` where its loops need the 't Hooft-Feynman gauge and
+    ``compiled`` cannot be taken in it (DESIGN §6.8; the listed key
+    ``feynman-gauge``). They need it where massive vector lines can run in
+    them: an electroweak request (``electroweak``; ``LoopSlice.generate``
+    switches its gauge, ``require_feynman_gauge``) or a massive vector loop
+    species of a requested correction (``massive_vector_loop_species``; its
+    unitary-gauge k k / M^2 numerator would break the rank bound), refused
+    unless the model is compiled in that gauge. Loops without massive vectors
+    (QCD corrections of a unitary-gauge model, e.g. HC_NLO_X0 with
+    ``gauge = [0]``) keep the compiled gauge."""
+
+    from pyamplicol.models.loading import declared_model_gauges
+
+    from .refusals import LoopRequestUnsupportedValue
+
+    is_electroweak = electroweak(compiled, request, species_orders)
+    massive = massive_vector_loop_species(compiled, request, species_orders)
+    if compiled.ir.gauge == "feynman" or not (is_electroweak or massive):
+        return
+    corrections = list(request_corrections(compiled, request))
+    need = (
+        f"an electroweak request (corrections {corrections})"
+        if is_electroweak
+        else f"the massive vectors {list(massive)} can run in its loops"
+    )
+    declared = declared_model_gauges(compiled)
+    if declared is not None and 1 not in declared:
+        raise LoopRequestUnsupportedValue(
+            "feynman-gauge",
+            f"the source model does not declare Feynman gauge (gauge = "
+            f"{list(declared)}), which {request.process!r} needs: {need}",
+        )
+    if is_electroweak:
+        require_feynman_gauge(compiled, request)
+        return
+    raise ElectroweakGaugeError(
+        f"{request.process!r}: {need}, which needs the 't Hooft-Feynman gauge "
+        f"(gauge 1) of its loop model, and {compiled.name!r} is compiled in "
+        f"{compiled.ir.gauge} gauge. Compile the model in 't Hooft-Feynman "
+        "gauge, or veto those vectors (particle_veto)"
+    )
+
+
 def feynman_gauge_model(compiled: Any, request: Any) -> Any:
     """``compiled`` in 't Hooft-Feynman gauge for the electroweak
     ``request`` (``models.loading.with_model_gauge``; module docstring),
@@ -992,12 +1068,14 @@ __all__ = [
     "gauge_ghost_partners",
     "is_photon",
     "is_zero",
+    "massive_vector_loop_species",
     "photon_species",
     "photon_tag_option",
     "photon_tags",
     "propagated_species",
     "propagating_widths",
     "require_feynman_gauge",
+    "require_loop_gauge",
     "require_zero_widths",
     "scheme_conventions",
     "slice_photon_tags",

@@ -1690,7 +1690,7 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     NLC need a colour declaration), the scale and alpha_s parameters,
     ``prepare_loop_request_model``, with a colour declaration
     ``prepare_declared_source_color``, the gauge refusal of an electroweak
-    request (``ew_policy.require_feynman_gauge``) and the listed refusal of a
+    request (``ew_policy.require_loop_gauge``) and the listed refusal of a
     veto of loop species on unlabelled counterterms
     (``refusals.require_labelled_counterterms_for_veto``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
@@ -1750,14 +1750,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         prepared, continuation = prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
-    if ew_policy.electroweak(
+    # The gauge scope (WP3.2 EWI-4b, DESIGN §6.8), refused here so that the
+    # dry run reports it: loops in which massive vectors can run (an
+    # electroweak request, whose gauge ``LoopSlice.generate`` switches, or a
+    # massive vector loop species) need 't Hooft-Feynman gauge; QCD loops of
+    # a unitary-gauge source keep the compiled gauge.
+    ew_policy.require_loop_gauge(
         compiled, request, prepared.structure.perturbative_species_orders
-    ):
-        # The gauge scope (WP3.2 EWI-4b), refused here so that the dry run
-        # reports it (a source without gauge 1 is refused by the loop
-        # preparation already, a bundle prepared in unitary gauge here);
-        # ``LoopSlice.generate`` switches the gauge.
-        ew_policy.require_feynman_gauge(compiled, request)
+    )
     # A veto reaches the counterterms through their loop-content labels
     # only: refused where the model's counterterm terms of a requested
     # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5

@@ -121,6 +121,35 @@ class ExternalFieldRule:
         return ((self.correction, 2),)
 
 
+def _source_order_powers(
+    powers: tuple[int, ...], orders: tuple[str, ...], particle: str
+) -> tuple[int, ...]:
+    """The coupling powers of a particle counterterm key (its positions
+    before the loop-group index), one per declared coupling order. A key with
+    more positions than orders whose extra positions are all zero is read
+    positionally, as MG5_aMC does (``import_ufo.py``: ``key[:-1]`` against
+    ``all_orders``; e.g. HC_NLO_X0's ``(1,0,0,0,k)`` with three orders); any
+    other length is the listed source refusal ``ufo-counterterm-keys``."""
+
+    count = len(orders)
+    if len(powers) == count:
+        return powers
+    if len(powers) > count and not any(powers[count:]):
+        return powers[:count]
+    from pyamplicol.models.source_refusals import ModelSourceUnsupported
+
+    raise ModelSourceUnsupported(
+        "ufo-counterterm-keys",
+        f"particle {particle!r} has the counterterm key powers {list(powers)} "
+        f"for the {count} coupling orders {list(orders)}"
+        + (
+            ", with non-zero powers past the declared orders"
+            if len(powers) > count
+            else ""
+        ),
+    )
+
+
 def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule, ...]:
     """Read one-loop particle factors without fabricating a local interaction.
 
@@ -164,7 +193,7 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
                 raise ValueError("external-field order key must be a tuple")
             key = tuple(encoded_key["items"])
             if (
-                len(key) != len(orders) + 1
+                len(key) < 2
                 or any(
                     isinstance(item, bool) or not isinstance(item, int) or item < 0
                     for item in key
@@ -173,7 +202,8 @@ def prepare_external_field_rules(source: LoopModelIR) -> tuple[ExternalFieldRule
             ):
                 raise ValueError("invalid or duplicate external-field order key")
             seen_keys.add(key)
-            powers, group_index = key[:-1], key[-1]
+            powers = _source_order_powers(key[:-1], orders, particle["name"])
+            group_index = key[-1]
             if sum(powers) != 1:
                 continue
             if group_index >= len(groups):
