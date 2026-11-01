@@ -6,8 +6,9 @@ The tree program's large arrays are binary sections of a container
 JSON text: the counterterm program's steps come from its native DAG as
 columns and are pruned natively, its overlap cells are formed natively as a
 table (``NativeCellTable.section``) and the trees' steps move to a section
-after their pruning. The JSON program (``NATIVE_SECTIONS = False``) is the
-oracle:
+after their pruning; the trees' steps come from the native blocks DAG too
+(A5's tree part: no Python ``TreeRows``). The JSON program (``NATIVE_SECTIONS
+= False``: Python ``TreeRows`` and lists) is the oracle:
 
 * decoded (``NativeTrees.full_program``), the binary program is the
   oracle's JSON program byte for byte, with the same saved kernels, plane
@@ -90,14 +91,20 @@ def slices(loop_sm_compiled_model, loop_native):
 
 
 def _executors(slice_, monkeypatch) -> tuple[NativeExecutor, NativeExecutor]:
-    """(binary, JSON oracle) native executors of one slice."""
+    """(binary, JSON oracle) native executors of one slice. The binary export
+    builds no Python ``TreeRows`` (A5's tree part: the trees' program from
+    the native blocks DAG); the oracle's does."""
 
     from pyamplicol.loops.v2 import native_trees
 
+    monkeypatch.setattr(native_trees, "NATIVE_SECTIONS", True)
+    slice_._cache.pop("tree-rows", None)
+    binary = NativeExecutor(slice_, forward=False, inputs="native")
+    assert "tree-rows" not in slice_._cache
     monkeypatch.setattr(native_trees, "NATIVE_SECTIONS", False)
     oracle = NativeExecutor(slice_, forward=False, inputs="native")
+    assert "tree-rows" in slice_._cache
     monkeypatch.setattr(native_trees, "NATIVE_SECTIONS", True)
-    binary = NativeExecutor(slice_, forward=False, inputs="native")
     return binary, oracle
 
 
@@ -165,9 +172,12 @@ def _check(name, slices, monkeypatch, count) -> None:
     assert loaded.trees.json() == reference.json()
     executor = loaded.executor(load_loop_native())
     for poles in ("none", "all"):
-        assert repr(
-            executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
-        ) == repr(binary.evaluate(points, scales, parameters=PARAMETERS, poles=poles))
+        mine = executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        theirs = binary.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        # Lane labels differ by design (a loaded process labels lanes by
+        # family index): the values are compared.
+        for a, b in zip(mine, theirs, strict=True):
+            assert (a.born, a.components, a.totals) == (b.born, b.components, b.totals)
 
 
 @pytest.mark.loop_fast

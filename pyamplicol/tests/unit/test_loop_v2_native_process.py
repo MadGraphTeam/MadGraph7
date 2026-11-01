@@ -44,7 +44,9 @@ def test_stored_native_process_evaluates_without_generation(
     plan = reference._plan_json
     # The companion of the certified-scaleless families is stored with it.
     assert slice_.scaleless is not None and process.scaleless is not None
-    assert "scaleless-tree-program.json" in members
+    # The companion's tree program, binary (``native_trees.NATIVE_SECTIONS``)
+    # or JSON.
+    assert {"scaleless-tree-program.bin", "scaleless-tree-program.json"} & set(members)
     companion = process.scaleless.plan_json
 
     def forbidden(*_args, **_kwargs):

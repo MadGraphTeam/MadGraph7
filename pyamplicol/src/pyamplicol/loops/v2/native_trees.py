@@ -648,8 +648,18 @@ def export_trees(
     from .assemble import LAURENT_POWERS, _BlockRows, _single
     from .refusals import require_nc_exact
 
-    trees = slice_.tree_rows
-    schema = trees.schema
+    # A5's tree part (``NATIVE_SECTIONS``): the trees' interaction program
+    # from the slice's native blocks DAG, its steps a section, without the
+    # Python ``TreeRows`` and its runtime schema (``_native_tree_program``);
+    # the Python rows stay the oracle (and the path of a tree-engine DAG).
+    native_trees = _native_tree_program(slice_) if NATIVE_SECTIONS else None
+    tree_steps = None
+    if native_trees is None:
+        trees = slice_.tree_rows
+        schema = trees.schema
+    else:
+        trees, interactions, saved, tree_steps = native_trees
+        schema = None
     process = slice_.blocks.process
     labels = sorted(leg.label for leg in process.legs)
     if labels != list(range(1, len(labels) + 1)):
@@ -661,12 +671,16 @@ def export_trees(
     value_count = trees._value_count
     model_count = len(trees._records)
     state_size = max(trees._size, trees._offset + model_count)
-    slots: dict[tuple[int, str], tuple[int, int]] = {}
-    for record in schema["value_storage"]["value_slots"]:
-        key = (int(record["current_id"]), str(record["variant"]))
-        slots.setdefault(
-            key, (int(record["component_start"]), int(record["dimension"]))
-        )
+    slots: Mapping[tuple[int, str], tuple[int, int]]
+    if schema is None:
+        slots = trees.slots
+    else:
+        slots = {}
+        for record in schema["value_storage"]["value_slots"]:
+            key = (int(record["current_id"]), str(record["variant"]))
+            slots.setdefault(
+                key, (int(record["component_start"]), int(record["dimension"]))
+            )
 
     # The counterterm program (WP2.2, ``ct_closure``): a second interaction
     # program on a state of its own, which follows the trees' state in the
@@ -695,13 +709,18 @@ def export_trees(
             raise ValueError(f"tree current {entry.current_id} has no {variant} row")
         return found
 
-    momentum_slots = []
-    for record in schema["momentum_slots"]:
-        mask = 0
-        for label in record["external_labels"]:
-            mask |= 1 << (int(label) - 1)
-        momentum_slots.append([value_count + int(record["component_start"]), mask])
-    interactions, saved = _interaction_program(trees)
+    if schema is None:
+        momentum_slots = trees.momentum_slots
+        source_fill = trees.source_fill
+    else:
+        momentum_slots = []
+        for record in schema["momentum_slots"]:
+            mask = 0
+            for label in record["external_labels"]:
+                mask |= 1 << (int(label) - 1)
+            momentum_slots.append([value_count + int(record["component_start"]), mask])
+        source_fill = schema["source_fill"]
+        interactions, saved = _interaction_program(trees)
     index = _BlockRows(slice_, None)._index
     block_rows = []
     # A row whose block current the tree engine splits into several trees
@@ -961,7 +980,7 @@ def export_trees(
         "model_offset": trees._offset,
         "model_count": model_count,
         "momentum_slots": momentum_slots,
-        "source_fill": schema["source_fill"],
+        "source_fill": source_fill,
         "interactions": interactions,
         "block_rows": block_rows,
         **({"block_row_terms": block_row_terms} if block_row_terms else {}),
@@ -991,6 +1010,8 @@ def export_trees(
     # The binary sections (``NATIVE_SECTIONS``): the counterterm program's
     # steps and overlap cells as formed natively, then the trees' steps.
     sections: dict[str, bytes] = {}
+    if tree_steps is not None:
+        sections[TREE_STEPS] = tree_steps
     if ct is not None and ct.steps is not None:
         sections[COUNTERTERM_STEPS] = ct.steps
     if counterterms is not None and counterterms.cells is not None:
@@ -999,9 +1020,8 @@ def export_trees(
         program, saved, ct_saved = prune_program(
             program, saved, ct_saved, keep_kets=keep_kets, sections=sections
         )
-    if NATIVE_SECTIONS:
-        # The trees' steps are Python lists until the tree rows are emitted
-        # natively (A5's tree part): a section from here on.
+    if NATIVE_SECTIONS and TREE_STEPS not in sections:
+        # The Python rows' steps (a tree-engine DAG): a section from here on.
         steps = program["interactions"].pop("steps")
         sections[TREE_STEPS] = bytes(_native().tree_steps_from_json(_dumps(steps)))
         del steps
@@ -1030,6 +1050,33 @@ def export_trees(
         () if counterterms is None else counterterms.tensors,
         tuple(sections.items()),
     )
+
+
+def _native_tree_program(slice_: Any) -> tuple[Any, dict[str, Any], tuple[bytes, ...], bytes] | None:
+    """A5's tree part: the slice's tree rows view (``dag_input.
+    NativeTreeRows``), interaction program (without steps), saved kernels
+    and steps section, from its native blocks DAG (``dag_input.
+    native_tree_rows``, ``native_interaction_program``: every current
+    propagated, as ``LoopSlice.tree_rows``'s ``TreeRows`` propagates them);
+    None where the DAG is the tree engine's or ``dag_input.NATIVE_PROGRAM``
+    is off (the Python ``TreeRows``, the oracle). Released columns are
+    released again after."""
+
+    from . import dag_input
+
+    dag = slice_.blocks.blocks_dag
+    if not dag_input.NATIVE_PROGRAM or type(dag) is not dag_input.NativeDag:
+        return None
+    released = dag.released
+    rows, native = dag_input.native_tree_rows(dag, slice_.compiled)
+    interactions, saved, steps = dag_input.native_interaction_program(
+        rows, native, (), section=True
+    )
+    del native
+    if released:
+        dag.release()
+    assert steps is not None
+    return rows, interactions, saved, steps
 
 
 @dataclass(frozen=True)
@@ -2751,7 +2798,12 @@ def prune_program(
     )
     if len(saved) != tree_count:
         raise ValueError("the trees' saved kernels and their program differ")
-    saved = _prune_interactions(program["interactions"], tuple(saved), tree_live)
+    if TREE_STEPS in sections:
+        saved = _prune_step_section(
+            program["interactions"], tuple(saved), tree_live, sections, TREE_STEPS
+        )
+    else:
+        saved = _prune_interactions(program["interactions"], tuple(saved), tree_live)
     if ct is not None and COUNTERTERM_STEPS in sections:
         ct_saved = _prune_step_section(
             ct["interactions"], tuple(ct_saved), ct_live, sections, COUNTERTERM_STEPS
