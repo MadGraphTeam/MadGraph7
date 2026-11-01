@@ -512,9 +512,10 @@ LOOP_ADMISSION_REFUSALS = (
     ),
     LoopAdmissionRefusal(
         "feynman-gauge",
-        "a loop request on a model that cannot be taken in 't Hooft-Feynman "
-        "gauge: its source declares no gauge 1, or an electroweak request on "
-        "a model bundle prepared in another gauge",
+        "a loop request in which massive vectors can run in the loops (an "
+        "electroweak request, or a massive vector loop species) on a model "
+        "that cannot be taken in 't Hooft-Feynman gauge: its source declares "
+        "no gauge 1, or a model bundle prepared in another gauge",
         "loop lines, the Born and the counterterms take the gauge of the "
         "model's UV and R2 rules, 't Hooft-Feynman gauge (design §6.8), in "
         "which a massive vector's loop line has rank <= 1",

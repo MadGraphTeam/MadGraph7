@@ -17,6 +17,11 @@ code raised. The rules read the source's code, never a model name:
   UFOmodeldb issue-1 patch of loop_qcd_qed_sm_Gmu). ufo-model-loader then
   certifies none of the model's values as its exact source, and the one-loop
   engine reads exact values only (raised where it first needs one).
+* ``ufo-counterterm-keys``: a particle's wave-function counterterm key
+  (``particle.counterterm``: one power per coupling order, then a loop-group
+  index) has fewer positions than the model declares coupling orders, or
+  non-zero powers past them. Extra zero positions are read positionally, as
+  MG5_aMC does (``loops.wavefunction``).
 """
 
 from __future__ import annotations
@@ -54,6 +59,14 @@ MODEL_SOURCE_REFUSALS = (
         "fold_ufo_value_appends.py folds module-level string appends to "
         "Laurent terms, as in the shipped loop_qcd_qed_sm_Gmu) or select a UFO "
         "model pyAmpliCol ships by its name (model.source)",
+    ),
+    ModelSourceRefusal(
+        "ufo-counterterm-keys",
+        "a UFO particle counterterm key whose coupling powers do not match the "
+        "declared coupling orders (too few positions, or non-zero powers past "
+        "them), for one-loop requests",
+        "write one power per coupling order (in coupling_orders.py order) "
+        "followed by the loop-group index in every particle.counterterm key",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in MODEL_SOURCE_REFUSALS}

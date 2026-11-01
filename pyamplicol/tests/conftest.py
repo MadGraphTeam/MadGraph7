@@ -120,6 +120,12 @@ _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
         ("PYAMPLICOL_SGLUON_UFO_REFERENCE",),
         _under(_WORKSPACE, "reference/models/bsm-candidates/sgluons_NLO_py3"),
     ),
+    # The Higgs Characterisation NLO UFO as downloaded (M-FINAL MF-GM-HC;
+    # sha256 in tools/loop_reference/hc_nlo_x0.json).
+    "hc_nlo_x0_ufo": (
+        ("PYAMPLICOL_HC_UFO_REFERENCE",),
+        _under(_WORKSPACE, "reference/sources/hc-nlo-x0/extract/HC_NLO_X0_UFO"),
+    ),
     "madgraph_source": (
         ("PYAMPLICOL_MADGRAPH_SOURCE",),
         _under(_WORKSPACE, "reference/sources/MG5_aMC_v3_7_0"),
