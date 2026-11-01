@@ -299,6 +299,36 @@ that hold. For example, with `u u~ > a a` and `d d~ > a a` it finds
 `ME(u u~ > a a) = 16 ME(d d~ > a a)`, the ratio `(Q_u / Q_d)^4` of the
 quark charges. `--flavor-blind` would have assumed factor 1.
 
+### One-loop (virtual) artifacts
+
+For a one-loop request `--flavor-blind` is not an assumption: a process is
+served by an earlier generated one only when the relation is exact. It may
+be
+
+- a species substitution proved on the representative's retained source plan
+  (couplings, counterterms, masses, widths and charges unchanged under the
+  substitution), such as `s s~ > g g` of `d d~ > g g`;
+- a permutation of legs within each side that carry the same particles, such
+  as `g d > g d` of `d g > d g` (a relabelling, always exact);
+- both together, such as `s~ s > g g` of `d d~ > g g` or `u u~ > g s s~` of
+  `u u~ > d d~ g`.
+
+Such a member is recorded in `process-groups.json` with basis
+`exact-loop-flavor`, factor 1 and its permutation; every other process is
+generated on its own (a substitution the proof refuses, such as `u -> s`,
+whose charges differ, or a request with an explicit `ProcessAlias`). The
+member is evaluated by its representative at the permuted momenta, bitwise
+equal to the representative's own evaluation there, including correlations:
+a declared colour history or spin class is read on the member's legs and
+relabelled onto the representative's, and is served when the representative
+stores the relabelled one (a declaration closed under the permutation, such
+as all `T_i . T_j` for the permuted legs, serves all of them;
+`available_color_correlations()` lists the served histories). Explicit
+`ProcessAlias` records are published with their one-loop process and served
+the same way. The numerical analysis is refused for one-loop requests
+(`process-group-analysis`), and a loaded one-loop artifact refuses a
+process-group member of any other basis.
+
 ## Conserved charges in UFO expansion
 
 When generating with a UFO or other compiled model, a multiparticle request is
@@ -781,10 +811,12 @@ permutations and conjugation flags, all with factor 1, now with basis
   distinguishes their flavours (a mass, width or Yukawa coupling) invalidates
   the relation; generate the process explicitly if it must follow independent
   parameter values.
-- Correlated evaluation through a member is supported only when the composed
-  permutation (relation and requested order) is the identity and the relation
-  is not conjugated; the factor is then applied. Other selections fail with an
-  error naming the member and its representative.
+- Correlated evaluation through a tree member is supported only when the
+  composed permutation (relation and requested order) is the identity and the
+  relation is not conjugated; the factor is then applied. Other selections fail
+  with an error naming the member and its representative. One-loop members
+  compose correlations with any permutation (see
+  [One-loop artifacts](#one-loop-virtual-artifacts)).
 - For conjugated members with several open quark lines, the reversed LC flow
   IDs may list the open lines in another order than a separate generation of
   the same subprocess would; values and flow selection agree.
