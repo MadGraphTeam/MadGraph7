@@ -92,12 +92,6 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   decided by structure: widths, spin slots, the self-conjugacy of a
   fermion, the number of fermions at a vertex. Process-request refusals
   (MG5_aMC syntax) are listed in ``processes.refusals``.
-* ``decay-process`` (M-FINAL MF-DEC-1): a one-loop request with one initial
-  particle (a 1 -> n decay; ``require_scattering``, decided by the number of
-  initial-state legs). Tree-level decays are served; the virtual of a
-  decay waits for MF-DEC-2 (the decaying leg's external renormalisation and
-  self-energy conventions, its flux and averaging), so it is refused at the
-  loop admission instead of being half supported.
   A massive (Dirac) current closing on a massless (Weyl) one (a fermion line
   joining massive and massless fermions through a chiral vertex, e.g.
   b b~ > w+ w- with a massless b) is no loop refusal since m-qcd MQ-5F: the
@@ -105,6 +99,15 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``generation.dag_ordering._direct_contraction_ir`` with ``loop_born``);
   the tree lanes refuse it (``dag_ordering.DiracWeylClosureUnsupported``,
   key ``dirac-weyl-closure``).
+* One-loop 1 -> n decays (M-FINAL MF-DEC-2) are served: no rule reads the
+  number of initial legs (``decay-process``, MF-DEC-1's interim refusal,
+  is retired). The decaying leg is an ordinary incoming leg: its field
+  renormalisation enters through the model's UV counterterm vertices (real
+  on-shell, the absorptive part of its self-energy at its mass dropped, as
+  MadLoop's NLOCT ``recms`` at zero width), its own width is zero
+  (``cms-external-width`` under the complex-mass scheme; in the real-mass
+  scheme the width of a particle that does not propagate enters nothing),
+  and a loop-induced decay (``h > g g``) is ``loop-induced``.
 * ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
   "fft"`` requires the certified symmetric-group FFT of the seed contraction
   (design §7.3). Orbits of the external adjoint labels are found and
@@ -250,19 +253,6 @@ LOOP_ADMISSION_REFUSALS = (
         "coupling-order bound that keeps it out of the request's loops",
         "fail-closed-2 (a guard)",
         "none (kept as the guard of the restriction rule)",
-    ),
-    LoopAdmissionRefusal(
-        "decay-process",
-        "a one-loop request with one initial-state particle (a 1 -> n decay, "
-        "e.g. t > b w+ with process.loop_coupling_orders set)",
-        "the virtual of a decay needs the decaying leg's external "
-        "renormalisation, its self-energy convention and the decay's "
-        "averaging in the virtual, which are not in this build; tree-level "
-        "decays are served",
-        "the tree-level decay (no process.loop_coupling_orders), or a 2 -> n "
-        "scattering process",
-        "M-FINAL MF-DEC-2 (one-loop decays)",
-        "one-loop 1 -> 2 and 1 -> 3 decays, QCD and electroweak",
     ),
     LoopAdmissionRefusal(
         "loop-induced",
@@ -913,18 +903,6 @@ def listed_configuration_keys() -> tuple[str, ...]:
 
 def listed_internal_keys() -> tuple[str, ...]:
     return tuple(_INTERNAL)
-
-
-def require_scattering(initial_count: int, label: str) -> None:
-    """Refuse (``decay-process``) a one-loop request with one initial-state
-    particle: the criterion is the number of initial legs, never a name."""
-
-    if initial_count == 1:
-        raise LoopRequestUnsupported(
-            "decay-process",
-            f"{label} has one initial-state particle (a 1 -> n decay); its "
-            "one-loop virtual is not served yet",
-        )
 
 
 # ------------------------------------------------------------ N_c exactness

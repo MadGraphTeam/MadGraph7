@@ -12,6 +12,7 @@ mod v2_catalogue;
 mod v2_colour;
 mod v2_dag;
 mod v2_executor;
+mod v2_export;
 mod v2_generate;
 mod v2_lower;
 mod v2_seeds;
@@ -92,6 +93,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     v2_catalogue::register(module)?;
     v2_dag::register(module)?;
     v2_executor::register(module)?;
+    v2_export::register(module)?;
     v2_generate::register(module)?;
     v2_colour::register(module)?;
     v2_lower::register(module)?;

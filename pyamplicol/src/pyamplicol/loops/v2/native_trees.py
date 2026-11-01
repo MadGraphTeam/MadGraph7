@@ -1644,6 +1644,108 @@ class _CountertermReferences:
         return self.library.predicates["equal"](diagnostic, diagnostic)
 
 
+# The parameter program's canonical stage (``assemble._canonical_stage``)
+# renames its symbols in Symbolica's binary export instead of on text: the
+# stage's outputs and helper bodies are saved by the wheel in one holder call
+# (``Expression.save``), the export's symbol table is rewritten natively
+# (``rusticol_core::loop_v2::generate::state_rename`` through the loop
+# extension's ``loop_rename_export``: each renamed symbol's entry becomes its
+# canonical target's) and the holder is loaded back (``Expression.load``,
+# which maps the table onto the interpreter's symbols by name and normalises
+# there). No expression is printed or parsed: the text round trip of
+# ``_renamed_text`` cost 22 s of the electroweak 2->3 export (its 634 MB
+# printed, renamed and parsed back). The renaming is ``_canonical_stage``'s
+# (parameters, then the function heads without attributes, then the
+# function arguments, positionally onto the canonical symbols), and the
+# loaded expressions are the ones its parse gives (M-FINAL MF-RUST);
+# ``_canonical_stage`` stays the oracle (``native_parameter_stage(False)``).
+NATIVE_PARAMETER_STAGE = True
+# Brotli quality of the transfer files (temporary: the fastest).
+_TRANSFER_QUALITY = 0
+
+
+def native_parameter_stage(enabled: bool) -> Any:
+    """``NATIVE_PARAMETER_STAGE`` set to ``enabled`` for a ``with`` block and
+    restored after it: ``native_parameter_stage(False)`` is the oracle lane."""
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def switch():
+        global NATIVE_PARAMETER_STAGE
+        before = NATIVE_PARAMETER_STAGE
+        NATIVE_PARAMETER_STAGE = bool(enabled)
+        try:
+            yield
+        finally:
+            NATIVE_PARAMETER_STAGE = before
+
+    return switch()
+
+
+def _parameter_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
+    """``assemble._canonical_stage(stage)``: outputs, parameters and function
+    definitions on canonical symbols, renamed in the binary export when
+    ``NATIVE_PARAMETER_STAGE`` is on."""
+
+    import os
+    import tempfile
+
+    from symbolica import Expression
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .assemble import _canonical_stage, _canonical_symbols, _loop_native
+
+    if not NATIVE_PARAMETER_STAGE:
+        return _canonical_stage(stage)
+    parameters = list(stage.parameter_symbols)
+    definitions = list(stage.symbolica_functions)
+    heads = [
+        function
+        for function, _arguments, _body in definitions
+        if not function.get_attributes()
+    ]
+    arguments = list(
+        dict.fromkeys(
+            argument for _function, items, _body in definitions for argument in items
+        )
+    )
+    old = [*parameters, *heads, *arguments]
+    renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
+    outputs = list(stage.output_expressions)
+    holder = symbols.qualified("pyamplicol_v2_transfer::stage")(
+        *outputs, *(body for _head, _items, body in definitions)
+    )
+    with tempfile.TemporaryDirectory(prefix="pyamplicol-stage-") as directory:
+        before = os.path.join(directory, "stage.dat")
+        after = os.path.join(directory, "renamed.dat")
+        holder.save(before, _TRANSFER_QUALITY)
+        _loop_native().loop_rename_export(
+            before,
+            after,
+            [(key.get_name(), value.get_name()) for key, value in renamed.items()],
+            _TRANSFER_QUALITY,
+        )
+        items = list(Expression.load(after))
+    if len(items) != len(outputs) + len(definitions):
+        raise RuntimeError("the renamed parameter stage lost expressions")
+    return (
+        items[: len(outputs)],
+        [renamed[parameter] for parameter in parameters],
+        [
+            (
+                renamed.get(head, head),
+                tuple(renamed[argument] for argument in arguments_),
+                body,
+            )
+            for (head, arguments_, _body), body in zip(
+                definitions, items[len(outputs) :], strict=True
+            )
+        ],
+    )
+
+
 def _parameter_program(
     slice_: Any,
     exporter: Any,
@@ -1687,7 +1789,7 @@ def _parameter_program(
 
     from pyamplicol._internal.physics.symbols import symbols
 
-    from .assemble import LAURENT_POWERS, _canonical_stage
+    from .assemble import LAURENT_POWERS
 
     records = trees._records
     names = [str(r["name"]) for r in records if r["kind"] == "external_parameter"]
@@ -2142,7 +2244,7 @@ def _parameter_program(
     # source and the same model read from the cache list them in different
     # orders), so their canonical names and the saved state do not depend on
     # how the model was obtained.
-    canonical, parameters, functions = _canonical_stage(
+    canonical, parameters, functions = _parameter_stage(
         SimpleNamespace(
             output_expressions=outputs,
             parameter_symbols=inputs,
