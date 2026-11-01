@@ -83,7 +83,8 @@ def test_native_double_double_midpoint_conversion_rounds_only_once():
             )
         )
         narrowed = value.convert_arithmetic("double")
-        assert tuple(map(Decimal, narrowed.to_decimal()[0])) == (hi, 0)
+        # hi is a binary64 number: the narrowed value is exactly it.
+        assert tuple(map(float, narrowed.to_decimal()[0])) == (float(hi), 0.0)
         # Also exercise target precision below one binary64 word. Compare the
         # dependency's once-rounded exact rational evaluator at the same target.
         target = value.convert_arithmetic("arbitrary", precision=5)
