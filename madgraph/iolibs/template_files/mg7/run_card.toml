@@ -226,7 +226,10 @@ compressed_channel_weight_count = %(madnis.compressed_channel_weight_count)s
 
 # parallel training of the subprocesses: another training starts on a device
 # while its thread pool is busy less than 90 percent of the time, checked every
-# parallel_check_interval seconds; the GPUs take the subprocesses with the
-# highest multiplicity first, the CPU those with the lowest
+# parallel_check_interval seconds; on a GPU, also while its SMs are active less
+# than 80 percent of the time (measured with CUPTI where available; set
+# MADSPACE_GPU_ACTIVITY_MONITOR=off to disable it) and its free memory leaves
+# room for another training; the GPUs take the subprocesses with the highest
+# multiplicity first, the CPU those with the lowest
 max_parallel_trainings = %(madnis.max_parallel_trainings)s
 parallel_check_interval = %(madnis.parallel_check_interval)s # seconds
