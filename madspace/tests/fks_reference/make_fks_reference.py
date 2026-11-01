@@ -21,7 +21,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
 (E, px, py, pz) in the partonic c.m. frame):
 
     process, subprocess, genps_fks_sha (git blob hash of genps_fks.f),
-    nexternal, nincoming, ndim, lpp, ebeam
+    nexternal, nincoming, ndim, lpp, ebeam,
+    fks_configurations (the fks_configurations.json the FKS exporter writes
+    into the P* directory, with its own conventions, see madspace/fks.py)
     configs[]: nfks, i_fks, j_fks, pdg, masses, points[]
     points[]:  x (unit-cube vector, radiation in the last three entries),
                isolsign, jac, jac_cnt (full weight of generate_momenta),
@@ -255,6 +257,9 @@ def main():
             log = os.path.join(work, f"{sub}.log")
             data = parse(dump(pdir, args.points, args.massive, log))
             data.update(process=process, subprocess=sub, genps_fks_sha=genps_fks_sha)
+            # the FKS configurations as the exporter writes them for madspace
+            with open(os.path.join(pdir, "fks_configurations.json")) as f:
+                data["fks_configurations"] = json.load(f)
             path = os.path.join(OUT_DIR, f"{name}_{sub}.json")
             with open(path, "w") as f:
                 json.dump(data, f, separators=(",", ":"))

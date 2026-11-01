@@ -6,11 +6,13 @@ centre-of-mass frame, with its momentum fractions and rapidity, and the last
 three entries of the unit-cube vector. The Born is boosted into the lab and
 mapped back to the random numbers of a RAMBO Born mapping, so that
 FKSKinematics, run on them and on the three random numbers of genps_fks.f, has
-the same Born. Its event and counter-events, boosted back into the frame of the
-Born, must then be those of genps_fks.f (the rad_ entries, and the cut_ ones
-with the lower bound on the partonic energy), with their Jacobians in the
-conventions of test_fks_kernels.py and test_fks_radiation.py, and its
-counter-events must be generated exactly where genps_fks.f generates them.
+the same Born. The FKSMapping comes from the metadata of the FKS exporter
+(fks_configurations.json, stored with the reference data). Its event and
+counter-events, boosted back into the frame of the Born, must then be those of
+genps_fks.f (the rad_ entries, and the cut_ ones with the lower bound on the
+partonic energy), with their Jacobians in the conventions of
+test_fks_kernels.py and test_fks_radiation.py, and its counter-events must be
+generated exactly where genps_fks.f generates them.
 """
 
 import glob
@@ -25,6 +27,7 @@ from fks_testing import massive_fortran_precision
 from madspace_testing import default_context
 
 import madspace as ms
+from madspace.fks import fks_mappings
 
 STINY, CTINY = 1e-6, 5e-7
 DATA = sorted(
@@ -110,7 +113,11 @@ def test_matches_genps_fks(data, conf, points, prefix):
         leptonic=leptonic,
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
     )
-    mapping = ms.FKSMapping(born, i_fks, j_fks, s_hat_min=s_hat_min)
+    # the configuration from the metadata of the FKS exporter (fks.py)
+    mapping = fks_mappings(born, data["fks_configurations"], s_hat_min)[
+        conf["nfks"] - 1
+    ]
+    assert (mapping.i_fks(), mapping.j_fks()) == (i_fks, j_fks)
     kinematics = ms.FKSKinematics(mapping)
     names = list(mapping.counter_event_types().keys())
 

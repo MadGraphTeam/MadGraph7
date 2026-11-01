@@ -93,6 +93,51 @@ def make_jpeg_async(args):
 #=================================================================================
 # Class for used of the (non-optimized) Loop process
 #=================================================================================
+def get_fks_configurations(fksborn):
+    """The FKS configurations of a Born, as in fks_info.inc, for codes outside
+    the Fortran (MadSpace builds its FKS phase-space mappings from them):
+
+        nincoming: number of incoming particles
+        born_pdgs: PDG codes of the Born, in the order of its momenta
+        configurations[]: one per FKS configuration, in the order of
+            fks_info.inc (nFKSprocess = position + 1):
+            i_fks, j_fks: positions of i and of the emitter j in the real
+                process, 1-based as in fks_info.inc
+            ij_pdg: PDG code of the parton i + j of the Born, at the position
+                of j (j - 1 if i < j)
+            real_pdgs: PDG codes of the real process, in the order of its
+                momenta
+            real_me: the real matrix element, 1-based (matrix_<real_me>.f)
+            need_color_links, need_charge_links: whether the configuration
+                has a soft singularity (QCD, QED)
+            splitting_type: the coupling orders of the splitting
+            extra_cnt_index: the extra counterterm, -1 for none
+
+    The Born is the real process without i, with i + j at the position of j.
+    A Born without FKS configurations ([LOonly]) has none, not the fake one
+    of fks_info.inc."""
+    born_legs = fksborn.born_me['processes'][0]['legs']
+    configurations = []
+    for info in fksborn.get_fks_info_list():
+        fks_info = info['fks_info']
+        configurations.append({
+            'i_fks': fks_info['i'],
+            'j_fks': fks_info['j'],
+            'ij_pdg': fks_info['ij_id'],
+            'real_pdgs': list(info['pdgs']),
+            'real_me': info['n_me'],
+            'need_color_links': fks_info['need_color_links'],
+            'need_charge_links': fks_info['need_charge_links'],
+            'splitting_type': list(fks_info['splitting_type']),
+            'extra_cnt_index': fks_info['extra_cnt_index'],
+        })
+    return {
+        'nincoming': len([leg for leg in born_legs if not leg['state']]),
+        'born_pdgs': [leg['id'] for leg in born_legs],
+        'configurations': configurations,
+    }
+
+
 class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
@@ -602,6 +647,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         split_types = self.write_fks_info_file(writers.FortranWriter(filename), 
                                  matrix_element, 
                                  fortran_model)
+        self.write_fks_configurations_json('fks_configurations.json',
+                                           matrix_element)
 
         # update the splitting types
         self.proc_characteristic['splitting_types'] = list(\
@@ -4035,6 +4082,16 @@ Parameters              %(params)s\n\
 
             
     #===============================================================================
+    # write_fks_configurations_json
+    #===============================================================================
+    def write_fks_configurations_json(self, filename, fksborn):
+        """Writes fks_configurations.json, the FKS configurations of
+        fks_info.inc for codes outside the Fortran (MadSpace). See
+        get_fks_configurations."""
+        with open(filename, 'w') as stream:
+            json.dump(get_fks_configurations(fksborn), stream, indent=1)
+
+    #===============================================================================
     # write_fks_info_file
     #===============================================================================
     def write_fks_info_file(self, writer, fksborn, fortran_model): #test_written
@@ -5587,6 +5644,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                     self.write_fks_info_file(writers.FortranWriter(filename), 
                                  matrix_element, 
                                  fortran_model)))
+        self.write_fks_configurations_json('fks_configurations.json',
+                                           matrix_element)
 
         filename = 'leshouche_info.dat'
         nfksconfs,maxproc,maxflow,nexternal=\

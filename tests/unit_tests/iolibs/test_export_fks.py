@@ -22,6 +22,7 @@ import re
 import sys
 import tempfile
 import glob
+import json
 import shutil
 import subprocess
 from types import SimpleNamespace
@@ -249,6 +250,61 @@ class TestRealChannelExport(unittest.TestCase):
                                     cwd=path, stderr=subprocess.STDOUT)
             subprocess.check_output([os.path.join(path, 'check')], cwd=path,
                                     stderr=subprocess.STDOUT)
+
+
+class TestFKSConfigurationsJson(unittest.TestCase):
+    """fks_configurations.json, the FKS configurations of fks_info.inc for
+    MadSpace"""
+
+    @staticmethod
+    def fksborn(info_list):
+        legs = [{'id': 2, 'state': False}, {'id': 21, 'state': False},
+                {'id': 2, 'state': True}, {'id': 11, 'state': True},
+                {'id': -11, 'state': True}]
+        return SimpleNamespace(born_me={'processes': [{'legs': legs}]},
+                               get_fks_info_list=lambda: info_list)
+
+    @staticmethod
+    def info(n_me, pdgs, i, j, ij_id, soft):
+        return {'n_me': n_me, 'pdgs': pdgs,
+                'fks_info': {'i': i, 'j': j, 'ij': j, 'ij_id': ij_id,
+                             'need_color_links': soft,
+                             'need_charge_links': False,
+                             'splitting_type': ['QCD'],
+                             'extra_cnt_index': -1,
+                             'underlying_born': [[2, 21, 2, 11, -11]],
+                             'rb_links': []}}
+
+    def test_configurations(self):
+        # u g > u e- e+ g, i the gluon off the incoming u, and g g > u e- e+
+        # u~, i the u~ off the incoming gluon (which the Born has as a u)
+        fksborn = self.fksborn([
+            self.info(1, [2, 21, 2, 11, -11, 21], 6, 1, 2, True),
+            self.info(2, [21, 21, 2, 11, -11, -2], 6, 1, 2, False)])
+        data = export_fks.get_fks_configurations(fksborn)
+        self.assertEqual(data['nincoming'], 2)
+        self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
+        self.assertEqual(data['configurations'], [
+            {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
+             'real_pdgs': [2, 21, 2, 11, -11, 21], 'real_me': 1,
+             'need_color_links': True, 'need_charge_links': False,
+             'splitting_type': ['QCD'], 'extra_cnt_index': -1},
+            {'i_fks': 6, 'j_fks': 1, 'ij_pdg': 2,
+             'real_pdgs': [21, 21, 2, 11, -11, -2], 'real_me': 2,
+             'need_color_links': False, 'need_charge_links': False,
+             'splitting_type': ['QCD'], 'extra_cnt_index': -1}])
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        with tempfile.TemporaryDirectory() as path:
+            filename = os.path.join(path, 'fks_configurations.json')
+            exporter.write_fks_configurations_json(filename, fksborn)
+            with open(filename) as stream:
+                self.assertEqual(json.load(stream), data)
+
+    def test_no_configurations(self):
+        # [LOonly]: none, not the fake configuration of fks_info.inc
+        data = export_fks.get_fks_configurations(self.fksborn([]))
+        self.assertEqual(data['configurations'], [])
+        self.assertEqual(data['born_pdgs'], [2, 21, 2, 11, -11])
 
 
 class TestBornGscale(unittest.TestCase):
