@@ -147,9 +147,19 @@ void ThreadPool::thread_loop(std::size_t index) {
         ++_busy_threads;
         lock.unlock();
         std::optional<std::size_t> result;
+        auto job_start = std::chrono::steady_clock::now();
+        auto add_busy_time = [&] {
+            _busy_ns.fetch_add(
+                std::chrono::nanoseconds(std::chrono::steady_clock::now() - job_start)
+                    .count(),
+                std::memory_order_relaxed
+            );
+        };
         try {
             result = job();
+            add_busy_time();
         } catch (...) {
+            add_busy_time();
             // A job must never let an exception escape: it would unwind out of
             // the thread function and terminate the process. Hand the first one
             // to whoever is waiting, and drop the jobs still queued -- the

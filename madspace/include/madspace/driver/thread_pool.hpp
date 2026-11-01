@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <exception>
 #include <functional>
@@ -28,6 +29,12 @@ public:
     std::vector<std::size_t> wait_multiple();
     std::size_t add_listener(std::function<void(std::size_t)> listener);
     void remove_listener(std::size_t id);
+    // Total time the threads spent running jobs, summed over the threads (counted
+    // when a job finishes). Its increase over a time interval, divided by the
+    // interval and thread_count(), is the occupancy of the pool.
+    std::chrono::nanoseconds busy_time() const {
+        return std::chrono::nanoseconds(_busy_ns.load(std::memory_order_relaxed));
+    }
 
     static std::size_t thread_index() { return _thread_index; }
 
@@ -49,6 +56,7 @@ private:
     std::deque<std::size_t> _done_queue;
     std::vector<std::size_t> _done_buffer;
     std::size_t _busy_threads = 0;
+    std::atomic<std::int64_t> _busy_ns = 0;
     // The first exception thrown by a job, rethrown by wait()/wait_multiple().
     // Without it an exception escaping a job would leave std::thread with no
     // handler, i.e. terminate the process.
