@@ -3,7 +3,8 @@
 
 The Higgs Characterisation NLO UFO (v1.3, sha256 and source in
 ``tools/loop_reference/hc_nlo_x0.json``) needed three generic fixes, each
-checked here on a small synthetic model (default tier):
+checked here on a small synthetic model (default tier), and a fourth for
+its ``u u~ > x0 g`` row:
 
 * P1, the process-global ``UFO::`` head is matched at a symbol-head boundary
   (``symbols.UFO_HEAD``), so a model namespace from a UFO directory named
@@ -16,7 +17,12 @@ checked here on a small synthetic model (default tier):
   declares ``gauge = [0]``) keep the compiled gauge;
 * P4, particle counterterm keys with extra zero order positions (HC's
   ``(1,0,0,0,k)`` with three orders) are read positionally, as MG5_aMC does;
-  any other length is the listed source refusal ``ufo-counterterm-keys``.
+  any other length is the listed source refusal ``ufo-counterterm-keys``;
+* P5, a four-point contact whose colour is one fundamental generator
+  ``T(a, i, j)`` and whose fourth leg is a colour singlet (HC's qq~gX0 R2)
+  splits through a bosonic adjoint auxiliary (``compiler_contacts``:
+  the quark pair joins it for a gluon or singlet result, the gluon and the
+  singlet for a quark result), instead of ``unlowered-counterterm``.
 
 Nightly, the rows of the card on the downloaded model (FC, QCD corrections,
 model R2, the card's HC scheme declaration, every external parameter given
@@ -293,6 +299,63 @@ def test_other_counterterm_key_lengths_are_the_listed_source_refusal(hepkit, key
     assert isinstance(error.value, ModelError)
 
 
+# ------------------------------------------------------------------- P5
+
+
+@pytest.mark.loop_fast
+def test_generator_contact_with_a_singlet_leg_splits_through_an_adjoint_auxiliary():
+    """``T(3,2,1)`` on (u~, u, g, x0): a gluon or singlet result takes the
+    quark pair (trilinear on the pair, identity to the result); a quark result
+    takes the gluon and the singlet (identity, then the trilinear with the
+    other quark). Other colours keep their old outcome."""
+
+    from pyamplicol.models.compiler_contacts import (
+        _contact_auxiliary_color,
+        _four_point_contact_color_split,
+    )
+
+    term = SimpleNamespace(color_source="UFO::{}::T(3,2,1)")
+    splits = {leg: _four_point_contact_color_split(term, leg) for leg in range(4)}
+    identity = "UFO::{}::Identity(1,2)"
+    for result, remaining in ((3, 2), (2, 3)):
+        split = splits[result]
+        assert split[:4] == ((0, 1), remaining, "UFO::{}::T(3,2,1)", identity)
+        assert split[4:6] == (1, 0) and split[9] == "1"
+    for result, remaining, final in ((1, 0, "T(1,3,2)"), (0, 1, "T(1,2,3)")):
+        assert splits[result][:4] == (
+            (2, 3),
+            remaining,
+            identity,
+            f"UFO::{{}}::{final}",
+        )
+        assert splits[result][4:6] == (0, 1)
+    assert (
+        _four_point_contact_color_split(
+            SimpleNamespace(color_source="-2*UFO::{}::T(3,2,1)"), 3
+        )[9]
+        == "-2"
+    )
+    particles = [SimpleNamespace(color=c) for c in (-3, 3, 8, 1)]
+    for result in range(4):
+        rest = splits[result][1]
+        assert (
+            _contact_auxiliary_color(
+                term, particles, remaining_leg=rest, result_leg=result
+            )
+            == 8
+        )
+    # Two generators, or a generator on four coloured legs, stay unsplit here.
+    for source in ("UFO::{}::T(3,2,1)*UFO::{}::T(4,2,1)", "UFO::{}::T(-1,2,1)"):
+        from pyamplicol.models.compiler_contacts import (
+            _generator_singlet_contact_split,
+        )
+
+        assert (
+            _generator_singlet_contact_split(SimpleNamespace(color_source=source), 0)
+            is None
+        )
+
+
 # ------------------------------------------------------------------ rows
 
 NC = 3.0
@@ -472,7 +535,7 @@ def _check_row(runtime, card: dict, row: dict, *, double_double: bool = False):
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC04"])
+@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC03", "HC04"])
 def test_hc_rows_equal_madloop(hc_nlo_x0_ufo, loop_native, tmp_path, row_id):
     card = _card()
     row = _row(card, row_id)
