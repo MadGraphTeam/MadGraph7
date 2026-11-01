@@ -2,9 +2,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
+#include <limits>
+#include <list>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <thread>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/adam_optimizer.hpp"
@@ -41,6 +47,8 @@ public:
     static void set_abort_check_function(std::function<void(void)> func) {
         _abort_check_function = func;
     }
+    /// Call the function installed with @ref set_abort_check_function.
+    static void check_abort() { _abort_check_function(); }
 
     /// Tunable parameters of a `MadnisTraining` run.
     struct Config {
@@ -316,29 +324,61 @@ private:
     std::size_t _jobs_in_flight = 0;
 };
 
+/// How @ref MultiMadnisTraining runs the trainings of the subprocesses in
+/// parallel.
+struct MadnisParallelConfig {
+    /// Maximum number of trainings running at the same time, over all
+    /// devices; `1` trains the subprocesses one after another.
+    std::size_t max_parallel_trainings = 1;
+    /// Seconds between two checks of the device occupancy.
+    double check_interval = 5.0;
+    /// Occupancy of a device below which another training starts on it.
+    double target_occupancy = 0.9;
+};
+
 /**
  * Runs @ref MadnisTraining for every subprocess of a process, with combined
  * progress reporting.
+ *
+ * The trainings run in parallel, each on a thread of its own, with an
+ * optimizer context of its own, on one of the generator contexts (one per
+ * device). The trainings on one device share its generator context, which is
+ * frozen meanwhile (see @ref Context::set_frozen). A device without a
+ * training gets one right away; every `check_interval` seconds, the device
+ * with the lowest occupancy below `target_occupancy` gets another one, up to
+ * `max_parallel_trainings` trainings over all devices. The occupancy of a
+ * device is the fraction of the time the threads of its generator context are
+ * busy, counting the thread pools of the optimizer contexts of its trainings
+ * and, on a GPU, their optimizer steps too. The GPUs take the subprocesses
+ * with the highest multiplicity first, the CPUs those with the lowest.
  */
 class MultiMadnisTraining {
 public:
     /// One subprocess's @ref MadnisTraining constructor arguments, except the
-    /// context, seed and channel-index offset, which `MultiMadnisTraining`
+    /// contexts, seed and channel-index offset, which `MultiMadnisTraining`
     /// assigns itself.
     struct TrainingArgs {
         MadnisTraining::Config config;
         std::vector<std::shared_ptr<Integrand>> integrands;
         std::optional<ChannelWeightNetwork> cwnet;
+        /// Number of particles of the subprocess, which orders the
+        /// subprocesses the devices take.
+        std::size_t multiplicity = 0;
     };
 
+    /// How the trainings of the subprocesses are run in parallel.
+    using ParallelConfig = MadnisParallelConfig;
+
     /**
-     * @param generator_context  Context the sampling runtimes run on.
-     * @param optimizer_context  Context the trained globals and optimizers
-     *                           live on.
-     * @param training_args      One entry per subprocess.
-     * @param verbosity          Progress-reporting verbosity.
-     * @param status_file        Optional status file progress is
-     *                           periodically written to.
+     * @param generator_contexts  Contexts the sampling runtimes run on, one per
+     *                            device; each needs the globals of every
+     *                            subprocess, and gets the trained values of
+     *                            them back.
+     * @param training_args       One entry per subprocess.
+     * @param parallel_config     How the trainings are run in parallel.
+     * @param verbosity           Progress-reporting verbosity.
+     * @param status_file         Optional status file progress is
+     *                            periodically written to.
      * @param seed                Top-level run seed (reusing the run card's
      *                            own seed, also used by
      *                            `build_event_generator()`); each
@@ -348,13 +388,17 @@ public:
      *                            collide.
      */
     MultiMadnisTraining(
-        ContextPtr generator_context,
-        ContextPtr optimizer_context,
+        const std::vector<ContextPtr>& generator_contexts,
         const std::vector<TrainingArgs>& training_args,
+        const ParallelConfig& parallel_config = {},
         Verbosity verbosity = Verbosity::log,
         std::shared_ptr<StatusFile> status_file = nullptr,
         std::optional<std::uint64_t> seed = std::nullopt
     );
+    /// Stops the trainings still running.
+    ~MultiMadnisTraining();
+    MultiMadnisTraining(const MultiMadnisTraining&) = delete;
+    MultiMadnisTraining& operator=(const MultiMadnisTraining&) = delete;
     /// Train every subprocess to completion.
     void train();
     /// Active channel indices of every subprocess; see @ref
@@ -362,26 +406,75 @@ public:
     nested_vector2<std::size_t> active_channels() const { return _active_channels; }
 
 private:
-    void print_progress_init();
-    void print_progress_update(
-        std::size_t subproc_index,
-        std::size_t batch_index,
-        double loss,
-        std::size_t chan_count
-    );
-    void write_status(
-        MadnisTraining& subproc,
-        std::size_t subproc_index,
-        std::size_t batch_index,
-        bool done
-    );
+    enum class SubprocState { queued, running, done };
+    struct Subprocess {
+        SubprocState state = SubprocState::queued;
+        std::size_t channel_index_offset = 0;
+        std::string device;
+        std::size_t batch_index = 0;
+        double loss = std::numeric_limits<double>::quiet_NaN();
+        std::size_t channel_count = 0;
+    };
+    struct Running {
+        std::size_t subproc_index;
+        std::size_t device_index;
+        ContextPtr optimizer_context;
+        std::unique_ptr<MadnisTraining> training;
+        std::thread thread;
+        // guarded by _mutex
+        bool done = false;
+        std::exception_ptr exception;
+    };
+    struct Device {
+        std::size_t running_count = 0;
+        // busy time of the trainings that finished, see device_busy_ns
+        std::int64_t finished_busy_ns = 0;
+        std::int64_t window_busy_ns = 0;
+        std::chrono::steady_clock::time_point last_start;
+    };
+    struct ProgressEvent {
+        std::size_t subproc_index;
+        std::size_t batch_index;
+        double loss;
+        std::size_t channel_count;
+        // the status-file entry of the subprocess, when it is due
+        nlohmann::json status = nullptr;
+    };
 
-    ContextPtr _generator_context;
-    ContextPtr _optimizer_context;
+    void start_trainings_on_idle_devices();
+    void start_training_by_occupancy(std::chrono::steady_clock::time_point now);
+    void start_training(std::size_t device_index);
+    std::optional<std::size_t> next_subprocess(bool is_gpu) const;
+    std::int64_t device_busy_ns(std::size_t device_index) const;
+    void run_training(Running& run);
+    bool collect_finished();
+    void stop_all();
+    void process_events();
+    void print_progress_init();
+    void print_progress();
+    void print_progress_update(bool done);
+    void print_done();
+    void write_status(bool done);
+
+    std::vector<ContextPtr> _generator_contexts;
     std::vector<TrainingArgs> _training_args;
+    ParallelConfig _parallel_config;
     Verbosity _verbosity;
     std::optional<std::uint64_t> _seed;
     nested_vector2<std::size_t> _active_channels;
+    std::vector<Subprocess> _subprocs;
+    std::vector<Device> _devices;
+    // std::list: the threads of the trainings hold references to the elements
+    std::list<Running> _running;
+    std::size_t _done_count = 0;
+    std::chrono::time_point<std::chrono::steady_clock> _window_start;
+    std::atomic<bool> _stop = false;
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    // guarded by _mutex
+    std::deque<ProgressEvent> _events;
+    std::size_t _finished_count = 0;
+
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
@@ -389,6 +482,7 @@ private:
     PrettyBox _pretty_box_lower;
     std::shared_ptr<StatusFile> _status_file;
     nlohmann::json _trainings_status;
+    bool _status_written = false;
 };
 
 } // namespace madspace

@@ -988,20 +988,45 @@ void MadnisTraining::freeze_cwnet() {
     build_runtimes_and_optimizer();
 }
 
+namespace {
+
+// thrown into the trainings still running when MultiMadnisTraining stops them
+struct TrainingStopped : std::runtime_error {
+    TrainingStopped() : std::runtime_error("MadNIS training stopped") {}
+};
+
+std::string device_name(Context& context) {
+    auto device = context.device();
+    switch (device->device_type()) {
+    case DeviceType::cpu:
+        return "cpu";
+    case DeviceType::cuda:
+        return std::format("cuda:{}", device->device_index());
+    case DeviceType::hip:
+        return std::format("hip:{}", device->device_index());
+    }
+    return "?";
+}
+
+} // namespace
+
 MultiMadnisTraining::MultiMadnisTraining(
-    ContextPtr generator_context,
-    ContextPtr optimizer_context,
+    const std::vector<ContextPtr>& generator_contexts,
     const std::vector<TrainingArgs>& training_args,
+    const ParallelConfig& parallel_config,
     Verbosity verbosity,
     std::shared_ptr<StatusFile> status_file,
     std::optional<std::uint64_t> seed
 ) :
-    _generator_context(generator_context),
-    _optimizer_context(optimizer_context),
+    _generator_contexts(generator_contexts),
     _training_args(training_args),
+    _parallel_config(parallel_config),
     _verbosity(verbosity),
     _seed(seed),
     _status_file(status_file) {
+    if (_generator_contexts.empty()) {
+        throw std::invalid_argument("MultiMadnisTraining needs a generator context");
+    }
     _trainings_status = nlohmann::json::array();
     for (std::size_t i = 0; i < _training_args.size(); ++i) {
         _trainings_status.push_back(
@@ -1018,40 +1043,352 @@ MultiMadnisTraining::MultiMadnisTraining(
     }
 }
 
+MultiMadnisTraining::~MultiMadnisTraining() { stop_all(); }
+
 void MultiMadnisTraining::train() {
+    std::size_t subproc_count = _training_args.size();
+    _subprocs.assign(subproc_count, {});
+    _active_channels.assign(subproc_count, {});
+    // each subprocess gets its own channel_index slice so their derived seed
+    // streams don't collide, independently of the order the trainings start in
+    for (std::size_t offset = 0; auto [subproc, args] : zip(_subprocs, _training_args)) {
+        subproc.channel_index_offset = offset;
+        offset += args.integrands.size();
+    }
+    _devices.assign(_generator_contexts.size(), {});
+    for (std::size_t device_index = 0; auto& device : _devices) {
+        // the thread pools may have been busy before, e.g. with the survey
+        device.window_busy_ns = device_busy_ns(device_index);
+        ++device_index;
+    }
+    for (auto& context : _generator_contexts) {
+        context->reset_cache();
+    }
+    _stop = false;
+    _status_written = false;
+    _done_count = 0;
+
     print_progress_init();
     _start_time = std::chrono::steady_clock::now();
     _start_cpu_microsec = cpu_time_microsec();
-    _active_channels.reserve(_training_args.size());
-    // each subprocess gets its own channel_index slice so their derived seed
-    // streams don't collide
-    std::size_t channel_index_offset = 0;
-    for (std::size_t subproc_index = 0; subproc_index < _training_args.size();
-         ++subproc_index) {
-        auto& args = _training_args.at(subproc_index);
-        _generator_context->reset_cache();
-        _optimizer_context->reset_cache();
-        MadnisTraining subproc(
-            _generator_context,
-            _optimizer_context,
-            args.config,
-            args.integrands,
-            args.cwnet,
-            _seed,
-            channel_index_offset
-        );
-        for (std::size_t batch_index = 0; batch_index < subproc.config().batches;
-             ++batch_index) {
-            subproc.train_step(batch_index);
-            double loss = subproc.average_loss();
-            std::size_t chan_count = subproc.active_channel_count();
-            print_progress_update(subproc_index, batch_index, loss, chan_count);
-            bool done = subproc_index == _training_args.size() - 1 &&
-                batch_index + 1 == subproc.config().batches;
-            write_status(subproc, subproc_index, batch_index, done);
+    _window_start = _start_time;
+    if (_subprocs.empty()) {
+        print_done();
+        return;
+    }
+
+    using namespace std::chrono_literals;
+    auto check_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(_parallel_config.check_interval)
+    );
+    try {
+        while (true) {
+            MadnisTraining::check_abort();
+            process_events();
+            if (collect_finished()) {
+                break;
+            }
+            start_trainings_on_idle_devices();
+            auto now = std::chrono::steady_clock::now();
+            if (now - _window_start >= check_interval) {
+                start_training_by_occupancy(now);
+            }
+            std::unique_lock<std::mutex> lock(_mutex);
+            _cv.wait_for(lock, 100ms, [&] { return _finished_count > 0; });
         }
-        _active_channels.push_back(subproc.active_channels());
-        channel_index_offset += args.integrands.size();
+    } catch (...) {
+        stop_all();
+        throw;
+    }
+    for (auto& context : _generator_contexts) {
+        context->set_frozen(false);
+    }
+    print_done();
+}
+
+void MultiMadnisTraining::stop_all() {
+    _stop = true;
+    for (auto& run : _running) {
+        if (run.thread.joinable()) {
+            run.thread.join();
+        }
+    }
+    _running.clear();
+    for (auto& context : _generator_contexts) {
+        context->set_frozen(false);
+    }
+}
+
+void MultiMadnisTraining::start_trainings_on_idle_devices() {
+    for (std::size_t device_index = 0; device_index < _devices.size(); ++device_index) {
+        if (_devices.at(device_index).running_count == 0) {
+            start_training(device_index);
+        }
+    }
+}
+
+void MultiMadnisTraining::start_training_by_occupancy(
+    std::chrono::steady_clock::time_point now
+) {
+    double window_sec = std::chrono::duration<double>(now - _window_start).count();
+    std::optional<std::size_t> best_device;
+    double best_occupancy = _parallel_config.target_occupancy;
+    for (std::size_t device_index = 0; auto& device : _devices) {
+        auto& context = *_generator_contexts.at(device_index);
+        std::int64_t busy_ns = device_busy_ns(device_index);
+        double occupancy = (busy_ns - device.window_busy_ns) * 1e-9 /
+            (window_sec * context.thread_pool().thread_count());
+        device.window_busy_ns = busy_ns;
+        // started within the window: its occupancy does not show the new
+        // training fully yet
+        bool settled = device.last_start < _window_start;
+        if (settled && occupancy < best_occupancy) {
+            best_occupancy = occupancy;
+            best_device = device_index;
+        }
+        ++device_index;
+    }
+    _window_start = now;
+    if (best_device) {
+        start_training(*best_device);
+    }
+}
+
+std::int64_t MultiMadnisTraining::device_busy_ns(std::size_t device_index) const {
+    auto& context = *_generator_contexts.at(device_index);
+    bool is_gpu = context.device()->device_type() != DeviceType::cpu;
+    std::int64_t busy_ns = context.thread_pool().busy_time().count() +
+        _devices.at(device_index).finished_busy_ns;
+    for (auto& run : _running) {
+        if (run.device_index == device_index) {
+            busy_ns += run.optimizer_context->thread_pool().busy_time().count();
+            if (is_gpu) {
+                busy_ns += run.training->optimizer_time().count();
+            }
+        }
+    }
+    return busy_ns;
+}
+
+// The GPUs take the subprocesses with the highest multiplicity (the costly
+// ones), the CPUs those with the lowest; ties are broken by the number of
+// batches times channels in the same direction, and then by subprocess index.
+std::optional<std::size_t> MultiMadnisTraining::next_subprocess(bool is_gpu) const {
+    std::optional<std::size_t> best;
+    std::pair<std::size_t, std::size_t> best_key;
+    for (std::size_t index = 0; auto& subproc : _subprocs) {
+        if (subproc.state == SubprocState::queued) {
+            auto& args = _training_args.at(index);
+            std::pair<std::size_t, std::size_t> key{
+                args.multiplicity, args.config.batches * args.integrands.size()
+            };
+            if (!best || (is_gpu ? key > best_key : key < best_key)) {
+                best = index;
+                best_key = key;
+            }
+        }
+        ++index;
+    }
+    return best;
+}
+
+void MultiMadnisTraining::start_training(std::size_t device_index) {
+    std::size_t max_running = std::max<std::size_t>(
+        _parallel_config.max_parallel_trainings, 1
+    );
+    if (_running.size() >= max_running) {
+        return;
+    }
+    auto& gen_context = _generator_contexts.at(device_index);
+    bool is_gpu = gen_context->device()->device_type() != DeviceType::cpu;
+    auto subproc_index = next_subprocess(is_gpu);
+    if (!subproc_index) {
+        return;
+    }
+    auto& subproc = _subprocs.at(*subproc_index);
+    auto& args = _training_args.at(*subproc_index);
+    auto& run = _running.emplace_back();
+    run.subproc_index = *subproc_index;
+    run.device_index = device_index;
+    run.optimizer_context = std::make_shared<Context>(
+        gen_context->device(), gen_context->thread_pool().thread_count()
+    );
+    // built here, not on the thread of the training: the first training on a
+    // context adds the resources its runtimes need to it, which is only safe
+    // before the context is frozen and shared
+    run.training = std::make_unique<MadnisTraining>(
+        gen_context,
+        run.optimizer_context,
+        args.config,
+        args.integrands,
+        args.cwnet,
+        _seed,
+        subproc.channel_index_offset,
+        true
+    );
+    run.training->set_abort_check([this] {
+        if (_stop) {
+            throw TrainingStopped();
+        }
+    });
+    gen_context->set_frozen(true);
+    subproc.state = SubprocState::running;
+    subproc.device = device_name(*gen_context);
+    auto& device = _devices.at(device_index);
+    ++device.running_count;
+    device.last_start = std::chrono::steady_clock::now();
+    if (_verbosity == Verbosity::log) {
+        Logger::info(
+            std::format(
+                "training, subproc: {} / {}, started on {}",
+                *subproc_index + 1,
+                _training_args.size(),
+                subproc.device
+            )
+        );
+    }
+    run.thread = std::thread([this, &run] { run_training(run); });
+}
+
+void MultiMadnisTraining::run_training(Running& run) {
+    try {
+        auto& training = *run.training;
+        _generator_contexts.at(run.device_index)->device()->activate();
+        std::size_t batch_count = training.config().batches;
+        std::size_t log_interval = training.config().log_interval;
+        for (std::size_t batch_index = 0; batch_index < batch_count; ++batch_index) {
+            training.train_step(batch_index);
+            ProgressEvent event{
+                run.subproc_index,
+                batch_index,
+                training.average_loss(),
+                training.active_channel_count()
+            };
+            bool done = batch_index + 1 == batch_count;
+            if (done || (batch_index + 1) % log_interval == 0) {
+                event.status = {
+                    {"subprocess", run.subproc_index},
+                    {"batch", training.status_batches()},
+                    {"batch_count", batch_count},
+                    {"losses", training.status_losses()},
+                    {"channel_counts", training.status_channel_counts()},
+                    {"learning_rates", training.status_learning_rates()},
+                    {"buffered_fractions", training.status_buffered_fractions()},
+                    {"generated_events", training.status_generated_events()},
+                    {"buffer_sizes", training.status_buffer_sizes()}
+                };
+            }
+            std::lock_guard<std::mutex> lock(_mutex);
+            _events.push_back(std::move(event));
+        }
+        // the event generators run on any of the contexts
+        for (auto& context : _generator_contexts) {
+            context->copy_globals_from(*run.optimizer_context, training.trained_globals());
+        }
+        std::lock_guard<std::mutex> lock(_mutex);
+        _active_channels.at(run.subproc_index) = training.active_channels();
+    } catch (...) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        run.exception = std::current_exception();
+    }
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        run.done = true;
+        ++_finished_count;
+    }
+    _cv.notify_all();
+}
+
+bool MultiMadnisTraining::collect_finished() {
+    std::exception_ptr exception;
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (_finished_count == 0) {
+            return false;
+        }
+        _finished_count = 0;
+    }
+    for (auto it = _running.begin(); it != _running.end();) {
+        bool done;
+        {
+            std::lock_guard<std::mutex> lock(_mutex);
+            done = it->done;
+        }
+        if (!done) {
+            ++it;
+            continue;
+        }
+        it->thread.join();
+        if (it->exception && !exception) {
+            exception = it->exception;
+        }
+        auto& device = _devices.at(it->device_index);
+        bool is_gpu = _generator_contexts.at(it->device_index)->device()->device_type() !=
+            DeviceType::cpu;
+        device.finished_busy_ns += it->optimizer_context->thread_pool().busy_time().count();
+        if (is_gpu) {
+            device.finished_busy_ns += it->training->optimizer_time().count();
+        }
+        --device.running_count;
+        auto& subproc = _subprocs.at(it->subproc_index);
+        subproc.state = SubprocState::done;
+        ++_done_count;
+        it = _running.erase(it);
+    }
+    if (exception) {
+        std::rethrow_exception(exception);
+    }
+    // process the last progress events of the trainings that finished
+    process_events();
+    return _done_count == _subprocs.size();
+}
+
+void MultiMadnisTraining::process_events() {
+    std::deque<ProgressEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        events.swap(_events);
+    }
+    bool status_due = false;
+    for (auto& event : events) {
+        auto& subproc = _subprocs.at(event.subproc_index);
+        subproc.batch_index = event.batch_index;
+        subproc.loss = event.loss;
+        subproc.channel_count = event.channel_count;
+        auto& config = _training_args.at(event.subproc_index).config;
+        if (_verbosity == Verbosity::log &&
+            (event.batch_index + 1) % config.log_interval == 0) {
+            Logger::info(
+                std::format(
+                    "training, subproc: {} / {}, batch: {} / {}, loss: {:.4f}, "
+                    "channels: {}, time: {:%H:%M:%S}",
+                    event.subproc_index + 1,
+                    _subprocs.size(),
+                    event.batch_index + 1,
+                    config.batches,
+                    event.loss,
+                    event.channel_count,
+                    std::chrono::round<std::chrono::seconds>(
+                        std::chrono::steady_clock::now() - _start_time
+                    )
+                )
+            );
+        }
+        if (!event.status.is_null()) {
+            _trainings_status.at(event.subproc_index) = std::move(event.status);
+            status_due = true;
+        }
+    }
+    if (status_due || !_status_written) {
+        write_status(false);
+    }
+    if (_verbosity == Verbosity::pretty && !events.empty()) {
+        using namespace std::chrono_literals;
+        auto now = std::chrono::steady_clock::now();
+        if (now - _last_print_time >= 0.1s) {
+            _last_print_time = now;
+            print_progress();
+        }
     }
 }
 
@@ -1063,12 +1400,18 @@ void MultiMadnisTraining::print_progress_init() {
     }
 
     if (_training_args.size() > 1) {
-        _pretty_box_lower =
-            PrettyBox("Subprocesses", _training_args.size() + 1, {12, 12, 12, 0});
-        _pretty_box_lower.set_row(0, {"Subprocess", "Loss", "Channels", "Batch"});
+        _pretty_box_lower = PrettyBox(
+            "Subprocesses", _training_args.size() + 1, {12, 10, 12, 12, 0}
+        );
+        _pretty_box_lower.set_row(
+            0, {"Subprocess", "Device", "Loss", "Channels", "Batch"}
+        );
+        for (std::size_t i = 0; i < _training_args.size(); ++i) {
+            _pretty_box_lower.set_row(i + 1, {std::format("{}", i), "queued"});
+        }
         _pretty_box_upper =
-            PrettyBox("MadNIS training", 2, {18, 0}, _pretty_box_lower.line_count());
-        _pretty_box_upper.set_column(0, {"Subprocesses:", "Run time:"});
+            PrettyBox("MadNIS training", 3, {18, 0}, _pretty_box_lower.line_count());
+        _pretty_box_upper.set_column(0, {"Subprocesses:", "Running:", "Run time:"});
         _pretty_box_upper.print_first();
         _pretty_box_lower.print_first();
     } else {
@@ -1078,156 +1421,121 @@ void MultiMadnisTraining::print_progress_init() {
     }
 }
 
-void MultiMadnisTraining::print_progress_update(
-    std::size_t subproc_index,
-    std::size_t batch_index,
-    double loss,
-    std::size_t chan_count
-) {
-    using namespace std::chrono_literals;
-    std::size_t subproc_count = _training_args.size();
-    std::size_t subproc_batches = _training_args.at(subproc_index).config.batches;
-    bool is_last_batch = batch_index + 1 == subproc_batches;
-    bool is_done = is_last_batch && subproc_index == subproc_count - 1;
+void MultiMadnisTraining::print_progress() { print_progress_update(false); }
 
+void MultiMadnisTraining::print_done() {
+    using namespace std::chrono_literals;
+    auto now = std::chrono::steady_clock::now();
+    double wall_time_sec = (now - _start_time) / 1.0s;
+    double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
     if (_verbosity == Verbosity::log) {
-        if ((batch_index + 1) % _training_args.at(subproc_index).config.log_interval !=
-            0) {
-            return;
-        }
-        auto now = std::chrono::steady_clock::now();
         Logger::info(
             std::format(
-                "training, subproc: {} / {}, batch: {} / {}, loss: {:.4f}, channels: "
-                "{}, time: {:%H:%M:%S}",
-                subproc_index + 1,
-                subproc_count,
-                batch_index + 1,
-                subproc_batches,
-                loss,
-                chan_count,
-                std::chrono::round<std::chrono::seconds>(now - _start_time)
+                "training done, {}", format_run_time(wall_time_sec, cpu_time_sec)
             )
         );
-        if (is_done) {
-            double wall_time_sec = (now - _start_time) / 1.0s;
-            double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
-            Logger::info(
-                std::format(
-                    "training done, {}", format_run_time(wall_time_sec, cpu_time_sec)
-                )
-            );
-        }
     } else if (_verbosity == Verbosity::pretty) {
-        auto now = std::chrono::steady_clock::now();
-        if (now - _last_print_time < 0.1s && !is_last_batch) {
-            return;
-        }
-        _last_print_time = now;
-
-        std::string time_str;
-        if (is_done) {
-            double wall_time_sec = (now - _start_time) / 1.0s;
-            double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
-            time_str = format_run_time(wall_time_sec, cpu_time_sec);
-        } else {
-            time_str = std::format(
-                "{:%H:%M:%S}",
-                std::chrono::round<std::chrono::seconds>(now - _start_time)
-            );
-        }
-        std::string batch_str =
-            std::format("{} / {}", batch_index + 1, subproc_batches);
-
-        if (subproc_count == 1) {
-            std::string progress_bar = is_done
-                ? ""
-                : format_progress(
-                      static_cast<double>(batch_index + 1) / subproc_batches, 52
-                  );
-            _pretty_box_upper.set_column(
-                1,
-                {std::format("{:<15} {}", batch_str, progress_bar),
-                 std::format("{:>.4f}", loss),
-                 std::format("{}", chan_count),
-                 time_str}
-            );
-            _pretty_box_upper.print_update();
-        } else {
-            // Weight each subprocess's contribution to the global progress bar by its
-            // own batch count, since subprocesses no longer share a single batch count.
-            std::size_t total_batches = 0;
-            std::size_t batches_before = 0;
-            for (std::size_t i = 0; i < subproc_count; ++i) {
-                std::size_t batches = _training_args.at(i).config.batches;
-                total_batches += batches;
-                if (i < subproc_index) {
-                    batches_before += batches;
-                }
-            }
-
-            std::string progress_bar, progress_bar_all;
-            std::string subproc_str =
-                std::format("{} / {}", subproc_index + 1, subproc_count);
-            if (!is_last_batch) {
-                progress_bar = format_progress(
-                    static_cast<double>(batch_index + 1) / subproc_batches, 34
-                );
-                progress_bar_all = format_progress(
-                    static_cast<double>(batches_before + batch_index + 1) /
-                        total_batches,
-                    52
-                );
-            } else if (!is_done) {
-                progress_bar_all = format_progress(
-                    static_cast<double>(batches_before + subproc_batches + 1) /
-                        total_batches,
-                    52
-                );
-            }
-            _pretty_box_upper.set_column(
-                1, {std::format("{:<15} {}", subproc_str, progress_bar_all), time_str}
-            );
-            _pretty_box_lower.set_row(
-                subproc_index + 1,
-                {std::format("{}", subproc_index),
-                 std::format("{:>.4f}", loss),
-                 std::format("{}", chan_count),
-                 std::format("{:<15} {}", batch_str, progress_bar)}
-            );
-            _pretty_box_upper.print_update();
-            _pretty_box_lower.print_update();
-        }
+        print_progress_update(true);
     }
+    write_status(true);
 }
 
-void MultiMadnisTraining::write_status(
-    MadnisTraining& subproc,
-    std::size_t subproc_index,
-    std::size_t batch_index,
-    bool done
-) {
-    if (!_status_file) {
+void MultiMadnisTraining::print_progress_update(bool done) {
+    using namespace std::chrono_literals;
+    auto now = std::chrono::steady_clock::now();
+    std::string time_str;
+    if (done) {
+        double wall_time_sec = (now - _start_time) / 1.0s;
+        double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
+        time_str = format_run_time(wall_time_sec, cpu_time_sec);
+    } else {
+        time_str = std::format(
+            "{:%H:%M:%S}", std::chrono::round<std::chrono::seconds>(now - _start_time)
+        );
+    }
+
+    if (_subprocs.size() == 1) {
+        auto& subproc = _subprocs.at(0);
+        std::size_t batches = _training_args.at(0).config.batches;
+        std::size_t batch = subproc.state == SubprocState::queued
+            ? 0
+            : subproc.batch_index + 1;
+        std::string progress_bar =
+            done ? "" : format_progress(static_cast<double>(batch) / batches, 52);
+        _pretty_box_upper.set_column(
+            1,
+            {std::format("{:<15} {}", std::format("{} / {}", batch, batches), progress_bar),
+             std::format("{:>.4f}", subproc.loss),
+             std::format("{}", subproc.channel_count),
+             time_str}
+        );
+        _pretty_box_upper.print_update();
         return;
     }
-    if (!done && (batch_index + 1) % _training_args.at(0).config.log_interval != 0) {
+
+    // the global progress bar weights each subprocess by its batch count
+    std::size_t total_batches = 0, batches_done = 0;
+    for (auto [subproc, args] : zip(_subprocs, _training_args)) {
+        total_batches += args.config.batches;
+        if (subproc.state == SubprocState::done) {
+            batches_done += args.config.batches;
+        } else if (subproc.state == SubprocState::running) {
+            batches_done += subproc.batch_index + 1;
+        }
+    }
+    std::string progress_bar_all = done
+        ? ""
+        : format_progress(static_cast<double>(batches_done) / total_batches, 52);
+    _pretty_box_upper.set_column(
+        1,
+        {std::format(
+             "{:<15} {}",
+             std::format("{} / {}", _done_count, _subprocs.size()),
+             progress_bar_all
+         ),
+         std::format(
+             "{} (max {})",
+             _running.size(),
+             std::max<std::size_t>(_parallel_config.max_parallel_trainings, 1)
+         ),
+         time_str}
+    );
+    for (std::size_t index = 0; auto [subproc, args] : zip(_subprocs, _training_args)) {
+        std::size_t batches = args.config.batches;
+        std::string device, loss, channels, batch;
+        if (subproc.state == SubprocState::queued) {
+            device = "queued";
+        } else {
+            device = subproc.device;
+            loss = std::format("{:>.4f}", subproc.loss);
+            channels = std::format("{}", subproc.channel_count);
+            std::string batch_str =
+                std::format("{} / {}", subproc.batch_index + 1, batches);
+            batch = subproc.state == SubprocState::done
+                ? batch_str
+                : std::format(
+                      "{:<15} {}",
+                      batch_str,
+                      format_progress(
+                          static_cast<double>(subproc.batch_index + 1) / batches, 30
+                      )
+                  );
+        }
+        _pretty_box_lower.set_row(
+            index + 1, {std::format("{}", index), device, loss, channels, batch}
+        );
+        ++index;
+    }
+    _pretty_box_upper.print_update();
+    _pretty_box_lower.print_update();
+}
+
+void MultiMadnisTraining::write_status(bool done) {
+    if (!_status_file) {
         return;
     }
     using namespace std::chrono_literals;
     auto now = std::chrono::steady_clock::now();
-
-    _trainings_status.at(subproc_index) = {
-        {"subprocess", subproc_index},
-        {"batch", subproc.status_batches()},
-        {"batch_count", subproc.config().batches},
-        {"losses", subproc.status_losses()},
-        {"channel_counts", subproc.status_channel_counts()},
-        {"learning_rates", subproc.status_learning_rates()},
-        {"buffered_fractions", subproc.status_buffered_fractions()},
-        {"generated_events", subproc.status_generated_events()},
-        {"buffer_sizes", subproc.status_buffer_sizes()}
-    };
-
     nlohmann::json j{
         {"status", done ? "done" : "training"},
         {"madnis_trainings", _trainings_status},
@@ -1236,6 +1544,6 @@ void MultiMadnisTraining::write_status(
            {{"wall_time_sec", (now - _start_time) / 1.0s},
             {"cpu_time_sec", (cpu_time_microsec() - _start_cpu_microsec) / 1e6}}}}},
     };
-    bool force_write = done || (subproc_index == 0 && batch_index == 0);
-    _status_file->write(j, force_write);
+    _status_file->write(j, done || !_status_written);
+    _status_written = true;
 }

@@ -2844,10 +2844,32 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
-                const std::optional<ChannelWeightNetwork>&>(),
+                const std::optional<ChannelWeightNetwork>&,
+                std::size_t>(),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnet")
+            py::arg("cwnet"),
+            py::arg("multiplicity") = 0
+        );
+
+    py::classh<MadnisParallelConfig>(
+        m, "MadnisParallelConfig", pydoc::doc("MadnisParallelConfig")
+    )
+        .def(py::init<>())
+        .def_readwrite(
+            "max_parallel_trainings",
+            &MadnisParallelConfig::max_parallel_trainings,
+            pydoc::doc("MadnisParallelConfig::max_parallel_trainings")
+        )
+        .def_readwrite(
+            "check_interval",
+            &MadnisParallelConfig::check_interval,
+            pydoc::doc("MadnisParallelConfig::check_interval")
+        )
+        .def_readwrite(
+            "target_occupancy",
+            &MadnisParallelConfig::target_occupancy,
+            pydoc::doc("MadnisParallelConfig::target_occupancy")
         );
 
     py::classh<MultiMadnisTraining>(
@@ -2855,16 +2877,16 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def(
             py::init<
-                ContextPtr,
-                ContextPtr,
+                const std::vector<ContextPtr>&,
                 const std::vector<MultiMadnisTraining::TrainingArgs>&,
+                const MadnisParallelConfig&,
                 Verbosity,
                 std::shared_ptr<StatusFile>,
                 std::optional<std::uint64_t>>(),
-            py::arg("generator_context"),
-            py::arg("optimizer_context"),
+            py::arg("generator_contexts"),
             py::arg("training_args"),
-            py::arg("verbosity"),
+            py::arg("parallel_config") = MadnisParallelConfig(),
+            py::arg("verbosity") = Verbosity::log,
             py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg("seed") = std::nullopt,
             pydoc::doc("MultiMadnisTraining::MultiMadnisTraining")

@@ -141,6 +141,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/LHEProcess
    cpp/LOReweightInfo
    cpp/Logger
+   cpp/MadnisParallelConfig
    cpp/MadnisTraining
    cpp/MatrixElementApi
    cpp/MixMaxRandom

@@ -137,6 +137,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/LHEProcess
    python/Logger
    python/MadnisConfig
+   python/MadnisParallelConfig
    python/MadnisTraining
    python/MatrixElementApi
    python/MixMaxRandom
