@@ -151,9 +151,10 @@ public:
     double emitter_mass() const { return _emitter_mass; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
-    /// The FKS counter-events of this emission, as genps_fks.f generates them:
-    /// `soft`, `collinear` and `soft_collinear`, only `soft` for a massive
-    /// emitter.
+    /// The FKS counter-events: `soft`, `collinear` and `soft_collinear`, for
+    /// every emitter, so that the FKS configurations of a Born share one
+    /// layout. A massive emitter has only the soft one (the others have
+    /// `det` = 0).
     std::vector<std::string> counter_events() const;
     /**
      * Add the real emission and its FKS counter-events at the same random
@@ -174,7 +175,8 @@ public:
      *   counter-event: the soft one for @f$\xi_\mathrm{min} > 0@f$ and for
      *   the second solution of a massive emitter, the collinear one for
      *   @f$y = 1@f$ outside the range of an incoming emitter with
-     *   @p s_hat_min.
+     *   @p s_hat_min. A massive emitter has no collinear counter-events: their
+     *   momenta and momentum fractions are those of the event, their `det` 0.
      */
     NamedVector<Value>
     build_counter_events(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;

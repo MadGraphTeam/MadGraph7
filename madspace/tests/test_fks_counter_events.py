@@ -219,10 +219,12 @@ def test_matches_genps_fks(data, conf, points, prefix):
 
 
 def test_counter_events_of_each_emitter():
-    """soft, collinear and soft-collinear, only soft for a massive emitter, each
-    with momenta, momentum fractions and Jacobian."""
+    """soft, collinear and soft-collinear for every emitter, each with momenta,
+    momentum fractions and Jacobian, so that the FKS configurations of a Born
+    share one layout."""
+    names = ["soft", "collinear", "soft_collinear"]
     born = ms.PhaseSpaceMapping([0.0, 0.0, 173.0, 173.0], 1000.0, mode="rambo")
-    for j_fks, names in [(0, ["soft", "collinear", "soft_collinear"]), (2, ["soft"])]:
+    for j_fks in [0, 2]:
         mapping = ms.FKSMapping(born, 4, j_fks)
         assert list(mapping.radiation().counter_events()) == names
         keys = list(mapping.counter_event_types().keys())
@@ -245,6 +247,23 @@ def test_counter_events_of_each_emitter():
         "y",
         "xi_max",
     ]
+
+
+def test_no_collinear_counter_events_of_a_massive_emitter():
+    """they keep the layout with the event and det = 0"""
+    born = ms.PhaseSpaceMapping([0.0, 0.0, 173.0, 173.0], 1000.0, mode="rambo")
+    mapping = ms.FKSMapping(born, 4, 2)
+    r = np.random.default_rng(5).random((500, mapping.random_dim()))
+    names = list(mapping.counter_event_types().keys())
+    runtime = ms.FunctionRuntime(
+        ms.FKSKinematics(mapping).function(), default_context()
+    )
+    out = dict(zip(names, [to_numpy(t) for t in runtime.call([to_torch(r)])]))
+    for name in ["collinear", "soft_collinear"]:
+        np.testing.assert_array_equal(out[name + "_det"], 0.0)
+        for k in ["momenta", "x1", "x2"]:
+            np.testing.assert_array_equal(out[f"{name}_{k}"], out[k])
+    assert (out["soft_det"] > 0).any()
 
 
 @pytest.mark.parametrize(

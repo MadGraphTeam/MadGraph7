@@ -98,9 +98,6 @@ FKSRadiation::FKSRadiation(
 }
 
 std::vector<std::string> FKSRadiation::counter_events() const {
-    if (_emitter_mass > 0.) {
-        return {"soft"};
-    }
     return {"soft", "collinear", "soft_collinear"};
 }
 
@@ -244,16 +241,21 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
     outputs.push_back("xi_max", event.xi_max);
     for (const auto& name : counter_events()) {
         bool soft = name != "collinear", collinear = name != "soft";
-        auto cnt = build_emission(
-            fb,
-            soft ? Value(0.) : xi_hat,
-            collinear ? Value(1.) : y_var,
-            r_phi,
-            born,
-            sqrt_s,
-            x1,
-            x2
-        );
+        // a massive emitter has no collinear counter-events: they keep the
+        // layout with the event and det = 0
+        bool exists = !(collinear && _emitter_mass > 0.);
+        auto cnt = exists
+            ? build_emission(
+                  fb,
+                  soft ? Value(0.) : xi_hat,
+                  collinear ? Value(1.) : y_var,
+                  r_phi,
+                  born,
+                  sqrt_s,
+                  x1,
+                  x2
+              )
+            : event;
         outputs.push_back(name + "_momenta", cnt.momenta);
         if (!_leptonic) {
             outputs.push_back(name + "_x1", cnt.x1);
@@ -268,7 +270,8 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
                 xi_hat,
                 event.rat,
                 soft ? 1. : 0.,
-                collinear ? 1. : 0.
+                collinear ? 1. : 0.,
+                exists ? 1. : 0.
             )
         );
     }

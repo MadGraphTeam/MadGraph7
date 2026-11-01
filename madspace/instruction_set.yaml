@@ -2790,11 +2790,14 @@ fks_counter_event_det:
     - name: collinear
       type: [float, single]
       desc: "1 for a collinear counter-event, 0 otherwise"
+    - name: exists
+      type: [float, single]
+      desc: "0 for a counter-event the emitter does not have (the collinear ones of a massive emitter), 1 otherwise"
   outputs:
     - name: det_out
       type: [float]
       desc: "det where the counter-event exists, 0 elsewhere"
-  desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. See @ref FKSRadiation."
+  desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. A massive emitter has no collinear counter-events. See @ref FKSRadiation."
 
 fks_beam_boost:
   inputs:

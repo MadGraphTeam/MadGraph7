@@ -858,7 +858,7 @@ KERNELSPEC void kernel_fks_beam_boost(
 // soft one needs xi = 0 (an incoming emitter with a lower bound on the partonic
 // energy can have xi_min > 0) and the first solution for the momentum of a
 // massive emitter (xi_hat <= rat), and a collinear one needs y = 1 (which the
-// bound can exclude).
+// bound can exclude). A massive emitter has no collinear ones (exists = 0).
 template <typename T>
 KERNELSPEC void kernel_fks_counter_event_det(
     FIn<T, 0> det,
@@ -868,12 +868,14 @@ KERNELSPEC void kernel_fks_counter_event_det(
     FIn<T, 0> rat,
     FSIn<T, 0> soft,
     FSIn<T, 0> collinear,
+    FSIn<T, 0> exists,
     FOut<T, 0> det_out
 ) {
     FVal<T> d = det, xv = xi, yv = y, xh = xi_hat, rt = rat, s(soft), c(collinear);
+    FVal<T> e(exists);
     auto soft_ok = (s == 0.) | ((xv == 0.) & (xh <= rt));
     auto collinear_ok = (c == 0.) | (yv == 1.);
-    det_out = where(soft_ok & collinear_ok, d, FVal<T>(0.));
+    det_out = where((e != 0.) & soft_ok & collinear_ok, d, FVal<T>(0.));
 }
 
 } // namespace kernels

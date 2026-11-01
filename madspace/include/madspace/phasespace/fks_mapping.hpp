@@ -39,6 +39,13 @@ namespace madspace {
  * the Born mapping must have none. Its `mirror_index` condition is not
  * supported: the emission needs the first incoming parton along @f$+z@f$.
  *
+ * The FKS configurations of one Born, each an FKSMapping of the same Born
+ * mapping, have the same inputs, outputs and conditions. As channels of a
+ * @ref MultiChannelMapping they cover the phase space of the real emission
+ * once per configuration, and as @ref FKSKinematics in a
+ * @ref MultiChannelFunction they give the event, the Born and the
+ * counter-events of each configuration.
+ *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the Born, incoming included.
  *
@@ -56,7 +63,7 @@ namespace madspace {
  * - `momenta` – `float`, shape `(batch, n + 1, 4)` – momenta of the real
  *   emission in the lab frame, in the order of the real process.
  * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions of the real
- *   emission (1 if the Born mapping is leptonic).
+ *   emission (1 for every point if the Born mapping is leptonic).
  *
  * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
