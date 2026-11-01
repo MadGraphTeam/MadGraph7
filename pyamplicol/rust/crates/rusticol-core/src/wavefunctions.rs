@@ -187,7 +187,12 @@ pub(super) fn ext_quark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -233,7 +238,12 @@ pub(super) fn ext_antiquark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -424,7 +434,10 @@ where
             zero.clone(),
         )
     };
-    let chi2 = if is_zero(&pp3) || is_zero(&pp) {
+    // At rest the helicity axis is +z (as the binary64 branch): chi = (1, 0).
+    let chi2 = if is_zero(&pp) {
+        c_generic(zero.clone(), zero.clone())
+    } else if is_zero(&pp3) {
         c_generic(-integer(nh), zero.clone())
     } else {
         let denominator = (two * pp * pp3).sqrt();
@@ -1014,6 +1027,39 @@ mod tests {
     fn assert_complex_close(left: Complex<f64>, right: Complex<f64>) {
         assert!((left.re - right.re).abs() < 1.0e-13);
         assert!((left.im - right.im).abs() < 1.0e-13);
+    }
+
+    /// A massive Dirac spinor at rest (a decaying fermion in its rest frame,
+    /// e.g. t > b w+) is the +z limit of the moving one (HELAS's rest
+    /// spinor): its norm is 2E = 2m. The rest branch had chi = (1, -nh), the
+    /// +z and -z limits at once, and twice the norm (|M|^2 of t > b w+ at
+    /// rest twice its boosted value).
+    #[test]
+    fn massive_dirac_spinor_at_rest_is_the_limit_along_plus_z() {
+        use super::{ext_antiquark_dirac_massive, ext_quark_dirac_massive};
+
+        let mass: f64 = 173.0;
+        for energy_sign in [1.0, -1.0] {
+            let rest = [energy_sign * mass, 0.0, 0.0, 0.0];
+            let pz: f64 = 1.0e-9;
+            let moving = [
+                energy_sign * (mass * mass + pz * pz).sqrt(),
+                0.0,
+                0.0,
+                energy_sign * pz,
+            ];
+            for helicity in [-1, 1] {
+                for spinor in [ext_quark_dirac_massive, ext_antiquark_dirac_massive] {
+                    let at_rest = spinor(rest, helicity, mass);
+                    let norm: f64 = at_rest.iter().map(|z| z.re * z.re + z.im * z.im).sum();
+                    assert!((norm - 2.0 * mass).abs() <= 1.0e-12 * mass, "{norm}");
+                    for (left, right) in at_rest.into_iter().zip(spinor(moving, helicity, mass)) {
+                        assert!((left.re - right.re).abs() <= 1.0e-9, "{left} {right}");
+                        assert!((left.im - right.im).abs() <= 1.0e-9, "{left} {right}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

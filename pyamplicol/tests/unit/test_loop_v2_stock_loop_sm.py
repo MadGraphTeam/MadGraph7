@@ -493,6 +493,7 @@ def _blocker(model, expression, tmp_path, *, restriction=None, fixed=None):
 @pytest.mark.parametrize(
     "key,expression,restriction,fixed",
     [
+        ("decay-process", "t > b w+", None, None),
         ("loop-induced", "g g > h h", None, None),
         ("coloured-width", "g g > t t~", None, {"WZ": "0"}),
     ],
@@ -574,9 +575,10 @@ def test_madloop_syntax_is_the_listed_refusal_naming_the_setting(expression):
 @pytest.mark.loop_physics
 def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
     """``pyamplicol generate --dry-run``: '[QCD]' (a bracket of no particles,
-    found at the model's process expansion) is the plan's unsupported
-    feature; a decay chain and a 1 -> n decay are refused when the request
-    is parsed (exit 2). Each names its key."""
+    found at the model's process expansion) and a one-loop 1 -> n decay
+    (``decay-process``, the loop admission's) are the plan's unsupported
+    features; a decay chain is refused when the request is parsed (exit 2).
+    Each names its key."""
 
     from pyamplicol.cli import run_cli
 
@@ -601,17 +603,17 @@ def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
         )
         return code, stdout.getvalue(), stderr.getvalue()
 
-    code, stdout, _ = dry_run("u u~ > d d~ [QCD]")
-    assert code == 0
-    (feature,) = json.loads(stdout)["unsupported_features"]
-    assert feature.startswith("madloop-syntax: "), feature
     for expression, key in (
-        ("t > b w+, w+ > e+ ve", "madloop-syntax"),
+        ("u u~ > d d~ [QCD]", "madloop-syntax"),
         ("t > b w+", "decay-process"),
     ):
-        code, _, stderr = dry_run(expression)
-        assert code == 2
-        assert f"{key}: " in stderr, stderr
+        code, stdout, _ = dry_run(expression)
+        assert code == 0
+        (feature,) = json.loads(stdout)["unsupported_features"]
+        assert feature.startswith(f"{key}: "), feature
+    code, _, stderr = dry_run("t > b w+, w+ > e+ ve")
+    assert code == 2
+    assert "madloop-syntax: " in stderr, stderr
     assert not (tmp_path / "out").exists()
 
 
@@ -619,18 +621,20 @@ def test_madloop_syntax_and_decays_refuse_in_the_cli_dry_run(tmp_path):
 @pytest.mark.parametrize(
     "expression", ["t > b w+", "z > e+ e- g", "p > t b~ e+ ve", "2*g > g g g"]
 )
-def test_decays_are_the_listed_refusal_tree_and_loop_alike(expression):
-    """One initial-state slot is a 1 -> n decay (``decay-process``), refused
-    by the product-wide parser; two slots (``2*g``) are a collision."""
+def test_decays_are_processes_and_their_virtuals_a_listed_loop_refusal(expression):
+    """One initial-state slot is a 1 -> n decay: a process for the parser
+    (tree-level decays are served, M-FINAL MF-DEC-1); its one-loop request is
+    refused at the loop admission (``decay-process``, by the number of
+    initial legs); two slots (``2*g``) are a collision."""
 
     from pyamplicol.api import ProcessRequest
-    from pyamplicol.processes.refusals import ProcessRequestUnsupported
+    from pyamplicol.loops.v2.refusals import LoopRequestUnsupported, require_scattering
 
+    assert ProcessRequest.parse(expression).expression == expression
     if expression.startswith("2*"):
-        assert ProcessRequest.parse(expression).expression == expression
         return
-    with pytest.raises(ProcessRequestUnsupported) as refused:
-        ProcessRequest.parse(expression)
+    with pytest.raises(LoopRequestUnsupported) as refused:
+        require_scattering(1, repr(expression))
     assert refused.value.key == "decay-process"
 
 

@@ -91,7 +91,13 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   scalar ones), ``majorana-fermion`` and ``multi-fermion-contact``. Each is
   decided by structure: widths, spin slots, the self-conjugacy of a
   fermion, the number of fermions at a vertex. Process-request refusals
-  (1 -> n decays, MG5_aMC syntax) are listed in ``processes.refusals``.
+  (MG5_aMC syntax) are listed in ``processes.refusals``.
+* ``decay-process`` (M-FINAL MF-DEC-1): a one-loop request with one initial
+  particle (a 1 -> n decay; ``require_scattering``, decided by the number of
+  initial-state legs). Tree-level decays are served; the virtual of a
+  decay waits for MF-DEC-2 (the decaying leg's external renormalisation and
+  self-energy conventions, its flux and averaging), so it is refused at the
+  loop admission instead of being half supported.
   A massive (Dirac) current closing on a massless (Weyl) one (a fermion line
   joining massive and massless fermions through a chiral vertex, e.g.
   b b~ > w+ w- with a massless b) is no loop refusal since m-qcd MQ-5F: the
@@ -244,6 +250,19 @@ LOOP_ADMISSION_REFUSALS = (
         "coupling-order bound that keeps it out of the request's loops",
         "fail-closed-2 (a guard)",
         "none (kept as the guard of the restriction rule)",
+    ),
+    LoopAdmissionRefusal(
+        "decay-process",
+        "a one-loop request with one initial-state particle (a 1 -> n decay, "
+        "e.g. t > b w+ with process.loop_coupling_orders set)",
+        "the virtual of a decay needs the decaying leg's external "
+        "renormalisation, its self-energy convention and the decay's "
+        "averaging in the virtual, which are not in this build; tree-level "
+        "decays are served",
+        "the tree-level decay (no process.loop_coupling_orders), or a 2 -> n "
+        "scattering process",
+        "M-FINAL MF-DEC-2 (one-loop decays)",
+        "one-loop 1 -> 2 and 1 -> 3 decays, QCD and electroweak",
     ),
     LoopAdmissionRefusal(
         "loop-induced",
@@ -652,23 +671,18 @@ LOOP_CONFIGURATION_REFUSALS = (
         "none",
     ),
     LoopAdmissionRefusal(
-        "process-aliases",
-        "permutation aliases of a one-loop request (process aliases)",
-        "plan v4 artifacts publish no permutation-alias records",
-        "request each permuted process as its own entry",
-        "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
-    ),
-    LoopAdmissionRefusal(
         "process-group-analysis",
         "a numerical process-group analysis (process.analyze_process_groups) "
         "of a one-loop request",
-        "plan v4 artifacts group processes by an exact species-substitution "
-        "proof only (process.flavor_blind), never numerically",
-        "process.analyze_process_groups = 'none' (process.flavor_blind groups "
-        "identity-port flavour members exactly)",
+        "plan v4 artifacts map a process onto a stored one by exact relations "
+        "only (loops.v2.mapping: a permutation within each side, a species "
+        "substitution proved on the representative's source plan, or both), "
+        "never by a relation found only by numerical comparison",
+        "process.analyze_process_groups = 'none'; process.flavor_blind maps "
+        "exact flavour members and side permutations, ProcessAlias publishes "
+        "permutation aliases",
         "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
+        "none",
     ),
     LoopAdmissionRefusal(
         "direct-r2",
@@ -899,6 +913,18 @@ def listed_configuration_keys() -> tuple[str, ...]:
 
 def listed_internal_keys() -> tuple[str, ...]:
     return tuple(_INTERNAL)
+
+
+def require_scattering(initial_count: int, label: str) -> None:
+    """Refuse (``decay-process``) a one-loop request with one initial-state
+    particle: the criterion is the number of initial legs, never a name."""
+
+    if initial_count == 1:
+        raise LoopRequestUnsupported(
+            "decay-process",
+            f"{label} has one initial-state particle (a 1 -> n decay); its "
+            "one-loop virtual is not served yet",
+        )
 
 
 # ------------------------------------------------------------ N_c exactness

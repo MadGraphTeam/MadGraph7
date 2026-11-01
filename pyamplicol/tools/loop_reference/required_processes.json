@@ -1915,6 +1915,105 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "t t~ > z h QCD=0 QED=2 [virt=QCD QED] QCD^2==0 QED^2==6"},
       "recola": {"process": "t t~ -> Z H"}
+    },
+    {
+      "name": "t_bwp_qcd",
+      "role": "dec",
+      "dec_row": "XX01",
+      "initial": 1,
+      "pdgs": [6, 5, 24],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "t > b w+ QED=1 [virt=QCD]"},
+      "note": "M-FINAL MF-DEC (decay row XX01): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "t_bwp_ew",
+      "role": "dec",
+      "dec_row": "XX02",
+      "initial": 1,
+      "pdgs": [6, 5, 24],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "QCD",
+      "corrections": ["QCD", "EW"],
+      "scheme": "ew-gmu",
+      "madloop": {"process": "t > b w+ QCD=0 QED=1 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "note": "M-FINAL MF-DEC (decay row XX02): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "z_emep_ew",
+      "role": "dec",
+      "dec_row": "XX03",
+      "initial": 1,
+      "pdgs": [23, 11, -11],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "EW",
+      "scheme": "ew-qcd-qed-sm",
+      "madloop": {"process": "z > e- e+ QCD=0 QED=1 [virt=QED] QED^2==4"},
+      "note": "M-FINAL MF-DEC (decay row XX03): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "z_uux_ew",
+      "role": "dec",
+      "dec_row": "XX04",
+      "initial": 1,
+      "pdgs": [23, 2, -2],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "QCD",
+      "corrections": ["QCD", "EW"],
+      "scheme": "ew-qcd-qed-sm",
+      "madloop": {"process": "z > u u~ QCD=0 QED=1 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "note": "M-FINAL MF-DEC (decay row XX04): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "wp_epve_ew",
+      "role": "dec",
+      "dec_row": "XX05",
+      "initial": 1,
+      "pdgs": [24, -11, 12],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "EW",
+      "scheme": "ew-qcd-qed-sm",
+      "madloop": {"process": "w+ > e+ ve QCD=0 QED=1 [virt=QED] QED^2==4"},
+      "note": "M-FINAL MF-DEC (decay row XX05): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "h_bbx_4fs",
+      "role": "dec",
+      "dec_row": "XX06",
+      "initial": 1,
+      "pdgs": [25, 5, -5],
+      "born_orders": {"QCD": 0, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd-4fs",
+      "madloop": {"process": "h > b b~ QED=1 [virt=QCD]"},
+      "note": "M-FINAL MF-DEC (decay row XX06): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "t_bwpg_qcd",
+      "role": "dec",
+      "dec_row": "XX07",
+      "initial": 1,
+      "pdgs": [6, 5, 24, 21],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "t > b w+ g QED=1 [virt=QCD]"},
+      "note": "M-FINAL MF-DEC (decay row XX07): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
+    },
+    {
+      "name": "z_uuxg_ew",
+      "role": "dec",
+      "dec_row": "XX08",
+      "initial": 1,
+      "pdgs": [23, 2, -2, 21],
+      "born_orders": {"QCD": 1, "QED": 1},
+      "correction": "QCD",
+      "corrections": ["QCD", "EW"],
+      "scheme": "ew-qcd-qed-sm",
+      "madloop": {"process": "z > u u~ g QCD=1 QED=1 [virt=QCD QED] QCD^2<=99 QED^2<=99"},
+      "note": "M-FINAL MF-DEC (decay row XX08): the decaying particle (first PDG, \"initial\": 1) at rest at its real mass, its own width zero in the scheme"
     }
   ]
 }

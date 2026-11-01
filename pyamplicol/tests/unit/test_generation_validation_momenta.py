@@ -3,8 +3,8 @@
 
 A scattering takes on-shell beams of the model's masses in its
 centre-of-mass frame, a decay the rest frame of the decaying particle;
-massless beams keep the historical points bit for bit. pyAmpliCol processes
-have two initial particles today, so the decay tests call the builder directly.
+massless beams keep the historical points bit for bit. The decay tests call
+the builder directly (generated decays: ``test_decay_tree.py``).
 """
 
 from __future__ import annotations

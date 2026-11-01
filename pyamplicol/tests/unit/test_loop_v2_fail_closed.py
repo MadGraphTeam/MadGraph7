@@ -140,6 +140,8 @@ def test_refusals_are_listed_typed_and_name_their_rule():
         "veto-unlabelled-counterterms",
         # fail-closed-2's restriction guard (``test_loop_v2_restricted_zero.py``).
         "loop-vertex-outside-tree-model",
+        # M-FINAL MF-DEC-1: one-loop decays until MF-DEC-2 (``test_decay_tree.py``).
+        "decay-process",
         # MQ-MODEL's QCD guards (``test_loop_v2_stock_loop_sm.py``).
         "loop-induced",
         "coloured-width",

@@ -3606,7 +3606,11 @@ def _massive_dirac(
     signed_px, signed_py, signed_pz = (px, py, pz) if energy > 0 else (-px, -py, -pz)
     pp3 = max(pp + signed_pz, _ZERO)
     chi1 = _ONE if pp == 0 else _sqrt(pp3 / (_TWO * pp), "massive fermion source")
-    if pp3 == 0 or pp == 0:
+    if pp == 0:
+        # At rest the helicity axis is +z, the general branch's limit along
+        # +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0).
+        chi2 = (_ZERO, _ZERO)
+    elif pp3 == 0:
         chi2 = (-Decimal(nh), _ZERO)
     else:
         denominator = _sqrt(_TWO * pp * pp3, "massive fermion source")

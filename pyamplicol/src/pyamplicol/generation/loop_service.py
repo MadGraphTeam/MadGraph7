@@ -104,21 +104,16 @@ def _feature_blockers(backend, processes):
                 "(color.accuracy='lc') selects them",
             )
         )
-    if processes.aliases:
-        reasons.append(
-            ListedBlocker(
-                "process-aliases",
-                "public loop artifacts do not yet publish permutation aliases ("
-                + ", ".join(sorted(alias.name for alias in processes.aliases))
-                + ")",
-            )
-        )
+    # Permutation aliases are published (``loops.v2.mapping``); a relation
+    # found only by numerical comparison is not.
     if run.process.analyze_process_groups != "none":
         reasons.append(
             ListedBlocker(
                 "process-group-analysis",
-                "public loop artifacts do not yet publish numerical "
-                "process-group analyses (process.analyze_process_groups = "
+                "public loop artifacts map processes by exact proofs only "
+                "(permutation aliases, process.flavor_blind species "
+                "substitutions), never by a numerical process-group analysis "
+                "(process.analyze_process_groups = "
                 f"{str(run.process.analyze_process_groups)!r})",
             )
         )
@@ -467,7 +462,7 @@ def _flavor_grouping_outcome(backend, correlators, *, reused=False):
     checked = requested
     reason = None
     if requested and not reused:
-        reason = "no exact identity-port member was admitted"
+        reason = "no exact member was admitted"
     return {
         "requested": requested,
         "transport_checked": checked,
@@ -744,6 +739,9 @@ def _v2_request(backend, context, index, born_dags=None):
     entry = context.expanded[index]
     process = entry.process_ir.process
     label = f"{entry.request.name!r} ({entry.request.expression})"
+    from pyamplicol.loops.v2.refusals import require_scattering
+
+    require_scattering(len(entry.process_ir.initial_legs), label)
     _require_declared_corrections(compiled, context.corrections)
     fixed = require_real_fixed_parameters(context.preparation.fixed_parameters)
     scheme = scheme_metadata(compiled)
@@ -1031,10 +1029,15 @@ def _skipped_members_hook(skipped):
 
 
 def _v2_member(generated, request, expression):
-    """An identity-port flavour member of an already generated process
-    (``observables.admit_member``: the exact species-substitution proof on
-    the representative's retained source plan), or None. The member's request
-    must equal the representative's but for the process."""
+    """A member of an already generated process (``observables.
+    admit_member``: an exact species substitution proved on the
+    representative's retained source plan, a permutation within each side,
+    or both), or None. The member's request must equal the representative's
+    but for the process; a permuted member's leg-keyed request fields must
+    be invariant under its permutation (``_permutation_invariant``) and the
+    representative must store the image of every declared colour history and
+    spin class (``_correlations_closed``): otherwise the member is generated
+    on its own and serves every declared correlation."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.observables import admit_member
 
@@ -1053,20 +1056,57 @@ def _v2_member(generated, request, expression):
             member = admit_member(process.slice, expression)
         except (ValueError, NotImplementedError):
             continue
-        if member.alias or not member.species:
-            # Permutation aliases and identical requests stay independent.
+        if not (member.alias or member.species):
+            # An identical request stays independent.
+            continue
+        if member.alias and not (
+            _permutation_invariant(request, member.legs)
+            and _correlations_closed(process.observables, member)
+        ):
             continue
         return name, member
     return None
 
 
+def _correlations_closed(observables, member) -> bool:
+    """Whether the representative stores the image of every declared colour
+    history and spin class read on the member's labels (``loops.v2.mapping``
+    ``mapped_histories`` / ``mapped_spin_classes``), so that folding the
+    member loses none of its declared correlations."""
+    from pyamplicol.loops.v2.mapping import mapped_histories, mapped_spin_classes
+
+    histories = observables.histories
+    classes = observables.spin_classes
+    return len(mapped_histories(member, histories)) == len(histories) and len(
+        mapped_spin_classes(member, classes)
+    ) == len(classes)
+
+
+def _permutation_invariant(request, legs) -> bool:
+    """Whether the leg-keyed fields of a slice request read the same legs
+    after the member permutation ``legs`` (member leg i -> representative leg
+    ``legs[i]``): no generation-time helicity or colour selection, and an
+    external-photon tagging by mode or by a leg set the permutation maps
+    onto itself."""
+
+    if request.selection is not None:
+        return False
+    tagged = request.external_photons
+    return isinstance(tagged, str) or {legs[leg - 1] + 1 for leg in tagged} == set(
+        tagged
+    )
+
+
 def _generate_v2(backend, processes, output, *, model, mode, correlators):
     """Generate every process through v2 and publish plan v4 atomically.
 
-    With ``process.flavor_blind`` an identity-port flavour member of an
-    earlier process (equal request but for its flavours, an exactly proved
-    species substitution) is served by that representative and listed in
-    ``process-groups.json``; every other process is generated on its own.
+    With ``process.flavor_blind`` a member of an earlier process (equal
+    request but for its process: an exactly proved species substitution, a
+    permutation within each side, or both; ``_v2_member``) is served by that
+    representative and listed in ``process-groups.json``; every other process
+    is generated on its own. A request's explicit ``ProcessAlias`` records
+    are published with its process (the manifest's alias records), and such
+    a request is never folded into another (as in the tree engine).
     """
     from pyamplicol.artifacts.process_groups import (
         grouping_process,
@@ -1075,7 +1115,12 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2.artifact import generate_process, write_plan
 
-    from .process_grouping import GroupingBasis, GroupMember, LegMapping
+    from .process_grouping import (
+        GroupingBasis,
+        GroupMember,
+        LegMapping,
+        invert_permutation,
+    )
 
     blockers = _blocked(backend, processes)
     if blockers:
@@ -1126,7 +1171,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     name = entry.request.name
                     found = (
                         _v2_member(generated, request, entry.request.expression)
-                        if grouping
+                        if grouping and not entry.aliases
                         else None
                     )
                     if found is not None:
@@ -1230,6 +1275,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 ),
                             },
                             color_accuracy=request.accuracy,
+                            aliases=entry.aliases,
                             request=dict(process.request),
                             plan_sha256=process.plan_sha256,
                             scaleless_plan_sha256=process.scaleless_plan_sha256,
@@ -1283,10 +1329,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                     generated=False,
                                 )
                             ).related(
+                                # Representative leg -> member leg.
                                 LegMapping(
-                                    tuple(range(len(member.legs))),
+                                    invert_permutation(member.legs),
                                     False,
-                                    "exact-loop-species",
+                                    "exact-loop-species"
+                                    if member.species
+                                    else "side-permutation",
                                 ),
                                 factor=1,
                                 basis=GroupingBasis.EXACT_LOOP_FLAVOR,
@@ -1344,34 +1393,61 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     reporter.finish_generation()
     return GenerationResult(
         output=result.output,
-        processes=ProcessSet(tuple(e.request for e in context.expanded)),
+        processes=ProcessSet(
+            tuple(e.request for e in context.expanded),
+            # The published aliases (as the tree service returns them).
+            tuple(
+                alias
+                for alias in processes.aliases
+                if alias.process_name in {e.request.name for e in context.expanded}
+            ),
+        ),
         mode=mode,
         files=result.files,
     )
 
 
 def _validate_v2_artifact(backend, output, context, generated, members):
-    """Load every staged process (and flavour member) through the public
+    """Load every staged process (and every process it serves: flavour
+    members and permutation aliases, ``loops.v2.mapping``) through the public
     runtime and compare its native evaluation, inclusive and for every
-    declared colour history, with the Python reference executor of the
-    generated slice on the validation points, in binary64; a point whose
-    binary64 pair misses the tolerance is re-validated in both carriers
-    against the reference at 32 digits (``_revalidate_v2_point``)."""
+    declared colour history it serves, with the Python reference executor of
+    the generated slice on the validation points (an alias's in its own leg
+    order), in binary64; a point whose binary64 pair misses the tolerance is
+    re-validated in both carriers against the reference at 32 digits
+    (``_revalidate_v2_point``)."""
     from pyamplicol.api import Runtime
     from pyamplicol.artifacts import load_manifest
-    from pyamplicol.loops.v2.observables import MemberObservables
+    from pyamplicol.loops.v2.mapping import inverse, mapped_histories
+    from pyamplicol.loops.v2.observables import FlavourMember, MemberObservables
 
     manifest = load_manifest(output)
     validation = backend._generation_config.validation
     indices = {entry.request.name: i for i, entry in enumerate(context.expanded)}
-    served = [(name, name, None) for name in generated]
+    # (public id, representative, member, expanded index, alias permutation)
+    served = [(name, name, None, indices[name], None) for name in generated]
     served += [
-        (context.expanded[index].request.name, representative, member)
+        (context.expanded[index].request.name, representative, member, index, None)
         for representative, admitted in members.items()
         for index, member in admitted
     ]
-    for name, representative, member in served:
-        index = indices[name]
+    served += [
+        (
+            str(alias["id"]),
+            name,
+            FlavourMember(
+                str(alias["expression"]),
+                context.expanded[indices[name]].request.expression,
+                inverse(alias["external_permutation"]),
+                {},
+            ),
+            indices[name],
+            tuple(alias["external_permutation"]),
+        )
+        for name in generated
+        for alias in context.expanded[indices[name]].aliases
+    ]
+    for name, representative, member, index, permutation in served:
         entry = context.expanded[index]
         runtime = Runtime.load(output, process=name)
         if (
@@ -1384,12 +1460,20 @@ def _validate_v2_artifact(backend, output, context, generated, members):
         if not validation.enabled:
             continue
         points, scales = _v2_validation_points(context, entry, validation, index)
+        if permutation is not None:
+            # The target's points in the alias's leg order.
+            points = [
+                [point[permutation.index(leg)] for leg in range(len(point))]
+                for point in points
+            ]
         observables = generated[representative].observables
         _validate_v2_points(
             name,
             runtime,
             observables if member is None else MemberObservables(observables, member),
-            tuple(history.id for history in observables.histories),
+            tuple(history.id for history in observables.histories)
+            if member is None
+            else tuple(mapped_histories(member, observables.histories)),
             points,
             scales,
             validation.relative_tolerance,
