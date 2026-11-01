@@ -560,7 +560,7 @@ from pyamplicol import Runtime, VirtualRescueLevel, VirtualRescuePolicy
 
 runtime = Runtime.load("artifacts/gg_ggg", model_parameters={"aS": "0.118"})
 result = runtime.evaluate(points, mu_r2="1000000", stability=VirtualRescuePolicy())
-print(result.rescue_counts)   # e.g. {0: 125, 1: 3, 'not met': 0, 'failed': 0}
+print(result.rescue_counts)   # {0: 126, 1: 2, 'not met': 0, 'failed': 0} (128 points)
 record = result.rescue[17]    # level reached, its carrier, target, met, attempts
 
 custom = VirtualRescuePolicy((
