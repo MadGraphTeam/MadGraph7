@@ -477,8 +477,7 @@ impl V2Dag {
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Dag>()?;
     module.add_class::<V2Program>()?;
-    register_tree_binary(module)?;
-    register_tree_terms(module)
+    register_tree_binary(module)
 }
 
 // ------------------------------------------------- binary tree program (MF-8G-1)
@@ -656,46 +655,4 @@ pub(super) fn register_tree_binary(module: &Bound<'_, PyModule>) -> PyResult<()>
     module.add_function(wrap_pyfunction!(tree_cells_list, module)?)?;
     module.add_function(wrap_pyfunction!(tree_cells_counts, module)?)?;
     module.add_function(wrap_pyfunction!(tree_cells_live_ket, module)?)
-}
-
-/// Closure-term sections of a binary tree program (MF-8G-1).
-mod tree_terms {
-    use super::*;
-    use rusticol_core::loop_v2::trees::binary::TermColumns;
-
-    fn failed(error: impl std::fmt::Display) -> PyErr {
-        PyValueError::new_err(error.to_string())
-    }
-
-    /// The term section of the oracle's JSON closure terms.
-    #[pyfunction]
-    pub(super) fn tree_terms_from_json<'py>(
-        py: Python<'py>,
-        json: &[u8],
-    ) -> PyResult<Bound<'py, PyBytes>> {
-        let out = py
-            .detach(|| TermColumns::from_json(json).map(|c| c.encode()))
-            .map_err(failed)?;
-        Ok(PyBytes::new(py, &out))
-    }
-
-    /// A term section as the oracle's JSON closure terms.
-    #[pyfunction]
-    pub(super) fn tree_terms_json(py: Python<'_>, section: &[u8]) -> PyResult<String> {
-        py.detach(|| TermColumns::decode(section).map(|c| c.json()))
-            .map_err(failed)
-    }
-
-    /// The number of terms of a term section.
-    #[pyfunction]
-    pub(super) fn tree_terms_count(section: &[u8]) -> PyResult<usize> {
-        Ok(TermColumns::decode(section).map_err(failed)?.len())
-    }
-}
-
-pub(super) fn register_tree_terms(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    use tree_terms::*;
-    module.add_function(wrap_pyfunction!(tree_terms_from_json, module)?)?;
-    module.add_function(wrap_pyfunction!(tree_terms_json, module)?)?;
-    module.add_function(wrap_pyfunction!(tree_terms_count, module)?)
 }
