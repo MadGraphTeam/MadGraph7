@@ -43,6 +43,10 @@ pub mod v2 {
     /// Default families per streamed bucket chunk (bounds the live fused
     /// factors and family numerators).
     pub const DEFAULT_CHUNK_FAMILIES: usize = 512;
+    /// Default bytes of chunk inputs (fused factors, split vertex tensors
+    /// and currents) one lane chunk holds where it can
+    /// ([`V2Options::input_budget`]).
+    pub const DEFAULT_INPUT_BUDGET: usize = 8 << 30;
 
     /// The dressing schedule.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +102,12 @@ pub mod v2 {
         pub part_chunks: usize,
         /// The seed contraction (DESIGN.md §7.3).
         pub contraction: Contraction,
+        /// Bytes of chunk inputs a lane chunk holds where it can (schedule
+        /// B): a live input the current bucket chunk does not read is
+        /// dropped, the one read again latest first, and rebuilt bitwise
+        /// when read again (`ChunkInputs::prepare_within`; heap limbs of
+        /// arbitrary-precision reals excluded).
+        pub input_budget: usize,
     }
 
     impl Default for V2Options {
@@ -109,6 +119,7 @@ pub mod v2 {
                 schedule: Schedule::B,
                 part_chunks: DEFAULT_PART_CHUNKS,
                 contraction: Contraction::Auto,
+                input_budget: DEFAULT_INPUT_BUDGET,
             }
         }
     }
@@ -204,6 +215,9 @@ pub mod v2 {
 
     /// Report count of the modelled dressing work (complex MAC per lane).
     const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
+    /// Report count of the chunk inputs dropped while still live (rebuilt
+    /// when read again, `V2Options::input_budget`).
+    pub const INPUTS_DROPPED: &str = "chunk inputs dropped early";
 
     /// One point's family numerators: (family, loop orders, rank, per
     /// column the coefficients in the family's trie frame).
@@ -308,6 +322,22 @@ pub mod v2 {
                 pool,
                 fourier: None,
             })
+        }
+
+        /// An executor of the same loaded plan (and, with `fourier`, the same
+        /// certified seed FFT), shared rather than decoded again, with its own
+        /// lane count and thread pool.
+        pub fn derive(
+            &self,
+            lanes: usize,
+            threads: Option<usize>,
+            fourier: bool,
+        ) -> RusticolResult<Self> {
+            let mut out = Self::new(self.plan.clone(), lanes, threads)?;
+            if fourier {
+                out.fourier = self.fourier.clone();
+            }
+            Ok(out)
         }
 
         /// Attach the plan's seed Fourier record (`plan_export.fourier_record`),
@@ -458,6 +488,42 @@ pub mod v2 {
         live: Reads,
     }
 
+    /// Per chunk-input store (factors, vertex tensors, currents) and id, the
+    /// bucket chunks reading it, ascending: the next read of a held input
+    /// (`ChunkInputs::prepare_within`).
+    struct ReadChunks([Vec<Vec<u32>>; 3]);
+
+    impl ReadChunks {
+        fn of(plan: &LoopProgramV4, chunks: &[BucketChunk]) -> Self {
+            let mut out = [
+                vec![Vec::new(); plan.factors.len()],
+                vec![Vec::new(); plan.vertex_instances.len()],
+                vec![Vec::new(); plan.currents.len()],
+            ];
+            for (k, chunk) in chunks.iter().enumerate() {
+                let reads = [
+                    &chunk.reads.factors,
+                    &chunk.reads.vertices,
+                    &chunk.reads.currents,
+                ];
+                for (store, ids) in out.iter_mut().zip(reads) {
+                    for &id in ids {
+                        store[id].push(k as u32);
+                    }
+                }
+            }
+            Self(out)
+        }
+
+        /// The first chunk after `k` reading input `id` of `store`
+        /// (`usize::MAX`: none).
+        fn next(&self, store: usize, id: usize, k: usize) -> usize {
+            let reads = &self.0[store][id];
+            let at = reads.partition_point(|&j| j as usize <= k);
+            reads.get(at).map_or(usize::MAX, |&j| j as usize)
+        }
+    }
+
     /// The schedule-M graph an evaluation runs: the plan's under schedule M
     /// (possibly empty: no certified family), none otherwise.
     fn merged_of(plan: &LoopProgramV4, schedule: Schedule) -> RusticolResult<Option<&Merged>> {
@@ -531,7 +597,9 @@ pub mod v2 {
             .collect()
     }
 
-    /// Dress every family of `chunk` on one chunk of lanes (schedule B).
+    /// Dress every family of `chunk` on one chunk of lanes (schedule B);
+    /// `bound`: the chunk's index, the bucket chunks' reads and the reals
+    /// the chunk inputs hold where they can (none: unbounded).
     fn dress_families<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
         chunk: &BucketChunk,
@@ -539,10 +607,24 @@ pub mod v2 {
         seeds: &crate::loop_v2::seeds::Seeds<T>,
         data: &LaneData<T, L>,
         report: &mut Report,
+        bound: Option<(usize, &ReadChunks, usize)>,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
         let families = &chunk.families;
         let start = Instant::now();
-        inputs.prepare(plan, data, &chunk.reads, &chunk.live);
+        match bound {
+            Some((k, reads, budget)) => {
+                let dropped = inputs.prepare_within(
+                    plan,
+                    data,
+                    &chunk.reads,
+                    &chunk.live,
+                    budget,
+                    |store, id| reads.next(store, id, k),
+                );
+                report.count(INPUTS_DROPPED, dropped as u64);
+            }
+            None => inputs.prepare(plan, data, &chunk.reads, &chunk.live),
+        }
         report.time("factors", start);
         report.peak(
             "chunk inputs (factors, vertex tensors, currents)",
@@ -599,8 +681,15 @@ pub mod v2 {
                         live: reads.clone(),
                         reads,
                     };
-                    let mut numerators =
-                        dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?;
+                    let mut numerators = dress_families(
+                        plan,
+                        &chunk,
+                        &mut inputs,
+                        &seeds,
+                        &data,
+                        &mut report,
+                        None,
+                    )?;
                     if let Some(merged) = merged {
                         let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
                         run_merged(plan, &parts, &mut inputs, &seeds, &data, |done| {
@@ -842,6 +931,8 @@ pub mod v2 {
         let merged = merged_of(plan, options.schedule)?;
         let b_families = b_families(plan, merged);
         let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families);
+        let read_chunks = ReadChunks::of(plan, &chunks_of_buckets);
+        let input_budget = options.input_budget / std::mem::size_of::<T>().max(1);
         let merged_parts = merged
             .map(|merged| parts(merged, options.part_chunks, plan))
             .unwrap_or_default();
@@ -892,9 +983,16 @@ pub mod v2 {
                 options,
                 sink: &mut sink,
             };
-            for part in &chunks_of_buckets {
-                let numerators =
-                    dress_families(plan, part, &mut inputs, &seeds, &data, &mut report)?;
+            for (k, part) in chunks_of_buckets.iter().enumerate() {
+                let numerators = dress_families(
+                    plan,
+                    part,
+                    &mut inputs,
+                    &seeds,
+                    &data,
+                    &mut report,
+                    Some((k, &read_chunks, input_budget)),
+                )?;
                 reduction.reduce(&numerators, &mut report)?;
             }
             if !merged_parts.is_empty() {

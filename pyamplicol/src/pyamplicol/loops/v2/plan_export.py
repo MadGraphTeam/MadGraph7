@@ -1428,11 +1428,29 @@ class NativeExecutor:
         key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
-            trees = (
-                self.exported.trees.executor_argument()
-                if self.inputs == "native" and arithmetic != "exact"
-                else None
+            # Another carrier or lane count shares the loaded plan, tree
+            # program and seed FFT of an executor built already
+            # (``V2Executor.derive``): each costs its own runtime only.
+            native_trees = self.inputs == "native" and arithmetic != "exact"
+            fourier = (
+                arithmetic != "exact"
+                and self.contraction != "direct"
+                and self.exported.fourier is not None
             )
+            for base in self._native.values():
+                if (base.has_trees or not native_trees) and (
+                    base.fourier is not None or not fourier
+                ):
+                    found = self._native[key] = base.derive(
+                        arithmetic,
+                        digits,
+                        lanes=lanes,
+                        threads=self.threads,
+                        trees=native_trees,
+                        fourier=fourier,
+                    )
+                    return found
+            trees = self.exported.trees.executor_argument() if native_trees else None
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
