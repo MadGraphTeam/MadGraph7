@@ -137,6 +137,60 @@ def _inputs(
     return points, formatted_scales
 
 
+# The native parameter program refuses a whole batch when a counterterm
+# coupling is not finite at one point's mu_R^2 in the lane's carrier
+# (``rusticol-core`` ``loop_v2/trees.rs``; e.g. mu_r2 = "1e-400" underflows in
+# binary64).
+_NONFINITE_COUNTERTERM = "a counterterm coupling's diagnostic is not finite"
+
+
+def isolate_scale_failures(
+    run: Callable[[list[int]], tuple[list[Any], dict[int, list[str]]]],
+    scales: Sequence[str],
+) -> tuple[list[Any], dict[int, list[str]]]:
+    """``run(indices)``, the per-point results and failures of the points
+    ``indices`` evaluated as one batch, for every point. If a counterterm
+    coupling is not finite at some mu_R^2 (``_NONFINITE_COUNTERTERM``), the
+    batch runs again per exact mu_R^2, and the points of a failing scale
+    fail alone with that reason, a numerical failure of their own (as the
+    Python reference path fails them, ``scalar_bindings.SourceBindingFailure``);
+    the other points keep their results."""
+
+    from fractions import Fraction
+
+    def scale_failure(error: ValueError) -> bool:
+        return _NONFINITE_COUNTERTERM in str(error)
+
+    try:
+        return run(list(range(len(scales))))
+    except ValueError as error:
+        if not scale_failure(error):
+            raise
+        first = error
+    parts: dict[Fraction, list[int]] = {}
+    for index, scale in enumerate(scales):
+        parts.setdefault(Fraction(scale), []).append(index)
+    results: list[Any] = [None] * len(scales)
+    failures: dict[int, list[str]] = {}
+    for indices in parts.values():
+        failure: ValueError | None = first if len(parts) == 1 else None
+        if failure is None:
+            try:
+                found, failed = run(indices)
+            except ValueError as error:
+                if not scale_failure(error):
+                    raise
+                failure = error
+            else:
+                for local, index in enumerate(indices):
+                    results[index] = found[local]
+                failures.update({indices[k]: reasons for k, reasons in failed.items()})
+                continue
+        reason = f"mu_r2 = {scales[indices[0]]}: {failure}"
+        failures.update({index: [reason] for index in indices})
+    return results, failures
+
+
 def _invoke(
     module: Any, operation: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> Any:
@@ -447,15 +501,24 @@ class V2ObservablesRuntime:
             # An empty batch is valid (as for ``evaluate``): no native call.
             return [], {}
         if self._executor == "native":
-            try:
-                return (
-                    self._native_columns(native_key).evaluate(
-                        points, scales, spin=list(spins), **options
-                    ),
-                    {},
-                )
-            except FailedPoints as failed:
-                return list(failed.results), dict(failed.failures)
+
+            def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
+                try:
+                    return (
+                        list(
+                            self._native_columns(native_key).evaluate(
+                                [points[i] for i in indices],
+                                [scales[i] for i in indices],
+                                spin=[spins[i] for i in indices],
+                                **options,
+                            )
+                        ),
+                        {},
+                    )
+                except FailedPoints as failed:
+                    return list(failed.results), dict(failed.failures)
+
+            return isolate_scale_failures(batch, scales)
         out: list[Any] = []
         failures: dict[int, list[str]] = {}
         for index, (point, scale, spin) in enumerate(
