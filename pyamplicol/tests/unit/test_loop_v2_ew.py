@@ -812,19 +812,21 @@ def test_scalar_predicates_of_numbers_are_decided(loop_sm_compiled_model):
     decided: the G_mu UFO's CMS switch at its real-mass value,
     if(equal(CMSParam = 0, 1), 1, 0), is zero, so a UFO-standard cond on it
     (loop_sm's) takes its branch without an assumption; an inexact one stays
-    undecided."""
+    undecided. The predicate heads come from the library, which declares them
+    with their evaluation functions: an attribute-less declaration in the
+    process-wide Symbolica registry would make every later library fail
+    ('redefined with new attributes')."""
 
     from symbolica import E
 
-    from pyamplicol._internal.physics.symbols import symbols
     from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
     from pyamplicol.loops.v2.ct_recursion import CoefficientLowering, decide_constant
     from pyamplicol.models.loading import load_compiled_model
 
-    choose = symbols.qualified("symbolica::if")
-    equal, less = (
-        symbols.qualified(f"pyamplicol_scalar_v1::{name}") for name in ("equal", "less")
-    )
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    library = ScalarFunctionLibrary(compiled.raw_loop_model)
+    choose = library.choose
+    equal, less = (library.predicates[name] for name in ("equal", "less"))
     off = choose(equal(E("0"), E("1")), E("1"), E("0"))
     on = choose(equal(E("1"), E("1")), E("1"), E("0"))
     assert [decide_constant(value) for value in (off, on, off * E("2*𝜋"))] == [
@@ -833,8 +835,7 @@ def test_scalar_predicates_of_numbers_are_decided(loop_sm_compiled_model):
         "zero",
     ]
     assert decide_constant(choose(less(E("𝜋"), E("4")), E("1"), E("0"))) == "undecided"
-    compiled = load_compiled_model(loop_sm_compiled_model)
-    cond = ScalarFunctionLibrary(compiled.raw_loop_model).helpers["cond"][0]
+    cond = library.helpers["cond"][0]
     lowering = CoefficientLowering(compiled, {})
     taken = lowering._resolve(cond(off, E("1"), E("2")))
     assert taken == E("1") and not lowering.assumptions
