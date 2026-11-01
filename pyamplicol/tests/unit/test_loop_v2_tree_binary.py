@@ -303,3 +303,21 @@ def test_component_metric_cache_equals_the_pairwise_oracle(slices, name):
     expected = _metric_oracle(slice_, components, trees.squared_orders)
     assert _component_metric(slice_, components, trees.squared_orders) == expected
     assert trees.program["born"]["metric"] == expected
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ["gg_gg_lc", "uux_ddxg"])
+def test_chunked_cell_section_is_the_one_table_section(slices, monkeypatch, name):
+    """The counterterm overlap cells formed in chunks of ket tensors, each on
+    a fresh engine, and joined (``_join_cell_sections``) are the one-table
+    section byte for byte."""
+
+    from pyamplicol.loops.v2 import native_trees
+
+    slice_ = slices(name)
+    literal = NativeExecutor(slice_, forward=False, inputs="native").exported.trees.ket_tensors
+    monkeypatch.setattr(native_trees, "_CELL_CHUNK", 10**9)
+    whole = native_trees._cell_section(slice_, literal)
+    for chunk in (1, 3, 7):
+        monkeypatch.setattr(native_trees, "_CELL_CHUNK", chunk)
+        assert native_trees._cell_section(slice_, literal) == whole, chunk

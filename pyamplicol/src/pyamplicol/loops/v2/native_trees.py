@@ -1551,13 +1551,21 @@ def _counterterm_program(
     )
 
 
+# Ket tensors per native cell table of ``_cell_section``: the engine keeps
+# every generic (structure, basis element) overlap it forms, about 1 kB a
+# cell (g g > 6g LC: 5,040 x ~14 k cells, +30 GB in one table, the export's
+# peak), so the cells are formed in chunks, each on a fresh engine, and the
+# chunks' sections joined (``_join_cell_sections``).
+_CELL_CHUNK = 256
+
+
 def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
     """The overlap cells of ``_counterterm_program`` as a binary cell
     section (``loop_v2::trees::binary::CellTable``): ``<b|t>`` of the literal
     Born basis with every literal ket tensor ``literal`` (the basis first),
-    formed natively in one table (``native_cells.NativeCells``, package C's
-    engine, as ``native_observables._Metrics`` forms a column's) and never
-    decoded to Python."""
+    formed natively (``native_cells.NativeCells``, package C's engine, as
+    ``native_observables._Metrics`` forms a column's) in chunks of
+    ``_CELL_CHUNK`` ket tensors, never decoded to Python."""
 
     from dataclasses import replace
 
@@ -1569,8 +1577,78 @@ def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
     basis = replace(
         slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
     )
-    table = NativeCells(basis).table([_single(tensor, legs) for tensor in literal])
-    return bytes(table.section())
+    kets = [_single(tensor, legs) for tensor in literal]
+    parts = [
+        bytes(NativeCells(basis).table(kets[start : start + _CELL_CHUNK]).section())
+        for start in range(0, len(kets), _CELL_CHUNK)
+    ]
+    return parts[0] if len(parts) == 1 else _join_cell_sections(parts)
+
+
+def _join_cell_sections(parts: Sequence[bytes]) -> bytes:
+    """The cell section of the concatenated rows of cell sections on one
+    basis (``CellTable``'s layout: u32 version, u64 basis, u64 tensors, u64
+    distinct cells each a u32 count of (i32 power, text re, text im), then
+    the ids column): the distinct cells renumbered in first-seen order over
+    the joined rows, as one table's section numbers them, so the result is
+    that section byte for byte."""
+
+    import struct
+
+    import numpy as np
+
+    def text(data: bytes, at: int) -> tuple[bytes, int]:
+        (length,) = struct.unpack_from("<I", data, at)
+        return data[at + 4 : at + 4 + length], at + 4 + length
+
+    version = basis = None
+    tensors = 0
+    index: dict[bytes, int] = {}
+    cells: list[bytes] = []
+    ids = []
+    for data in parts:
+        part_version, part_basis, part_tensors, count = struct.unpack_from("<IQQQ", data, 0)
+        at = 28
+        if version is None:
+            version, basis = part_version, part_basis
+        elif (part_version, part_basis) != (version, basis):
+            raise ValueError("cell sections of different bases or versions")
+        local = []
+        for _ in range(count):
+            start = at
+            (entries,) = struct.unpack_from("<I", data, at)
+            at += 4
+            for _ in range(entries):
+                at += 4
+                _re, at = text(data, at)
+                _im, at = text(data, at)
+            cell = data[start:at]
+            found = index.get(cell)
+            if found is None:
+                found = index[cell] = len(cells)
+                cells.append(cell)
+            local.append(found)
+        width = data[at]
+        (length,) = struct.unpack_from("<Q", data, at + 1)
+        dtype = "<u4" if width == 4 else "<u8"
+        column = np.frombuffer(data, dtype=dtype, count=length, offset=at + 9)
+        if at + 9 + length * width != len(data):
+            raise ValueError("trailing bytes in a cell section")
+        ids.append(np.asarray(local, dtype=np.uint64)[column])
+        tensors += part_tensors
+    # First-seen order over the joined ids: renumber by first occurrence.
+    joined = np.concatenate(ids) if ids else np.zeros(0, dtype=np.uint64)
+    _unique, first = np.unique(joined, return_index=True)
+    order = np.argsort(first, kind="stable")
+    rank = np.empty(len(cells), dtype=np.uint64)
+    rank[_unique[order]] = np.arange(len(order), dtype=np.uint64)
+    kept = [cells[int(i)] for i in _unique[order]]
+    renumbered = rank[joined] if len(joined) else joined
+    narrow = len(kept) <= 0xFFFFFFFF and (renumbered.max(initial=0) <= 0xFFFFFFFF)
+    out = [struct.pack("<IQQQ", version, basis, tensors, len(kept)), *kept]
+    out.append(struct.pack("<BQ", 4 if narrow else 8, len(renumbered)))
+    out.append(renumbered.astype("<u4" if narrow else "<u8").tobytes())
+    return b"".join(out)
 
 
 @dataclass(frozen=True)
