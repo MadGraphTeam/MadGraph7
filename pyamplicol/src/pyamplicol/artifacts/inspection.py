@@ -3194,9 +3194,30 @@ def _loop_process_inspection(
         computed_color_components=1,
         helicity_coverage="complete",
         color_coverage="complete",
-        aliases=(),
+        aliases=_loop_aliases(process, process_id),
         execution_mode="loop_recurrence",
         loop=loop,
+    )
+
+
+def _loop_aliases(
+    process: Mapping[str, object], process_id: str
+) -> tuple[ArtifactAliasInspection, ...]:
+    """A plan v4 process's published permutation aliases (M-FINAL MF-MAP)."""
+
+    return tuple(
+        ArtifactAliasInspection(
+            id=str(alias["id"]),
+            expression=str(alias["expression"]),
+            representative_id=process_id,
+            external_pdgs=tuple(cast(int, value) for value in alias["external_pdgs"]),
+        )
+        for alias in (
+            _mapping(raw, f"process {process_id}.aliases[{index}]")
+            for index, raw in enumerate(
+                _sequence(process.get("aliases"), f"process {process_id}.aliases")
+            )
+        )
     )
 
 

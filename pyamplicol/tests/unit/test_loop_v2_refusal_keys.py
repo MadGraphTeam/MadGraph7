@@ -134,7 +134,6 @@ def _aliases():
 CONFIGURATION = {
     "fft-basis-trace": {"colour": 'contraction = "auto"\nfft_basis = "trace"'},
     "colour-selectors": {"process": "max_color_sectors = 1"},
-    "process-aliases": {"aliases": True},
     "process-group-analysis": {"process": 'analyze_process_groups = "numerical"'},
     "direct-r2": {"loop": 'r2_strategy = "direct"'},
     "relation-discovery": {

@@ -998,9 +998,25 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
 
 
 def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]:
-    """The selected process record and, for a flavour member served by a
-    representative (``process-groups.json``, basis ``exact-loop-flavor``),
-    its group member (else ``None``)."""
+    """The selected stored process record and, for a process it serves
+    through a leg mapping (``mapping``: a permutation alias or a process-group
+    member), that process as a ``GroupMember`` (its id, expression, PDGs and
+    representative-to-public leg permutation; else ``None``).
+
+    The precedence is the artifact selector's (rusticol-core
+    ``select_process_with_groups``): a stable process id, an alias id, a
+    stored expression, an alias expression, the unique stored expression
+    equal up to a permutation within each side (the least displaced among
+    several), then a process-group member (basis ``exact-loop-flavor``, a
+    relation proved exactly at generation): its id, its expression, the
+    unique permutation of it within each side. Expressions compare
+    whitespace-normalised, exactly and then letter-case-insensitively."""
+
+    from dataclasses import replace
+
+    from pyamplicol.artifacts.process_groups import read_process_groups
+
+    from .mapping import permuted_expression, side_permutation
 
     records = cast(tuple[Mapping[str, Any], ...], manifest.processes)
     if process is None:
@@ -1015,9 +1031,9 @@ def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]
     for record in records:
         if record["id"] == process:
             return record, None
-    from pyamplicol.artifacts.process_groups import read_process_groups
-
-    groups = read_process_groups(manifest.root)
+        for alias in record.get("aliases", ()):
+            if alias["id"] == process:
+                return record, _alias_member(record, alias)
     # The public spelling rule of requests (processes.model.
     # resolve_model_particle_name): the exact spelling first, then a unique
     # letter-case-insensitive match, as the tree artifacts' selector compares
@@ -1039,18 +1055,146 @@ def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]
             )
         if matches:
             return matches[0], None
-        for representative, group in (groups.groups if groups else {}).items():
-            for member in group.members:
-                if member.process_id != representative and (
-                    member.process_id == process
-                    or _selector_text(member.expression, fold=fold) == wanted
-                ):
-                    if str(member.basis) != "exact-loop-flavor":
-                        break
-                    for record in records:
-                        if record["id"] == representative:
-                            return record, member
+        aliases = [
+            (record, alias)
+            for record in records
+            for alias in record.get("aliases", ())
+            if _selector_text(str(alias["expression"]), fold=fold) == wanted
+        ]
+        if len(aliases) > 1:
+            choices = ", ".join(sorted(str(alias["id"]) for _r, alias in aliases))
+            raise EvaluationError(
+                f"process expression {process!r} is ambiguous; select one of "
+                f"these alias ids: {choices}"
+            )
+        if aliases:
+            return aliases[0][0], _alias_member(*aliases[0])
+    permuted = [
+        (record, permutation)
+        for record in records
+        if (permutation := side_permutation(str(record["expression"]), process))
+        is not None
+    ]
+    if len(permuted) > 1:
+        # As the artifact selector: the representative that already agrees
+        # with the requested order in the most slots.
+        least = min(_displacement(permutation) for _r, permutation in permuted)
+        permuted = [item for item in permuted if _displacement(item[1]) == least]
+    if len(permuted) > 1:
+        choices = ", ".join(sorted(str(record["id"]) for record, _p in permuted))
+        raise EvaluationError(
+            f"process expression {process!r} is permutation-ambiguous; select "
+            f"one of these stable ids: {choices}"
+        )
+    if permuted:
+        return permuted[0][0], _permuted_member(*permuted[0])
+    groups = read_process_groups(manifest.root)
+    members = [
+        (representative, member)
+        for representative, group in (groups.groups if groups else {}).items()
+        for member in group.members
+        if member.process_id != representative and not member.generated
+    ]
+    for fold in (None, False, True):
+        for representative, member in members:
+            if (
+                member.process_id == process
+                if fold is None
+                else _selector_text(member.expression, fold=fold)
+                == _selector_text(process, fold=fold)
+            ):
+                return _group_record(records, representative, member, process)
+    for representative, member in members:
+        permutation = side_permutation(member.expression, process)
+        if permutation is not None:
+            # Representative leg r -> member leg -> public leg.
+            composed = replace(
+                member,
+                expression=permuted_expression(member.expression, permutation),
+                pdgs=_permuted(member.pdgs, permutation),
+                permutation=tuple(permutation[m] for m in member.permutation),
+            )
+            return _group_record(records, representative, composed, process)
     raise EvaluationError(f"artifact has no process {process!r}")
+
+
+def _group_record(
+    records: Sequence[Mapping[str, Any]], representative: str, member: Any, process: str
+) -> tuple[Mapping[str, Any], Any]:
+    """The stored representative of a process-group member a loop artifact
+    serves: a relation proved exactly at generation (basis
+    ``exact-loop-flavor``, factor 1, no charge conjugation). A relation of
+    any other basis (a numerical process-group analysis) is refused."""
+
+    if (
+        str(member.basis) != "exact-loop-flavor"
+        or member.factor != 1
+        or (member.conjugated)
+    ):
+        raise EvaluationError(
+            f"process {process!r} is a process-group member of basis "
+            f"{str(member.basis)!r} (factor {member.factor}"
+            + (", charge-conjugated" if member.conjugated else "")
+            + "); a loop artifact serves exact species-substitution members "
+            "(basis 'exact-loop-flavor', process.flavor_blind) only, never a "
+            "numerical process-group relation; generate the process itself"
+        )
+    for record in records:
+        if record["id"] == representative:
+            return record, member
+    raise ArtifactError(
+        f"process-group representative {representative!r} is not stored"
+    )
+
+
+def _alias_member(record: Mapping[str, Any], alias: Mapping[str, Any]) -> Any:
+    """A stored process's permutation alias (its manifest alias record) as a
+    group member of basis identity."""
+
+    from pyamplicol.generation.process_grouping import GroupMember
+
+    expression = str(alias["expression"])
+    return GroupMember(
+        process_id=str(alias["id"]),
+        expression=expression,
+        pdgs=tuple(int(pdg) for pdg in alias["external_pdgs"]),
+        initial_count=len(expression.split(">")[0].split()),
+        permutation=tuple(int(leg) for leg in alias["external_permutation"]),
+        generated=False,
+    )
+
+
+def _permuted_member(record: Mapping[str, Any], permutation: Sequence[int]) -> Any:
+    """A stored process in another order within each side: no member for the
+    identity, else a group member of basis identity that keeps the stored
+    process's id (as the artifact selector's inferred permutation)."""
+
+    from pyamplicol.generation.process_grouping import GroupMember
+
+    from .mapping import permuted_expression
+
+    if tuple(permutation) == tuple(range(len(permutation))):
+        return None
+    expression = permuted_expression(str(record["expression"]), permutation)
+    return GroupMember(
+        process_id=str(record["id"]),
+        expression=expression,
+        pdgs=_permuted(record["external_pdgs"], permutation),
+        initial_count=len(expression.split(">")[0].split()),
+        permutation=tuple(permutation),
+        generated=False,
+    )
+
+
+def _permuted(values: Sequence[Any], permutation: Sequence[int]) -> tuple[int, ...]:
+    out = [0] * len(values)
+    for representative, public in enumerate(permutation):
+        out[public] = int(values[representative])
+    return tuple(out)
+
+
+def _displacement(permutation: Sequence[int]) -> int:
+    return sum(1 for index, image in enumerate(permutation) if index != image)
 
 
 def _selector_text(expression: str, *, fold: bool) -> str:
@@ -1097,11 +1241,12 @@ def _precision_bits(carrier: str, digits: int | None) -> int:
 class V2VirtualRuntime:
     """Runtime of one v2 virtual process (the public ``Runtime`` backend).
 
-    ``process`` selects a process record or a flavour member that the
-    artifact serves through its representative (``process-groups.json``):
-    the member's momenta, colour histories, spin legs and helicity rows are
-    read on the representative (generation proved the substitution,
-    ``observables.admit_member``; ``_stored_member``).
+    ``process`` selects a process record or a process the artifact serves
+    through a stored representative (``mapping``: a permutation alias, a
+    side-permuted expression or a process-group member of
+    ``process-groups.json``): its momenta, colour histories, spin legs and
+    helicity rows are read on the representative (generation proved a
+    species substitution, ``observables.admit_member``; ``_stored_member``).
     """
 
     contribution_kind = "virtual"
@@ -1171,11 +1316,11 @@ class V2VirtualRuntime:
             )
         # The stored native program evaluates every point in every pole
         # selection (with the stored companion of the certified-scaleless
-        # families): no slice is regenerated (WP3.1 I6). A flavour member is
-        # an identity-port member of its representative, proved at generation
-        # (``process-groups.json``); correlated and resolved calls run the
-        # stored observable columns (``native_observables``). Nothing of a
-        # loaded process regenerates (REQUIREMENTS_ADDENDUM G).
+        # families): no slice is regenerated (WP3.1 I6). A mapped process is
+        # evaluated by its representative at permuted momenta (``mapping``);
+        # correlated and resolved calls run the stored observable columns
+        # (``native_observables``). Nothing of a loaded process regenerates
+        # (REQUIREMENTS_ADDENDUM G).
         runtime = root / "processes" / process_id / str(execution["runtime_path"])
         self._native_process = read_native_process(
             runtime,
@@ -1260,6 +1405,11 @@ class V2VirtualRuntime:
                     () if correlators is None else correlators.color_correlations,
                     self._native,
                 )
+                if self._member is not None and self._member.alias:
+                    from .mapping import MappedObservables
+
+                    # Histories and spin classes on the permuted labels.
+                    observables = MappedObservables(observables, self._member)
                 runtime = V2ObservablesRuntime(
                     observables,
                     member=self._member,
@@ -1291,7 +1441,10 @@ class V2VirtualRuntime:
 
     @property
     def external_permutation(self) -> tuple[int, ...]:
-        return tuple(range(self.external_count))
+        member = self._group_member
+        if member is None:
+            return tuple(range(self.external_count))
+        return tuple(int(leg) for leg in member.permutation)
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -1347,7 +1500,7 @@ class V2VirtualRuntime:
             ),
             helicities=tuple(
                 HelicityConfiguration(f"h{i}", i, tuple(h), True, False, f"h{i}", 1.0)
-                for i, h in enumerate(self._physics["helicities"])
+                for i, h in enumerate(self._helicity_rows())
             ),
             color_flows=(),
             contracted_color_components=()
@@ -1367,6 +1520,16 @@ class V2VirtualRuntime:
             selector_capabilities=("helicity", "color_flow") if anchors else (),
         )
 
+    def _helicity_rows(self) -> list[tuple[int, ...]]:
+        """The stored helicity rows, on a mapped process's legs in its own
+        sorted order (as its resolved rows, ``V2ObservablesRuntime``)."""
+
+        rows = [tuple(int(h) for h in row) for row in self._physics["helicities"]]
+        if self._member is None or not self._member.alias:
+            return rows
+        legs = self._member.legs
+        return sorted(tuple(row[leg] for leg in legs) for row in rows)
+
     def _flows(self) -> tuple[Any, ...]:
         """The stored leading-colour flows (none below leading colour)."""
 
@@ -1382,6 +1545,11 @@ class V2VirtualRuntime:
                     "artifact_id": self.artifact_id,
                     "process_id": self._public_id,
                     "representative_process_id": self._process_id,
+                    **(
+                        {"external_permutation": list(self.external_permutation)}
+                        if self._group_member is not None
+                        else {}
+                    ),
                     "process": self._expression,
                     "engine": ENGINE,
                     **self._metadata,
@@ -1849,20 +2017,17 @@ class V2VirtualRuntime:
 
 
 def _stored_member(group_member: Any, representative: str) -> Any:
-    """The identity-port flavour member of a stored process group
-    (``process-groups.json``, basis ``exact-loop-flavor``): generation proved
-    the species substitution on the representative (``observables.
-    admit_member``, ``loop_service._v2_member``) and lists only identity-port
-    members, so a load reads it without regenerating the representative."""
+    """The mapped process (``mapping``) of a selected alias, side-permuted
+    expression or process-group member (``_select``) as a ``FlavourMember``
+    of its stored representative: ``legs`` inverts the group member's
+    representative-to-public permutation. A species substitution was proved
+    on the representative at generation (``observables.admit_member``,
+    ``loop_service._v2_member``), so a load reads it without regenerating."""
 
+    from .mapping import inverse
     from .observables import FlavourMember
 
-    legs = tuple(int(leg) for leg in group_member.permutation)
-    if legs != tuple(range(len(legs))):
-        raise ArtifactError(
-            f"flavour member {group_member.process_id!r} is not an identity-port "
-            "member of its representative"
-        )
+    legs = inverse(tuple(int(leg) for leg in group_member.permutation))
     return FlavourMember(str(group_member.expression), representative, legs, {})
 
 
