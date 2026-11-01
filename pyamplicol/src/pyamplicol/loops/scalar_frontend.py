@@ -92,10 +92,13 @@ def scalar_predicates() -> dict[str, Any]:
 
         names = [f"pyamplicol_scalar_v1::{name}" for name in _PREDICATE_NAMES]
         defined = Expression.get_all_symbol_names()
-        fresh = not set(names) & set(defined)
-        if fresh:
-            for k in range(-len(defined) % _PREDICATE_BLOCK):
-                symbols.qualified(f"pyamplicol_scalar_v1::pad{k}")
+        if not set(names) & set(defined):
+            padding = -len(defined) % _PREDICATE_BLOCK
+            if padding:
+                symbols.qualified(
+                    *(f"pyamplicol_scalar_v1::pad{k}" for k in range(padding)),
+                    tags=[],
+                )
             if len(Expression.get_all_symbol_names()) % _PREDICATE_BLOCK:
                 raise RuntimeError(
                     "the scalar predicates could not be aligned to a block of "
@@ -105,7 +108,9 @@ def scalar_predicates() -> dict[str, Any]:
         _PREDICATES.update(
             (
                 name,
-                symbols.qualified(qualified, eval={"complex": _producer_predicate(name)}),
+                symbols.qualified(
+                    qualified, eval={"complex": _producer_predicate(name)}
+                ),
             )
             for name, qualified in zip(_PREDICATE_NAMES, names, strict=True)
         )
