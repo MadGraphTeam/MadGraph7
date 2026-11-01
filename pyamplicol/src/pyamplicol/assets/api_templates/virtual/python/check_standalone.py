@@ -11,7 +11,6 @@ from pathlib import Path
 
 from pyamplicol import Runtime
 from pyamplicol.api.errors import EvaluationError
-from pyamplicol.api.virtual_results import VirtualArithmeticSpec, VirtualStabilityPolicy
 from pyamplicol.cli.main import write_result
 
 
@@ -30,7 +29,6 @@ def main():
     parser.add_argument("--precision", type=int)
     parser.add_argument("--format", choices=("json", "human"), default="json")
     parser.add_argument("--parameters", help="exact model-parameter JSON file")
-    parser.add_argument("--stability", help="explicit verification/rescue policy JSON")
     args = parser.parse_args()
     lines = Path("API/validation_points.dat").read_text().splitlines()
     if not lines or lines[0] != "RUSTICOL_VALIDATION_POINTS_V1":
@@ -46,12 +44,6 @@ def main():
         points.append([fields[2 + 4 * i : 6 + 4 * i] for i in range(n)])
     if not points:
         parser.error("no validation points for the selected process")
-    policy = None
-    if args.stability:
-        raw = json.loads(Path(args.stability).read_text(), parse_float=str)
-        policy = VirtualStabilityPolicy(
-            tuple(VirtualArithmeticSpec(**item) for item in raw.pop("higher")), **raw
-        )
     runtime = Runtime.load(
         ".",
         process=args.process,
@@ -61,7 +53,7 @@ def main():
     )
     operation = runtime.evaluate_resolved if args.resolved else runtime.evaluate
     try:
-        result = operation(points, mu_r2=args.mu_r2, stability=policy)
+        result = operation(points, mu_r2=args.mu_r2)
     except EvaluationError as error:
         # Failed calls have no numerical result; retain original lane identities
         # and verification attempts instead of printing placeholder coefficients.

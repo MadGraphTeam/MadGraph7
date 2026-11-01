@@ -71,7 +71,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Container, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal, localcontext
+from decimal import Decimal, getcontext, localcontext
 from fractions import Fraction
 from itertools import permutations, product
 from typing import Any, Literal, NamedTuple
@@ -335,6 +335,17 @@ class _Numbers:
 def _decimal_pi() -> Decimal:
     """pi at the active Decimal precision (Machin's formula)."""
 
+    return +_machin_pi(getcontext().prec)
+
+
+@functools.lru_cache(maxsize=16)
+def _machin_pi(digits: int) -> Decimal:
+    """pi with ``digits + 5`` working digits, once per precision. The series
+    stops at the first term that leaves the rounded sum unchanged (every
+    later term is smaller still): the same sum as running to Decimal
+    underflow, which took ~0.3 s per call (~7e5 terms) on every point of a
+    non-binary64 evaluation."""
+
     def arctan_inverse(x: int) -> Decimal:
         power = total = Decimal(1) / x
         x2, n, sign = x * x, 1, 1
@@ -343,14 +354,14 @@ def _decimal_pi() -> Decimal:
             n += 2
             sign = -sign
             term = power / n
-            if term == 0:
+            following = total + sign * term
+            if following == total:
                 return total
-            total += sign * term
+            total = following
 
     with localcontext() as context:
-        context.prec += 5
-        value = 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
-    return +value
+        context.prec = digits + 5
+        return 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
 
 
 def _decimal_power(base: Decimal, exponent: int) -> Decimal:

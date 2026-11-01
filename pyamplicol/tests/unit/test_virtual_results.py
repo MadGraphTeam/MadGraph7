@@ -209,19 +209,12 @@ def test_failure_channels_are_immutable_and_keep_physical_identity():
     assert replace(failure, helicity=None).helicity is None
 
 
-def test_stability_policy_requires_explicit_carriers_and_exact_tolerances():
-    from pyamplicol import VirtualArithmeticSpec, VirtualStabilityPolicy
+def test_arithmetic_specs_require_explicit_carriers():
+    from pyamplicol import VirtualArithmeticSpec
 
     spec = VirtualArithmeticSpec("arbitrary", 70)
-    policy = VirtualStabilityPolicy([spec], "1e-400", "0")
-    assert policy.higher == (spec,) and policy.relative_tolerance == "1e-400"
     with pytest.raises(FrozenInstanceError):
-        policy.verify_successful = True
+        spec.precision = 80
     for args in (("double", 70), ("arbitrary", None), ("double-double", 33)):
         with pytest.raises(ValueError):
             VirtualArithmeticSpec(*args)
-    for tolerances in (("0", "0"), ("NaN", "0"), ("-1e-5", "0")):
-        with pytest.raises(ValueError):
-            VirtualStabilityPolicy((spec,), *tolerances)
-    with pytest.raises(TypeError, match="decimal strings"):
-        VirtualStabilityPolicy((spec,), 1e-8, "0")

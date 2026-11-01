@@ -29,10 +29,10 @@ from pyamplicol.api.virtual_results import (
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
     VirtualPoleParts,
+    VirtualRescuePolicy,
     VirtualScalar,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
-    VirtualStabilityPolicy,
     computes_poles,
     pole_selection,
     splits_poles,
@@ -188,13 +188,6 @@ def _rows(
     )
 
 
-_NO_RESCUE = (
-    "v2 loop runtimes return stability estimates (stability_checks) and leave "
-    "precision escalation to the caller; a VirtualStabilityPolicy rescue is "
-    "not available"
-)
-
-
 def v2_public_estimate(
     estimate: Any, with_poles: bool
 ) -> VirtualStabilityEstimate | None:
@@ -227,13 +220,15 @@ def v2_options(
     helicities: Sequence[str] | None = None,
     color_flows: Sequence[str] | None = None,
     r2_strategy: str | None = None,
-    stability: VirtualStabilityPolicy | None = None,
+    stability: VirtualRescuePolicy | None = None,
     poles: PoleSelection | str | None = None,
     stability_checks: VirtualStabilityChecks | None = None,
     on_failure: str = "raise",
 ) -> tuple[PoleSelection, VirtualStabilityChecks]:
     """Validate the public options a v2 virtual runtime does not forward
-    unchanged; returns (pole selection, stability checks)."""
+    unchanged; returns (pole selection, stability checks). A rescue policy
+    reaches this check only from the calls that take none (``evaluate``
+    runs it before, ``loops.v2.rescue``)."""
 
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
@@ -248,7 +243,9 @@ def v2_options(
         )
     v2_r2_strategy(r2_strategy)
     if stability is not None:
-        raise CompatibilityError(_NO_RESCUE)
+        from pyamplicol.loops.v2.rescue import RESCUE_SCOPE
+
+        raise CompatibilityError(RESCUE_SCOPE)
     selection = PoleSelection.ALL if poles is None else pole_selection(poles)
     checks = stability_checks or VirtualStabilityChecks()
     if not isinstance(checks, VirtualStabilityChecks):
@@ -693,13 +690,26 @@ class V2ObservablesRuntime:
         arithmetic: str | None = None,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
+        stability: VirtualRescuePolicy | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
         """The virtual of every point; at leading colour ``helicities`` and
         ``color_flows`` select Born helicity rows and colour flows with the
         tree engine's IDs and ordinals (``loops.v2.selection``): the sum of
-        their Born-anchored entries, Born included."""
+        their Born-anchored entries, Born included. ``stability`` runs a
+        rescue policy (``loops.v2.rescue``) over these evaluations."""
 
+        if stability is not None:
+            return self._rescued(
+                momenta,
+                stability,
+                mu_r2=mu_r2,
+                precision=precision,
+                arithmetic=arithmetic,
+                helicities=helicities,
+                color_flows=color_flows,
+                **options,
+            )
         if helicities or color_flows:
             return self._evaluate_selected(
                 momenta,
@@ -719,6 +729,52 @@ class V2ObservablesRuntime:
             _correlated=False,
             **options,
         )["born"]
+
+    def _rescued(
+        self,
+        momenta: Momenta,
+        stability: VirtualRescuePolicy,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None,
+        precision: int | None,
+        arithmetic: str | None,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        on_failure: Literal["raise", "return"] = "raise",
+        **options: Any,
+    ) -> VirtualEvaluation:
+        """``evaluate`` under a rescue policy: each level one ``evaluate``
+        of the points it receives, from their original exact inputs."""
+
+        from pyamplicol.loops.v2.rescue import rescue, rescue_policy
+
+        policy = cast(
+            VirtualRescuePolicy,
+            rescue_policy(
+                stability,
+                arithmetic=arithmetic,
+                precision=precision,
+                default_precision=self.default_precision,
+                stability_checks=options.pop("stability_checks", None),
+            ),
+        )
+        v2_options(on_failure=on_failure, **options)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+
+        def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
+            return self.evaluate(
+                [points[i] for i in indices],
+                mu_r2=[scales[i] for i in indices],
+                arithmetic=rung.arithmetic,
+                precision=rung.precision,
+                helicities=helicities,
+                color_flows=color_flows,
+                stability_checks=rung.checks,
+                on_failure="return",
+                **options,
+            )
+
+        return rescue(policy, len(points), level, on_failure=on_failure)
 
     def _refuse_member_selection(self) -> None:
         if self._member is not None:
