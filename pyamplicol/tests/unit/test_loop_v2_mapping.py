@@ -21,14 +21,20 @@ permutation applied in the wrong direction fails): ``u u~ > d~ g d`` and
 Each evaluates bitwise equal to its stored representative at the permuted
 momenta: the inclusive virtual, the declared colour histories read on its
 own labels and relabelled onto the representative's (correlation composed
-with the mapping), a spin source on a relabelled leg, and the resolved
-helicity rows. A declared history or spin class whose image the
-representative does not store is not served (typed refusal). One alias and
-one member also equal their own direct generation (tolerance), and the
-representative's plan is byte-identical to its generation alone (mappings do
-not touch a stored plan). A process-group relation that is not exact
-(numerical analysis) is refused at load; numerical analysis itself stays
-refused at generation (``test_loop_v2_refusal_keys``).
+with the mapping), a spin source on a relabelled leg (moved to another leg
+by the alias ``d~ d > g g``), and the resolved helicity rows. The declared
+histories and spin classes are closed under every permutation used, so the
+members fold; a declaration that is not closed generates the member on its
+own (serving all of it), while an explicit alias or an inferred side
+permutation does not serve a history or class whose image is not stored
+(typed refusal). One alias and one member also equal their own direct
+generation (tolerance), and the representative's plans are byte-identical to
+its generation alone (mappings do not touch a stored plan). At leading
+colour a permuted alias is anchored to the stored flows read on its legs:
+each resolved component equals the directly generated process's component
+of the same flow. A process-group relation that is not exact (numerical
+analysis) is refused at load; numerical analysis itself stays refused at
+generation (``test_loop_v2_refusal_keys``).
 """
 
 from __future__ import annotations
@@ -98,44 +104,48 @@ REQUESTS = (
 )
 # (alias, target, representative leg -> alias leg)
 ALIASES = (("ddx_swap", "ddx", (1, 0, 3, 2)), ("dg_out", "dg", (0, 1, 3, 2)))
-# Directed histories T_i (bra) . T_j (ket), i in {1, 2}, j in {3, 4}: closed
-# under the permutations used; "T12" is not closed under exchanging the
-# initial legs.
-HISTORIES = [
-    {
+
+
+def _history(i: int, j: int) -> dict:
+    """The directed history T_i (bra) . T_j (ket)."""
+
+    return {
         "id": f"T{i}{j}",
         "bra": [{"kind": "emit-gluon", "emitter": i, "emitted": -1}],
         "ket": [{"kind": "emit-gluon", "emitter": j, "emitted": -1}],
     }
-    for i, j in ((1, 3), (1, 4), (2, 3), (2, 4), (1, 2))
+
+
+# Closed under exchanging the initial legs and the final legs (T12 with
+# T21; the spin classes of both final legs).
+HISTORIES = [
+    _history(i, j) for i, j in ((1, 3), (1, 4), (2, 3), (2, 4), (1, 2), (2, 1))
 ]
-SPIN_CLASSES = [[4]]
+SPIN_CLASSES = [[3], [4]]
+# Not closed under exchanging the initial legs (T12 without T21; leg 4 alone).
+OPEN_HISTORIES = [_history(1, 3), _history(1, 2)]
+OPEN_SPIN_CLASSES = [[4]]
 # The three-cycle artifact: T1j closed under the cycles of the final legs.
 REQUESTS_5 = (("udg", "u u~ > d d~ g"), ("ssg", "u u~ > g s s~"))
 ALIASES_5 = (("udg_cycle", "udg", (0, 1, 4, 2, 3)),)
-HISTORIES_5 = [
-    {
-        "id": f"T1{j}",
-        "bra": [{"kind": "emit-gluon", "emitter": 1, "emitted": -1}],
-        "ket": [{"kind": "emit-gluon", "emitter": j, "emitted": -1}],
-    }
-    for j in (3, 4, 5)
-]
+HISTORIES_5 = [_history(1, j) for j in (3, 4, 5)]
 # mapped process -> (artifact, representative, representative leg -> public
-# leg, served histories, spin class (4,) served)
-SERVED = ("T13", "T14", "T23", "T24")
+# leg, served histories, spin source on leg 4 served)
+SERVED = tuple(history["id"] for history in HISTORIES)
 MAPPED = {
-    "ddx_swap": ("mapped", "ddx", (1, 0, 3, 2), SERVED, False),
-    "dg_out": ("mapped", "dg", (0, 1, 3, 2), (*SERVED, "T12"), False),
+    "ddx_swap": ("mapped", "ddx", (1, 0, 3, 2), SERVED, True),
+    "dg_out": ("mapped", "dg", (0, 1, 3, 2), SERVED, True),
     "sxs": ("mapped", "ddx", (1, 0, 2, 3), SERVED, True),
     "gs": ("mapped", "dg", (1, 0, 2, 3), SERVED, True),
-    "gd": ("mapped", "dg", (1, 0, 3, 2), SERVED, False),
+    "gd": ("mapped", "dg", (1, 0, 3, 2), SERVED, True),
     "udg_cycle": ("cycle", "udg", (0, 1, 4, 2, 3), ("T13", "T14", "T15"), False),
     "ssg": ("cycle", "udg", (0, 1, 3, 4, 2), ("T13", "T14", "T15"), False),
 }
 
 
-def _card(model: Path, output: Path, entries, process: str = "") -> str:
+def _card(
+    model: Path, output: Path, entries, process: str = "", accuracy: str = "full"
+) -> str:
     processes = ", ".join(
         f"{{expression={json.dumps(expression)}, name={json.dumps(name)}}}"
         for name, expression in entries
@@ -150,7 +160,7 @@ loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
 {process}
 [color]
-accuracy = "full"
+accuracy = "{accuracy}"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
@@ -174,13 +184,14 @@ def _generate(
     process: str = "",
     histories=HISTORIES,
     spin=SPIN_CLASSES,
+    accuracy="full",
 ):
     from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.correlators import CorrelatorConfig
 
     card = root / "card.toml"
-    card.write_text(_card(model, root / "artifact", entries, process))
+    card.write_text(_card(model, root / "artifact", entries, process, accuracy))
     Generator(resolve_config(card)).generate(
         ProcessSet(
             tuple(ProcessRequest.parse(e, name=n) for n, e in entries),
@@ -258,6 +269,20 @@ def _values(result):
     return _bits([result.born_values, result.values])
 
 
+def _number(value) -> complex:
+    return complex(getattr(value, "finite", value))
+
+
+def _close(left, right, label) -> None:
+    """Per point and sector, binary64 at 1e-12 of the largest coefficient."""
+
+    for a, b in zip(left, right, strict=True):
+        for x, y in zip(a, b, strict=True):
+            size = max(abs(_number(v)) for v in y)
+            for u, v in zip(x, y, strict=True):
+                assert abs(_number(u) - _number(v)) <= 1e-12 * size, label
+
+
 def test_artifact_publishes_aliases_and_permuted_members(mapped):
     """The representatives alone are stored; the aliases are manifest alias
     records and the members ``process-groups.json`` members of basis
@@ -332,6 +357,8 @@ def test_mapped_process_is_its_representative_at_permuted_momenta(request, name)
         right = stored.evaluate_correlated(q, color_correlation=image, mu_r2=scales)
         assert _values(left) == _values(right), (history, image)
     if spin:
+        # Public leg 4 is representative leg permutation.index(3) + 1 (leg 3
+        # for the alias d~ d > g g and the member g d > g d).
         image = permutation.index(3) + 1
         left = runtime.evaluate_correlated_many(
             points, {"s": CorrelatedRequest("born", SPIN)}, mu_r2=scales
@@ -355,20 +382,61 @@ def test_mapped_process_is_its_representative_at_permuted_momenta(request, name)
         )
 
 
-def test_unserved_correlations_are_refused(mapped):
-    """A declared history (or spin class) whose image the representative
-    does not store is not served: ``T12`` read on ``s~ s > g g`` is the
-    representative's T21; the class (4,) of ``d~ d > g g`` is its leg 3."""
+@pytest.fixture(scope="module")
+def open_(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """``d d~ > g g`` with the alias ``d~ d > g g`` and the flavour-blind
+    ``s~ s > g g``, declaring T13, T12 and the spin class (4,): not closed
+    under exchanging the initial legs."""
+
+    del loop_native
+    return _generate(
+        loop_sm_compiled_model,
+        tmp_path_factory.mktemp("open"),
+        (("ddx", "d d~ > g g"), ("sxs", "s~ s > g g")),
+        ALIASES[:1],
+        "flavor_blind = true",
+        OPEN_HISTORIES,
+        OPEN_SPIN_CLASSES,
+    )
+
+
+def test_open_declarations_keep_members_and_refuse_unserved(open_, direct):
+    """A flavour-blind member whose declared correlations are not closed
+    under its permutation is generated on its own and serves every declared
+    one (``T12`` of ``s~ s > g g`` would be the representative's T21). An
+    explicit alias or an inferred side permutation does not serve a history
+    or class whose image is not stored: typed refusals."""
 
     from pyamplicol.api.errors import CompatibilityError, EvaluationError
+    from pyamplicol.artifacts import load_manifest
     from pyamplicol.correlators import CorrelatedRequest
 
-    runtime = _load(mapped, "sxs")
-    with pytest.raises(CompatibilityError, match="T12"):
-        runtime.evaluate_correlated(POINTS, color_correlation="T12", mu_r2=SCALES)
-    alias = _load(mapped, "ddx_swap")
+    records = sorted(record["id"] for record in load_manifest(open_).processes)
+    assert records == ["ddx", "sxs"]
+    member = _load(open_, "sxs")
+    assert member.representative_process_key == "sxs"
+    assert [item.id for item in member.available_color_correlations()] == [
+        "born",
+        "T13",
+        "T12",
+    ]
+    left = member.evaluate_correlated(POINTS, color_correlation="T12", mu_r2=SCALES)
+    right = _load(direct, "sxs").evaluate_correlated(
+        POINTS, color_correlation="T12", mu_r2=SCALES
+    )
+    _close(left.values, right.values, "sxs T12")
+    member.evaluate_correlated_many(
+        POINTS, {"s": CorrelatedRequest("born", SPIN)}, mu_r2=SCALES
+    )
+    for name, permutation in (("ddx_swap", (1, 0, 3, 2)), ("s s~ > g g", (1, 0, 2, 3))):
+        relabelled = _load(open_, name)
+        assert relabelled.external_permutation == permutation
+        with pytest.raises(CompatibilityError, match="T12"):
+            relabelled.evaluate_correlated(
+                POINTS, color_correlation="T12", mu_r2=SCALES
+            )
     with pytest.raises(EvaluationError, match="not declared"):
-        alias.evaluate_correlated_many(
+        _load(open_, "ddx_swap").evaluate_correlated_many(
             POINTS, {"s": CorrelatedRequest("born", SPIN)}, mu_r2=SCALES
         )
 
@@ -445,31 +513,87 @@ def direct(loop_sm_compiled_model, loop_native, tmp_path_factory):
 
 def test_mappings_equal_direct_generation(mapped, direct):
     """The alias ``d~ d > g g`` and the member ``s~ s > g g`` equal their own
-    generations (inclusive and a composed history, binary64 at 1e-12 of
-    each sector's largest coefficient), and the representative's stored plan
-    and native record are byte-identical to its generation alone."""
+    generations (inclusive and composed histories, T12 moved onto the
+    representative's T21; binary64 at 1e-12 of each sector's largest
+    coefficient), and the representative's stored plans are byte-identical
+    to its generation alone (the PACBIN's plan members; its SymJIT parameter
+    plane is not deterministic between runs, design WP3.2)."""
+
+    from pyamplicol.loops.v2.artifact import SCALELESS_PLAN_MEMBER, read_plan
 
     for name, own in (("ddx_swap", "dxd"), ("sxs", "sxs")):
-        for history in ("born", "T13", "T24"):
+        for history in ("born", "T13", "T24", "T12"):
             left = _load(mapped, name).evaluate_correlated(
                 POINTS, color_correlation=history, mu_r2=SCALES
             )
             right = _load(direct, own).evaluate_correlated(
                 POINTS, color_correlation=history, mu_r2=SCALES
             )
-            for a, b in zip(left.values, right.values, strict=True):
-                for x, y in zip(a, b, strict=True):
-                    size = max(abs(complex(v)) for v in y)
-                    for u, v in zip(x, y, strict=True):
-                        assert abs(complex(u) - complex(v)) <= 1e-12 * size, (
-                            name,
-                            history,
-                        )
+            _close(left.values, right.values, (name, history))
     left, right = _load(mapped, "ddx").inspect(), _load(direct, "ddx").inspect()
     assert left["plan_sha256"] == right["plan_sha256"]
     assert left["scaleless_plan_sha256"] == right["scaleless_plan_sha256"]
-    member = "processes/ddx/loop-runtime.pacbin"
-    assert (mapped / member).read_bytes() == (direct / member).read_bytes()
+    first, second = (
+        root / "processes/ddx/loop-runtime.pacbin" for root in (mapped, direct)
+    )
+    assert read_plan(first) == read_plan(second)
+    assert read_plan(first, SCALELESS_PLAN_MEMBER) == read_plan(
+        second, SCALELESS_PLAN_MEMBER
+    )
+
+
+@pytest.fixture(scope="module")
+def leading(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """Leading colour: ``d g > d g`` with the alias ``d g > g d``, and
+    ``d g > g d`` generated on its own (no ``flavor_blind``)."""
+
+    del loop_native
+    return _generate(
+        loop_sm_compiled_model,
+        tmp_path_factory.mktemp("leading"),
+        (("dg", "d g > d g"), ("dgd", "d g > g d")),
+        ALIASES[1:],
+        histories=[],
+        spin=[],
+        accuracy="lc",
+    )
+
+
+def test_leading_colour_components_of_a_permuted_process(leading):
+    """At leading colour a permuted alias is anchored to the stored flows
+    read on its own legs: each resolved Born and virtual component equals
+    the directly generated process's component of the same flow (per
+    helicity row, binary64 at 1e-12); its selection capabilities are none
+    (selection of a mapped process is refused)."""
+
+    alias, own = _load(leading, "dg_out"), _load(leading, "dgd")
+    anchors = alias.physics.born_anchored_color_components
+    direct = {a.id: a for a in own.physics.born_anchored_color_components}
+    assert anchors and sorted(a.id for a in anchors) == sorted(direct)
+    assert alias.physics.selector_capabilities == ()
+    left = alias.evaluate_resolved(POINTS[:1], mu_r2=SCALES[:1])
+    right = own.evaluate_resolved(POINTS[:1], mu_r2=SCALES[:1])
+    rows = [tuple(h.values) for h in alias.physics.helicities]
+    own_rows = [tuple(h.values) for h in own.physics.helicities]
+    assert sorted(rows) == sorted(own_rows)
+
+    def column(result, anchor):
+        (basis,) = anchor.born_term_indices
+        return list(result.born_color_ids).index(f"basis-{basis}")
+
+    for anchor in anchors:
+        a, b = column(left, anchor), column(right, direct[anchor.id])
+        for h, row in enumerate(rows):
+            k = own_rows.index(row)
+            for values in ("born_values", "values"):
+                x = getattr(left, values)[0]
+                y = getattr(right, values)[0]
+                for sector_x, sector_y in zip(x, y, strict=True):
+                    size = max(abs(_number(v)) for v in sector_y[k]) or 1.0
+                    assert (
+                        abs(_number(sector_x[h][a]) - _number(sector_y[k][b]))
+                        <= 1e-12 * size
+                    ), (anchor.id, row, values)
 
 
 def test_double_double_through_the_mapping(mapped):

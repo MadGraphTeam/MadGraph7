@@ -1031,7 +1031,10 @@ def _v2_member(generated, request, expression):
     representative's retained source plan, a permutation within each side,
     or both), or None. The member's request must equal the representative's
     but for the process; a permuted member's leg-keyed request fields must
-    be invariant under its permutation (``_permutation_invariant``)."""
+    be invariant under its permutation (``_permutation_invariant``) and the
+    representative must store the image of every declared colour history and
+    spin class (``_correlations_closed``): otherwise the member is generated
+    on its own and serves every declared correlation."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.observables import admit_member
 
@@ -1053,10 +1056,27 @@ def _v2_member(generated, request, expression):
         if not (member.alias or member.species):
             # An identical request stays independent.
             continue
-        if member.alias and not _permutation_invariant(request, member.legs):
+        if member.alias and not (
+            _permutation_invariant(request, member.legs)
+            and _correlations_closed(process.observables, member)
+        ):
             continue
         return name, member
     return None
+
+
+def _correlations_closed(observables, member) -> bool:
+    """Whether the representative stores the image of every declared colour
+    history and spin class read on the member's labels (``loops.v2.mapping``
+    ``mapped_histories`` / ``mapped_spin_classes``), so that folding the
+    member loses none of its declared correlations."""
+    from pyamplicol.loops.v2.mapping import mapped_histories, mapped_spin_classes
+
+    histories = observables.histories
+    classes = observables.spin_classes
+    return len(mapped_histories(member, histories)) == len(histories) and len(
+        mapped_spin_classes(member, classes)
+    ) == len(classes)
 
 
 def _permutation_invariant(request, legs) -> bool:

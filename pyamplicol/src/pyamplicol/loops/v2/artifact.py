@@ -1459,6 +1459,8 @@ class V2VirtualRuntime:
     def physics(self) -> ProcessPhysics:
         accuracy = cast(Literal["lc", "nlc", "full"], self._metadata["color_accuracy"])
         member = self._group_member
+        # A mapped process's resolved components are the stored basis
+        # elements; it is anchored to the stored flows read on its own legs.
         anchors = (
             tuple(
                 BornAnchoredColorComponent(
@@ -1468,10 +1470,10 @@ class V2VirtualRuntime:
                     f"leading-colour flow {flow.word} (Born basis element "
                     f"{flow.basis})",
                 )
-                for index, flow in enumerate(self._flows())
+                for index, flow in enumerate(self._public_flows())
                 if flow.basis is not None
             )
-            if accuracy == "lc" and member is None
+            if accuracy == "lc"
             else ()
         )
         kind = "born-anchored-interference" if anchors else "contracted-color"
@@ -1526,7 +1528,11 @@ class V2VirtualRuntime:
             contribution_kind="virtual",
             reduction=PhysicsReduction(kind, ()),
             model_parameters=(),
-            selector_capabilities=("helicity", "color_flow") if anchors else (),
+            # Selection of a mapped process is refused (``_refuse_member_
+            # selection``).
+            selector_capabilities=("helicity", "color_flow")
+            if anchors and member is None
+            else (),
         )
 
     def _helicity_rows(self) -> list[tuple[int, ...]]:
@@ -1546,6 +1552,25 @@ class V2VirtualRuntime:
 
         record = self._native_process.observables.record
         return tuple(Flow.from_record(flow) for flow in record.get("color_flows", ()))
+
+    def _public_flows(self) -> tuple[Any, ...]:
+        """The stored leading-colour flows on the selected process's legs: a
+        permuted mapped process reads each word through its member legs
+        (representative label ``legs[i] + 1`` is its label ``i + 1``)."""
+
+        from dataclasses import replace
+
+        from .selection import flow_id
+
+        flows = self._flows()
+        if self._member is None or not self._member.alias:
+            return flows
+        public = {rep + 1: leg + 1 for leg, rep in enumerate(self._member.legs)}
+        out = []
+        for flow in flows:
+            word = tuple(public.get(label, label) for label in flow.word)
+            out.append(replace(flow, id=flow_id(word), word=word))
+        return tuple(out)
 
     def inspect(self) -> Mapping[str, object]:
         with self._lock:

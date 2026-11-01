@@ -313,19 +313,32 @@ be
 - both together, such as `s~ s > g g` of `d d~ > g g` or `u u~ > g s s~` of
   `u u~ > d d~ g`.
 
+A permuted process is folded only when the declared correlations are closed
+under its permutation: the representative must store the relabelled image of
+every declared colour history and spin class (for example all `T_i . T_j` of
+the permuted legs, or `T_1 . T_2` together with `T_2 . T_1` when the initial
+legs swap). Otherwise the process is generated on its own and serves every
+declared correlation, as without `--flavor-blind`.
+
 Such a member is recorded in `process-groups.json` with basis
 `exact-loop-flavor`, factor 1 and its permutation; every other process is
 generated on its own (a substitution the proof refuses, such as `u -> s`,
-whose charges differ, or a request with an explicit `ProcessAlias`). The
-member is evaluated by its representative at the permuted momenta, bitwise
-equal to the representative's own evaluation there, including correlations:
-a declared colour history or spin class is read on the member's legs and
-relabelled onto the representative's, and is served when the representative
-stores the relabelled one (a declaration closed under the permutation, such
-as all `T_i . T_j` for the permuted legs, serves all of them;
-`available_color_correlations()` lists the served histories). Explicit
-`ProcessAlias` records are published with their one-loop process and served
-the same way. The numerical analysis is refused for one-loop requests
+whose charges differ, a declaration not closed under the permutation, or a
+request with an explicit `ProcessAlias`). The member is evaluated by its
+representative at the permuted momenta, bitwise equal to the representative's
+own evaluation there, including correlations: a declared colour history or
+spin class is read on the member's legs and relabelled onto the
+representative's. Explicit `ProcessAlias` records are published with their
+one-loop process and served the same way, and so is an expression equal to a
+stored one up to a permutation within each side; for these explicit
+relabellings a declared history or spin class whose relabelled image the
+stored process does not store is not served (`available_color_correlations()`
+lists the served histories; a call for another one is refused). Helicity and
+colour-flow selection (`helicities=` / `color_flows=`) of a mapped process is
+refused: select on the stored process. At leading colour its resolved Born
+components are the stored process's basis elements, anchored to the stored
+flows relabelled onto its own legs (`physics.born_anchored_color_components`).
+The numerical analysis is refused for one-loop requests
 (`process-group-analysis`), and a loaded one-loop artifact refuses a
 process-group member of any other basis.
 
