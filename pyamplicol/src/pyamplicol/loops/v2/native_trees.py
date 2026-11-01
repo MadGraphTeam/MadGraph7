@@ -3085,26 +3085,39 @@ def _component_metric(
     degrees = slice_.degrees()["born"] if accuracy != "full" else {}
     index = {order: s for s, order in enumerate(squared_orders)}
     gram = slice_.basis.gram
+    # The projected value of a Gram cell depends only on the cell, the
+    # components' N_c powers and the squared order's degree: each distinct
+    # (cell, p + q, degree) is formed and formatted once (the Gram's cells
+    # are shared objects, ``native_cells._Decoder``; g g > 6g full colour:
+    # 25.4 M pairs). The output is the loop's below, entry for entry.
+    texts: dict[tuple[int, int, int | None], tuple[str, str] | None] = {}
+    squared_of: dict[tuple[Orders, Orders], Orders] = {}
     out = []
     for (b, left, p), j in components.items():
+        row = gram[b]
         for (b2, right, q), j2 in components.items():
-            squared = add_orders(left, right)
+            squared = squared_of.get((left, right))
+            if squared is None:
+                squared = squared_of[(left, right)] = add_orders(left, right)
             degree = degrees.get(squared)
-            value = _zero_colour()
-            for power, cell in gram[b][b2].items():
-                exponent = power + p + q
-                if kept(exponent, degree, accuracy):
-                    value = value + cell.scaled(Fraction(NC) ** exponent)
-            if value:
-                out.append(
-                    [
-                        index[squared],
-                        j,
-                        j2,
-                        _fraction_text(value.real),
-                        _fraction_text(value.imag),
-                    ]
+            cell_map = row[b2]
+            key = (id(cell_map), p + q, degree)
+            found = texts.get(key, False)
+            if found is False:
+                value = _zero_colour()
+                for power, cell in cell_map.items():
+                    exponent = power + p + q
+                    if kept(exponent, degree, accuracy):
+                        value = value + cell.scaled(Fraction(NC) ** exponent)
+                found = texts[key] = (
+                    (_fraction_text(value.real), _fraction_text(value.imag))
+                    if value
+                    else None
                 )
+                # The cell stays referenced by the Gram, so its id is not
+                # reused while ``texts`` lives.
+            if found is not None:
+                out.append([index[squared], j, j2, *found])
     return out
 
 

@@ -245,3 +245,51 @@ def test_container_and_sections_refuse_damage(loop_native):
     ):
         with pytest.raises(ValueError):
             native.tree_program_index(damaged)
+
+
+def _metric_oracle(slice_, components, squared_orders):
+    """``native_trees._component_metric`` before its cell cache (MF-8G-1):
+    every pair of Born components projected and formatted on its own."""
+
+    from fractions import Fraction
+
+    from pyamplicol.color.contraction_types import NC
+    from pyamplicol.loops.v2.colour import kept
+    from pyamplicol.loops.v2.families import add_orders
+    from pyamplicol.loops.v2.native_trees import _fraction_text, _zero_colour
+
+    accuracy = slice_.request.accuracy
+    degrees = slice_.degrees()["born"] if accuracy != "full" else {}
+    index = {order: s for s, order in enumerate(squared_orders)}
+    gram = slice_.basis.gram
+    out = []
+    for (b, left, p), j in components.items():
+        for (b2, right, q), j2 in components.items():
+            squared = add_orders(left, right)
+            degree = degrees.get(squared)
+            value = _zero_colour()
+            for power, cell in gram[b][b2].items():
+                exponent = power + p + q
+                if kept(exponent, degree, accuracy):
+                    value = value + cell.scaled(Fraction(NC) ** exponent)
+            if value:
+                out.append(
+                    [index[squared], j, j2, _fraction_text(value.real), _fraction_text(value.imag)]
+                )
+    return out
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ["gg_gg_lc", "uux_ddxg"])
+def test_component_metric_cache_equals_the_pairwise_oracle(slices, name):
+    """The Born metric's cell cache (``_component_metric``) gives the
+    pairwise loop's entries, in order."""
+
+    from pyamplicol.loops.v2.native_trees import _component_metric
+
+    slice_ = slices(name)
+    trees = NativeExecutor(slice_, forward=False, inputs="native").exported.trees
+    components = {key: j for j, key in enumerate(trees.components)}
+    expected = _metric_oracle(slice_, components, trees.squared_orders)
+    assert _component_metric(slice_, components, trees.squared_orders) == expected
+    assert trees.program["born"]["metric"] == expected
