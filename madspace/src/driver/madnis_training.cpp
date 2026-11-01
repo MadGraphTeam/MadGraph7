@@ -12,7 +12,8 @@ MadnisTraining::MadnisTraining(
     const std::vector<std::shared_ptr<Integrand>>& integrands,
     const std::optional<ChannelWeightNetwork>& cwnet,
     std::optional<std::uint64_t> seed,
-    std::size_t channel_index_offset
+    std::size_t channel_index_offset,
+    bool copy_optimizer_globals
 ) :
     _generator_context(generator_context),
     _optimizer_context(optimizer_context),
@@ -20,7 +21,8 @@ MadnisTraining::MadnisTraining(
     _channels(integrands.size()),
     _cwnet(cwnet),
     _seed(seed),
-    _channel_index_offset(channel_index_offset) {
+    _channel_index_offset(channel_index_offset),
+    _copy_optimizer_globals(copy_optimizer_globals) {
     for (std::size_t index = 0;
          auto [integrand, channel] : zip(integrands, _channels)) {
         channel.index = index;
@@ -56,9 +58,15 @@ MadnisTraining::MadnisTraining(
     build_runtimes_and_optimizer();
 }
 
+MadnisTraining::~MadnisTraining() {
+    // the jobs still running write into this object
+    if (_jobs_in_flight > 0) {
+        _results.discard(_jobs_in_flight);
+    }
+}
+
 void MadnisTraining::train_step(std::size_t batch_index) {
-    auto& gen_thread_pool = _generator_context->thread_pool();
-    _abort_check_function();
+    _abort_check();
     _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
     // delta-sigma modulation: accumulate the target fraction and spend one
@@ -83,10 +91,15 @@ void MadnisTraining::train_step(std::size_t batch_index) {
             training_batch = build_online_training_batch(channel_sizes);
             break;
         }
-        process_job_results(gen_thread_pool.wait_multiple());
+        process_job_results({wait_for_job()});
     }
     double learning_rate = _optimizer->learning_rate();
+    auto step_start = std::chrono::steady_clock::now();
     TensorVec results = _optimizer->step(training_batch);
+    _optimizer_ns.fetch_add(
+        std::chrono::nanoseconds(std::chrono::steady_clock::now() - step_start).count(),
+        std::memory_order_relaxed
+    );
     update_history(results, channel_sizes, learning_rate, used_buffered);
     if ((batch_index + 1) % _config.log_interval == 0) {
         _status_batches.push_back(batch_index + 1);
@@ -114,10 +127,18 @@ void MadnisTraining::train_step(std::size_t batch_index) {
     }
 }
 
+std::size_t MadnisTraining::wait_for_job() {
+    auto result = _results.wait(_abort_check);
+    --_jobs_in_flight;
+    if (result.exception) {
+        std::rethrow_exception(result.exception);
+    }
+    return result.id;
+}
+
 void MadnisTraining::process_all_jobs() {
-    std::vector<std::size_t> job_ids;
-    while ((job_ids = _generator_context->thread_pool().wait_multiple()).size() != 0) {
-        process_job_results(job_ids);
+    while (_jobs_in_flight > 0) {
+        process_job_results({wait_for_job()});
     }
 }
 
@@ -212,6 +233,18 @@ void MadnisTraining::build_runtimes_and_optimizer() {
             _config.compressed_channel_weight_count
         )
             .function();
+    if (!_optimizer) {
+        std::vector<std::string> global_names;
+        for (auto& [name, value] : madnis_func.globals()) {
+            global_names.push_back(name);
+        }
+        if (_cwnet) {
+            global_names.push_back(_cwnet->mask_name());
+        }
+        if (_copy_optimizer_globals) {
+            _optimizer_context->copy_globals_from(*_generator_context, global_names);
+        }
+    }
     if (_optimizer) {
         _optimizer->replace_function(madnis_func);
     } else {
@@ -227,6 +260,11 @@ void MadnisTraining::build_runtimes_and_optimizer() {
             _config.grad_clip_threshold,
             _config.adam_weight_decay
         );
+        // before freeze_cwnet takes the channel weight network out of them
+        _trained_globals = _optimizer->param_names();
+        if (_cwnet) {
+            _trained_globals.push_back(_cwnet->mask_name());
+        }
     }
     _generator_params =
         _generator_context->reallocate_globals_contiguously(_optimizer->param_names());
@@ -505,9 +543,11 @@ void MadnisTraining::start_single_job(
     // captured by value: reading _batch_index inside the job would make the
     // buffer content depend on thread scheduling
     bool store_buffer = _batch_index >= _config.buffer_skip_batches;
-    _generator_context->thread_pool().submit(
-        [this, channel_index, global_channel_index, batch_size, job_id, store_buffer,
-         &job]() {
+    ++_jobs_in_flight;
+    _results.submit(
+        _generator_context->thread_pool(),
+        job_id,
+        [this, channel_index, global_channel_index, batch_size, store_buffer, &job]() {
             auto& channel = _channels.at(channel_index);
             if (_seed) {
                 channel.generator_runtime->set_seed(DerivedSeed(
@@ -535,7 +575,6 @@ void MadnisTraining::start_single_job(
                 job.unweighted_samples.size = unw_samples.at(0).size(0);
                 job.unweighted_samples.channel_index = channel_index;
             }
-            return job_id;
         }
     );
 }
@@ -549,8 +588,11 @@ void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes)
     job.dispatch_seq = dispatch_seq;
     // see start_single_job
     bool store_buffer = _batch_index >= _config.buffer_skip_batches;
-    _generator_context->thread_pool().submit(
-        [this, batch_sizes, job_id, store_buffer, &job]() {
+    ++_jobs_in_flight;
+    _results.submit(
+        _generator_context->thread_pool(),
+        job_id,
+        [this, batch_sizes, store_buffer, &job]() {
             if (_seed) {
                 _multi_channel_generator->set_seed(DerivedSeed(
                     _seed,
@@ -575,7 +617,6 @@ void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes)
                 job.unweighted_samples.tensors = permute_tensors(unw_samples);
                 job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
             }
-            return job_id;
         }
     );
 }

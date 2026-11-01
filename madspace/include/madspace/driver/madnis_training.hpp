@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,7 @@
 #include "madspace/driver/format.hpp"
 #include "madspace/driver/logger.hpp"
 #include "madspace/driver/status_file.hpp"
+#include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace.hpp"
 
 namespace madspace {
@@ -116,6 +118,10 @@ public:
      *                              (which all share the same top-level seed)
      *                              get non-overlapping `DerivedSeed`
      *                              channel-index ranges.
+     * @param copy_optimizer_globals  Copy the globals the training reads from
+     *                              `generator_context` into
+     *                              `optimizer_context` first (for an
+     *                              optimizer context of its own).
      */
     MadnisTraining(
         ContextPtr generator_context,
@@ -124,8 +130,19 @@ public:
         const std::vector<std::shared_ptr<Integrand>>& integrands,
         const std::optional<ChannelWeightNetwork>& cwnet,
         std::optional<std::uint64_t> seed = std::nullopt,
-        std::size_t channel_index_offset = 0
+        std::size_t channel_index_offset = 0,
+        bool copy_optimizer_globals = false
     );
+    /// Waits for the sample-generation jobs still running.
+    ~MadnisTraining();
+    MadnisTraining(const MadnisTraining&) = delete;
+    MadnisTraining& operator=(const MadnisTraining&) = delete;
+    /// Replace the function called periodically during training to check for
+    /// a requested abort (by default the one of @ref set_abort_check_function).
+    /// It throws to abort; it is called on the thread running the training.
+    void set_abort_check(std::function<void(void)> func) {
+        _abort_check = std::move(func);
+    }
     /// The configuration passed to the constructor.
     const Config& config() const { return _config; }
     /// Run training batch `batch_index`: sample, optimize, and update the
@@ -145,6 +162,15 @@ public:
     std::size_t generated_event_count() const { return _generated_event_count; }
     /// Total number of samples currently held in the replay buffers.
     std::size_t buffer_event_count() const;
+    /// Names of the globals the training changes: the trained parameters and
+    /// the channel mask of the channel weight network.
+    const std::vector<std::string>& trained_globals() const {
+        return _trained_globals;
+    }
+    /// Total time spent in optimizer steps so far; can be read from any thread.
+    std::chrono::nanoseconds optimizer_time() const {
+        return std::chrono::nanoseconds(_optimizer_ns.load(std::memory_order_relaxed));
+    }
 
     /// Batch index of each status-history entry, appended every
     /// `config.log_interval` batches.
@@ -224,6 +250,7 @@ private:
     TensorVec build_online_training_batch(const std::vector<size_t>& counts);
     TensorVec build_buffered_training_batch(const std::vector<size_t>& counts);
     void process_job_results(const std::vector<std::size_t>& job_ids);
+    std::size_t wait_for_job();
     void process_all_jobs();
     void buffer_store(ChannelData& channel, SampleBatch& samples);
     void update_history(
@@ -279,6 +306,14 @@ private:
     std::size_t _multi_job_commit_cursor = 0;
     std::unordered_map<std::size_t, std::size_t> _multi_job_ready_job_ids;
     std::size_t _diverged_batch_count = 0;
+    bool _copy_optimizer_globals;
+    std::vector<std::string> _trained_globals;
+    std::function<void(void)> _abort_check = _abort_check_function;
+    std::atomic<std::int64_t> _optimizer_ns = 0;
+    // the sample-generation jobs post their results here, not to the thread pool
+    // of the generator context, which the trainings of other subprocesses share
+    ResultQueue _results;
+    std::size_t _jobs_in_flight = 0;
 };
 
 /**
