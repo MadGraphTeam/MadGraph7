@@ -16,8 +16,8 @@ particle or process name:
 
 A process has one initial particle (a 1 -> n decay, MG5_aMC's ``t > b w+``)
 or two (a 2 -> n scattering; ``processes.model.require_external_leg_counts``).
-Tree-level decays are served; one-loop decays are refused at the loop
-admission (``loops.v2.refusals`` key ``decay-process``, M-FINAL MF-DEC-2).
+Tree-level decays (M-FINAL MF-DEC-1) and one-loop decays (MF-DEC-2) are
+served.
 """
 
 from __future__ import annotations

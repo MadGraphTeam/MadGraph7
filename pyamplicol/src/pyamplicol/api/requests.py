@@ -391,7 +391,7 @@ class ProcessRequest:
 
         # MG5_aMC syntax ([virt=QCD], QED=2, $, /, decay chains, @N) is a
         # listed refusal (tree and loop alike). A 1 -> n decay ('t > b w+') is
-        # a process; the loop admission refuses its virtual (decay-process).
+        # a process, at tree level and at one loop.
         refuse_madloop_syntax(normalized)
         if ">" not in normalized:
             raise ValueError("process expression must contain '>'")
