@@ -875,6 +875,91 @@ def test_the_timing_runs_on_a_frozen_setup_heap():
     assert record["gc_frozen_objects"] == seen[0]
 
 
+def test_the_rotation_block_times_exact_rotated_copies_and_records_the_contraction():
+    """``--rotation-samples K --rotations R``: after the warm-up, one timed
+    batch of the K stream points after the warm-up's, each as R copies (copy 0
+    the point, copy r its ``default_rotation(r - 1)``); the record keeps each
+    sample's finite parts and spread and the seed contraction that ran."""
+
+    import types
+
+    from pyamplicol.loops.v2.plan_export import FFT_SEED_JOBS
+    from pyamplicol.loops.v2.stability import default_rotation
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    calls: list[tuple[list, list]] = []
+
+    def evaluate(points, scales, **options):
+        calls.append((points, scales))
+        executor.last_report = {
+            "seconds": {"dressing": 0.5},
+            "counts": {FFT_SEED_JOBS: 7},
+            "lanes": 16,
+            "threads": 1,
+            "reals_per_lane": {},
+        }
+        # Rotation invariant: |p1|^2 of the first final-state leg (exact).
+        out = []
+        for point in points:
+            value = float(sum(x * x for x in point[2][1:]))
+            out.append(
+                types.SimpleNamespace(
+                    born={"total": 2.0 * value},
+                    components={
+                        "virtual": {"total": types.SimpleNamespace(finite=value)}
+                    },
+                    colour_contraction="symmetric-group-fft",
+                )
+            )
+        return out
+
+    executor = types.SimpleNamespace(
+        evaluate=evaluate,
+        contraction="fft",
+        exported=types.SimpleNamespace(fourier="{}"),
+    )
+    run = pyamplicol_v2.Run.__new__(pyamplicol_v2.Run)
+    run.options = types.SimpleNamespace(
+        batches=[16],
+        warm_up=16,
+        schedule="B",
+        rotation_samples=4,
+        rotations=4,
+        json=None,
+    )
+    run.key = "gg_ggg"
+    run.stream = streams.load("gg_ggg")
+    run.parameters = {}
+    run.timers = pyamplicol_v2.Timers()
+    run.executor = executor
+    run.record = {}
+    run.timing()
+    assert [len(points) for points, _ in calls] == [16, 16]
+    points, scales = calls[1]
+    for k, index in enumerate(range(16, 20)):
+        point = streams.exact(run.stream, index)
+        copies = points[4 * k : 4 * k + 4]
+        assert copies[0] == point
+        for r in range(1, 4):
+            assert copies[r] == [list(m) for m in default_rotation(r - 1).apply(point)]
+            assert copies[r] != point
+        assert len(set(scales[4 * k : 4 * k + 4])) == 1
+    block = run.record["rotation_timing"]
+    assert block["stream_indices"] == [16, 17, 18, 19] and block["points"] == 16
+    assert [len(row["finite"]) for row in block["rows"]] == [4] * 4
+    assert block["max_relative_spread"] < 1e-15
+    assert block["colour_contraction"] == {
+        "policy": "fft",
+        "certified_fourier_record": True,
+        "evaluated": ["symmetric-group-fft"],
+        "fft_seed_jobs": 7,
+    }
+    assert list(run.record["batches"]) == ["16"]
+    assert sorted(run.record["batches"]["16"]["values"]) == ["16", "17", "18", "19"]
+    assert "skipped_batches" not in run.record
+
+
 def test_universal_double_pole_at_full_and_leading_colour():
     import math
 
