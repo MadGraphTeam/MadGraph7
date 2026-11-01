@@ -461,10 +461,10 @@ FOURIER_FREE = {
 
 def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
     """``CONTROL_BYTES``' digests of a stored process. The parameter
-    programs' plane applications (``*parameters.symjit``) are left out: their
-    SymJIT call tags are random (``SYMJIT_RANDOM_CALL_TAG``, strict xfail
-    ``test_symjit_plane_helper_functions``); their exact evaluators
-    (``*parameters.bin``) are in. ``fourier=False`` drops the seed Fourier
+    programs' plane applications (``*parameters.symjit``) are left out: the
+    pins were taken under SymJIT 2.27.3, whose call tags were random (since
+    2.28.1 they are deterministic, ``test_symjit_plane_helper_functions``);
+    their exact evaluators (``*parameters.bin``) are in. ``fourier=False`` drops the seed Fourier
     records from the native process record (``FOURIER_FREE``)."""
 
     import dataclasses
