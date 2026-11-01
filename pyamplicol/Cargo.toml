@@ -42,7 +42,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
 symbolica = { version = "=3.0.1", default-features = false, features = ["bincode", "integer-gmp", "float-mpfr", "native_code_generation"] }
-symjit = { version = "=2.27.3", default-features = false }
+symjit = { version = "=2.28.3", default-features = false }
 thiserror = "2.0"
 wide = "1.7"
 

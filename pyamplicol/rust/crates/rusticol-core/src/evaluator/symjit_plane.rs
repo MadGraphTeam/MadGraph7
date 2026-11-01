@@ -836,8 +836,11 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
 /// [`compile_symbolica_evaluator_to_plane_application_bytes`] of an inlined
 /// program of `shape` (inputs, outputs); `canonical`: with the cut
 /// arguments canonicalised ([`canonical_cut_row`]; production), else as
-/// SymJIT translates them (the tests' control). Either way the program's
-/// control flow is flattened ([`is_control_flow`]).
+/// SymJIT translates them (the tests' control). Jumps and labels are
+/// translated as they are: SymJIT 2.28.3 carries the fix of its
+/// common-subexpression elimination across branches (siravan/symjit#31,
+/// `upstream/symjit-cse-across-branches`), for which the translation used to
+/// drop them and evaluate every branch.
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -860,7 +863,7 @@ fn compile_inlined_program(
                     .append_constant(num_complex::Complex::new(value.re, value.im))
                     .map_err(|error| error.to_string())?;
             }
-            for row in program.rows.iter().filter(|row| !is_control_flow(row)) {
+            for row in &program.rows {
                 match canonical
                     .then(|| canonical_cut_row(&mut translator, row, program.temporaries))
                     .transpose()?
@@ -881,30 +884,6 @@ fn compile_inlined_program(
         ))
     })?;
     seal_generated_plane_application(application, layout)
-}
-
-/// Whether a row is a jump or a jump target (`IfElse`, `Goto`, `Label`),
-/// which the plane translation drops: every branch of a conditional is
-/// evaluated and its `Join` (a select, bitwise, so a branch's non-finite
-/// value cannot leak) picks the value. SymJIT's translator already reads the
-/// program as straight-line single-assignment code (each write a new value,
-/// each read the latest write in program order), so only the skipped rows
-/// change, and a branch's values reach nothing but its own rows and the
-/// `Join`. With the jumps, SymJIT's common-subexpression elimination
-/// (2.27.3 to 2.28.2, `Block::elimination_pass`) is wrong: it collects the
-/// subexpressions shared by the straight-line statements but rewrites every
-/// occurrence, those inside a branch too, and defines the shared value at
-/// its first occurrence, which can lie in a branch the inputs do not take;
-/// later reads then see an unset temporary (reproduced on a small program,
-/// `upstream/symjit-cse-across-branches`; found while localising CM01's
-/// run-time zero widths; M-SM MS-MASTERS).
-#[cfg(all(
-    feature = "symbolica-runtime",
-    any(test, feature = "python-generation-bridge")
-))]
-fn is_control_flow(row: &symbolica::evaluate::Instruction) -> bool {
-    use symbolica::evaluate::Instruction as I;
-    matches!(row, I::IfElse(..) | I::Goto(_) | I::Label(_))
 }
 
 /// The outputs of a binary64 Symbolica evaluator whose values at real inputs
