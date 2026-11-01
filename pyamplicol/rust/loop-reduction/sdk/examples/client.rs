@@ -33,8 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut momenta = point.repeat(3);
     let ids = [91, 4, 70];
     let inclusive =
-        runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], false, None, None)?;
-    let resolved = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], true, None, None)?;
+        runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], false, None)?;
+    let resolved = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6, 9e5, 1e6], true, None)?;
     assert_eq!(inclusive.successful_point_ids, ids);
     assert_eq!(resolved.requested_point_ids, ids);
     assert_eq!(inclusive.statuses, [PointStatus::Success; 3]);
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..16 {
         momenta[16 + i] = point[i] * 1e200;
     }
-    let partial = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6], true, None, None)?;
+    let partial = runtime.evaluate(&momenta, 3, Some(&ids), &[1e6], true, None)?;
     assert_eq!(partial.successful_point_ids, [91, 70]);
     assert_eq!(
         partial.statuses,
@@ -95,16 +95,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     assert_eq!(partial.shape.successful_points, 2);
     assert!(!partial.diagnostics_json.is_empty());
-    let policy = r#"{"higher":[{"arithmetic":"double-double","precision":null}],"relative_tolerance":"1e-8","absolute_tolerance":"1e-9","verify_successful":true}"#;
-    let verified = runtime.evaluate(&point, 1, Some(&[91]), &[1e6], true, None, Some(policy))?;
-    assert_eq!(verified.statuses, [PointStatus::Verified]);
-    let empty = runtime.evaluate(&[], 0, None, &[], true, None, None)?;
+    let empty = runtime.evaluate(&[], 0, None, &[], true, None)?;
     assert!(empty.born.is_empty() && empty.virtual_values.is_empty() && empty.statuses.is_empty());
     assert!(runtime
-        .evaluate(&point, 1, Some(&ids), &[1e6], false, None, None)
+        .evaluate(&point, 1, Some(&ids), &[1e6], false, None)
         .is_err());
     let error = runtime
-        .evaluate(&point, 1, None, &[0.], false, None, None)
+        .evaluate(&point, 1, None, &[0.], false, None)
         .err()
         .unwrap();
     assert!(!error.to_string().is_empty());
@@ -113,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(runtime);
     assert_eq!(inclusive.born.len(), 9); // owned values survive runtime destruction
     println!(
-        "native safe Rust mixed-order/resolved/failures/verification/lifetime controls passed"
+        "native safe Rust mixed-order/resolved/failures/lifetime controls passed"
     );
     Ok(())
 }

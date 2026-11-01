@@ -378,7 +378,7 @@ def _validate_archive_linkage(
     if virtual_header is not None:
         exports += _c_api_exports(virtual_header, "rusticol_virtual_abi_version")
         includes += '\n#include "rusticol_virtual.h"'
-        version_check += " && rusticol_virtual_abi_version() == 1u"
+        version_check += " && rusticol_virtual_abi_version() == 2u"
     entries = ",\n".join(f"    (rusticol_probe_fn){name}" for name in exports)
     source = f"""\
 #include <stdint.h>

@@ -17,7 +17,7 @@ static void close_value(double a,double b) {
 }
 int main(int argc,char **argv) {
   if(argc != 2) { fprintf(stderr,"usage: %s artifact\n",argv[0]); return 2; }
-  assert(rusticol_virtual_abi_version()==1);
+  assert(rusticol_virtual_abi_version()==2);
   rusticol_virtual_handle *runtime=NULL;
   check(rusticol_virtual_open(argv[1],"gg",NULL,"model",&runtime));
   rusticol_virtual_shape_info shape;
@@ -31,7 +31,7 @@ int main(int argc,char **argv) {
   const double p[16]={500,0,0,500,500,0,0,-500,500,300,0,400,500,-300,0,-400};
   double momenta[48]; for(int i=0;i<3;i++) memcpy(momenta+i*16,p,sizeof(p));
   uint64_t ids[3]={91,4,70}; double scales[3]={1e6,9e5,1e6};
-  rusticol_virtual_batch_request request={momenta,48,3,ids,scales,3,0,NULL,NULL};
+  rusticol_virtual_batch_request request={momenta,48,3,ids,scales,3,0,NULL};
   rusticol_virtual_result *inclusive=NULL,*resolved=NULL;
   check(rusticol_virtual_evaluate(runtime,&request,&inclusive));
   rusticol_virtual_result_shape_info info;
@@ -81,16 +81,8 @@ int main(int argc,char **argv) {
   assert(statuses[0]==RUSTICOL_VIRTUAL_SUCCESS && statuses[1]==RUSTICOL_VIRTUAL_FAILED && statuses[2]==RUSTICOL_VIRTUAL_SUCCESS);
   check(rusticol_virtual_result_free(partial));
   memcpy(momenta+16,p,sizeof(p));
-  request.point_count=1; request.momentum_count=16; request.scale_count=1;
-  request.verification_json="{\"higher\":[{\"arithmetic\":\"double-double\",\"precision\":null}],\"relative_tolerance\":\"1e-8\",\"absolute_tolerance\":\"1e-9\",\"verify_successful\":true}";
-  rusticol_virtual_result *verified=NULL;
-  check(rusticol_virtual_evaluate(runtime,&request,&verified));
-  check(rusticol_virtual_result_copy_statuses(verified,statuses,3));
-  assert(statuses[0]==RUSTICOL_VIRTUAL_VERIFIED);
-  check(rusticol_virtual_result_free(verified));
   request.point_count=0; request.momentum_count=0; request.scale_count=0;
   request.momenta=NULL; request.mu_r2=NULL; request.point_ids=NULL;
-  request.verification_json=NULL;
   rusticol_virtual_result *empty=NULL;
   check(rusticol_virtual_evaluate(runtime,&request,&empty));
   check(rusticol_virtual_result_shape(empty,&info));

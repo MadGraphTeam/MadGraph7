@@ -100,15 +100,13 @@ impl Runtime {
         }
     }
     /// All saved directed histories in one native batched call. The returned
-    /// carrier is binary64; optional verification recomputes original exact
-    /// input snapshots in the configured higher arithmetic.
+    /// carrier is binary64.
     pub fn evaluate_correlated(
         &mut self,
         momenta: &[f64],
         point_ids: &[u64],
         scales: &[f64],
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         self.evaluate_correlated_decimal(
             momenta
@@ -121,7 +119,6 @@ impl Runtime {
                 .map(|&v| exact_double(v))
                 .collect::<RusticolResult<_>>()?,
             strategy,
-            policy,
         )
     }
     pub fn evaluate_correlated_decimal(
@@ -130,10 +127,9 @@ impl Runtime {
         point_ids: Vec<u64>,
         scales: Vec<String>,
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        self.evaluate_correlated_inputs(inputs, strategy, policy)
+        self.evaluate_correlated_inputs(inputs, strategy)
     }
     /// Additive binary64 source ingress; the old method always uses ordinary states.
     pub fn evaluate_correlated_with_sources(
@@ -143,7 +139,6 @@ impl Runtime {
         scales: &[f64],
         sources: SpinSources<'_>,
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         self.evaluate_correlated_decimal_with_sources(
             momenta
@@ -157,10 +152,9 @@ impl Runtime {
                 .collect::<RusticolResult<_>>()?,
             sources.exact(point_ids.len())?,
             strategy,
-            policy,
         )
     }
-    /// Exact per-point complex pairs are retained for optional precision replay.
+    /// Exact per-point complex pairs.
     pub fn evaluate_correlated_decimal_with_sources(
         &mut self,
         momenta: Vec<String>,
@@ -168,11 +162,10 @@ impl Runtime {
         scales: Vec<String>,
         sources: BTreeMap<usize, Vec<[String; 2]>>,
         strategy: Option<&str>,
-        policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         let mut inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         inputs.spin_sources = sources;
-        self.evaluate_correlated_inputs(inputs, strategy, policy)
+        self.evaluate_correlated_inputs(inputs, strategy)
     }
     /// Correlated (directed colour and spin) virtuals were served by the
     /// removed legacy engine's runtime; plan v4 SDK runtimes serve ordinary
@@ -181,7 +174,6 @@ impl Runtime {
         &mut self,
         _inputs: LoopInputs,
         _strategy: Option<&str>,
-        _policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         Err(invalid(V4_ONLY_ORDINARY))
     }

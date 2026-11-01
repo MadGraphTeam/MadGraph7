@@ -652,7 +652,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   rusticol_virtual_batch_request request = {
-      momenta, points * legs * 4, points, NULL, scales, points, 0, NULL, NULL};
+      momenta, points * legs * 4, points, NULL, scales, points, 0, NULL};
   rusticol_virtual_result *result = NULL;
   check(rusticol_virtual_evaluate(runtime, &request, &result));
   rusticol_virtual_result_shape_info info;

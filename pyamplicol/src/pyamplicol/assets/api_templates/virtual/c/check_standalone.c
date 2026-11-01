@@ -13,7 +13,7 @@ int main(int argc,char **argv) {
   char *metadata=(char *)pa_array(needed,1);
   check(rusticol_virtual_metadata_json(runtime,metadata,needed,&needed));
   puts(metadata); free(metadata);
-  rusticol_virtual_batch_request request={points.momenta,pa_product(pa_product(points.count,axes.external_count),4),points.count,NULL,&scale,1,(uint32_t)resolved,NULL,NULL};
+  rusticol_virtual_batch_request request={points.momenta,pa_product(pa_product(points.count,axes.external_count),4),points.count,NULL,&scale,1,(uint32_t)resolved,NULL};
   rusticol_virtual_result *result=NULL;
   check(rusticol_virtual_evaluate(runtime,&request,&result)); free(points.momenta);
   rusticol_virtual_result_shape_info shape; check(rusticol_virtual_result_shape(result,&shape));

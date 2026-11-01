@@ -8,7 +8,7 @@ program client
     type(virtual_runtime) :: value
   end type
   type(virtual_runtime) :: runtime, alias
-  type(virtual_evaluation) :: inclusive, resolved, partial, verified, empty, retained
+  type(virtual_evaluation) :: inclusive, resolved, partial, empty, retained
   type(virtual_shape) :: axes
   real(c_double), target :: point(4,4), momenta(4,4,3), scales(3)
   real(c_double), allocatable :: zero_points(:,:,:), zero_scales(:)
@@ -24,8 +24,6 @@ program client
     -0.19094989612756078d0,-0.28421984016919477d0,-0.08026310265110026d0, &
      1.313041990604555d0,0.7811563156803705d0,0.20355701776284274d0, &
     -3.018755956775497d0,-1.1476469718544264d0,-0.3056158216076459d0],[3,3])
-  character(*), parameter :: policy='{"higher":[{"arithmetic":"double-double","precision":null}],' // &
-    '"relative_tolerance":"1e-8","absolute_tolerance":"1e-9","verify_successful":true}'
   call get_command_argument(1,length=length)
   if (length==0) stop 2
   allocate(character(length)::path)
@@ -81,8 +79,6 @@ program client
   if (partial%shape%successful_points/=2.or.any(partial%successful_ids/=[91_c_int64_t,70_c_int64_t])) stop 1
   if (any(partial%statuses/=[VIRTUAL_SUCCESS,VIRTUAL_FAILED,VIRTUAL_SUCCESS])) stop 1
   if (len(partial%diagnostics_json)==0) stop 1
-  call runtime%evaluate(momenta(:,:,:1),scales(:1),verified,ids(:1),resolved=.true.,verification_json=policy)
-  if (any(verified%statuses/=VIRTUAL_VERIFIED)) stop 1
   allocate(zero_points(4,4,0),zero_scales(0))
   call runtime%evaluate(zero_points,zero_scales,empty,resolved=.true.)
   if (size(empty%born)/=0.or.size(empty%virtual_values)/=0.or.size(empty%statuses)/=0) stop 1
@@ -101,7 +97,7 @@ program client
   if (any(abs(retained%born-inclusive%born)>0d0)) stop 1
   ! Scalar and array finalization release shared owners without double-free.
   call assignment_scope(path,trim(process))
-  print '(a)', 'native Fortran '//trim(process)//' orders/poles/resolved/failures/verification/lifetime controls passed'
+  print '(a)', 'native Fortran '//trim(process)//' orders/poles/resolved/failures/lifetime controls passed'
 contains
   subroutine close_value(a,b)
     real(c_double), intent(in) :: a,b

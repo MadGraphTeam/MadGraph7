@@ -303,10 +303,10 @@ def test_contractions_beyond_the_subset_sum_limit_equal_python():
         assert native_cells.contract_colour(*pair) == colour.contract_colour(*pair)
 
 
-# Native refusal of each primitive kind against a bra with an open quark
-# string, and Python's refusal of the joined bra (the split one: below).
+# Native and Python refusals of each primitive kind against a bra with an
+# open quark string.
 _REFUSALS = {
-    "adjoint-ring": ("adjoint-ring class against a Born", "not contracted exactly"),
+    "adjoint-ring": ("adjoint-ring class against a Born", "do not pair up"),
     "fundamental-trace": ("bra string is not glued", "do not match the typed"),
 }
 
@@ -317,9 +317,9 @@ def test_primitives_against_quark_bras_are_refused(kind):
     """Primitives against bras the relabelling cache cannot key (a quark
     leg) take the direct path of ``_PrimitiveCells._cell``. A primitive
     carries no fundamental index, so its overlap with a bra holding an open
-    quark string is not defined: refused natively (rule 2), as Python
-    refuses a fundamental trace there; Python refuses an adjoint ring only
-    where the string holds its labels (oracle defect 3, below)."""
+    quark string is not defined: refused natively (rule 2) and in Python
+    (an adjoint ring's overlap no longer drops the bra's quark index loop,
+    ``color.connections.overlap_traces``: oracle defect 3, resolved)."""
 
     primitive = colour.Primitive(kind, (3, 4))
     refused, oracle_refused = _REFUSALS[kind]
@@ -332,24 +332,9 @@ def test_primitives_against_quark_bras_are_refused(kind):
         # The switched stage fails closed (rule 2: no Python fallback).
         with pytest.raises(ValueError, match=refused):
             colour.seed_cells(basis, [primitive])
-    structures = (_JOINED,) if kind == "adjoint-ring" else (_SPLIT, _JOINED)
-    for structure in structures:
+    for structure in (_SPLIT, _JOINED):
         with pytest.raises(ValueError, match=oracle_refused):
             python(colour.seed_cells, _quark_basis(structure), [primitive])
-
-
-@pytest.mark.loop_fast
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="oracle defect 3 (read-only, rule 3): _PrimitiveCells._overlap "
-    "drops the bra's quark index loop and returns a value for an adjoint "
-    "ring against a bra with an open string",
-)
-def test_python_adjoint_ring_against_a_quark_bra_is_refused():
-    ring = colour.Primitive("adjoint-ring", (3, 4))
-    with pytest.raises(ValueError):
-        python(colour.seed_cells, _quark_basis(_SPLIT), [ring])
 
 
 @pytest.mark.loop_fast
