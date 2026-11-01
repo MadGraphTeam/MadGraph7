@@ -27,7 +27,9 @@
 //! - [`kernel_terms`]: the exact kernels' term reading (parse, expansion and
 //!   factors of every kernel output; `reference_executor._kernel_terms`);
 //! - [`state_rename`]: symbol renaming in Symbolica's binary export (the
-//!   parameter program's canonical stage without a text round trip).
+//!   parameter program's canonical stage without a text round trip);
+//! - [`root_colours`]: the closed root colours of the counterterm and Born
+//!   closures (`ct_sites.SiteClosure._closed`, batched).
 
 pub mod arena;
 pub mod catalogue;
@@ -38,6 +40,7 @@ pub mod kernel_terms;
 pub mod networks;
 pub mod orders;
 pub mod rename;
+pub mod root_colours;
 pub mod schedules;
 pub mod seeds;
 pub mod state_rename;
