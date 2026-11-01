@@ -132,6 +132,9 @@ NATIVE_INPUTS_PREFIX = "point-inputs/"
 # evaluator and the kernels', and their binary64 SymJIT plane applications
 # (storage-v4 IR).
 NATIVE_TREES_MEMBER = "tree-program.json.zlib"
+# The binary tree program (``native_trees.NativeTrees.binary``, M-FINAL
+# MF-8G-1), which a process stores instead of its JSON (zlib stream).
+NATIVE_TREES_BINARY_MEMBER = "tree-program.bin.zlib"
 NATIVE_PARAMETERS_MEMBER = "parameters.state"
 NATIVE_PARAMETERS_PLANE_MEMBER = "parameters.symjit"
 NATIVE_KERNEL_MEMBER = "kernel-{}.state"
@@ -424,12 +427,15 @@ def write_plan(
 
             prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
         for prefix, path in prefixes:
+            binary = stored.get(f"{prefix}tree-program.bin")
             members += [
                 (
                     f"{path}{NATIVE_TREES_MEMBER}",
                     plan,
                     zlib.compress(stored[f"{prefix}tree-program.json"], 6),
-                ),
+                )
+                if binary is None
+                else (f"{path}{NATIVE_TREES_BINARY_MEMBER}", plan, zlib.compress(binary, 6)),
                 (
                     f"{path}{NATIVE_PARAMETERS_MEMBER}",
                     state,
@@ -526,9 +532,14 @@ def read_native_process(
         if scaleless_json is not None:
             prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
         for prefix, base in prefixes:
-            members[f"{prefix}tree-program.json"] = zlib.decompress(
-                read(reader, base + NATIVE_TREES_MEMBER, json_kind)
-            )
+            if base + NATIVE_TREES_BINARY_MEMBER in names:
+                members[f"{prefix}tree-program.bin"] = zlib.decompress(
+                    read(reader, base + NATIVE_TREES_BINARY_MEMBER, json_kind)
+                )
+            else:
+                members[f"{prefix}tree-program.json"] = zlib.decompress(
+                    read(reader, base + NATIVE_TREES_MEMBER, json_kind)
+                )
             members[f"{prefix}parameters.bin"] = read(
                 reader, base + NATIVE_PARAMETERS_MEMBER, state
             )

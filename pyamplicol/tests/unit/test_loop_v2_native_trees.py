@@ -221,7 +221,7 @@ def test_native_finite_only_keeps_every_finite_part(executors):
     # The counterterm program records per current the slots it reaches
     # (its slot table and masks); finite-only batches skip the currents
     # that reach pole slots only.
-    ct = native.exported.trees.program["counterterm_trees"]
+    ct = native.exported.trees.full_program()["counterterm_trees"]
     powers = [slot[2] for slot in ct["slots"]]
     pole_masks = {
         m
@@ -538,7 +538,7 @@ def test_counterterm_roots_outside_the_request_orders_are_not_closed(
 
 
 def _program_size(executor: NativeExecutor) -> dict[str, int]:
-    program = executor.exported.trees.program
+    program = executor.exported.trees.full_program()
     ct = program["counterterm_trees"]["interactions"]["steps"]
     return {
         "ket": len(program["counterterms"]["ket"]),

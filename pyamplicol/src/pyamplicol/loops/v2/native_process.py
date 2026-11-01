@@ -75,13 +75,20 @@ def _trees_record(trees: NativeTrees) -> dict[str, Any]:
 
 
 def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
-    """A tree program as named byte members: its JSON, its saved kernels and
-    parameter evaluator, and their binary64 SymJIT plane applications."""
+    """A tree program as named byte members: its JSON (or its binary form,
+    ``tree-program.bin``, ``native_trees.NATIVE_SECTIONS``), its saved
+    kernels and parameter evaluator, and their binary64 SymJIT plane
+    applications."""
 
     if len(trees.planes) != len(trees.kernels) + 1:
         raise ValueError("a native process stores a plane application per state")
+    program = (
+        {f"{prefix}tree-program.bin": trees.binary()}
+        if trees.is_binary
+        else {f"{prefix}tree-program.json": trees.json().encode()}
+    )
     out = {
-        f"{prefix}tree-program.json": trees.json().encode(),
+        **program,
         f"{prefix}parameters.bin": bytes(trees.parameters),
         f"{prefix}parameters.symjit": bytes(trees.planes[-1]),
     }
@@ -94,7 +101,19 @@ def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
 def _trees_from_members(
     members: Mapping[str, bytes], meta: Mapping[str, Any], prefix: str = ""
 ) -> NativeTrees:
-    program = json.loads(members[f"{prefix}tree-program.json"])
+    container = members.get(f"{prefix}tree-program.bin")
+    if container is not None:
+        # A binary tree program: Python reads its head only (the executor
+        # reads the container, ``NativeTrees.executor_argument``).
+        from pyamplicol.loops.native import load_loop_native
+
+        container = bytes(container)
+        head = load_loop_native().tree_program_section(container, "head")
+        if head is None:
+            raise ValueError("a binary tree program without its head")
+        program = json.loads(head)
+    else:
+        program = json.loads(members[f"{prefix}tree-program.json"])
     kernels = []
     while f"{prefix}kernel-{len(kernels)}.bin" in members:
         kernels.append(bytes(members[f"{prefix}kernel-{len(kernels)}.bin"]))
@@ -117,6 +136,7 @@ def _trees_from_members(
             for component, sector, power in meta["counterterm_outputs"]
         ),
         tuple(planes),
+        container=container,
     )
 
 

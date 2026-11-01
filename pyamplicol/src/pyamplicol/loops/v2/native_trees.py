@@ -185,6 +185,109 @@ class NativeExportUnsupported(NotImplementedError):
 # the pruning's bitwise equality, ``tests/unit/test_loop_v2_native_trees.py``).
 PRUNE = True
 
+# M-FINAL MF-8G-1 (rule 1 of the Rust migration: one flag, dispatched in the
+# stage): the binary tree program (``NativeTrees.binary``; rusticol-core
+# ``loop_v2::trees::binary``). Its large arrays are binary sections, never
+# Python lists or one JSON text: the counterterm program's steps come from
+# its native DAG as columns (``V2Program.step_section``) and are pruned
+# natively (``tree_steps_prune``), the counterterm overlap cells are formed
+# natively as a table (``_cell_section``, ``NativeCellTable.section``), and
+# the trees' steps move to a section after their pruning. The process stores
+# the container (``tree-program.bin``) and its executors read it; Python
+# reads only its head at load. False: the JSON program, the oracle
+# (``tests/unit/test_loop_v2_tree_binary.py``: equal after decoding, values
+# bitwise equal).
+NATIVE_SECTIONS = True
+
+# The container's parts (``loop_v2::trees::binary``): the top-level keys
+# stored as JSON sections of their own (the rest is the head), and the
+# binary sections replacing one array of a JSON part.
+SECTION_KEYS = (
+    "interactions",
+    "block_rows",
+    "block_row_terms",
+    "born",
+    "counterterms",
+    "counterterm_trees",
+    "layouts",
+    "weights",
+)
+# Every key of a tree program, in ``export_trees``'s order.
+_PROGRAM_KEYS = (
+    "schema",
+    "legs",
+    "initial",
+    "state_size",
+    "model_offset",
+    "model_count",
+    "momentum_slots",
+    "source_fill",
+    "interactions",
+    "block_rows",
+    "block_row_terms",
+    "born",
+    "parameters",
+    "counterterms",
+    "counterterm_trees",
+    "layouts",
+    "weights",
+)
+TREE_STEPS = "interactions.steps"
+COUNTERTERM_STEPS = "counterterm_trees.interactions.steps"
+CELLS = "counterterms.cells"
+
+
+def _native() -> Any:
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native()
+
+
+def _dumps(value: Any) -> bytes:
+    return json.dumps(value, separators=(",", ":")).encode()
+
+
+def _with_key(record: Mapping[str, Any], key: str, value: Any, after: str) -> dict:
+    """``record`` with ``key`` set to ``value`` right after ``after`` (the
+    oracle's key order)."""
+
+    out: dict[str, Any] = {}
+    for name, item in record.items():
+        if name == key:
+            continue
+        out[name] = item
+        if name == after:
+            out[key] = value
+    if key not in out:
+        out[key] = value
+    return out
+
+
+def decoded_program(
+    program: Mapping[str, Any], sections: Mapping[str, bytes]
+) -> dict[str, Any]:
+    """The JSON program (the oracle's form) of a program whose arrays
+    ``sections`` holds (``NativeTrees.sections``): the steps decoded from
+    their columns, the overlap cells listed from their table (b-major over
+    the basis's own tensors, then over the other ket tensors)."""
+
+    native = _native()
+    out = dict(program)
+    if TREE_STEPS in sections:
+        steps = json.loads(native.tree_steps_json(sections[TREE_STEPS]))
+        out["interactions"] = _with_key(
+            out["interactions"], "steps", steps, "propagators"
+        )
+    if COUNTERTERM_STEPS in sections:
+        ct = dict(out["counterterm_trees"])
+        steps = json.loads(native.tree_steps_json(sections[COUNTERTERM_STEPS]))
+        ct["interactions"] = _with_key(ct["interactions"], "steps", steps, "propagators")
+        out["counterterm_trees"] = ct
+    if CELLS in sections:
+        cells = [list(cell) for cell in native.tree_cells_list(sections[CELLS])]
+        out["counterterms"] = _with_key(out["counterterms"], "cells", cells, "tensors")
+    return out
+
 
 @dataclass(frozen=True)
 class NativeTrees:
@@ -213,15 +316,67 @@ class NativeTrees:
     # (generation only, not stored: ``native_observables`` forms the stored
     # columns' overlaps from them).
     ket_tensors: tuple[Any, ...] = ()
+    # The binary sections (name, payload) of the arrays ``program`` omits
+    # (``NATIVE_SECTIONS``: ``TREE_STEPS``, ``COUNTERTERM_STEPS``,
+    # ``CELLS``); empty for a JSON program.
+    sections: tuple[tuple[str, bytes], ...] = ()
+    # A loaded binary tree program's container; ``program`` then holds its
+    # head only (the parts Python reads: parameters, sources, layout).
+    container: bytes | None = None
+
+    @property
+    def is_binary(self) -> bool:
+        """Whether the program is a binary tree program (``binary``)."""
+
+        return self.container is not None or bool(self.sections)
+
+    def binary(self) -> bytes:
+        """The binary tree program (``loop_v2::trees::binary``): the head,
+        one JSON section per moved key, then the binary sections."""
+
+        if self.container is not None:
+            return self.container
+        program = self.program
+        parts = [
+            ("head", 0, _dumps({k: v for k, v in program.items() if k not in SECTION_KEYS}))
+        ]
+        parts += [(key, 0, _dumps(program[key])) for key in SECTION_KEYS if key in program]
+        parts += [(name, 1, bytes(payload)) for name, payload in self.sections]
+        return bytes(_native().tree_program_container(parts))
+
+    def full_program(self) -> dict[str, Any]:
+        """The program in the oracle's JSON form (decoded where binary)."""
+
+        if not self.is_binary:
+            return self.program
+        if self.container is None:
+            return decoded_program(self.program, dict(self.sections))
+        native = _native()
+        container = self.container
+        index = native.tree_program_index(container)
+        program = json.loads(native.tree_program_section(container, "head"))
+        sections = {}
+        for name, encoding in index:
+            if name == "head":
+                continue
+            payload = bytes(native.tree_program_section(container, name))
+            if encoding == 0:
+                program[name] = json.loads(payload)
+            else:
+                sections[name] = payload
+        program = {key: program[key] for key in _PROGRAM_KEYS if key in program}
+        return decoded_program(program, sections)
 
     def json(self) -> str:
-        return json.dumps(self.program, separators=(",", ":"))
+        return json.dumps(self.full_program(), separators=(",", ":"))
 
-    def executor_argument(self) -> tuple[str, list[bytes], list[bytes] | None]:
+    def executor_argument(
+        self,
+    ) -> tuple[str | bytes, list[bytes], list[bytes] | None]:
         if self.planes and len(self.planes) != len(self.kernels) + 1:
             raise ValueError("a plane application per saved evaluator")
         return (
-            self.json(),
+            self.binary() if self.is_binary else self.json(),
             [*self.kernels, self.parameters],
             list(self.planes) if self.planes else None,
         )
@@ -833,10 +988,23 @@ def export_trees(
         "weights": [list(weight) for weight in weights],
     }
     ct_saved = () if ct is None else ct.saved
+    # The binary sections (``NATIVE_SECTIONS``): the counterterm program's
+    # steps and overlap cells as formed natively, then the trees' steps.
+    sections: dict[str, bytes] = {}
+    if ct is not None and ct.steps is not None:
+        sections[COUNTERTERM_STEPS] = ct.steps
+    if counterterms is not None and counterterms.cells is not None:
+        sections[CELLS] = counterterms.cells
     if PRUNE:
         program, saved, ct_saved = prune_program(
-            program, saved, ct_saved, keep_kets=keep_kets
+            program, saved, ct_saved, keep_kets=keep_kets, sections=sections
         )
+    if NATIVE_SECTIONS:
+        # The trees' steps are Python lists until the tree rows are emitted
+        # natively (A5's tree part): a section from here on.
+        steps = program["interactions"].pop("steps")
+        sections[TREE_STEPS] = bytes(_native().tree_steps_from_json(_dumps(steps)))
+        del steps
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
@@ -860,6 +1028,7 @@ def export_trees(
             {len(kernels): _request_points(slice_, parameters)},
         ),
         () if counterterms is None else counterterms.tensors,
+        tuple(sections.items()),
     )
 
 
@@ -884,19 +1053,34 @@ class _CountertermTrees:
     # ``id`` of every block of the program.
     blocks: frozenset[int]
     fixed: Mapping[str, int]
+    # ``NATIVE_SECTIONS``: the steps' binary section (``record``'s
+    # interaction program omits them); None: they are in ``record``.
+    steps: bytes | None = None
 
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
         # A5: the interaction program of a native CT DAG, without its decode
         # and runtime schema (``dag_input.NATIVE_PROGRAM``); ``_program`` on
         # the Python rows stays the oracle. Both give the rows, value slots,
-        # momentum slots, source fill, interaction program and saved kernels.
+        # momentum slots, source fill, interaction program and saved kernels;
+        # under ``NATIVE_SECTIONS`` the steps as a binary section (the native
+        # DAG's columns, never Python lists; the oracle's lists encoded).
         from .dag_input import native_counterterm_trees
 
-        native = native_counterterm_trees(program)
-        rows, slots, momentum_slots, source_fill, interactions, saved = (
-            cls._program(program) if native is None else native
-        )
+        native = native_counterterm_trees(program, section=NATIVE_SECTIONS)
+        steps = None
+        if native is None:
+            rows, slots, momentum_slots, source_fill, interactions, saved = (
+                cls._program(program)
+            )
+            if NATIVE_SECTIONS:
+                steps = bytes(
+                    _native().tree_steps_from_json(_dumps(interactions.pop("steps")))
+                )
+        else:
+            rows, slots, momentum_slots, source_fill, interactions, saved, steps = (
+                native
+            )
         model_count = len(rows._records)
         record = {
             "offset": offset,
@@ -916,6 +1100,21 @@ class _CountertermTrees:
             slots,
             frozenset(id(block) for block in program.blocks.blocks.blocks),
             dict(program.recursion.parameter_values(poles=True)),
+            steps,
+        )
+
+    def full_record(self) -> dict[str, Any]:
+        """``record`` with its steps (decoded from ``steps``: the oracle's
+        form)."""
+
+        if self.steps is None:
+            return self.record
+        steps = json.loads(_native().tree_steps_json(self.steps))
+        return _with_key(
+            self.record,
+            "interactions",
+            _with_key(self.record["interactions"], "steps", steps, "propagators"),
+            "slots",
         )
 
     @staticmethod
@@ -957,6 +1156,9 @@ class _Counterterms:
     # The literal colour tensor of every ket tensor (the Born basis first):
     # stored observable columns form their overlaps (``native_observables``).
     tensors: tuple[Any, ...] = ()
+    # ``NATIVE_SECTIONS``: the overlap cells' binary section (``record``
+    # then omits ``cells``; ``_cell_section``).
+    cells: bytes | None = None
 
 
 def _counterterm_program(
@@ -1217,9 +1419,12 @@ def _counterterm_program(
     # Exact overlaps of the Born basis with every ket tensor, per N_c power:
     # the basis Gram, and the other ket tensors' overlaps counted natively
     # in one batch (``colour.contract_colour`` of unit literal tensors).
+    # Under ``NATIVE_SECTIONS`` all of them natively as one table, never
+    # Python objects (``_cell_section``); the list below is its oracle.
+    cell_section = _cell_section(slice_, literal) if NATIVE_SECTIONS else None
     gram = slice_.basis.gram
     cells = []
-    for b in range(len(basis)):
+    for b in range(len(basis) if cell_section is None else 0):
         for t in range(len(basis)):
             for power, cell in gram[b][t].items():
                 if cell:
@@ -1232,7 +1437,11 @@ def _counterterm_program(
                             _fraction_text(cell.imag),
                         ]
                     )
-    pairs = [(b, t) for b in range(len(basis)) for t in range(len(basis), len(literal))]
+    pairs = [
+        (b, t)
+        for b in range(len(basis) if cell_section is None else 0)
+        for t in range(len(basis), len(literal))
+    ]
     if pairs:
         counted = _trace_overlaps()(
             [overlap_traces(literal[b], literal[t]) for b, t in pairs]
@@ -1257,7 +1466,7 @@ def _counterterm_program(
         "ket": [list(key) for key in ket],
         "vectors": len(vectors),
         "tensors": len(tensors),
-        "cells": cells,
+        **({"cells": cells} if cell_section is None else {}),
         "born": [[b, born_index[order], grade] for b, order, grade in components],
         "terms": terms,
         "entries": entries,
@@ -1271,7 +1480,30 @@ def _counterterm_program(
             (component, slice_.sectors[s][0], power) for component, s, power in outputs
         ),
         tuple(literal),
+        cell_section,
     )
+
+
+def _cell_section(slice_: Any, literal: Sequence[Any]) -> bytes:
+    """The overlap cells of ``_counterterm_program`` as a binary cell
+    section (``loop_v2::trees::binary::CellTable``): ``<b|t>`` of the literal
+    Born basis with every literal ket tensor ``literal`` (the basis first),
+    formed natively in one table (``native_cells.NativeCells``, package C's
+    engine, as ``native_observables._Metrics`` forms a column's) and never
+    decoded to Python."""
+
+    from dataclasses import replace
+
+    from .assemble import _single
+    from .native_cells import NativeCells
+
+    legs = slice_.basis.legs
+    count = len(slice_.basis.tensors)
+    basis = replace(
+        slice_.basis, tensors=tuple(_single(tensor, legs) for tensor in literal[:count])
+    )
+    table = NativeCells(basis).table([_single(tensor, legs) for tensor in literal])
+    return bytes(table.section())
 
 
 @dataclass(frozen=True)
@@ -2425,6 +2657,7 @@ def prune_program(
     ct_saved: Sequence[bytes],
     *,
     keep_kets: bool = False,
+    sections: dict[str, bytes] | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], tuple[bytes, ...]]:
     """``program`` without the work no output of it reads; with the saved
     kernel evaluators ``saved`` (the trees') and ``ct_saved`` (the
@@ -2453,14 +2686,20 @@ def prune_program(
     the widest slot of any term on it, marked once per block and Born row
     (not per term), and the interactions are filtered and renumbered
     without copies, so the pass costs a small fraction of the export
-    (design §7.5, Table 7.5c)."""
+    (design §7.5, Table 7.5c).
 
+    ``sections`` (``NATIVE_SECTIONS``) holds the arrays the program omits:
+    the counterterm overlap cells (``CELLS``) are read from their table and
+    the counterterm program's steps (``COUNTERTERM_STEPS``) pruned natively
+    (``tree_steps_prune``), the section replaced in place."""
+
+    sections = {} if sections is None else sections
     counterterms = program.get("counterterms")
     if counterterms is not None and not keep_kets:
         # With stored observable columns (``keep_kets``) every ket component
         # stays: a component the inclusive metric does not read can enter a
         # colour history's interference.
-        _prune_counterterm_terms(counterterms)
+        _prune_counterterm_terms(counterterms, sections.get(CELLS))
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")
     offset = state_size if ct is None else int(ct["offset"])
@@ -2513,9 +2752,40 @@ def prune_program(
     if len(saved) != tree_count:
         raise ValueError("the trees' saved kernels and their program differ")
     saved = _prune_interactions(program["interactions"], tuple(saved), tree_live)
-    if ct is not None:
+    if ct is not None and COUNTERTERM_STEPS in sections:
+        ct_saved = _prune_step_section(
+            ct["interactions"], tuple(ct_saved), ct_live, sections, COUNTERTERM_STEPS
+        )
+    elif ct is not None:
         ct_saved = _prune_interactions(ct["interactions"], tuple(ct_saved), ct_live)
     return program, tuple(saved), tuple(ct_saved)
+
+
+def _prune_step_section(
+    interactions: dict[str, Any],
+    saved: tuple[bytes, ...],
+    live: bytearray,
+    sections: dict[str, bytes],
+    name: str,
+) -> tuple[bytes, ...]:
+    """``_prune_interactions`` of an interaction program whose steps are the
+    binary section ``sections[name]`` (pruned natively, ``tree_steps_prune``,
+    and replaced): the kernel shapes and saved evaluators kept as there."""
+
+    vertex_kernels = len(interactions["kernels"])
+    found = _native().tree_steps_prune(
+        sections[name], live, vertex_kernels, len(interactions["propagators"])
+    )
+    if found is None:
+        return saved
+    section, used, propagators = found
+    sections[name] = bytes(section)
+    interactions["kernels"] = [interactions["kernels"][k] for k in used]
+    interactions["propagators"] = [interactions["propagators"][p] for p in propagators]
+    return (
+        *(saved[k] for k in used),
+        *(saved[vertex_kernels + p] for p in propagators),
+    )
 
 
 def _mark(live: bytearray, start: int, length: int) -> None:
@@ -2587,12 +2857,24 @@ def _live_ket(record: Mapping[str, Any]) -> list[bool]:
     return live
 
 
-def _prune_counterterm_terms(record: dict[str, Any]) -> None:
+def _prune_counterterm_terms(record: dict[str, Any], cells: bytes | None = None) -> None:
     """Drop from ``record`` (in place) the ket components no interference
-    reads (``_live_ket``), their contributions and the terms left without
-    any; unchanged if every component is read."""
+    reads (``_live_ket``; with ``cells``, the record's overlap cells as a
+    binary section, its native twin), their contributions and the terms
+    left without any; unchanged if every component is read."""
 
-    live = _live_ket(record)
+    if cells is None:
+        live = _live_ket(record)
+    else:
+        live = list(
+            _native().tree_cells_live_ket(
+                cells,
+                [tuple(x) for x in record["born"]],
+                [tuple(x) for x in record["entries"]],
+                [tuple(x) for x in record["ket"]],
+                record["depth"],
+            )
+        )
     if all(live) and all(term["contributions"] for term in record["terms"]):
         return
     index = [-1] * len(live)

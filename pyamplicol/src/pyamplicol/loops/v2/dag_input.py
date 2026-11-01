@@ -2370,8 +2370,12 @@ def _retained_functions(
 
 
 def native_interaction_program(
-    rows: NativeTreeRows, program: Any, slots: Sequence[Any] = ()
-) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+    rows: NativeTreeRows,
+    program: Any,
+    slots: Sequence[Any] = (),
+    *,
+    section: bool = False,
+) -> tuple[dict[str, Any], tuple[bytes, ...], bytes | None]:
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its slot masks those of the slot table
     given there, ``slots``): the native steps, and the kernels in their first
@@ -2390,7 +2394,11 @@ def native_interaction_program(
     functions materialise in the same order, and each kernel's expressions
     only reach its own functions, whose rules (and wildcards, numbered by
     definition) do not depend on the functions defined after them; each
-    kernel then keeps the functions it calls (``_retained_functions``)."""
+    kernel then keeps the functions it calls (``_retained_functions``).
+
+    With ``section`` (``native_trees.NATIVE_SECTIONS``) the steps are not
+    Python lists: the record omits them and the third value is their binary
+    step section (``V2Program.step_section``, M-FINAL MF-8G-1), else None."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -2451,23 +2459,30 @@ def native_interaction_program(
     for real, imag in program.weights():
         weight = _exact_weight(complex(real, imag))
         texts.append((_fraction_text(weight.real), _fraction_text(weight.imag)))
-    record = {
+    record: dict[str, Any] = {
         "kernels": shapes["kernels"],
         "propagators": shapes["propagators"],
-        "steps": program.steps(texts),
     }
+    steps = None
+    if section:
+        steps = bytes(program.step_section(texts))
+    else:
+        record["steps"] = program.steps(texts)
     if slots:
         record["masks"] = slot_mask_table(len(slots))
-    return record, (*saved["kernels"], *saved["propagators"])
+    return record, (*saved["kernels"], *saved["propagators"]), steps
 
 
-def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
+def native_counterterm_trees(
+    program: Any, *, section: bool = False
+) -> tuple[Any, ...] | None:
     """The parts of ``native_trees._CountertermTrees.of(program, offset)``
     (rows, value slots, momentum slots, source fill, interaction program,
-    saved kernels; ``of`` builds the record and the dataclass from them) from
-    the CT program's native DAG (``NATIVE_PROGRAM``); ``None`` where the
-    program's DAG is the tree engine's (or the flag is off): ``of`` takes the
-    Python ``TreeRows``."""
+    saved kernels, and with ``section`` the steps' binary section, which the
+    interaction program then omits, else None; ``of`` builds the record and
+    the dataclass from them) from the CT program's native DAG
+    (``NATIVE_PROGRAM``); ``None`` where the program's DAG is the tree
+    engine's (or the flag is off): ``of`` takes the Python ``TreeRows``."""
 
     from .native_trees import counterterm_slots
 
@@ -2481,7 +2496,9 @@ def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
         program.recursion.model.lowered.compiled,
         slot_orders=[slot[0] for slot in slots],
     )
-    interactions, saved = native_interaction_program(rows, native, slots)
+    interactions, saved, steps = native_interaction_program(
+        rows, native, slots, section=section
+    )
     del native
     if released:
         # As after generation: the columns are not held to the end.
@@ -2493,6 +2510,7 @@ def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
         rows.source_fill,
         interactions,
         saved,
+        steps,
     )
 
 

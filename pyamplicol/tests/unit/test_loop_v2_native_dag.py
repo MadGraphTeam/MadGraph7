@@ -1310,8 +1310,9 @@ def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
         )
     native, _oracle = _assert_counterterm_trees_equal(python, blocks)
     # The slot table and the per-slot reachability masks (I5): CT = 0
-    # currents reach every slot, a current with one insertion its slot.
-    record = native.record
+    # currents reach every slot, a current with one insertion its slot
+    # (the steps decoded where ``NATIVE_SECTIONS`` holds them as a section).
+    record = native.full_record()
     assert [slot[0] for slot in record["slots"]] == [
         ct_closure.counterterm_slot_order(*slot) for slot in python.recursion.slots
     ]

@@ -492,11 +492,29 @@ fn columns<const N: usize>(values: [Vec<u64>; N]) -> [Column; N] {
 
 impl StepColumns {
     /// Columns of the native program's steps (`loop_v2::dag::program`),
-    /// with the exact texts of each colour weight.
+    /// with the exact texts of each colour weight. The weights are renumbered
+    /// in their first use by the rows (unused ones dropped), as
+    /// [`StepColumns::from_json`] numbers them: equal steps give equal
+    /// columns whichever form they come from.
     pub fn from_program(
         steps: &[crate::loop_v2::dag::program::Step],
         weights: Vec<(String, String)>,
     ) -> RusticolResult<Self> {
+        let mut renumbered = vec![u64::MAX; weights.len()];
+        let mut used = Vec::new();
+        for step in steps {
+            for row in &step.rows {
+                let w = usize::try_from(row[8])
+                    .ok()
+                    .filter(|&w| w < weights.len())
+                    .ok_or_else(|| invalid("a step row's colour weight"))?;
+                if renumbered[w] == u64::MAX {
+                    renumbered[w] = used.len() as u64;
+                    used.push(weights[w].clone());
+                }
+            }
+        }
+        let weights = used;
         let total: usize = steps.iter().map(|s| s.rows.len()).sum();
         let mut rows: [Vec<u64>; 9] = Default::default();
         for column in &mut rows {
@@ -516,9 +534,10 @@ impl StepColumns {
         for step in steps {
             out.rows.push(step.rows.len() as u64);
             for row in &step.rows {
-                for (k, value) in row.iter().enumerate() {
+                for (k, value) in row[..8].iter().enumerate() {
                     rows[k].push(unsigned(*value)?);
                 }
+                rows[8].push(renumbered[row[8] as usize]);
             }
             out.accumulators.push(step.accumulators.len() as u64);
             for &dimension in &step.accumulators {
