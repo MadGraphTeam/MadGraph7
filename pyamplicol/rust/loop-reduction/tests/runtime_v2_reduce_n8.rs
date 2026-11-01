@@ -354,6 +354,7 @@ fn pinch_identity_eight_to_seven_propagators() {
     }
 }
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn rss(field: &str) -> f64 {
     let status = std::fs::read_to_string("/proc/self/status").unwrap();
     let line = status.lines().find(|l| l.starts_with(field)).unwrap();
@@ -365,6 +366,7 @@ fn rss(field: &str) -> f64 {
         / 1024.
 }
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 unsafe extern "C" {
     /// glibc: return free heap memory to the system.
     fn malloc_trim(pad: usize) -> i32;
@@ -373,6 +375,7 @@ unsafe extern "C" {
 /// Peak resident growth (MB) of one call, from `/proc/self/clear_refs`,
 /// after returning the earlier calls' freed memory to the system (so that
 /// none of it is reused unseen).
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn peak_of(call: impl FnOnce()) -> f64 {
     // SAFETY: malloc_trim only releases free memory of the system allocator.
     unsafe { malloc_trim(0) };
@@ -382,6 +385,7 @@ fn peak_of(call: impl FnOnce()) -> f64 {
     rss("VmHWM:") - before
 }
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 #[test]
 #[ignore = "measurement: run alone with --ignored --nocapture --test-threads=1"]
 fn generic_chunk_memory_at_eight_propagators() {
@@ -403,26 +407,24 @@ fn generic_chunk_memory_at_eight_propagators() {
                 .collect();
             let tensors: Vec<_> = lanes.iter().map(|_| dense(n, &mut stream)).collect();
             let group = |count: usize| {
-                let mut g = batches(&lanes[..count], &tensors[..count], "double");
-                if arithmetic != "double" {
-                    let rows = count;
-                    let convert = |b: &Batch, columns| {
-                        Batch::from_decimal(b.to_decimal(), rows, columns, arithmetic, digits, None)
-                            .unwrap()
-                    };
-                    g = Group {
-                        n,
-                        shifts: convert(&g.shifts, 4 * n),
-                        masses: convert(&g.masses, n),
-                        scales: convert(&g.scales, 1),
-                        matrix: convert(&g.matrix, n * n),
-                        coefficients: convert(
-                            &g.coefficients,
-                            g.coefficients.to_decimal().len() / rows,
-                        ),
-                    };
+                // Both arithmetics of the probe are generic-engine carriers:
+                // convert the binary64 group's inputs.
+                let g = batches(&lanes[..count], &tensors[..count], "double");
+                let convert = |b: &Batch, columns| {
+                    Batch::from_decimal(b.to_decimal(), count, columns, arithmetic, digits, None)
+                        .unwrap()
+                };
+                Group {
+                    n,
+                    shifts: convert(&g.shifts, 4 * n),
+                    masses: convert(&g.masses, n),
+                    scales: convert(&g.scales, 1),
+                    matrix: convert(&g.matrix, n * n),
+                    coefficients: convert(
+                        &g.coefficients,
+                        g.coefficients.to_decimal().len() / count,
+                    ),
                 }
-                g
             };
             let mut reducer = V2Reducer::new(arithmetic, digits, "generic", true).unwrap();
             let mut run = |count: usize| {
