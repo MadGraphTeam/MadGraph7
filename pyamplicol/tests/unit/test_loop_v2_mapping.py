@@ -130,16 +130,16 @@ REQUESTS_5 = (("udg", "u u~ > d d~ g"), ("ssg", "u u~ > g s s~"))
 ALIASES_5 = (("udg_cycle", "udg", (0, 1, 4, 2, 3)),)
 HISTORIES_5 = [_history(1, j) for j in (3, 4, 5)]
 # mapped process -> (artifact, representative, representative leg -> public
-# leg, served histories, spin source on leg 4 served)
+# leg, served histories, the final gluon leg of a served spin source or None)
 SERVED = tuple(history["id"] for history in HISTORIES)
 MAPPED = {
-    "ddx_swap": ("mapped", "ddx", (1, 0, 3, 2), SERVED, True),
-    "dg_out": ("mapped", "dg", (0, 1, 3, 2), SERVED, True),
-    "sxs": ("mapped", "ddx", (1, 0, 2, 3), SERVED, True),
-    "gs": ("mapped", "dg", (1, 0, 2, 3), SERVED, True),
-    "gd": ("mapped", "dg", (1, 0, 3, 2), SERVED, True),
-    "udg_cycle": ("cycle", "udg", (0, 1, 4, 2, 3), ("T13", "T14", "T15"), False),
-    "ssg": ("cycle", "udg", (0, 1, 3, 4, 2), ("T13", "T14", "T15"), False),
+    "ddx_swap": ("mapped", "ddx", (1, 0, 3, 2), SERVED, 4),
+    "dg_out": ("mapped", "dg", (0, 1, 3, 2), SERVED, 3),
+    "sxs": ("mapped", "ddx", (1, 0, 2, 3), SERVED, 4),
+    "gs": ("mapped", "dg", (1, 0, 2, 3), SERVED, 4),
+    "gd": ("mapped", "dg", (1, 0, 3, 2), SERVED, 3),
+    "udg_cycle": ("cycle", "udg", (0, 1, 4, 2, 3), ("T13", "T14", "T15"), None),
+    "ssg": ("cycle", "udg", (0, 1, 3, 4, 2), ("T13", "T14", "T15"), None),
 }
 
 
@@ -356,12 +356,13 @@ def test_mapped_process_is_its_representative_at_permuted_momenta(request, name)
         )
         right = stored.evaluate_correlated(q, color_correlation=image, mu_r2=scales)
         assert _values(left) == _values(right), (history, image)
-    if spin:
-        # Public leg 4 is representative leg permutation.index(3) + 1 (leg 3
-        # for the alias d~ d > g g and the member g d > g d).
-        image = permutation.index(3) + 1
+    if spin is not None:
+        # Public leg ``spin`` is representative leg permutation.index(spin -
+        # 1) + 1: another leg for d~ d > g g (4 -> 3), d g > g d and
+        # g d > g d (3 -> 4).
+        image = permutation.index(spin - 1) + 1
         left = runtime.evaluate_correlated_many(
-            points, {"s": CorrelatedRequest("born", SPIN)}, mu_r2=scales
+            points, {"s": CorrelatedRequest("born", {spin: SPIN[4]})}, mu_r2=scales
         )["s"]
         right = stored.evaluate_correlated_many(
             q, {"s": CorrelatedRequest("born", {image: SPIN[4]})}, mu_r2=scales
