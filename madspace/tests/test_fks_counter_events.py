@@ -129,15 +129,14 @@ def test_matches_genps_fks(data, conf, points, prefix):
         if value.ndim == 0:
             out[key] = np.full(batch, value)
 
-    # The Born comes back through RAMBO and the boosts of PhaseSpaceMapping.
-    # boost_beam_inverse loses up to e^{2|y|} of relative precision for the
-    # Born rapidities |y| ~ 5 of some points (fixed separately on main), so
-    # the Born differs from that of genps_fks.f by up to 1e-12 of its energy,
-    # and the emission off it by about as much.
+    # The Born comes back through the round trip of RAMBO and the boosts of
+    # PhaseSpaceMapping, so it differs from that of genps_fks.f by up to 2e-13
+    # of its energy (the conditioning of the round trip), and the emission off
+    # it by about as much.
     sqrt_s_born = np.sqrt(field("shat_born"))
     born_again = boost_z(out["born_momenta"], born_masses, -y_born)
     born_dev = np.abs(born_again - field("p_born")).max((1, 2)) / sqrt_s_born
-    assert (born_dev <= 1e-11).all()
+    assert (born_dev <= 1e-12).all()
     if not leptonic:
         np.testing.assert_allclose(out["born_x1"], x_born[:, 0], rtol=1e-12)
         np.testing.assert_allclose(out["born_x2"], x_born[:, 1], rtol=1e-12)

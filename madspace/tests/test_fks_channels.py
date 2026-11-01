@@ -98,6 +98,7 @@ def test_mapping_round_trip(masses, leptonic, i_fks, emitters):
         ref = mapping.map_forward([to_torch(r[part])])
         for ours, theirs in zip([momenta, x1, x2, det], ref):
             np.testing.assert_array_equal(to_numpy(ours)[part], to_numpy(theirs))
+    # to the conditioning of the Born mappings, as in test_fks_mapping.py
     r_inv, det_inv = channels.map_inverse([momenta, x1, x2], [sizes])
-    np.testing.assert_allclose(to_numpy(r_inv), r, rtol=0, atol=1e-8)
-    np.testing.assert_allclose(to_numpy(det) * to_numpy(det_inv), 1.0, rtol=1e-8)
+    np.testing.assert_allclose(to_numpy(r_inv), r, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(to_numpy(det) * to_numpy(det_inv), 1.0, rtol=1e-9)

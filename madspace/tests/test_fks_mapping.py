@@ -132,13 +132,13 @@ def test_round_trip(masses, leptonic, beam_rapidity, i_fks, j_fks):
     )
 
     # The random numbers of the Born are resolved to the conditioning of the Born
-    # mapping, which for the massless channels here, with momentum fractions
-    # down to 1e-7, is 1e-10 (as its own round trip). The emission is resolved
-    # as in test_fks_radiation.py.
+    # mapping: 6e-11 for the massless 2 -> 2 Borns here (as their own round
+    # trip), 1e-14 for the others. The emission is resolved as in
+    # test_fks_radiation.py, to 3e-14 away from the edges.
     r_inv, det_inv = inverse(mapping, momenta, x1, x2)
-    np.testing.assert_allclose(r_inv[:, :-3], r[:, :-3], rtol=0, atol=1e-8)
-    np.testing.assert_allclose(r_inv[:, -3:], r[:, -3:], rtol=0, atol=1e-11)
-    np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-8)
+    np.testing.assert_allclose(r_inv[:, :-3], r[:, :-3], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(r_inv[:, -3:], r[:, -3:], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(det * det_inv, 1.0, rtol=1e-9)
 
 
 @pytest.mark.parametrize("masses,leptonic,beam_rapidity,i_fks,j_fks", LAYOUTS, ids=IDS)
