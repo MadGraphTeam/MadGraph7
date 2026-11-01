@@ -2211,6 +2211,36 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     assert loop.spin_correlations == ((3,), (3, 4))
 
 
+@pytest.mark.loop_fast
+def test_spin_class_on_a_non_vector_leg_is_refused_at_generation(
+    loop_sm_compiled_model, loop_native, tmp_path, monkeypatch
+):
+    """A one-loop spin class on a quark leg, or on a leg the process does not
+    have, is refused at generation with the tree route's rule and message
+    (``generation.correlated``), before any tree is built, not at evaluation
+    (``observables.require_vector_spin_sources``)."""
+
+    import re
+
+    from pyamplicol import CorrelatorConfig
+    from pyamplicol.loops.v2.assemble import LoopSlice
+
+    def unreachable(*_args, **_kwargs):
+        raise AssertionError("the slice was generated before the refusal")
+
+    monkeypatch.setattr(LoopSlice, "generate", unreachable)
+    entries = (("uugg", "u u~ > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries)
+    for spin, reason in (
+        (((1,),), "spin-correlated leg 1 requires a full four-component vector source"),
+        (((3,), (7,)), "spin-correlated leg 7 is absent from"),
+    ):
+        declarations = CorrelatorConfig(spin_correlations=spin)
+        with pytest.raises(GenerationError, match=re.escape(reason)):
+            _generate(card, tmp_path, entries, declarations)
+        assert not (tmp_path / "artifact").exists()
+
+
 # ------------------------------------------------------------------ portability
 
 

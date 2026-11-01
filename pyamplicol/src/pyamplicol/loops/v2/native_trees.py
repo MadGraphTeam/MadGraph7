@@ -1944,7 +1944,8 @@ def _parameter_program(
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
     # orders), so their canonical names and the saved state do not depend on
-    # how the model was obtained.
+    # how the model was obtained. (The scalar predicates the program keeps
+    # by name are aligned when created, ``scalar_frontend.scalar_predicates``.)
     canonical, parameters, functions = _parameter_stage(
         SimpleNamespace(
             output_expressions=outputs,
