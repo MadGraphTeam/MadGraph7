@@ -2327,6 +2327,7 @@ name = "rusticol-core"
 version = "1.0.1"
 dependencies = [
  "bincode",
+ "brotli",
  "flate2",
  "libc",
  "libloading",

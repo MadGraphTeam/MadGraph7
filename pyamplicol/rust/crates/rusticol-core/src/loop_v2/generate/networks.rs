@@ -25,7 +25,10 @@
 //! word until it needs more), as the oracle's Python integers: no domain cap.
 
 use super::FastMap;
+use super::cells::canonical_trace;
 use super::seeds::{ColourTensor, Exact, OpenString, Tensor};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
 
@@ -485,6 +488,165 @@ fn power_of_two(exponent: i64) -> Exact {
     }
 }
 
+/// Fierz terms by (N_c power, canonical sorted rows).
+type FierzMap = BTreeMap<(i64, Vec<Vec<Label>>), Integer>;
+
+/// The SU(N_c) Fierz reduction of a product of traces, the crate's one
+/// engine (the networks' reductions here and `cells::fierz_laurent`):
+/// every label that occurs twice is contracted, label by label, by
+/// `Tr(a Y a X) = Tr(Y) Tr(X) - Tr(Y X)/N_c` and
+/// `Tr(a X) Tr(a Y) = Tr(X Y) - Tr(X) Tr(Y)/N_c`; an empty trace is N_c and
+/// `Tr(tau^a) = 0`, except for a trace of one sentinel (`sentinels`, sorted:
+/// labels closing an open string into a trace, a Kronecker delta). Labels
+/// occurring once (external legs, sentinels) stay in the rows. Products are
+/// memoised on their canonical form (rotated traces, sorted); the result is
+/// (coefficient, N_c power, rows) per term in (power, rows) order, rows in
+/// canonical form, zeros dropped. Coefficients are exact integers of any
+/// size. A label occurring more than twice is refused.
+pub(crate) fn fierz_terms(
+    traces: &[Vec<Label>],
+    sentinels: &[Label],
+) -> Result<Vec<FierzTerm>, String> {
+    let mut counts: FastMap<Label, usize> = FastMap::default();
+    for &label in traces.iter().flatten() {
+        *counts.entry(label).or_insert(0) += 1;
+    }
+    if counts.values().any(|&count| count > 2) {
+        return Err(error("an adjoint label occurs more than twice"));
+    }
+    let is_sentinel = |label: Label| sentinels.binary_search(&label).is_ok();
+    let mut memo: FastMap<Vec<Vec<Label>>, Arc<FierzMap>> = FastMap::default();
+    let out = match fierz_normal(traces.to_vec(), &is_sentinel) {
+        None => FierzMap::new(),
+        Some((power, key)) => {
+            let mut out = FierzMap::new();
+            fierz_add(&mut out, &fierz_reduce(key, &is_sentinel, &mut memo), power, 1);
+            out
+        }
+    };
+    Ok(out
+        .into_iter()
+        .filter(|(_, c)| !c.is_zero())
+        .map(|((power, rows), c)| (c, power, rows))
+        .collect())
+}
+
+/// (N_c power of the empty traces, canonical non-empty traces), or None for
+/// a vanishing product (a one-label trace that is no sentinel).
+fn fierz_normal(
+    traces: Vec<Vec<Label>>,
+    is_sentinel: &impl Fn(Label) -> bool,
+) -> Option<(i64, Vec<Vec<Label>>)> {
+    let mut power = 0;
+    let mut out = Vec::with_capacity(traces.len());
+    for trace in traces {
+        match trace.len() {
+            0 => power += 1,
+            1 if !is_sentinel(trace[0]) => return None,
+            _ => out.push(canonical_trace(&trace)),
+        }
+    }
+    out.sort();
+    Some((power, out))
+}
+
+/// `out += sign * N_c^shift * part`.
+fn fierz_add(out: &mut FierzMap, part: &FierzMap, shift: i64, sign: i64) {
+    for ((power, rows), c) in part {
+        let entry = out
+            .entry((power + shift, rows.clone()))
+            .or_insert_with(Integer::zero);
+        *entry = if sign < 0 { &*entry - c } else { &*entry + c };
+    }
+}
+
+/// `fierz_terms` of a canonical product.
+fn fierz_reduce(
+    key: Vec<Vec<Label>>,
+    is_sentinel: &impl Fn(Label) -> bool,
+    memo: &mut FastMap<Vec<Vec<Label>>, Arc<FierzMap>>,
+) -> Arc<FierzMap> {
+    if let Some(found) = memo.get(&key) {
+        return found.clone();
+    }
+    let mut counts: FastMap<Label, usize> = FastMap::default();
+    for &label in key.iter().flatten() {
+        *counts.entry(label).or_insert(0) += 1;
+    }
+    // The first label (in row order) that is contracted.
+    let found = key.iter().enumerate().find_map(|(r, row)| {
+        row.iter()
+            .position(|label| counts[label] == 2)
+            .map(|p| (r, p))
+    });
+    let Some((r, p)) = found else {
+        let out = Arc::new(FierzMap::from([((0, key.clone()), Integer::one())]));
+        memo.insert(key, out.clone());
+        return out;
+    };
+    let row = &key[r];
+    let label = row[p];
+    let first: Vec<Label> = row[p..].iter().chain(&row[..p]).copied().collect();
+    let mut out = FierzMap::new();
+    let mut part = |traces: Vec<Vec<Label>>, shift: i64, sign: i64, out: &mut FierzMap| {
+        if let Some((power, key)) = fierz_normal(traces, is_sentinel) {
+            let reduced = fierz_reduce(key, is_sentinel, memo);
+            fierz_add(out, &reduced, power + shift, sign);
+        }
+    };
+    if let Some(second) = first[1..].iter().position(|&l| l == label) {
+        // Tr(a Y a X) = Tr(Y) Tr(X) - Tr(Y X) / N_c.
+        let second = second + 1;
+        let y: Vec<Label> = first[1..second].to_vec();
+        let x: Vec<Label> = first[second + 1..].to_vec();
+        let rest: Vec<Vec<Label>> = key
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != r)
+            .map(|(_, trace)| trace.clone())
+            .collect();
+        let mut split = rest.clone();
+        split.push(y.clone());
+        split.push(x.clone());
+        part(split, 0, 1, &mut out);
+        let mut joined = rest;
+        joined.push(y.into_iter().chain(x).collect());
+        part(joined, -1, -1, &mut out);
+    } else {
+        // Tr(a X) Tr(a Y) = Tr(X Y) - Tr(X) Tr(Y) / N_c.
+        let (t, position) = key
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != r)
+            .find_map(|(t, trace)| trace.iter().position(|&l| l == label).map(|p| (t, p)))
+            .expect("a contracted label occurs twice");
+        let x: Vec<Label> = first[1..].to_vec();
+        let other = &key[t];
+        let y: Vec<Label> = other[position + 1..]
+            .iter()
+            .chain(&other[..position])
+            .copied()
+            .collect();
+        let rest: Vec<Vec<Label>> = key
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != r && i != t)
+            .map(|(_, trace)| trace.clone())
+            .collect();
+        let mut joined = rest.clone();
+        joined.push(x.iter().chain(&y).copied().collect());
+        part(joined, 0, 1, &mut out);
+        let mut split = rest;
+        split.push(x);
+        split.push(y);
+        part(split, -1, -1, &mut out);
+    }
+    out.retain(|_, c| !c.is_zero());
+    let out = Arc::new(out);
+    memo.insert(key, out.clone());
+    out
+}
+
 /// `_fierz`: remove every repeated adjoint label (sentinels close open
 /// strings; a trace of one sentinel is a Kronecker delta).
 fn fierz(traces: &[Vec<Label>], sentinels: &[Label]) -> Vec<FierzTerm> {
@@ -647,6 +809,63 @@ mod tests {
         Product {
             traces: vec![labels.to_vec()],
             ..Product::one()
+        }
+    }
+
+    #[test]
+    fn tmp_unified_fierz_equals_the_rewrite() {
+        let mut state: u64 = 20261101;
+        let mut below = |n: usize| -> usize {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((state >> 33) as usize) % n.max(1)
+        };
+        for case in 0..3000 {
+            let internal = 1 + below(7);
+            let external = below(4);
+            let sentinels_n = below(3);
+            let mut labels: Vec<Label> = Vec::new();
+            for k in 0..internal {
+                labels.push(100 + k as Label);
+                labels.push(100 + k as Label);
+            }
+            for k in 0..external {
+                labels.push(1 + k as Label);
+            }
+            let sentinels: Vec<Label> = (0..sentinels_n).map(|k| 200 + k as Label).collect();
+            labels.extend(&sentinels);
+            for i in (1..labels.len()).rev() {
+                let j = below(i + 1);
+                labels.swap(i, j);
+            }
+            let mut cuts: Vec<usize> = (0..below(4)).map(|_| below(labels.len() + 1)).collect();
+            cuts.sort_unstable();
+            cuts.push(labels.len());
+            let mut previous = 0;
+            let traces: Vec<Vec<Label>> = cuts
+                .into_iter()
+                .map(|cut| {
+                    let t = labels[previous..cut].to_vec();
+                    previous = cut;
+                    t
+                })
+                .collect();
+            let old: FierzMap = {
+                let mut m = FierzMap::new();
+                for (c, p, rows) in fierz(&traces, &sentinels) {
+                    let mut rows: Vec<Vec<Label>> = rows.iter().map(|r| canonical_trace(r)).collect();
+                    rows.sort();
+                    let e = m.entry((p, rows)).or_insert_with(Integer::zero);
+                    *e = &*e + &c;
+                }
+                m.retain(|_, c| !c.is_zero());
+                m
+            };
+            let new: FierzMap = fierz_terms(&traces, &sentinels)
+                .unwrap()
+                .into_iter()
+                .map(|(c, p, rows)| ((p, rows), c))
+                .collect();
+            assert_eq!(old, new, "case {case}: {traces:?} {sentinels:?}");
         }
     }
 
