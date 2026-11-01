@@ -34,6 +34,7 @@
 //! so nothing here needs a licence.
 
 use super::cycles;
+use super::networks;
 use super::{FastMap, FastSet};
 use crate::loop_v2::dress::parse_rational;
 use crate::{RusticolError, RusticolResult};
@@ -449,10 +450,9 @@ pub fn trace_laurent(traces: &[Vec<Label>]) -> RusticolResult<Vec<(i32, Integer)
     fierz_laurent(traces)
 }
 
-/// A trace product reduced by the SU(N_c) Fierz identity, label by label:
-/// `Tr(a X a Y) = Tr(X) Tr(Y) - Tr(X Y)/N_c` and
-/// `Tr(a X) Tr(a Y) = Tr(X Y) - Tr(X) Tr(Y)/N_c`; `Tr(tau^a) = 0` and an
-/// empty trace is N_c. Products are memoised on their canonical form.
+/// A fully contracted trace product reduced by the SU(N_c) Fierz identity
+/// (`networks::fierz_terms`, the crate's one Fierz engine, without
+/// sentinels): its exact Laurent coefficients in N_c.
 pub fn fierz_laurent(traces: &[Vec<Label>]) -> RusticolResult<Vec<(i32, Integer)>> {
     let mut counts: FastMap<Label, usize> = FastMap::default();
     for &label in traces.iter().flatten() {
@@ -461,109 +461,18 @@ pub fn fierz_laurent(traces: &[Vec<Label>]) -> RusticolResult<Vec<(i32, Integer)
     if counts.values().any(|&count| count != 2) {
         return Err(invalid("a trace label does not occur exactly twice"));
     }
-    let mut memo: FastMap<Vec<Vec<Label>>, Arc<BTreeMap<i32, Integer>>> = FastMap::default();
-    let out = match fierz_normal(traces.to_vec()) {
-        None => BTreeMap::new(),
-        Some((power, key)) => fierz_shift(&fierz_reduce(key, &mut memo), power),
-    };
-    Ok(out.into_iter().filter(|(_, c)| !c.is_zero()).collect())
-}
-
-/// (N_c power of the empty traces, canonical non-empty traces), or None for
-/// a vanishing product (a single-letter trace).
-fn fierz_normal(traces: Vec<Vec<Label>>) -> Option<(i32, Vec<Vec<Label>>)> {
-    let mut power = 0;
-    let mut out = Vec::with_capacity(traces.len());
-    for trace in traces {
-        match trace.len() {
-            0 => power += 1,
-            1 => return None,
-            _ => out.push(canonical_trace(&trace)),
-        }
-    }
-    out.sort();
-    Some((power, out))
-}
-
-fn fierz_shift(map: &BTreeMap<i32, Integer>, shift: i32) -> BTreeMap<i32, Integer> {
-    map.iter().map(|(&p, c)| (p + shift, c.clone())).collect()
-}
-
-fn fierz_add(
-    out: &mut BTreeMap<i32, Integer>,
-    part: Option<(i32, Vec<Vec<Label>>)>,
-    shift: i32,
-    sign: i64,
-    memo: &mut FastMap<Vec<Vec<Label>>, Arc<BTreeMap<i32, Integer>>>,
-) {
-    let Some((power, key)) = part else { return };
-    let reduced = fierz_reduce(key, memo);
-    for (&p, c) in reduced.iter() {
-        let entry = out.entry(p + power + shift).or_insert_with(Integer::zero);
-        let term = if sign < 0 { -c.clone() } else { c.clone() };
-        *entry = &*entry + &term;
-    }
-}
-
-fn fierz_reduce(
-    key: Vec<Vec<Label>>,
-    memo: &mut FastMap<Vec<Vec<Label>>, Arc<BTreeMap<i32, Integer>>>,
-) -> Arc<BTreeMap<i32, Integer>> {
-    if key.is_empty() {
-        return Arc::new(BTreeMap::from([(0, Integer::one())]));
-    }
-    if let Some(found) = memo.get(&key) {
-        return found.clone();
-    }
-    let first = &key[0];
-    let label = first[0];
-    let mut out: BTreeMap<i32, Integer> = BTreeMap::new();
-    if let Some(second) = first[1..].iter().position(|&l| l == label) {
-        // Tr(a Y a X) = Tr(Y) Tr(X) - Tr(Y X) / N_c.
-        let second = second + 1;
-        let y: Vec<Label> = first[1..second].to_vec();
-        let x: Vec<Label> = first[second + 1..].to_vec();
-        let rest = &key[1..];
-        let mut split: Vec<Vec<Label>> = rest.to_vec();
-        split.push(y.clone());
-        split.push(x.clone());
-        fierz_add(&mut out, fierz_normal(split), 0, 1, memo);
-        let mut joined: Vec<Vec<Label>> = rest.to_vec();
-        joined.push(y.into_iter().chain(x).collect());
-        fierz_add(&mut out, fierz_normal(joined), -1, -1, memo);
-    } else {
-        // Tr(a X) Tr(a Y) = Tr(X Y) - Tr(X) Tr(Y) / N_c.
-        let (t, position) = key
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find_map(|(t, trace)| trace.iter().position(|&l| l == label).map(|p| (t, p)))
-            .expect("every label occurs twice");
-        let x: Vec<Label> = first[1..].to_vec();
-        let other = &key[t];
-        let y: Vec<Label> = other[position + 1..]
-            .iter()
-            .chain(&other[..position])
-            .copied()
-            .collect();
-        let rest: Vec<Vec<Label>> = key
-            .iter()
-            .enumerate()
-            .filter(|&(i, _)| i != 0 && i != t)
-            .map(|(_, trace)| trace.clone())
-            .collect();
-        let mut joined = rest.clone();
-        joined.push(x.iter().chain(&y).copied().collect());
-        fierz_add(&mut out, fierz_normal(joined), 0, 1, memo);
-        let mut split = rest;
-        split.push(x);
-        split.push(y);
-        fierz_add(&mut out, fierz_normal(split), -1, -1, memo);
-    }
-    out.retain(|_, c| !c.is_zero());
-    let out = Arc::new(out);
-    memo.insert(key, out.clone());
-    out
+    // Every label is contracted, so every term's rows are empty: the terms
+    // come in power order, one per power.
+    networks::fierz_terms(traces, &[])
+        .map_err(invalid)?
+        .into_iter()
+        .map(|(coefficient, power, rows)| {
+            debug_assert!(rows.is_empty());
+            i32::try_from(power)
+                .map(|power| (power, coefficient))
+                .map_err(|_| invalid("an N_c power exceeds i32"))
+        })
+        .collect()
 }
 
 /// `colour.face_count`: the U(N_c) index loops of `<left|right>` (its N_c
