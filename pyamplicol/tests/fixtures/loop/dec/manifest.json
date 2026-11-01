@@ -1,0 +1,852 @@
+{
+ "schema_version": 1,
+ "plan": "workspace/reports/engine-v2/m-final/PLAN.md \u00a72.2 MF-DEC-2 (rows XX01-XX08), campaign rules of m-sm/PLAN.md \u00a71.4",
+ "description": "One-loop 1 -> 2 and 1 -> 3 decays, QCD and EW, against MadLoop's quadruple-precision references (tests/fixtures/loop/required/dec/README.md: zero own width of the decaying particle, amputated loops, its absorptive self-energy dropped). tools/loop_benchmark/mqcd.py reads it; tests/unit/test_loop_v2_dec_*.py run it.",
+ "models": {
+  "loop_qcd_qed_sm_Gmu": {
+   "fixture": "loop_gmu_ufo"
+  },
+  "loop_qcd_qed_sm": {
+   "fixture": "loop_qcd_qed_sm_ufo"
+  }
+ },
+ "restriction_codes": {
+  "5F": {
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd"
+  },
+  "4F": {
+   "model": "loop_sm",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-4fs"
+  },
+  "G0": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu"
+  },
+  "Az": {
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-qcd-qed-sm"
+  }
+ },
+ "classes": [
+  "D-EW",
+  "D-QCD"
+ ],
+ "features": [
+  "1->2",
+  "1->3",
+  "charged-initial",
+  "external:W",
+  "external:Z",
+  "higgs",
+  "joint",
+  "leptons-only",
+  "massive:b",
+  "massive:top"
+ ],
+ "nightly_jobs": {
+  "budget_seconds": 1500,
+  "measurement": "MEASURED_SECONDS per id, DEFAULT_SECONDS without one",
+  "jobs": [
+   {
+    "job": 1,
+    "seconds": 1500,
+    "rows": [
+     "XX01",
+     "XX02",
+     "XX03",
+     "XX04",
+     "XX05"
+    ],
+    "file": "tests/unit/test_loop_v2_dec_nightly.py"
+   },
+   {
+    "job": 2,
+    "seconds": 900,
+    "rows": [
+     "XX06",
+     "XX07",
+     "XX08"
+    ],
+    "file": "tests/unit/test_loop_v2_dec_nightly_2.py"
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "XX01",
+   "class": "D-QCD",
+   "process": "t > b w+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "default",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/t_bwp_qcd.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/t_bwp_qcd.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "default": [
+     0,
+     1
+    ],
+    "nightly": [
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "uv",
+    "ap"
+   ],
+   "features": [
+    "1->2",
+    "massive:top",
+    "external:W"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "madloop_r2_called": [
+    "R2_txbW"
+   ]
+  },
+  {
+   "id": "XX02",
+   "class": "D-EW",
+   "process": "t > b w+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 1
+    },
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "restriction_code": "G0",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-gmu",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/t_bwp_ew.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/t_bwp_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "1->2",
+    "massive:top",
+    "external:W",
+    "joint"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.0075467722613403515
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "ignored_fixed_parameters": [
+    "WTau"
+   ],
+   "madloop_r2_called": [
+    "R2_txbW",
+    "R2_txbW2Cp"
+   ]
+  },
+  {
+   "id": "XX03",
+   "class": "D-EW",
+   "process": "z > e- e+",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/z_emep_ew.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/z_emep_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "1->2",
+    "external:Z",
+    "leptons-only"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.00775614674629644
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_r2_called": [
+    "R2_eeZCm",
+    "R2_eeZCp",
+    "R2_llZCp"
+   ]
+  },
+  {
+   "id": "XX04",
+   "class": "D-EW",
+   "process": "z > u u~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 2,
+     "QED": 1
+    },
+    {
+     "QCD": 0,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/z_uux_ew.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/z_uux_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "1->2",
+    "external:Z",
+    "joint"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    },
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.00775614674629644
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_r2_called": [
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
+  },
+  {
+   "id": "XX05",
+   "class": "D-EW",
+   "process": "w+ > e+ ve",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 3
+   },
+   "corrections": [
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/wp_epve_ew.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/wp_epve_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "1->2",
+    "external:W",
+    "charged-initial"
+   ],
+   "sectors": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 0,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.00775614674629644
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_r2_called": [
+    "R2_vlW"
+   ]
+  },
+  {
+   "id": "XX06",
+   "class": "D-QCD",
+   "process": "h > b b~",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 0,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_sm",
+   "restriction": "default",
+   "restriction_code": "4F",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd-4fs",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/h_bbx_4fs.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/h_bbx_4fs.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "uv"
+   ],
+   "features": [
+    "1->2",
+    "higgs",
+    "massive:b"
+   ],
+   "sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 2,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "madloop_r2_called": [
+    "R2_bbH"
+   ]
+  },
+  {
+   "id": "XX07",
+   "class": "D-QCD",
+   "process": "t > b w+ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": {
+    "QCD": 3,
+    "QED": 1
+   },
+   "corrections": [
+    "QCD"
+   ],
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "restriction_code": "5F",
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "unitary",
+   "scheme": "qcd",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/t_bwpg_qcd.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/t_bwpg_qcd.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [
+    "uv",
+    "ward"
+   ],
+   "features": [
+    "1->3",
+    "massive:top",
+    "external:W"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {},
+   "madloop_r2_called": [
+    "R2_GQQ",
+    "R2_QQq",
+    "R2_QQt",
+    "R2_txbW"
+   ]
+  },
+  {
+   "id": "XX08",
+   "class": "D-EW",
+   "process": "z > u u~ g",
+   "born_orders": {
+    "QCD": 1,
+    "QED": 1
+   },
+   "born_amplitude_orders": [
+    {
+     "QCD": 1,
+     "QED": 1
+    }
+   ],
+   "loop_orders": [
+    {
+     "QCD": 3,
+     "QED": 1
+    },
+    {
+     "QCD": 1,
+     "QED": 3
+    }
+   ],
+   "corrections": [
+    "QCD",
+    "QED"
+   ],
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "restriction_code": "Az",
+   "fixed_parameters": {
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+   },
+   "gauge": "feynman",
+   "scheme": "ew-qcd-qed-sm",
+   "tier": "nightly",
+   "status": "active",
+   "reference_legend": "E tests/fixtures/loop/required/dec/z_uuxg_ew.json (MF-DEC-1, MadLoop QP)",
+   "reference": {
+    "format": "required",
+    "path": "tests/fixtures/loop/required/dec/z_uuxg_ew.json",
+    "providers": [
+     "madloop"
+    ]
+   },
+   "points": {
+    "nightly": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   "extras": [],
+   "features": [
+    "1->3",
+    "external:Z",
+    "joint"
+   ],
+   "sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "predicted_sectors": [
+    {
+     "QCD": 4,
+     "QED": 2
+    },
+    {
+     "QCD": 2,
+     "QED": 4
+    }
+   ],
+   "unpredicted_sectors": [],
+   "unpredicted_reasons": {},
+   "reference_outliers": [],
+   "vanishing": [],
+   "reference_tolerance": 1e-12,
+   "alphas": {
+    "QED": 0.00775614674629644
+   },
+   "compatibility": "gmu_particle_anti",
+   "scale_parameter": "MU_R",
+   "madloop_r2_called": [
+    "R2_GGZdown",
+    "R2_GGZup",
+    "R2_GQQ",
+    "R2_GUU2Cm",
+    "R2_GUU2Cp",
+    "R2_GUU2Cpd",
+    "R2_QQCp0",
+    "R2_QQCpud",
+    "R2_QQq",
+    "R2_UUCm",
+    "R2_UUZ_V2",
+    "R2_UUZ_V5",
+    "R2_uuZ2Cm",
+    "R2_uuZ2Cp",
+    "R2_uuZ2Cp_d"
+   ]
+  }
+ ]
+}
