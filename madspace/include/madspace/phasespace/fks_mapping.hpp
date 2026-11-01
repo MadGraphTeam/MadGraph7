@@ -1,5 +1,9 @@
 #pragma once
 
+#include <functional>
+#include <variant>
+#include <vector>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/fks_radiation.hpp"
 #include "madspace/phasespace/phasespace.hpp"
@@ -150,13 +154,109 @@ private:
 };
 
 /**
- * The kinematics an FKS integrand needs for one FKS configuration: the real
- * emission of an @ref FKSMapping, its Born and its counter-events, as a
- * function of the random numbers.
+ * Phase space of a real emission in the FKS configurations of one Born, each
+ * event in the configuration of its `fks_index` condition.
+ *
+ * The configurations are @ref FKSMapping "FKSMappings" of the same Born
+ * mapping. The batch is split by `fks_index`, each part goes through its
+ * configuration, forward or inverse, and the results are merged in the order
+ * of the batch. Drawing `fks_index`, uniformly or with an adaptive discrete
+ * sampler, and its weight belong to the integrand, as for the
+ * `permutation_index` of a @ref PhaseSpaceMapping: this mapping only routes
+ * the events. The alternative, with the configurations as channels, is a
+ * @ref MultiChannelMapping of the FKSMappings.
+ *
+ * `batch` is the leading batch dimension and `n` the number of particles of
+ * the Born, incoming included.
+ *
+ * **Inputs**
+ * - those of the configurations (`random`, and `discrete` if the Born mapping
+ *   has any).
+ *
+ * **Conditions**
+ * - those of the configurations (`permutation_index`), then
+ * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
+ *   from 0 to the number of configurations minus one.
+ *
+ * **Outputs**
+ * - `momenta` – `float`, shape `(batch, n + 1, 4)` – momenta of the real
+ *   emission in the lab frame, in the order of the real process of the
+ *   configuration.
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions of the real
+ *   emission.
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation, that of the configuration of the event.
+ */
+class FKSConfigurationMapping : public Mapping {
+public:
+    /// @param configurations  The FKS configurations, FKSMappings of the same
+    ///                        Born mapping.
+    FKSConfigurationMapping(const std::vector<FKSMapping>& configurations);
+    /// The FKS configurations.
+    const std::vector<FKSMapping>& configurations() const { return _configurations; }
+    /// Number of random numbers, that of each configuration.
+    std::size_t random_dim() const { return _configurations.at(0).random_dim(); }
+    /// Number of discrete channel choices of the Born mapping.
+    std::size_t discrete_dim() const override {
+        return _configurations.at(0).discrete_dim();
+    }
+    /// Number of particles of the real emission, incoming included.
+    std::size_t particle_count() const {
+        return _configurations.at(0).particle_count();
+    }
+    /**
+     * Add the real emission, its Born and its FKS counter-events to @p fb, each
+     * event in the configuration of its `fks_index`, at the inputs and
+     * conditions of the forward map. Returns those of
+     * FKSMapping::build_counter_events.
+     */
+    NamedVector<Value> build_counter_events(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const;
+    /// Names and types of the results of build_counter_events(), those of
+    /// FKSMapping::counter_event_types.
+    NamedVector<Type> counter_event_types() const {
+        return _configurations.at(0).counter_event_types();
+    }
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    // splits the batch by fks_index, builds each configuration on its part
+    // and merges the results (named, the weight as det)
+    NamedVector<Value> build_split(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions,
+        const std::function<NamedVector<Value>(
+            const FKSMapping&, const NamedVector<Value>&, const NamedVector<Value>&
+        )>& build
+    ) const;
+
+    std::vector<FKSMapping> _configurations;
+};
+
+/**
+ * The kinematics an FKS integrand needs: the real emission, its Born and its
+ * counter-events, as a function of the random numbers, for one FKS
+ * configuration (an @ref FKSMapping) or for several, each event in the
+ * configuration of its `fks_index` (an @ref FKSConfigurationMapping).
  *
  * **Arguments**
  * - the inputs of the mapping (`random`, and `discrete` if it has any), then
- *   its conditions (`permutation_index`).
+ *   its conditions (`permutation_index`, and `fks_index` for several
+ *   configurations).
  *
  * **Returns**
  * - those of FKSMapping::build_counter_events, in the order of
@@ -164,17 +264,20 @@ private:
  */
 class FKSKinematics : public FunctionGenerator {
 public:
-    /// @param mapping  The FKS mapping of the configuration.
-    FKSKinematics(const FKSMapping& mapping);
+    /// One or several FKS configurations.
+    using Configurations = std::variant<FKSMapping, FKSConfigurationMapping>;
+    /// @param mapping  The FKS mapping of the configuration, or the
+    ///                 FKSConfigurationMapping of several.
+    FKSKinematics(const Configurations& mapping);
     /// The mapping.
-    const FKSMapping& mapping() const { return _mapping; }
+    const Configurations& mapping() const { return _mapping; }
 
 private:
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
 
-    FKSMapping _mapping;
+    Configurations _mapping;
 };
 
 } // namespace madspace

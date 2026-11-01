@@ -1628,15 +1628,59 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSMapping::counter_event_types")
         );
 
+    py::classh<FKSConfigurationMapping, Mapping>(
+        m, "FKSConfigurationMapping", pydoc::doc("FKSConfigurationMapping")
+    )
+        .def(
+            py::init<const std::vector<FKSMapping>&>(),
+            py::arg("configurations"),
+            pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
+        )
+        .def(
+            "configurations",
+            &FKSConfigurationMapping::configurations,
+            pydoc::doc("FKSConfigurationMapping::configurations")
+        )
+        .def(
+            "random_dim",
+            &FKSConfigurationMapping::random_dim,
+            pydoc::doc("FKSConfigurationMapping::random_dim")
+        )
+        .def(
+            "particle_count",
+            &FKSConfigurationMapping::particle_count,
+            pydoc::doc("FKSConfigurationMapping::particle_count")
+        )
+        .def(
+            "counter_event_types",
+            &FKSConfigurationMapping::counter_event_types,
+            pydoc::doc("FKSConfigurationMapping::counter_event_types")
+        );
+
     py::classh<FKSKinematics, FunctionGenerator>(
         m, "FKSKinematics", pydoc::doc("FKSKinematics")
     )
         .def(
-            py::init<const FKSMapping&>(),
+            py::init([](const FKSMapping& mapping) { return FKSKinematics(mapping); }),
             py::arg("mapping"),
             pydoc::doc("FKSKinematics::FKSKinematics")
         )
-        .def("mapping", &FKSKinematics::mapping, pydoc::doc("FKSKinematics::mapping"));
+        .def(
+            py::init([](const FKSConfigurationMapping& mapping) {
+                return FKSKinematics(mapping);
+            }),
+            py::arg("mapping")
+        )
+        .def(
+            "mapping",
+            [](const FKSKinematics& kinematics) {
+                return std::visit(
+                    [](const auto& mapping) { return py::cast(mapping); },
+                    kinematics.mapping()
+                );
+            },
+            pydoc::doc("FKSKinematics::mapping")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")

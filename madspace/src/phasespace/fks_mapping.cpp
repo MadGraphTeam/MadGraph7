@@ -245,35 +245,190 @@ NamedVector<Type> FKSMapping::counter_event_types() const {
     return types;
 }
 
-FKSKinematics::FKSKinematics(const FKSMapping& mapping) :
+namespace {
+
+const Mapping& as_mapping(const FKSKinematics::Configurations& mapping) {
+    return std::visit([](const auto& m) -> const Mapping& { return m; }, mapping);
+}
+
+NamedVector<Type> fks_configuration_conditions(const std::vector<FKSMapping>& configs) {
+    if (configs.empty()) {
+        throw std::invalid_argument(
+            "FKSConfigurationMapping: needs at least one configuration"
+        );
+    }
+    const auto& first = configs.at(0);
+    for (const auto& config : configs) {
+        if (config.input_types().keys() != first.input_types().keys() ||
+            config.condition_types().keys() != first.condition_types().keys() ||
+            config.random_dim() != first.random_dim() ||
+            config.discrete_dim() != first.discrete_dim() ||
+            config.particle_count() != first.particle_count() ||
+            config.born().leptonic() != first.born().leptonic() ||
+            config.born().external_masses() != first.born().external_masses()) {
+            throw std::invalid_argument(
+                "FKSConfigurationMapping: the configurations must be FKSMappings of "
+                "the same Born mapping"
+            );
+        }
+    }
+    auto conditions = first.condition_types();
+    conditions.push_back("fks_index", batch_int);
+    return conditions;
+}
+
+} // namespace
+
+FKSConfigurationMapping::FKSConfigurationMapping(
+    const std::vector<FKSMapping>& configurations
+) :
+    Mapping(
+        "FKSConfigurationMapping",
+        configurations.empty()
+            ? NamedVector<Type>{}
+            : configurations.at(0).input_types(),
+        configurations.empty()
+            ? NamedVector<Type>{}
+            : configurations.at(0).output_types(),
+        fks_configuration_conditions(configurations)
+    ),
+    _configurations(configurations) {}
+
+NamedVector<Value> FKSConfigurationMapping::build_split(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions,
+    const std::function<NamedVector<Value>(
+        const FKSMapping&, const NamedVector<Value>&, const NamedVector<Value>&
+    )>& build
+) const {
+    auto fks_index = conditions.at("fks_index");
+    auto split_indices = fb.batch_split_by_index(
+        fks_index, static_cast<me_int_t>(_configurations.size())
+    );
+    auto condition_names = conditions.keys();
+    std::vector<std::string> result_names;
+    std::vector<ValueVec> merge_args;
+    for (auto [config, indices] : zip(_configurations, split_indices)) {
+        NamedVector<Value> part_inputs, part_conditions;
+        for (auto [name, input] : zip(inputs.keys(), inputs)) {
+            part_inputs.push_back(name, fb.batch_gather(indices, input));
+        }
+        for (std::size_t k = 0; k < conditions.size(); ++k) {
+            if (condition_names.at(k) != "fks_index") {
+                part_conditions.push_back(
+                    condition_names.at(k), fb.batch_gather(indices, conditions.at(k))
+                );
+            }
+        }
+        auto results = build(config, part_inputs, part_conditions);
+        if (result_names.empty()) {
+            result_names = results.keys();
+            merge_args.resize(results.size());
+        }
+        for (auto [result, args] : zip(results, merge_args)) {
+            args.push_back(result);
+            args.push_back(indices);
+        }
+    }
+    NamedVector<Value> merged;
+    for (auto [name, args] : zip(result_names, merge_args)) {
+        merged.push_back(name, fb.batch_merge_by_index(args));
+    }
+    return merged;
+}
+
+Mapping::Result FKSConfigurationMapping::build_forward_impl(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    auto merged = build_split(
+        fb,
+        inputs,
+        conditions,
+        [&](const FKSMapping& config, const auto& in, const auto& cond) {
+            return config.build_forward(fb, in, cond);
+        }
+    );
+    auto det = merged.at("det");
+    NamedVector<Value> outputs;
+    for (const auto& name : output_types().keys()) {
+        outputs.push_back(name, merged.at(name));
+    }
+    return {outputs, det};
+}
+
+Mapping::Result FKSConfigurationMapping::build_inverse_impl(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    auto merged = build_split(
+        fb,
+        inputs,
+        conditions,
+        [&](const FKSMapping& config, const auto& in, const auto& cond) {
+            return config.build_inverse(fb, in, cond);
+        }
+    );
+    auto det = merged.at("det");
+    NamedVector<Value> outputs;
+    for (const auto& name : input_types().keys()) {
+        outputs.push_back(name, merged.at(name));
+    }
+    return {outputs, det};
+}
+
+NamedVector<Value> FKSConfigurationMapping::build_counter_events(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    return build_split(
+        fb,
+        inputs,
+        conditions,
+        [&](const FKSMapping& config, const auto& in, const auto& cond) {
+            return config.build_counter_events(fb, in, cond);
+        }
+    );
+}
+
+FKSKinematics::FKSKinematics(const Configurations& mapping) :
     FunctionGenerator(
         "FKSKinematics",
         [&] {
-            auto types = mapping.input_types();
-            const auto& conditions = mapping.condition_types();
+            const auto& m = as_mapping(mapping);
+            auto types = m.input_types();
+            const auto& conditions = m.condition_types();
             auto names = conditions.keys();
             for (std::size_t k = 0; k < conditions.size(); ++k) {
                 types.push_back(names.at(k), conditions.at(k));
             }
             return types;
         }(),
-        mapping.counter_event_types()
+        std::visit([](const auto& m) { return m.counter_event_types(); }, mapping)
     ),
     _mapping(mapping) {}
 
 NamedVector<Value> FKSKinematics::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
+    const auto& m = as_mapping(_mapping);
     NamedVector<Value> inputs, conditions;
-    auto input_names = _mapping.input_types().keys();
-    auto condition_names = _mapping.condition_types().keys();
-    for (const auto& name : input_names) {
+    for (const auto& name : m.input_types().keys()) {
         inputs.push_back(name, args.at(name));
     }
-    for (const auto& name : condition_names) {
+    for (const auto& name : m.condition_types().keys()) {
         conditions.push_back(name, args.at(name));
     }
-    return _mapping.build_counter_events(fb, inputs, conditions);
+    return std::visit(
+        [&](const auto& mapping) {
+            return mapping.build_counter_events(fb, inputs, conditions);
+        },
+        _mapping
+    );
 }
 
 Mapping::Result FKSMapping::build_inverse_impl(

@@ -1,10 +1,11 @@
-"""The FKS configurations of a Born as channels.
+"""The FKS configurations of a Born, as channels or by a discrete index.
 
 All FKS configurations of one Born are FKSMappings of the same Born mapping,
 with the same inputs, outputs and conditions, massive and massless emitters
 alike. As channels of a MultiChannelMapping or, as FKSKinematics, of a
 MultiChannelFunction, each slice of the batch is that of its own
-configuration.
+configuration. In an FKSConfigurationMapping each event is that of the
+configuration of its fks_index.
 """
 
 import numpy as np
@@ -102,3 +103,85 @@ def test_mapping_round_trip(masses, leptonic, i_fks, emitters):
     r_inv, det_inv = channels.map_inverse([momenta, x1, x2], [sizes])
     np.testing.assert_allclose(to_numpy(r_inv), r, rtol=0, atol=1e-9)
     np.testing.assert_allclose(to_numpy(det) * to_numpy(det_inv), 1.0, rtol=1e-9)
+
+
+def fks_indices(count, batch, seed):
+    return np.random.default_rng(seed).integers(0, count, batch).astype(np.int32)
+
+
+def to_torch_int(x):
+    return torch.as_tensor(x, dtype=torch.int32).to(torch.get_default_device())
+
+
+def by_configuration(index, count, compare):
+    """compare(k, events) for the events of each configuration k"""
+    for k in range(count):
+        compare(k, np.flatnonzero(index == k))
+
+
+@pytest.mark.parametrize("masses,leptonic,i_fks,emitters", LAYOUTS, ids=IDS)
+def test_configuration_of_each_event(masses, leptonic, i_fks, emitters):
+    configs = configurations(masses, leptonic, i_fks, emitters)
+    mapping = ms.FKSConfigurationMapping(configs)
+    count = len(configs)
+    assert mapping.random_dim() == configs[0].random_dim()
+    assert mapping.particle_count() == configs[0].particle_count()
+    batch = count * PER_CHANNEL
+    r = 0.02 + 0.96 * np.random.default_rng(13).random((batch, mapping.random_dim()))
+    index = fks_indices(count, batch, seed=14)
+
+    momenta, x1, x2, det = mapping.map_forward([to_torch(r)], [to_torch_int(index)])
+    outputs = [to_numpy(t) for t in (momenta, x1, x2, det)]
+
+    def same_as_configuration(k, events):
+        ref = configs[k].map_forward([to_torch(r[events])])
+        for ours, theirs in zip(outputs, ref):
+            np.testing.assert_array_equal(ours[events], to_numpy(theirs))
+
+    by_configuration(index, count, same_as_configuration)
+
+    # the inverse with the configuration of each event, to the conditioning of
+    # the Born mappings as in test_fks_mapping.py
+    r_inv, det_inv = mapping.map_inverse([momenta, x1, x2], [to_torch_int(index)])
+    np.testing.assert_allclose(to_numpy(r_inv), r, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(outputs[3] * to_numpy(det_inv), 1.0, rtol=1e-9)
+
+    # the kinematics, counter-events included
+    names = list(mapping.counter_event_types().keys())
+    kinematics = ms.FKSKinematics(mapping)
+    assert isinstance(kinematics.mapping(), ms.FKSConfigurationMapping)
+    runtime = ms.FunctionRuntime(kinematics.function(), default_context())
+    out = [to_numpy(t) for t in runtime.call([to_torch(r), to_torch_int(index)])]
+    assert len(out) == len(names)
+
+    def same_kinematics(k, events):
+        single = ms.FunctionRuntime(
+            ms.FKSKinematics(configs[k]).function(), default_context()
+        )
+        ref = [to_numpy(t) for t in single.call([to_torch(r[events])])]
+        for name, ours, theirs in zip(names, out, ref):
+            np.testing.assert_array_equal(ours[events], theirs, err_msg=name)
+
+    by_configuration(index, count, same_kinematics)
+
+
+def test_configuration_without_events():
+    configs = configurations([173.0, 173.0], False, 4, [0, 1, 2, 3])
+    mapping = ms.FKSConfigurationMapping(configs)
+    r = np.random.default_rng(15).random((100, mapping.random_dim()))
+    index = np.full(100, 2, dtype=np.int32)
+    momenta, x1, x2, det = mapping.map_forward([to_torch(r)], [to_torch_int(index)])
+    ref = configs[2].map_forward([to_torch(r)])
+    np.testing.assert_array_equal(to_numpy(momenta), to_numpy(ref[0]))
+    np.testing.assert_array_equal(to_numpy(det), to_numpy(ref[3]))
+
+
+def test_configurations_of_one_born():
+    born = ms.PhaseSpaceMapping([0.0, 0.0, 173.0, 173.0], SQRT_S, mode="rambo")
+    other = ms.PhaseSpaceMapping([0.0, 0.0, 0.0, 0.0], SQRT_S, mode="rambo")
+    with pytest.raises(ValueError):
+        ms.FKSConfigurationMapping([])
+    with pytest.raises(ValueError):
+        ms.FKSConfigurationMapping(
+            [ms.FKSMapping(born, 4, 2), ms.FKSMapping(other, 4, 2)]
+        )
