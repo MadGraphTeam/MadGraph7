@@ -833,6 +833,161 @@ class TestHistogramRegressions(unittest.TestCase):
             self.assertIn('dyn=-1 muR= 2.000 muF= 1.000', line)
             self.assertNotIn('PDF=', line)
 
+    def test_density_uncertainties_combine_in_quadrature(self):
+        """The uncertainties of the spin-density-matrix columns of an aMC@NLO
+        fixed-order run ('<label> @dy', '<label> @dyc') are summed in
+        quadrature like 'dy', the weights themselves linearly."""
+        labels = ['central', 'stat_error', 'dens rho_1_1',
+                  'dens rho_1_1 @dy', 'dens rho_1_1 @dyc']
+        first = self.make_hwu(labels, [3.0, 0.3, 2.0, 0.2, 0.4], n_bins=2)
+        second = self.make_hwu(labels, [4.0, 0.4, 1.0, 0.1, 0.3], n_bins=2)
+        self.assertTrue(histograms.is_error_label('dens rho_1_1 @dyc'))
+        self.assertFalse(histograms.is_error_label('dens rho_1_1'))
+
+        summed = first+second
+        self.assertEqual(summed.bins[0].wgts['dens rho_1_1'], 3.0)
+        self.assertAlmostEqual(summed.bins[0].wgts['dens rho_1_1 @dy'],
+                               (0.2**2+0.1**2)**0.5)
+        self.assertAlmostEqual(summed.bins[0].wgts['dens rho_1_1 @dyc'], 0.5)
+
+        with misc.TMP_directory() as tmpdir:
+            sources = []
+            for i, histo in enumerate([first, second]):
+                sources.append(pjoin(tmpdir, 'run%d' % i))
+                histograms.HwUList([histo]).output(sources[-1], format='HwU')
+            aggregator = histograms.StreamingHwUAggregator(memory_limit=0)
+            try:
+                for source in sources:
+                    aggregator.add_file(source+'.HwU')
+                streamed = aggregator.to_hwu_list()[0]
+                self.assertEqual(streamed.bins[1].wgts['dens rho_1_1'], 3.0)
+                self.assertAlmostEqual(
+                    streamed.bins[1].wgts['dens rho_1_1 @dy'],
+                    (0.2**2+0.1**2)**0.5)
+                self.assertAlmostEqual(
+                    streamed.bins[1].wgts['dens rho_1_1 @dyc'], 0.5)
+            finally:
+                aggregator.close()
+
+            out = pjoin(tmpdir, 'cli_sum')
+            result = subprocess.run([
+                sys.executable, histograms.__file__, sources[0]+'.HwU',
+                sources[1]+'.HwU', '--sum', '--HwU', '--no_open',
+                '--keep_all_weights', '--out='+out],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            cli = histograms.HwUList(out+'.HwU')[0]
+            self.assertAlmostEqual(cli.bins[0].wgts['dens rho_1_1 @dyc'], 0.5)
+            self.assertEqual(cli.bins[0].wgts['dens rho_1_1'], 3.0)
+
+    def test_density_matrix_of_the_density_columns(self):
+        """--density: the normalised density matrix of each bin from the
+        'dens' columns (rho_IJ = M_I conj(M_J); the Re/Im columns are 2 Re
+        and 2 Im rho_IJ), the delta-method uncertainty of each element, and
+        f_L, f_0, f_R for one spin-1 leg."""
+        basis = {'legs': [3], 'pdg': [24], 'me_frame': [3],
+                 'combinations': [[-1], [0], [1]], 'elements': []}
+        for i in range(1, 4):
+            basis['elements'].append({'label': 'rho_%d_%d' % (i, i),
+                                      'kind': 'diag', 'i': i, 'j': i})
+            for j in range(i+1, 4):
+                basis['elements'].append({'label': 'Re_rho_%d_%d' % (i, j),
+                                          'kind': 're', 'i': i, 'j': j})
+                basis['elements'].append({'label': 'Im_rho_%d_%d' % (i, j),
+                                          'kind': 'im', 'i': i, 'j': j})
+        weights = {'rho_1_1': 1.0, 'rho_2_2': 0.6, 'rho_3_3': 0.4,
+                   'Re_rho_1_2': 0.2, 'Im_rho_1_2': -0.1}
+        labels = ['central', 'stat_error']
+        values = [2.0, 0.2]
+        for element in basis['elements']:
+            label = 'dens %s' % element['label']
+            labels += [label, label+' @dy', label+' @dyc']
+            # uncertainties: w_K alone 0.1, w_K + central 0.25
+            values += [weights.get(element['label'], 0.0), 0.1, 0.25]
+        histo = self.make_hwu(labels, values, title='pt W', n_bins=2)
+
+        density, summary = histograms.density_histograms([histo], basis)
+        by_title = dict((h.title, h) for h in density)
+        self.assertAlmostEqual(by_title['pt W [f_L]'].bins[0].wgts['central'],
+                               0.5)
+        self.assertAlmostEqual(by_title['pt W [f_0]'].bins[0].wgts['central'],
+                               0.3)
+        self.assertAlmostEqual(by_title['pt W [f_R]'].bins[1].wgts['central'],
+                               0.2)
+        self.assertAlmostEqual(
+            by_title['pt W [Re rho_1_2]'].bins[0].wgts['central'], 0.05)
+        self.assertAlmostEqual(
+            by_title['pt W [Im rho_1_2]'].bins[0].wgts['central'], -0.025)
+        # delta method: cov(w_K, w_1) = (0.25**2-0.1**2-0.2**2)/2
+        r, cov = 0.5, (0.25**2-0.1**2-0.2**2)/2.0
+        expected = ((0.1**2-2*r*cov+(r*0.2)**2)/2.0**2)**0.5
+        self.assertAlmostEqual(
+            by_title['pt W [rho_1_1]'].bins[0].wgts['stat_error'], expected)
+        self.assertAlmostEqual(
+            by_title['pt W [f_L]'].bins[0].wgts['stat_error'], expected)
+        record = summary['pt W']
+        rho = record['rho'][0]
+        self.assertEqual(rho[0][1], [0.05, -0.025])
+        self.assertEqual(rho[1][0], [0.05, 0.025])
+        self.assertAlmostEqual(sum(rho[i][i][0] for i in range(3)), 1.0)
+
+        with misc.TMP_directory() as tmpdir:
+            source = pjoin(tmpdir, 'MADatNLO')
+            histograms.HwUList([histo]).output(source, format='HwU')
+            with open(pjoin(tmpdir, 'density_basis.json'), 'w') as stream:
+                json.dump(basis, stream)
+            out = pjoin(tmpdir, 'dens')
+            result = subprocess.run([
+                sys.executable, histograms.__file__, source+'.HwU',
+                '--density', '--HwU', '--no_open', '--out='+out],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            with open(out+'_density.json') as stream:
+                cli_summary = json.load(stream)
+            self.assertEqual(cli_summary['basis']['combinations'],
+                             [[-1], [0], [1]])
+            self.assertAlmostEqual(
+                cli_summary['histograms']['pt W']['observables']['f_0'][1][0],
+                0.3)
+            cli = dict((h.title, h) for h in histograms.HwUList(out+'.HwU'))
+            self.assertAlmostEqual(cli['pt W [f_L]'].bins[0].wgts['central'],
+                                   0.5)
+
+    def test_density_spin_correlations_of_two_fermions(self):
+        """--density for two spin-1/2 legs: B1_z, B2_z, C_zz from the
+        diagonal (and C_xx from the off-diagonal) elements, whatever the
+        order of the helicity combinations."""
+        combos = [[-1, 1], [-1, -1], [1, 1], [1, -1]]
+        basis = {'combinations': combos, 'elements': []}
+        for i in range(1, 5):
+            basis['elements'].append({'label': 'rho_%d_%d' % (i, i),
+                                      'kind': 'diag', 'i': i, 'j': i})
+            for j in range(i+1, 5):
+                basis['elements'].append({'label': 'Re_rho_%d_%d' % (i, j),
+                                          'kind': 're', 'i': i, 'j': j})
+                basis['elements'].append({'label': 'Im_rho_%d_%d' % (i, j),
+                                          'kind': 'im', 'i': i, 'j': j})
+        # the pure state (|+-> + |-+>)/sqrt(2): B = 0, C_zz = -1, C_xx = 1
+        amp = {(-1, 1): 1.0, (1, -1): 1.0}
+        ratios = {}
+        for element in basis['elements']:
+            mi = amp.get(tuple(combos[element['i']-1]), 0.0)/2**0.5
+            mj = amp.get(tuple(combos[element['j']-1]), 0.0)/2**0.5
+            value = {'diag': mi*mj, 're': 2*mi*mj, 'im': 0.0}[element['kind']]
+            ratios[element['label']] = (value, 0.0)
+        observables = dict(histograms.density_observables(basis))
+        def value(name):
+            return histograms.density_observable_value(observables[name],
+                                                       ratios, basis)[0]
+        self.assertAlmostEqual(value('B1_z'), 0.0)
+        self.assertAlmostEqual(value('B2_z'), 0.0)
+        self.assertAlmostEqual(value('C_zz'), -1.0)
+        self.assertAlmostEqual(value('C_xx'), 1.0)
+        self.assertAlmostEqual(value('C_yy'), 1.0)
+        self.assertAlmostEqual(value('f(-1,+1)'), 0.5)
+
     def test_cli_accepts_run_id_and_rejects_incompatible_sums(self):
         xml_template = """<histfile>
 <run id="{run_id}" header="xmin;xmax;Weight;WeightError">

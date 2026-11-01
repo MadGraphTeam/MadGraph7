@@ -15,6 +15,11 @@ c     collinear pole.
 c
 c     The frame kinematics proper (get_frame_mask_born/real,
 c     get_me_frame_boost, boost_to_me_frame) are in me_frame_boost.f.
+c
+c     Each wrapper calls density_frame_rephase (density_weights.f) with the
+c     momenta the matrix element gets: with density_nrk, the projector of
+c     the density-matrix weights is turned into that of the {n,r,k} frame
+c     of these momenta (a no-op otherwise, and without --density).
 c**************************************************************************
 
 
@@ -361,6 +366,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call density_frame_rephase(p_f, nexternal-1)
       call sborn(p_f, ans_summed)
 
       return
@@ -387,6 +393,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call density_frame_rephase(p_f, nexternal-1)
       call sborn_onehel(p_f, hel1, chosen_hel, ans)
 
       return
@@ -430,6 +437,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call density_frame_rephase(p_f, nexternal-1)
       call BinothLHA(p_f, born_wgt, virt_wgt)
 
       return
@@ -454,6 +462,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call density_frame_rephase(p_f, nexternal-1)
       call sborn_sf(p_f, m, n, wgt)
 
       return
@@ -476,6 +485,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call density_frame_rephase(p_f, nexternal-1)
       call extra_cnt(p_f, icnt, cnts)
 
       return
@@ -500,6 +510,7 @@ c**************************************************************************
 
       call get_frame_mask_real(nFKSprocess, ids)
       call boost_to_me_frame(p_in, nexternal, ids, p_f)
+      call density_frame_rephase(p_f, nexternal)
       call smatrix_real(p_f, wgt)
 
       return

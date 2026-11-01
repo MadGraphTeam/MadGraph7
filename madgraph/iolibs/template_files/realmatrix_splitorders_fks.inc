@@ -139,10 +139,13 @@ C ----------
 ## if(density) {
 C     Projected on the density legs: Tr(W rho) instead of the helicity
 C     sum. Before NTRY is incremented, so that the helicity filter is
-C     still set up by the first unprojected call.
+C     still set up by the first unprojected call. The helicities are
+C     those of the frame of the density legs, where two of them giving
+C     the same matrix element at the first point need not give it at
+C     the others: the T_IDENT shortcut below is not used.
       CALL DENSITY_W_INIT()
       IF (DENS_W_ON) THEN
-        CALL SMATRIX%(proc_prefix)s_W(P,ANS)
+        CALL SMATRIX%(proc_prefix)s_W(P,ANS,GOODHEL,NTRY.GE.2)
         RETURN
       ENDIF
 ## }
@@ -161,6 +164,7 @@ C identical matrix elements
                 T_SAVE(IHEL,I)=T(I)
             ENDDO
             T_IDENT(IHEL)=-1
+## if(not density) {
             DO I=1,IHEL-1
                IF (T(0).EQ.0D0) EXIT
                IF (T_SAVE(I,0).EQ.0D0) CYCLE
@@ -170,6 +174,7 @@ C identical matrix elements
                 T_IDENT(IHEL) = I
  444            continue
             ENDDO
+## }
           ELSE
             IF (T_IDENT(IHEL).GT.0) THEN
 C if two helicity states are identical, dont recompute
@@ -431,7 +436,7 @@ C
       END
 
 
-      SUBROUTINE SMATRIX%(proc_prefix)s_W(P,ANS)
+      SUBROUTINE SMATRIX%(proc_prefix)s_W(P,ANS,GOODHEL,FILTER)
 C
 C The real emission projected on the density legs of the Born
 C (density_info.inc): Tr(W rho) for the projector W, per squared split
@@ -439,12 +444,20 @@ C order (ANS(0) is their sum), averaged as SMATRIX. The density legs are
 C at the Born positions POS_B; in this real emission they are shifted by
 C the FKS parton i_fks of the current FKS configuration (the mapping of
 C get_frame_mask_real in me_frame_boost.f).
+C With FILTER, the helicities that vanish in the helicity sum (not
+C GOODHEL) are skipped. The JAMPs of every helicity are kept for the next
+C call at the same momenta and strong coupling: the other projectors of
+C the density-matrix weights then cost the colour contractions only.
+C The configurations grouped by the helicities of the other legs
+C (HIDX(C,R,nFKS): rest R, density legs in combination C) are built on
+C the first call for each FKS configuration.
 C
       IMPLICIT NONE
       include 'nexternal.inc'
       include 'density_info.inc'
       include 'nFKSconfigs.inc'
       include 'fks_info.inc'
+      include 'coupl.inc'
       INTEGER     NCOMB         
       PARAMETER ( NCOMB=%(ncomb)d)
       INTEGER    NCOLOR
@@ -454,50 +467,83 @@ C
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
       REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
+      LOGICAL GOODHEL(NCOMB), FILTER
       INTEGER IHEL,JHEL,IDEN,I,K,C,C1,C2,RPOS(N_CHANGING_B)
       INTEGER HELIDX(N_COMB_B)
       LOGICAL ISFIRST, SAME
       COMPLEX*16 AMP(NGRAPHS), JALL(NCOLOR,NAMPSO,NCOMB)
       COMPLEX*16 RES(NSQAMPSO), ZANS(NSQAMPSO)
+      LOGICAL JALL_OK
+      REAL*8 P_SAVE(0:3,NEXTERNAL), G_SAVE
+      SAVE JALL, JALL_OK, P_SAVE, G_SAVE
+      DATA JALL_OK /.FALSE./
+      INTEGER R, HIDX(N_COMB_B,NCOMB,FKS_CONFIGS), NRST(FKS_CONFIGS)
+      LOGICAL HIDX_DONE(FKS_CONFIGS), FIRSTTIME
+      SAVE HIDX, NRST, HIDX_DONE, FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
       INTEGER NHEL(NEXTERNAL,NCOMB)
 %(helicity_lines)s
 %(den_factor_line)s
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
-      DO K=1,N_CHANGING_B
-        RPOS(K)=POS_B(K)
-        IF (POS_B(K).GE.FKS_I_D(NFKSPROCESS)) RPOS(K)=POS_B(K)+1
-      ENDDO
-      DO IHEL=1,NCOMB
-        CALL GET_AMP_%(proc_prefix)s(P,NHEL(1,IHEL),AMP)
-        CALL GET_JAMP_%(proc_prefix)s(AMP,JALL(1,1,IHEL))
-      ENDDO
-      ZANS(:)=(0d0,0d0)
-      DO IHEL=1,NCOMB
-C       one pass per helicity of the other legs: the configurations whose
-C       density legs are in the first combination
-        ISFIRST=.TRUE.
+      IF (FIRSTTIME) THEN
+        HIDX_DONE(:)=.FALSE.
+        FIRSTTIME=.FALSE.
+      ENDIF
+      IF (.NOT.HIDX_DONE(NFKSPROCESS)) THEN
         DO K=1,N_CHANGING_B
-          IF (NHEL(RPOS(K),IHEL).NE.ALLOW_HEL_B(K)) ISFIRST=.FALSE.
+          RPOS(K)=POS_B(K)
+          IF (POS_B(K).GE.FKS_I_D(NFKSPROCESS)) RPOS(K)=POS_B(K)+1
         ENDDO
-        IF (.NOT.ISFIRST) CYCLE
-        DO C=1,N_COMB_B
-          HELIDX(C)=0
-          DO JHEL=1,NCOMB
-            SAME=.TRUE.
-            DO I=1,NEXTERNAL
-              IF (ANY(RPOS(:).EQ.I)) CYCLE
-              IF (NHEL(I,JHEL).NE.NHEL(I,IHEL)) SAME=.FALSE.
-            ENDDO
-            DO K=1,N_CHANGING_B
-              IF (NHEL(RPOS(K),JHEL).NE.ALLOW_HEL_B((C-1)*N_CHANGING_B+K)) SAME=.FALSE.
-            ENDDO
-            IF (SAME) HELIDX(C)=JHEL
+        NRST(NFKSPROCESS)=0
+        DO IHEL=1,NCOMB
+C         one rest per helicity of the other legs: the configurations
+C         whose density legs are in the first combination
+          ISFIRST=.TRUE.
+          DO K=1,N_CHANGING_B
+            IF (NHEL(RPOS(K),IHEL).NE.ALLOW_HEL_B(K)) ISFIRST=.FALSE.
           ENDDO
-          IF (HELIDX(C).EQ.0) THEN
-            WRITE(*,*) 'ERROR: real helicity not found for combination', C
-            STOP 1
+          IF (.NOT.ISFIRST) CYCLE
+          NRST(NFKSPROCESS)=NRST(NFKSPROCESS)+1
+          R=NRST(NFKSPROCESS)
+          DO C=1,N_COMB_B
+            HIDX(C,R,NFKSPROCESS)=0
+            DO JHEL=1,NCOMB
+              SAME=.TRUE.
+              DO I=1,NEXTERNAL
+                IF (ANY(RPOS(:).EQ.I)) CYCLE
+                IF (NHEL(I,JHEL).NE.NHEL(I,IHEL)) SAME=.FALSE.
+              ENDDO
+              DO K=1,N_CHANGING_B
+                IF (NHEL(RPOS(K),JHEL).NE.ALLOW_HEL_B((C-1)*N_CHANGING_B+K)) SAME=.FALSE.
+              ENDDO
+              IF (SAME) HIDX(C,R,NFKSPROCESS)=JHEL
+            ENDDO
+            IF (HIDX(C,R,NFKSPROCESS).EQ.0) THEN
+              WRITE(*,*) 'ERROR: real helicity not found for combination', C
+              STOP 1
+            ENDIF
+          ENDDO
+        ENDDO
+        HIDX_DONE(NFKSPROCESS)=.TRUE.
+      ENDIF
+      IF (.NOT.JALL_OK .OR. G.NE.G_SAVE .OR. ANY(P.NE.P_SAVE)) THEN
+        DO IHEL=1,NCOMB
+          IF (FILTER.AND..NOT.GOODHEL(IHEL)) THEN
+            JALL(:,:,IHEL)=(0d0,0d0)
+            CYCLE
           ENDIF
+          CALL GET_AMP_%(proc_prefix)s(P,NHEL(1,IHEL),AMP)
+          CALL GET_JAMP_%(proc_prefix)s(AMP,JALL(1,1,IHEL))
+        ENDDO
+        P_SAVE(:,:)=P(:,:)
+        G_SAVE=G
+        JALL_OK=.TRUE.
+      ENDIF
+      ZANS(:)=(0d0,0d0)
+      DO R=1,NRST(NFKSPROCESS)
+        DO C1=1,N_COMB_B
+          HELIDX(C1)=HIDX(C1,R,NFKSPROCESS)
         ENDDO
         DO C1=1,N_COMB_B
           DO C2=1,N_COMB_B

@@ -14169,6 +14169,13 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             logger.info("Writing out the aMC@NLO code, using optimized Loops")
             ExporterClass = export_fks.ProcessOptimizedExporterFortranFKS
             amcatnlo_options['export_format']='FKS5_optimized'
+        # spin-density matrix (output DIR --density=i,j [--me_frame=...])
+        amcatnlo_options['fks_density'] = getattr(cmd, '_fks_density', None)
+        amcatnlo_options['fks_me_frame'] = getattr(cmd, '_fks_me_frame', None)
+        if amcatnlo_options['fks_density'] and \
+                    ExporterClass is not export_fks.ProcessOptimizedExporterFortranFKS:
+            raise MadGraph5Error('The density matrix (--density) needs the '
+                'optimized loop output: set loop_optimized_output True.')
         return ExporterClass(cmd._export_dir, amcatnlo_options)
 
     # Then the FKS Born building-block standalone output (output standalone_fortran --fks)

@@ -134,6 +134,16 @@ class histograms_PhysicsObjectList(list):
         return mystr + ']'
 #===============================================================================
 
+def is_error_label(label):
+    """ Whether the weight 'label' is a statistical uncertainty, combined in
+    quadrature when histograms are summed: 'stat_error' (the 'dy' column), and
+    the uncertainties of the spin-density-matrix weights of aMC@NLO,
+    '<label> @dy' and '<label> @dyc' (that of the weight plus the central
+    value). """
+    return label == 'stat_error' or (isinstance(label, str) and
+                    (label.endswith(' @dy') or label.endswith(' @dyc')))
+
+
 class Bin(object):
     """A class to store Bin related features and function.
     """
@@ -570,7 +580,7 @@ class Histogram(object):
 
         new_wgts = {}
         for label, wgt in wgtsA.items():
-            if label!='stat_error':
+            if not is_error_label(label):
                 new_wgts[label] = wgt_operation(wgt, wgtsB[label])
             else:
                 new_wgts[label] = stat_error_operation(wgt, wgtsB[label])
@@ -589,7 +599,7 @@ class Histogram(object):
         
         new_wgts = {}
         for label, wgt in wgts.items():
-            if label!='stat_error':
+            if not is_error_label(label):
                 new_wgts[label] = wgt_operation(wgt)
             else:
                 new_wgts[label] = stat_error_operation(wgt)
@@ -704,11 +714,11 @@ class LazyCombinedWeightView(MutableMapping):
         left = self.left
         right = self.right
         if self.operation is Histogram.ADD:
-            if label == 'stat_error':
+            if is_error_label(label):
                 return math.sqrt(left[label]**2+right[label]**2)
             return left[label]+right[label]
         if self.operation is Histogram.SUBTRACT:
-            if label == 'stat_error':
+            if is_error_label(label):
                 return math.sqrt(left[label]**2+right[label]**2)
             return left[label]-right[label]
         if self.operation is Histogram.MULTIPLY:
@@ -793,7 +803,7 @@ class LazyRebinnedWeightView(MutableMapping):
             return self.overlay[label]
         if label not in self.label_set:
             raise KeyError(label)
-        if label == 'stat_error':
+        if is_error_label(label):
             return math.sqrt(sum(source[label]**2 for source in self.sources))
         return float(sum(source[label] for source in self.sources))
 
@@ -1827,12 +1837,12 @@ class HwU(Histogram):
             new_bins.append(Bin(boundaries=(bins_to_merge[0].boundaries[0],
               bins_to_merge[-1].boundaries[1]),wgts={'central':0.0}))
             for weight in self.bins.weight_labels:
-                if weight != 'stat_error':
+                if not is_error_label(weight):
                     new_bins[-1].wgts[weight] = \
                                       sum(b.wgts[weight] for b in bins_to_merge)
                 else:
-                    new_bins[-1].wgts['stat_error'] = \
-                        math.sqrt(sum(b.wgts['stat_error']**2 for b in\
+                    new_bins[-1].wgts[weight] = \
+                        math.sqrt(sum(b.wgts[weight]**2 for b in\
                                                                  bins_to_merge))
 
         self.bins = new_bins
@@ -2429,6 +2439,11 @@ class DenseHistogramAccumulator(object):
         self.weight_labels = record.weight_labels
         self.label_positions = dict((label, index) for index, label in
                                     enumerate(self.weight_labels))
+        # the other uncertainties (is_error_label) are combined in quadrature:
+        # their squares are summed
+        self._error_positions = [index for index, label in
+                    enumerate(self.weight_labels) if is_error_label(label)
+                    and label != 'stat_error']
         self.boundaries = array.array('d', record.boundaries)
         self.n_bins = record.n_bins
         self.n_weights = len(self.weight_labels)
@@ -2537,6 +2552,9 @@ class DenseHistogramAccumulator(object):
                                 "combining statistical errors for histogram "
                                 "'%s'."%self.title)
                         scaled[:, stat_position] = 0.0
+                    if self._error_positions:
+                        scaled[:, self._error_positions] = \
+                                        scaled[:, self._error_positions]**2
 
                     sum_chunk = sums[start:end]
                     compensation_chunk = compensations[start:end]
@@ -2563,6 +2581,8 @@ class DenseHistogramAccumulator(object):
             target_offset = source_offset
             for target_position, source_position in enumerate(positions):
                 value = record.values[source_offset+source_position]*factor
+                if target_position in self._error_positions:
+                    value = value*value
                 if target_position == stat_position:
                     self._kahan_add(self._variances,
                                     self._variance_compensations, bin_index,
@@ -2579,6 +2599,9 @@ class DenseHistogramAccumulator(object):
             raise KeyError(label)
         if label == 'stat_error':
             return math.sqrt(max(0.0, self._variances[bin_index]))
+        if position in self._error_positions:
+            return math.sqrt(max(0.0,
+                             self._sums[bin_index*self.n_weights+position]))
         return float(self._sums[bin_index*self.n_weights+position])
 
     def to_hwu(self):
@@ -5224,6 +5247,216 @@ r'%s dynamical\_scale\_choice=%s' % (title,mu[j])))
         return block_position+len(self)
     
 ################################################################################
+## Spin-density matrices of aMC@NLO fixed-order runs (output ... --density=i,j
+## with density_weights in the run_card)
+################################################################################
+def find_density_basis(hwu_path):
+    """ The density_basis.json of the process of the HwU file hwu_path: next
+    to it, or in SubProcesses for <process>/Events/<run>/MADatNLO.HwU. None
+    if there is none."""
+    directory = os.path.dirname(os.path.abspath(hwu_path))
+    for candidate in [os.path.join(directory, 'density_basis.json'),
+                      os.path.join(directory, os.pardir, os.pardir,
+                                   'SubProcesses', 'density_basis.json')]:
+        if os.path.isfile(candidate):
+            return os.path.normpath(candidate)
+    return None
+
+
+def density_observables(basis):
+    """ The quantities derived from the normalised density matrix rho, as
+    hermitian operators O (the quantity is Tr(rho O)) in the basis of the
+    combinations, rho_IJ = M_I conj(M_J): a list of (name, O).
+     - the fraction of each combination, f(h1,h2,...), named f_L, f_0, f_R
+       for a single spin-1 leg;
+     - for two spin-1/2 legs, the polarisations B1_i = Tr(rho s_i x 1),
+       B2_i = Tr(rho 1 x s_i) and the spin correlations C_ij =
+       Tr(rho s_i x s_j), i,j = x,y,z, s the Pauli matrices in the helicity
+       basis of each leg (helicity +1 is spin up along z). The x and y
+       components depend on the phase conventions of the HELAS wave
+       functions; the z ones do not."""
+    combos = basis['combinations']
+    n = len(combos)
+    observables = []
+    single_vector = all(len(c) == 1 for c in combos) and \
+                    sorted(c[0] for c in combos) == [-1, 0, 1]
+    names = {-1: 'f_L', 0: 'f_0', 1: 'f_R'}
+    for c, hels in enumerate(combos):
+        op = [[0j]*n for _ in range(n)]
+        op[c][c] = 1.0+0j
+        if single_vector:
+            name = names[hels[0]]
+        else:
+            name = 'f(%s)' % ','.join('%+d' % h if h else '0' for h in hels)
+        observables.append((name, op))
+    if all(len(c) == 2 for c in combos) and n == 4 and \
+       all(h in [-1, 1] for c in combos for h in c):
+        pauli = {'1': [[1, 0], [0, 1]], 'x': [[0, 1], [1, 0]],
+                 'y': [[0, -1j], [1j, 0]], 'z': [[1, 0], [0, -1]]}
+        state = {1: 0, -1: 1}
+        def kron(a, b):
+            return [[pauli[a][state[ci[0]]][state[cj[0]]] *
+                     pauli[b][state[ci[1]]][state[cj[1]]]
+                     for cj in combos] for ci in combos]
+        for i in 'xyz':
+            observables.append(('B1_%s' % i, kron(i, '1')))
+        for i in 'xyz':
+            observables.append(('B2_%s' % i, kron('1', i)))
+        for i in 'xyz':
+            for j in 'xyz':
+                observables.append(('C_%s%s' % (i, j), kron(i, j)))
+    return observables
+
+
+def density_matrix_of_bin(wgts, basis):
+    """ The normalised density matrix rho (rho_IJ = M_I conj(M_J), Tr rho = 1)
+    of a bin with the weights of the density columns, and the uncertainty of
+    each of its elements (delta method, with the covariance of the element
+    with the central value from the '@dy' and '@dyc' columns): two n x n
+    lists of complex numbers (the uncertainties of Re and Im as the real and
+    imaginary parts), and the coefficients a_K of rho_K = w_K/w_central
+    with their uncertainties s_K: {label: (r_K, s_K)}. None if the central
+    value is zero."""
+    combos = basis['combinations']
+    n = len(combos)
+    central = wgts['central']
+    if central == 0.0:
+        return None
+    s1 = wgts.get('stat_error', 0.0)
+    rho = [[0j]*n for _ in range(n)]
+    err = [[0j]*n for _ in range(n)]
+    ratios = {}
+    for element in basis['elements']:
+        label = 'dens %s' % element['label']
+        r = wgts[label]/central
+        try:
+            sk = wgts[label+' @dy']
+            sc = wgts[label+' @dyc']
+            cov = (sc**2-sk**2-s1**2)/2.0
+            var = (sk**2-2.0*r*cov+(r*s1)**2)/central**2
+            sr = math.sqrt(max(var, 0.0))
+        except KeyError:
+            sr = 0.0
+        ratios[element['label']] = (r, sr)
+        i, j = element['i']-1, element['j']-1
+        if element['kind'] == 'diag':
+            rho[i][i] = complex(r, 0.0)
+            err[i][i] = complex(sr, 0.0)
+        elif element['kind'] == 're':
+            # the weight is 2 Re rho_IJ
+            rho[i][j] += complex(r/2.0, 0.0)
+            rho[j][i] += complex(r/2.0, 0.0)
+            err[i][j] += complex(sr/2.0, 0.0)
+            err[j][i] += complex(sr/2.0, 0.0)
+        else:
+            # the weight is 2 Im rho_IJ
+            rho[i][j] += complex(0.0, r/2.0)
+            rho[j][i] += complex(0.0, -r/2.0)
+            err[i][j] += complex(0.0, sr/2.0)
+            err[j][i] += complex(0.0, sr/2.0)
+    return rho, err, ratios
+
+
+def density_observable_value(op, ratios, basis):
+    """ Tr(rho O) from the normalised weights ratios {label: (r_K, s_K)} and
+    an upper bound of its uncertainty, sum_K |a_K| s_K, with
+    Tr(rho O) = sum_K a_K r_K (the correlations between the elements are
+    not known)."""
+    value, bound = 0.0, 0.0
+    for element in basis['elements']:
+        i, j = element['i']-1, element['j']-1
+        if element['kind'] == 'diag':
+            a = op[i][i].real if isinstance(op[i][i], complex) else op[i][i]
+        elif element['kind'] == 're':
+            a = complex(op[j][i]).real
+        else:
+            a = -complex(op[j][i]).imag
+        if a == 0.0:
+            continue
+        r, sr = ratios[element['label']]
+        value += a*r
+        bound += abs(a)*sr
+    return value, bound
+
+
+def density_histograms(histo_list, basis):
+    """ For each histogram with the density columns of basis (the weights
+    'dens <label>'), the histograms of the elements of the normalised density
+    matrix per bin ('<title> [rho_1_1]', '<title> [Re rho_1_2]', ...), with
+    their uncertainties, and of the derived quantities of
+    density_observables ('<title> [f_L]', ...), whose uncertainty is an
+    upper bound. Returns these histograms (HwUList) and a summary for json:
+    {title: {'bins', 'central', 'stat_error', 'rho', 'rho_error',
+    'min_eigenvalue', 'observables'}}."""
+    numpy = _optional_numpy()
+    labels = ['dens %s' % e['label'] for e in basis['elements']]
+    observables = density_observables(basis)
+    result = HwUList([])
+    summary = {}
+    for histo in histo_list:
+        if not all(label in histo.bins.weight_labels for label in labels):
+            continue
+        n = len(basis['combinations'])
+        element_names = []
+        for element in basis['elements']:
+            if element['kind'] == 'diag':
+                element_names.append('rho_%d_%d' % (element['i'], element['i']))
+            elif element['kind'] == 're':
+                element_names.append('Re rho_%d_%d' % (element['i'], element['j']))
+            else:
+                element_names.append('Im rho_%d_%d' % (element['i'], element['j']))
+        new_bins = dict((name, []) for name in
+                        element_names+[o[0] for o in observables])
+        record = {'bins': [], 'rho': [], 'rho_error': [], 'min_eigenvalue': [],
+                  'central': [], 'stat_error': [],
+                  'observables': dict((o[0], []) for o in observables)}
+        for hist_bin in histo.bins:
+            wgts = hist_bin.wgts
+            record['bins'].append(list(hist_bin.boundaries))
+            record['central'].append(wgts['central'])
+            record['stat_error'].append(wgts.get('stat_error', 0.0))
+            res = density_matrix_of_bin(wgts, basis)
+            if res is None:
+                for name in new_bins:
+                    new_bins[name].append((0.0, 0.0))
+                record['rho'].append(None)
+                record['rho_error'].append(None)
+                record['min_eigenvalue'].append(None)
+                for name, _ in observables:
+                    record['observables'][name].append(None)
+                continue
+            rho, err, ratios = res
+            for element, name in zip(basis['elements'], element_names):
+                r, sr = ratios[element['label']]
+                if element['kind'] != 'diag':
+                    r, sr = r/2.0, sr/2.0
+                new_bins[name].append((r, sr))
+            record['rho'].append([[[z.real, z.imag] for z in row] for row in rho])
+            record['rho_error'].append([[[z.real, z.imag] for z in row]
+                                        for row in err])
+            if numpy is not None:
+                record['min_eigenvalue'].append(float(min(
+                    numpy.linalg.eigvalsh(numpy.array(rho)))))
+            else:
+                record['min_eigenvalue'].append(None)
+            for name, op in observables:
+                value, bound = density_observable_value(op, ratios, basis)
+                new_bins[name].append((value, bound))
+                record['observables'][name].append([value, bound])
+        for name, values in new_bins.items():
+            new_histo = HwU(title='%s [%s]' % (histo.title, name),
+                            x_axis_mode=histo.x_axis_mode, y_axis_mode='LIN')
+            new_histo.type = histo.type
+            new_histo.bins = BinList([Bin(tuple(b.boundaries),
+                                          {'central': v, 'stat_error': e})
+                                      for b, (v, e) in zip(histo.bins, values)],
+                                     weight_labels=['central', 'stat_error'])
+            result.append(new_histo)
+        summary[histo.get_HwU_histogram_name(format='human')] = record
+    return result, summary
+
+
+################################################################################
 ## HTML and matplotlib related functions
 ################################################################################
 def plot_ratio_from_HWU(path, ax, hwu_variable, hwu_numerator, hwu_denominator, *args, **opts):
@@ -6519,6 +6752,11 @@ if __name__ == "__main__":
                              to take the ratio of plots with different extra weights specified.             
            '--keep_all_weights' This option specifies to keep in the HwU produced all the weights, even
                                 those which are not known (i.e. that is scale, PDF or merging variation)
+           '--density[=<density_basis.json>]' For an aMC@NLO fixed-order run with density_weights
+                             (output ... --density=i,j): output instead, per histogram, the elements of
+                             the normalised spin-density matrix of each bin and the derived quantities
+                             (f_L/f_0/f_R, B_i, C_ij), and all of them in <out>_density.json. The basis
+                             is by default SubProcesses/density_basis.json of the process.
         For choosing what kind of variation you want to see on your plot, you can use the following options
            '--no_<type>'                   Turn off the plotting of variations of the chosen type
            '--only_<type>'                 Turn on only the plotting of variations of the chosen type
@@ -6545,7 +6783,7 @@ if __name__ == "__main__":
                       '--no_scale','--no_pdf','--no_stat','--no_merging','--no_alpsfact',
                       '--only_scale','--only_pdf','--only_stat','--only_merging','--only_alpsfact',
                       '--variations','--band','--central_only', '--lhapdf-config','--titles',
-                      '--keep_all_weights','--colours','--memory_limit']
+                      '--keep_all_weights','--colours','--memory_limit','--density']
     n_ratios   = -1
     uncertainties = ['scale','pdf','statistical','merging_scale','alpsfact']
     # The list of type of uncertainties for which to use bands. None is a 'smart' default
@@ -6618,6 +6856,13 @@ if __name__ == "__main__":
 
     if '--keep_all_weights' in sys.argv:
         consider_reweights = 'ALL'
+
+    # --density[=<density_basis.json>]: the density columns must be kept
+    density_basis_path = None
+    for arg in sys.argv[1:]:
+        if arg == '--density' or arg.startswith('--density='):
+            density_basis_path = arg[len('--density='):] if '=' in arg else ''
+            consider_reweights = 'ALL'
 
     for arg in sys.argv[1:]:
         if arg.startswith('--n_ratios='):
@@ -6778,6 +7023,39 @@ if __name__ == "__main__":
     if n_rebin > 1 and not streaming_aggregation:
         for hist in histo_list:
             hist.rebin(n_rebin)
+
+    if density_basis_path is not None:
+        if not density_basis_path:
+            first_file = [a for a in sys.argv[1:] if not a.startswith('--')][0]
+            density_basis_path = find_density_basis(first_file.split('@')[0])
+            if density_basis_path is None:
+                log("No density_basis.json found for '%s': give it with "
+                    "--density=<path>."%first_file)
+                sys.exit(1)
+        with open(density_basis_path) as stream:
+            density_basis = json.load(stream)
+        if streaming_aggregation:
+            # the density histograms are small: no streaming needed for them
+            histo_list = dense_aggregator.to_hwu_list(n_rebin=n_rebin)
+            streaming_aggregation = False
+        histo_list, density_summary = density_histograms(histo_list,
+                                                         density_basis)
+        density_summary = {'basis': density_basis,
+                           'histograms': density_summary}
+        with open(OutName+'_density.json', 'w') as stream:
+            json.dump(density_summary, stream, indent=1)
+        histogram_count = len(histo_list)
+        log("Density matrices (basis '%s') of %d histograms output at "
+            "'%s_density.json'."%(density_basis_path,
+                                  len(density_summary['histograms']), OutName))
+        for title, record in density_summary['histograms'].items():
+            negative = [(b, e) for b, e in zip(record['bins'],
+                record['min_eigenvalue']) if e is not None and e < -1e-3]
+            if negative:
+                log("WARNING: '%s': %d bins have a density matrix with a "
+                    "negative eigenvalue (smallest %.3g); check them against "
+                    "the uncertainties."%(title, len(negative),
+                                          min(e for _, e in negative)))
 
     def output_histograms(path, **options):
         if streaming_aggregation:

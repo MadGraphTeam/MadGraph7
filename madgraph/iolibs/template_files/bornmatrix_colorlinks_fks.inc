@@ -398,9 +398,14 @@ C     and the powers RPOW(K) = (G/SAVED_G)**K used by BORN_GSCALE
       SAVE SAVED_G
       DATA SAVED_G /0D0/
 ## if(density) {
-C     the density-matrix projector W (DENS_W, DENS_W_ON)
+C     the density-matrix projector W (DENS_W, DENS_W_ON), and the one
+C     the cached result was computed with
       include "density_info.inc"
       COMPLEX*16 TW(NSQAMPSO)
+      LOGICAL BORN_CACHE_WON
+      COMPLEX*16 BORN_CACHE_W(N_COMB_B,N_COMB_B)
+      SAVE BORN_CACHE_WON, BORN_CACHE_W
+      DATA BORN_CACHE_WON /.FALSE./
 ## }
 C ----------
 C BEGIN CODE
@@ -455,9 +460,13 @@ C     split order gets its power), instead of recomputing
          enddo
       endif
 ## if(density) {
-C     the cached result is that of W = 1; a projected one is not cached
+C     the cached result is that of the projector it was computed with
       CALL DENSITY_W_INIT()
-      IF (DENS_W_ON) BORN_CACHE_OK=.FALSE.
+      IF (DENS_W_ON.NEQV.BORN_CACHE_WON) THEN
+        BORN_CACHE_OK=.FALSE.
+      ELSEIF (DENS_W_ON) THEN
+        IF (ANY(DENS_W.NE.BORN_CACHE_W)) BORN_CACHE_OK=.FALSE.
+      ENDIF
 ## }
 C     A repeated call: the same momenta as the last evaluation (the
 C     amplitudes are cached), the same FKS configuration, and nothing
@@ -570,7 +579,8 @@ C     is only needed on the first call, to find the good helicities.
       BORN_CACHE_NFKS=nFKSprocess
       BORN_CACHE_OK=.TRUE.
 ## if(density) {
-      IF (DENS_W_ON) BORN_CACHE_OK=.FALSE.
+      BORN_CACHE_WON=DENS_W_ON
+      IF (DENS_W_ON) BORN_CACHE_W(:,:)=DENS_W(:,:)
 ## }
       END
 
@@ -1336,7 +1346,8 @@ C ----------------------------------------------------------------------
 C The Born helicity configurations (rows of the NHEL table) grouped by
 C the helicities of the legs that do not carry the density matrix (the
 C "rest"): HELIDX(C,R) is the configuration with the rest R and the
-C density legs in their combination C; REPHEL(R) = HELIDX(1,R).
+C density legs in their combination C; REPHEL(R) = HELIDX(1,R). Built
+C on the first call.
       IMPLICIT NONE
       include "nexternal.inc"
       include "density_info.inc"
@@ -1348,6 +1359,16 @@ C density legs in their combination C; REPHEL(R) = HELIDX(1,R).
 %(helicity_lines)s
       INTEGER NH(NEXTERNAL-1)
       LOGICAL ISFIRST, SAME
+      INTEGER HELIDX_S(N_COMB_B,NCOMB), NREST_S, REPHEL_S(NCOMB)
+      LOGICAL DONE
+      SAVE HELIDX_S, NREST_S, REPHEL_S, DONE
+      DATA DONE /.FALSE./
+      IF (DONE) THEN
+        NREST=NREST_S
+        HELIDX(:,1:NREST)=HELIDX_S(:,1:NREST)
+        REPHEL(1:NREST)=REPHEL_S(1:NREST)
+        RETURN
+      ENDIF
       NREST=0
       DO IHEL=1,NCOMB
         ISFIRST=.TRUE.
@@ -1376,6 +1397,10 @@ C density legs in their combination C; REPHEL(R) = HELIDX(1,R).
           ENDIF
         ENDDO
       ENDDO
+      NREST_S=NREST
+      HELIDX_S(:,1:NREST)=HELIDX(:,1:NREST)
+      REPHEL_S(1:NREST)=REPHEL(1:NREST)
+      DONE=.TRUE.
       END
 
 
@@ -1383,7 +1408,8 @@ C density legs in their combination C; REPHEL(R) = HELIDX(1,R).
 C The rest R' of the rest R with the helicity of leg GLU_IJ (the FKS
 C mother, a gluon) flipped: RFLIP(R) = R', or 0 if the helicity of
 C GLU_IJ in R is not H0 = NHEL(GLU_IJ,1), the one BORN starts from (the
-C spin-correlated Born pairs the H0 and -H0 JAMPs).
+C spin-correlated Born pairs the H0 and -H0 JAMPs). Built on the first
+C call for each GLU_IJ (REPHEL is that of BORN_DENS_TABLES).
       IMPLICIT NONE
       include "nexternal.inc"
       INTEGER     NCOMB
@@ -1393,7 +1419,19 @@ C spin-correlated Born pairs the H0 and -H0 JAMPs).
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
 %(helicity_lines)s
       LOGICAL SAME
+      INTEGER RFLIP_S(NCOMB,NEXTERNAL-1)
+      LOGICAL DONE(NEXTERNAL-1), FIRSTTIME
+      SAVE RFLIP_S, DONE, FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      IF (FIRSTTIME) THEN
+        DONE(:)=.FALSE.
+        FIRSTTIME=.FALSE.
+      ENDIF
       H0=NHEL(GLU_IJ,1)
+      IF (DONE(GLU_IJ)) THEN
+        RFLIP(1:NREST)=RFLIP_S(1:NREST,GLU_IJ)
+        RETURN
+      ENDIF
       DO R=1,NREST
         RFLIP(R)=0
         IF (NHEL(GLU_IJ,REPHEL(R)).NE.H0) CYCLE
@@ -1409,6 +1447,8 @@ C spin-correlated Born pairs the H0 and -H0 JAMPs).
           STOP 1
         ENDIF
       ENDDO
+      RFLIP_S(1:NREST,GLU_IJ)=RFLIP(1:NREST)
+      DONE(GLU_IJ)=.TRUE.
       END
 
 
@@ -1666,6 +1706,7 @@ C Without the file the projector stays off.
       GOTO 10
  15   CLOSE(81)
       DENS_W_ON=.TRUE.
+      DENS_W_BASE(:,:)=DENS_W(:,:)
       WRITE(*,*) 'Density matrix: projector W read from density_w.dat'
  20   RETURN
       END

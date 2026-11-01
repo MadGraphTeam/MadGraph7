@@ -259,6 +259,17 @@ C evaluations of the stability test use a rotated PS point (which changes the
 C phases of the off-diagonal elements) or another loop-momentum routing.
       LOGICAL STORE_DENSITY_JAMPS
       COMMON/%(proc_prefix)sDENSITY_STORE/STORE_DENSITY_JAMPS
+C The result (before the projection) and the PS point, scale and strong
+C coupling of the last full evaluation: a call with the projector set by
+C DENSITY_SET_W at the same point only projects again its colour flows
+C (the re-evaluations of the density-matrix weights of aMC@NLO).
+      LOGICAL DENS_LAST_OK
+      DATA DENS_LAST_OK/.FALSE./
+      %(real_dp_format)s DENS_LAST_P(0:3,NEXTERNAL), DENS_LAST_MUR, DENS_LAST_G
+      %(real_dp_format)s DENS_LAST_ANS(0:3,0:ANS_DIMENSION)
+      SAVE DENS_LAST_OK, DENS_LAST_P, DENS_LAST_MUR, DENS_LAST_G, DENS_LAST_ANS
+      LOGICAL %(proc_prefix)sDENSITY_W_ACTIVE
+      EXTERNAL %(proc_prefix)sDENSITY_W_ACTIVE
 ## }
 
       LOGICAL CHOSEN_SO_CONFIGS(NSQUAREDSO)
@@ -480,6 +491,16 @@ C ----------
 C     If KEEP_OFFSHELL_MASS is .true., then its mass is computed as m**2 = p**2
 C     If KEEP_OFFSHELL_MASS is .false., then its mass is taken from pmass.inc
 %(keep_offshell_mass)s
+
+## if(UseDensity) {
+IF (DENS_LAST_OK) THEN
+  IF (%(proc_prefix)sDENSITY_W_ACTIVE().AND.ALL(P_USER.EQ.DENS_LAST_P).AND.MU_R.EQ.DENS_LAST_MUR.AND.G.EQ.DENS_LAST_G) THEN
+    ANS(:,:)=DENS_LAST_ANS(:,:)
+    CALL %(proc_prefix)sDENSITY_PROJECT_ANS(ANS)
+    RETURN
+  ENDIF
+ENDIF
+## }
 
 IF(ML_INIT) THEN
   ML_INIT = .FALSE.
@@ -1899,8 +1920,13 @@ DO I=1,NSQUAREDSO
   ENDIF
 ENDDO
 ## if(UseDensity) {
-C With the density-matrix projector W (density_w.dat), the result is
-C Tr(W rho) instead of the helicity sum
+C With the density-matrix projector W (density_w.dat or DENSITY_SET_W), the
+C result is Tr(W rho) instead of the helicity sum
+DENS_LAST_ANS(:,:)=ANS(:,:)
+DENS_LAST_P(:,:)=P_USER(:,:)
+DENS_LAST_MUR=MU_R
+DENS_LAST_G=G
+DENS_LAST_OK=.TRUE.
 CALL %(proc_prefix)sDENSITY_PROJECT_ANS(ANS)
 ## }
 

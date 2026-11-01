@@ -1275,7 +1275,17 @@ C
       COMMON/%(proc_prefix)sHELCONFIGS/HELC
       INTEGER USERHEL
       COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
+C     the projector set by the caller (DENSITY_SET_W), which takes
+C     precedence over density_w.dat
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
 
+      IF (API_SET) THEN
+        IF (.NOT.API_ON) RETURN
+        W(:,:)=API_W(:,:)
+        GOTO 25
+      ENDIF
       IF (.NOT.W_READ) THEN
         W_READ=.TRUE.
         W(:,:)=(0D0,0D0)
@@ -1289,6 +1299,7 @@ C
  20     CONTINUE
       ENDIF
       IF (.NOT.W_ON) RETURN
+ 25   CONTINUE
       IF (USERHEL.NE.-1) THEN
         WRITE(*,*) 'ERROR: the density-matrix projector W needs the sum'
         WRITE(*,*) 'over all helicities, not a single helicity.'
@@ -1325,6 +1336,44 @@ C     one pass per helicity configuration of the legs not in POS
           ANS(K,I)=DBLE(RES(K,I))
         ENDDO
       ENDDO
+      END
+
+
+      SUBROUTINE %(proc_prefix)sDENSITY_SET_W(WIN, N, ON)
+C     Sets the projector W of the density matrix (N x N, the combinations
+C     of DENSITY_PROJECT_ANS) and switches it on or off: with it on, the
+C     result of SLOOPMATRIX is Re Tr(W rho). Used by the aMC@NLO
+C     density-matrix weights (density_weights.f); it takes precedence over
+C     the file density_w.dat.
+      IMPLICIT NONE
+      INTEGER N_COMB
+      PARAMETER (N_COMB=%(dens_ncomb)i)
+      INTEGER N
+      DOUBLE COMPLEX WIN(N,N)
+      LOGICAL ON
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
+      IF (N.NE.N_COMB) THEN
+        WRITE(*,*) 'ERROR: density projector of size', N, 'for',
+     &    N_COMB, 'helicity combinations'
+        STOP 1
+      ENDIF
+      API_SET=.TRUE.
+      API_ON=ON
+      IF (ON) API_W(:,:)=WIN(:,:)
+      END
+
+
+      LOGICAL FUNCTION %(proc_prefix)sDENSITY_W_ACTIVE()
+C     True when the projector set by DENSITY_SET_W is on
+      IMPLICIT NONE
+      INTEGER N_COMB
+      PARAMETER (N_COMB=%(dens_ncomb)i)
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
+      %(proc_prefix)sDENSITY_W_ACTIVE=API_SET.AND.API_ON
       END
 
 

@@ -37,6 +37,10 @@ endif
 
 
 
+# The spin-density-matrix weights: density_weights.f of an output made
+# with --density, the dummy of ../density_weights_dummy.f (none) otherwise
+DENSWGT= $(if $(wildcard density_weights.f),density_weights.o,density_weights_dummy.o)
+
 # Files for all executables
 FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
@@ -51,7 +55,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 rescale_alpha_tagged.o						\
 	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o		\
 	 montecarlocounter.o reweight_xsec.o boostwdir2.o       	\
-	 boost_to_frame.o me_frame_boost.o				\
+	 boost_to_frame.o me_frame_boost.o $(DENSWGT)			\
 	 cluster.o splitorders_stuff.o 			\
 	 iproc_map.o sudakov.o				\
 	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
@@ -69,17 +73,21 @@ RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o pythia_unlops.o recluster.o 		\
 	fill_MC_mshell.o born_hel.o open_output_files.o			\
 	add_write_info.o madfks_plot.o
 
+# The projector of the density matrix for the virtual (outputs with --density),
+# linked next to BinothLHA.o (BinothLHADummy.o has the no-op version)
+DENSVIRT= $(patsubst %.f,%.o,$(wildcard density_virt.f))
+
 # Files for mintFO
-MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o pythia8_fortran_dummy.o
+MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o $(DENSVIRT) pythia8_fortran_dummy.o
 
 # Files for mintMC
-MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
+MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o $(DENSVIRT)
 
 # Files for check_poles
-POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
+POLES= $(RUN) check_poles.o BinothLHA.o $(DENSVIRT) pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
 
 # Files for check_sudakov
-EWSUD= $(RUN) check_sudakov.o BinothLHA.o
+EWSUD= $(RUN) check_sudakov.o BinothLHA.o $(DENSVIRT)
 
 EWSUDSA = sa_ewsudakov.o sub_f2py_ewsudakov.o $(FILESSUD)
 EWSUDLIB = $(FILESSUD)
@@ -93,7 +101,7 @@ FKSSA = check_sa_fks.o born.o sborn_sf.o				\
 	$(patsubst %.f,%.o,$(wildcard check_sa_fks_density.f))
 
 # Files for check_sudakov_angle2
-EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o
+EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o $(DENSVIRT)
 
 # Files for tests
 TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
@@ -112,6 +120,8 @@ RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
 
 %.o: %.f
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
+density_weights_dummy.o: ../density_weights_dummy.f
+	$(FC) $(FFLAGS) -c -I. -o $@ $<
 %.o: %.f90
 	$(FC) $(FFLAGS) -c -I. -I$(LIBDIR) $<
 %.o: $(ANADIR)/%.f
@@ -191,7 +201,7 @@ libMadLoop.a:
 
 mint_module.o : FKSParams.o
 BinothLHA_OLP.o: FKSParams.o
-BinothLHA.o: FKSParams.o
+BinothLHA.o: FKSParams.o weight_lines.o
 reweight_xsec_events.o: weight_lines.o
 fks_singular.o: weight_lines.o mint_module.o
 driver_mintMC.o: weight_lines.o mint_module.o pythia8_control.inc pythia8_control_setup.inc

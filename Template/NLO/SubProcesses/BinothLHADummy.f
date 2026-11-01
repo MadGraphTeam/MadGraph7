@@ -29,3 +29,11 @@
       virt_wgts(3)=0d0
       return
       end
+
+      subroutine density_virt_set_w(w,n,on)
+c     no virtual: nothing to project (density_virt.f has the MadLoop one)
+      implicit none
+      integer n
+      double complex w(n,n)
+      logical on
+      end

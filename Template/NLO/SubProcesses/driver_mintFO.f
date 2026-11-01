@@ -370,6 +370,11 @@ c timing statistics
       common/ccalculatedBorn/calculatedBorn
       character*4      abrv
       common /to_abrv/ abrv
+c spin-density-matrix weights (density_weights in the run_card): each
+c compute_* is evaluated again with the projector of every element
+      integer idens_loop,n_dens_act,density_n_active
+      external density_n_active
+      double precision vob_save
 c PineAPPL
       logical pineappl
       common /for_pineappl/ pineappl
@@ -443,6 +448,7 @@ c The nbody contributions
       call generate_momenta(nndim,iconfig,jac,x,p)
       if (p_born(0,1).lt.0d0) goto 12
       call compute_prefactors_nbody(vegas_wgt)
+      n_dens_act=density_n_active()
       call set_cms_stuff(izero)
       if (ickkw.eq.3) call set_FxFx_scale(1,p1_cnt(0,1,0))
       passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
@@ -451,11 +457,25 @@ c The nbody contributions
          call set_alphaS(p1_cnt(0,1,0))
          call include_multichannel_enhance(1)
          if (abrv(1:2).ne.'vi') then
+            call density_begin()
             call compute_born
+            do idens_loop=1,n_dens_act
+               call density_rerun_start(idens_loop)
+               call compute_born
+            enddo
+            call density_rerun_end()
             if(abrv.ne.'born'.and.abrv.ne.'bovi') call compute_ewsudakov
          endif
          if (abrv.ne.'born'.and.abrv.ne.'bosk') then
+            call density_begin()
             call compute_nbody_noborn
+            vob_save=virtual_over_born
+            do idens_loop=1,n_dens_act
+               call density_rerun_start(idens_loop)
+               call compute_nbody_noborn
+            enddo
+            call density_rerun_end()
+            virtual_over_born=vob_save
          endif
       endif
 
@@ -503,21 +523,45 @@ c The n+1-body contributions (including counter terms)
             call set_cms_stuff(izero)
             call set_alphaS(p1_cnt(0,1,0))
             call include_multichannel_enhance(3)
+            call density_begin()
             call compute_soft_counter_term(0d0)
+            do idens_loop=1,n_dens_act
+               call density_rerun_start(idens_loop)
+               call compute_soft_counter_term(0d0)
+            enddo
+            call density_rerun_end()
             call set_cms_stuff(itwo)
+            call density_begin()
             call compute_soft_collinear_counter_term(0d0)
+            do idens_loop=1,n_dens_act
+               call density_rerun_start(idens_loop)
+               call compute_soft_collinear_counter_term(0d0)
+            enddo
+            call density_rerun_end()
          endif
          if (passcuts_coll .and. abrv.ne.'real') then
            call set_alphaS(p1_cnt(0,1,1))
            call set_cms_stuff(ione)
+           call density_begin()
            call compute_collinear_counter_term(0d0)
+           do idens_loop=1,n_dens_act
+              call density_rerun_start(idens_loop)
+              call compute_collinear_counter_term(0d0)
+           enddo
+           call density_rerun_end()
          endif
          if (passcuts_n1body) then
             pass_cuts_check=.true.
             call set_cms_stuff(mohdr)
             call set_alphaS(p)
             call include_multichannel_enhance(2)
+            call density_begin()
             call compute_real_emission(p,1d0)
+            do idens_loop=1,n_dens_act
+               call density_rerun_start(idens_loop)
+               call compute_real_emission(p,1d0)
+            enddo
+            call density_rerun_end()
          endif
       enddo
       
@@ -534,6 +578,8 @@ c Include the bias weight specified in the bias_weight_function
          if (do_rwgt_scale .and. ickkw.eq.-1) call reweight_scale_NNLL
          if (do_rwgt_pdf) call reweight_pdf
       endif
+c the spin-density-matrix columns, after the scale and PDF ones
+      call include_density_weights
       
       if (pineappl) then
          if (sum) then

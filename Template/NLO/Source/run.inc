@@ -92,6 +92,11 @@ c
      & do_rwgt_pdf, pdf_set_min, pdf_set_max,
      & store_rwgt_info 
 c
+c     Spin-density matrix weights (output made with --density=i,j)
+c
+      logical density_weights, density_nrk
+      common/to_density_weights/density_weights, density_nrk
+c
 c    For FO run (with lhe type of analysis
 c
       double precision FO_LHE_weight_ratio
