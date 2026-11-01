@@ -13,12 +13,6 @@ constexpr std::size_t INCOMING_COUNT = 2;
 
 const PhaseSpaceMapping&
 checked_born(const PhaseSpaceMapping& born, std::size_t j_fks) {
-    if (born.mirror_beams()) {
-        throw std::invalid_argument(
-            "FKSMapping: the Born mapping must not mirror the beams, the emission "
-            "needs the first incoming parton along +z"
-        );
-    }
     // A final-state emitter leaves s_hat of the Born unchanged, so a floor on
     // it (from fks_sqrt_s_hat_min) bounds the real emission too. An incoming
     // emitter raises s_hat, its Born has to cover everything below.
@@ -184,19 +178,42 @@ FKSMapping::FKSMapping(
     _born_masses(born.external_masses()),
     _real_masses(real_masses(born, i_fks)) {}
 
-std::pair<Value, Value>
-FKSMapping::born_frame(FunctionBuilder& fb, Value x1, Value x2) const {
+std::pair<Value, Value> FKSMapping::born_frame(
+    FunctionBuilder& fb, Value x1, Value x2, const NamedVector<Value>& conditions
+) const {
     // the rapidity log(x1 / x2) / 2 of the Born in the beams' frame, which
-    // moves with beam_rapidity in the lab
+    // moves with beam_rapidity in the lab. With mirror_index 1 the first leg
+    // comes from the second beam, along -z: then x2 belongs to the parton
+    // along +z. The products with 1 and 0 select exactly.
     double rapidity = _born.beam_rapidity();
     double exp_plus = std::exp(rapidity), exp_minus = std::exp(-rapidity);
     if (_born.leptonic()) {
         return {exp_plus, exp_minus};
     }
-    if (rapidity == 0.) {
-        return {x1, x2};
+    Value x_plus = x1, x_minus = x2;
+    if (_born.mirror_beams()) {
+        auto mirror = conditions.at("mirror_index");
+        auto keep = fb.gather(mirror, std::vector<double>{1., 0.});
+        auto swap = fb.gather(mirror, std::vector<double>{0., 1.});
+        x_plus = fb.add(fb.mul(keep, x1), fb.mul(swap, x2));
+        x_minus = fb.add(fb.mul(keep, x2), fb.mul(swap, x1));
     }
-    return {fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)};
+    if (rapidity == 0.) {
+        return {x_plus, x_minus};
+    }
+    return {fb.mul(x_plus, exp_plus), fb.mul(x_minus, exp_minus)};
+}
+
+Value FKSMapping::standard_orientation(
+    FunctionBuilder& fb, Value momenta, const NamedVector<Value>& conditions
+) const {
+    // the emission needs the first incoming parton along +z: with
+    // mirror_index 1 it comes along -z, and the mirror (a rotation by pi about
+    // the x axis) turns it around, in either direction
+    if (!_born.mirror_beams()) {
+        return momenta;
+    }
+    return fb.mirror_momenta(momenta, conditions.at("mirror_index"));
 }
 
 Mapping::Result FKSMapping::build_forward_impl(
@@ -247,11 +264,12 @@ NamedVector<Value> FKSMapping::build_events(
     }
     auto det_born = born.at("det");
 
-    auto [plus, minus] = born_frame(fb, x1_born, x2_born);
+    auto [plus, minus] = born_frame(fb, x1_born, x2_born, conditions);
     auto born_cm = born.at("momenta");
     if (boosted) {
         born_cm = fb.fks_beam_boost(born_cm, Value(_born_masses), minus, plus);
     }
+    born_cm = standard_orientation(fb, born_cm, conditions);
     NamedVector<Value> rad_inputs{
         {"r_xi", r.at(n_born)},
         {"r_y", r.at(n_born + 1)},
@@ -272,7 +290,8 @@ NamedVector<Value> FKSMapping::build_events(
     // with their momentum fractions (those of the Born without PDFs) and
     // weights times the weight of the Born
     auto to_lab = [&](const std::string& prefix, Value det, NamedVector<Value>& out) {
-        auto momenta = real.at(prefix + "momenta");
+        auto momenta =
+            standard_orientation(fb, real.at(prefix + "momenta"), conditions);
         if (boosted) {
             momenta = fb.fks_beam_boost(momenta, Value(_real_masses), plus, minus);
         }
@@ -535,12 +554,13 @@ Mapping::Result FKSMapping::build_inverse_impl(
         plus = lc_plus;
         minus = lc_minus;
     } else {
-        std::tie(plus, minus) = born_frame(fb, x1, x2);
+        std::tie(plus, minus) = born_frame(fb, x1, x2, conditions);
     }
     auto real_cm = momenta;
     if (boosted) {
         real_cm = fb.fks_beam_boost(momenta, Value(_real_masses), minus, plus);
     }
+    real_cm = standard_orientation(fb, real_cm, conditions);
     NamedVector<Value> rad_inputs{{"momenta", real_cm}};
     if (!_born.leptonic()) {
         rad_inputs.push_back("x1", x1);
@@ -550,9 +570,9 @@ Mapping::Result FKSMapping::build_inverse_impl(
     auto x1_born = _born.leptonic() ? x1 : rad.at("x1");
     auto x2_born = _born.leptonic() ? x2 : rad.at("x2");
 
-    auto born_lab = rad.at("born_momenta");
+    auto born_lab = standard_orientation(fb, rad.at("born_momenta"), conditions);
     if (boosted) {
-        auto [born_plus, born_minus] = born_frame(fb, x1_born, x2_born);
+        auto [born_plus, born_minus] = born_frame(fb, x1_born, x2_born, conditions);
         born_lab =
             fb.fks_beam_boost(born_lab, Value(_born_masses), born_plus, born_minus);
     }

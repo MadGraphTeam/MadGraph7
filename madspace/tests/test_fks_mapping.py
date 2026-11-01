@@ -14,7 +14,7 @@ import math
 import numpy as np
 import pytest
 import torch
-from madspace_testing import generator
+from madspace_testing import default_context, generator
 
 import madspace as ms
 
@@ -31,7 +31,7 @@ def to_numpy(x):
     return torch.as_tensor(x).cpu().numpy()
 
 
-def born_mapping(masses, leptonic, beam_rapidity=0.0):
+def born_mapping(masses, leptonic, beam_rapidity=0.0, mirror_beams=False):
     """RAMBO mapping of a 2 -> n Born with massless incoming partons."""
     return ms.PhaseSpaceMapping(
         [0.0, 0.0] + list(masses),
@@ -39,6 +39,7 @@ def born_mapping(masses, leptonic, beam_rapidity=0.0):
         leptonic=leptonic,
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         beam_rapidity=beam_rapidity,
+        mirror_beams=mirror_beams,
     )
 
 
@@ -235,17 +236,6 @@ def test_volume_bounded(j_fks):
 
 
 def test_invalid_born_mappings():
-    with pytest.raises(ValueError):
-        ms.FKSMapping(
-            ms.PhaseSpaceMapping(
-                [0.0, 0.0, 0.0, 0.0],
-                SQRT_S,
-                mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
-                mirror_beams=True,
-            ),
-            4,
-            0,
-        )
     cuts = ms.Cuts(
         [
             ms.CutItem(
@@ -267,3 +257,96 @@ def test_invalid_born_mappings():
     # an incoming emitter needs momentum fractions
     with pytest.raises(ValueError):
         ms.FKSMapping(born_mapping([0.0, 0.0], True), 4, 0)
+
+
+def boost_z(p, masses, y):
+    """Boost along z by the rapidity y, in light-cone components with the
+    smaller one from the mass shell."""
+    q = p.copy()
+    trans2 = np.asarray(masses) ** 2 + p[..., 1] ** 2 + p[..., 2] ** 2
+    forward = p[..., 3] >= 0
+    big = np.where(forward, p[..., 0] + p[..., 3], p[..., 0] - p[..., 3])
+    small = trans2 / np.maximum(big, 1e-300)
+    plus = np.where(forward, big, small) * np.exp(y)
+    minus = np.where(forward, small, big) * np.exp(-y)
+    q[..., 0] = 0.5 * (plus + minus)
+    q[..., 3] = 0.5 * (plus - minus)
+    return q
+
+
+def mirror(p):
+    """The rotation by pi about the x axis of mirror_momenta."""
+    q = p.copy()
+    q[..., 2:] = -q[..., 2:]
+    return q
+
+
+MIRROR_LAYOUTS = [layout for layout in LAYOUTS if not layout[1]]
+MIRROR_IDS = [name for name, layout in zip(IDS, LAYOUTS) if not layout[1]]
+
+
+@pytest.mark.parametrize(
+    "masses,leptonic,beam_rapidity,i_fks,j_fks", MIRROR_LAYOUTS, ids=MIRROR_IDS
+)
+def test_mirrored_beams(masses, leptonic, beam_rapidity, i_fks, j_fks):
+    """With mirror_beams, index 0 is the mapping without, and index 1 its
+    rotation by pi about the x axis in the frame of the beams: leg 1 from beam
+    2 along -z, with the same momentum fractions and weight."""
+    batch = 2000
+    plain = ms.FKSMapping(born_mapping(masses, leptonic, beam_rapidity), i_fks, j_fks)
+    mirrored = ms.FKSMapping(
+        born_mapping(masses, leptonic, beam_rapidity, mirror_beams=True), i_fks, j_fks
+    )
+    r = random_numbers(plain, batch, seed=60 + i_fks + j_fks, low=0.02, high=0.98)
+    momenta, x1, x2, det = forward(plain, r)
+    scale = momenta[..., 0].max(1)[:, None, None]
+    masses_real = real_masses(masses, i_fks)
+
+    def mirrored_forward(index):
+        condition = torch.full((batch,), index, dtype=torch.int32).to(
+            torch.get_default_device()
+        )
+        out = mirrored.map_forward([to_torch(r)], [condition])
+        return [to_numpy(t) for t in out], condition
+
+    (p0, x1_0, x2_0, det0), _ = mirrored_forward(0)
+    np.testing.assert_allclose(p0 / scale, momenta / scale, rtol=0, atol=1e-13)
+    np.testing.assert_allclose(det0, det, rtol=1e-12)
+
+    (p1, x1_1, x2_1, det1), condition = mirrored_forward(1)
+    np.testing.assert_allclose(x1_1, x1, rtol=1e-13)
+    np.testing.assert_allclose(x2_1, x2, rtol=1e-13)
+    np.testing.assert_allclose(det1, det, rtol=1e-12)
+    rotated = boost_z(
+        mirror(boost_z(momenta, masses_real, -beam_rapidity)),
+        masses_real,
+        beam_rapidity,
+    )
+    np.testing.assert_allclose(p1 / scale, rotated / scale, rtol=0, atol=1e-12)
+    # leg 1 along -z with its fraction of beam 2, leg 2 along +z
+    e1 = 0.5 * SQRT_S * math.exp(beam_rapidity)
+    e2 = 0.5 * SQRT_S * math.exp(-beam_rapidity)
+    np.testing.assert_allclose(p1[:, 0, 0], x1 * e2, rtol=1e-13)
+    np.testing.assert_allclose(p1[:, 0, 3], -x1 * e2, rtol=1e-13)
+    np.testing.assert_allclose(p1[:, 1, 3], x2 * e1, rtol=1e-13)
+
+    # the round trip with either index per event
+    index = (np.random.default_rng(61).random(batch) < 0.5).astype(np.int32)
+    condition = torch.as_tensor(index, dtype=torch.int32).to(torch.get_default_device())
+    p_mix, x1_mix, x2_mix, det_mix = mirrored.map_forward([to_torch(r)], [condition])
+    r_inv, det_inv = mirrored.map_inverse([p_mix, x1_mix, x2_mix], [condition])
+    np.testing.assert_allclose(to_numpy(r_inv)[:, :-3], r[:, :-3], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(to_numpy(r_inv)[:, -3:], r[:, -3:], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(to_numpy(det_mix) * to_numpy(det_inv), 1.0, rtol=1e-9)
+
+    # the counter-events follow
+    names = list(mirrored.counter_event_types().keys())
+    runtime = ms.FunctionRuntime(
+        ms.FKSKinematics(mirrored).function(), default_context()
+    )
+    out = dict(
+        zip(names, [to_numpy(t) for t in runtime.call([to_torch(r), condition])])
+    )
+    np.testing.assert_array_equal(out["momenta"], to_numpy(p_mix))
+    soft = out["soft_momenta"]
+    np.testing.assert_allclose(soft[:, i_fks, 0] / SQRT_S, 0.0, atol=1e-13)

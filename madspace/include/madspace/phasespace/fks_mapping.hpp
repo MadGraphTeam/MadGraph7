@@ -41,9 +41,15 @@ namespace madspace {
  *
  * Cuts belong to the real emission and the counter-events, not to the Born, so
  * the Born mapping must have none, except a floor on @f$\sqrt{\hat s}@f$ for
- * a final-state emitter (see fks_sqrt_s_hat_min). Its `mirror_index`
- * condition is not supported: the emission needs the first incoming parton
- * along @f$+z@f$.
+ * a final-state emitter (see fks_sqrt_s_hat_min).
+ *
+ * With `mirror_beams` the Born mapping takes leg 1 from beam 2 for
+ * `mirror_index` 1, along @f$-z@f$, with its momentum fraction x1. The emission
+ * needs the first incoming parton along @f$+z@f$, so in the centre-of-mass
+ * frame of the Born the mirror of the Born mapping (a rotation by @f$\pi@f$
+ * about the x axis) turns it around before the emission and back after it,
+ * and the frame of the Born follows the beam each leg comes from. The
+ * emission and its weight are those without the mirror.
  *
  * The FKS configurations of one Born, each an FKSMapping of the same Born
  * mapping, have the same inputs, outputs and conditions. As channels of a
@@ -63,7 +69,7 @@ namespace madspace {
  *   choices of the Born mapping. Present only when it has any.
  *
  * **Conditions**
- * - those of the Born mapping (`permutation_index`).
+ * - those of the Born mapping (`permutation_index`, `mirror_index`).
  *
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n + 1, 4)` – momenta of the real
@@ -81,8 +87,8 @@ namespace madspace {
  */
 class FKSMapping : public Mapping {
 public:
-    /// @param born       Mapping of the Born process, without cuts and
-    ///                   without `mirror_beams`.
+    /// @param born       Mapping of the Born process, without cuts (but a
+    ///                   floor on sqrt(s_hat) for a final-state emitter).
     /// @param i_fks      Position of the radiated parton i in the real process.
     /// @param j_fks      Position of the emitter j in the real process.
     /// @param s_hat_min  Lower bound on the partonic energy squared of the
@@ -147,7 +153,14 @@ private:
     // light-cone components (up to a factor) whose ratio is exp(2 y) for the
     // rapidity y of the centre-of-mass frame of the Born in the lab frame, from
     // its momentum fractions (the arguments of fks_beam_boost)
-    std::pair<Value, Value> born_frame(FunctionBuilder& fb, Value x1, Value x2) const;
+    std::pair<Value, Value> born_frame(
+        FunctionBuilder& fb, Value x1, Value x2, const NamedVector<Value>& conditions
+    ) const;
+    // between the orientation of the beams (mirror_index) and the one of the
+    // emission, the first incoming parton along +z (an involution)
+    Value standard_orientation(
+        FunctionBuilder& fb, Value momenta, const NamedVector<Value>& conditions
+    ) const;
 
     PhaseSpaceMapping _born;
     FKSRadiation _radiation;
