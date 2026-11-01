@@ -182,16 +182,19 @@ def test_structural_zero_mass_alias_is_named_zero_under_either_hepkit(
     assert emulated.raw.record("particles", "t")["fields"]["mass"]["name"] == "Zalias"
 
 
-def test_structural_adapter_requires_declared_gauge_and_same_scalar_source(source):
+def test_structural_adapter_keeps_declared_gauge_and_requires_same_scalar_source(source):
     raw = load_raw_loop_model(source, restriction="full")
     result = build_covariant_structure(raw)
     copied = RawLoopModel.from_dict(raw.to_dict())
     with pytest.raises(ValueError, match="another raw model"):
         build_covariant_structure(copied, scalars=result.scalars)
+    # A source without Feynman gauge builds: the declared gauges are checked
+    # per request where its loops need 't Hooft-Feynman gauge
+    # (MF-GM-HC P2, ``ew_policy.require_loop_gauge``; refused there in
+    # test_loop_v2_hc.py and test_loop_v2_refusal_keys.py).
     changed = raw.to_dict()
     changed["metadata"]["gauge"] = [0]
-    with pytest.raises(ValueError, match="Feynman gauge"):
-        build_covariant_structure(RawLoopModel.from_dict(changed))
+    build_covariant_structure(RawLoopModel.from_dict(changed))
 
 
 def test_invalid_condition_cannot_certify_zero_mass(source):
