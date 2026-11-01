@@ -10,9 +10,11 @@
 //! exact coefficient, an explicit N_c power and a power of 1/sqrt(2)
 //! (`ColourProduct`). Every internal index is contracted: fundamental ones
 //! by joining strings, adjoint ones by the SU(N_c) Fierz identities on traces
-//! (open strings ride along as traces closed by a sentinel), exactly as the
-//! Python stage does, so the reduced tensor (`ConnectedColorTensor`: combined
-//! terms in canonical order, the 1/sqrt(2) parity folded) is the oracle's.
+//! (open strings ride along as traces closed by a sentinel), so the reduced
+//! tensor (`ConnectedColorTensor`: combined terms in canonical order, the
+//! 1/sqrt(2) parity folded) is the oracle's. The Fierz reduction
+//! ([`fierz_terms`], memoised on canonical trace products) is the crate's
+//! only one: `cells::fierz_laurent` reads its fully contracted case.
 //!
 //! Labels are integers: external legs keep their (non-negative) labels; every
 //! other label is internal. A ring position is a *template* whose label

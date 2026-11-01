@@ -19,8 +19,10 @@
 //! are the oracle's own operations; only the order in which a term's factors
 //! are visited may differ (it follows each process's symbol ids), which no
 //! output depends on (powers and monomials are summed, the coefficient is a
-//! product). Kernels are independent jobs on a rayon pool whose workers hold
-//! pyAmpliCol's Symbolica key; results come back in job order.
+//! product). Every output of every kernel is an independent task on a rayon
+//! pool whose workers hold pyAmpliCol's Symbolica key; results come back in
+//! input order. The opaque factors of an output (a coupling's sum recurs in
+//! many of its terms) are read once.
 
 use rayon::prelude::*;
 use std::collections::HashMap;
