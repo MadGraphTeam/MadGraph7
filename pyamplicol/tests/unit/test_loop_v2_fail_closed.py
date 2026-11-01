@@ -494,6 +494,8 @@ def _identity(generated, *, fourier: bool = True) -> tuple[str, str, str]:
     ):
         if trees is not None and members.pop(f"{prefix}tree-program.bin", None):
             members[f"{prefix}tree-program.json"] = trees.json().encode()
+    # The stored dipole orbits (C4, MF-8G-1) postdate the pins.
+    members.pop("dipoles.json", None)
     native = hashlib.sha256()
     for name in sorted(members):
         if not name.endswith("parameters.symjit"):

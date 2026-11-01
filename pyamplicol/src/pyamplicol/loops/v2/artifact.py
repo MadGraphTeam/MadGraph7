@@ -135,6 +135,9 @@ NATIVE_TREES_MEMBER = "tree-program.json.zlib"
 # The binary tree program (``native_trees.NativeTrees.binary``, M-FINAL
 # MF-8G-1), which a process stores instead of its JSON (zlib stream).
 NATIVE_TREES_BINARY_MEMBER = "tree-program.bin.zlib"
+# C4 (M-FINAL MF-8G-1 item 7): the IR dipole operators per relabelling orbit
+# (``native_process.NativeProcess.dipoles``; zlib JSON, ``dipoles.FORMAT``).
+NATIVE_DIPOLES_MEMBER = "dipoles.json.zlib"
 NATIVE_PARAMETERS_MEMBER = "parameters.state"
 NATIVE_PARAMETERS_PLANE_MEMBER = "parameters.symjit"
 NATIVE_KERNEL_MEMBER = "kernel-{}.state"
@@ -464,6 +467,14 @@ def write_plan(
                     )
                 )
                 k += 1
+        if "dipoles.json" in stored:
+            members.append(
+                (
+                    f"{NATIVE_INPUTS_PREFIX}{NATIVE_DIPOLES_MEMBER}",
+                    plan,
+                    zlib.compress(stored["dipoles.json"], 6),
+                )
+            )
         for name in sorted(stored):
             if name.startswith("observables"):
                 members.append(
@@ -555,6 +566,9 @@ def read_native_process(
                     reader, base + NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
                 )
                 k += 1
+        dipoles = f"{NATIVE_INPUTS_PREFIX}{NATIVE_DIPOLES_MEMBER}"
+        if dipoles in names:
+            members["dipoles.json"] = zlib.decompress(read(reader, dipoles, json_kind))
         start = f"{NATIVE_OBSERVABLES_PREFIX}observables"
         for name in sorted(names):
             if name.startswith(start) and name.endswith(".json.zlib"):

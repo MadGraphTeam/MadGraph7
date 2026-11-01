@@ -140,6 +140,19 @@ def _trees_from_members(
     )
 
 
+def _stored_dipoles(slice_: Any) -> str | None:
+    """C4's stored form for a slice (``dipoles.stored(dipoles.build(slice_))``:
+    one exact entry per relabelling orbit, built and checked in
+    rusticol-core at generation), or None for a Born basis with fewer than
+    two coloured legs (no dipole)."""
+
+    if len(slice_.basis.legs) < 2:
+        return None
+    from . import dipoles
+
+    return dipoles.stored(dipoles.build(slice_))
+
+
 def _plan_view(
     record: Mapping[str, Any], columns: Any, trees: NativeTrees, first: int = 0
 ) -> Any:
@@ -194,6 +207,11 @@ class NativeProcess:
     # The stored observable columns (``native_observables.StoredObservables``)
     # of a process generated with declared colour histories or spin classes.
     observables: Any = None
+    # C4 (M-FINAL MF-8G-1 item 7): the IR dipole operators of the Born basis
+    # per relabelling orbit in their portable stored form (``dipoles.FORMAT``,
+    # kB; ``_stored_dipoles``), for a loaded process's Catani prediction
+    # (``dipole_orbits``); None without two coloured legs.
+    dipoles: str | None = None
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -303,7 +321,7 @@ class NativeProcess:
                 twin_record["fourier"] = json.loads(twin.fourier)
             record["scaleless"] = twin_record
             companion = NativeCompanion(twin_json, twin.trees, twin_record)
-        return cls(plan_json, trees, record, companion)
+        return cls(plan_json, trees, record, companion, dipoles=_stored_dipoles(slice_))
 
     # -- storage -------------------------------------------------------------
 
@@ -324,6 +342,8 @@ class NativeProcess:
             out.update(_trees_members(self.scaleless.trees, SCALELESS))
         if self.observables is not None:
             out.update(self.observables.members())
+        if self.dipoles is not None:
+            out["dipoles.json"] = self.dipoles.encode()
         return out
 
     @classmethod
@@ -362,7 +382,27 @@ class NativeProcess:
             from .native_observables import StoredObservables
 
             observables = StoredObservables.from_members(members)
-        return cls(plan_json, trees, record, companion, observables)
+        dipoles = members.get("dipoles.json")
+        return cls(
+            plan_json,
+            trees,
+            record,
+            companion,
+            observables,
+            None if dipoles is None else bytes(dipoles).decode(),
+        )
+
+    def dipole_orbits(self) -> Any:
+        """The stored IR dipole operators (``dipoles.load``: a
+        ``NativeDipoleOrbits``, validated; ``dipoles.operators`` and
+        ``matrices`` expand them by index arithmetic, no Symbolica), or None
+        when the process stores none."""
+
+        if self.dipoles is None:
+            return None
+        from . import dipoles
+
+        return dipoles.load(self.dipoles)
 
     # -- evaluation ----------------------------------------------------------
 
