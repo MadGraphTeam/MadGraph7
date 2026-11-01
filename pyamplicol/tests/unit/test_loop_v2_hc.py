@@ -30,7 +30,8 @@ per point, zero widths, MU_R = 125 and 91.188 GeV): binary64 Born and
 Laurent coefficients equal MadLoop 3.7.0 (fixtures ``required/hc/``, from
 ``tools/loop_reference/hc_nlo_x0.py``; one squared order per row) within
 1e-5, the poles equal Catani's (at most three coloured partons: the colour
-correlators are Casimirs), one rotation check passes, and HC02 (rank N+1
+correlators are Casimirs; the double pole only for HC06, g g > x0 t t~
+with gamma5 top Yukawas), one rotation check passes, and HC02 (rank N+1
 boxes) agrees in double-double.
 """
 
@@ -312,10 +313,15 @@ def test_generator_contact_with_a_singlet_leg_splits_through_an_adjoint_auxiliar
     from pyamplicol.models.compiler_contacts import (
         _contact_auxiliary_color,
         _four_point_contact_color_split,
+        _generator_singlet_contact_split,
     )
 
     term = SimpleNamespace(color_source="UFO::{}::T(3,2,1)")
-    splits = {leg: _four_point_contact_color_split(term, leg) for leg in range(4)}
+    particles = [SimpleNamespace(color=c) for c in (-3, 3, 8, 1)]
+    splits = {
+        leg: _four_point_contact_color_split(term, leg, particles=particles)
+        for leg in range(4)
+    }
     identity = "UFO::{}::Identity(1,2)"
     for result, remaining in ((3, 2), (2, 3)):
         split = splits[result]
@@ -329,13 +335,8 @@ def test_generator_contact_with_a_singlet_leg_splits_through_an_adjoint_auxiliar
             f"UFO::{{}}::{final}",
         )
         assert splits[result][4:6] == (0, 1)
-    assert (
-        _four_point_contact_color_split(
-            SimpleNamespace(color_source="-2*UFO::{}::T(3,2,1)"), 3
-        )[9]
-        == "-2"
-    )
-    particles = [SimpleNamespace(color=c) for c in (-3, 3, 8, 1)]
+    scaled = SimpleNamespace(color_source="-2*UFO::{}::T(3,2,1)")
+    assert _four_point_contact_color_split(scaled, 3, particles=particles)[9] == "-2"
     for result in range(4):
         rest = splits[result][1]
         assert (
@@ -344,16 +345,24 @@ def test_generator_contact_with_a_singlet_leg_splits_through_an_adjoint_auxiliar
             )
             == 8
         )
-    # Two generators, or a generator on four coloured legs, stay unsplit here.
-    for source in ("UFO::{}::T(3,2,1)*UFO::{}::T(4,2,1)", "UFO::{}::T(-1,2,1)"):
-        from pyamplicol.models.compiler_contacts import (
-            _generator_singlet_contact_split,
-        )
-
+    # Two generators, a summed index, legs of other representations (four
+    # adjoints) or no leg records: not split here (fail closed).
+    adjoints = [SimpleNamespace(color=8)] * 4
+    for source, legs in (
+        ("UFO::{}::T(3,2,1)*UFO::{}::T(4,2,1)", particles),
+        ("UFO::{}::T(-1,2,1)", particles),
+        ("UFO::{}::T(3,2,1)", adjoints),
+    ):
         assert (
-            _generator_singlet_contact_split(SimpleNamespace(color_source=source), 0)
+            _generator_singlet_contact_split(
+                SimpleNamespace(color_source=source), 0, legs
+            )
             is None
         )
+    unrecorded = SimpleNamespace(
+        color_source=term.color_source, color_expression="model_x::T(3,2,1)"
+    )
+    assert _four_point_contact_color_split(unrecorded, 3) is None
 
 
 # ------------------------------------------------------------------ rows
@@ -365,8 +374,8 @@ CA, CF, TR = NC, (NC * NC - 1) / (2 * NC), 0.5
 LIGHT_FLAVOURS = 5
 CASIMIR = {"g": CA, "q": CF}
 GAMMA = {"g": 11 / 6 * CA - 2 / 3 * TR * LIGHT_FLAVOURS, "q": 1.5 * CF}
-# Coloured external particles of the rows by process token.
-PARTON = {"g": "g", "u": "q", "u~": "q"}
+# Coloured external particles of the rows by process token ("Q": massive).
+PARTON = {"g": "g", "u": "q", "u~": "q", "t": "Q", "t~": "Q"}
 
 
 def _card() -> dict:
@@ -441,18 +450,22 @@ def _dot(p, q) -> float:
 
 
 def _catani(process: str, momenta, born: float, mu: float, alpha_s: float):
-    """Catani's (single, double) poles of the renormalised virtual of a
-    process with at most three coloured massless partons, whose colour
-    correlators are Casimirs: T_i.T_j = (C_k - C_i - C_j)/2, or -C_i for
-    two (normalisation (4 pi)^eps / Gamma(1 - eps), as MadLoop's)."""
+    """Catani's (single, double) poles of the renormalised virtual
+    (normalisation (4 pi)^eps / Gamma(1 - eps), as MadLoop's): the double
+    pole, -alpha_s/(2 pi) sum C_i Born over the massless partons, always;
+    the single pole for at most three coloured massless partons, whose colour
+    correlators are Casimirs (T_i.T_j = (C_k - C_i - C_j)/2, or -C_i for
+    two), else None."""
 
     initial, final = process.split(">")
     tokens = initial.split() + final.split()
     partons = [(PARTON[t], momenta[k]) for k, t in enumerate(tokens) if t in PARTON]
-    assert 2 <= len(partons) <= 3, process
-    casimirs = [CASIMIR[kind] for kind, _ in partons]
     factor = alpha_s / (2 * math.pi)
-    double = -factor * sum(casimirs) * born
+    double = -factor * sum(CASIMIR.get(kind, 0.0) for kind, _ in partons) * born
+    if len(partons) > 3 or any(kind == "Q" for kind, _ in partons):
+        return None, double
+    assert len(partons) >= 2, process
+    casimirs = [CASIMIR[kind] for kind, _ in partons]
     single = -factor * sum(GAMMA[kind] for kind, _ in partons) * born
     for i, (_, p) in enumerate(partons):
         for j, (_, q) in enumerate(partons):
@@ -517,7 +530,8 @@ def _check_row(runtime, card: dict, row: dict, *, double_double: bool = False):
                 assert _relative(ours, theirs, floor) <= TOLERANCE, (label, key)
             catani = _catani(row["process"], points[k], born, scales[k], alpha_s)
             for ours, theirs in zip((single, double), catani, strict=True):
-                assert _relative(ours, theirs, floor) <= POLE_TOLERANCE, label
+                if theirs is not None:
+                    assert _relative(ours, theirs, floor) <= POLE_TOLERANCE, label
             estimate = result.stability[k]
             assert [name for name, _ in estimate.checks] == ["rotation-0"]
             assert estimate.relative <= ROTATION_BOUND, (label, estimate)
@@ -535,7 +549,7 @@ def _check_row(runtime, card: dict, row: dict, *, double_double: bool = False):
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC03", "HC04"])
+@pytest.mark.parametrize("row_id", ["HC01", "HC02", "HC03", "HC04", "HC06"])
 def test_hc_rows_equal_madloop(hc_nlo_x0_ufo, loop_native, tmp_path, row_id):
     card = _card()
     row = _row(card, row_id)

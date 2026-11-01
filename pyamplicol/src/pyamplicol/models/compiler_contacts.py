@@ -706,6 +706,7 @@ def _build_contact_decomposition_proof(
             term,
             result_leg,
             model_symbols=model_symbols,
+            particles=source_particles,
         )
         if color_split is None:
             unsupported.append(
@@ -1060,6 +1061,7 @@ def _four_point_contact_color_split(
     result_leg: int,
     *,
     model_symbols: ModelSymbolRegistry | None = None,
+    particles: Sequence[CompiledParticleRecord] | None = None,
 ) -> (
     tuple[
         tuple[int, int],
@@ -1076,6 +1078,10 @@ def _four_point_contact_color_split(
     | None
 ):
     active_symbols = model_symbols or symbols.model("contact_color_parser")
+    if particles is not None:
+        generator = _generator_singlet_contact_split(term, result_leg, particles)
+        if generator is not None:
+            return generator
     counterterm_split = _counterterm_contact_color_split(term, result_leg)
     if counterterm_split is not None:
         return counterterm_split
@@ -1182,9 +1188,6 @@ def _counterterm_contact_color_split(
     below. Returns ``None`` for any other colour.
     """
 
-    generator = _generator_singlet_contact_split(term, result_leg)
-    if generator is not None:
-        return generator
     trilinear = _trilinear_singlet_contact_split(term, result_leg)
     if trilinear is not None:
         return trilinear
@@ -1267,6 +1270,7 @@ _GENERATOR_COLOUR_FACTOR = re.compile(r"T\((?P<args>-?\d+(?:,-?\d+)*)\)")
 def _generator_singlet_contact_split(
     term: CompiledVertexTerm,
     result_leg: int,
+    particles: Sequence[CompiledParticleRecord],
 ) -> (
     tuple[
         tuple[int, int],
@@ -1289,7 +1293,9 @@ def _generator_singlet_contact_split(
     ``T(X, i, j)``, and ``Identity(X, r)`` passes it to the gluon or closes it
     with the gluon into the singlet; for a quark result the gluon and the
     singlet join it, ``Identity(a, X)``, and ``T(X, i, j)`` joins it with the
-    other quark into the result."""
+    other quark into the result. ``particles`` are the contact's legs: the
+    generator's slots must hold an adjoint and a triplet-antitriplet pair and
+    the fourth leg must be a singlet, else None."""
 
     compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
     numbers, generators = [], []
@@ -1308,6 +1314,14 @@ def _generator_singlet_contact_split(
         return None
     adjoint, triplet, antitriplet = legs
     (singlet,) = {1, 2, 3, 4} - set(legs)
+    colours = [int(particle.color) for particle in particles]
+    if len(colours) != 4 or (
+        colours[adjoint - 1],
+        abs(colours[triplet - 1]),
+        abs(colours[antitriplet - 1]),
+        colours[singlet - 1],
+    ) != (8, 3, 3, 1):
+        return None
     result = result_leg + 1
     dummy = -1
     coefficient = "*".join(numbers) if numbers else "1"
