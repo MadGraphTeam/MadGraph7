@@ -292,9 +292,15 @@ pub fn load_loop_v2_artifact(
         "plan v4 processes cannot share an artifact with other runtimes",
     )?;
     let selection = artifact.select_process(requested_process)?;
+    // A stored process may list permutation aliases: the Python runtime
+    // serves an alias (and a process-group member) through its stored
+    // process at the permuted momenta (`loops/v2/artifact.py`), so this
+    // admission takes a stored process selected as itself only.
     require(
-        selection.process.aliases.is_empty() && !selection.remaps_public_process(),
-        "plan v4 admits independent virtual processes only",
+        !selection.remaps_public_process(),
+        "plan v4 admits a stored virtual process selected by its id or stored \
+         expression; its permutation aliases and process-group members are \
+         served by the Python runtime",
     )?;
     let entries = crate::engine::verified_execution_payloads(artifact)?;
     let (_, path, bytes) = entries
