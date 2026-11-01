@@ -185,9 +185,8 @@ def _build_particles(
     final threshold (a scale of the process, in no particular units); massless
     beams keep the historical ``sqrt(s) = max(1000, final threshold + 100)``
     exactly (their points are byte-identical). A 2 -> 1 scattering takes
-    ``sqrt(s)`` = the final mass. pyAmpliCol processes have two initial
-    particles today (``processes.model``), so the decay branch serves only
-    direct callers until decays are supported.
+    ``sqrt(s)`` = the final mass. A process has one or two initial particles
+    (``processes.model.require_external_leg_counts``).
     """
 
     initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)
