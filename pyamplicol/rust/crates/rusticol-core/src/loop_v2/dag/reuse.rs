@@ -433,6 +433,43 @@ pub fn derive<D: ReuseDag>(
         .collect()
 }
 
+/// The evaluation groups of `_rewrite_interaction_evaluation_reuse`, first
+/// seen.
+type RewriteGroups = FxMap<(u32, u32, u32, i64, i8, u32), i64>;
+
+/// The rewritten (group, factor) of interaction `i` (in increasing `i`, with
+/// one `groups` map: `rewrite`).
+fn rewrite_at<D: ReuseDag>(
+    dag: &D,
+    kernels: &[Kernel],
+    equivalences: &[Equivalence],
+    groups: &mut RewriteGroups,
+    i: usize,
+) -> (i64, Complex) {
+    let kernel = &kernels[dag.kernel(i)];
+    let (left, right) = (dag.left(i), dag.right(i));
+    let (inputs, factor) = canonical_interaction_evaluation(
+        kernel,
+        left,
+        right,
+        equivalences[left as usize],
+        equivalences[right as usize],
+    );
+    let result = dag.result(i) as usize;
+    let next = groups.len() as i64;
+    let group = *groups
+        .entry((
+            kernel.class_rank,
+            inputs.0,
+            inputs.1,
+            dag.pdg(result),
+            dag.chirality(result),
+            dag.identity_rank(i),
+        ))
+        .or_insert(next);
+    (group, factor)
+}
+
 /// `_rewrite_interaction_evaluation_reuse`: every interaction's evaluation
 /// group (first seen) and factor through `equivalences`.
 pub fn rewrite<D: ReuseDag>(
@@ -440,32 +477,9 @@ pub fn rewrite<D: ReuseDag>(
     kernels: &[Kernel],
     equivalences: &[Equivalence],
 ) -> Vec<(i64, Complex)> {
-    let mut groups: FxMap<(u32, u32, u32, i64, i8, u32), i64> = FxMap::default();
+    let mut groups = RewriteGroups::default();
     (0..dag.interaction_count())
-        .map(|i| {
-            let kernel = &kernels[dag.kernel(i)];
-            let (left, right) = (dag.left(i), dag.right(i));
-            let (inputs, factor) = canonical_interaction_evaluation(
-                kernel,
-                left,
-                right,
-                equivalences[left as usize],
-                equivalences[right as usize],
-            );
-            let result = dag.result(i) as usize;
-            let next = groups.len() as i64;
-            let group = *groups
-                .entry((
-                    kernel.class_rank,
-                    inputs.0,
-                    inputs.1,
-                    dag.pdg(result),
-                    dag.chirality(result),
-                    dag.identity_rank(i),
-                ))
-                .or_insert(next);
-            (group, factor)
-        })
+        .map(|i| rewrite_at(dag, kernels, equivalences, &mut groups, i))
         .collect()
 }
 
@@ -572,15 +586,29 @@ pub fn assign_reuse(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
         .collect();
     let view = BuilderView { input, dag };
     let equivalences = derive(&view, &contracts, &kernels, true)?;
-    let rewritten = rewrite(&view, &kernels, &equivalences);
-    if rewritten
-        .iter()
-        .zip(&dag.interactions)
-        .all(|((group, factor), old)| *group == old.group && pair_eq(*factor, old.factor))
-    {
+    // `rewrite` in two passes, without a copy per interaction (MF-8G-1
+    // item 4): the first compares, the second (only when some interaction
+    // changes) writes; the groups are first seen in both.
+    let mut groups = RewriteGroups::default();
+    let n = dag.interactions.len();
+    let unchanged = (0..n).all(|i| {
+        let (group, factor) = rewrite_at(&view, &kernels, &equivalences, &mut groups, i);
+        let old = &dag.interactions[i];
+        group == old.group && pair_eq(factor, old.factor)
+    });
+    if unchanged {
         return Ok(());
     }
-    for ((group, factor), interaction) in rewritten.into_iter().zip(&mut dag.interactions) {
+    let mut groups = RewriteGroups::default();
+    for i in 0..n {
+        let (group, factor) = rewrite_at(
+            &BuilderView { input, dag: &*dag },
+            &kernels,
+            &equivalences,
+            &mut groups,
+            i,
+        );
+        let interaction = &mut dag.interactions[i];
         interaction.group = group;
         interaction.factor = factor;
     }

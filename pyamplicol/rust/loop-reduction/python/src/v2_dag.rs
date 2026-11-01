@@ -108,8 +108,9 @@ type SourceRow = (u32, i64, i8, i32, ColourTuple, i32, i32, i32, u64);
 /// `(vertex kind, vertex particles, coupling)` of an interaction.
 type InteractionRow = (i64, [i64; 3], (f64, f64));
 
-/// The interaction program of a [`V2Dag`] (`ColumnarDag::program`).
-#[pyclass(frozen)]
+/// The interaction program of a [`V2Dag`] (`ColumnarDag::program`; not
+/// frozen: `take_step_section` takes its steps).
+#[pyclass]
 struct V2Program {
     program: Program,
 }
@@ -622,20 +623,22 @@ mod tree_binary {
 impl V2Program {
     /// The steps as a binary step section (`loop_v2::trees::binary::
     /// StepColumns`), with `texts[w]` the exact `(re, im)` texts of weight
-    /// `w`: the columns `steps` would give as Python lists.
-    fn step_section<'py>(
-        &self,
+    /// `w`: the columns `steps` would give as Python lists. The program gives
+    /// its steps up (`steps` is empty afterwards): their rows are released
+    /// as the section is formed (MF-8G-1 item 4).
+    fn take_step_section<'py>(
+        &mut self,
         py: Python<'py>,
         texts: Vec<(String, String)>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         if texts.len() != self.program.weights.len() {
             return Err(PyValueError::new_err("one text pair per colour weight"));
         }
+        let steps = std::mem::take(&mut self.program.steps);
         let out = py
             .detach(|| {
-                rusticol_core::loop_v2::trees::binary::StepColumns::from_program(
-                    &self.program.steps,
-                    texts,
+                rusticol_core::loop_v2::trees::binary::StepColumns::from_program_owned(
+                    steps, texts,
                 )
                 .map(|c| c.encode())
             })

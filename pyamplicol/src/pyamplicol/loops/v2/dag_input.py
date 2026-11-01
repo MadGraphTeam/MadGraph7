@@ -2375,6 +2375,7 @@ def native_interaction_program(
     slots: Sequence[Any] = (),
     *,
     section: bool = False,
+    before_section: Callable[[], None] | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], bytes | None]:
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its slot masks those of the slot table
@@ -2398,7 +2399,10 @@ def native_interaction_program(
 
     With ``section`` (``native_trees.NATIVE_SECTIONS``) the steps are not
     Python lists: the record omits them and the third value is their binary
-    step section (``V2Program.step_section``, M-FINAL MF-8G-1), else None."""
+    step section (``V2Program.take_step_section``, M-FINAL MF-8G-1, which
+    takes the steps from ``program``), else None; ``before_section`` is
+    called once nothing but ``program`` is read any more (the emission
+    releases the DAG's columns there)."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -2465,7 +2469,9 @@ def native_interaction_program(
     }
     steps = None
     if section:
-        steps = bytes(program.step_section(texts))
+        if before_section is not None:
+            before_section()
+        steps = bytes(program.take_step_section(texts))
     else:
         record["steps"] = program.steps(texts)
     if slots:
@@ -2493,8 +2499,11 @@ def emit_counterterm_program(dag: NativeDag, compiled: Any, slots: Sequence[Any]
     rows, native = native_tree_rows(
         dag, compiled, slot_orders=[slot[0] for slot in slots]
     )
+    # The columns are released before the step section is formed: the
+    # program holds what it needs, so the section's peak does not stack on
+    # the DAG's (MF-8G-1 item 4).
     interactions, saved, steps = native_interaction_program(
-        rows, native, slots, section=True
+        rows, native, slots, section=True, before_section=dag.release
     )
     del native
     dag._answers[_EMISSION] = (rows, interactions, saved, steps)
@@ -2517,19 +2526,18 @@ def native_counterterm_trees(
     if not NATIVE_PROGRAM or type(dag) is not NativeDag:
         return None
     slots = counterterm_slots(program.recursion)
-    emitted = dag._answers.get(_EMISSION) if section else None
+    emitted = dag._answers.pop(_EMISSION, None) if section else None
     if emitted is not None:
-        # Emitted at the build (item 4): no rebuild. The interaction record
-        # is copied (the export's pruning edits its kernel lists).
-        import copy
-
+        # Emitted at the build (item 4): no rebuild. The export takes the
+        # emission (a later export rebuilds it), so its step section is not
+        # held once the export has pruned it.
         rows, interactions, saved, steps = emitted
         return (
             rows,
             rows.slots,
             rows.momentum_slots,
             rows.source_fill,
-            copy.deepcopy(interactions),
+            interactions,
             saved,
             steps,
         )

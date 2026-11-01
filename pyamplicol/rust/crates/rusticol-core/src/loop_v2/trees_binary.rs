@@ -592,6 +592,104 @@ impl StepColumns {
         Ok(out)
     }
 
+    /// [`StepColumns::from_program`] taking the steps, whose rows it
+    /// releases as it writes them (MF-8G-1 item 4): a first pass numbers the
+    /// weights and finds each row column's width, the second writes the rows
+    /// from the last one into zeroed (lazily committed) columns while their
+    /// buffers shrink behind it, so the rows and their columns are not held
+    /// whole at once. Equal to `from_program` on the same steps.
+    pub fn from_program_owned(
+        mut steps: Vec<crate::loop_v2::dag::program::Step>,
+        weights: Vec<(String, String)>,
+    ) -> RusticolResult<Self> {
+        let mut renumbered = vec![u64::MAX; weights.len()];
+        let mut used = Vec::new();
+        let mut wide = [false; 9];
+        let mut total = 0usize;
+        for step in &steps {
+            total += step.rows.len();
+            for row in &step.rows {
+                let w = usize::try_from(row[8])
+                    .ok()
+                    .filter(|&w| w < weights.len())
+                    .ok_or_else(|| invalid("a step row's colour weight"))?;
+                if renumbered[w] == u64::MAX {
+                    renumbered[w] = used.len() as u64;
+                    used.push(weights[w].clone());
+                }
+                for (k, value) in row[..8].iter().enumerate() {
+                    let value = u64::try_from(*value)
+                        .map_err(|_| invalid("a negative step entry"))?;
+                    wide[k] |= value > u64::from(u32::MAX);
+                }
+            }
+        }
+        wide[8] = used.len() as u64 > u64::from(u32::MAX) + 1;
+        let mut out = StepColumns {
+            weights: used,
+            ..Default::default()
+        };
+        let unsigned = |value: i64| {
+            u64::try_from(value).map_err(|_| invalid("a negative step entry"))
+        };
+        let mut dimensions = Vec::new();
+        let mut outs: [Vec<u64>; 4] = Default::default();
+        let mut propagators = Vec::new();
+        let mut masks = Vec::new();
+        for step in &steps {
+            out.rows.push(step.rows.len() as u64);
+            out.accumulators.push(step.accumulators.len() as u64);
+            for &dimension in &step.accumulators {
+                dimensions.push(unsigned(dimension)?);
+            }
+            out.outputs.push(step.outputs.len() as u64);
+            for output in &step.outputs {
+                outs[0].push(unsigned(output[0])?);
+                propagators.push(output[1]);
+                outs[1].push(unsigned(output[2])?);
+                outs[2].push(unsigned(output[3])?);
+                outs[3].push(unsigned(output[4])?);
+            }
+            let masked = !step.accumulator_masks.is_empty();
+            out.masked.push(masked);
+            masks.extend(step.accumulator_masks.iter().map(|&m| u64::from(m)));
+        }
+        let mut rows: [Column; 9] = std::array::from_fn(|k| {
+            if wide[k] {
+                Column::U64(vec![0; total])
+            } else {
+                Column::U32(vec![0; total])
+            }
+        });
+        const CHUNK: usize = 1 << 20;
+        let mut index = total;
+        while let Some(mut step) = steps.pop() {
+            while let Some(row) = step.rows.pop() {
+                index -= 1;
+                for (k, column) in rows.iter_mut().enumerate() {
+                    let value = if k == 8 {
+                        renumbered[row[8] as usize]
+                    } else {
+                        row[k] as u64
+                    };
+                    match column {
+                        Column::U32(values) => values[index] = value as u32,
+                        Column::U64(values) => values[index] = value,
+                    }
+                }
+                if step.rows.capacity() - step.rows.len() > CHUNK {
+                    step.rows.shrink_to_fit();
+                }
+            }
+        }
+        out.row_columns = rows;
+        out.dimensions = Column::of(dimensions);
+        out.output_columns = columns(outs);
+        out.propagators = SignedColumn::of(propagators);
+        out.masks = Column::of(masks);
+        Ok(out)
+    }
+
     /// Columns of the oracle's JSON steps (`_interaction_program`'s
     /// `steps`; the weight texts interned in first use).
     pub fn from_json(json: &[u8]) -> RusticolResult<Self> {
@@ -1322,5 +1420,45 @@ impl TermColumns {
         }
         out.push(']');
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loop_v2::dag::program::Step;
+
+    #[test]
+    fn owned_step_columns_equal_the_borrowed_ones() {
+        // Two steps, a wide start column, an unused weight and slot sets on
+        // one step only.
+        let wide = i64::from(u32::MAX) + 7;
+        let steps = vec![
+            Step {
+                rows: vec![
+                    [0, 4, 4, 8, 4, 100, 104, 0, 2],
+                    [1, wide, 4, 12, 4, 100, 108, 1, 0],
+                ],
+                accumulators: vec![4, 4],
+                outputs: vec![[0, -1, 112, 16, 4], [1, 0, 116, 20, 4]],
+                accumulator_masks: vec![0, 3],
+            },
+            Step {
+                rows: vec![[1, 16, 4, 20, 4, 112, 116, 0, 2]],
+                accumulators: vec![4],
+                outputs: vec![[0, 1, 120, 24, 4]],
+                accumulator_masks: vec![],
+            },
+        ];
+        let texts: Vec<(String, String)> = ["1", "0", "-1/2"]
+            .iter()
+            .map(|re| (re.to_string(), "0".to_string()))
+            .collect();
+        let borrowed = StepColumns::from_program(&steps, texts.clone()).unwrap();
+        let owned = StepColumns::from_program_owned(steps, texts).unwrap();
+        assert_eq!(owned.encode(), borrowed.encode());
+        assert!(matches!(owned.row_columns[1], Column::U64(_)));
+        assert!(matches!(owned.row_columns[0], Column::U32(_)));
+        assert_eq!(owned.weights.len(), 2);
     }
 }

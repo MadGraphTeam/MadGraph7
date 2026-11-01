@@ -236,16 +236,35 @@ impl Dag {
 
     /// The columns of the finished DAG (`GenericDAG` currents, sources and
     /// interactions).
-    pub fn into_columns(self, input: &DagInput) -> ColumnarDag {
+    ///
+    /// The interaction rows are written into their columns from the last one
+    /// and released as they go (MF-8G-1 item 4): the columns are allocated
+    /// zeroed, so their pages are committed only as they are written, and
+    /// the rows' buffer shrinks behind the cursor, so the conversion holds
+    /// about one copy of the interactions instead of two.
+    pub fn into_columns(mut self, input: &DagInput) -> ColumnarDag {
         let mut species_ids: FxMap<u32, u32> = FxMap::default();
         let mut tables = Tables {
-            flavours: self.flavours.values,
-            colours: self.colours.values,
-            orders: self.orders.values,
+            flavours: std::mem::take(&mut self.flavours.values),
+            colours: std::mem::take(&mut self.colours.values),
+            orders: std::mem::take(&mut self.orders.values),
             ..Default::default()
         };
         let n = self.currents.len();
         let mut dag = ColumnarDag {
+            c_species: Vec::with_capacity(n),
+            c_mask: Vec::with_capacity(n),
+            c_momentum: Vec::with_capacity(n),
+            c_ancestry: Vec::with_capacity(n),
+            c_chirality: Vec::with_capacity(n),
+            c_spin: Vec::with_capacity(n),
+            c_flavour: Vec::with_capacity(n),
+            c_colour: Vec::with_capacity(n),
+            c_orders: Vec::with_capacity(n),
+            c_dimension: Vec::with_capacity(n),
+            c_source: Vec::with_capacity(n),
+            c_leg: Vec::with_capacity(n),
+            c_helicity: Vec::with_capacity(n),
             c_word_offsets: Vec::with_capacity(n + 1),
             ..Default::default()
         };
@@ -277,11 +296,13 @@ impl Dag {
             dag.c_words.extend_from_slice(self.words.get(key.word));
             dag.c_word_offsets.push(dag.c_words.len() as u32);
         }
-        dag.sources = self.sources;
+        self.currents = Vec::new();
+        dag.sources = std::mem::take(&mut self.sources);
+        // The vertex table in the rows' first use, as before.
         let mut vertex_ids: FxMap<u32, u32> = FxMap::default();
         for interaction in &self.interactions {
-            let vertex = &input.vertices[interaction.vertex as usize];
-            let id = *vertex_ids.entry(interaction.vertex).or_insert_with(|| {
+            vertex_ids.entry(interaction.vertex).or_insert_with(|| {
+                let vertex = &input.vertices[interaction.vertex as usize];
                 tables.vertices.push(VertexKey {
                     kind: vertex.kind,
                     particles: vertex.pdgs,
@@ -290,14 +311,33 @@ impl Dag {
                 });
                 (tables.vertices.len() - 1) as u32
             });
-            dag.i_vertex.push(id);
-            dag.i_left.push(interaction.left);
-            dag.i_right.push(interaction.right);
-            dag.i_result.push(interaction.result);
-            dag.i_coupling.push(interaction.coupling);
-            dag.i_colour_weight.push(interaction.colour_weight);
-            dag.i_group.push(interaction.group);
-            dag.i_factor.push(interaction.factor);
+        }
+        let m = self.interactions.len();
+        dag.i_vertex = vec![0; m];
+        dag.i_left = vec![0; m];
+        dag.i_right = vec![0; m];
+        dag.i_result = vec![0; m];
+        dag.i_coupling = vec![[0.0; 2]; m];
+        dag.i_colour_weight = vec![[0.0; 2]; m];
+        dag.i_group = vec![0; m];
+        dag.i_factor = vec![[0.0; 2]; m];
+        // Rows released per chunk (a shrink of a large buffer gives its tail
+        // back to the system).
+        const CHUNK: usize = 1 << 20;
+        let mut index = m;
+        while let Some(interaction) = self.interactions.pop() {
+            index -= 1;
+            dag.i_vertex[index] = vertex_ids[&interaction.vertex];
+            dag.i_left[index] = interaction.left;
+            dag.i_right[index] = interaction.right;
+            dag.i_result[index] = interaction.result;
+            dag.i_coupling[index] = interaction.coupling;
+            dag.i_colour_weight[index] = interaction.colour_weight;
+            dag.i_group[index] = interaction.group;
+            dag.i_factor[index] = interaction.factor;
+            if self.interactions.capacity() - self.interactions.len() > CHUNK {
+                self.interactions.shrink_to_fit();
+            }
         }
         dag.tables = tables;
         dag
@@ -411,6 +451,16 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
             }
             let left_ids = left_ids.clone();
             for left_id in left_ids {
+                // Every key of the dedup set holds this left current, whose
+                // interactions into `mask` are all made in this iteration (one
+                // ordered split per pair of masks): the set restarts here, so
+                // it holds one left current's keys, not one per interaction
+                // of the DAG (MF-8G-1 item 4, generation peak).
+                // (A clear costs the set's capacity, kept small.)
+                interaction_keys.clear();
+                if interaction_keys.capacity() > 1 << 14 {
+                    interaction_keys.shrink_to(1 << 10);
+                }
                 let left = dag.currents[left_id as usize];
                 let rights = input.right_particles(left.key.particle);
                 if rights.is_empty() {
@@ -669,25 +719,32 @@ pub fn prune_to_admitted(input: &DagInput, dag: &mut Dag) {
             next += 1;
         }
     }
-    dag.currents = dag
-        .currents
-        .iter()
-        .zip(&required)
-        .filter(|(_, keep)| **keep)
-        .map(|(current, _)| *current)
-        .collect();
-    dag.interactions = dag
-        .interactions
-        .iter()
-        .zip(&kept)
-        .filter(|(_, keep)| **keep)
-        .map(|(interaction, _)| Interaction {
-            left: map[interaction.left as usize],
-            right: map[interaction.right as usize],
-            result: map[interaction.result as usize],
-            ..*interaction
-        })
-        .collect();
+    // Compacted in place (a kept entry moves to a lower or equal index), so
+    // the prune never holds two copies of the interactions.
+    let mut write = 0;
+    for read in 0..dag.currents.len() {
+        if required[read] {
+            dag.currents[write] = dag.currents[read];
+            write += 1;
+        }
+    }
+    dag.currents.truncate(write);
+    dag.currents.shrink_to_fit();
+    let mut write = 0;
+    for read in 0..dag.interactions.len() {
+        if kept[read] {
+            let interaction = dag.interactions[read];
+            dag.interactions[write] = Interaction {
+                left: map[interaction.left as usize],
+                right: map[interaction.right as usize],
+                result: map[interaction.result as usize],
+                ..interaction
+            };
+            write += 1;
+        }
+    }
+    dag.interactions.truncate(write);
+    dag.interactions.shrink_to_fit();
     dag.sources = dag
         .sources
         .iter()
