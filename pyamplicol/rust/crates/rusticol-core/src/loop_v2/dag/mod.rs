@@ -573,16 +573,46 @@ fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
 /// before the reuse derives its value equivalences.
 pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
+    stage_memory("dag compile", dag.interactions.len());
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
+        stage_memory("dag prune", dag.interactions.len());
         if input.u1_grades {
             grades::split_u1_grades(input, &mut dag)?;
         }
         signs::apply_connection_signs(input, &mut dag)?;
+        stage_memory("dag grades + connection signs", dag.interactions.len());
         reuse::assign_reuse(input, &mut dag)?;
+        stage_memory("dag reuse", dag.interactions.len());
         signs::apply_colour_flow_signs(input, &mut dag)?;
     }
-    Ok(dag.into_columns(input))
+    let columns = dag.into_columns(input);
+    stage_memory("dag columns", columns.interaction_count());
+    Ok(columns)
+}
+
+/// With `PYAMPLICOL_LOOP_STAGE_MEMORY` set, the resident and peak memory of
+/// the process at the end of a builder stage on stderr, the peak then reset
+/// (`/proc/self/clear_refs`, Linux): a profiling aid, silent otherwise.
+pub fn stage_memory(stage: &str, interactions: usize) {
+    if std::env::var_os("PYAMPLICOL_LOOP_STAGE_MEMORY").is_none() {
+        return;
+    }
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let field = |key: &str| {
+        status
+            .lines()
+            .find(|line| line.starts_with(key))
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|kib| kib.parse::<f64>().ok())
+            .map_or(f64::NAN, |kib| kib / (1u64 << 20) as f64)
+    };
+    eprintln!(
+        "[loop stage memory] {stage}: rss {:.3} GiB, peak {:.3} GiB, {interactions} interactions",
+        field("VmRSS:"),
+        field("VmHWM:")
+    );
+    let _ = std::fs::write("/proc/self/clear_refs", "5");
 }
 
 #[cfg(test)]

@@ -586,6 +586,7 @@ pub fn assign_reuse(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
         .collect();
     let view = BuilderView { input, dag };
     let equivalences = derive(&view, &contracts, &kernels, true)?;
+    super::stage_memory("dag reuse derive", dag.interactions.len());
     // `rewrite` in two passes, without a copy per interaction (MF-8G-1
     // item 4): the first compares, the second (only when some interaction
     // changes) writes; the groups are first seen in both.

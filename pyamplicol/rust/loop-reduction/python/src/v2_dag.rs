@@ -421,7 +421,9 @@ impl V2Dag {
         let input = input.to_owned();
         py.detach(|| {
             let input = ProgramInput::from_json(&input)?;
-            self.dag.program(&input)
+            let program = self.dag.program(&input);
+            rusticol_core::loop_v2::dag::stage_memory("program", self.dag.interaction_count());
+            program
         })
         .map(|program| V2Program { program })
         .map_err(dag_error)
@@ -637,10 +639,12 @@ impl V2Program {
         let steps = std::mem::take(&mut self.program.steps);
         let out = py
             .detach(|| {
-                rusticol_core::loop_v2::trees::binary::StepColumns::from_program_owned(
-                    steps, texts,
-                )
-                .map(|c| c.encode())
+                let columns =
+                    rusticol_core::loop_v2::trees::binary::StepColumns::from_program_owned(
+                        steps, texts,
+                    )?;
+                rusticol_core::loop_v2::dag::stage_memory("program step columns", 0);
+                Ok::<_, rusticol_core::RusticolError>(columns.encode())
             })
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyBytes::new(py, &out))

@@ -1277,10 +1277,11 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     assert dag_input.decode_count() == before[0]
     assert dag_input.rebuild_count() == before[1] + (0 if emitted else 1)
     assert dag.released and not dag.decoded
+    # The export takes the emission (its step section is not held after the
+    # export); a later export rebuilds the same parts.
+    assert dag_input._EMISSION not in dag._answers
     if emitted:
-        kept = dag._answers.pop(dag_input._EMISSION)
         rebuilt = _CountertermTrees.of(program, 1234)
-        dag._answers[dag_input._EMISSION] = kept
         assert dag_input.rebuild_count() == before[1] + 1 and dag.released
         assert json.dumps(rebuilt.record) == json.dumps(native.record)
         assert (rebuilt.saved, rebuilt.steps) == (native.saved, native.steps)
