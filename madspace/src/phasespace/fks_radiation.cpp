@@ -97,58 +97,76 @@ FKSRadiation::FKSRadiation(
     }
 }
 
-Mapping::Result FKSRadiation::build_forward_impl(
-    FunctionBuilder& fb,
-    const NamedVector<Value>& inputs,
-    const NamedVector<Value>& conditions
-) const {
-    return initial_state()
-        ? build_initial_forward(fb, inputs)
-        : build_final_forward(fb, inputs);
+std::vector<std::string> FKSRadiation::counter_events() const {
+    if (_emitter_mass > 0.) {
+        return {"soft"};
+    }
+    return {"soft", "collinear", "soft_collinear"};
 }
 
-Mapping::Result FKSRadiation::build_inverse_impl(
-    FunctionBuilder& fb,
-    const NamedVector<Value>& inputs,
-    const NamedVector<Value>& conditions
+std::tuple<Value, Value, Value> FKSRadiation::build_sample(
+    FunctionBuilder& fb, Value r_xi, Value r_y, Value sqrt_s, Value p_jbar
 ) const {
-    return initial_state()
-        ? build_initial_inverse(fb, inputs)
-        : build_final_inverse(fb, inputs);
+    if (_emitter_mass > 0.) {
+        auto [xi_hat, y, det] =
+            fb.fks_final_massive_sample(r_xi, r_y, sqrt_s, p_jbar, _emitter_mass);
+        return {xi_hat, y, det};
+    }
+    // y_hat for an incoming emitter, y otherwise
+    auto [xi_hat, y, det] = fb.fks_xi_y_sample(r_xi, r_y);
+    return {xi_hat, y, det};
 }
 
-Mapping::Result FKSRadiation::build_final_forward(
-    FunctionBuilder& fb, const NamedVector<Value>& inputs
+FKSRadiation::Emission FKSRadiation::build_emission(
+    FunctionBuilder& fb,
+    Value xi_hat,
+    Value y_var,
+    Value r_phi,
+    Value born,
+    Value sqrt_s,
+    Value x1,
+    Value x2
 ) const {
-    auto born = inputs.at(3);
-    auto sqrt_s = fb.obs_sqrt_s(born);
     auto p_born = fb.unstack(born);
+    if (initial_state()) {
+        double beam_sign = _j_fks == 0 ? 1. : -1.;
+        auto [p_in1, p_in2, p_i, x1_real, x2_real, xi, y, xi_min, xi_max, det_xi] =
+            fb.fks_initial_radiate(
+                xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
+            );
+        ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
+        auto boosted = fb.unstack(
+            fb.fks_initial_recoil_boost(fb.stack(final_state), xi, y, r_phi, beam_sign)
+        );
+        ValueVec real{p_in1, p_in2};
+        for (std::size_t r = INCOMING_COUNT, k = 0; r < _born_particle_count + 1; ++r) {
+            real.push_back(r == _i_fks ? p_i : boosted.at(k++));
+        }
+        return {fb.stack(real), x1_real, x2_real, xi, y, xi_max, det_xi, Value(1.)};
+    }
+
     auto jb = born_index(_j_fks);
     auto p_jbar = p_born.at(jb);
-
-    Value p_i, p_j, xi, det_xi, det_sample;
+    Value p_i, p_j, xi, xi_max, det_xi, rat(1.);
     if (_emitter_mass > 0.) {
-        auto [xi_hat, y, det] = fb.fks_final_massive_sample(
-            inputs.at(0), inputs.at(1), sqrt_s, p_jbar, _emitter_mass
-        );
-        auto [p_i_m, p_j_m, xi_m, xi_max, xi_norm, det_xi_m] =
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, xi_norm, det_xi_m] =
             fb.fks_final_massive_radiate(
-                xi_hat, y, inputs.at(2), sqrt_s, p_jbar, _emitter_mass
+                xi_hat, y_var, r_phi, sqrt_s, p_jbar, _emitter_mass
             );
         p_i = p_i_m;
         p_j = p_j_m;
         xi = xi_m;
+        xi_max = xi_max_m;
         det_xi = det_xi_m;
-        det_sample = det;
+        rat = fb.div(xi_max_m, xi_norm);
     } else {
-        auto [xi_hat, y, det] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
-        auto [p_i_m, p_j_m, xi_m, xi_max, det_xi_m] =
-            fb.fks_final_massless_radiate(xi_hat, y, inputs.at(2), sqrt_s, p_jbar);
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, det_xi_m] =
+            fb.fks_final_massless_radiate(xi_hat, y_var, r_phi, sqrt_s, p_jbar);
         p_i = p_i_m;
         p_j = p_j_m;
         xi = xi_m;
+        xi_max = xi_max_m;
         det_xi = det_xi_m;
-        det_sample = det;
     }
 
     ValueVec spectators;
@@ -168,18 +186,103 @@ Mapping::Result FKSRadiation::build_final_forward(
         }
     }
     p_born.at(jb) = p_j;
-
     ValueVec real;
     for (std::size_t r = 0; r < _born_particle_count + 1; ++r) {
         real.push_back(r == _i_fks ? p_i : p_born.at(born_index(r)));
     }
-    auto det = fb.mul(fb.mul(xi, det_xi), det_sample);
-    NamedVector<Value> outputs{{"momenta", fb.stack(real)}};
+    return {fb.stack(real), x1, x2, xi, y_var, xi_max, det_xi, rat};
+}
+
+Mapping::Result FKSRadiation::build_forward_impl(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    auto events = build_counter_events_impl(fb, inputs, false);
+    NamedVector<Value> outputs{{"momenta", events.at("momenta")}};
     if (!_leptonic) {
-        outputs.push_back("x1", inputs.at(4));
-        outputs.push_back("x2", inputs.at(5));
+        outputs.push_back("x1", events.at("x1"));
+        outputs.push_back("x2", events.at("x2"));
     }
-    return {outputs, det};
+    return {outputs, events.at("weight")};
+}
+
+NamedVector<Value> FKSRadiation::build_counter_events(
+    FunctionBuilder& fb, const NamedVector<Value>& inputs
+) const {
+    return build_counter_events_impl(fb, inputs, true);
+}
+
+NamedVector<Value> FKSRadiation::build_counter_events_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& inputs, bool with_counter_events
+) const {
+    auto born = inputs.at("born_momenta");
+    auto sqrt_s = fb.obs_sqrt_s(born);
+    Value x1, x2;
+    if (!_leptonic) {
+        x1 = inputs.at("x1");
+        x2 = inputs.at("x2");
+    }
+    auto p_jbar = initial_state() ? Value() : fb.unstack(born).at(born_index(_j_fks));
+    auto r_phi = inputs.at("r_phi");
+    auto [xi_hat, y_var, det_sample] =
+        build_sample(fb, inputs.at("r_xi"), inputs.at("r_y"), sqrt_s, p_jbar);
+    auto event = build_emission(fb, xi_hat, y_var, r_phi, born, sqrt_s, x1, x2);
+
+    NamedVector<Value> outputs{{"momenta", event.momenta}};
+    if (!_leptonic) {
+        outputs.push_back("x1", event.x1);
+        outputs.push_back("x2", event.x2);
+    }
+    outputs.push_back("weight", fb.mul(fb.mul(event.xi, event.det_xi), det_sample));
+    if (!with_counter_events) {
+        return outputs;
+    }
+    outputs.push_back("xi", event.xi);
+    outputs.push_back("xi_hat", xi_hat);
+    outputs.push_back("y", event.y);
+    outputs.push_back("xi_max", event.xi_max);
+    for (const auto& name : counter_events()) {
+        bool soft = name != "collinear", collinear = name != "soft";
+        auto cnt = build_emission(
+            fb,
+            soft ? Value(0.) : xi_hat,
+            collinear ? Value(1.) : y_var,
+            r_phi,
+            born,
+            sqrt_s,
+            x1,
+            x2
+        );
+        outputs.push_back(name + "_momenta", cnt.momenta);
+        if (!_leptonic) {
+            outputs.push_back(name + "_x1", cnt.x1);
+            outputs.push_back(name + "_x2", cnt.x2);
+        }
+        outputs.push_back(
+            name + "_det",
+            fb.fks_counter_event_det(
+                fb.mul(cnt.det_xi, det_sample),
+                cnt.xi,
+                cnt.y,
+                xi_hat,
+                event.rat,
+                soft ? 1. : 0.,
+                collinear ? 1. : 0.
+            )
+        );
+    }
+    return outputs;
+}
+
+Mapping::Result FKSRadiation::build_inverse_impl(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    return initial_state()
+        ? build_initial_inverse(fb, inputs)
+        : build_final_inverse(fb, inputs);
 }
 
 Mapping::Result FKSRadiation::build_final_inverse(
@@ -252,41 +355,6 @@ Mapping::Result FKSRadiation::build_final_inverse(
         outputs.push_back("x2", inputs.at(2));
     }
     return {outputs, det};
-}
-
-Mapping::Result FKSRadiation::build_initial_forward(
-    FunctionBuilder& fb, const NamedVector<Value>& inputs
-) const {
-    double beam_sign = _j_fks == 0 ? 1. : -1.;
-    auto born = inputs.at(3);
-    auto sqrt_s = fb.obs_sqrt_s(born);
-    auto p_born = fb.unstack(born);
-
-    auto [xi_hat, y_hat, det_sample] = fb.fks_xi_y_sample(inputs.at(0), inputs.at(1));
-    auto r_phi = inputs.at(2);
-    auto [p_in1, p_in2, p_i, x1, x2, xi, y, xi_min, xi_max, det_xi] =
-        fb.fks_initial_radiate(
-            xi_hat,
-            y_hat,
-            r_phi,
-            sqrt_s,
-            inputs.at(4),
-            inputs.at(5),
-            _s_hat_min,
-            beam_sign
-        );
-
-    ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
-    auto boosted = fb.unstack(
-        fb.fks_initial_recoil_boost(fb.stack(final_state), xi, y, r_phi, beam_sign)
-    );
-
-    ValueVec real{p_in1, p_in2};
-    for (std::size_t r = INCOMING_COUNT, k = 0; r < _born_particle_count + 1; ++r) {
-        real.push_back(r == _i_fks ? p_i : boosted.at(k++));
-    }
-    auto det = fb.mul(fb.mul(xi, det_xi), det_sample);
-    return {{{"momenta", fb.stack(real)}, {"x1", x1}, {"x2", x2}}, det};
 }
 
 Mapping::Result FKSRadiation::build_initial_inverse(

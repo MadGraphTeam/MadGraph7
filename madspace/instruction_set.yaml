@@ -2767,6 +2767,35 @@ fks_recoil_light_cone:
       desc: "E - p_z of p_in1 + p_in2 - p_i"
   desc: "Light-cone components of the system recoiling against i in an FKS emission off an incoming parton. It has zero longitudinal momentum in the centre-of-mass frame of the Born, so plus / minus = exp(2 y) for the rapidity y of that frame in the frame of the inputs. See @ref FKSMapping."
 
+fks_counter_event_det:
+  inputs:
+    - name: det
+      type: [float]
+      desc: "Jacobian of the counter-event"
+    - name: xi
+      type: [float]
+      desc: "energy fraction of i at the counter-event"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j at the counter-event"
+    - name: xi_hat
+      type: [float]
+      desc: "xi_hat of the event"
+    - name: rat
+      type: [float]
+      desc: "end of the first solution for the momentum of a massive emitter in xi_hat, xi_max / xi_norm (1 for any other emitter)"
+    - name: soft
+      type: [float, single]
+      desc: "1 for a soft counter-event, 0 otherwise"
+    - name: collinear
+      type: [float, single]
+      desc: "1 for a collinear counter-event, 0 otherwise"
+  outputs:
+    - name: det_out
+      type: [float]
+      desc: "det where the counter-event exists, 0 elsewhere"
+  desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. See @ref FKSRadiation."
+
 fks_beam_boost:
   inputs:
     - name: p

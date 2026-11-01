@@ -854,5 +854,27 @@ KERNELSPEC void kernel_fks_beam_boost(
     }
 }
 
+// Jacobian of a counter-event, zero where genps_fks.f does not generate it: a
+// soft one needs xi = 0 (an incoming emitter with a lower bound on the partonic
+// energy can have xi_min > 0) and the first solution for the momentum of a
+// massive emitter (xi_hat <= rat), and a collinear one needs y = 1 (which the
+// bound can exclude).
+template <typename T>
+KERNELSPEC void kernel_fks_counter_event_det(
+    FIn<T, 0> det,
+    FIn<T, 0> xi,
+    FIn<T, 0> y,
+    FIn<T, 0> xi_hat,
+    FIn<T, 0> rat,
+    FSIn<T, 0> soft,
+    FSIn<T, 0> collinear,
+    FOut<T, 0> det_out
+) {
+    FVal<T> d = det, xv = xi, yv = y, xh = xi_hat, rt = rat, s(soft), c(collinear);
+    auto soft_ok = (s == 0.) | ((xv == 0.) & (xh <= rt));
+    auto collinear_ok = (c == 0.) | (yv == 1.);
+    det_out = where(soft_ok & collinear_ok, d, FVal<T>(0.));
+}
+
 } // namespace kernels
 } // namespace madspace

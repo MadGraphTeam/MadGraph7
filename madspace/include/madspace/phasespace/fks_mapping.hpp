@@ -93,6 +93,26 @@ public:
     const PhaseSpaceMapping& born() const { return _born; }
     /// The emission.
     const FKSRadiation& radiation() const { return _radiation; }
+    /**
+     * Add the real emission, its Born and its FKS counter-events to @p fb, at
+     * the inputs and conditions of the forward map. All momenta are in the
+     * lab frame. Returns
+     * - `momenta`, `x1`, `x2`, `weight`: the forward map;
+     * - `born_momenta`, `born_x1`, `born_x2`, `born_weight`: the Born mapping;
+     * - `xi`, `xi_hat`, `y`, `xi_max`: the FKS variables of the event, see
+     *   @ref FKSRadiation::build_counter_events;
+     * - for each counter-event `k` of FKSRadiation::counter_events():
+     *   `k_momenta`, `k_x1`, `k_x2` and `k_det`, the Jacobian at the
+     *   counter-event without the factor @f$\xi@f$, times the weight of the
+     *   Born (0 where the counter-event does not exist).
+     */
+    NamedVector<Value> build_counter_events(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions = {}
+    ) const;
+    /// Names and types of the results of build_counter_events().
+    NamedVector<Type> counter_event_types() const;
 
 private:
     Result build_forward_impl(
@@ -105,6 +125,12 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
+    NamedVector<Value> build_events(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions,
+        bool with_counter_events
+    ) const;
     // light-cone components (up to a factor) whose ratio is exp(2 y) for the
     // rapidity y of the centre-of-mass frame of the Born in the lab frame, from
     // its momentum fractions (the arguments of fks_beam_boost)
@@ -114,6 +140,34 @@ private:
     FKSRadiation _radiation;
     std::vector<double> _born_masses;
     std::vector<double> _real_masses;
+};
+
+/**
+ * The kinematics an FKS integrand needs for one FKS configuration: the real
+ * emission of an @ref FKSMapping, its Born and its counter-events, as a
+ * function of the random numbers.
+ *
+ * **Arguments**
+ * - the inputs of the mapping (`random`, and `discrete` if it has any), then
+ *   its conditions (`permutation_index`).
+ *
+ * **Returns**
+ * - those of FKSMapping::build_counter_events, in the order of
+ *   FKSMapping::counter_event_types.
+ */
+class FKSKinematics : public FunctionGenerator {
+public:
+    /// @param mapping  The FKS mapping of the configuration.
+    FKSKinematics(const FKSMapping& mapping);
+    /// The mapping.
+    const FKSMapping& mapping() const { return _mapping; }
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    FKSMapping _mapping;
 };
 
 } // namespace madspace

@@ -2,6 +2,10 @@
 
 #include "madspace/phasespace/base.hpp"
 
+#include <string>
+#include <tuple>
+#include <vector>
+
 namespace madspace {
 
 /**
@@ -147,6 +151,33 @@ public:
     double emitter_mass() const { return _emitter_mass; }
     /// Whether the emitter j is an incoming parton.
     bool initial_state() const { return _j_fks < 2; }
+    /// The FKS counter-events of this emission, as genps_fks.f generates them:
+    /// `soft`, `collinear` and `soft_collinear`, only `soft` for a massive
+    /// emitter.
+    std::vector<std::string> counter_events() const;
+    /**
+     * Add the real emission and its FKS counter-events at the same random
+     * numbers to @p fb.
+     *
+     * The counter-events are the same map at @f$\hat\xi = 0@f$ (soft), at
+     * @f$y = 1@f$ (collinear, @f$\hat y = 1@f$ for an incoming emitter) or
+     * both, with the azimuth and the other variable of the event, as
+     * genps_fks.f. Takes the inputs of the forward map and returns
+     * - `momenta`, `x1`, `x2` (unless leptonic) and `weight`: the forward map;
+     * - `xi`, `xi_hat`, `y`, `xi_max`: the FKS variables of the event (`xi_hat`
+     *   as genps_fks.f samples it, `y` the cosine of i to j);
+     * - for each counter-event `k` of counter_events(): `k_momenta`, `k_x1`,
+     *   `k_x2` (unless leptonic) and `k_det`, the Jacobian of the map at the
+     *   counter-event without the factor @f$\xi@f$ (so that the weight of the
+     *   event is @f$\xi@f$ times its own `det`), with the sampling Jacobian of
+     *   the event. `k_det` is 0 where genps_fks.f does not generate the
+     *   counter-event: the soft one for @f$\xi_\mathrm{min} > 0@f$ and for
+     *   the second solution of a massive emitter, the collinear one for
+     *   @f$y = 1@f$ outside the range of an incoming emitter with
+     *   @p s_hat_min.
+     */
+    NamedVector<Value>
+    build_counter_events(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
 
 private:
     Result build_forward_impl(
@@ -162,12 +193,31 @@ private:
     std::size_t born_index(std::size_t real_index) const {
         return real_index < _i_fks ? real_index : real_index - 1;
     }
-    Result
-    build_final_forward(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
+    // the emission at given sampling variables, in the Born c.m. frame
+    struct Emission {
+        // rat: end of the first solution of a massive emitter in xi_hat, 1
+        // for any other emitter
+        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat;
+    };
+    // (xi_hat, y or y_hat, det_sample) from (r_xi, r_y)
+    std::tuple<Value, Value, Value> build_sample(
+        FunctionBuilder& fb, Value r_xi, Value r_y, Value sqrt_s, Value p_jbar
+    ) const;
+    Emission build_emission(
+        FunctionBuilder& fb,
+        Value xi_hat,
+        Value y_var,
+        Value r_phi,
+        Value born,
+        Value sqrt_s,
+        Value x1,
+        Value x2
+    ) const;
+    NamedVector<Value> build_counter_events_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& inputs, bool with_counter_events
+    ) const;
     Result
     build_final_inverse(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
-    Result
-    build_initial_forward(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
     Result
     build_initial_inverse(FunctionBuilder& fb, const NamedVector<Value>& inputs) const;
 

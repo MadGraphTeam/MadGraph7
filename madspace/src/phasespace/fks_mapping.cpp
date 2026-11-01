@@ -119,6 +119,29 @@ Mapping::Result FKSMapping::build_forward_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
+    auto events = build_events(fb, inputs, conditions, false);
+    return {
+        {{"momenta", events.at("momenta")},
+         {"x1", events.at("x1")},
+         {"x2", events.at("x2")}},
+        events.at("weight")
+    };
+}
+
+NamedVector<Value> FKSMapping::build_counter_events(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
+) const {
+    return build_events(fb, inputs, conditions, true);
+}
+
+NamedVector<Value> FKSMapping::build_events(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions,
+    bool with_counter_events
+) const {
     bool boosted = !_born.leptonic() || _born.beam_rapidity() != 0.;
     auto r = fb.unstack(inputs.at("random"));
     std::size_t n_born = _born.random_dim();
@@ -130,6 +153,7 @@ Mapping::Result FKSMapping::build_forward_impl(
     }
     auto born = _born.build_forward(fb, born_inputs, conditions);
     auto x1_born = born.at("x1"), x2_born = born.at("x2");
+    auto det_born = born.at("det");
 
     auto [plus, minus] = born_frame(fb, x1_born, x2_born);
     auto born_cm = born.at("momenta");
@@ -146,15 +170,103 @@ Mapping::Result FKSMapping::build_forward_impl(
         rad_inputs.push_back("x1", x1_born);
         rad_inputs.push_back("x2", x2_born);
     }
-    auto real = _radiation.build_forward(fb, rad_inputs);
-    auto momenta = real.at("momenta");
-    if (boosted) {
-        momenta = fb.fks_beam_boost(momenta, Value(_real_masses), plus, minus);
+    auto real = with_counter_events
+        ? _radiation.build_counter_events(fb, rad_inputs)
+        : _radiation.build_forward(fb, rad_inputs);
+    // build_forward names its weight det
+    auto weight = with_counter_events ? real.at("weight") : real.at("det");
+
+    // the momenta of the real emission and of the counter-events into the lab,
+    // with their momentum fractions (those of the Born without PDFs) and
+    // weights times the weight of the Born
+    auto to_lab = [&](const std::string& prefix, Value det, NamedVector<Value>& out) {
+        auto momenta = real.at(prefix + "momenta");
+        if (boosted) {
+            momenta = fb.fks_beam_boost(momenta, Value(_real_masses), plus, minus);
+        }
+        out.push_back(prefix + "momenta", momenta);
+        out.push_back(
+            prefix + "x1", _born.leptonic() ? x1_born : real.at(prefix + "x1")
+        );
+        out.push_back(
+            prefix + "x2", _born.leptonic() ? x2_born : real.at(prefix + "x2")
+        );
+        out.push_back(
+            prefix + (prefix.empty() ? "weight" : "det"), fb.mul(det_born, det)
+        );
+    };
+    NamedVector<Value> outputs;
+    to_lab("", weight, outputs);
+    if (!with_counter_events) {
+        return outputs;
     }
-    auto x1 = _born.leptonic() ? x1_born : real.at("x1");
-    auto x2 = _born.leptonic() ? x2_born : real.at("x2");
-    auto det = fb.mul(born.at("det"), real.at("det"));
-    return {{{"momenta", momenta}, {"x1", x1}, {"x2", x2}}, det};
+    outputs.push_back("born_momenta", born.at("momenta"));
+    outputs.push_back("born_x1", x1_born);
+    outputs.push_back("born_x2", x2_born);
+    outputs.push_back("born_weight", det_born);
+    for (const auto& name : {"xi", "xi_hat", "y", "xi_max"}) {
+        outputs.push_back(name, real.at(name));
+    }
+    for (const auto& name : _radiation.counter_events()) {
+        to_lab(name + "_", real.at(name + "_det"), outputs);
+    }
+    return outputs;
+}
+
+NamedVector<Type> FKSMapping::counter_event_types() const {
+    std::size_t n = _born_masses.size();
+    NamedVector<Type> types{
+        {"momenta", batch_four_vec_array(n + 1)},
+        {"x1", batch_float},
+        {"x2", batch_float},
+        {"weight", batch_float},
+        {"born_momenta", batch_four_vec_array(n)},
+        {"born_x1", batch_float},
+        {"born_x2", batch_float},
+        {"born_weight", batch_float},
+        {"xi", batch_float},
+        {"xi_hat", batch_float},
+        {"y", batch_float},
+        {"xi_max", batch_float},
+    };
+    for (const auto& name : _radiation.counter_events()) {
+        types.push_back(name + "_momenta", batch_four_vec_array(n + 1));
+        types.push_back(name + "_x1", batch_float);
+        types.push_back(name + "_x2", batch_float);
+        types.push_back(name + "_det", batch_float);
+    }
+    return types;
+}
+
+FKSKinematics::FKSKinematics(const FKSMapping& mapping) :
+    FunctionGenerator(
+        "FKSKinematics",
+        [&] {
+            auto types = mapping.input_types();
+            const auto& conditions = mapping.condition_types();
+            auto names = conditions.keys();
+            for (std::size_t k = 0; k < conditions.size(); ++k) {
+                types.push_back(names.at(k), conditions.at(k));
+            }
+            return types;
+        }(),
+        mapping.counter_event_types()
+    ),
+    _mapping(mapping) {}
+
+NamedVector<Value> FKSKinematics::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    NamedVector<Value> inputs, conditions;
+    auto input_names = _mapping.input_types().keys();
+    auto condition_names = _mapping.condition_types().keys();
+    for (const auto& name : input_names) {
+        inputs.push_back(name, args.at(name));
+    }
+    for (const auto& name : condition_names) {
+        conditions.push_back(name, args.at(name));
+    }
+    return _mapping.build_counter_events(fb, inputs, conditions);
 }
 
 Mapping::Result FKSMapping::build_inverse_impl(

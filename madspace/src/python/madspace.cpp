@@ -1049,6 +1049,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initial_state",
             &FKSRadiation::initial_state,
             pydoc::doc("FKSRadiation::initial_state")
+        )
+        .def(
+            "counter_events",
+            &FKSRadiation::counter_events,
+            pydoc::doc("FKSRadiation::counter_events")
         );
 
     py::classh<FastRamboMapping, Mapping>(
@@ -1616,7 +1621,22 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("i_fks", &FKSMapping::i_fks, pydoc::doc("FKSMapping::i_fks"))
         .def("j_fks", &FKSMapping::j_fks, pydoc::doc("FKSMapping::j_fks"))
         .def("born", &FKSMapping::born, pydoc::doc("FKSMapping::born"))
-        .def("radiation", &FKSMapping::radiation, pydoc::doc("FKSMapping::radiation"));
+        .def("radiation", &FKSMapping::radiation, pydoc::doc("FKSMapping::radiation"))
+        .def(
+            "counter_event_types",
+            &FKSMapping::counter_event_types,
+            pydoc::doc("FKSMapping::counter_event_types")
+        );
+
+    py::classh<FKSKinematics, FunctionGenerator>(
+        m, "FKSKinematics", pydoc::doc("FKSKinematics")
+    )
+        .def(
+            py::init<const FKSMapping&>(),
+            py::arg("mapping"),
+            pydoc::doc("FKSKinematics::FKSKinematics")
+        )
+        .def("mapping", &FKSKinematics::mapping, pydoc::doc("FKSKinematics::mapping"));
 
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")

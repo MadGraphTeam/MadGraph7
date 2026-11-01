@@ -56,6 +56,15 @@ CASES = {
         j_fks=2,
         s_hat_min=0.0,
     ),
+    "FKSKinematics": dict(
+        mapping=ms.FKSMapping(
+            ms.PhaseSpaceMapping(
+                [0.0] * 4, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo
+            ),
+            4,
+            2,
+        )
+    ),
     "FKSRadiation": dict(
         born_particle_count=5,
         i_fks=5,

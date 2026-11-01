@@ -52,6 +52,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/DifferentialCrossSection
    python/DiscreteHistogram
    python/EnergyScale
+   python/FKSKinematics
    python/FunctionGenerator
    python/HistItem
    python/Integrand
