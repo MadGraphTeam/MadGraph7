@@ -459,8 +459,9 @@ with the reason. v2 evaluations return stability estimates
 `--on-failure raise` is the default. `--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure:
 `null` in JSON, with its failure diagnostics. An actual zero remains a
-numerical zero. Malformed inputs (a non-positive `--mu-r2`, or one at which a
-counterterm coupling is not finite in the chosen arithmetic) and unsupported
+numerical zero. A scale at which a counterterm coupling is not finite in the
+chosen arithmetic (e.g. `1e-400` in binary64) is such a failure of its own
+points. Malformed inputs (a non-positive `--mu-r2`) and unsupported
 capabilities remain errors for the whole call. Both inclusive and `--resolved`
 evaluation use this option; resolved axes follow the artifact's retained
 layout. It requires virtual evaluation and is rejected on other commands,

@@ -1622,13 +1622,15 @@ def _calibrate_repetitions(
 
     observed_seconds = initial_seconds
     repetitions = 1
-    for _ in range(_MAX_CALIBRATION_BLOCKS):
+    for calibration_index in range(_MAX_CALIBRATION_BLOCKS):
         candidate = _estimated_repetitions(
             repetitions,
             observed_seconds,
             target_sample_seconds,
         )
-        if candidate == repetitions:
+        # The probe is one call, possibly the cold first one (warmup_runs <= 1)
+        # or one disturbed by host load; never plan the blocks from it alone.
+        if candidate == repetitions and calibration_index > 0:
             break
         observed_seconds = measure(candidate)
         block_count += 1

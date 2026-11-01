@@ -1595,7 +1595,10 @@ class V2VirtualRuntime:
         """One batch through the native executor in the pole mode ``poles``
         (``loops.v2.poles``): the per-point results (``None`` for a failed
         point) and the failures (a failed point fails alone,
-        ``plan_export.FailedPoints``)."""
+        ``plan_export.FailedPoints``; so do the points of a mu_R^2 at which a
+        counterterm coupling is not finite, ``isolate_scale_failures``)."""
+
+        from pyamplicol.runtime.virtual import isolate_scale_failures
 
         from .plan_export import FailedPoints
 
@@ -1607,22 +1610,26 @@ class V2VirtualRuntime:
             return self._run_per_scale(
                 points, scales, parameters, setting, poles, checks
             )
-        try:
-            return (
-                list(
-                    self._executor_for(poles).evaluate(
-                        points,
-                        scales,
-                        parameters=parameters,
-                        precision=setting,
-                        poles=poles.value,
-                        stability=checks.to_checks() if checks.enabled else None,
-                    )
-                ),
-                {},
-            )
-        except FailedPoints as failed:
-            return list(failed.results), dict(failed.failures)
+
+        def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
+            try:
+                return (
+                    list(
+                        self._executor_for(poles).evaluate(
+                            [points[i] for i in indices],
+                            [scales[i] for i in indices],
+                            parameters=parameters,
+                            precision=setting,
+                            poles=poles.value,
+                            stability=checks.to_checks() if checks.enabled else None,
+                        )
+                    ),
+                    {},
+                )
+            except FailedPoints as failed:
+                return list(failed.results), dict(failed.failures)
+
+        return isolate_scale_failures(batch, scales)
 
     def _scale_partitioned(self, poles: PoleSelection) -> bool:
         """Whether a batch of mixed mu_R^2 runs per scale: the stored tree
