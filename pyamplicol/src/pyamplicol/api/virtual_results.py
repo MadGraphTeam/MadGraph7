@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
+from itertools import pairwise
 from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, TypeAlias, cast
 
@@ -15,7 +16,13 @@ from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.poles import ORIGINS
-from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+from pyamplicol.loops.v2.stability import (
+    DEFAULT_RESCUE,
+    RESCUE_ROTATION,
+    RESCUE_TARGET,
+    Rotation,
+    StabilityChecks,
+)
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
 
@@ -110,43 +117,15 @@ class VirtualArithmeticSpec:
             raise ValueError("precision applies only to arbitrary arithmetic")
 
 
-@dataclass(frozen=True, slots=True)
-class VirtualStabilityPolicy:
-    """Opt-in native verification/rescue with exact decimal agreement bounds.
-
-    The native boundary checks strictly increasing actual carrier bit precision.
-    Rescue requires two successful levels and verified output conversion.
-    """
-
-    higher: tuple[VirtualArithmeticSpec, ...]
-    relative_tolerance: str
-    absolute_tolerance: str
-    verify_successful: bool = False
-
-    def __post_init__(self) -> None:
-        levels = tuple(self.higher)
-        if not levels or any(not isinstance(x, VirtualArithmeticSpec) for x in levels):
-            raise ValueError("higher requires explicit arithmetic specifications")
-        object.__setattr__(self, "higher", levels)
-        for value in (self.relative_tolerance, self.absolute_tolerance):
-            if not isinstance(value, str):
-                raise TypeError("agreement tolerances must be decimal strings")
-            number = Decimal(value)
-            if not number.is_finite() or number < 0:
-                raise ValueError("agreement tolerances must be finite and nonnegative")
-        if Decimal(self.relative_tolerance) == Decimal(self.absolute_tolerance) == 0:
-            raise ValueError("agreement tolerances cannot both be zero")
-        if type(self.verify_successful) is not bool:
-            raise TypeError("verify_successful must be a boolean")
-
-
 def parse_rotation(specification: str) -> Rotation:
     """One rotation check from text.
 
     ``"<x|y|z>:<cos>:<sin>"`` is exact (rational cos and sin with
     cos^2 + sin^2 = 1, e.g. ``"z:3/5:4/5"``); ``"<ax>,<ay>,<az>:<radians>"``
     rotates about an axis by an angle, rounded to an exact rotation
-    (``Rotation.from_axis_angle``).
+    (``Rotation.from_axis_angle``); ``"euler:<alpha>,<beta>,<gamma>"``
+    (radians) is gammaloop's Euler rotation Rz(gamma) Ry(beta) Rx(alpha),
+    rounded once to an exact rotation (``Rotation.from_euler``).
     """
 
     if not isinstance(specification, str):
@@ -154,12 +133,17 @@ def parse_rotation(specification: str) -> Rotation:
     parts = specification.split(":")
     if len(parts) == 3 and parts[0] in ("x", "y", "z"):
         return Rotation.about(parts[0], parts[1], parts[2])
+    if len(parts) == 2 and parts[0] == "euler":
+        angles = tuple(float(value) for value in parts[1].split(","))
+        if len(angles) != 3:
+            raise ValueError(f"rotation {specification!r} needs three Euler angles")
+        return Rotation.from_euler(*angles)
     if len(parts) == 2:
         axis = tuple(float(value) for value in parts[0].split(","))
         return Rotation.from_axis_angle(axis, float(parts[1]))
     raise ValueError(
-        f"rotation {specification!r} is neither '<x|y|z>:<cos>:<sin>' "
-        "nor '<ax>,<ay>,<az>:<radians>'"
+        f"rotation {specification!r} is neither '<x|y|z>:<cos>:<sin>', "
+        "'<ax>,<ay>,<az>:<radians>' nor 'euler:<alpha>,<beta>,<gamma>'"
     )
 
 
@@ -255,6 +239,198 @@ class VirtualStabilityEstimate:
         if not checks or len({name for name, _ in checks}) != len(checks):
             raise ValueError("an estimate names its distinct checks")
         object.__setattr__(self, "checks", checks)
+
+
+REDUCTION_CHECKS = ("none", "reversed", "rescaled")
+RESCUE_METRICS = ("relative", "finite")
+
+
+def _carrier_bits(arithmetic: str, precision: int | None) -> int:
+    """The precision bits a carrier delivers (``VirtualLaneDiagnostic``)."""
+
+    if arithmetic == "double":
+        return 53
+    if arithmetic == "double-double":
+        return 106
+    return math.ceil(cast(int, precision) * math.log2(10))
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualRescueLevel:
+    """One level of a :class:`VirtualRescuePolicy`: a carrier, the stability
+    checks every point of the level runs, and the accuracy it must reach.
+
+    ``arithmetic`` and ``precision`` (decimal digits, arbitrary arithmetic
+    only) as in :class:`VirtualArithmeticSpec`. ``rotations`` re-evaluates
+    every point rotated (a count of default rotations, exact ``Rotation``
+    records or rotation text, :func:`parse_rotation`, e.g. gammaloop's
+    ``"euler:0.1,0.2,0.3"``); ``reduction_check`` re-reduces every loop
+    numerator in the ``"reversed"`` frame (cached masters) or the
+    ``"rescaled"`` one (masters evaluated again), or ``"none"``
+    (:class:`VirtualStabilityChecks`). A point is accepted at the level when
+    it evaluates and its estimate's ``metric`` (``"relative"``:
+    ``VirtualStabilityEstimate.relative``, each sector against its largest
+    Laurent coefficient; ``"finite"``: the finite part against itself) is at
+    most ``target``. A level without any check accepts no point by its
+    estimate; it may only be the last level, which keeps every point it
+    evaluates.
+    """
+
+    arithmetic: Literal["double", "double-double", "arbitrary"]
+    precision: int | None = None
+    rotations: tuple[Rotation | str, ...] | int = (RESCUE_ROTATION,)
+    reduction_check: Literal["none", "reversed", "rescaled"] = "rescaled"
+    target: float = RESCUE_TARGET
+    metric: Literal["relative", "finite"] = "relative"
+
+    def __post_init__(self) -> None:
+        VirtualArithmeticSpec(self.arithmetic, self.precision)
+        if self.reduction_check not in REDUCTION_CHECKS:
+            raise ValueError(f"reduction_check must be one of {REDUCTION_CHECKS}")
+        if self.metric not in RESCUE_METRICS:
+            raise ValueError(f"metric must be one of {RESCUE_METRICS}")
+        target = self.target
+        if isinstance(target, bool) or not isinstance(target, (int, float)):
+            raise TypeError("a rescue target is a number")
+        if not math.isfinite(target) or target <= 0:
+            raise ValueError("a rescue target is finite and positive")
+        checks = VirtualStabilityChecks(
+            self.rotations,
+            self.reduction_check != "none",
+            rescaled=self.reduction_check == "rescaled",
+        )
+        object.__setattr__(self, "rotations", checks.rotations)
+        object.__setattr__(self, "target", float(target))
+
+    @property
+    def checks(self) -> VirtualStabilityChecks:
+        """The stability checks of the level's evaluation."""
+
+        return VirtualStabilityChecks(
+            self.rotations,
+            self.reduction_check != "none",
+            rescaled=self.reduction_check == "rescaled",
+        )
+
+    @property
+    def precision_bits(self) -> int:
+        return _carrier_bits(self.arithmetic, self.precision)
+
+
+def _default_levels() -> tuple[VirtualRescueLevel, ...]:
+    return tuple(
+        VirtualRescueLevel(cast(Any, arithmetic), digits)
+        for arithmetic, digits in DEFAULT_RESCUE
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualRescuePolicy:
+    """The built-in stability rescue of a virtual ``evaluate`` (Python API
+    only; off unless passed): an ordered ladder of :class:`VirtualRescueLevel`
+    in strictly increasing precision bits, modelled on gammaloop's stability
+    levels.
+
+    Level 0 evaluates the whole batch. A point that fails (also in one of its
+    rotated evaluations) or misses the level's target is evaluated again at
+    the next level from its original exact inputs (no value is promoted); an
+    accepted point is never evaluated again. At the last level a point that
+    evaluates keeps its value, with the target marked as not met; a point
+    that fails at every level is a failed lane (raised under
+    ``on_failure="raise"``). ``VirtualEvaluation.rescue`` records per point
+    the level reached and every attempt.
+
+    The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
+    then 57-digit arbitrary precision, each with target 1e-5 on the relative
+    estimate, one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
+    check (``loops.v2.stability.DEFAULT_RESCUE``).
+    """
+
+    levels: tuple[VirtualRescueLevel, ...] = field(default_factory=_default_levels)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.levels, VirtualRescueLevel):
+            raise TypeError("levels is a sequence of VirtualRescueLevel records")
+        levels = tuple(self.levels)
+        if not levels:
+            raise ValueError("a rescue policy has at least one level")
+        if any(not isinstance(level, VirtualRescueLevel) for level in levels):
+            raise TypeError("rescue levels are VirtualRescueLevel records")
+        bits = [level.precision_bits for level in levels]
+        if any(later <= earlier for earlier, later in pairwise(bits)):
+            raise ValueError(
+                f"rescue levels need strictly increasing precision bits (got {bits})"
+            )
+        if any(not level.checks.enabled for level in levels[:-1]):
+            raise ValueError(
+                "only the last rescue level may run without a stability check"
+            )
+        object.__setattr__(self, "levels", levels)
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualRescueAttempt:
+    """One level's evaluation of one point: its carrier, the value of the
+    level's metric (``None`` when the point failed or the level runs no
+    check) or the failure."""
+
+    arithmetic: Literal["double", "double-double", "arbitrary"]
+    precision_bits: int
+    estimate: float | None
+    failure: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.failure is not None:
+            if not isinstance(self.failure, str) or self.estimate is not None:
+                raise ValueError("a failed attempt names its failure, no estimate")
+        elif self.estimate is not None and (
+            not isinstance(self.estimate, float)
+            or math.isnan(self.estimate)
+            or self.estimate < 0
+        ):
+            raise ValueError("an attempt's estimate is a nonnegative float")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualRescueRecord:
+    """The rescue of one point: the level whose evaluation it returns (its
+    carrier and target), whether that evaluation's estimate met the target,
+    and every attempt from level 0 on. ``met`` is the estimate's verdict
+    (the stability estimate's calibrated miss rates apply), not a
+    certificate."""
+
+    level: int
+    arithmetic: Literal["double", "double-double", "arbitrary"]
+    precision_bits: int
+    target: float
+    met: bool
+    attempts: tuple[VirtualRescueAttempt, ...]
+
+    def __post_init__(self) -> None:
+        attempts = tuple(self.attempts)
+        if type(self.level) is not int or self.level < 0:
+            raise ValueError("a rescue level is a nonnegative integer")
+        if len(attempts) != self.level + 1 or any(
+            not isinstance(item, VirtualRescueAttempt) for item in attempts
+        ):
+            raise ValueError("a rescue record holds one attempt per level reached")
+        last = attempts[-1]
+        if (last.arithmetic, last.precision_bits) != (
+            self.arithmetic,
+            self.precision_bits,
+        ):
+            raise ValueError("a rescue record's carrier is its last attempt's")
+        if type(self.met) is not bool:
+            raise TypeError("met must be a boolean")
+        if self.met and (last.estimate is None or last.estimate > self.target):
+            raise ValueError("a met target needs an estimate within it")
+        object.__setattr__(self, "attempts", attempts)
+
+    @property
+    def failed(self) -> bool:
+        """Whether the point failed at every level."""
+
+        return self.attempts[-1].failure is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -730,16 +906,25 @@ def _stability(
     estimates: object,
     diagnostics: tuple[VirtualLaneDiagnostic, ...],
     with_poles: bool,
+    rescue: tuple[VirtualRescueRecord, ...] | None = None,
 ) -> tuple[VirtualStabilityEstimate | None, ...] | None:
-    """Per-lane estimates, or None when the evaluation ran no check."""
+    """Per-lane estimates, or None when the evaluation ran no check (a
+    rescued lane returned by a check-free last level has none either)."""
     if estimates is None:
         return None
     estimates = tuple(cast(Sequence[object], estimates))
     if len(estimates) != len(diagnostics):
         raise ValueError("stability estimates and diagnostics differ in lane count")
-    for estimate, diagnostic in zip(estimates, diagnostics, strict=True):
+    unchecked = (
+        [False] * len(diagnostics)
+        if rescue is None
+        else [record.attempts[-1].estimate is None for record in rescue]
+    )
+    for estimate, diagnostic, free in zip(
+        estimates, diagnostics, unchecked, strict=True
+    ):
         if estimate is None:
-            if diagnostic.valid:
+            if diagnostic.valid and not free:
                 raise ValueError("a checked successful lane has an estimate")
             continue
         if not isinstance(estimate, VirtualStabilityEstimate):
@@ -749,6 +934,29 @@ def _stability(
         if (estimate.single_pole is not None) != with_poles:
             raise ValueError("pole estimates exist exactly when poles were computed")
     return cast(tuple[VirtualStabilityEstimate | None, ...], estimates)
+
+
+def _rescue(
+    records: object, diagnostics: tuple[VirtualLaneDiagnostic, ...]
+) -> tuple[VirtualRescueRecord, ...] | None:
+    """Per-lane rescue records (one per lane), or None without a policy."""
+
+    if records is None:
+        return None
+    records = tuple(cast(Sequence[object], records))
+    if len(records) != len(diagnostics):
+        raise ValueError("rescue records and diagnostics differ in lane count")
+    for record, diagnostic in zip(records, diagnostics, strict=True):
+        if not isinstance(record, VirtualRescueRecord):
+            raise TypeError("rescue records are VirtualRescueRecord records")
+        if record.failed == diagnostic.valid:
+            raise ValueError("a rescue record fails exactly with its lane")
+        if (record.arithmetic, record.precision_bits) != (
+            diagnostic.arithmetic,
+            diagnostic.precision_bits,
+        ):
+            raise ValueError("a lane's carrier is its rescue level's")
+    return cast(tuple[VirtualRescueRecord, ...], records)
 
 
 @dataclass(frozen=True, slots=True)
@@ -768,6 +976,10 @@ class VirtualEvaluation:
     failed lanes and under ``"all"`` and ``"none"``). ``stability`` holds one
     :class:`VirtualStabilityEstimate` per lane (``None`` for failed lanes)
     when stability checks ran, and is ``None`` when none were requested.
+    ``rescue`` holds one :class:`VirtualRescueRecord` per lane when the call
+    ran a :class:`VirtualRescuePolicy` (``None`` otherwise); each lane's
+    values, diagnostic, estimate and pole parts are then those of the level
+    that returned it, and ``rescue_counts`` summarises the levels.
     """
 
     born_values: OrderCoefficients
@@ -781,13 +993,20 @@ class VirtualEvaluation:
     poles: PoleSelection = PoleSelection.ALL
     stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
     pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
+    rescue: tuple[VirtualRescueRecord, ...] | None = None
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
+        object.__setattr__(self, "rescue", _rescue(self.rescue, self.diagnostics))
         object.__setattr__(
             self,
             "stability",
-            _stability(self.stability, self.diagnostics, computes_poles(self.poles)),
+            _stability(
+                self.stability,
+                self.diagnostics,
+                computes_poles(self.poles),
+                self.rescue,
+            ),
         )
         object.__setattr__(
             self,
@@ -816,6 +1035,25 @@ class VirtualEvaluation:
     @property
     def valid(self) -> tuple[bool, ...]:
         return tuple(item.valid for item in self.diagnostics)
+
+    @property
+    def rescue_counts(self) -> dict[int | str, int] | None:
+        """Lanes per rescue level whose estimate met the level's target
+        (levels 0 to the highest reached), plus ``"not met"`` (lanes kept
+        at the last level with the target missed) and ``"failed"`` (lanes
+        that failed at every level); ``None`` without a rescue policy."""
+
+        if self.rescue is None:
+            return None
+        top = max((record.level for record in self.rescue), default=0)
+        counts: dict[int | str, int] = dict.fromkeys(range(top + 1), 0)
+        counts["not met"] = counts["failed"] = 0
+        for record in self.rescue:
+            key: int | str = (
+                "failed" if record.failed else record.level if record.met else "not met"
+            )
+            counts[key] += 1
+        return counts
 
     def coefficient(self, epsilon_power: int) -> OrderCoefficients:
         if (

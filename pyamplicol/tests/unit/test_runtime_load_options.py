@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from pyamplicol.api import CompatibilityError, Runtime, services
-from pyamplicol.api.virtual_results import VirtualArithmeticSpec, VirtualStabilityPolicy
+from pyamplicol.api.virtual_results import VirtualRescuePolicy
 from pyamplicol.runtime import backend as adapters
 
 from .test_api_services import _RuntimeBackend
@@ -13,9 +13,7 @@ from .test_api_services import _RuntimeBackend
 def test_load_defaults_forward_exact_inputs_and_only_explicit_keywords(tmp_path):
     backend = _RuntimeBackend()
     received = []
-    policy = VirtualStabilityPolicy(
-        (VirtualArithmeticSpec("arbitrary", 90),), "1e-20", "1e-30"
-    )
+    policy = VirtualRescuePolicy()
 
     def loader(path, **kwargs):
         received.append(kwargs)
@@ -92,11 +90,7 @@ def test_evaluation_default_precision_and_explicit_precision_wrappers():
         dict(precision=70),
         dict(arithmetic="arbitrary"),
         dict(r2_strategy="model"),
-        dict(
-            stability=VirtualStabilityPolicy(
-                (VirtualArithmeticSpec("arbitrary", 70),), "1e-8", "1e-9"
-            )
-        ),
+        dict(stability=VirtualRescuePolicy()),
     ],
 )
 def test_tree_load_options_rejected_before_native_initialization(tmp_path, options):

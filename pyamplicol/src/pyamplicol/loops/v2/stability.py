@@ -146,13 +146,65 @@ class Rotation:
         if len(axis) != 3 or not norm or not math.isfinite(angle):
             raise ValueError("a rotation needs a non-zero 3-axis and a finite angle")
         half = angle / 2
-        a, b, c, d = (
-            Fraction(value).limit_denominator(resolution)
-            for value in (
-                math.cos(half),
-                *(math.sin(half) * float(x) / norm for x in axis),
+        return cls._from_quaternion(
+            tuple(
+                Fraction(value).limit_denominator(resolution)
+                for value in (
+                    math.cos(half),
+                    *(math.sin(half) * float(x) / norm for x in axis),
+                )
             )
         )
+
+    @classmethod
+    def from_euler(
+        cls, alpha: float, beta: float, gamma: float, *, resolution: int = 10**12
+    ) -> Rotation:
+        """The exact rotation closest to Rz(gamma) Ry(beta) Rx(alpha)
+        (radians, active right-handed rotations: Rx acts first), gammaloop's
+        ``euler_angles`` convention (``RotationSetting::EulerAngles``).
+
+        The unit quaternion of the composed rotation, qz(gamma) qy(beta)
+        qx(alpha), is rounded once to integers over the common denominator
+        ``resolution``; the Euler-Rodrigues matrix of the integer quaternion
+        is exactly orthogonal, its entries integers over the quaternion's norm
+        (about ``resolution``^2), within about 1e-12 of the floating-point
+        matrix at the default resolution."""
+
+        if not all(math.isfinite(x) for x in (alpha, beta, gamma)):
+            raise ValueError("Euler angles must be finite")
+
+        def half(angle: float, axis: int) -> tuple[float, float, float, float]:
+            q = [math.cos(angle / 2), 0.0, 0.0, 0.0]
+            q[axis] = math.sin(angle / 2)
+            return q[0], q[1], q[2], q[3]
+
+        Quaternion = tuple[float, float, float, float]
+
+        def product(p: Quaternion, q: Quaternion) -> Quaternion:  # Hamilton
+            a1, b1, c1, d1 = p
+            a2, b2, c2, d2 = q
+            return (
+                a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
+                a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
+                a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
+                a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
+            )
+
+        quaternion = product(
+            product(half(gamma, _AXES["z"]), half(beta, _AXES["y"])),
+            half(alpha, _AXES["x"]),
+        )
+        return cls._from_quaternion(
+            tuple(Fraction(round(x * resolution)) for x in quaternion)
+        )
+
+    @classmethod
+    def _from_quaternion(cls, quaternion: Sequence[Fraction]) -> Rotation:
+        """The Euler-Rodrigues matrix of a rational quaternion (a, b, c, d),
+        exactly orthogonal for any nonzero quaternion."""
+
+        a, b, c, d = quaternion
         n = a * a + b * b + c * c + d * d
         if not n:
             raise ValueError("the rounded quaternion vanishes; raise the resolution")
@@ -264,6 +316,22 @@ class StabilityChecks:
 # one generic rotation and the rescaled reduction check (module docstring).
 RECOMMENDED_CHECKS = StabilityChecks(
     (default_rotation(0),), reduction_direction=True, rescaled=True
+)
+
+# The default ladder of the built-in rescue (``api.virtual_results.
+# VirtualRescuePolicy()``, ``loops.v2.rescue``), modelled on gammaloop's
+# ``StabilitySettings`` defaults (f64 -> f128 = double-double -> arb, each at
+# 1e-5 with the one rotation ``euler_angles(0.1, 0.2, 0.3)``). Deviations:
+# every level adds the rescaled reduction check (rotations keep every master
+# invariant and cannot see a master integral's own rounding, module
+# docstring); the last level is 57 digits (O15's truth carrier) instead of
+# 1000 bits; the target applies to pyAmpliCol's estimate E.
+RESCUE_ROTATION = "euler:0.1,0.2,0.3"
+RESCUE_TARGET = 1e-5
+DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
+    ("double", None),
+    ("double-double", None),
+    ("arbitrary", 57),
 )
 
 
@@ -443,11 +511,14 @@ def _at(budget: Any, k: int) -> float:
 
 
 __all__ = [
+    "DEFAULT_RESCUE",
     "FLOOR_UNITS",
     "FRAMES",
     "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
+    "RESCUE_ROTATION",
+    "RESCUE_TARGET",
     "ROTATION",
     "SAFETY",
     "Budget",

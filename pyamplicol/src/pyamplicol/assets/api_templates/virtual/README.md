@@ -9,7 +9,7 @@ artifact directory.
 
 The examples read every matching row in `API/validation_points.dat`, then make
 one bulk evaluation. Native examples use binary64. Python additionally accepts
-`--arithmetic`, `--precision`, `--parameters` and `--stability` (exact JSON files).
+`--arithmetic`, `--precision` and `--parameters` (an exact JSON file).
 They print independent Born/virtual squared-order catalogues, all finite/single/
 double pole coefficients, output shapes and lane diagnostics. Resolved colour
 components may be signed; they are not probabilities. All helicity and colour
