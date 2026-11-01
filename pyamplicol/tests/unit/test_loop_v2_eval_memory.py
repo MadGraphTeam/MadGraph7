@@ -41,6 +41,7 @@ BOUNDS = (
     {"fill_points": 1},
     {"fill_points": 3},
     {"input_budget": 0},
+    {"input_budget": 1 << 20},
     {"part_points": 1, "fill_points": 1, "input_budget": 0},
 )
 
@@ -109,12 +110,20 @@ def _inputs(native: NativeExecutor, points, scales, precision, wards=None):
     return native._inputs(evaluations, arithmetic)
 
 
-def _values(output) -> str:
-    """Every output but the report (wall times), and the report's counts
-    (work and lanes; the early-drop count aside)."""
+# Report counts that follow the bucket chunking (inputs read per chunk).
+CHUNKED = {DROPPED, "factors", "vertex tensors"}
 
-    counts = {k: v for k, v in output["report"]["counts"].items() if k != DROPPED}
-    return repr(({k: v for k, v in output.items() if k != "report"}, counts))
+
+def _values(output, counts: bool = True) -> str:
+    """Every output but the report (wall times), and with ``counts`` the
+    report's work counts (steps, lanes, masters, points; not the per-chunk
+    input reads, which a chunk-input budget splits)."""
+
+    values = {k: v for k, v in output.items() if k != "report"}
+    if not counts:
+        return repr(values)
+    work = {k: v for k, v in output["report"]["counts"].items() if k not in CHUNKED}
+    return repr((values, work))
 
 
 @pytest.mark.loop_physics
@@ -156,6 +165,9 @@ def test_streamed_parts_of_lane_chunks_are_bitwise_the_batch(executors, name):
     options = {"poles": "all", "chunk_families": 1}
     reference = executor.evaluate(inputs, **options)
     assert reference["report"]["counts"].get(DROPPED, 0) == 0
+    # Bucket chunks of one family dress and reduce what the default ones do.
+    default = executor.evaluate(inputs, poles="all")
+    assert _values(default, counts=False) == _values(reference, counts=False)
     for part in (2, 4, 6):
         out = executor.evaluate(
             inputs, **options, part_points=part, fill_points=1, input_budget=0
