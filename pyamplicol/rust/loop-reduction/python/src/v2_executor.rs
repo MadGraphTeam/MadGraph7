@@ -818,7 +818,7 @@ impl V2Executor {
         threads: Option<usize>,
         forms: &str,
         engine: &str,
-        trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
+        trees: Option<(Bound<'_, PyAny>, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
         columns: Option<String>,
         plan_components: Option<Vec<Option<usize>>>,
         fourier: Option<String>,
@@ -844,10 +844,21 @@ impl V2Executor {
             }
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
+        // The program's JSON text, or a binary tree program as bytes
+        // (`loop_v2::trees::binary`, M-FINAL MF-8G-1).
+        let trees = trees
+            .map(|(source, kernels, planes)| {
+                let program = match source.cast::<pyo3::types::PyBytes>() {
+                    Ok(bytes) => bytes.as_bytes().to_vec(),
+                    Err(_) => source.extract::<String>().map_err(error)?.into_bytes(),
+                };
+                Ok::<_, PyErr>((program, kernels, planes))
+            })
+            .transpose()?;
         let trees = trees
             .map(|(json, kernels, planes)| {
                 let mut program = TreeProgram::load_with_components(
-                    json.as_bytes(),
+                    &json,
                     &kernels,
                     planes.as_deref(),
                     &plan,

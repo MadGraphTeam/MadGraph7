@@ -476,5 +476,183 @@ impl V2Dag {
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Dag>()?;
-    module.add_class::<V2Program>()
+    module.add_class::<V2Program>()?;
+    register_tree_binary(module)
+}
+
+// ------------------------------------------------- binary tree program (MF-8G-1)
+
+/// `loop_v2::trees::binary`: the binary tree-program member and its parts.
+mod tree_binary {
+    use super::*;
+    use pyo3::types::PyByteArray;
+    use rusticol_core::loop_v2::trees::binary::{self, CellTable, StepColumns};
+
+    fn failed(error: impl std::fmt::Display) -> PyErr {
+        PyValueError::new_err(error.to_string())
+    }
+
+    /// A binary tree program of `(name, encoding, payload)` sections
+    /// (encoding 0 JSON, 1 binary).
+    #[pyfunction]
+    pub(super) fn tree_program_container<'py>(
+        py: Python<'py>,
+        sections: Vec<(String, u8, Bound<'py, PyBytes>)>,
+    ) -> Bound<'py, PyBytes> {
+        let parts: Vec<(&str, u8, &[u8])> = sections
+            .iter()
+            .map(|(name, encoding, payload)| (name.as_str(), *encoding, payload.as_bytes()))
+            .collect();
+        let out = py.detach(|| binary::write_container(&parts));
+        PyBytes::new(py, &out)
+    }
+
+    /// The `(name, encoding)` of every section of a binary tree program.
+    #[pyfunction]
+    pub(super) fn tree_program_index(container: &[u8]) -> PyResult<Vec<(String, u8)>> {
+        Ok(binary::read_container(container)
+            .map_err(failed)?
+            .into_iter()
+            .map(|section| (section.name, section.encoding))
+            .collect())
+    }
+
+    /// One section's payload (None: absent).
+    #[pyfunction]
+    pub(super) fn tree_program_section<'py>(
+        py: Python<'py>,
+        container: &[u8],
+        name: &str,
+    ) -> PyResult<Option<Bound<'py, PyBytes>>> {
+        Ok(binary::read_container(container)
+            .map_err(failed)?
+            .into_iter()
+            .find(|section| section.name == name)
+            .map(|section| PyBytes::new(py, section.payload)))
+    }
+
+    /// The step section of the oracle's JSON steps.
+    #[pyfunction]
+    pub(super) fn tree_steps_from_json<'py>(
+        py: Python<'py>,
+        json: &[u8],
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let out = py
+            .detach(|| StepColumns::from_json(json).map(|c| c.encode()))
+            .map_err(failed)?;
+        Ok(PyBytes::new(py, &out))
+    }
+
+    /// A step section as the oracle's JSON steps.
+    #[pyfunction]
+    pub(super) fn tree_steps_json(py: Python<'_>, section: &[u8]) -> PyResult<String> {
+        py.detach(|| StepColumns::decode(section).map(|c| c.json()))
+            .map_err(failed)
+    }
+
+    /// `(rows, accumulators, outputs)` of a step section.
+    #[pyfunction]
+    pub(super) fn tree_steps_counts(section: &[u8]) -> PyResult<(u64, u64, u64)> {
+        let c = StepColumns::decode(section).map_err(failed)?;
+        Ok((
+            c.rows.iter().sum(),
+            c.accumulators.iter().sum(),
+            c.outputs.iter().sum(),
+        ))
+    }
+
+    /// `native_trees._prune_interactions` on a step section: the pruned
+    /// section and the used vertex kernels and propagators (old indices),
+    /// or None (unchanged) where a component is written twice. `live` is
+    /// the readers' marks over the program's state (not modified).
+    #[pyfunction]
+    pub(super) fn tree_steps_prune<'py>(
+        py: Python<'py>,
+        section: &[u8],
+        live: &Bound<'py, PyByteArray>,
+        kernels: usize,
+        propagators: usize,
+    ) -> PyResult<Option<(Bound<'py, PyBytes>, Vec<usize>, Vec<usize>)>> {
+        let mut marks = live.to_vec();
+        let pruned = py
+            .detach(|| {
+                StepColumns::decode(section)?
+                    .prune(&mut marks, kernels, propagators)
+                    .map(|found| found.map(|(c, k, p)| (c.encode(), k, p)))
+            })
+            .map_err(failed)?;
+        Ok(pruned.map(|(bytes, k, p)| (PyBytes::new(py, &bytes), k, p)))
+    }
+
+    /// A cell section as the oracle's cell list (tests and tools).
+    #[pyfunction]
+    pub(super) fn tree_cells_list(
+        section: &[u8],
+    ) -> PyResult<Vec<(usize, usize, i32, String, String)>> {
+        Ok(CellTable::decode(section).map_err(failed)?.list())
+    }
+
+    /// `(basis, tensors, distinct cells)` of a cell section.
+    #[pyfunction]
+    pub(super) fn tree_cells_counts(section: &[u8]) -> PyResult<(usize, usize, usize)> {
+        let c = CellTable::decode(section).map_err(failed)?;
+        Ok((c.basis, c.tensors, c.values.len()))
+    }
+
+    /// `native_trees._live_ket` on a cell section.
+    #[allow(clippy::type_complexity)]
+    #[pyfunction]
+    pub(super) fn tree_cells_live_ket(
+        py: Python<'_>,
+        section: &[u8],
+        born: Vec<(usize, usize, i32)>,
+        entries: Vec<(String, usize, usize, Option<usize>, i32, usize, Option<i32>)>,
+        ket: Vec<(usize, usize, i32)>,
+        depth: Option<i32>,
+    ) -> PyResult<Vec<bool>> {
+        py.detach(|| {
+            CellTable::decode(section)?.live_ket(&born, &entries, &ket, depth)
+        })
+        .map_err(failed)
+    }
+}
+
+#[pymethods]
+impl V2Program {
+    /// The steps as a binary step section (`loop_v2::trees::binary::
+    /// StepColumns`), with `texts[w]` the exact `(re, im)` texts of weight
+    /// `w`: the columns `steps` would give as Python lists.
+    fn step_section<'py>(
+        &self,
+        py: Python<'py>,
+        texts: Vec<(String, String)>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        if texts.len() != self.program.weights.len() {
+            return Err(PyValueError::new_err("one text pair per colour weight"));
+        }
+        let out = py
+            .detach(|| {
+                rusticol_core::loop_v2::trees::binary::StepColumns::from_program(
+                    &self.program.steps,
+                    texts,
+                )
+                .map(|c| c.encode())
+            })
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(PyBytes::new(py, &out))
+    }
+}
+
+pub(super) fn register_tree_binary(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    use tree_binary::*;
+    module.add_function(wrap_pyfunction!(tree_program_container, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_program_index, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_program_section, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_steps_from_json, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_steps_json, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_steps_counts, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_steps_prune, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_cells_list, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_cells_counts, module)?)?;
+    module.add_function(wrap_pyfunction!(tree_cells_live_ket, module)?)
 }
