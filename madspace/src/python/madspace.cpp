@@ -448,10 +448,26 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def(
             "copy_globals_from",
-            &Context::copy_globals_from,
+            py::overload_cast<Context&>(&Context::copy_globals_from),
             py::arg("context"),
             pydoc::doc("Context::copy_globals_from")
         )
+        .def(
+            "copy_globals_from",
+            py::overload_cast<Context&, const std::vector<std::string>&>(
+                &Context::copy_globals_from
+            ),
+            py::arg("context"),
+            py::arg("names"),
+            pydoc::doc("Context::copy_globals_from")
+        )
+        .def(
+            "set_frozen",
+            &Context::set_frozen,
+            py::arg("frozen"),
+            pydoc::doc("Context::set_frozen")
+        )
+        .def("frozen", &Context::frozen, pydoc::doc("Context::frozen"))
         .def(
             "matrix_element",
             &Context::matrix_element,

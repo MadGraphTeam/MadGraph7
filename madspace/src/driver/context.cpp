@@ -183,6 +183,7 @@ const MatrixElementApi& Context::load_matrix_element(
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters
 ) {
+    check_not_frozen("load_matrix_element");
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
         std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
@@ -203,6 +204,7 @@ const MatrixElementApi& Context::add_matrix_element(
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters
 ) {
+    check_not_frozen("add_matrix_element");
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
         std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
@@ -221,6 +223,7 @@ const MatrixElementApi& Context::add_matrix_element(
 Tensor Context::define_global(
     const std::string& name, DataType dtype, const SizeVec& shape, bool requires_grad
 ) {
+    check_not_frozen("define_global");
     SizeVec full_shape{1};
     full_shape.insert(full_shape.end(), shape.begin(), shape.end());
     if (_globals.contains(name)) {
@@ -277,10 +280,31 @@ std::vector<std::string> Context::global_names() const {
     return names;
 }
 
-void Context::delete_global(const std::string& name) { _globals.erase(name); }
+void Context::delete_global(const std::string& name) {
+    check_not_frozen("delete_global");
+    _globals.erase(name);
+}
 
 void Context::copy_globals_from(Context& context) {
+    std::vector<std::string> names;
+    names.reserve(context._globals.size());
     for (auto& [name, value] : context._globals) {
+        names.push_back(name);
+    }
+    copy_globals_from(context, names);
+}
+
+void Context::copy_globals_from(
+    Context& context, const std::vector<std::string>& names
+) {
+    for (auto& name : names) {
+        auto other_search = context._globals.find(name);
+        if (other_search == context._globals.end()) {
+            throw std::invalid_argument(
+                std::format("Context does not contain a global named {}", name)
+            );
+        }
+        auto& value = other_search->second;
         Tensor other_tensor = value.first;
         Tensor this_tensor;
         if (auto search = _globals.find(name); search != _globals.end()) {

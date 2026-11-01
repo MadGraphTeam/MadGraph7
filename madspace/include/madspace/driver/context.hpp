@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <optional>
 #include <string>
@@ -310,6 +312,9 @@ public:
     void delete_global(const std::string& name);
     /// Overwrite every global also present in `context` with its value there.
     void copy_globals_from(Context& context);
+    /// Overwrite the globals `names` with their values in `context`, defining
+    /// those this context does not have yet.
+    void copy_globals_from(Context& context, const std::vector<std::string>& names);
     /// Repack the globals in `names` into one contiguous allocation, for
     /// example before handing them to an external optimizer.
     Tensor reallocate_globals_contiguously(const std::vector<std::string>& names);
@@ -333,10 +338,23 @@ public:
     Tensor cached_tensor(std::size_t size);
     /// Drop every scratch tensor held by @ref cached_tensor.
     void reset_cache() {
+        check_not_frozen("reset_cache");
         _tensor_cache = ThreadResource<TensorVec>(thread_pool(), []() {
             return TensorVec{};
         });
     }
+    /**
+     * Mark the context as shared by threads that run concurrently (e.g. the
+     * MadNIS trainings of several subprocesses on one device), or not anymore.
+     *
+     * The context takes no locks: concurrent lookups of globals and resources,
+     * and writes to distinct existing globals, are safe, but adding or removing
+     * globals, resources or matrix elements is not. While the context is
+     * frozen, these throw `std::logic_error` instead of racing.
+     */
+    void set_frozen(bool frozen) { _frozen = frozen; }
+    /// Whether the context is frozen; see @ref set_frozen.
+    bool frozen() const { return _frozen; }
     /// A per-thread resource named `name`, created with `constructor` on
     /// first access and torn down with `destructor`. Not thread-safe: callers
     /// must acquire the reference once during single-threaded initialization
@@ -349,6 +367,7 @@ public:
     ) {
         auto search = _resources.find(name);
         if (search == _resources.end()) {
+            check_not_frozen(std::format("global_resource({})", name));
             auto res = std::make_shared<ThreadResource<T>>(
                 thread_pool(), constructor, destructor
             );
@@ -371,7 +390,16 @@ public:
     }
 
 private:
+    void check_not_frozen(const std::string& operation) const {
+        if (_frozen) {
+            throw std::logic_error(
+                std::format("Context::{} is not allowed while it is frozen", operation)
+            );
+        }
+    }
+
     static constexpr const char* tensor_cache_resource_name = "__tensor_cache";
+    std::atomic<bool> _frozen = false;
     DevicePtr _device;
     std::unique_ptr<ThreadPool> _thread_pool;
     std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
