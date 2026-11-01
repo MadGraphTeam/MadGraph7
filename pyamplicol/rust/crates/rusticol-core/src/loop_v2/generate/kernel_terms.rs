@@ -99,6 +99,35 @@ struct Kernel {
 }
 
 impl Kernel {
+    /// `_TermReading._opaque` up to the powers: the factor's canonical
+    /// string and its (symbol, parameter name) pairs, or its refusal.
+    fn opaque(&self, atom: AtomView<'_>) -> Opaque {
+        let mut symbols: Vec<String> = atom
+            .get_all_symbols(false)
+            .into_iter()
+            .filter(|&symbol| symbol != Symbol::PI)
+            .map(|symbol| Atom::var(symbol).to_canonical_string())
+            .collect();
+        symbols.sort();
+        if symbols.iter().any(|s| self.positions.contains_key(s)) {
+            return Err(format!("kernel not polynomial in {atom}"));
+        }
+        let unknown: Vec<&String> = symbols
+            .iter()
+            .filter(|s| !self.parameters.contains_key(*s))
+            .collect();
+        if !unknown.is_empty() {
+            // Python's list repr of the names.
+            let names: Vec<String> = unknown.iter().map(|s| format!("'{s}'")).collect();
+            return Err(format!("unknown symbols [{}] in a kernel", names.join(", ")));
+        }
+        let pairs = symbols
+            .iter()
+            .map(|s| (s.clone(), self.parameters[s].clone()))
+            .collect();
+        Ok((atom.to_canonical_string(), pairs))
+    }
+
     fn new(job: &KernelTermsJob) -> RusticolResult<Self> {
         let mut roles = HashMap::new();
         let mut positions = HashMap::new();
@@ -132,8 +161,21 @@ impl Kernel {
     }
 }
 
-struct Reading<'k> {
+/// An opaque factor's canonical string and (symbol, parameter) pairs, or
+/// its refusal.
+type Opaque = Result<(String, Vec<(String, String)>), String>;
+
+/// The opaque factors met by the terms of one output (a coupling's sum
+/// recurs in many terms): their readings and fractional powers.
+#[derive(Default)]
+struct OpaqueCache {
+    factors: HashMap<Atom, Opaque>,
+    raised: HashMap<(Atom, String), String>,
+}
+
+struct Reading<'k, 'c> {
     kernel: &'k Kernel,
+    cache: &'c mut OpaqueCache,
     re: Rational,
     im: Rational,
     powers: Vec<(Base, Rational)>,
@@ -152,10 +194,11 @@ fn exact_number(view: AtomView<'_>) -> Result<(Rational, Rational), String> {
     }
 }
 
-impl<'k> Reading<'k> {
-    fn new(kernel: &'k Kernel) -> Self {
+impl<'k, 'c> Reading<'k, 'c> {
+    fn new(kernel: &'k Kernel, cache: &'c mut OpaqueCache) -> Self {
         Self {
             kernel,
+            cache,
             re: Rational::one(),
             im: Rational::zero(),
             powers: Vec::new(),
@@ -255,42 +298,30 @@ impl<'k> Reading<'k> {
 
     /// `_TermReading._opaque`: a parameter-only sum or function, kept whole.
     fn opaque(&mut self, atom: AtomView<'_>, exponent: &Rational, distributed: bool) -> Result<(), String> {
-        let mut symbols: Vec<String> = atom
-            .get_all_symbols(false)
-            .into_iter()
-            .filter(|&symbol| symbol != Symbol::PI)
-            .map(|symbol| Atom::var(symbol).to_canonical_string())
-            .collect();
-        symbols.sort();
-        if symbols.iter().any(|s| self.kernel.positions.contains_key(s)) {
-            return Err(format!("kernel not polynomial in {atom}"));
+        let owned = atom.to_owned();
+        if !self.cache.factors.contains_key(&owned) {
+            let found = self.kernel.opaque(atom);
+            self.cache.factors.insert(owned.clone(), found);
         }
-        let unknown: Vec<&String> = symbols
-            .iter()
-            .filter(|s| !self.kernel.parameters.contains_key(*s))
-            .collect();
-        if !unknown.is_empty() {
-            // Python's list repr of the names.
-            let names: Vec<String> = unknown.iter().map(|s| format!("'{s}'")).collect();
-            return Err(format!("unknown symbols [{}] in a kernel", names.join(", ")));
-        }
-        let pairs: Vec<(String, String)> = symbols
-            .iter()
-            .map(|s| (s.clone(), self.kernel.parameters[s].clone()))
-            .collect();
+        let (text, pairs) = self.cache.factors[&owned].clone()?;
         if distributed {
-            self.add_positive(Base::Expr(atom.to_canonical_string(), pairs.clone()));
+            self.add_positive(Base::Expr(text.clone(), pairs.clone()));
         }
         if exponent.is_integer() {
-            self.add_power(Base::Expr(atom.to_canonical_string(), pairs), exponent);
+            self.add_power(Base::Expr(text, pairs), exponent);
         } else {
-            let power = parse(&format!("{}/{}", exponent.numerator(), exponent.denominator()))
-                .map_err(|e| e.to_string())?;
-            let raised = atom.to_owned().pow(&power);
-            self.add_power(
-                Base::Expr(raised.to_canonical_string(), pairs),
-                &Rational::one(),
-            );
+            let power = format!("{}/{}", exponent.numerator(), exponent.denominator());
+            let key = (owned, power);
+            let raised = match self.cache.raised.get(&key) {
+                Some(raised) => raised.clone(),
+                None => {
+                    let power = parse(&key.1).map_err(|e| e.to_string())?;
+                    let raised = key.0.pow(&power).to_canonical_string();
+                    self.cache.raised.insert(key, raised.clone());
+                    raised
+                }
+            };
+            self.add_power(Base::Expr(raised, pairs), &Rational::one());
         }
         Ok(())
     }
@@ -350,26 +381,23 @@ impl<'k> Reading<'k> {
     }
 }
 
-fn kernel_terms(job: &KernelTermsJob) -> RusticolResult<KernelTermsResult> {
-    let kernel = Kernel::new(job)?;
-    let mut outputs = Vec::with_capacity(job.expressions.len());
-    for text in &job.expressions {
-        let expanded = parse(text)?.expand();
-        let terms: Vec<AtomView<'_>> = match expanded.as_view() {
-            AtomView::Add(a) => a.iter().collect(),
-            other => vec![other],
-        };
-        let mut readings = Vec::with_capacity(terms.len());
-        for term in terms {
-            let mut reading = Reading::new(&kernel);
-            if let Err(message) = reading.read(term, &Rational::one(), false) {
-                return Ok(Err(message));
-            }
-            readings.push(reading.finish());
+/// The term readings of one output, or the refusal of its first refused term.
+fn output_terms(kernel: &Kernel, text: &str) -> RusticolResult<Result<Vec<TermReading>, String>> {
+    let expanded = parse(text)?.expand();
+    let terms: Vec<AtomView<'_>> = match expanded.as_view() {
+        AtomView::Add(a) => a.iter().collect(),
+        other => vec![other],
+    };
+    let mut readings = Vec::with_capacity(terms.len());
+    let mut cache = OpaqueCache::default();
+    for term in terms {
+        let mut reading = Reading::new(kernel, &mut cache);
+        if let Err(message) = reading.read(term, &Rational::one(), false) {
+            return Ok(Err(message));
         }
-        outputs.push(readings);
+        readings.push(reading.finish());
     }
-    Ok(Ok(outputs))
+    Ok(Ok(readings))
 }
 
 fn pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
@@ -384,16 +412,39 @@ fn pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
         .map_err(|error| RusticolError::internal(error.to_string()))
 }
 
-/// The term readings of every kernel of `jobs`, in job order.
+/// The term readings of every kernel of `jobs`, in job order; every output
+/// is an independent task. A kernel with a refused output takes the refusal
+/// of its first such output (the oracle reads the outputs in order).
 pub fn kernel_term_readings(
     jobs: &[KernelTermsJob],
     threads: Option<usize>,
 ) -> RusticolResult<Vec<KernelTermsResult>> {
-    if jobs.len() == 1 && jobs[0].expressions.len() <= 1 {
+    let kernels = jobs.iter().map(Kernel::new).collect::<RusticolResult<Vec<_>>>()?;
+    let tasks: Vec<(usize, &str)> = jobs
+        .iter()
+        .enumerate()
+        .flat_map(|(k, job)| job.expressions.iter().map(move |text| (k, text.as_str())))
+        .collect();
+    let read = |&(k, text): &(usize, &str)| output_terms(&kernels[k], text);
+    let outputs: Vec<Result<Vec<TermReading>, String>> = if tasks.len() <= 1 {
         let _guard = crate::licence::unlock();
-        return jobs.iter().map(kernel_terms).collect();
+        tasks.iter().map(read).collect::<RusticolResult<_>>()?
+    } else {
+        pool(threads)?.install(|| tasks.par_iter().map(read).collect::<RusticolResult<_>>())?
+    };
+    let mut results: Vec<KernelTermsResult> = jobs
+        .iter()
+        .map(|job| Ok(Vec::with_capacity(job.expressions.len())))
+        .collect();
+    for ((k, _), output) in tasks.iter().zip(outputs) {
+        if let Ok(done) = &mut results[*k] {
+            match output {
+                Ok(terms) => done.push(terms),
+                Err(message) => results[*k] = Err(message),
+            }
+        }
     }
-    pool(threads)?.install(|| jobs.par_iter().map(kernel_terms).collect())
+    Ok(results)
 }
 
 #[cfg(test)]

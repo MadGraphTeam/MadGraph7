@@ -79,7 +79,7 @@ _READ = [
     "(@g+@m)^(-1/3)*@x0 + log(@m)^2*@x1 + (@g*@m)^(1/2)*@x0*@x1",
     "(12/7)^(3/2)*@x0 + (1+2𝑖)^(-2)*@x1 + 5/9",
     "((@g+@w)^(1/2)*@m)^(1/3)*@x0 + @x0*(@g*@m^2)^(-3/2)",
-    "cos(@g)*exp(@m/@w)*@x0^3 + (1/3)^(-5/2)*@x1*@w^(7/2)",
+    "cos(@g)*sin(@m/@w)*@x0^3 + (1/3)^(-5/2)*@x1*@w^(7/2)",
 ]
 
 # Refusals (or the readings Symbolica's normal form leaves): an input under
@@ -205,7 +205,7 @@ def _stage(definitions: bool):
     if definitions:
         outputs += [
             f(e1, f(e12, E("2"))) * g(e12) + sym(e1, e12) * plain,
-            g(f(g(f(e1, e1)), e12)) + sym(g(e1), x),
+            g(f(g(f(e1, e1)), e12)) + sym(g(e1), plain),
         ]
     functions = (
         [
@@ -222,7 +222,7 @@ def _stage(definitions: bool):
             parameter_symbols=inputs,
             symbolica_functions=functions,
         ),
-        [plain, E("mfrust_stage::e123"), x],
+        [plain, E("mfrust_stage::e123")],
     )
 
 
