@@ -16,8 +16,9 @@
 //!   `counterterm_trees`, `layouts`, `weights`), each its key's value;
 //! * binary sections that replace one large array of a JSON part, which
 //!   then omits it: `interactions.steps` and
-//!   `counterterm_trees.interactions.steps` ([`StepColumns`]) and
-//!   `counterterms.cells` ([`CellTable`]).
+//!   `counterterm_trees.interactions.steps` ([`StepColumns`]),
+//!   `counterterms.cells` ([`CellTable`]), and `born.terms` and
+//!   `counterterms.terms` ([`TermColumns`]).
 //!
 //! **Columns.** Integer columns are narrow: a `u8` width (4 or 8; signed
 //! columns the same), a `u64` count and the values; the writer takes 4
@@ -29,7 +30,9 @@
 //! and `TreeProgram::load` reads both forms into the same program
 //! (`tests/unit/test_loop_v2_tree_binary.py`).
 
-use super::{BornFile, CountertermFile, CountertermTreesFile, InteractionFile, StepFile, TreeFile};
+use super::{
+    BornFile, CountertermFile, CountertermTreesFile, InteractionFile, StepFile, TermFile, TreeFile,
+};
 use super::{exact, invalid, require};
 use crate::RusticolResult;
 use crate::loop_v2::interference::MetricCells;
@@ -45,6 +48,8 @@ pub const BINARY: u8 = 1;
 pub const TREE_STEPS: &str = "interactions.steps";
 pub const COUNTERTERM_STEPS: &str = "counterterm_trees.interactions.steps";
 pub const CELLS: &str = "counterterms.cells";
+pub const BORN_TERMS: &str = "born.terms";
+pub const COUNTERTERM_TERMS: &str = "counterterms.terms";
 /// The JSON section names besides `head`: moved top-level keys.
 pub const KEYS: [&str; 8] = [
     "interactions",
@@ -58,6 +63,7 @@ pub const KEYS: [&str; 8] = [
 ];
 const STEPS_VERSION: u32 = 1;
 const CELLS_VERSION: u32 = 1;
+const TERMS_VERSION: u32 = 1;
 
 /// Whether `bytes` is a container (else a JSON tree program).
 pub fn is_container(bytes: &[u8]) -> bool {
@@ -376,6 +382,13 @@ pub struct Overrides {
     pub cells: Option<CellTable>,
 }
 
+/// Replace `terms` (empty: the JSON part omits them) with a section's.
+fn fill_terms(terms: &mut Vec<TermFile>, payload: &[u8]) -> RusticolResult<()> {
+    require(terms.is_empty(), "closure terms in both forms")?;
+    *terms = TermColumns::decode(payload)?.files();
+    Ok(())
+}
+
 fn json<T: serde::de::DeserializeOwned>(name: &str, payload: &[u8]) -> RusticolResult<T> {
     serde_json::from_slice(payload).map_err(|e| invalid(format!("section {name}: {e}")))
 }
@@ -390,12 +403,14 @@ pub(super) fn tree_file(bytes: &[u8]) -> RusticolResult<(TreeFile, Overrides)> {
     let mut file: TreeFile = json("head", head.payload)?;
     let mut overrides = Overrides::default();
     let mut moved = BTreeSet::new();
-    for section in &sections {
+    // The JSON parts, then the binary sections replacing their arrays.
+    let (json_parts, binary_parts): (Vec<&Section<'_>>, Vec<&Section<'_>>) = sections
+        .iter()
+        .filter(|section| section.name != "head")
+        .partition(|section| section.encoding == JSON);
+    for section in json_parts.into_iter().chain(binary_parts) {
         let name = section.name.as_str();
         let payload = section.payload;
-        if name == "head" {
-            continue;
-        }
         if section.encoding == JSON {
             require(KEYS.contains(&name), "an unknown JSON tree-program section")?;
             moved.insert(name);
@@ -420,6 +435,15 @@ pub(super) fn tree_file(bytes: &[u8]) -> RusticolResult<(TreeFile, Overrides)> {
             TREE_STEPS => overrides.tree_steps = Some(StepColumns::decode(payload)?),
             COUNTERTERM_STEPS => overrides.counterterm_steps = Some(StepColumns::decode(payload)?),
             CELLS => overrides.cells = Some(CellTable::decode(payload)?),
+            BORN_TERMS => fill_terms(&mut file.born.terms, payload)?,
+            COUNTERTERM_TERMS => fill_terms(
+                &mut file
+                    .counterterms
+                    .as_mut()
+                    .ok_or_else(|| invalid("counterterm terms without their record"))?
+                    .terms,
+                payload,
+            )?,
             _ => return Err(invalid("an unknown binary tree-program section")),
         }
     }
@@ -1130,5 +1154,173 @@ impl CellTable {
             out.push(found.iter().any(|&(e, degree)| kept(e + q, degree)));
         }
         Ok(out)
+    }
+}
+
+// -------------------------------------------------------------------- terms
+
+/// Closure terms (`native_trees.export_trees`'s `record`s: the Born's and
+/// the counterterm closure's) as columns: per term its kernel, layout and
+/// sign, and its blocks, slot masks and contributions (coupling, component,
+/// colour weight) as runs of flat columns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TermColumns {
+    pub kernel: Column,
+    pub layout: Column,
+    pub sign: SignedColumn,
+    pub blocks: (Column, Column),
+    pub masks: (Column, Column),
+    pub contributions: (Column, [Column; 3]),
+}
+
+impl TermColumns {
+    /// Columns of the oracle's JSON terms.
+    pub fn from_json(json: &[u8]) -> RusticolResult<Self> {
+        let terms: Vec<TermFile> =
+            serde_json::from_slice(json).map_err(|e| invalid(format!("terms: {e}")))?;
+        Ok(Self::from_files(&terms))
+    }
+
+    pub(super) fn from_files(terms: &[TermFile]) -> Self {
+        let mut c: [Vec<u64>; 3] = Default::default();
+        let mut blocks = Vec::new();
+        let mut masks = Vec::new();
+        for term in terms {
+            blocks.extend(term.blocks.iter().map(|&b| b as u64));
+            masks.extend(term.masks.iter().copied());
+            for &(coupling, component, weight) in &term.contributions {
+                c[0].push(coupling as u64);
+                c[1].push(component as u64);
+                c[2].push(weight as u64);
+            }
+        }
+        let counts = |f: &dyn Fn(&TermFile) -> usize| {
+            Column::of(terms.iter().map(|t| f(t) as u64).collect())
+        };
+        TermColumns {
+            kernel: counts(&|t| t.kernel),
+            layout: counts(&|t| t.layout),
+            sign: SignedColumn::of(terms.iter().map(|t| i64::from(t.sign)).collect()),
+            blocks: (counts(&|t| t.blocks.len()), Column::of(blocks)),
+            masks: (counts(&|t| t.masks.len()), Column::of(masks)),
+            contributions: (counts(&|t| t.contributions.len()), c.map(Column::of)),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.kernel.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.kernel.is_empty()
+    }
+
+    /// The terms (`TermFile`s), the reader's form.
+    pub(super) fn files(&self) -> Vec<TermFile> {
+        let (mut b, mut m, mut c) = (0, 0, 0);
+        (0..self.len())
+            .map(|k| {
+                let (nb, nm, nc) = (
+                    self.blocks.0.at(k),
+                    self.masks.0.at(k),
+                    self.contributions.0.at(k),
+                );
+                let term = TermFile {
+                    kernel: self.kernel.at(k),
+                    layout: self.layout.at(k),
+                    blocks: (b..b + nb).map(|i| self.blocks.1.at(i)).collect(),
+                    masks: (m..m + nm).map(|i| self.masks.1.get(i)).collect(),
+                    sign: self.sign.get(k) as i32,
+                    contributions: (c..c + nc)
+                        .map(|i| {
+                            let [coupling, component, weight] = &self.contributions.1;
+                            (coupling.at(i), component.at(i), weight.at(i))
+                        })
+                        .collect(),
+                };
+                (b, m, c) = (b + nb, m + nm, c + nc);
+                term
+            })
+            .collect()
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = Writer::default();
+        out.u32(TERMS_VERSION);
+        out.column(&self.kernel);
+        out.column(&self.layout);
+        out.signed(&self.sign);
+        out.column(&self.blocks.0);
+        out.column(&self.blocks.1);
+        out.column(&self.masks.0);
+        out.column(&self.masks.1);
+        out.column(&self.contributions.0);
+        for column in &self.contributions.1 {
+            out.column(column);
+        }
+        out.bytes
+    }
+
+    pub fn decode(bytes: &[u8]) -> RusticolResult<Self> {
+        let mut input = Reader::new(bytes);
+        require(input.u32()? == TERMS_VERSION, "a term-column version")?;
+        let out = TermColumns {
+            kernel: input.column()?,
+            layout: input.column()?,
+            sign: input.signed()?,
+            blocks: (input.column()?, input.column()?),
+            masks: (input.column()?, input.column()?),
+            contributions: (
+                input.column()?,
+                [input.column()?, input.column()?, input.column()?],
+            ),
+        };
+        input.done()?;
+        let n = out.len();
+        let total = |column: &Column| (0..column.len()).map(|k| column.get(k)).sum::<u64>();
+        require(
+            out.layout.len() == n
+                && out.sign.len() == n
+                && out.blocks.0.len() == n
+                && out.masks.0.len() == n
+                && out.contributions.0.len() == n
+                && total(&out.blocks.0) == out.blocks.1.len() as u64
+                && total(&out.masks.0) == out.masks.1.len() as u64
+                && out
+                    .contributions
+                    .1
+                    .iter()
+                    .all(|c| total(&out.contributions.0) == c.len() as u64),
+            "term column lengths",
+        )?;
+        Ok(out)
+    }
+
+    /// The terms as the oracle's JSON (`json.dumps(terms, separators=(",",
+    /// ":"))` of `export_trees`'s records).
+    pub fn json(&self) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::from("[");
+        for (k, term) in self.files().iter().enumerate() {
+            if k > 0 {
+                out.push(',');
+            }
+            let list = |values: &mut dyn Iterator<Item = String>| values.collect::<Vec<_>>().join(",");
+            let _ = write!(
+                out,
+                "{{\"kernel\":{},\"layout\":{},\"blocks\":[{}],\"masks\":[{}],\"sign\":{},\"contributions\":[{}]}}",
+                term.kernel,
+                term.layout,
+                list(&mut term.blocks.iter().map(|b| b.to_string())),
+                list(&mut term.masks.iter().map(|m| m.to_string())),
+                term.sign,
+                list(&mut term
+                    .contributions
+                    .iter()
+                    .map(|(a, b, c)| format!("[{a},{b},{c}]"))),
+            );
+        }
+        out.push(']');
+        out
     }
 }
