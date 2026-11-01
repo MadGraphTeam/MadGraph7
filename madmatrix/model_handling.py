@@ -3895,8 +3895,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 # amp_sv[0]) only contributes for the flavors in the diagram's
                 # mask, so guard the whole block as a unit.
                 gmask = diag_group_mask.get(id(diagram))
-                guarded = gmask is not None or hr_guard
                 before_guard = []
+                if_skipped = [] # what the hr guard does instead of the amplitude
                 if jamp_plan is None:
                     # With split orders the jamps are nampso vectors end to end
                     # and this amplitude belongs to exactly one of them, so its
@@ -3918,18 +3918,23 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                         else: amp_block.append('jamp_sv[%s] += %samp_sv[0];' % (njamp, scoeff)) # AV
                 else:
                     for line, target, first in jamp_captures.get(namp, []):
-                        if first and guarded:
+                        if first and gmask is not None:
                             # the guard can skip the line that opens this
                             # sub-expression, so it has to start from zero
-                            before_guard.append(
-                                ('%s = cxzero_sv<cxtype_amp_sv>();' if hr_guard
-                                 else '%s = cxzero_sv();') % target)
+                            before_guard.append('%s = cxzero_sv();' % target)
                             line = line.replace(' = ', ' += ', 1)
+                        elif first and hr_guard:
+                            # the same, in an else that the compiler drops
+                            # with the guard when the amplitude never vanishes
+                            if_skipped.append('%s = cxzero_sv<cxtype_amp_sv>();' % target)
                         amp_block.append(line)
                 res.extend(before_guard)
                 if hr_guard:
                     amp_block = ['if( MG_HR_AMP( %d ) )' % namp, '{'] + \
                                 ['  ' + line for line in amp_block] + ['}']
+                    if if_skipped:
+                        amp_block += ['else', '{'] + \
+                                     ['  ' + line for line in if_skipped] + ['}']
                 if gmask is not None:
                     res.append(_guard_open(gmask))
                     res.extend(amp_block)

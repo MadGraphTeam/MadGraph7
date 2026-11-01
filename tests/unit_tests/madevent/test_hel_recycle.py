@@ -1139,9 +1139,15 @@ class TestGpuZeroAmplitudeGuards(unittest.TestCase):
     def test_massive_quarks(self):
         lines, graph = self.calls([21, 21, 6, -6, 21])        # g g > t t~ g
         self.assertEqual(self.replay(lines, graph), (18, 18))
-        # the first term of a shared color-flow sub-expression can be skipped,
-        # so each one starts from zero before its guard
-        self.assertIn('jampTmp_sv[1] = cxzero_sv<cxtype_amp_sv>();', [l.strip() for l in lines])
+        # the first term of a shared color-flow sub-expression can be skipped:
+        # then it starts from zero instead (an else, which goes away with the
+        # guard when the amplitude never vanishes)
+        stripped = [l.strip() for l in lines]
+        first = stripped.index('if( MG_HR_AMP( 1 ) )')
+        other = stripped.index('else', first)
+        self.assertIn('jampTmp_sv[1] = amp_sv[0];', stripped[first:other])
+        self.assertEqual(stripped[other:other + 4],
+                         ['else', '{', 'jampTmp_sv[1] = cxzero_sv<cxtype_amp_sv>();', '}'])
 
     def test_current_sums(self):
         # merge_quartic_vertices: an amplitude reads a sum of two currents,
