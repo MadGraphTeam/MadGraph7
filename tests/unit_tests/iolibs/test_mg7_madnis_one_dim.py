@@ -61,6 +61,7 @@ def subprocess_stub(subproc_id, n_out, card):
     stub = types.SimpleNamespace(
         subproc_id=subproc_id,
         meta={'outgoing': [None] * n_out},
+        particle_count=2 + n_out,
         process=types.SimpleNamespace(run_card=card),
         madnis_supported=True,
     )

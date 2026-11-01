@@ -1876,19 +1876,23 @@ class MadgraphProcess:
                         drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
                     ),
                     cwnet=phasespace.cwnet,
+                    multiplicity=subproc.particle_count,
                 )
             )
 
-        gen_context = self.contexts[0]
-        opt_context = ms.Context(
-            device=self.devices[0], thread_count=self.pool_sizes[0]
-        )
-        opt_context.copy_globals_from(gen_context)
+        # the networks were initialized in the first context only, and every
+        # device can train any subprocess
+        for context in self.contexts[1:]:
+            context.copy_globals_from(self.contexts[0])
+
+        parallel_config = ms.MadnisParallelConfig()
+        parallel_config.max_parallel_trainings = madnis_args["max_parallel_trainings"]
+        parallel_config.check_interval = madnis_args["parallel_check_interval"]
 
         madnis_training = ms.MultiMadnisTraining(
-            generator_context=gen_context,
-            optimizer_context=opt_context,
+            generator_contexts=self.contexts,
             training_args=training_args,
+            parallel_config=parallel_config,
             verbosity=verbosity,
             status_file=self.status_file,
             # Reuses the run's resolved seed (also used by build_event_generator()).
@@ -1905,10 +1909,7 @@ class MadgraphProcess:
                 phasespace.channels[index] for index in active_channels
             ]
         del madnis_training
-        del opt_context
         self.phasespaces = madnis_phasespaces
-        for context in self.contexts[1:]:
-            context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
         self.madnis_trained = True
 

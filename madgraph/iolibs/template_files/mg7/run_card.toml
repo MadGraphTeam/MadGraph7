@@ -223,3 +223,10 @@ drop_zero_integrands = %(madnis.drop_zero_integrands)s
 fixed_cwnet_fraction = %(madnis.fixed_cwnet_fraction)s
 softclip_threshold = %(madnis.softclip_threshold)s
 compressed_channel_weight_count = %(madnis.compressed_channel_weight_count)s
+
+# parallel training of the subprocesses: another training starts on a device
+# while its thread pool is busy less than 90 percent of the time, checked every
+# parallel_check_interval seconds; the GPUs take the subprocesses with the
+# highest multiplicity first, the CPU those with the lowest
+max_parallel_trainings = %(madnis.max_parallel_trainings)s
+parallel_check_interval = %(madnis.parallel_check_interval)s # seconds

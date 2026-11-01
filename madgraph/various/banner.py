@@ -7254,6 +7254,12 @@ class RunCardMG7(RunCard):
             comment="soft clipping threshold of the channel weights; 0 disables it")
         self.add_toml_param('madnis', 'compressed_channel_weight_count', 50,
             comment="channel weights kept per event in the compressed loss")
+        self.add_toml_param('madnis', 'max_parallel_trainings', 1,
+            comment="maximum number of subprocess trainings running at the same "
+                    "time, over all devices")
+        self.add_toml_param('madnis', 'parallel_check_interval', 5.0,
+            comment="seconds between two checks of the device occupancy, which "
+                    "decide whether another training is started")
 
         # ----------------- dynamic (free-form) sections ---------------
         self.dynamic_sections['multiparticles'] = collections.OrderedDict([
