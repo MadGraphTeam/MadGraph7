@@ -1055,15 +1055,10 @@ void MultiMadnisTraining::train() {
         subproc.channel_index_offset = offset;
         offset += args.integrands.size();
     }
-    _devices.assign(_generator_contexts.size(), {});
-    for (std::size_t device_index = 0; auto& device : _devices) {
-        // the thread pools may have been busy before, e.g. with the survey
-        device.window_busy_ns = device_busy_ns(device_index);
-        ++device_index;
-    }
     for (auto& context : _generator_contexts) {
         context->reset_cache();
     }
+    set_up_devices();
     _stop = false;
     _status_written = false;
     _done_count = 0;
@@ -1084,6 +1079,11 @@ void MultiMadnisTraining::train() {
     try {
         while (true) {
             MadnisTraining::check_abort();
+            for (auto& device : _devices) {
+                if (device.activity_monitor) {
+                    device.activity_monitor->update();
+                }
+            }
             process_events();
             if (collect_finished()) {
                 break;
@@ -1103,6 +1103,7 @@ void MultiMadnisTraining::train() {
     for (auto& context : _generator_contexts) {
         context->set_frozen(false);
     }
+    _devices.clear();
     print_done();
 }
 
@@ -1114,9 +1115,63 @@ void MultiMadnisTraining::stop_all() {
         }
     }
     _running.clear();
+    _devices.clear();
     for (auto& context : _generator_contexts) {
         context->set_frozen(false);
     }
+}
+
+void MultiMadnisTraining::set_up_devices() {
+    _devices.clear();
+    _devices.resize(_generator_contexts.size());
+    bool parallel = _parallel_config.max_parallel_trainings > 1;
+    for (std::size_t device_index = 0; auto& device : _devices) {
+        auto& context = *_generator_contexts.at(device_index);
+        // the thread pools may have been busy before, e.g. with the survey
+        device.window_busy_ns = device_busy_ns(device_index);
+        ++device_index;
+        auto memory = context.device()->memory_info();
+        if (!memory || !parallel) {
+            continue;
+        }
+        auto [free, total] = *memory;
+        device.initial_used_memory = total - free;
+        std::string error;
+        device.activity_monitor = context.device()->activity_monitor(&error);
+        if (_verbosity != Verbosity::silent) {
+            Logger::info(
+                device.activity_monitor
+                    ? std::format(
+                          "training on {}: occupancy from the thread pool and the SM "
+                          "activity",
+                          device_name(context)
+                      )
+                    : std::format(
+                          "training on {}: SM activity not available ({}), "
+                          "occupancy from the thread pool only",
+                          device_name(context),
+                          error
+                      )
+            );
+        }
+    }
+}
+
+bool MultiMadnisTraining::memory_allows_training(std::size_t device_index) {
+    auto& device = _devices.at(device_index);
+    auto memory = _generator_contexts.at(device_index)->device()->memory_info();
+    if (!memory) {
+        return true;
+    }
+    auto [free, total] = *memory;
+    std::size_t used = total - free;
+    if (device.running_count > 0 && used > device.initial_used_memory) {
+        device.training_memory = std::max(
+            device.training_memory,
+            (used - device.initial_used_memory) / device.running_count
+        );
+    }
+    return free >= _parallel_config.gpu_memory_margin * device.training_memory;
 }
 
 void MultiMadnisTraining::start_trainings_on_idle_devices() {
@@ -1132,18 +1187,38 @@ void MultiMadnisTraining::start_training_by_occupancy(
 ) {
     double window_sec = std::chrono::duration<double>(now - _window_start).count();
     std::optional<std::size_t> best_device;
-    double best_occupancy = _parallel_config.target_occupancy;
+    // the load of a device relative to its targets, at least 1 when it is full
+    double best_load = 1.;
     for (std::size_t device_index = 0; auto& device : _devices) {
         auto& context = *_generator_contexts.at(device_index);
         std::int64_t busy_ns = device_busy_ns(device_index);
         double occupancy = (busy_ns - device.window_busy_ns) * 1e-9 /
             (window_sec * context.thread_pool().thread_count());
         device.window_busy_ns = busy_ns;
+        double load = occupancy / _parallel_config.target_occupancy;
+        std::optional<double> activity;
+        if (device.activity_monitor) {
+            activity = device.activity_monitor->take_active_fraction();
+            if (activity) {
+                load = std::max(load, *activity / _parallel_config.target_gpu_activity);
+            }
+        }
+        bool memory_allows = memory_allows_training(device_index);
+        Logger::debug(
+            std::format(
+                "training on {}: occupancy {:.2f}, SM activity {}, room for another "
+                "training: {}",
+                device_name(context),
+                occupancy,
+                activity ? std::format("{:.2f}", *activity) : "not measured",
+                memory_allows
+            )
+        );
         // started within the window: its occupancy does not show the new
         // training fully yet
         bool settled = device.last_start < _window_start;
-        if (settled && occupancy < best_occupancy) {
-            best_occupancy = occupancy;
+        if (settled && memory_allows && load < best_load) {
+            best_load = load;
             best_device = device_index;
         }
         ++device_index;
@@ -1240,10 +1315,11 @@ void MultiMadnisTraining::start_training(std::size_t device_index) {
     if (_verbosity == Verbosity::log) {
         Logger::info(
             std::format(
-                "training, subproc: {} / {}, started on {}",
+                "training, subproc: {} / {}, started on {} ({} running)",
                 *subproc_index + 1,
                 _training_args.size(),
-                subproc.device
+                subproc.device,
+                _running.size()
             )
         );
     }

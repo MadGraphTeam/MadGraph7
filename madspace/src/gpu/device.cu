@@ -2,6 +2,10 @@
 #include "device.hpp"
 #include "tensor.cuh"
 
+#if defined(__CUDACC__) && defined(MADSPACE_CUPTI_PM_SAMPLING)
+#include "cupti_activity_monitor.hpp"
+#endif
+
 using namespace madspace;
 using namespace madspace::gpu;
 using namespace madspace::kernels;
@@ -420,6 +424,37 @@ void AsyncGpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {
     check_error(gpuMemcpyAsync(
         target.data(), source.data(), source.byte_size(), gpuMemcpyDefault, _stream
     ));
+}
+
+std::optional<std::pair<std::size_t, std::size_t>> GpuDevice::memory_info() const {
+    activate();
+    std::size_t free, total;
+    check_error(gpuMemGetInfo(&free, &total));
+    return std::pair{free, total};
+}
+
+std::unique_ptr<DeviceActivityMonitor>
+GpuDevice::activity_monitor(std::string* error) const {
+#if defined(__CUDACC__) && defined(MADSPACE_CUPTI_PM_SAMPLING)
+    // e.g. for a profiler that needs the hardware counters itself
+    if (const char* setting = std::getenv("MADSPACE_GPU_ACTIVITY_MONITOR");
+        setting && (std::string(setting) == "off" || std::string(setting) == "0")) {
+        if (error) {
+            *error = "disabled by MADSPACE_GPU_ACTIVITY_MONITOR";
+        }
+        return nullptr;
+    }
+    return cupti_activity_monitor(_index, error);
+#else
+    if (error) {
+#ifdef __CUDACC__
+        *error = "madspace was built without the CUPTI headers";
+#else
+        *error = "not supported on HIP";
+#endif
+    }
+    return nullptr;
+#endif
 }
 
 extern "C" int device_count() {

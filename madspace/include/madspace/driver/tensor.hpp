@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -249,6 +250,23 @@ inline bool needs_zero_init(AllocHint hint) {
 }
 
 /**
+ * Measures how busy the compute units of a device are, from hardware counters
+ * sampled while the device runs, whichever process its work comes from.
+ * Obtained from @ref Device::activity_monitor; not thread-safe.
+ */
+class DeviceActivityMonitor {
+public:
+    virtual ~DeviceActivityMonitor() = default;
+    /// Read the samples collected since the previous call. Call it a few times
+    /// per second, so that the sampling buffers do not fill up.
+    virtual void update() = 0;
+    /// Fraction of the time the compute units (on a CUDA GPU, the SMs) were
+    /// active, averaged over them, over the samples read by @ref update since
+    /// the previous call; `std::nullopt` if there were none.
+    virtual std::optional<double> take_active_fraction() = 0;
+};
+
+/**
  * Compute backend a @ref Tensor's storage lives on.
  *
  * One instance per physical device (CPU, or a specific CUDA or HIP GPU);
@@ -294,6 +312,21 @@ public:
     virtual int device_index() const { return 0; }
     /// Make this device current for the calling thread.
     virtual void activate() const = 0;
+    /// Free and total memory of the device in bytes, over all processes;
+    /// `std::nullopt` for the CPU.
+    virtual std::optional<std::pair<std::size_t, std::size_t>> memory_info() const {
+        return std::nullopt;
+    }
+    /// A monitor of the load of the device, or `nullptr` if it cannot be
+    /// measured (on the CPU, without CUPTI, or with profiling restricted to
+    /// administrators, ...), with the reason in `error`.
+    virtual std::unique_ptr<DeviceActivityMonitor>
+    activity_monitor(std::string* error = nullptr) const {
+        if (error) {
+            *error = "not supported for this device type";
+        }
+        return nullptr;
+    }
     /// One Adam optimizer update step; see @ref AdamOptimizer.
     virtual void adam_step(
         const Tensor& gradient,

@@ -2870,6 +2870,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "target_occupancy",
             &MadnisParallelConfig::target_occupancy,
             pydoc::doc("MadnisParallelConfig::target_occupancy")
+        )
+        .def_readwrite(
+            "target_gpu_activity",
+            &MadnisParallelConfig::target_gpu_activity,
+            pydoc::doc("MadnisParallelConfig::target_gpu_activity")
+        )
+        .def_readwrite(
+            "gpu_memory_margin",
+            &MadnisParallelConfig::gpu_memory_margin,
+            pydoc::doc("MadnisParallelConfig::gpu_memory_margin")
         );
 
     py::classh<MultiMadnisTraining>(

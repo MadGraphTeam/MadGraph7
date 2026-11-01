@@ -407,6 +407,45 @@ if(COMPILE_CUDA)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
+    # SM activity from CUPTI PM sampling (CUDA 12.6+), for the scheduling of the
+    # MadNIS trainings; CUPTI is loaded at runtime, only its headers are needed
+    find_path(
+        CUPTI_INCLUDE_DIR cupti_pmsampling.h
+        HINTS
+            ${CUDAToolkit_LIBRARY_ROOT}/extras/CUPTI/include
+            ${CUDAToolkit_TARGET_DIR}/extras/CUPTI/include
+            ${CUDAToolkit_INCLUDE_DIRS}
+    )
+    find_library(
+        CUPTI_LIBRARY cupti
+        HINTS
+            ${CUDAToolkit_LIBRARY_ROOT}/extras/CUPTI/lib64
+            ${CUDAToolkit_TARGET_DIR}/extras/CUPTI/lib64
+            ${CUDAToolkit_LIBRARY_DIR}
+    )
+    if(CUPTI_INCLUDE_DIR)
+        message(STATUS "CUPTI PM sampling headers: ${CUPTI_INCLUDE_DIR}")
+        target_sources(madspace_cuda PRIVATE src/gpu/cupti_activity_monitor.cpp)
+        target_compile_definitions(madspace_cuda PRIVATE MADSPACE_CUPTI_PM_SAMPLING)
+        target_link_libraries(madspace_cuda PRIVATE ${CMAKE_DL_LIBS})
+        # the sampling runs in a process of its own, see cupti_activity_monitor.hpp
+        add_executable(madspace_gpu_monitor src/gpu/gpu_monitor_main.cpp)
+        set_property(TARGET madspace_gpu_monitor PROPERTY CXX_STANDARD 20)
+        target_include_directories(
+            madspace_gpu_monitor PRIVATE ${CUPTI_INCLUDE_DIR} ${CUDAToolkit_INCLUDE_DIRS}
+        )
+        if(CUPTI_LIBRARY)
+            target_compile_definitions(
+                madspace_gpu_monitor PRIVATE MADSPACE_CUPTI_LIBRARY_PATH="${CUPTI_LIBRARY}"
+            )
+        endif()
+        target_link_libraries(
+            madspace_gpu_monitor PRIVATE CUDA::cuda_driver ${CMAKE_DL_LIBS}
+        )
+        install(TARGETS madspace_gpu_monitor DESTINATION madspace/lib)
+    else()
+        message(STATUS "CUPTI PM sampling headers not found: no GPU activity monitor")
+    endif()
     install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 

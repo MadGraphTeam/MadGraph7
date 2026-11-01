@@ -49,6 +49,9 @@ public:
     DeviceType device_type() const override { return gpu_device_type; }
     int device_index() const override { return _index; }
     void activate() const override { check_error(gpuSetDevice(_index)); }
+    std::optional<std::pair<std::size_t, std::size_t>> memory_info() const override;
+    std::unique_ptr<DeviceActivityMonitor>
+    activity_monitor(std::string* error = nullptr) const override;
     void adam_step(
         const Tensor& gradient,
         Tensor& parameter,

@@ -334,6 +334,13 @@ struct MadnisParallelConfig {
     double check_interval = 5.0;
     /// Occupancy of a device below which another training starts on it.
     double target_occupancy = 0.9;
+    /// On a GPU whose activity can be measured (see
+    /// @ref Device::activity_monitor), the fraction of the time its SMs are
+    /// active below which another training starts on it.
+    double target_gpu_activity = 0.8;
+    /// On a GPU, another training only starts if the free memory is at least
+    /// this multiple of the largest memory use of one training seen so far.
+    double gpu_memory_margin = 1.5;
 };
 
 /**
@@ -349,8 +356,12 @@ struct MadnisParallelConfig {
  * `max_parallel_trainings` trainings over all devices. The occupancy of a
  * device is the fraction of the time the threads of its generator context are
  * busy, counting the thread pools of the optimizer contexts of its trainings
- * and, on a GPU, their optimizer steps too. The GPUs take the subprocesses
- * with the highest multiplicity first, the CPUs those with the lowest.
+ * and, on a GPU, their optimizer steps too. On a GPU, the fraction of the time
+ * its SMs are active must also be below `target_gpu_activity`, where it can be
+ * measured (from CUPTI PM sampling, see @ref Device::activity_monitor), and
+ * its free memory must leave room for another training. The GPUs take the
+ * subprocesses with the highest multiplicity first, the CPUs those with the
+ * lowest.
  */
 class MultiMadnisTraining {
 public:
@@ -431,6 +442,12 @@ private:
         std::int64_t finished_busy_ns = 0;
         std::int64_t window_busy_ns = 0;
         std::chrono::steady_clock::time_point last_start;
+        // GPU only: SM activity, nullptr if it cannot be measured
+        std::unique_ptr<DeviceActivityMonitor> activity_monitor;
+        // GPU only: memory used before the trainings, and the largest memory
+        // use of one training seen so far
+        std::size_t initial_used_memory = 0;
+        std::size_t training_memory = 0;
     };
     struct ProgressEvent {
         std::size_t subproc_index;
@@ -446,6 +463,8 @@ private:
     void start_training(std::size_t device_index);
     std::optional<std::size_t> next_subprocess(bool is_gpu) const;
     std::int64_t device_busy_ns(std::size_t device_index) const;
+    void set_up_devices();
+    bool memory_allows_training(std::size_t device_index);
     void run_training(Running& run);
     bool collect_finished();
     void stop_all();
