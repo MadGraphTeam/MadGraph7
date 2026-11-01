@@ -23,18 +23,24 @@
 //!   coefficients, canonical strings and inputs of every segment;
 //!   `catalogue.py`);
 //! - [`rename`]: symbol renaming on Symbolica's portable text (the canonical
-//!   stages of `assemble._canonical_stage`).
+//!   stages of `assemble._canonical_stage`);
+//! - [`kernel_terms`]: the exact kernels' term reading (parse, expansion and
+//!   factors of every kernel output; `reference_executor._kernel_terms`);
+//! - [`state_rename`]: symbol renaming in Symbolica's binary export (the
+//!   parameter program's canonical stage without a text round trip).
 
 pub mod arena;
 pub mod catalogue;
 pub mod cells;
 pub mod cycles;
 pub mod families;
+pub mod kernel_terms;
 pub mod networks;
 pub mod orders;
 pub mod rename;
 pub mod schedules;
 pub mod seeds;
+pub mod state_rename;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};

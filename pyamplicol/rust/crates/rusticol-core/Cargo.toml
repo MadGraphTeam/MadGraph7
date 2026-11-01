@@ -23,10 +23,12 @@ symbolica-runtime = ["dep:symbolica", "dep:pyamplicol"]
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
-loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
+loop-v2 = ["dep:brotli", "dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
 
 [dependencies]
 bincode.workspace = true
+# Symbolica's export stream (its own brotli version; `loop_v2::generate::state_rename`).
+brotli = { version = "8.0", optional = true }
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true

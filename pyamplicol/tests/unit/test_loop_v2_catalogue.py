@@ -938,15 +938,16 @@ def test_native_stages_give_the_oracle_plans_on_an_ew_rung(loop_gmu_ufo, loop_na
     """g g > t t~ with QCD and QED corrections on the G_mu UFO (the EW
     ladder's first rung, ``tools/loop_v2_generate._fixture_request``)
     generated and exported with the native stages (catalogue polynomials,
-    text canonical stages) and with their Python oracles: the same plan v4
-    JSON and the same native tree programs, saved evaluators included
+    text canonical stages, the exact kernels' term reading and the parameter
+    program's export renaming) and with their Python oracles: the same plan
+    v4 JSON and the same native tree programs, saved evaluators included
     (``snapshot.programs_digest``). About 5 min, 7 GB."""
 
     import argparse
     import json
     from pathlib import Path
 
-    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2 import assemble, native_trees, reference_executor
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.catalogue import native_catalogue_polynomials
     from pyamplicol.loops.v2.plan_export import export_plan
@@ -967,6 +968,8 @@ def test_native_stages_give_the_oracle_plans_on_an_ew_rung(loop_gmu_ufo, loop_na
         with (
             native_catalogue_polynomials(native),
             assemble.text_canonical_stage(native),
+            reference_executor.native_kernel_terms(native),
+            native_trees.native_parameter_stage(native),
         ):
             slice_ = LoopSlice.generate(compiled, request, loop_native)
             exported = export_plan(slice_, forward=False, trees=True, born_squared=True)
