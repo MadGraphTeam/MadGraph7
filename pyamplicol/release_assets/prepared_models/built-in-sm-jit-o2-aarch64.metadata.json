@@ -11,7 +11,7 @@
     "symbolica_version": "3.0.2",
     "symjit_application_abi": "symjit-application-storage-v4",
     "symjit_plane_application_abi": "pyamplicol-symjit-plane-application-v2",
-    "symjit_version": "2.27.3",
+    "symjit_version": "2.28.3",
     "ufo_model_loader_version": "1.0.1"
   },
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
