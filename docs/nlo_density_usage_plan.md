@@ -568,3 +568,24 @@ pi/2 lobe drops by about 0.03. In the narrow mass bins next to threshold
 (346-362 GeV) NLO - LO alternates in sign from row to row by up to 0.15:
 migration of real emission and counterterms between narrow bins at a
 kinematic edge; coarser bins are needed for a statement there.
+
+**High statistics (2026-11-01).** 6 independent seeds of each run,
+averaged (`histograms.py --sum --multiply=1/6`; the `@dy` columns combine
+in quadrature):
+- LO method: 6 x 1M events (Gamma_t = 0); LO FO: 6 x 3 x 4M points per
+  channel, sigma_LO = 465.480 +- 0.057 pb; NLO FO: 6 x 3 x 3M points per
+  channel, sigma_NLO = 691.36 +- 0.11 pb, no runtime trace warning.
+- LO FO vs LO method, 178 (theta, beta) cells: 15 parameters each,
+  chi2/ndf = 1377/1602, pulls of mean 0.01 and width 0.93, largest 2.6;
+  concurrence chi2/ndf = 161.8/178 (p = 0.80). (With the event covariance:
+  365/712; the FO side has no correlations between elements, so that
+  metric is only approximate.)
+- (theta, M_tt) map, 30 mass bins x 36 theta bins: the per-event-mean
+  panel of the events reproduces Fig. 5(a) of arXiv:2510.17730; the
+  concurrence of the bin-averaged rho agrees between the events and LO FO.
+  NLO - LO: -0.02 to -0.04 in the high-M, theta -> pi/2 lobe, +0.01 to
+  +0.02 at intermediate M and small theta, and about +0.1 in the two
+  lowest mass bins (346-350 GeV), the direction of the attractive
+  colour-singlet Coulomb correction; fixed order is not reliable there.
+- Element profiles (beta in [0.4,0.5]): rho(++,++) about 1.5% lower at
+  NLO, Re rho(+-,-+) lower by about 0.012 at theta = 90 degrees.
