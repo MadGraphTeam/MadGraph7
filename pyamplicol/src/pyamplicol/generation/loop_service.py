@@ -15,6 +15,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
@@ -1111,6 +1112,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2.artifact import generate_process, write_plan
+    from pyamplicol.loops.v2.blocks import born_dag_scope
 
     from .process_grouping import (
         GroupingBasis,
@@ -1138,6 +1140,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
     started = time.perf_counter()
     grouping = backend._run_config.process.flavor_blind
+    stack = ExitStack()
     try:
         with reporter.phase(
             "loop-model",
@@ -1152,6 +1155,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                 phase=phase,
             )
             # Members with a Born (m-sm Q2 (a)); the others are recorded.
+            # Their Born DAGs stay in the scope: each slice reuses its own
+            # (``blocks.born_dag_scope``; compiled once per process, R3).
+            stack.enter_context(born_dag_scope())
             context, requests, _dags, skipped = _born_members(backend, context)
         native = load_loop_native()
         compiled = context.resolved.compiled
@@ -1387,6 +1393,8 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         if isinstance(keyed, PyAmpliColError):
             raise keyed from error
         raise GenerationError(str(error)) from error
+    finally:
+        stack.close()
     reporter.finish_generation()
     return GenerationResult(
         output=result.output,

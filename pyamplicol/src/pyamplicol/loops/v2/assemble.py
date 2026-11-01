@@ -92,7 +92,9 @@ from . import ew_policy, generator_input
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
+    born_dag_scope,
     build_tree_blocks,
+    release_born_dag,
     requested_loop_blocks,
     vetoed_particle_ids,
     with_ward_kernels,
@@ -1316,47 +1318,61 @@ def _site_coefficient(compiled: Any, fixed: Mapping[str, Any], continuation: Any
 def _whole_rule_terms(closure: SiteClosure, site) -> tuple[WholeRuleTerm, ...]:
     """The replacement terms of a whole-rule site, closed on every block choice."""
 
-    from symbolica.community import hepkit
-
-    from pyamplicol.loops.physical_color import split_color_grades
-
-    from .colour import relabel, spenso_colour_network
-
     continuation = site.rule.whole_rule_continuation
     out = []
     for term in continuation.terms:
-        kernel = term.kernel
-        legs = {
-            hepkit.Symbols.half_edge()(half, 1).to_canonical_string(): index + 1
-            for index, half in enumerate(kernel.leg_half_edges)
-        }
-
-        def rename(label, legs=legs):
-            return ("leg", legs[label]) if label in legs else ("dummy", label)
-
-        network = relabel(spenso_colour_network(kernel.color.to_expression()), rename)
-        pairings = _metric_pairings(kernel.lorentz.to_expression(), legs)
-        grades = tuple(
-            (degree, expression)
-            for degree, (expression,) in split_color_grades(
-                (term.coefficient,), continuation.nc
-            )
-        )
-        parameters = tuple(
-            sorted(
-                {
-                    symbol.get_name().rsplit("::", 1)[-1]
-                    for _degree, expression in grades
-                    for symbol in expression.get_all_symbols(False)
-                    if symbol.get_name().startswith("UFO::")
-                }
-            )
+        network, pairings, grades, parameters = _whole_rule_parts(
+            closure, term, continuation.nc
         )
         for choice, sign, colour in closure.close(network, site.blocks):
             out.append(
                 WholeRuleTerm(choice, sign, colour, pairings, grades, parameters)
             )
     return tuple(out)
+
+
+def _whole_rule_parts(closure: SiteClosure, term: Any, nc: Any) -> tuple[Any, ...]:
+    """The site-independent parts of a whole-rule continuation term: its
+    colour network on UFO legs, metric pairings, N_c grades and UFO
+    parameters, formed once per closure (``SiteClosure.whole_rule_parts``)."""
+
+    found = closure.whole_rule_parts.get(id(term))
+    if found is not None and found[0] is term:
+        return found[1:]
+
+    from symbolica.community import hepkit
+
+    from pyamplicol.loops.physical_color import split_color_grades
+
+    from .colour import relabel, spenso_colour_network
+
+    kernel = term.kernel
+    legs = {
+        hepkit.Symbols.half_edge()(half, 1).to_canonical_string(): index + 1
+        for index, half in enumerate(kernel.leg_half_edges)
+    }
+
+    def rename(label, legs=legs):
+        return ("leg", legs[label]) if label in legs else ("dummy", label)
+
+    network = relabel(spenso_colour_network(kernel.color.to_expression()), rename)
+    pairings = _metric_pairings(kernel.lorentz.to_expression(), legs)
+    grades = tuple(
+        (degree, expression)
+        for degree, (expression,) in split_color_grades((term.coefficient,), nc)
+    )
+    parameters = tuple(
+        sorted(
+            {
+                symbol.get_name().rsplit("::", 1)[-1]
+                for _degree, expression in grades
+                for symbol in expression.get_all_symbols(False)
+                if symbol.get_name().startswith("UFO::")
+            }
+        )
+    )
+    closure.whole_rule_parts[id(term)] = (term, network, pairings, grades, parameters)
+    return network, pairings, grades, parameters
 
 
 def _metric_pairings(expression: Any, legs: Mapping[str, int]):
@@ -2091,13 +2107,21 @@ class LoopSlice:
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
 
+        tree_model = CompiledUFOModel(model)
+        # The Born DAG's compile arguments (``build_tree_blocks``; its summary
+        # recompiles it from them on demand, ``TreeBlocks.summarised``).
+        born_recipe = {
+            "max_coupling_orders": dict(request.born_orders),
+            "ignored_particle_ids": vetoed_particle_ids(request.particle_veto),
+        }
+
         def tree_program(reachable):
             blocks = build_tree_blocks(
                 process,
-                CompiledUFOModel(model),
-                born_coupling_orders=dict(request.born_orders),
+                tree_model,
+                born_coupling_orders=born_recipe["max_coupling_orders"],
                 block_coupling_orders=_block_order_bounds(request),
-                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+                ignored_particle_ids=born_recipe["ignored_particle_ids"],
                 reachability=(
                     None
                     if reachable is None
@@ -2132,6 +2156,9 @@ class LoopSlice:
                 from .selection import restrict_rows
 
                 blocks = restrict_rows(blocks, request.selection.helicities)
+            # The structural reads of the Born DAG are done: the slice keeps
+            # its summary (R3; the DAG is released, recompiled on demand).
+            blocks = blocks.summarised(tree_model, born_recipe)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
@@ -2168,16 +2195,21 @@ class LoopSlice:
                 data,
                 request.born_orders,
             )
-        blocks, compiled, table, generation, families = tree_program(reachable)
-        if reachable is not None and (
-            families.families != reachable.families
-            or families.scaleless != reachable.scaleless
-        ):
-            # The field-level table does not predict this process's tree
-            # blocks (e.g. electroweak currents the tree compiler does not
-            # build split closed-loop flavour classes, ``families.
-            # _closed_loop_classes``): every block current is built.
-            blocks, compiled, table, generation, families = tree_program(None)
+        # The Born DAG is compiled once (``blocks.born_dag_scope``): by the
+        # caller's preflight (the public route) or the first tree program;
+        # the slice keeps its summary and releases it from the scope.
+        with born_dag_scope():
+            blocks, compiled, table, generation, families = tree_program(reachable)
+            if reachable is not None and (
+                families.families != reachable.families
+                or families.scaleless != reachable.scaleless
+            ):
+                # The field-level table does not predict this process's tree
+                # blocks (e.g. electroweak currents the tree compiler does not
+                # build split closed-loop flavour classes, ``families.
+                # _closed_loop_classes``): every block current is built.
+                blocks, compiled, table, generation, families = tree_program(None)
+            release_born_dag(blocks.born_dag)
 
         def schedules():
             colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
