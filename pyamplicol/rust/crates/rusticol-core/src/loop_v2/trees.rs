@@ -693,6 +693,8 @@ struct BornFile {
     /// Per closure block, per Born row its state component start.
     blocks: Vec<Vec<Option<usize>>>,
     couplings: usize,
+    /// (Empty where a binary section holds them, `binary`.)
+    #[serde(default)]
     terms: Vec<TermFile>,
     /// Per amplitude (basis element, Born order): (component, exact factor).
     amplitudes: Vec<Vec<(usize, String)>>,
@@ -736,6 +738,8 @@ struct CountertermFile {
     born: Vec<(usize, usize, i32)>,
     /// Counterterm closure terms: contributions (coupling slot, ket
     /// component, weight re, weight im, sqrt(2) power).
+    /// (Empty where a binary section holds them, `binary`.)
+    #[serde(default)]
     terms: Vec<TermFile>,
     /// (kind "vector" or "born", bra Born order, vector or ket Born order,
     /// coupling slot, N_c grade, output, sector degree).

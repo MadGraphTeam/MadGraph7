@@ -235,6 +235,8 @@ _PROGRAM_KEYS = (
 TREE_STEPS = "interactions.steps"
 COUNTERTERM_STEPS = "counterterm_trees.interactions.steps"
 CELLS = "counterterms.cells"
+BORN_TERMS = "born.terms"
+COUNTERTERM_TERMS = "counterterms.terms"
 
 
 def _native() -> Any:
@@ -286,6 +288,12 @@ def decoded_program(
     if CELLS in sections:
         cells = [list(cell) for cell in native.tree_cells_list(sections[CELLS])]
         out["counterterms"] = _with_key(out["counterterms"], "cells", cells, "tensors")
+    if BORN_TERMS in sections:
+        terms = json.loads(native.tree_terms_json(sections[BORN_TERMS]))
+        out["born"] = _with_key(out["born"], "terms", terms, "couplings")
+    if COUNTERTERM_TERMS in sections:
+        terms = json.loads(native.tree_terms_json(sections[COUNTERTERM_TERMS]))
+        out["counterterms"] = _with_key(out["counterterms"], "terms", terms, "born")
     return out
 
 
@@ -1025,6 +1033,18 @@ def export_trees(
         steps = program["interactions"].pop("steps")
         sections[TREE_STEPS] = bytes(_native().tree_steps_from_json(_dumps(steps)))
         del steps
+    if NATIVE_SECTIONS:
+        # The closure terms (the Born's and the counterterm closure's, built
+        # in Python until A6's generation side is native) as sections once
+        # pruned: the program keeps no Python term record.
+        terms = program["born"].pop("terms")
+        sections[BORN_TERMS] = bytes(_native().tree_terms_from_json(_dumps(terms)))
+        if program.get("counterterms") is not None:
+            terms = program["counterterms"].pop("terms")
+            sections[COUNTERTERM_TERMS] = bytes(
+                _native().tree_terms_from_json(_dumps(terms))
+            )
+        del terms
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)

@@ -464,7 +464,7 @@ def _validate(args) -> dict[str, Any]:
         record["tree_program_mb"] = round(
             (_stored_size(trees) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
         )
-        record["counterterm_terms"] = len(trees.program["counterterms"]["terms"])
+        record["counterterm_terms"] = _counterterm_terms(trees)
         program = trees.program.get("counterterm_trees")
         if program is not None:
             # The tree recursion's counterterm program (WP2.2), natively.
@@ -776,3 +776,16 @@ def _counterterm_interactions(trees: Any) -> int:
         return int(load_loop_native().tree_steps_counts(section)[0])
     program = trees.program["counterterm_trees"]
     return sum(len(step["interactions"]) for step in program["interactions"]["steps"])
+
+
+def _counterterm_terms(trees: Any) -> int:
+    """Closure terms of a tree program's counterterm record (its binary term
+    section's count where it has one)."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.native_trees import COUNTERTERM_TERMS
+
+    section = dict(trees.sections).get(COUNTERTERM_TERMS)
+    if section is not None:
+        return int(load_loop_native().tree_terms_count(section))
+    return len(trees.program["counterterms"]["terms"])

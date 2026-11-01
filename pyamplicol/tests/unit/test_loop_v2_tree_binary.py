@@ -5,8 +5,8 @@ The tree program's large arrays are binary sections of a container
 (rusticol-core ``loop_v2::trees::binary``) instead of Python lists in one
 JSON text: the counterterm program's steps come from its native DAG as
 columns and are pruned natively, its overlap cells are formed natively as a
-table (``NativeCellTable.section``) and the trees' steps move to a section
-after their pruning; the trees' steps come from the native blocks DAG too
+table (``NativeCellTable.section``), and the trees' steps and the closure
+terms move to sections after their pruning; the trees' steps come from the native blocks DAG too
 (A5's tree part: no Python ``TreeRows``). The JSON program (``NATIVE_SECTIONS
 = False``: Python ``TreeRows`` and lists) is the oracle:
 
@@ -122,12 +122,15 @@ def _check(name, slices, monkeypatch, count) -> None:
         native_trees.TREE_STEPS,
         native_trees.COUNTERTERM_STEPS,
         native_trees.CELLS,
+        native_trees.BORN_TERMS,
+        native_trees.COUNTERTERM_TERMS,
     }
     # The sectioned arrays are never Python lists in the program.
     program = trees.program
     assert "steps" not in program["interactions"]
     assert "steps" not in program["counterterm_trees"]["interactions"]
     assert "cells" not in program["counterterms"]
+    assert "terms" not in program["counterterms"] and "terms" not in program["born"]
     # Decoded, the program is the oracle's byte for byte.
     assert trees.json() == reference.json()
     assert binary.exported.json() == oracle.exported.json()
