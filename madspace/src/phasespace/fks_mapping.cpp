@@ -1,6 +1,8 @@
 #include "madspace/phasespace/fks_mapping.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace madspace;
@@ -9,17 +11,23 @@ namespace {
 
 constexpr std::size_t INCOMING_COUNT = 2;
 
-const PhaseSpaceMapping& checked_born(const PhaseSpaceMapping& born) {
+const PhaseSpaceMapping&
+checked_born(const PhaseSpaceMapping& born, std::size_t j_fks) {
     if (born.mirror_beams()) {
         throw std::invalid_argument(
             "FKSMapping: the Born mapping must not mirror the beams, the emission "
             "needs the first incoming parton along +z"
         );
     }
-    if (!born.cuts().empty()) {
+    // A final-state emitter leaves s_hat of the Born unchanged, so a floor on
+    // it (from fks_sqrt_s_hat_min) bounds the real emission too. An incoming
+    // emitter raises s_hat, its Born has to cover everything below.
+    bool floor_only = j_fks >= INCOMING_COUNT && born.cuts().only_sqrt_s_min();
+    if (!born.cuts().empty() && !floor_only) {
         throw std::invalid_argument(
             "FKSMapping: the Born mapping must not have cuts, they belong to the "
-            "real emission and the counter-events"
+            "real emission and the counter-events (except a floor on sqrt(s_hat) "
+            "for a final-state emitter)"
         );
     }
     return born;
@@ -75,6 +83,83 @@ NamedVector<Type> fks_output_types(const PhaseSpaceMapping& born) {
 
 } // namespace
 
+double madspace::fks_sqrt_s_hat_min(
+    const Cuts& cuts, const std::vector<double>& outgoing_masses
+) {
+    std::size_t n = outgoing_masses.size();
+    double mass_sum = 0., mass2_sum = 0.;
+    for (double m : outgoing_masses) {
+        mass_sum += m;
+        mass2_sum += m * m;
+    }
+    double bound = std::max(mass_sum, cuts.sqrt_s_min());
+
+    // the transverse masses: in the partonic centre-of-mass frame sqrt(s_hat)
+    // is the sum of the energies, each object has at least its transverse
+    // mass. i can take any transverse momentum, so the objects need not
+    // balance.
+    auto pt_min = cuts.pt_min();
+    std::vector<double> transverse_mass(outgoing_masses);
+    if (pt_min.size() == n) {
+        for (std::size_t k = 0; k < n; ++k) {
+            transverse_mass.at(k) = std::hypot(outgoing_masses.at(k), pt_min.at(k));
+        }
+    }
+    double transverse_sum = 0.;
+    for (double m_t : transverse_mass) {
+        transverse_sum += m_t;
+    }
+    bound = std::max(bound, transverse_sum);
+
+    // the pair masses: a pair with m_ab >= cut has at least that energy, the
+    // other objects their transverse masses, so cut + their transverse
+    // masses. And the invariant mass of a sum of future-pointing momenta is at
+    // least that of any part, so all pairs together bound it with the
+    // invariant mass of the objects, m^2 = sum_{a<b} m_ab^2
+    // - (n - 2) sum_k m_k^2.
+    auto pair_bound = [&](std::size_t a, std::size_t b, double cut) {
+        return cut + transverse_sum - transverse_mass.at(a) - transverse_mass.at(b);
+    };
+    auto m_inv_min = cuts.m_inv_min();
+    if (m_inv_min.size() == n) {
+        double pair2_sum = 0.;
+        bool any_cut = false;
+        for (std::size_t a = 0; a < n; ++a) {
+            for (std::size_t b = a + 1; b < n; ++b) {
+                double cut = m_inv_min.at(a).at(b);
+                double pair = outgoing_masses.at(a) + outgoing_masses.at(b);
+                if (cut > 0.) {
+                    any_cut = true;
+                    bound = std::max(bound, pair_bound(a, b, cut));
+                    pair = std::max(pair, cut);
+                }
+                pair2_sum += pair * pair;
+            }
+        }
+        if (any_cut && n > 2) {
+            double mass2 = pair2_sum - (static_cast<double>(n) - 2.) * mass2_sum;
+            if (mass2 > 0.) {
+                bound = std::max(bound, std::sqrt(mass2));
+            }
+        }
+    }
+    // a pair mass cut that one of several pairs has to pass: the weakest pair
+    for (const auto& item : cuts.pair_mass_any_min()) {
+        double item_bound = std::numeric_limits<double>::infinity();
+        for (auto [a, b] : item.pairs) {
+            if (a >= n || b >= n) {
+                item_bound = 0.;
+                break;
+            }
+            item_bound = std::min(item_bound, pair_bound(a, b, item.min));
+        }
+        if (std::isfinite(item_bound)) {
+            bound = std::max(bound, item_bound);
+        }
+    }
+    return bound;
+}
+
 FKSMapping::FKSMapping(
     const PhaseSpaceMapping& born,
     std::size_t i_fks,
@@ -83,7 +168,7 @@ FKSMapping::FKSMapping(
 ) :
     Mapping(
         "FKSMapping",
-        fks_input_types(checked_born(born)),
+        fks_input_types(checked_born(born, j_fks)),
         fks_output_types(born),
         born.condition_types()
     ),

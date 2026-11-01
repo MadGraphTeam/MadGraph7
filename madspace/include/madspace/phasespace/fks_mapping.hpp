@@ -40,8 +40,10 @@ namespace madspace {
  * genps_fks.f leaves to the FKS distributions.
  *
  * Cuts belong to the real emission and the counter-events, not to the Born, so
- * the Born mapping must have none. Its `mirror_index` condition is not
- * supported: the emission needs the first incoming parton along @f$+z@f$.
+ * the Born mapping must have none, except a floor on @f$\sqrt{\hat s}@f$ for
+ * a final-state emitter (see fks_sqrt_s_hat_min). Its `mirror_index`
+ * condition is not supported: the emission needs the first incoming parton
+ * along @f$+z@f$.
  *
  * The FKS configurations of one Born, each an FKSMapping of the same Born
  * mapping, have the same inputs, outputs and conditions. As channels of a
@@ -152,6 +154,40 @@ private:
     std::vector<double> _born_masses;
     std::vector<double> _real_masses;
 };
+
+/**
+ * Lower bound on the partonic centre-of-mass energy of a real emission from
+ * the cuts on its Born-level objects.
+ *
+ * The cuts are those that the n final-state objects of the Born process (jets
+ * after clustering, leptons, ...) have to pass in the real emission and its
+ * counter-events, indexed like the Born. The bound holds for every real
+ * emission that passes them, whatever i does: it is the largest of
+ * - the cut on sqrt(s_hat) itself;
+ * - the sum of the transverse masses sqrt(m_k^2 + pt_min,k^2) of the
+ *   objects, without asking their transverse momenta to balance, which i can
+ *   take up (in the partonic centre-of-mass frame sqrt(s_hat) is the sum of
+ *   the energies, each object has at least its transverse mass, and a jet is
+ *   no lighter than the massless parton it stands for);
+ * - the floors of the pair mass cuts: a pair has at least its cut in energy
+ *   and the other objects their transverse masses, so cut + their transverse
+ *   masses; and since the invariant mass of a sum of future-pointing momenta
+ *   is at least that of any part, the invariant mass of the objects from all
+ *   pairs together, sum_{a<b} m_ab^2 - (n - 2) sum_k m_k^2;
+ * - the sum of the masses.
+ * Eta and delta R cuts give none.
+ *
+ * For a final-state emitter s_hat is that of the Born, and the bound is a
+ * floor of the Born mapping (a `sqrt_s` cut, which FKSMapping accepts there).
+ * For an incoming emitter the Born has less energy than the real emission, and
+ * the bound squared is the `s_hat_min` of the FKSMapping, as the
+ * tau_lower_bound of genps_fks.f.
+ *
+ * @param cuts             The cuts on the Born-level objects.
+ * @param outgoing_masses  The masses of the final-state particles of the
+ *                         Born, in the order of the cuts.
+ */
+double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_masses);
 
 /**
  * Phase space of a real emission in the FKS configurations of one Born, each

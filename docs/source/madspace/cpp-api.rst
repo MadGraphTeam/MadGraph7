@@ -89,6 +89,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology
+   cpp/fks_sqrt_s_hat_min
    cpp/initialize_vegas_grid
 
 Compute graph

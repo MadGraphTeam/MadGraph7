@@ -90,6 +90,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    python/PdfGrid
    python/Propagator
    python/Topology
+   python/fks_sqrt_s_hat_min
    python/initialize_vegas_grid
 
 Compute graph

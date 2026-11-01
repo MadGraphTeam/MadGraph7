@@ -1254,6 +1254,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("empty", &Cuts::empty, pydoc::doc("Cuts::empty"))
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
+        .def(
+            "only_sqrt_s_min",
+            &Cuts::only_sqrt_s_min,
+            pydoc::doc("Cuts::only_sqrt_s_min")
+        )
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
         .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
@@ -1627,6 +1632,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSMapping::counter_event_types,
             pydoc::doc("FKSMapping::counter_event_types")
         );
+
+    m.def(
+        "fks_sqrt_s_hat_min",
+        &fks_sqrt_s_hat_min,
+        py::arg("cuts"),
+        py::arg("outgoing_masses"),
+        pydoc::doc("fks_sqrt_s_hat_min")
+    );
 
     py::classh<FKSConfigurationMapping, Mapping>(
         m, "FKSConfigurationMapping", pydoc::doc("FKSConfigurationMapping")

@@ -76,6 +76,10 @@ public:
     );
     /// True when there are neither cut items nor a custom cut.
     bool empty() const { return _cut_data.empty() && !_custom_cut; }
+    /// True when the cuts are only lower bounds on the partonic centre-of-mass
+    /// energy (`sqrt_s` items without an upper bound) and there is no custom
+    /// cut, i.e. a floor on the energy the luminosity mapping samples.
+    bool only_sqrt_s_min() const;
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).

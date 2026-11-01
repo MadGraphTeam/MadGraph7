@@ -1,5 +1,7 @@
 #include "madspace/phasespace/cuts.hpp"
 
+#include <cmath>
+
 #include "madspace/compgraphs/type.hpp"
 #include "madspace/util.hpp"
 
@@ -80,6 +82,19 @@ bool binds_each_object(const Cuts::CutItem& item, std::size_t object_count) {
 }
 
 } // namespace
+
+bool Cuts::only_sqrt_s_min() const {
+    if (_custom_cut) {
+        return false;
+    }
+    for (auto& item : _cut_data) {
+        if (item.observable.observable() != Observable::obs_sqrt_s ||
+            std::isfinite(item.max)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 double Cuts::sqrt_s_min() const {
     double sqrt_s_min = 0.;
