@@ -1582,8 +1582,8 @@ mod tests {
         let uv_local = [1.0, -2.0, 0.0];
         let fields = [0.25, 0.75, 0.0];
         let finite = bare[0] + (uv_local[0] + fields[0]) + r2[0];
-        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, None);
-        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, None);
+        let uv = split_virtual(&Binary64, V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, None);
+        let ir = split_virtual(&Binary64, V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, None);
         // The finite part is the renormalised virtual's in every selection.
         assert_eq!(uv[0], finite);
         assert_eq!(ir[0], finite);
@@ -1601,8 +1601,8 @@ mod tests {
         // (the tree program at the IR regulator 0), so the renormalised
         // virtual's IR poles are bare_IR + CT_IR, with no remainder.
         let given = Some(([0.5, 0.0, 0.0], [1.0, -1.5, 0.0], [0.25, -1.0, 0.0]));
-        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, given);
-        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, given);
+        let uv = split_virtual(&Binary64, V2Poles::Uv, bare, bare_uv, r2, uv_local, fields, given);
+        let ir = split_virtual(&Binary64, V2Poles::Ir, bare, bare_uv, r2, uv_local, fields, given);
         assert_eq!(uv, [finite, 3.0, 0.0]);
         let parts = [
             (bare[1] - 3.0) + ((uv_local[1] + 1.5) + (fields[1] + 1.0)) + r2[1],
