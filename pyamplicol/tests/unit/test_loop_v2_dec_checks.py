@@ -198,12 +198,23 @@ def decay_rule_seven(model, compiled, native, row: str, indices, cache) -> dict:
                 {"accuracy": accuracy, **entry}
                 for entry in nc.dd_beyond(dd[accuracy], estimates)
             ]
+        lc_mpfr, full_mpfr = found["lc"][1]["mpfr"][j], found["full"][1]["mpfr"][j]
         report["points"].append(
             {
                 "index": index,
                 "errors": errors,
                 "dd_beyond": beyond,
                 "vanishing_gap": nc.vanishing_gap(expected, at_three, alpha_s),
+                # The largest relative LC - FC difference of the virtual: LC
+                # drops the subleading powers (C_F's -1/(2 N_c) at least), so
+                # the projections are not FC.
+                "lc_vs_full": float(
+                    max(
+                        abs(lc_mpfr.get(key, 0) - value) / abs(value)
+                        for key, value in full_mpfr.items()
+                        if key[0] == "virtual" and value
+                    )
+                ),
             }
         )
     return report
@@ -214,12 +225,10 @@ def _nc_run(model, native, tmp_path, row, indices):
 
     compiled = load_compiled_model(model)
     report = decay_rule_seven(model, compiled, native, row, indices, tmp_path)
-    print(nc._printable(report))
+    print(nc._printable(report), [p["lc_vs_full"] for p in report["points"]])
     failures = nc.verdict(report)
     assert not failures, (row, failures)
-    # LC differs from full colour (the 1/N_c^2 part of C_F is dropped), so
-    # the projections are not vacuous.
-    assert report["top"] is not None
+    assert all(point["lc_vs_full"] > 1e-3 for point in report["points"]), report
 
 
 @pytest.mark.parametrize(

@@ -86,7 +86,7 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 985,
+    "seconds": 1025,
     "rows": [
      "XX01",
      "XX01@public",
@@ -316,6 +316,8 @@
    "ignored_fixed_parameters": [
     "WTau"
    ],
+   "inputs": "native",
+   "catani": "engine",
    "madloop_r2_called": [
     "R2_txbW",
     "R2_txbW2Cp"
