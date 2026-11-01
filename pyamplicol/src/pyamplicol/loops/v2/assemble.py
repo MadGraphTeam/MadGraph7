@@ -71,7 +71,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Container, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal, localcontext
+from decimal import Decimal, getcontext, localcontext
 from fractions import Fraction
 from itertools import permutations, product
 from typing import Any, Literal, NamedTuple
@@ -335,6 +335,17 @@ class _Numbers:
 def _decimal_pi() -> Decimal:
     """pi at the active Decimal precision (Machin's formula)."""
 
+    return +_machin_pi(getcontext().prec)
+
+
+@functools.lru_cache(maxsize=16)
+def _machin_pi(digits: int) -> Decimal:
+    """pi with ``digits + 5`` working digits, once per precision. The series
+    stops at the first term that leaves the rounded sum unchanged (every
+    later term is smaller still): the same sum as running to Decimal
+    underflow, which took ~0.3 s per call (~7e5 terms) on every point of a
+    non-binary64 evaluation."""
+
     def arctan_inverse(x: int) -> Decimal:
         power = total = Decimal(1) / x
         x2, n, sign = x * x, 1, 1
@@ -343,14 +354,14 @@ def _decimal_pi() -> Decimal:
             n += 2
             sign = -sign
             term = power / n
-            if term == 0:
+            following = total + sign * term
+            if following == total:
                 return total
-            total += sign * term
+            total = following
 
     with localcontext() as context:
-        context.prec += 5
-        value = 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
-    return +value
+        context.prec = digits + 5
+        return 4 * (4 * arctan_inverse(5) - arctan_inverse(239))
 
 
 def _decimal_power(base: Decimal, exponent: int) -> Decimal:
@@ -1690,7 +1701,7 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     NLC need a colour declaration), the scale and alpha_s parameters,
     ``prepare_loop_request_model``, with a colour declaration
     ``prepare_declared_source_color``, the gauge refusal of an electroweak
-    request (``ew_policy.require_feynman_gauge``) and the listed refusal of a
+    request (``ew_policy.require_loop_gauge``) and the listed refusal of a
     veto of loop species on unlabelled counterterms
     (``refusals.require_labelled_counterterms_for_veto``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
@@ -1750,14 +1761,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         prepared, continuation = prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
-    if ew_policy.electroweak(
+    # The gauge scope (WP3.2 EWI-4b, DESIGN §6.8), refused here so that the
+    # dry run reports it: loops in which massive vectors can run (an
+    # electroweak request, whose gauge ``LoopSlice.generate`` switches, or a
+    # massive vector loop species) need 't Hooft-Feynman gauge; QCD loops of
+    # a unitary-gauge source keep the compiled gauge.
+    ew_policy.require_loop_gauge(
         compiled, request, prepared.structure.perturbative_species_orders
-    ):
-        # The gauge scope (WP3.2 EWI-4b), refused here so that the dry run
-        # reports it (a source without gauge 1 is refused by the loop
-        # preparation already, a bundle prepared in unitary gauge here);
-        # ``LoopSlice.generate`` switches the gauge.
-        ew_policy.require_feynman_gauge(compiled, request)
+    )
     # A veto reaches the counterterms through their loop-content labels
     # only: refused where the model's counterterm terms of a requested
     # correction are not all labelled (``refusals``, listed; WP3.2 EWI-5

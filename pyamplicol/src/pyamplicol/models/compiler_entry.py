@@ -646,7 +646,12 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
     """The recurrence colour structure of one stage of a contact split."""
 
     kind = split.decomposition_kind
-    if kind in ("two-structure-constants", "trilinear-identity", "identity-singlets"):
+    if kind in (
+        "two-structure-constants",
+        "trilinear-identity",
+        "identity-singlets",
+        "identity-trilinear",
+    ):
         # Each stage carries its own tensor: a structure constant or a
         # d-symbol (counterterm contacts, ``ct_color_flow``), an identity, or
         # nothing (a pair of colour singlets).
@@ -657,6 +662,8 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
         )
         if "Identity(" in source:
             return "color-identity"
+        if "T(" in source:
+            return "fundamental-generator"
         if "d(" in source:
             return "adjoint-symmetric-invariant"
         if "f(" in source:
@@ -1316,6 +1323,10 @@ def _compile_four_point_contact_kernels(
                     # The identity only passes the summed index on.
                     else split.outer_color_source
                     if split.decomposition_kind == "trilinear-identity"
+                    # The identity passes the pair's index to the summed one,
+                    # which the final trilinear takes.
+                    else split.final_color_source
+                    if split.decomposition_kind == "identity-trilinear"
                     # The pair closed into a singlet; the result takes the
                     # remaining leg's colour with weight 1 (recurrence:
                     # ``_contact_recurrence_color_contract``).

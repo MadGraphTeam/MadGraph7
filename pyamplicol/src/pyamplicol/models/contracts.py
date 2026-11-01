@@ -6,7 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias, cast
 
-from .._internal.physics.symbols import symbols
+from .._internal.physics.symbols import UFO_HEAD, symbols
+from ..api.errors import ModelError
 from ._physics_ir import (
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledCurrentOrderingRecord,
@@ -1102,6 +1103,23 @@ class CompiledClosureContractionRecord:
         )
 
 
+class ProcessGlobalUFOSymbol(ModelError, ValueError):
+    """A compiled model expression that retains a process-global ``UFO::``
+    head: every model expression must be regenerated through the model symbol
+    registry (``symbols.model(name)``). ``context`` names the expression and
+    ``expression`` is its text. A ``ModelError`` (typed through
+    ``ModelSource.compile``) and a ``ValueError``."""
+
+    def __init__(self, context: str, expression: str) -> None:
+        super().__init__(
+            f"{context} retains a process-global UFO symbol (in "
+            f"{expression[:200]!r}); regenerate it through the model symbol "
+            "registry"
+        )
+        self.context = context
+        self.expression = expression
+
+
 @dataclass(frozen=True)
 class CompiledModelIR:
     name: str
@@ -1137,11 +1155,10 @@ class CompiledModelIR:
         self._validate_contact_orbit_contracts()
         self._validate_tensor_orderings()
         for context, expression in self._executable_expressions():
-            if "UFO::" in expression:
-                raise ValueError(
-                    f"{context} retains a process-global UFO symbol; "
-                    "regenerate it through the model symbol registry"
-                )
+            # The ``UFO::`` namespace itself, never a model namespace whose
+            # name ends in ``UFO`` (``model_<dir>_UFO::...``).
+            if UFO_HEAD.search(expression):
+                raise ProcessGlobalUFOSymbol(context, expression)
 
     def _validate_particle_identities(self) -> None:
         by_name: dict[str, CompiledParticleRecord] = {}
@@ -2415,6 +2432,7 @@ __all__ = [
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
     "ModelGauge",
+    "ProcessGlobalUFOSymbol",
     "TensorAxisIR",
     "TensorIndexBindingIR",
     "TensorOrderingIR",

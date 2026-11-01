@@ -39,9 +39,10 @@ from pyamplicol import (
     ResolvedVirtualEvaluation,
     RunConfig,
     Runtime,
-    VirtualArithmeticSpec,
     VirtualEvaluation,
-    VirtualStabilityPolicy,
+    VirtualRescueLevel,
+    VirtualRescuePolicy,
+    VirtualRescueRecord,
     VirtualVerificationDiagnostic,
     WarmUpResult,
     benchmark,
@@ -345,25 +346,21 @@ def exercise_protocols(
 
 
 def exercise_virtual_stability(runtime: Runtime) -> None:
-    policy = VirtualStabilityPolicy(
+    policy = VirtualRescuePolicy(
         (
-            VirtualArithmeticSpec("arbitrary", 70),
-            VirtualArithmeticSpec("arbitrary", 90),
-        ),
-        "1e-8",
-        "1e-30",
+            VirtualRescueLevel("double", rotations=1, target=1e-6),
+            VirtualRescueLevel("arbitrary", 40, rotations=("euler:0.1,0.2,0.3",)),
+        )
     )
     value = runtime.evaluate(MOMENTA, mu_r2="1000000", stability=policy)
     if isinstance(value, VirtualEvaluation):
+        assert_type(value.rescue, tuple[VirtualRescueRecord, ...] | None)
+        assert_type(value.rescue_counts, dict[int | str, int] | None)
         assert_type(
             value.diagnostics[0].verification, VirtualVerificationDiagnostic | None
         )
     resolved = runtime.evaluate_resolved_with_prec(
-        MOMENTA,
-        40,
-        arithmetic="arbitrary",
-        mu_r2="1000000",
-        stability=policy,
+        MOMENTA, 40, arithmetic="arbitrary", mu_r2="1000000"
     )
     if isinstance(resolved, ResolvedVirtualEvaluation):
         assert_type(

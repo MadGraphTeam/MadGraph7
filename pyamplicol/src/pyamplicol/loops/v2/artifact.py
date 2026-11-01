@@ -103,9 +103,9 @@ from pyamplicol.api.virtual_results import (
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
     VirtualPoleParts,
+    VirtualRescuePolicy,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
-    VirtualStabilityPolicy,
     computes_poles,
     splits_poles,
 )
@@ -1102,6 +1102,11 @@ class V2VirtualRuntime:
     the member's momenta, colour histories, spin legs and helicity rows are
     read on the representative (generation proved the substitution,
     ``observables.admit_member``; ``_stored_member``).
+
+    ``stability`` (a ``VirtualRescuePolicy``) is the default rescue of
+    ``evaluate`` (``loops.v2.rescue``; off by default), used by every call
+    that names neither its own policy nor an arithmetic, a precision or
+    stability checks.
     """
 
     contribution_kind = "virtual"
@@ -1117,16 +1122,20 @@ class V2VirtualRuntime:
         arithmetic: str | None = None,
         precision: int | None = None,
         r2_strategy: str | None = None,
-        stability: VirtualStabilityPolicy | None = None,
+        stability: VirtualRescuePolicy | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
         from pyamplicol.loops.native import load_loop_native
         from pyamplicol.models.loading import CompiledModel
-        from pyamplicol.runtime.virtual import _NO_RESCUE, v2_r2_strategy
+        from pyamplicol.runtime.virtual import v2_r2_strategy
 
-        if stability is not None:
-            raise CompatibilityError(_NO_RESCUE)
+        from .rescue import rescue_policy
+
+        # A default policy owns the carriers: refused with load-time ones.
+        self._rescue = rescue_policy(
+            stability, arithmetic=arithmetic, precision=precision
+        )
         self._default_r2 = v2_r2_strategy(r2_strategy)
         self.default_precision = 16 if precision is None else _digits(precision)
         self.default_arithmetic = _arithmetic(arithmetic) or (
@@ -1414,7 +1423,12 @@ class V2VirtualRuntime:
                         "reduction-direction check, optionally rescaled; none "
                         "by default"
                     ),
-                    "rescue_available": False,
+                    # The built-in rescue (``loops.v2.rescue``): a
+                    # VirtualRescuePolicy per evaluate call or at load.
+                    "rescue_available": True,
+                    "default_rescue_levels": (
+                        None if self._rescue is None else len(self._rescue.levels)
+                    ),
                     "accuracy_established": False,
                     **(
                         {"conventions": self._conventions}
@@ -1456,46 +1470,111 @@ class V2VirtualRuntime:
         arithmetic: str | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
-        stability: VirtualStabilityPolicy | None = None,
+        stability: VirtualRescuePolicy | None = None,
         poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         on_failure: Literal["raise", "return"] = "raise",
     ) -> VirtualEvaluation:
+        """The virtual of every point in one carrier, or under a rescue
+        policy (``stability``, else the load-time default; ``loops.v2.
+        rescue``) level by level from the original exact inputs."""
+
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
+        from .rescue import rescue, rescue_policy
+
+        policy = rescue_policy(
+            stability,
+            default=self._rescue,
+            arithmetic=arithmetic,
+            precision=precision,
+            default_precision=self.default_precision,
+            stability_checks=stability_checks,
+        )
         if helicities or color_flows:
             # A leading-colour selection (``selection``): one summed output
             # of the stored resolved columns.
+            carrier_options = (
+                self._observable_options(precision, arithmetic, {})
+                if policy is None
+                else {}
+            )
             return self._observable_runtime().evaluate(
                 momenta,
                 helicities=helicities,
                 color_flows=color_flows,
                 mu_r2=mu_r2,
                 r2_strategy=r2_strategy,
-                stability=stability,
+                stability=policy,
                 poles=poles,
                 stability_checks=stability_checks,
                 on_failure=on_failure,
-                **self._observable_options(precision, arithmetic, {}),
+                **carrier_options,
             )
         selection, checks = v2_options(
             r2_strategy=r2_strategy,
-            stability=stability,
             poles=poles,
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
         # v2_options refused direct R2.
         r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
-        carrier, setting = self._carrier(arithmetic, precision)
+        carrier, setting = (
+            self._carrier(arithmetic, precision) if policy is None else (None, None)
+        )
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         if self._member is not None:
             points = [self._member.point(point) for point in points]
         with self._lock:
             parameters = dict(self._parameters)
-            results, failures = self._run(
-                points, scales, parameters, setting, selection, checks
-            )
+            if policy is None:
+                return self._evaluate_level(
+                    points,
+                    scales,
+                    parameters,
+                    cast(str, carrier),
+                    setting,
+                    r2,
+                    selection,
+                    checks,
+                    on_failure,
+                )
+
+            def level(indices: tuple[int, ...], rung: Any) -> VirtualEvaluation:
+                carrier, setting = self._carrier(rung.arithmetic, rung.precision)
+                return self._evaluate_level(
+                    [points[i] for i in indices],
+                    [scales[i] for i in indices],
+                    parameters,
+                    carrier,
+                    setting,
+                    r2,
+                    selection,
+                    rung.checks,
+                    "return",
+                )
+
+            return rescue(policy, len(points), level, on_failure=on_failure)
+
+    def _evaluate_level(
+        self,
+        points: list[list[list[str]]],
+        scales: list[str],
+        parameters: dict[str, str],
+        carrier: str,
+        setting: Any,
+        r2: R2Strategy,
+        selection: PoleSelection,
+        checks: VirtualStabilityChecks,
+        on_failure: str,
+    ) -> VirtualEvaluation:
+        """One batch of exact points in one carrier with one set of checks
+        (the whole ``evaluate`` without a rescue policy, and each level of
+        one)."""
+
+        results, failures = self._run(
+            points, scales, parameters, setting, selection, checks
+        )
         if failures and on_failure == "raise":
             index = min(failures)
             raise EvaluationError(
@@ -1516,7 +1595,10 @@ class V2VirtualRuntime:
         """One batch through the native executor in the pole mode ``poles``
         (``loops.v2.poles``): the per-point results (``None`` for a failed
         point) and the failures (a failed point fails alone,
-        ``plan_export.FailedPoints``)."""
+        ``plan_export.FailedPoints``; so do the points of a mu_R^2 at which a
+        counterterm coupling is not finite, ``isolate_scale_failures``)."""
+
+        from pyamplicol.runtime.virtual import isolate_scale_failures
 
         from .plan_export import FailedPoints
 
@@ -1528,22 +1610,26 @@ class V2VirtualRuntime:
             return self._run_per_scale(
                 points, scales, parameters, setting, poles, checks
             )
-        try:
-            return (
-                list(
-                    self._executor_for(poles).evaluate(
-                        points,
-                        scales,
-                        parameters=parameters,
-                        precision=setting,
-                        poles=poles.value,
-                        stability=checks.to_checks() if checks.enabled else None,
-                    )
-                ),
-                {},
-            )
-        except FailedPoints as failed:
-            return list(failed.results), dict(failed.failures)
+
+        def batch(indices: list[int]) -> tuple[list[Any], dict[int, list[str]]]:
+            try:
+                return (
+                    list(
+                        self._executor_for(poles).evaluate(
+                            [points[i] for i in indices],
+                            [scales[i] for i in indices],
+                            parameters=parameters,
+                            precision=setting,
+                            poles=poles.value,
+                            stability=checks.to_checks() if checks.enabled else None,
+                        )
+                    ),
+                    {},
+                )
+            except FailedPoints as failed:
+                return list(failed.results), dict(failed.failures)
+
+        return isolate_scale_failures(batch, scales)
 
     def _scale_partitioned(self, poles: PoleSelection) -> bool:
         """Whether a batch of mixed mu_R^2 runs per scale: the stored tree

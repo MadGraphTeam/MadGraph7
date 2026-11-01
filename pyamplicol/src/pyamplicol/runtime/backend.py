@@ -46,7 +46,7 @@ from pyamplicol.api.results import (
     TreeOrderEvaluation,
     WarmUpResult,
 )
-from pyamplicol.api.virtual_results import VirtualStabilityPolicy
+from pyamplicol.api.virtual_results import VirtualRescuePolicy
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
 from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import canonical_order
@@ -1895,7 +1895,7 @@ def load_runtime_backend(
     arithmetic: str | None = None,
     precision: int | None = None,
     r2_strategy: R2Strategy | str | None = None,
-    stability: VirtualStabilityPolicy | None = None,
+    stability: VirtualRescuePolicy | None = None,
 ) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery.
 
@@ -1913,8 +1913,8 @@ def load_runtime_backend(
     if r2_strategy is not None:
         options["r2_strategy"] = r2_strategy
     if stability is not None:
-        if not isinstance(stability, VirtualStabilityPolicy):
-            raise TypeError("stability requires a VirtualStabilityPolicy")
+        if not isinstance(stability, VirtualRescuePolicy):
+            raise TypeError("stability requires a VirtualRescuePolicy")
         options["stability"] = stability
     manifest_root = (
         path.parent if path.name == MANIFEST_NAME and path.is_file() else path

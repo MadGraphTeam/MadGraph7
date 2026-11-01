@@ -794,7 +794,7 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
     assert info["poles"] == ["all", "none", "uv", "ir"]
-    assert not info["rescue_available"]
+    assert info["rescue_available"] and info["default_rescue_levels"] is None
     execution = json.loads(
         (full_colour / "processes/uux_ddxg/execution.json").read_text()
     )
@@ -1131,15 +1131,12 @@ def test_correlated_and_resolved_calls_split_the_poles(full_colour):
 
 @pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
-    """Undeclared colour histories and spin classes, helicity selectors, direct
-    R2 and a rescue policy are refused; the Born metric ("born") and resolved
-    output need no declaration."""
+    """Undeclared colour histories and spin classes, helicity selectors and
+    direct R2 are refused (a rescue policy outside ``evaluate``:
+    ``test_loop_v2_rescue.py``); the Born metric ("born") and resolved output
+    need no declaration."""
 
     from pyamplicol import Runtime
-    from pyamplicol.api.virtual_results import (
-        VirtualArithmeticSpec,
-        VirtualStabilityPolicy,
-    )
 
     runtime = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
     point = POINT
@@ -1162,13 +1159,6 @@ def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
         ),
         lambda: runtime.evaluate([point], mu_r2="1000000", helicities=["h0"]),
         lambda: runtime.evaluate([point], mu_r2="1000000", r2_strategy="direct"),
-        lambda: runtime.evaluate(
-            [point],
-            mu_r2="1000000",
-            stability=VirtualStabilityPolicy(
-                (VirtualArithmeticSpec("arbitrary", 40),), "1e-8", "1e-30"
-            ),
-        ),
     ):
         with pytest.raises(CompatibilityError):
             call()
