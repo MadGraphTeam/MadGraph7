@@ -134,7 +134,9 @@ def test_scale_isolation_keeps_point_failures_and_other_errors():
         if any(scales[i].lower() == "1e-400" for i in indices):
             raise ValueError(f"loop v2 trees: {NOT_FINITE} (helper)")
         found = [f"value {i}" for i in indices]
-        failed = {k: ["lane 0: ImpreciseResult"] for k, i in enumerate(indices) if i == 2}
+        failed = {
+            k: ["lane 0: ImpreciseResult"] for k, i in enumerate(indices) if i == 2
+        }
         for k in failed:
             found[k] = None
         return found, failed
