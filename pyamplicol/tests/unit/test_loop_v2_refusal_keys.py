@@ -273,7 +273,6 @@ def _unpaired(raw):
     "key,change",
     [
         ("loop-model-declaration", {"raw": _retexed}),
-        ("feynman-gauge", {"metadata": {"gauge": [0]}}),
         ("tree-only-model", {"tree_only": True}),
         ("antiparticle-metadata", {"raw": _unpaired}),
     ],
@@ -281,8 +280,8 @@ def _unpaired(raw):
 def test_model_refusals_fire_in_the_dry_run(tmp_path, key, change):
     """A modified copy of loop_sm passed to the dry run: another
     declarations digest (no shipped profile: ``loop-model-declaration``), a
-    source without gauge 1 (``feynman-gauge``, model preparation), a
-    compiled model without its NLO sidecar (``tree-only-model``)."""
+    compiled model without its NLO sidecar (``tree-only-model``). (A source
+    without gauge 1: ``test_feynman_gauge_fires_where_the_loops_need_it``.)"""
 
     from pyamplicol.loops.shipped_profiles import shipped_loop_profile
 
@@ -300,6 +299,33 @@ def test_model_refusals_fire_in_the_dry_run(tmp_path, key, change):
         _card(tmp_path / "out", "u u~ > e- e+", loop=loop), tmp_path / "card.toml"
     ).plan(_processes("u u~ > e- e+"), model=model)
     _single_blocker(plan, key)
+
+
+@pytest.mark.loop_physics
+def test_feynman_gauge_fires_where_the_loops_need_it(tmp_path):
+    """Copies whose source declares only unitary gauge (``gauge = [0]``): a
+    QCD request on loop_sm is admitted, its loops carry no massive vector
+    and keep the compiled gauge (MF-GM-HC P2, ``ew_policy.require_loop_gauge``);
+    an electroweak request on loop_qcd_qed_sm is the listed ``feynman-gauge``
+    in the dry run."""
+
+    unitary = {"metadata": {"gauge": [0]}}
+    qcd = _modified(_compile("loop_sm"), **unitary)
+    plan = _generator(
+        _card(tmp_path / "qcd", "u u~ > e- e+"), tmp_path / "qcd.toml"
+    ).plan(_processes("u u~ > e- e+"), model=qcd)
+    assert plan.unsupported_features == ()
+    electroweak = _modified(_compile("loop_qcd_qed_sm"), **unitary)
+    plan = _generator(
+        _card(
+            tmp_path / "ew",
+            "u u~ > d d~",
+            model="loop_qcd_qed_sm",
+            orders=("QCD", "QED"),
+        ),
+        tmp_path / "ew.toml",
+    ).plan(_processes("u u~ > d d~"), model=electroweak)
+    assert "does not declare Feynman gauge" in _single_blocker(plan, "feynman-gauge")
 
 
 @pytest.mark.loop_physics

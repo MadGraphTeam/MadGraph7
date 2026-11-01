@@ -413,8 +413,8 @@ def build_covariant_structure(
     External parameter defaults never enter numerical caches. Source-resolved
     mass expressions preserve the dependency's structural-zero classification. This
     object is for graph/kernel construction; use its scalar program for numeric
-    binding, including diagnostics. Custom propagators and unspecified gauges
-    require separate certification and are rejected by this bounded adapter.
+    binding, including diagnostics. Custom propagators require separate
+    certification and are rejected by this bounded adapter.
     """
     from symbolica.community import hepkit as hep
     from ufo_model_loader.model import Propagator, SerializableParticle
@@ -422,14 +422,9 @@ def build_covariant_structure(
 
     if request_scope is not None:
         request_scope.require_raw(raw)
-    if 1 not in raw.metadata.get("gauge", ()):
-        from pyamplicol.loops.v2.refusals import LoopRequestUnsupportedValue
-
-        raise LoopRequestUnsupportedValue(
-            "feynman-gauge",
-            "the source model does not declare Feynman gauge (gauge = "
-            f"{list(raw.metadata.get('gauge', ()))})",
-        )
+    # The source's declared gauges are checked per request where its loops
+    # need 't Hooft-Feynman gauge (``ew_policy.require_loop_gauge``): QCD
+    # loops of a unitary-gauge source keep its compiled gauge.
     restriction = raw.metadata.get("restriction", {})
     if restriction.get("card") is not None and not restriction.get("applied", False):
         raise NotImplementedError(
