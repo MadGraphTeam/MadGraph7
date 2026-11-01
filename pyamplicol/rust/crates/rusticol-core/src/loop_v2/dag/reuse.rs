@@ -338,9 +338,24 @@ pub fn derive<D: ReuseDag>(
     order.sort_by_key(|id| (dag.mask(*id as usize).count_ones(), *id));
     let mut equivalences: Vec<Option<Equivalence>> = vec![None; n];
     let mut sources: FxMap<(u32, i32, i32), u32> = FxMap::default();
-    let mut classes = Classes::default();
+    // The classes per mask: a contract holds its mask, so a current only
+    // meets the classes of its own mask, which are dropped after the last
+    // current of that mask (MF-8G-1 item 4: the term vectors of one mask are
+    // held, not those of the whole DAG).
+    let mut last: FxMap<u64, usize> = FxMap::default();
+    for (position, current) in order.iter().enumerate() {
+        last.insert(dag.mask(*current as usize), position);
+    }
+    let mut classes: FxMap<u64, Classes> = FxMap::default();
     let mut grouped: Vec<(TermKey, Complex)> = Vec::new();
-    for current in order {
+    for position in 0..order.len() {
+        if position > 0 {
+            let previous = dag.mask(order[position - 1] as usize);
+            if last[&previous] == position - 1 {
+                classes.remove(&previous);
+            }
+        }
+        let current = order[position];
         let id = current as usize;
         let interactions = &members[offsets[id] as usize..offsets[id + 1] as usize];
         if dag.is_source(id) {
@@ -419,7 +434,11 @@ pub fn derive<D: ReuseDag>(
             }
             start = stop;
         }
-        equivalences[id] = Some(classes.classify(current, contracts[id], terms));
+        equivalences[id] = Some(classes.entry(dag.mask(id)).or_default().classify(
+            current,
+            contracts[id],
+            terms,
+        ));
     }
     equivalences
         .into_iter()
