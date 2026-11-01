@@ -1717,10 +1717,11 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
     ``LoopSlice.generate`` with the native DAG stage gives the oracle
     stage's S1, S4, S5, S8 (plan bytes, also with native trees), S1', S1'',
     S2 and P digests. Rule 9: the generation and the plan export decode no
-    native DAG; the native-trees export decodes exactly the remaining A5
-    consumer of the consumer table (the loop-block DAG's tree rows,
-    ``RUST-MIGRATION.md`` §3.A): the CT program's interaction program is
-    native (``NATIVE_PROGRAM``)."""
+    native DAG, and neither does the native-trees export: the CT program's
+    interaction program is native (``NATIVE_PROGRAM``) and so is the
+    loop-block DAG's, the last A5 consumer of the consumer table
+    (``RUST-MIGRATION.md`` §3.A; M-FINAL MF-8G-1, ``native_trees.
+    NATIVE_SECTIONS``: no Python ``TreeRows``)."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loading import load_compiled_model
@@ -1739,9 +1740,9 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
         compiled, request, loop_native, True
     )
     assert python_decodes == [0, 0, 0]
-    assert decodes == [0, 0, 1]
+    assert decodes == [0, 0, 0]
     assert isinstance(switched.blocks.blocks_dag, dag_input.NativeDag)
     program = switched.counterterm_program.blocks.blocks
     assert isinstance(program.blocks_dag, dag_input.NativeDag)
-    assert switched.blocks.blocks_dag.decoded and not program.blocks_dag.decoded
+    assert not switched.blocks.blocks_dag.decoded and not program.blocks_dag.decoded
     assert digests == expected
