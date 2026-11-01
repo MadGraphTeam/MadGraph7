@@ -3,7 +3,7 @@
 
 A process has one initial particle (a decay, MG5_aMC's ``t > b w+``) or two;
 decay chains and ``$`` stay refused (``madloop-syntax``); the one-loop decay
-is refused at the loop admission (``decay-process``, until MF-DEC-2). Tree
+is served since MF-DEC-2 (``test_loop_v2_dec_*.py``). Tree
 decays equal MG5_aMC 3.7.0 standalone (``tools/loop_reference/decay_tree_mg5.py``,
 fixtures ``tests/fixtures/loop/required/dec/tree_*.json``) at three exact
 rest-frame points with the same parameter card, and stay invariant under the
@@ -75,26 +75,17 @@ def test_external_leg_counts_are_one_or_two_initial_particles():
             require_external_leg_counts(initial, final)
 
 
-def test_one_loop_decays_are_refused_at_the_loop_admission():
-    """``decay-process`` left the process parser (tree decays are served) for
-    the loop admission, with MF-DEC-2 as its destination; the criterion is
-    the number of initial legs."""
+def test_one_loop_decays_are_no_listed_refusal():
+    """``decay-process`` left the process parser with MF-DEC-1 (tree decays
+    are served) and the loop admission with MF-DEC-2 (one-loop decays are
+    served, ``test_loop_v2_dec_*.py``): no listed rule reads the number of
+    initial legs."""
 
-    from pyamplicol.loops.v2.refusals import (
-        LOOP_ADMISSION_REFUSALS,
-        LoopRequestUnsupported,
-        require_scattering,
-    )
+    from pyamplicol.loops.v2.refusals import listed_refusal_keys
     from pyamplicol.processes.refusals import listed_process_refusal_keys
 
     assert "decay-process" not in listed_process_refusal_keys()
-    (refusal,) = [r for r in LOOP_ADMISSION_REFUSALS if r.key == "decay-process"]
-    assert "MF-DEC-2" in refusal.owner
-    require_scattering(2, "'p' (u u~ > d d~ g)")
-    with pytest.raises(LoopRequestUnsupported) as refused:
-        require_scattering(1, "'p' (t > b w+)")
-    assert refused.value.key == "decay-process"
-    assert str(refused.value).startswith("decay-process: 'p' (t > b w+)")
+    assert "decay-process" not in listed_refusal_keys()
 
 
 # --------------------------------------------------------------- kinematics

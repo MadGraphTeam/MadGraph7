@@ -86,27 +86,20 @@
   "jobs": [
    {
     "job": 1,
-    "seconds": 1500,
+    "seconds": 985,
     "rows": [
      "XX01",
      "XX01@public",
      "XX02",
      "XX03",
-     "XX04"
-    ],
-    "file": "tests/unit/test_loop_v2_dec_nightly.py"
-   },
-   {
-    "job": 2,
-    "seconds": 1500,
-    "rows": [
+     "XX04",
      "XX05",
      "XX06",
      "XX07",
      "XX07@public",
      "XX08"
     ],
-    "file": "tests/unit/test_loop_v2_dec_nightly_2.py"
+    "file": "tests/unit/test_loop_v2_dec_nightly.py"
    }
   ]
  },
@@ -194,6 +187,12 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "alphas": {},
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_dec_checks.py::test_decay_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[XX01]",
+     "tests/unit/test_loop_v2_dec_checks.py::test_decay_lc_and_nlc_at_the_nightly_points[XX01]"
+    ]
+   },
    "variants": [
     {
      "name": "public",
@@ -499,6 +498,11 @@
    },
    "compatibility": "gmu_particle_anti",
    "scale_parameter": "MU_R",
+   "delegated": {
+    "ff": [
+     "tests/unit/test_loop_v2_dec_checks.py::test_z_to_u_ubar_qcd_is_the_massless_quark_form_factor"
+    ]
+   },
    "madloop_r2_called": [
     "R2_UUZ_V2",
     "R2_UUZ_V5",
@@ -750,6 +754,11 @@
    "vanishing": [],
    "reference_tolerance": 1e-12,
    "alphas": {},
+   "delegated": {
+    "nc": [
+     "tests/unit/test_loop_v2_dec_checks.py::test_decay_lc_and_nlc_are_the_kept_powers_of_the_nc_scan[XX07]"
+    ]
+   },
    "variants": [
     {
      "name": "public",
