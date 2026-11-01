@@ -56,13 +56,15 @@ public generator, the tools, the tests and the artifacts all see them:
   vector's loop line has rank <= 1 (the unitary k k / M^2 term would break
   rank <= N). ``require_feynman_gauge`` refuses an electroweak request on a
   model that cannot be taken in that gauge (``ElectroweakGaugeError``: its
-  source declares no gauge 1, which the loop preparation refuses for every
-  loop request already, or a bundle prepared in unitary gauge);
-  ``prepare_request_model`` runs it, so the dry run reports it. QCD-only
-  requests keep the compiled model's gauge (unitary by default, their
-  validated trees); a model compiled in 't Hooft-Feynman gauge keeps it for
-  every request. The gauge of a generated request is its compiled model's
-  (``LoopSlice.compiled.ir.gauge``).
+  source declares no gauge 1, or a bundle prepared in unitary gauge);
+  ``require_loop_gauge`` (run by ``prepare_request_model``, so the dry run
+  reports it) calls it, and also refuses a massive vector loop species of a
+  request on a model not compiled in that gauge (MF-GM-HC P2). QCD-only
+  requests without massive vectors in the loops keep the compiled model's
+  gauge (unitary by default, their validated trees; also on a source that
+  declares only unitary gauge, e.g. HC_NLO_X0); a model compiled in
+  't Hooft-Feynman gauge keeps it for every request. The gauge of a
+  generated request is its compiled model's (``LoopSlice.compiled.ir.gauge``).
 
 The width query (``propagated_species``) is the current scan of
 ``artifact.coloured_widths``, for every species; a DAG that scans itself
