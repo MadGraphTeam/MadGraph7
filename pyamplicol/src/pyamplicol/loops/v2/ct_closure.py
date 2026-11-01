@@ -370,6 +370,17 @@ class CountertermBlocks:
                 dag_input.native_progress(
                     progress_callback, stage, (native.dag, len(native.blocks))
                 )
+                from .native_trees import NATIVE_SECTIONS, counterterm_slots
+
+                if NATIVE_SECTIONS and dag_input.NATIVE_PROGRAM:
+                    # M-FINAL MF-8G-1 item 4: the interaction program now,
+                    # while the columns exist; the export takes it without
+                    # rebuilding them (``dag_input.emit_counterterm_program``).
+                    dag_input.emit_counterterm_program(
+                        native.dag,
+                        recursion.model.lowered.compiled,
+                        counterterm_slots(recursion),
+                    )
                 native.dag.release()
                 return program
 

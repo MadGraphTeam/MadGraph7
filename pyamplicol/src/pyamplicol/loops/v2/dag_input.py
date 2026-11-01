@@ -2473,6 +2473,33 @@ def native_interaction_program(
     return record, (*saved["kernels"], *saved["propagators"]), steps
 
 
+# M-FINAL MF-8G-1 item 4 (under ``native_trees.NATIVE_SECTIONS``): the
+# counterterm program's interaction program is emitted while its native
+# DAG's columns exist, right after the build (``emit_counterterm_program``,
+# from ``ct_closure.CountertermBlocks.build``), and kept on the handle; the
+# export takes it (``native_counterterm_trees``) instead of rebuilding the
+# released columns, which cost the build's time and memory again over the
+# export's base (g g > 6g at leading colour: 511 s, ~57 GB).
+_EMISSION = ("counterterm-program-emission",)
+
+
+def emit_counterterm_program(dag: NativeDag, compiled: Any, slots: Sequence[Any]) -> None:
+    """Emit the counterterm program of ``dag`` (a native CT DAG whose columns
+    exist) with the slot table ``slots`` (``native_trees.counterterm_slots``)
+    and keep it on the handle (``_EMISSION``): its tree rows view,
+    interaction program (without steps), saved kernels and steps section,
+    as ``native_counterterm_trees`` returns them."""
+
+    rows, native = native_tree_rows(
+        dag, compiled, slot_orders=[slot[0] for slot in slots]
+    )
+    interactions, saved, steps = native_interaction_program(
+        rows, native, slots, section=True
+    )
+    del native
+    dag._answers[_EMISSION] = (rows, interactions, saved, steps)
+
+
 def native_counterterm_trees(
     program: Any, *, section: bool = False
 ) -> tuple[Any, ...] | None:
@@ -2490,6 +2517,22 @@ def native_counterterm_trees(
     if not NATIVE_PROGRAM or type(dag) is not NativeDag:
         return None
     slots = counterterm_slots(program.recursion)
+    emitted = dag._answers.get(_EMISSION) if section else None
+    if emitted is not None:
+        # Emitted at the build (item 4): no rebuild. The interaction record
+        # is copied (the export's pruning edits its kernel lists).
+        import copy
+
+        rows, interactions, saved, steps = emitted
+        return (
+            rows,
+            rows.slots,
+            rows.momentum_slots,
+            rows.source_fill,
+            copy.deepcopy(interactions),
+            saved,
+            steps,
+        )
     released = dag.released
     rows, native = native_tree_rows(
         dag,

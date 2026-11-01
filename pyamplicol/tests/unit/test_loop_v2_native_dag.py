@@ -1268,11 +1268,22 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     dag = program.blocks.blocks.blocks_dag
     assert type(dag) is dag_input.NativeDag
     dag.release()
+    # Under ``native_trees.NATIVE_SECTIONS`` the build emitted the program
+    # while its columns existed (MF-8G-1 item 4): no rebuild; the rebuild
+    # path (no emission) gives the same parts.
+    emitted = dag._answers.get(dag_input._EMISSION) is not None
     before = (dag_input.decode_count(), dag_input.rebuild_count())
     native = _CountertermTrees.of(program, 1234)
     assert dag_input.decode_count() == before[0]
-    assert dag_input.rebuild_count() == before[1] + 1
+    assert dag_input.rebuild_count() == before[1] + (0 if emitted else 1)
     assert dag.released and not dag.decoded
+    if emitted:
+        kept = dag._answers.pop(dag_input._EMISSION)
+        rebuilt = _CountertermTrees.of(program, 1234)
+        dag._answers[dag_input._EMISSION] = kept
+        assert dag_input.rebuild_count() == before[1] + 1 and dag.released
+        assert json.dumps(rebuilt.record) == json.dumps(native.record)
+        assert (rebuilt.saved, rebuilt.steps) == (native.saved, native.steps)
     oracle = _CountertermTrees.of(python, 1234)
     assert json.dumps(native.record) == json.dumps(oracle.record)
     assert snapshot.counterterm_trees_digest(native) == (

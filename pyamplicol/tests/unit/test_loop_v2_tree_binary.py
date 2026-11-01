@@ -97,10 +97,17 @@ def _executors(slice_, monkeypatch) -> tuple[NativeExecutor, NativeExecutor]:
 
     from pyamplicol.loops.v2 import native_trees
 
+    from pyamplicol.loops.v2 import dag_input
+
     monkeypatch.setattr(native_trees, "NATIVE_SECTIONS", True)
     slice_._cache.pop("tree-rows", None)
+    rebuilds = dag_input.rebuild_count()
     binary = NativeExecutor(slice_, forward=False, inputs="native")
     assert "tree-rows" not in slice_._cache
+    # The counterterm program was emitted at its build (item 4): only the
+    # loop-block DAG's released columns are rebuilt for the trees' program.
+    assert dag_input.rebuild_count() == rebuilds + 1
+    assert slice_.counterterm_program.blocks.blocks.blocks_dag.released
     monkeypatch.setattr(native_trees, "NATIVE_SECTIONS", False)
     oracle = NativeExecutor(slice_, forward=False, inputs="native")
     assert "tree-rows" in slice_._cache
