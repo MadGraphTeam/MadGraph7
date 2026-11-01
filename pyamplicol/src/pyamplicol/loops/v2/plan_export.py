@@ -1430,14 +1430,19 @@ class NativeExecutor:
         if found is None:
             # Another carrier or lane count shares the loaded plan, tree
             # program and seed FFT of an executor built already
-            # (``V2Executor.derive``): each costs its own runtime only.
+            # (``V2Executor.derive``; one of the same carrier first, whose
+            # tree runtime it shares too): each costs its own runtime only.
             native_trees = self.inputs == "native" and arithmetic != "exact"
             fourier = (
                 arithmetic != "exact"
                 and self.contraction != "direct"
                 and self.exported.fourier is not None
             )
-            for base in self._native.values():
+            built = sorted(
+                self._native.items(),
+                key=lambda item: item[0][:2] != (arithmetic, digits),
+            )
+            for _key, base in built:
                 if (base.has_trees or not native_trees) and (
                     base.fourier is not None or not fourier
                 ):

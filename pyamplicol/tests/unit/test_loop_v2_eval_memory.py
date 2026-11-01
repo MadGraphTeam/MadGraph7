@@ -133,7 +133,9 @@ def test_memory_bounds_are_bitwise_the_unbounded_run(executors, name, poles):
     options = {"poles": poles, "check": True, "rescale": True}
     reference = _values(executor.evaluate(inputs, **options))
     for bounds in BOUNDS:
-        assert _values(executor.evaluate(inputs, **options, **bounds)) == reference, bounds
+        assert _values(executor.evaluate(inputs, **options, **bounds)) == reference, (
+            bounds
+        )
 
 
 @pytest.mark.loop_physics
@@ -229,4 +231,3 @@ def test_loop_side_sources_stream_bitwise(loop_sm_compiled_model, loop_native):
     reference = _values(executor.evaluate(inputs, poles="all"))
     for bounds in BOUNDS:
         assert _values(executor.evaluate(inputs, poles="all", **bounds)) == reference
-
