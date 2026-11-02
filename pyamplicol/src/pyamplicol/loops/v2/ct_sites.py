@@ -1046,6 +1046,8 @@ class SiteClosure:
         self._colours: dict[tuple, ConnectedColorTensor] = {}
         # (UFO colour, attached fields) -> its colour network.
         self._vertex_networks: dict[tuple, ColourNetwork] = {}
+        # A whole-rule colour network -> its short colour key (``close``).
+        self._network_keys: dict[ColourNetwork, tuple[str, int]] = {}
         # Per whole-rule continuation term (by id, with the term kept alive):
         # its colour network, metric pairings, N_c grades and parameters
         # (``assemble._whole_rule_terms``), the same on every site.
@@ -1070,6 +1072,9 @@ class SiteClosure:
         ):
             raise ValueError("closures of different processes or models")
         self._colours = other._colours
+        # Their keys: whole-rule networks' short keys index the shared cache.
+        self._network_keys = other._network_keys
+        self._vertex_networks = other._vertex_networks
         if self._conjugates is None:
             self._conjugates = other._conjugates
 
@@ -1468,14 +1473,20 @@ class SiteClosure:
             options.append(rows)
         sign = self._root_sign(attachments)
         choices = list(product(*options))
-        self.prime_colours(((network, c) for c in choices), lambda key: key)
+        # The network's colour key, hashed once: a short id per distinct
+        # network (it is large; every choice's cache key holds it).
+        key = self._network_keys.get(network)
+        if key is None:
+            key = self._network_keys[network] = ("network", len(self._network_keys))
+        self.prime_colours(((key, c) for c in choices), lambda _key: network)
+        colours = self._colours
         out = []
         for choice in choices:
             wick = 1
             for block in choice:
                 wick *= block.wick_sign
             out.append(
-                (choice, sign * wick, self._colours[(network, *(b.colour_flow for b in choice))])
+                (choice, sign * wick, colours[(key, *(b.colour_flow for b in choice))])
             )
         return tuple(out)
 

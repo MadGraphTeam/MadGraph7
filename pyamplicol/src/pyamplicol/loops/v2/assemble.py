@@ -2620,6 +2620,7 @@ class LoopSlice:
         their virtual sector degrees: a skeleton live in any table is kept.
         """
 
+        observables = tuple(observables)
         accuracy = self.request.accuracy
         selection = self.request.selection
         # A colour-flow selection's Born basis is its flows' tensors
@@ -2651,7 +2652,15 @@ class LoopSlice:
             )
 
         keep = own
-        if ring_aware:
+        if not ring_aware:
+            # The native prune liveness of the seed stage that read the
+            # complete build (B1, ``native_seeds.prune_keep``): the same flags
+            # as ``own`` without a Python callback per skeleton; None (a
+            # table without such a stage, the poles companion's) keeps it.
+            from . import native_seeds
+
+            keep = native_seeds.prune_keep(self, observables) or own
+        else:
             # The selected flows' basis elements only: a skeleton is kept
             # when its ring (``SkeletonView`` readings, rotations and the
             # reflection) is live in the plan's reading of that ring, whose
@@ -3001,6 +3010,8 @@ class LoopSlice:
             return found
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
         index = {tensor: b for b, tensor in enumerate(self.basis.tensors)}
+        # Each literal tensor's basis element once (Born terms share them).
+        element: dict[Any, int] = {}
         out: dict[tuple[int, Orders], set[int]] = defaultdict(set)
         for order, terms in self.born_terms.items():
             for term in terms:
@@ -3008,7 +3019,11 @@ class LoopSlice:
                     g for g, _c in layout.get((term.entry.coupling.name, 0), ())
                 }
                 for item in term.colour.terms:
-                    b = index[_single(item.tensor, self.basis.legs)]
+                    b = element.get(item.tensor)
+                    if b is None:
+                        b = element[item.tensor] = index[
+                            _single(item.tensor, self.basis.legs)
+                        ]
                     out[b, order].update(item.nc_power + g for g in couplings)
         self._cache["born-grades"] = out
         return out

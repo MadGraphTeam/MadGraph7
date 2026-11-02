@@ -625,15 +625,17 @@ class CountertermClosure:
                 from .assemble import _whole_rule_terms
 
                 batch.flush()
+                component, orders = COMPONENT_BY_KIND[site.kind], site.orders
+                multiplicity = len(site.alternatives)
                 terms.extend(
                     ClosureTerm(
                         term,
                         ROOT_COUNTERTERM,
-                        COMPONENT_BY_KIND[site.kind],
+                        component,
                         0,
-                        site.orders,
+                        orders,
                         None,
-                        multiplicity=len(site.alternatives),
+                        multiplicity=multiplicity,
                     )
                     for term in _whole_rule_terms(closure, site)
                 )
