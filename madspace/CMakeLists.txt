@@ -237,6 +237,7 @@ add_library(
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp
+    src/phasespace/fks_limits.cpp
     src/phasespace/fks_mapping.cpp
     src/phasespace/fks_radiation.cpp
     src/phasespace/fks_sector.cpp
@@ -299,8 +300,10 @@ add_library(
     include/madspace/phasespace/topology.hpp
     include/madspace/phasespace/t_propagator_mapping.hpp
     include/madspace/phasespace/color_ordered_mapping.hpp
+    include/madspace/phasespace/fks_limits.hpp
     include/madspace/phasespace/fks_mapping.hpp
     include/madspace/phasespace/fks_radiation.hpp
+    include/madspace/phasespace/fks_sector.hpp
     include/madspace/phasespace/phasespace.hpp
     include/madspace/phasespace/multichannel.hpp
     include/madspace/phasespace/madnis.hpp

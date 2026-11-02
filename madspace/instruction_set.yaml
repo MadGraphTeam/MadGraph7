@@ -2847,6 +2847,42 @@ fks_sector_function:
   vectorized: False
   desc: "FKS sector function S_ij of fks_Sij.f, 1 / sum_kl d_ij / d_kl over the FKS pairs (k, l) of the real process with d_kl = (E_k E_l / (sqrt_s / 2)^2)^fks_a (1 - beta_k beta_l cos theta_kl)^fks_b, times h_damp(E_i / (E_i + E_j)) for a final-state pair (i, j) of two gluons or photons. Energies and angles are those in the partonic centre-of-mass frame of the momenta, from invariants. i enters with the direction of p_i_hat and the energy of its momentum in p, so that at a soft counter-event the pairs without i drop out. As in fks_Sij.f, S_ij is zero where an energy or the angle of a pair in a denominator falls below 1e-8."
 
+fks_eikonals:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of the soft counter-event, in the order of the real process of the configuration of the event, in any frame"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, which gives its direction where i is soft"
+    - name: y
+      type: [float]
+      desc: "cosine of the angle between i and j in the partonic centre-of-mass frame"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: fks_j
+      type: [int, single, c]
+      desc: "position of j in the real process of each configuration"
+    - name: pair_count
+      type: [int, single, c]
+      desc: "number of pairs (m, n) of each configuration"
+    - name: pair_m
+      type: [int, single, c, k]
+      desc: "position of m of each pair in the real process"
+    - name: pair_n
+      type: [int, single, c, k]
+      desc: "position of n of each pair in the real process"
+    - name: masses
+      type: [float, single, c, n]
+      desc: "masses of the particles of the real process of each configuration"
+  outputs:
+    - name: eik
+      type: [float, k]
+      desc: "reduced eikonal factor of each pair, zero past the pairs of the configuration"
+  vectorized: False
+  desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic centre-of-mass frame, so that the factors are finite at y = 1. With the colour-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element."
+
 fks_beam_boost:
   inputs:
     - name: p

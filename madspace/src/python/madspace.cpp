@@ -1726,6 +1726,49 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSKinematics::mapping")
         );
 
+    py::classh<FKSEikonals, FunctionGenerator>(
+        m, "FKSEikonals", pydoc::doc("FKSEikonals")
+    )
+        .def(
+            py::init<
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const nested_vector3<std::size_t>&,
+                const nested_vector2<double>&>(),
+            py::arg("i_fks"),
+            py::arg("j_fks"),
+            py::arg("fks_j_from_i"),
+            py::arg("masses"),
+            pydoc::doc("FKSEikonals::FKSEikonals")
+        )
+        .def(
+            "configuration_count",
+            &FKSEikonals::configuration_count,
+            pydoc::doc("FKSEikonals::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSEikonals::particle_count,
+            pydoc::doc("FKSEikonals::particle_count")
+        )
+        .def(
+            "max_pair_count",
+            &FKSEikonals::max_pair_count,
+            pydoc::doc("FKSEikonals::max_pair_count")
+        )
+        .def(
+            "pairs",
+            &FKSEikonals::pairs,
+            py::arg("index"),
+            pydoc::doc("FKSEikonals::pairs")
+        )
+        .def(
+            "born_pairs",
+            &FKSEikonals::born_pairs,
+            py::arg("index"),
+            pydoc::doc("FKSEikonals::born_pairs")
+        );
+
     py::classh<FKSSectorFunction, FunctionGenerator>(
         m, "FKSSectorFunction", pydoc::doc("FKSSectorFunction")
     )

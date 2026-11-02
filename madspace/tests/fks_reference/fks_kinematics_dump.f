@@ -91,6 +91,9 @@ c that make_fks_reference.py parses.
       common/sctests/softtest,colltest
       double precision ran2,fks_Sij,s_ev,s_cnt(0:2)
       external ran2,fks_Sij
+      integer neik,mm,nn,eik_m(nexternal*nexternal)
+     &     ,eik_n(nexternal*nexternal)
+      double precision eik(nexternal*nexternal)
       character*24 fmt
       parameter (fmt='(a,1x,*(es25.17e3,1x))')
 
@@ -205,6 +208,30 @@ c for the collinear ones of a massive emitter)
                endif
             endif
             write (*,fmt) 'SIJ',s_ev,(s_cnt(k),k=0,2)
+c The reduced eikonal factors at the soft counter-event, for the pairs
+c (m, n) of sbornsoft in its order, as sbornsoft calls eikonal_reduced
+c (none where the soft counter-event is not generated)
+            neik=0
+            if (jac_full.gt.0d0.and.jac_full_cnt(0).gt.0d0) then
+               call set_cms_stuff(0)
+               do k=1,fks_j_from_i(i_fks,0)
+                  do j=1,k
+                     mm=fks_j_from_i(i_fks,k)
+                     nn=fks_j_from_i(i_fks,j)
+                     if ((mm.ne.nn .or. emass(mm).ne.0d0) .and.
+     &                    nn.ne.i_fks .and. mm.ne.i_fks) then
+                        neik=neik+1
+                        eik_m(neik)=mm
+                        eik_n(neik)=nn
+                        call eikonal_reduced(p1_cnt(0,1,0),mm,nn,i_fks
+     &                       ,j_fks,0d0,y_ij_fks_ev,eik(neik))
+                     endif
+                  enddo
+               enddo
+            endif
+            write (*,'(a,1x,*(i0,1x))') 'EIKPAIRS',neik,(eik_m(k)
+     &           ,eik_n(k),k=1,neik)
+            write (*,fmt) 'EIK',(eik(k),k=1,neik)
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts

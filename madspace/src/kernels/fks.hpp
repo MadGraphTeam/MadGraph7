@@ -1151,5 +1151,58 @@ KERNELSPEC void kernel_fks_sector_function(
     s = hfact / inverse;
 }
 
+// Reduced eikonal factors of eikonal_reduced (fks_singular.f) for the pairs
+// (m, n) of the configuration: (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n
+// p_i_hat)), with (p_j p_i_hat) / (1 - y) = sqrt_s E_j / 2 for a massless j,
+// which is finite at y = 1. Entries past the pairs of the configuration are
+// zero.
+template <typename T>
+KERNELSPEC void kernel_fks_eikonals(
+    FIn<T, 2> p,
+    FIn<T, 1> p_i_hat,
+    FIn<T, 0> y,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_j,
+    IIn<T, 1> pair_count,
+    IIn<T, 2> pair_m,
+    IIn<T, 2> pair_n,
+    FIn<T, 2> masses,
+    FOut<T, 1> eik
+) {
+    std::size_t c = single_index(index);
+    std::size_t jj = single_index(fks_j[c]);
+    std::size_t count = single_index(pair_count[c]);
+    FVal<T> mj = masses[c][jj];
+    bool massless_j = mj == 0.;
+    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
+    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    auto i_hat = load_mom<T>(p_i_hat);
+    FVal<T> one_minus_y = 1. - FVal<T>(y);
+    for (std::size_t k = 0; k < eik.size(); ++k) {
+        if (k >= count) {
+            eik[k] = 0.;
+            continue;
+        }
+        std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
+        auto pm = load_mom<T>(p[m]), pn = load_mom<T>(p[n]);
+        auto dot_nm = ldot<T>(pn, pm);
+        FVal<T> dot_mi, dot_ni, fact;
+        if ((m != jj && n != jj) || !massless_j) {
+            dot_mi = ldot<T>(pm, i_hat);
+            dot_ni = ldot<T>(pn, i_hat);
+            fact = one_minus_y;
+        } else if (m == jj) {
+            dot_ni = ldot<T>(pn, i_hat);
+            dot_mi = 0.5 * ldot<T>(pm, p_tot);
+            fact = 1.;
+        } else {
+            dot_ni = 0.5 * ldot<T>(pn, p_tot);
+            dot_mi = ldot<T>(pm, i_hat);
+            fact = 1.;
+        }
+        eik[k] = dot_nm / (dot_ni * dot_mi) * fact;
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

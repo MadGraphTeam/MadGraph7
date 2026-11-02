@@ -27,7 +27,7 @@ objects, the configurations get the lower bound on the partonic energy that
 the cuts imply (see fks_sqrt_s_hat_min): a floor of the Born mapping for a
 final-state emitter, s_hat_min for an incoming one. fks_sector_function gives
 the sector functions S_ij of the configurations, from the FKS pairs of their
-real processes.
+real processes, and fks_eikonals the eikonal factors of their soft limits.
 """
 
 import json
@@ -37,6 +37,7 @@ from ._madspace_py import (
     CutItem,
     Cuts,
     FKSConfigurationMapping,
+    FKSEikonals,
     FKSMapping,
     FKSSectorFunction,
     Observable,
@@ -200,6 +201,32 @@ def real_masses(born_masses, configuration):
     return masses[:i_fks] + [0.0] + masses[i_fks:]
 
 
+def configuration_tables(born, configurations):
+    """i_fks, j_fks, fks_j_from_i (0-based), colours, PDG codes and masses of
+    the real processes of the configurations of a Born, in their order."""
+    born_pdgs = list(configurations["born_pdgs"])
+    born_masses = list(born.external_masses())
+    tables = {
+        key: []
+        for key in ("i_fks", "j_fks", "fks_j_from_i", "colors", "pdgs", "masses")
+    }
+    for configuration in checked_configurations(
+        born_pdgs, born.particle_count(), configurations
+    ):
+        pairs = configuration["fks_j_from_i"]
+        if not any(pairs):
+            raise ValueError(
+                f"the real process {configuration['real_pdgs']} has no FKS pairs"
+            )
+        tables["i_fks"].append(configuration["i_fks"] - 1)
+        tables["j_fks"].append(configuration["j_fks"] - 1)
+        tables["fks_j_from_i"].append([[j - 1 for j in js] for js in pairs])
+        tables["colors"].append(list(configuration["real_colors"]))
+        tables["pdgs"].append(list(configuration["real_pdgs"]))
+        tables["masses"].append(real_masses(born_masses, configuration))
+    return tables
+
+
 def fks_sector_function(born, configurations, **options):
     """The FKSSectorFunction of the FKS configurations of a Born, with
     fks_index the position of the configuration (nFKSprocess - 1) where there
@@ -217,23 +244,24 @@ def fks_sector_function(born, configurations, **options):
         ValueError: as fks_mappings, and for a configuration of a real process
             without FKS pairs (a finite one).
     """
-    born_pdgs = list(configurations["born_pdgs"])
-    born_masses = list(born.external_masses())
-    i_fks, j_fks, fks_j_from_i, colors, pdgs, masses = [], [], [], [], [], []
-    for configuration in checked_configurations(
-        born_pdgs, born.particle_count(), configurations
-    ):
-        pairs = configuration["fks_j_from_i"]
-        if not any(pairs):
-            raise ValueError(
-                f"the real process {configuration['real_pdgs']} has no FKS pairs"
-            )
-        i_fks.append(configuration["i_fks"] - 1)
-        j_fks.append(configuration["j_fks"] - 1)
-        fks_j_from_i.append([[j - 1 for j in js] for js in pairs])
-        colors.append(list(configuration["real_colors"]))
-        pdgs.append(list(configuration["real_pdgs"]))
-        masses.append(real_masses(born_masses, configuration))
-    return FKSSectorFunction(
-        i_fks, j_fks, fks_j_from_i, colors, pdgs, masses, **options
+    tables = configuration_tables(born, configurations)
+    return FKSSectorFunction(**tables, **options)
+
+
+def fks_eikonals(born, configurations):
+    """The FKSEikonals of the FKS configurations of a Born, with fks_index as
+    for fks_sector_function.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, for its masses, its
+            momenta in the order of born_pdgs.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+
+    Raises:
+        ValueError: as fks_sector_function.
+    """
+    tables = configuration_tables(born, configurations)
+    return FKSEikonals(
+        tables["i_fks"], tables["j_fks"], tables["fks_j_from_i"], tables["masses"]
     )

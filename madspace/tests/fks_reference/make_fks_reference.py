@@ -37,6 +37,9 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                counter-events k = 0, 1, 2 as compute_soft_counter_term and
                its siblings call it, -1 where the counter-event is not
                generated or, for a massive emitter, has no collinear limit),
+               eik_pairs, eik_soft (eikonal_reduced at the soft
+               counter-event for the pairs (m, n) of sbornsoft, 1-based,
+               in its order; empty where it is not generated),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -240,6 +243,11 @@ def parse(text):
         elif key == "SIJ":
             v = floats(rest)
             point["s_ij_ev"], point["s_ij_cnt"] = v[0], v[1:4]
+        elif key == "EIKPAIRS":
+            v = [int(f) for f in rest]
+            point["eik_pairs"] = [v[1 + 2 * k : 3 + 2 * k] for k in range(v[0])]
+        elif key == "EIK":
+            point["eik_soft"] = floats(rest)
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])

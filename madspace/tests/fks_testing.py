@@ -1,8 +1,63 @@
 """Helpers shared by the FKS tests."""
 
+import glob
+import json
+import os
+
 import numpy as np
+import torch
+from madspace_testing import default_context
+
+import madspace as ms
 
 EPS = np.finfo(np.float64).eps
+# the reference data of genps_fks.f and fks_singular.f (see
+# test_fks_reference.py)
+FKS_DATA = sorted(
+    glob.glob(
+        os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "test_data", "fks", "*.json"
+        )
+    )
+)
+FKS_DATA_IDS = [os.path.basename(p)[:-5] for p in FKS_DATA]
+
+
+def reference(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def reference_born_mapping(data):
+    """RAMBO mapping of the Born of reference data, with the masses of the
+    Fortran."""
+    conf = data["configs"][0]
+    masses = np.delete(np.array(conf["masses"]), conf["i_fks"] - 1)
+    return ms.PhaseSpaceMapping(
+        list(masses),
+        2 * np.sqrt(data["ebeam"][0] * data["ebeam"][1]),
+        leptonic=data["lpp"] == [0, 0],
+        mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
+    )
+
+
+def evaluate(function, *args, fks_index=None):
+    """The outputs of a FunctionGenerator on numpy arguments, with fks_index
+    as the last argument where it is given, as numpy arrays with the batch
+    dimension."""
+    device = torch.get_default_device()
+    tensors = [torch.as_tensor(np.asarray(a)).to(device) for a in args]
+    if fks_index is not None:
+        tensors.append(
+            torch.as_tensor(np.asarray(fks_index), dtype=torch.int32).to(device)
+        )
+    runtime = ms.FunctionRuntime(function.function(), default_context())
+    batch = len(args[0])
+    outputs = []
+    for out in runtime.call(tensors):
+        out = torch.as_tensor(out).cpu().numpy()
+        outputs.append(np.full(batch, out) if out.ndim == 0 else out)
+    return outputs
 
 
 def massive_fortran_precision(real, p_jbar, i_fks, j_fks, m_j):

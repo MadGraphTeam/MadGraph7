@@ -10,67 +10,20 @@ in the configuration of its fks_index. On any momenta, the sector functions of
 all the FKS pairs of a real process add up to one.
 """
 
-import glob
-import json
 import os
 
 import numpy as np
 import pytest
-import torch
-from madspace_testing import default_context
+from fks_testing import FKS_DATA as DATA
+from fks_testing import FKS_DATA_IDS as IDS
+from fks_testing import evaluate, reference
+from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
 from madspace.fks import fks_sector_function, real_masses
 
-DATA = sorted(
-    glob.glob(
-        os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "test_data", "fks", "*.json"
-        )
-    )
-)
-IDS = [os.path.basename(p)[:-5] for p in DATA]
 # position k + 2 of the counter-events k = 0, 1, 2 of genps_fks.f
 COUNTER_EVENTS = {"soft": 2, "collinear": 3, "soft_collinear": 4}
-
-
-def reference(path):
-    with open(path) as f:
-        return json.load(f)
-
-
-def to_torch(x):
-    return torch.as_tensor(np.asarray(x)).to(torch.get_default_device())
-
-
-def to_numpy(x):
-    return torch.as_tensor(x).cpu().numpy()
-
-
-def born_mapping(data):
-    """RAMBO mapping of the Born, with the masses of the Fortran."""
-    conf = data["configs"][0]
-    masses = np.delete(np.array(conf["masses"]), conf["i_fks"] - 1)
-    return ms.PhaseSpaceMapping(
-        list(masses),
-        2 * np.sqrt(data["ebeam"][0] * data["ebeam"][1]),
-        leptonic=data["lpp"] == [0, 0],
-        mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
-    )
-
-
-def evaluate(function, momenta, p_i_hat, fks_index=None):
-    runtime = ms.FunctionRuntime(function.function(), default_context())
-    args = [to_torch(momenta), to_torch(p_i_hat)]
-    if fks_index is not None:
-        args.append(
-            torch.as_tensor(np.asarray(fks_index), dtype=torch.int32).to(
-                torch.get_default_device()
-            )
-        )
-    (s,) = runtime.call(args)
-    s = to_numpy(s)
-    return np.full(len(momenta), s) if s.ndim == 0 else s
 
 
 def fortran_points(data):
@@ -120,7 +73,9 @@ def test_matches_fks_sij(path):
 
     kinds, momenta, p_i_hat, fks_index, xi, s_fortran = fortran_points(data)
     assert set(kinds) >= {"event", "soft"}
-    s = evaluate(function, momenta, p_i_hat, fks_index if count > 1 else None)
+    (s,) = evaluate(
+        function, momenta, p_i_hat, fks_index=fks_index if count > 1 else None
+    )
     # fks_Sij.f takes the direction of i from its momentum, the energies from
     # frames it boosts into: the same to rounding. Below xi = 1e-6 (tiny) it
     # takes the direction from p_i_fks_cnt, that of i at the soft (or
@@ -140,7 +95,7 @@ def test_matches_fks_sij(path):
         arguments = function_arguments(data, c)
         single = ms.FKSSectorFunction(*([value] for value in arguments.values()))
         np.testing.assert_allclose(
-            evaluate(single, momenta[part], p_i_hat[part]),
+            evaluate(single, momenta[part], p_i_hat[part])[0],
             s[part],
             rtol=1e-14,
             atol=0,
@@ -225,11 +180,11 @@ def test_partition_of_unity(data, c, momenta):
     total = np.zeros(batch)
     for index, (i, _) in enumerate(sectors):
         # away from the soft limit, any momentum along that of i will do
-        s = evaluate(
+        (s,) = evaluate(
             function,
             momenta,
             momenta[:, i],
-            np.full(batch, index) if count > 1 else None,
+            fks_index=np.full(batch, index) if count > 1 else None,
         )
         assert ((s >= 0.0) & (s <= 1.0)).all()
         total += s
