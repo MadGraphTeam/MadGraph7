@@ -200,6 +200,7 @@ fn loop_block_masks(input: &DagInput) -> std::collections::HashSet<u64> {
 }
 
 struct Table {
+    /// Key -> id of the sources, then of the current mask's currents only.
     ids: FxMap<CurrentKey, u32>,
     by_mask: FxMap<u64, Vec<u32>>,
     by_mask_particle: FxMap<(u64, u32), Vec<u32>>,
@@ -436,11 +437,23 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
     // (sector, left word, right word, vertex), first value kept.
     let mut label_cache: FxMap<(i64, u32, u32, u32), Option<u32>> = FxMap::default();
     let mut interaction_keys: FxSet<InteractionKey> = FxSet::default();
+    // The evaluation groups of the current mask; a group's id is the number
+    // of groups made before it (`group_offset` counts the earlier masks').
     let mut compile_groups: FxMap<GroupKey, i64> = FxMap::default();
+    let mut group_offset = 0i64;
     let mut combine_cache: FxMap<CombineKey, Option<(u32, u32)>> = FxMap::default();
     let mut flavour_cache: FxMap<(u32, u32, u32), u32> = FxMap::default();
     let mut candidates: Vec<u32> = Vec::new();
     for mask in recursive {
+        // Every current this mask makes has the mask in its key, and every
+        // group key holds two inputs whose masks join to it: neither map is
+        // read for another mask, so both restart here (MF-8G-1: the
+        // counterterm DAG's recursion looked its results and groups up in
+        // maps of the whole DAG, 1.3 M currents and the groups of 13.3 M
+        // interactions at g g > 5g LC; ids are unchanged).
+        table.ids.clear();
+        group_offset += compile_groups.len() as i64;
+        compile_groups.clear();
         let labels = mask_labels(mask);
         for (left_mask, right_mask) in ordered_splits(mask) {
             let Some(left_ids) = table.by_mask.get(&left_mask) else {
@@ -653,7 +666,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                 left_id,
                                 right_id,
                             );
-                            let next = compile_groups.len() as i64;
+                            let next = group_offset + compile_groups.len() as i64;
                             let group = *compile_groups
                                 .entry((
                                     vertex.class,

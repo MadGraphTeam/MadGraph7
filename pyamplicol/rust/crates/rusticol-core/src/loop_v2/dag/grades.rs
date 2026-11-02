@@ -141,8 +141,8 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
     // never overwrites one not yet read, and the DAG never holds two copies
     // of its interactions.
     let copies = |interaction: &Interaction| -> usize {
-        (sets[interaction.left as usize].count_ones() * sets[interaction.right as usize].count_ones())
-            as usize
+        (sets[interaction.left as usize].count_ones()
+            * sets[interaction.right as usize].count_ones()) as usize
     };
     let old = dag.interactions.len();
     let total: usize = dag.interactions.iter().map(copies).sum();
