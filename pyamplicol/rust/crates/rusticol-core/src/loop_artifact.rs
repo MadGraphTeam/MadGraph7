@@ -492,7 +492,11 @@ pub fn load_loop_v2_artifact(
 /// `loops/v2/artifact.py` `StoredMember`). A container rewritten since the
 /// process was loaded is refused.
 #[cfg(feature = "loop-v2")]
-pub fn read_loop_v2_stored_member(path: &str, member: &str, sha256: &str) -> RusticolResult<Vec<u8>> {
+pub fn read_loop_v2_stored_member(
+    path: &str,
+    member: &str,
+    sha256: &str,
+) -> RusticolResult<Vec<u8>> {
     use std::io::Read;
 
     with_stored_member(path, member, sha256, |payload| {

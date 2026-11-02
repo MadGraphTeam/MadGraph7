@@ -767,18 +767,23 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     tally.keep_grown(vertex_terms as u64, size_of::<Option<Vertex>>());
     tally.keep_grown(vertex_terms as u64, size_of::<Vertex>());
 
-    // Seed classes and seed keys with their parsed weights.
+    // Seed classes and seed keys with their parsed weights; the classes'
+    // distinct weights (at most one per term) and their index by text.
     tally.keep_grown(file.seed_classes.len() as u64, size_of::<Seed>());
+    let mut seed_terms = 0u64;
     for s in &file.seed_classes {
         tally.keep_grown(s.columns.len() as u64, size_of::<Vec<SeedTerm>>());
         for terms in &s.columns {
             tally.keep_grown(terms.len() as u64, size_of::<SeedTerm>());
+            seed_terms = seed_terms.saturating_add(terms.len() as u64);
             for (_, re, im) in terms {
                 tally.weight(re)?;
                 tally.weight(im)?;
             }
         }
     }
+    tally.keep_grown(seed_terms, size_of::<[Rational; 2]>());
+    tally.map_grown(seed_terms, size_of::<((&str, &str), u32)>());
     tally.keep_grown(file.seeds.len() as u64, size_of::<SeedKey>());
     for key in &file.seeds {
         let size = size_of::<(usize, [Rational; 2])>();

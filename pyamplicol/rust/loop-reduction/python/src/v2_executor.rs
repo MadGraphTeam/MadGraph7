@@ -1044,9 +1044,7 @@ fn stored_tree_program_section<'py>(
 ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
     let found = py
         .detach(|| {
-            rusticol_core::loop_artifact::read_loop_v2_stored_section(
-                path, member, sha256, section,
-            )
+            rusticol_core::loop_artifact::read_loop_v2_stored_section(path, member, sha256, section)
         })
         .map_err(error)?;
     Ok(found.map(|bytes| pyo3::types::PyBytes::new(py, &bytes)))

@@ -56,8 +56,8 @@ pub fn contract<T: Carrier, const L: usize>(
                     terms
                         .iter()
                         .map(|t| {
-                            let [re, im] = &t.weight;
-                            (t.component, data.cast(re), data.cast(im))
+                            let [re, im] = &plan.seed_weights[t.weight as usize];
+                            (t.component as usize, data.cast(re), data.cast(im))
                         })
                         .collect()
                 })

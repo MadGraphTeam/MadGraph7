@@ -1713,17 +1713,7 @@ fn load_interactions(
                                 next
                             }
                         };
-                        Ok((
-                            kernel,
-                            left,
-                            ld,
-                            right,
-                            rd,
-                            pl,
-                            pr,
-                            accumulator,
-                            weight,
-                        ))
+                        Ok((kernel, left, ld, right, rd, pl, pr, accumulator, weight))
                     },
                 );
                 let mut outputs = step.outputs.into_iter();
@@ -1747,17 +1737,7 @@ fn load_interactions(
 }
 
 /// One interaction of a step as `load_interactions` reads it.
-type StepRow = (
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    usize,
-    u32,
-);
+type StepRow = (usize, usize, usize, usize, usize, usize, usize, usize, u32);
 
 /// Validate a parameter program (`ParameterFile`) against the tree program
 /// and the plan; `saved` is its exact evaluator.

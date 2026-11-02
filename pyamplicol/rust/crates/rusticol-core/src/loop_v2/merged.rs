@@ -289,6 +289,8 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
                         pool.take(step.rows * plan.columns * row * v)
                     })
                     .collect();
+                // A part's row links, unpacked (`plan::PackedLinks`).
+                let mut links = Vec::new();
                 for (e, (edge, parts)) in step.edges.iter().zip(&split.parts).enumerate() {
                     let source = input(e, pool)?;
                     for part in parts {
@@ -298,7 +300,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
                             &segment,
                             source.values(),
                             self.inputs.currents.get(part.current),
-                            &part.links,
+                            part.links.unpack_into(&mut links),
                             &mut accumulators[part.group],
                         );
                     }

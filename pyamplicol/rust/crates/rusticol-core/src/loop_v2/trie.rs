@@ -48,6 +48,8 @@ pub fn run_family<T: Carrier, const L: usize>(
         .iter()
         .map(|leaf| data.cast(&leaf.weight))
         .collect();
+    // A split part's row links, unpacked (`plan::PackedLinks`).
+    let mut links = Vec::new();
     for (s, step) in family.steps.iter().enumerate() {
         let mut out = pool.take(step.rows * columns * step.out_row() * v);
         // The source object of an edge: a weighted leaf seed, or a child's
@@ -102,7 +104,7 @@ pub fn run_family<T: Carrier, const L: usize>(
                             &segment,
                             &input,
                             inputs.currents.get(part.current),
-                            &part.links,
+                            part.links.unpack_into(&mut links),
                             &mut accumulators[part.group],
                         );
                     }

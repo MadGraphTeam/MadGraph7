@@ -393,7 +393,10 @@ pub fn read_section_from(
         stream.read_exact(&mut out).map_err(failed)?;
         Ok(out)
     }
-    require(exactly(&mut stream, MAGIC.len())? == MAGIC, "not a binary tree program")?;
+    require(
+        exactly(&mut stream, MAGIC.len())? == MAGIC,
+        "not a binary tree program",
+    )?;
     let word = |bytes: Vec<u8>| -> u64 {
         bytes
             .iter()
@@ -413,7 +416,10 @@ pub fn read_section_from(
         if section == name {
             let mut out = Vec::new();
             limited.read_to_end(&mut out).map_err(failed)?;
-            require(out.len() as u64 == payload, "a truncated tree-program section")?;
+            require(
+                out.len() as u64 == payload,
+                "a truncated tree-program section",
+            )?;
             return Ok(Some(out));
         }
         let skipped = std::io::copy(&mut limited, &mut std::io::sink()).map_err(failed)?;

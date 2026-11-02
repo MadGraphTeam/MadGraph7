@@ -80,7 +80,7 @@ impl LoopProgramV4 {
                 }
                 Some(split) => {
                     for part in split.parts.iter().flatten() {
-                        for link in &part.links {
+                        for link in part.links.iter() {
                             currents[part.current][link.block as usize] = true;
                         }
                     }
@@ -116,7 +116,8 @@ fn prune_family(
     for step in steps.iter() {
         let inputs = sources(step, seeded, &live);
         let mut out = vec![false; step.rows * columns];
-        let mut mark = |links: &[super::super::kernels::RowLink], input: &[bool]| {
+        let mut mark = |links: &mut dyn Iterator<Item = super::super::kernels::RowLink>,
+                        input: &[bool]| {
             for link in links {
                 if input[link.input as usize] {
                     out[link.output as usize] = true;
@@ -126,13 +127,13 @@ fn prune_family(
         match &step.split {
             None => {
                 for (edge, input) in step.edges.iter().zip(&inputs) {
-                    mark(&edge.links, input);
+                    mark(&mut edge.links.iter().copied(), input);
                 }
             }
             Some(split) => {
                 for (parts, input) in split.parts.iter().zip(&inputs) {
                     for part in parts {
-                        mark(&part.links, input);
+                        mark(&mut part.links.iter(), input);
                     }
                 }
             }
@@ -177,7 +178,7 @@ fn prune_family(
                         part.links.retain(|link| kept(link, input));
                         members[part.group].push((e, p));
                         if let Source::Step(child) = step.edges[e].source {
-                            for link in &part.links {
+                            for link in part.links.iter() {
                                 read[child][link.input as usize] = true;
                             }
                         }

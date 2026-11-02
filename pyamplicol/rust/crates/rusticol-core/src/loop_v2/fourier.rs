@@ -188,10 +188,11 @@ impl SeedFourier {
                 let mut out: HashMap<usize, [Rational; 2]> = HashMap::new();
                 for term in &program.seed_classes[record].columns[column] {
                     let entry = out
-                        .entry(term.component)
+                        .entry(term.component as usize)
                         .or_insert_with(|| [Rational::zero(), Rational::zero()]);
-                    entry[0] = &entry[0] + &term.weight[0];
-                    entry[1] = &entry[1] + &term.weight[1];
+                    let weight = &program.seed_weights[term.weight as usize];
+                    entry[0] = &entry[0] + &weight[0];
+                    entry[1] = &entry[1] + &weight[1];
                 }
                 out
             });
@@ -358,7 +359,7 @@ impl SeedFourier {
         for ((record, column), components) in &covered {
             let terms = &mut direct[*record].columns[*column];
             let before = terms.len();
-            terms.retain(|term| !components.contains(&term.component));
+            terms.retain(|term| !components.contains(&(term.component as usize)));
             removed += before - terms.len();
         }
         Ok(Self {
