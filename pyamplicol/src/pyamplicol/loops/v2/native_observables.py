@@ -822,16 +822,23 @@ class StoredObservableSlice:
         from .selection import SELECTION
 
         if kind == SELECTION:
-            # A leading-colour selection (``selection.column``): one column
-            # set formed from the stored resolved set's records
-            # (``selection_parts``), dressed and reduced once per sector.
-            # Not kept here: the runtime keeps its most recently used
-            # selections (``selection.SelectionCache``).
-            found = StoredColumns(
-                self, "resolved", member=member, selection=value, **options
-            )
-            grouped = len(found.plan.columns) > 1
-            return _Selection(found, None, group=value.key if grouped else None)
+            # A leading-colour selection (``selection.column``): the masks of
+            # one call on the process's selection template (``SelectionTemplate``:
+            # one column set, its executors built once, serving every
+            # selection). The runtime keeps its most recently used masks
+            # (``selection.SelectionCache``).
+            key = (SELECTION, id(member), tuple(sorted(options.items())))
+            found = self._sets.get(key)
+            if found is None:
+                found = self._sets[key] = StoredColumns(
+                    self, "resolved", member=member, template=True, **options
+                )
+            masks = found.template.masks(value)
+            if len(masks.wanted) == 1:
+                return _Selection(
+                    found, masks.wanted, masks=masks, rename={masks.wanted[0]: value.key}
+                )
+            return _Selection(found, masks.wanted, group=value.key, masks=masks)
         if kind not in KINDS:
             raise ValueError(f"unknown column set {kind!r}")
         key = (kind, id(member), tuple(sorted(options.items())))
@@ -853,23 +860,35 @@ class StoredObservableSlice:
 
 class _Selection:
     """Some columns of a stored column set (``StoredColumns``): the requested
-    histories of a correlated call, every resolved column, or (``group``, a
-    leading-colour selection's key) the sum of some resolved columns as one
-    output."""
+    histories of a correlated call, every resolved column, or a
+    leading-colour selection: its ``masks`` on the selection template, whose
+    one column (``rename``: output under the selection's key) or ``group``
+    of columns (their sum as the one output ``group``) it reads."""
 
     def __init__(
         self,
         columns: StoredColumns,
         wanted: tuple[Any, ...] | None,
         group: Any = None,
+        *,
+        masks: _SelectionMasks | None = None,
+        rename: Mapping[Any, Any] | None = None,
     ):
         self.columns = columns
         self.wanted = wanted
         self.group = group
+        self.masks = masks
+        self.rename = rename
 
     def evaluate(self, points, scales, **options):
         return self.columns.evaluate(
-            points, scales, wanted=self.wanted, group=self.group, **options
+            points,
+            scales,
+            wanted=self.wanted,
+            group=self.group,
+            masks=self.masks,
+            rename=self.rename,
+            **options,
         )
 
 
@@ -1133,6 +1152,294 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
     )
 
 
+# The key of the selection template's columns (one per row class).
+TEMPLATE = "selection-template"
+
+
+@dataclass(frozen=True)
+class _SelectionMasks:
+    """One evaluation-time selection on a process's selection template
+    (``SelectionTemplate.masks``): the native executors' per-call masks
+    (``V2Executor.evaluate``): the kept Born helicity ``rows`` and bra Born
+    ``basis`` elements, per plan (process, companion) the seeds' kept plan
+    Born ``components`` and the ``families`` dressed (None: every one), and
+    the template columns (row classes) with a kept row (``wanted``)."""
+
+    rows: tuple[bool, ...] | None
+    basis: tuple[bool, ...] | None
+    components: tuple[tuple[bool, ...] | None, ...]
+    families: tuple[tuple[bool, ...] | None, ...]
+    wanted: tuple[Any, ...]
+
+    def options(self, plan: int) -> dict[str, list[bool]]:
+        """``V2Executor.evaluate``'s mask arguments for plan ``plan`` (0 the
+        process, 1 the companion, whose tree program has no columns)."""
+
+        found = {
+            "rows": self.rows,
+            "basis": self.basis if plan == 0 else None,
+            "components": self.components[plan],
+            "families": self.families[plan],
+        }
+        return {name: list(mask) for name, mask in found.items() if mask is not None}
+
+    def tree_options(self) -> dict[str, list[bool]]:
+        """``V2Executor.tree_columns``'s mask arguments."""
+
+        found = {"rows": self.rows, "basis": self.basis}
+        return {name: list(mask) for name, mask in found.items() if mask is not None}
+
+
+class SelectionTemplate:
+    """The one column set of a loaded leading-colour process that serves
+    every evaluation-time selection (MF-MASKS; DESIGN §8.5), formed once from
+    its stored resolved set without regeneration. Rows whose resolved columns
+    read the same seed-weight column per (basis element, sector) form a row
+    class (one at leading colour); per row class and sector one seed column
+    whose weights are every basis element's seed-weight column, concatenated
+    in seed-weight-column order, and one interference column of the class's
+    rows (every basis element). A selection is masks of one call
+    (``masks``): its rows and basis elements in the interferences, its rows
+    and its basis elements' plan Born components in the seeds (the other
+    components read zero, so each seed sums the selected basis elements'
+    terms in the order ``selection_parts`` concatenates them), and the
+    families whose seeds it keeps nonzero. The selected values are those of
+    the selection's own column set (``selection_parts``, the oracle) up to
+    the sign of a zero: same terms, same order, plus additions of exact
+    zeros (the unselected terms and rows; DESIGN §8.5 row restriction)."""
+
+    def __init__(self, observables: StoredObservableSlice):
+        from .observables import Column
+
+        stored = observables.stored
+        meta = stored.record["sets"]["resolved"]
+        base = stored.sets["resolved"]
+        items = meta["columns"]
+        self.rows = observables.rows
+        self.basis = len(observables.components)
+        row_index = {row: k for k, row in enumerate(self.rows)}
+        by_key = {json.dumps(item["key"]): k for k, item in enumerate(items)}
+        sectors: dict[str, Orders] = {}
+        seed_column: dict[tuple[int, str], int] = {}
+        for key, sector, direct, swapped in meta["lanes"]:
+            if direct != swapped:
+                raise ValueError("a resolved column reads one seed column per sector")
+            label = json.dumps(sector)
+            sectors.setdefault(label, _orders_of(sector))
+            seed_column[by_key[json.dumps(key)], label] = int(direct)
+        overlays = [json.loads(base.overlay_json)]
+        if base.companion_overlay_json is not None:
+            overlays.append(json.loads(base.companion_overlay_json))
+        if any(overlay is None for overlay in overlays):
+            raise ValueError("the resolved set stores no seed records of its own")
+        weight_of = [
+            overlay.get("column_weights") or list(range(int(overlay["columns"])))
+            for overlay in overlays
+        ]
+        # Per row: the seed-weight column of each (basis element, sector,
+        # plan); rows with equal ones form a row class.
+        weights: dict[int, dict[tuple[int, str, int], int]] = {}
+        for k, item in enumerate(items):
+            (row,) = item["rows"]
+            (b,) = item["basis"]
+            h = row_index[_row(row)]
+            for label in sectors:
+                i = seed_column[k, label]
+                for p, of in enumerate(weight_of):
+                    weights.setdefault(h, {})[b, label, p] = of[i]
+        if sorted(weights) != list(range(len(self.rows))):
+            raise ValueError("the resolved set lacks a Born row")
+        classes: dict[tuple[Any, ...], list[int]] = {}
+        for h in range(len(self.rows)):
+            classes.setdefault(tuple(sorted(weights[h].items())), []).append(h)
+        records = json.loads(base.columns_json)
+        programs = {
+            (column["program"], column["cells"], column["swapped"])
+            for column in records["columns"]
+        }
+        if len(programs) != 1:
+            raise ValueError("the resolved columns read different programs")
+        ((program, cells, swapped),) = programs
+        every = len(self.rows)
+        columns, interference = [], []
+        lanes: dict[tuple[Any, Orders], tuple[int, int]] = {}
+        seed_rows: list[list[int] | None] = []
+        # Per plan and output seed column: its seed-weight columns in order.
+        template_weights: list[list[list[int]]] = [[] for _ in overlays]
+        self.row_class = [0] * every
+        for c, (signature, hs) in enumerate(classes.items()):
+            found = dict(signature)
+            kept_rows = None if len(hs) == every else frozenset(self.rows[h] for h in hs)
+            key = (TEMPLATE, c)
+            for h in hs:
+                self.row_class[h] = c
+            columns.append(Column(key, None, kept_rows, None))
+            interference.append(
+                {
+                    "program": program,
+                    "cells": cells,
+                    "swapped": swapped,
+                    "rows": None if kept_rows is None else list(hs),
+                    "basis": None,
+                }
+            )
+            for label, orders in sectors.items():
+                lanes[key, orders] = (len(seed_rows), len(seed_rows))
+                seed_rows.append(None if kept_rows is None else list(hs))
+                for p in range(len(overlays)):
+                    template_weights[p].append(
+                        sorted(
+                            {w for (_b, lab, q), w in found.items() if lab == label and q == p}
+                        )
+                    )
+        self.classes = tuple(tuple(hs) for hs in classes.values())
+        self.columns = tuple(columns)
+        self.lanes = lanes
+        self.meta = meta
+        plans = [observables.process.plan_json]
+        if len(overlays) > 1:
+            plans.append(observables.process.scaleless.plan_json)
+        formed = []
+        # Per plan: the plan Born components of each basis element's
+        # seed weights, the components each seed class reads, the plan's
+        # Born component count, and per family the seed classes its leaves
+        # read (None: a forward or merged program, which reads every family).
+        self._basis_components: list[list[frozenset[int]]] = []
+        self._class_components: list[list[frozenset[int]]] = []
+        self._components: list[int] = []
+        self._family_classes: list[list[frozenset[int]] | None] = []
+        for p, (overlay, plan_json) in enumerate(zip(overlays, plans, strict=True)):
+            seed_records = overlay.get("seed_classes")
+            keys = overlay.get("seeds")
+            plan = json.loads(plan_json)
+            if seed_records is None:
+                seed_records, keys = plan["seed_classes"], plan["seeds"]
+            owner: dict[int, int] = {}
+            per_basis: list[set[int]] = [set() for _ in range(self.basis)]
+            for (b, _label, q), w in (
+                item for h in range(every) for item in weights[h].items()
+            ):
+                if q != p:
+                    continue
+                for record in seed_records:
+                    for term in record["columns"][w]:
+                        component = int(term[0])
+                        if owner.setdefault(component, b) != b:
+                            raise ValueError(
+                                "a plan Born component carries the seed weights of "
+                                "two Born basis elements; the selection template "
+                                "masks its seeds by component"
+                            )
+                        per_basis[b].add(component)
+            self._basis_components.append([frozenset(c) for c in per_basis])
+            class_columns = []
+            reads = []
+            for record in seed_records:
+                merged = []
+                for ws in template_weights[p]:
+                    terms = [list(term) for w in ws for term in record["columns"][w]]
+                    if len({int(term[0]) for term in terms}) != len(terms):
+                        raise ValueError(
+                            "a seed class repeats a plan Born component across the "
+                            "resolved seed weights"
+                        )
+                    merged.append(terms)
+                class_columns.append({"columns": merged})
+                reads.append(
+                    frozenset(int(term[0]) for terms in merged for term in terms)
+                )
+            self._class_components.append(reads)
+            self._components.append(int(overlay["born_components"]))
+            if plan.get("forward") is not None or plan.get("merged") is not None:
+                self._family_classes.append(None)
+            else:
+                self._family_classes.append(
+                    [
+                        frozenset(
+                            int(c)
+                            for leaf in family["leaves"]
+                            for c, *_x in keys[leaf["seed"]]["classes"]
+                        )
+                        for family in plan["families"]
+                    ]
+                )
+            del plan
+            formed.append(
+                {
+                    "seed_classes": class_columns,
+                    "seeds": keys,
+                    "columns": len(seed_rows),
+                    "column_rows": seed_rows
+                    if any(r is not None for r in seed_rows)
+                    else None,
+                    "column_weights": None,
+                    "born_components": overlay["born_components"],
+                }
+            )
+        from .plan_export import dumps
+
+        columns_json = json.dumps(
+            {**records, "columns": interference}, separators=(",", ":")
+        )
+        self.set = ObservableSet(
+            dumps(formed[0]),
+            base.plan_components,
+            columns_json,
+            None if len(formed) == 1 else dumps(formed[1]),
+            base.companion_components,
+        )
+
+    def masks(self, column: Any) -> _SelectionMasks:
+        """The per-call masks of a leading-colour selection
+        (``selection.column``: Born helicity rows and basis elements; None
+        keeps every one)."""
+
+        rows, basis = column.rows, column.basis
+        kept_rows = [
+            h for h, row in enumerate(self.rows) if rows is None or row in rows
+        ]
+        kept_basis = [b for b in range(self.basis) if basis is None or b in basis]
+        if not kept_rows or not kept_basis:
+            raise ValueError("a selection keeps no resolved column")
+        row_mask = (
+            None
+            if len(kept_rows) == len(self.rows)
+            else tuple(h in set(kept_rows) for h in range(len(self.rows)))
+        )
+        wanted = tuple(
+            (TEMPLATE, c)
+            for c, hs in enumerate(self.classes)
+            if any(row_mask is None or row_mask[h] for h in hs)
+        )
+        every = len(kept_basis) == self.basis
+        chosen = set(kept_basis)
+        components, families = [], []
+        for per_basis, reads, count, family_classes in zip(
+            self._basis_components,
+            self._class_components,
+            self._components,
+            self._family_classes,
+            strict=True,
+        ):
+            kept = frozenset().union(*(per_basis[b] for b in chosen))
+            components.append(None if every else tuple(k in kept for k in range(count)))
+            if family_classes is None:
+                families.append(None)
+                continue
+            # The families with a leaf on a seed key of a class with a kept
+            # term (``live_families``); the others' seeds vanish.
+            live = frozenset(c for c, read in enumerate(reads) if read & kept)
+            flags = tuple(bool(classes & live) for classes in family_classes)
+            families.append(None if all(flags) else flags)
+        return _SelectionMasks(
+            row_mask,
+            None if every else tuple(b in chosen for b in range(self.basis)),
+            tuple(components),
+            tuple(families),
+            wanted,
+        )
+
+
 def _plan_class():
     from .observables import ColumnPlan, _Assembly
 
@@ -1214,6 +1521,7 @@ class StoredColumns:
         threads: int | None = None,
         schedule: str = "B",
         selection: Any = None,
+        template: bool = False,
     ):
         from .plan_export import DEFAULT_LANES
 
@@ -1227,13 +1535,24 @@ class StoredColumns:
         self.member = member
         self.lanes = lanes or DEFAULT_LANES
         self.threads = threads
-        # ``selection``: a leading-colour selection's column, served by a set
-        # formed from the resolved one (``selection_parts``).
-        parts = None if selection is None else selection_parts(observables, selection)
+        # ``template``: the selection template (``SelectionTemplate``), whose
+        # executors serve every leading-colour selection by per-call masks;
+        # ``selection``: one selection's own column set formed from the
+        # resolved one (``selection_parts``; the template's oracle).
+        self.template = SelectionTemplate(observables) if template else None
+        parts = (
+            self.template
+            if template
+            else None
+            if selection is None
+            else selection_parts(observables, selection)
+        )
         self.set = stored.sets[kind] if parts is None else parts.set
         self.meta = stored.record["sets"][kind] if parts is None else parts.meta
         self.plan = _plan_class()(_ColumnPlanView(observables, kind, parts))
-        self.families = (None, None) if parts is None else parts.families
+        self.families = (
+            (None, None) if parts is None or template else parts.families
+        )
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
         self.last_report: dict[str, Any] | None = None
@@ -1352,11 +1671,15 @@ class StoredColumns:
         precision=None,
         poles="all",
         stability=None,
+        masks=None,
+        rename=None,
     ):
         """``observables.NativeObservables.evaluate`` on the stored columns:
         the outputs of the columns ``wanted`` (keys; None: every column), or
         with ``group`` their sum as the one output ``group`` (its estimate
-        from the budgets of all their lanes)."""
+        from the budgets of all their lanes); ``masks`` a selection's per-call
+        masks on the selection template (``SelectionTemplate.masks``) and
+        ``rename`` output keys to report under another."""
 
         from .assemble import Precision
         from .observables import (
@@ -1385,8 +1708,10 @@ class StoredColumns:
             points = [member.point(point) for point in points]
             spins = [member.spin(value) for value in spins]
         precision = precision or Precision.double()
+        if masks is not None and self.template is None:
+            raise ValueError("selection masks run on the selection template")
         references, failures = self._evaluations(
-            points, scales, spins, parameters, precision, poles, stability.frame
+            points, scales, spins, parameters, precision, poles, stability.frame, masks
         )
         runs = []
         for k, rotation in enumerate(stability.rotations):
@@ -1398,6 +1723,7 @@ class StoredColumns:
                 precision,
                 poles,
                 None,
+                masks,
             )
             runs.append(evaluations)
             for index, reasons in failed.items():
@@ -1421,6 +1747,8 @@ class StoredColumns:
                     precision.unit_roundoff,
                     stability.reduction,
                 )
+            if rename:
+                result = {rename.get(key, key): v for key, v in result.items()}
             if member is not None:
                 result = {_member_key(member, key): v for key, v in result.items()}
             out.append(result)
@@ -1428,10 +1756,12 @@ class StoredColumns:
             raise FailedPoints(out, failures)
         return out
 
-    def _evaluations(self, points, scales, spins, parameters, precision, poles, retest):
+    def _evaluations(
+        self, points, scales, spins, parameters, precision, poles, retest, masks=None
+    ):
         """Point evaluations with every column's lanes reduced natively (and
-        re-reduced in the frame ``retest``) and the native interferences;
-        also the failures per point."""
+        re-reduced in the frame ``retest``) and the native interferences,
+        under a selection's ``masks``; also the failures per point."""
 
         from .assemble import _fraction, _NativePoint, _Numbers
         from .native_trees import batch_parameters
@@ -1474,7 +1804,8 @@ class StoredColumns:
             "rescale": retest == "rescaled",
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
-        output = native.evaluate(inputs, schedule="B", **options)
+        selected = [{}, {}] if masks is None else [masks.options(0), masks.options(1)]
+        output = native.evaluate(inputs, schedule="B", **options, **selected[0])
         # The native report of the latest batch (stages and counts, as
         # ``plan_export.NativeExecutor.last_report``).
         self.last_report = output["report"]
@@ -1494,7 +1825,8 @@ class StoredColumns:
                         process.trees,
                         _regulated(evaluations, regulators, process.trees),
                     ),
-                }
+                },
+                **({} if masks is None else masks.tree_options()),
             )
             if regulated is None:
                 raise ValueError("the stored tree program forms no observable columns")
@@ -1505,7 +1837,7 @@ class StoredColumns:
                 **inputs,
                 "parameters": batch_parameters(process.scaleless.trees, evaluations),
             }
-            extra = twin.evaluate(twin_inputs, schedule="B", **options)
+            extra = twin.evaluate(twin_inputs, schedule="B", **options, **selected[1])
         families = int(self.meta["families"])
         orders = [_orders_of(o) for o in self.meta["orders"]]
         twin_orders = (
