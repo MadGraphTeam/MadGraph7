@@ -68,7 +68,7 @@ fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
 fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
-# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm
+# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm, ckkwl
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
 # multiplies the dynamical scale; fixed scales are unaffected
 scale_factor = %(beam.scale_factor)s
@@ -145,6 +145,14 @@ xqcut = %(phasespace.xqcut)s
 # the phase space is not sampled where the merging cut would throw it away.
 # madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f
 auto_ptj_mjj = %(phasespace.auto_ptj_mjj)s
+# CKKW-L merging with Pythia8 [arXiv:1109.4829, arXiv:1410.3012]: generation-level
+# merging-scale cut. Set at most one of the two (0 disables); the shower's
+# Merging:TMS defaults to it. Not combinable with xqcut.
+ktdurham = %(phasespace.ktdurham)s # min Durham kt of the merging partons (pT to beam and pairwise kt)
+ptlund = %(phasespace.ptlund)s # min Pythia8 evolution pT of the merging partons
+dparameter = %(phasespace.dparameter)s # D in the hadronic kt measure min(pT)*dR/D (Merging:Dparameter)
+# pdg ids subject to the merging cut; "auto" = all coloured particles of the process
+merging_pdgs = %(phasespace.merging_pdgs)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [custom_functions]
