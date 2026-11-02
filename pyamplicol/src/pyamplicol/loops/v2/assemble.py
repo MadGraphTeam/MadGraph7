@@ -2656,14 +2656,21 @@ class LoopSlice:
             )
 
         keep = own
+        native_schedules = (
+            self.generation is not None and "schedules" in generator_input.NATIVE_STAGES
+        )
         if not ring_aware:
-            # The native prune liveness of the seed stage that read the
-            # complete build (B1, ``native_seeds.prune_keep``): the same flags
-            # as ``own`` without a Python callback per skeleton; None (a
-            # table without such a stage, the poles companion's) keeps it.
-            from . import native_seeds
+            if native_schedules:
+                # The native prune liveness of the seed stage that read the
+                # complete build (B1, ``native_seeds.prune_keep``), read by
+                # the native rebuild: the same flags as ``own`` without a
+                # Python callback per skeleton; None (a table without such a
+                # stage, the poles companion's) keeps the callback.
+                from . import native_seeds
 
-            keep = native_seeds.prune_keep(self, observables) or own
+                flags = native_seeds.prune_keep(self, observables)
+                if flags is not None:
+                    keep = _PruneKeep(flags.build, flags.flags, own)
         else:
             # The selected flows' basis elements only: a skeleton is kept
             # when its ring (``SkeletonView`` readings, rotations and the
@@ -2692,7 +2699,7 @@ class LoopSlice:
                 trie for frame, trie in candidates if frame == frames[family.key]
             )
 
-        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+        if native_schedules:
             self.plan = self.generation.schedules(self.colour, frames=frames, keep=keep)
         else:
             self.plan = build_schedules(
@@ -5119,6 +5126,23 @@ def _born_tensors(closure: SiteClosure, born_terms) -> BornBasis:
         ),
         tuple(frozenset(tensors[tensor]) for tensor in ordered),
     )
+
+
+@dataclass(frozen=True, eq=False)
+class _PruneKeep(generator_input.ReadingKeep):
+    """``_prune_colour``'s native prune flags (``native_seeds.prune_keep``,
+    B1) for the readings of the complete build, which the native rebuild
+    reads without a callback; any other skeleton (an oracle's or a test's
+    Python build) reads the Python liveness ``fallback``, which the flags
+    equal on the readings (``test_loop_v2_native_seeds``)."""
+
+    fallback: Callable[[Skeleton], bool] | None = field(default=None, repr=False)
+
+    def __call__(self, skeleton: Skeleton) -> bool:
+        found = self._kept().get(id(skeleton))
+        if found is None or found[0] is not skeleton:
+            return self.fallback(skeleton)
+        return found[1]
 
 
 def _single(tensor, legs) -> ConnectedColorTensor:
