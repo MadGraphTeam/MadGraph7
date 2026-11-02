@@ -22,7 +22,7 @@ type RawRing = (Vec<u32>, Vec<(i64, i64)>);
 type RawClass = (&'static str, Option<RawPrimitive>, u32);
 type RawOutput = (Vec<RawClass>, Vec<Vec<u32>>, Vec<Vec<(u32, u32)>>, Vec<u32>);
 /// A term of a reduced tensor: `(re, im, N_c power, open strings, traces)`.
-type RawTerm = (
+pub(super) type RawTerm = (
     String,
     String,
     i64,
@@ -30,7 +30,7 @@ type RawTerm = (
     Vec<Vec<i64>>,
 );
 
-fn raw_tensor(tensor: &Tensor) -> (i64, Vec<RawTerm>) {
+pub(super) fn raw_tensor(tensor: &Tensor) -> (i64, Vec<RawTerm>) {
     (
         tensor.normalization,
         tensor

@@ -212,6 +212,9 @@ def test_loop_slices_never_read_the_root_contraction(
     process = "b u > d t"
     point = _point(("0", "0", "0", MT))
     plain = _slice(compiled, loop_native, process, MASSLESS_B)
+    # A slice keeps a summary of its Born DAG and recompiles the DAG on
+    # demand (``blocks.BornDagSummary``): recompiled before the marker.
+    plain_roots = plain.blocks.born_dag.amplitude_roots
     native = dag_compiler._direct_contraction_ir
 
     def marked(model, left, right, *, loop_born=False):
@@ -228,10 +231,7 @@ def test_loop_slices_never_read_the_root_contraction(
     }
     assert ("direct-contraction", True) in kinds
     assert ("direct-contraction", False) not in kinds
-    assert not any(
-        root.contraction_ir == DIRAC_WEYL_CLOSURE
-        for root in plain.blocks.born_dag.amplitude_roots
-    )
+    assert not any(root.contraction_ir == DIRAC_WEYL_CLOSURE for root in plain_roots)
     assert export_plan(marker).json() == export_plan(plain).json()
     double = Precision.double()
     assert _values(_evaluate(marker, point, double)) == _values(

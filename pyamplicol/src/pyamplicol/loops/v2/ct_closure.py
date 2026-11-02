@@ -527,6 +527,9 @@ class CountertermClosure:
             str(rule["name"]) for rule in lowered.model["vertex_rules"]
         )
         terms: list[ClosureTerm] = []
+        # Root terms wait for their colours in batches (one native call
+        # closes a batch's new colours, ``SiteClosure.site_terms``).
+        batch = _TermBatch(closure, terms)
         # The clone blocks of the scalar sides of scalar-vector mixing lines.
         promoted = frozenset(
             block_id for block_id, line in program.clones.items() if line.promoted
@@ -590,10 +593,11 @@ class CountertermClosure:
                             continue
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
-                    for term in closure.vertex_terms(
+                    for spec in closure.vertex_term_specs(
                         entries, attachments, promoted if clone else frozenset()
                     ):
-                        line = program.clones.get(term.blocks[index].id)
+                        # spec[2]: the term's blocks (``vertex_term_specs``).
+                        line = program.clones.get(spec[2][index].id)
                         if clone:
                             # The consuming copy (the root) carries the other
                             # half of the orders of Pi and, on a Weyl line,
@@ -603,52 +607,122 @@ class CountertermClosure:
                                 continue
                         else:
                             total = physical
-                        terms.append(
-                            ClosureTerm(
-                                term,
+                        batch.add(
+                            spec,
+                            (
                                 ROOT_LINE if clone else ROOT_VERTEX,
                                 component,
                                 power,
                                 total,
-                                (term.entry.coupling.name, 0),
-                                scale=None if line is None else line.factor,
-                                grade=grade,
-                            )
+                                0,
+                                None if line is None else line.factor,
+                                grade,
+                            ),
                         )
         for site in sites:
             if site.rule.whole_rule_continuation is not None:
                 # The replacement terms of a whole-rule colour continuation.
                 from .assemble import _whole_rule_terms
 
+                batch.flush()
+                component, orders = COMPONENT_BY_KIND[site.kind], site.orders
+                multiplicity = len(site.alternatives)
                 terms.extend(
                     ClosureTerm(
                         term,
                         ROOT_COUNTERTERM,
-                        COMPONENT_BY_KIND[site.kind],
+                        component,
                         0,
-                        site.orders,
+                        orders,
                         None,
-                        multiplicity=len(site.alternatives),
+                        multiplicity=multiplicity,
                     )
                     for term in _whole_rule_terms(closure, site)
                 )
                 continue
             # Cells the lowered model leaves out cancel here too.
             cancelled = recursion.model.unlowered.get(rule_key(site.rule), {})
-            for term in closure.terms(site, cancelled):
-                for power in _powers(recursion, site):
-                    terms.append(
+            powers = _powers(recursion, site)
+            component, orders = COMPONENT_BY_KIND[site.kind], site.orders
+            multiplicity = len(site.alternatives)
+            for spec in closure.term_specs(site, cancelled):
+                batch.add_powers(spec, component, powers, orders, multiplicity)
+        batch.flush()
+        return cls(program, closure, tuple(sites), tuple(terms))
+
+
+class _TermBatch:
+    """Root terms of a ``CountertermClosure`` waiting for their colours.
+
+    ``add`` queues a vertex term spec (``SiteClosure.vertex_term_specs``)
+    with its ``ClosureTerm`` fields (root, component, power, orders,
+    coupling power, scale, grade); ``add_powers`` a CT-root site's spec, one
+    term per epsilon power. ``flush`` closes the queued specs' colours in one
+    batch and appends their terms to ``terms`` in queue order, the order of
+    the per-term oracle; a batch holds at most ``SIZE`` specs.
+    """
+
+    SIZE = 1 << 16
+
+    def __init__(self, closure: SiteClosure, terms: list[ClosureTerm]):
+        self.closure = closure
+        self.terms = terms
+        self.specs: list[tuple[Any, ...]] = []
+        self.fields: list[tuple[Any, ...]] = []
+
+    def add(self, spec: tuple[Any, ...], fields: tuple[Any, ...]) -> None:
+        self.specs.append(spec)
+        self.fields.append(fields)
+        if len(self.specs) >= self.SIZE:
+            self.flush()
+
+    def add_powers(
+        self,
+        spec: tuple[Any, ...],
+        component: str,
+        powers: Sequence[int],
+        orders: Orders,
+        multiplicity: int,
+    ) -> None:
+        self.add(spec, (None, component, powers, orders, multiplicity))
+
+    def flush(self) -> None:
+        if not self.specs:
+            return
+        site_terms = self.closure.site_terms(self.specs)
+        out = self.terms
+        for term, fields in zip(site_terms, self.fields, strict=True):
+            root = fields[0]
+            if root is None:
+                _root, component, powers, orders, multiplicity = fields
+                name = term.entry.coupling.name
+                for power in powers:
+                    out.append(
                         ClosureTerm(
                             term,
                             ROOT_COUNTERTERM,
-                            COMPONENT_BY_KIND[site.kind],
+                            component,
                             power,
-                            site.orders,
-                            (term.entry.coupling.name, power),
-                            multiplicity=len(site.alternatives),
+                            orders,
+                            (name, power),
+                            multiplicity=multiplicity,
                         )
                     )
-        return cls(program, closure, tuple(sites), tuple(terms))
+                continue
+            _root, component, power, orders, coupling_power, scale, grade = fields
+            out.append(
+                ClosureTerm(
+                    term,
+                    root,
+                    component,
+                    power,
+                    orders,
+                    (term.entry.coupling.name, coupling_power),
+                    scale=scale,
+                    grade=grade,
+                )
+            )
+        self.specs, self.fields = [], []
 
 
 def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
