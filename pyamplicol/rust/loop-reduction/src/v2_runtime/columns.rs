@@ -114,13 +114,22 @@ pub type ColumnPoint<N> = Result<Vec<ColumnValues<N>>, Vec<String>>;
 /// The plan JSON of a column set (`native_observables.with_overlay`): the
 /// process (or companion) plan with the set's seed records, a field the
 /// overlay lacks keeping the plan's and a null field removed; the plan
-/// itself when the set stores no seed records of its own (`null`).
+/// itself when the set stores no seed records of its own (`null`). A stored
+/// binary plan member (M-FINAL MF-8G-1 item 5) is overlaid as its JSON.
 fn plan_of(base: &[u8], overlay: &[u8]) -> RusticolResult<Vec<u8>> {
+    use rusticol_core::loop_v2::plan::binary::{PlanModel, is_binary};
     use serde_json::value::RawValue;
     let overlay: Option<BTreeMap<String, Box<RawValue>>> =
         serde_json::from_slice(overlay).map_err(|e| invalid(format!("column seeds: {e}")))?;
     let Some(overlay) = overlay else {
         return Ok(base.to_vec());
+    };
+    let json;
+    let base = if is_binary(base) {
+        json = PlanModel::from_binary(base)?.json();
+        &json[..]
+    } else {
+        base
     };
     let mut merged: BTreeMap<String, Box<RawValue>> =
         serde_json::from_slice(base).map_err(|e| invalid(format!("column plan: {e}")))?;

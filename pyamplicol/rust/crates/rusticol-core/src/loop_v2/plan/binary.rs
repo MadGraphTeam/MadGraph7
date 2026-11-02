@@ -173,6 +173,59 @@ pub fn column_names() -> &'static [&'static str] {
     COLUMN_NAMES
 }
 
+/// Schedule-B family records gathered one at a time: the exporter's
+/// streamed families (MF-8G-1 item 5), so the Python export never holds the
+/// records of every family at once.
+#[derive(Default)]
+pub struct FamilyRecords(Vec<FamilyFile>);
+
+impl FamilyRecords {
+    /// Append one family read by any `serde` deserializer of the loader's
+    /// file form (the exporter's Python record of a family).
+    pub fn push_records<'de, D: serde::Deserializer<'de>>(
+        &mut self,
+        records: D,
+    ) -> Result<(), D::Error> {
+        self.0.push(serde::Deserialize::deserialize(records)?);
+        Ok(())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Content records gathered one at a time: the exporter's streamed contents
+/// (MF-8G-1 item 5), so the Python export never holds every content's
+/// record (the largest part of a plan with many helicity rows: 52 of 112 MB
+/// of the g g > 5g LC plan JSON, 116 of 119 MB of its companion's).
+#[derive(Default)]
+pub struct ContentRecords(Vec<ContentFile>);
+
+impl ContentRecords {
+    /// Append one content read by any `serde` deserializer of the loader's
+    /// file form (the exporter's Python record of a content).
+    pub fn push_records<'de, D: serde::Deserializer<'de>>(
+        &mut self,
+        records: D,
+    ) -> Result<(), D::Error> {
+        self.0.push(serde::Deserialize::deserialize(records)?);
+        Ok(())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// A plan v4 in the loader's file form: the input of [`LoopProgramV4`]'s
 /// validation and derivations, written as the exporter's JSON or as the
 /// binary columnar member.
@@ -199,6 +252,60 @@ impl PlanModel {
             file: serde::Deserialize::deserialize(records)?,
             member: None,
         })
+    }
+
+    /// [`Self::from_records`] of a plan whose families came one at a time
+    /// ([`FamilyRecords`]; the records' own `families` list is empty).
+    pub fn from_records_with_families<'de, D: serde::Deserializer<'de>>(
+        records: D,
+        families: FamilyRecords,
+    ) -> Result<Self, D::Error> {
+        Self::from_records_with_parts(records, families, None)
+    }
+
+    /// [`Self::from_records_with_families`] whose contents came one at a time
+    /// too ([`ContentRecords`]; the records' own `contents` list is empty).
+    pub fn from_records_with_parts<'de, D: serde::Deserializer<'de>>(
+        records: D,
+        families: FamilyRecords,
+        contents: Option<ContentRecords>,
+    ) -> Result<Self, D::Error> {
+        let mut file: PlanFile = serde::Deserialize::deserialize(records)?;
+        if !file.families.is_empty() {
+            return Err(serde::de::Error::custom(
+                "families both in the records and streamed",
+            ));
+        }
+        file.families = families.0;
+        if let Some(contents) = contents {
+            if !file.contents.is_empty() {
+                return Err(serde::de::Error::custom(
+                    "contents both in the records and streamed",
+                ));
+            }
+            file.contents = contents.0;
+        }
+        Ok(Self { file, member: None })
+    }
+
+    /// The number of contents.
+    pub fn content_count(&self) -> usize {
+        self.file.contents.len()
+    }
+
+    /// The JSON of content `index` as the plan JSON writes it.
+    pub fn content_json(&self, index: usize) -> Option<Vec<u8>> {
+        self.file.contents.get(index).map(json::content_json)
+    }
+
+    /// The number of schedule-B families.
+    pub fn family_count(&self) -> usize {
+        self.file.families.len()
+    }
+
+    /// The JSON of family `index` as the plan JSON writes it.
+    pub fn family_json(&self, index: usize) -> Option<Vec<u8>> {
+        self.file.families.get(index).map(json::family_json)
     }
 
     /// The model of a binary plan member ([`Self::binary`]).
@@ -1510,6 +1617,34 @@ fn allocations_can_fail() -> bool {
     false
 }
 
+thread_local! {
+    /// Set while [`read_binary_bounded`] decodes outside every pool: the read
+    /// decodes on its own thread ([`read_threads`]).
+    static SEQUENTIAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// [`read_binary_with`] within the caller's thread bound: inside a pool's
+/// worker on that pool's threads, else sequentially on the calling thread,
+/// never starting rayon's global pool (whose workers would outlive the call).
+/// The loader's read of a stored member (`LoopProgramV4::load_with`): an
+/// executor or runtime built with a thread bound starts no other threads
+/// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
+/// its bounds are those of any thread count.
+pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+    if rayon::current_thread_index().is_some() {
+        return read_binary_with(member, policy);
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            SEQUENTIAL.with(|sequential| sequential.set(false));
+        }
+    }
+    SEQUENTIAL.with(|sequential| sequential.set(true));
+    let _reset = Reset;
+    read_binary_with(member, policy)
+}
+
 /// Whether the reader found the global thread pool up when it first needed
 /// it ([`read_threads`]): started by it or by another component before.
 static GLOBAL_POOL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -1538,7 +1673,7 @@ pub fn read_pool() -> Option<bool> {
 /// decode on one thread, never a refusal or rayon's panic. A pool another
 /// component started first is used as it is.
 fn read_threads() -> usize {
-    if allocations_can_fail() {
+    if allocations_can_fail() || SEQUENTIAL.with(std::cell::Cell::get) {
         return 1;
     }
     if rayon::current_thread_index().is_some() {

@@ -2718,7 +2718,10 @@ class LoopSlice:
                 trie for frame, trie in candidates if frame == frames[family.key]
             )
 
+        # The complete build a native rebuild reads (released below).
+        base = None
         if native_schedules:
+            base = self.generation.base
             self.plan = self.generation.schedules(self.colour, frames=frames, keep=keep)
         else:
             self.plan = build_schedules(
@@ -2736,6 +2739,19 @@ class LoopSlice:
             compress=self.request.compress_colour,
         )
         self.colour_pruned = True
+        if (
+            base is not None
+            and self.generation.base is base
+            and self.generation.build_of_plan(self.plan) is not base
+        ):
+            # A pruned slice is never pruned again (``ObservableSlice.of``):
+            # the complete build the rebuild read is released (its tries and
+            # seed stage, natively and decoded; MF-8G-1). The plan's view
+            # keeps the Python liveness, which the native flags equal on the
+            # build's readings, instead of the flags that hold the build.
+            if isinstance(keep, _PruneKeep):
+                self.plan.view.keep = keep.fallback or own
+            self.generation.release(base)
 
     # -- evaluation ------------------------------------------------------------
 

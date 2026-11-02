@@ -455,9 +455,16 @@ def test_cms_artifact_stores_native_inputs_relocates_and_equals_madloop(tmp_path
     assert declared == [LOOP_V2_NATIVE_POINT_INPUTS], declared
     (pacbin,) = output.rglob("*.pacbin")
     members = {path: data for path, _kind, data in portability._members(pacbin)}
-    program = json.loads(
-        zlib.decompress(members["point-inputs/tree-program.json.zlib"])
-    )
+    from pyamplicol.loops.native import load_loop_native
+
+    # The binary tree program's head (M-FINAL MF-8G-1), else the JSON one.
+    if "point-inputs/tree-program.bin.zlib" in members:
+        container = zlib.decompress(members["point-inputs/tree-program.bin.zlib"])
+        program = json.loads(load_loop_native().tree_program_section(container, "head"))
+    else:
+        program = json.loads(
+            zlib.decompress(members["point-inputs/tree-program.json.zlib"])
+        )
     plan_masses = program["parameters"]["plan_masses"]
     assert [m[0] for m in plan_masses if isinstance(m, list)] == ["complex"]
     verdict = portability.check(

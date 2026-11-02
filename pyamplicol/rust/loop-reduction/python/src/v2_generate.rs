@@ -54,7 +54,8 @@ type RawSchedules = (
 /// One process's native generation: the family recursion runs at
 /// construction (`families.generate_families`); later stages read its
 /// output in place. Every schedule build is retained in the generation's
-/// arena (`loop_v2::generate::arena`) under the handle it returns.
+/// arena (`loop_v2::generate::arena`) under the handle it returns, until
+/// it is released (`release`).
 #[pyclass(frozen)]
 pub(crate) struct V2Generation {
     input: FamilyInput,
@@ -310,6 +311,12 @@ impl V2Generation {
     /// `MonomialLayout`'s rank bound of a build (`Retained::max_rank`).
     fn max_rank(&self, handle: usize) -> PyResult<i64> {
         self.retained(handle)?.max_rank().map_err(error)
+    }
+
+    /// Release a build no stage reads any more (`Arena::release`): later
+    /// reads of its handle raise.
+    fn release(&self, handle: usize) -> PyResult<()> {
+        self.arena.release(handle).map_err(error)
     }
 }
 
