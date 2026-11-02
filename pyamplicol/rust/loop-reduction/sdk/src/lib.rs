@@ -3,16 +3,19 @@
 //! existing native executor; neither links Python or implements loop reduction.
 mod correlated;
 mod ffi;
-pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape, SpinSources};
+pub use correlated::{
+    Complex64, CorrelatedEvaluation, CorrelatedShape, DecimalComplexValues, SpinSources,
+};
 pub use ffi::*;
-use rusticol_core::loop_execution::LoopInputs;
 use rusticol_core::loop_artifact::{LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY};
+use rusticol_core::loop_execution::LoopInputs;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
 use rusticol_loop_reduction::v2_runtime::{
-    V2Poles, V2Runtime, decimal_parameter, is_v2_artifact, named_parameters,
+    C, ColumnPoint, Decimal, Rational, V2Point, V2Poles, V2Precision, V2Runtime, decimal_parameter,
+    is_v2_artifact, named_parameters,
 };
 use serde::Serialize;
 use std::{collections::BTreeMap, path::Path};
@@ -69,6 +72,84 @@ pub struct Evaluation {
     pub shape: Shape,
     pub resolved: bool,
     pub diagnostics_json: String,
+    /// Double-double and arbitrary-precision evaluations: the exact values
+    /// (the Python API's `Decimal` results) as decimal literals, in the
+    /// layout of `born` and `virtual_values` (absent poles `None`); `born`
+    /// and `virtual_values` then hold their nearest binary64 values.
+    pub decimal: Option<DecimalValues>,
+}
+
+/// The exact values of an extended-precision evaluation: decimal literals
+/// equal to the Python API's `Decimal` results, at `digits` working digits
+/// of `arithmetic`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct DecimalValues {
+    pub arithmetic: &'static str,
+    pub digits: u32,
+    pub born: Vec<String>,
+    #[serde(rename = "virtual")]
+    pub virtual_values: Vec<Option<String>>,
+}
+
+/// The arithmetic of later evaluations, the Python API's `arithmetic` and
+/// `precision` (`Runtime.load(..., arithmetic=, precision=)`): binary64
+/// (the default), double-double, or `digits` decimal digits of arbitrary
+/// precision. The extended carriers run the native executor in their
+/// arithmetic (the generic reduction engine) and assemble its outputs in
+/// Python's `Decimal` arithmetic at the working digits, exactly as the
+/// Python API: their values equal the Python API's `Decimal` results.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Arithmetic {
+    #[default]
+    Double,
+    DoubleDouble,
+    Arbitrary(u32),
+}
+
+impl Arithmetic {
+    /// `"double"`, `"double-double"` or `"arbitrary"` with `digits` decimal
+    /// digits (positive; the other carriers take none).
+    pub fn parse(name: &str, digits: Option<u32>) -> RusticolResult<Self> {
+        match (name, digits) {
+            ("double", None) => Ok(Self::Double),
+            ("double-double", None) => Ok(Self::DoubleDouble),
+            ("arbitrary", Some(digits)) if digits > 0 => Ok(Self::Arbitrary(digits)),
+            ("arbitrary", _) => Err(invalid(
+                "arbitrary precision needs a positive decimal digit count",
+            )),
+            ("double" | "double-double", Some(_)) => {
+                Err(invalid(format!("{name} arithmetic takes no digits")))
+            }
+            _ => Err(invalid(format!(
+                "arithmetic must be \"double\", \"double-double\" or \"arbitrary\", not {name:?}"
+            ))),
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Double => "double",
+            Self::DoubleDouble => "double-double",
+            Self::Arbitrary(_) => "arbitrary",
+        }
+    }
+    /// The requested digits of arbitrary precision.
+    pub fn digits(self) -> Option<u32> {
+        match self {
+            Self::Arbitrary(digits) => Some(digits),
+            _ => None,
+        }
+    }
+    fn v2(self) -> V2Precision {
+        match self {
+            Self::Double => V2Precision::Double,
+            Self::DoubleDouble => V2Precision::DoubleDouble,
+            Self::Arbitrary(digits) => V2Precision::Arbitrary(digits),
+        }
+    }
+    /// The decimal digits of the assembly (`Precision.working_digits`).
+    pub fn working_digits(self) -> u32 {
+        self.v2().working_digits()
+    }
 }
 
 /// The runtime behind an SDK handle: a plan v4 process with native point
@@ -78,9 +159,10 @@ enum Engine {
     V4(Box<V2Runtime>),
 }
 
-const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved) \
-    binary64 virtuals with model R2; resolved and correlated evaluations and \
-    the stability rescue go through the Python API";
+/// The refusal of a resolved or correlated evaluation of a process stored
+/// without its observable columns (or with a forced seed FFT).
+const NO_OBSERVABLES: &str = "this plan v4 process serves no resolved or correlated \
+    evaluations";
 
 /// The refusal of a loop artifact of the removed legacy engine (the Python
 /// API's `LEGACY_LOOP_ARTIFACT_REMOVED`).
@@ -157,9 +239,22 @@ pub struct Runtime {
     engine: Engine,
     shape: Shape,
     poles: Poles,
+    arithmetic: Arithmetic,
     color_components: Vec<String>,
     history_ids: Vec<String>,
     spin_classes: Vec<Vec<usize>>,
+    /// The stored observable columns: the resolved helicity rows (1-based
+    /// legs), their colour component ids, the squared Born orders of the
+    /// observable outputs, or the reason they are unavailable.
+    observables: Result<Observables, String>,
+}
+
+/// The axes of a process's stored observable columns.
+#[derive(Clone, Debug)]
+struct Observables {
+    rows: Vec<Vec<(usize, i32)>>,
+    colour_ids: Vec<String>,
+    born_orders: usize,
 }
 
 impl Runtime {
@@ -199,23 +294,56 @@ impl Runtime {
         if let Some(values) = parameters {
             native.set_parameters(real_overrides(values)?)?;
         }
+        let accuracy = native.metadata().color_accuracy.clone();
+        // The stored observable columns (correlated, spin-correlated and
+        // resolved outputs), when the process has them.
+        let observables = (|| -> RusticolResult<_> {
+            let (rows, basis, resolution) = native.resolved_axes()?;
+            let colour_ids = if resolution == "helicity-colour" {
+                (0..basis).map(|b| format!("basis-{b}")).collect()
+            } else {
+                vec![accuracy.clone()]
+            };
+            Ok((
+                Observables {
+                    rows: rows
+                        .into_iter()
+                        .map(|row| row.into_iter().map(|(leg, h)| (leg + 1, h)).collect())
+                        .collect(),
+                    colour_ids,
+                    born_orders: native.column_born_axis()?.len(),
+                },
+                native.correlation_histories()?,
+                native.spin_correlation_classes()?,
+            ))
+        })();
+        let (observables, history_ids, spin_classes) = match observables {
+            Ok((observables, histories, classes)) => (Ok(observables), histories, classes),
+            Err(error) => (Err(error.to_string()), vec![], vec![]),
+        };
+        let (helicities, colours) = match &observables {
+            Ok(axes) => (axes.rows.len(), axes.colour_ids.len()),
+            Err(_) => (native.helicities(), 1),
+        };
         let shape = Shape {
             external_count: native.external_count(),
             born_orders: native.born_orders(),
             virtual_orders: native.sectors(),
-            helicities: native.helicities(),
-            born_color_components: 1,
-            virtual_color_components: 1,
+            helicities,
+            born_color_components: colours,
+            virtual_color_components: colours,
             epsilon_count: 3,
-            resolved_available: 0,
+            resolved_available: u32::from(observables.is_ok()),
         };
         Ok(Self {
-            color_components: vec![native.metadata().color_accuracy.clone()],
+            color_components: vec![accuracy],
             engine: Engine::V4(Box::new(native)),
             shape,
             poles: Poles::All,
-            history_ids: vec![],
-            spin_classes: vec![],
+            arithmetic: Arithmetic::Double,
+            history_ids,
+            spin_classes,
+            observables,
         })
     }
     pub fn shape(&self) -> Shape {
@@ -230,6 +358,15 @@ impl Runtime {
     pub fn poles(&self) -> Poles {
         self.poles
     }
+    /// The arithmetic of later evaluations (default binary64), the Python
+    /// API's `arithmetic=` / `precision=` ([`Arithmetic`]).
+    pub fn set_arithmetic(&mut self, arithmetic: Arithmetic) -> RusticolResult<()> {
+        self.arithmetic = arithmetic;
+        Ok(())
+    }
+    pub fn arithmetic(&self) -> Arithmetic {
+        self.arithmetic
+    }
     /// Existing artifact metadata includes exact order pairings and schemes.
     pub fn metadata_json(&self) -> RusticolResult<String> {
         let Engine::V4(native) = &self.engine;
@@ -238,27 +375,43 @@ impl Runtime {
     pub fn capabilities_json(&self) -> RusticolResult<String> {
         let Engine::V4(native) = &self.engine;
         let metadata = native.metadata();
+        let (resolved, rows, colour_ids, unavailable) = match &self.observables {
+            Ok(axes) => (true, axes.rows.clone(), axes.colour_ids.clone(), None),
+            Err(reason) => (
+                false,
+                vec![],
+                self.color_components.clone(),
+                Some(reason.clone()),
+            ),
+        };
         serde_json::to_string(&serde_json::json!({
-                "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
-                "engine":"v2", "plan_sha256":native.plan_sha256(),
-                "point_inputs":"native-v2",
-                "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
-                "pole_selections":["all","none","uv","ir"],
-                "poles":self.poles.name(),
-                "resolved":false, "correlations":false,
-                "correlation_histories":Vec::<String>::new(),
-                "spin_correlation_classes":Vec::<Vec<usize>>::new(),
-                "correlated_resolved":false,
-                "color_accuracy":metadata.color_accuracy,
-                "color_contraction":metadata.color_contraction,
-                "color_components":self.color_components,
-                "color_component_semantics":"contracted colour",
-                "available_r2_strategies":["model"],
-                "r2_strategy":"model",
-                "source_only":true,
-                "normalization":"physical couplings and inclusive initial spin/color average"
-            }))
-            .map_err(serialization)
+            "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
+            "engine":"v2", "plan_sha256":native.plan_sha256(),
+            "point_inputs":"native-v2",
+            "arithmetic":["double", "double-double", "arbitrary"],
+            "current_arithmetic": self.arithmetic.name(),
+            "current_digits": self.arithmetic.digits(),
+            "epsilon_powers":[0,-1,-2],
+            "pole_selections":["all","none","uv","ir"],
+            "poles":self.poles.name(),
+            "resolved":resolved, "correlations":resolved,
+            "correlation_histories":self.history_ids,
+            "spin_correlation_classes":self.spin_classes,
+            "correlated_resolved":false,
+            "helicity_rows": rows,
+            "helicity_ids": (0..rows.len()).map(|i| format!("h{i}")).collect::<Vec<_>>(),
+            "resolved_color_ids": colour_ids,
+            "observables_unavailable": unavailable,
+            "color_accuracy":metadata.color_accuracy,
+            "color_contraction":metadata.color_contraction,
+            "color_components":self.color_components,
+            "color_component_semantics":"contracted colour",
+            "available_r2_strategies":["model"],
+            "r2_strategy":"model",
+            "source_only":true,
+            "normalization":"physical couplings and inclusive initial spin/color average"
+        }))
+        .map_err(serialization)
     }
     /// Update model parameters. A plan v4 process validates the whole
     /// mapping first, as the Python API's `set_model_parameters` (in its
@@ -312,14 +465,19 @@ impl Runtime {
         strategy: Option<&str>,
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        let Engine::V4(native) = &mut self.engine;
         if let Some(strategy) = strategy {
             v4_r2_strategy(strategy)?;
         }
+        let (shape, poles, arithmetic) = (self.shape, self.poles, self.arithmetic);
         if resolved {
-            return Err(invalid(V4_ONLY_ORDINARY));
+            let axes = self.observables.clone().map_err(|reason| {
+                RusticolError::compatibility(format!("{NO_OBSERVABLES}: {reason}"))
+            })?;
+            let Engine::V4(native) = &mut self.engine;
+            return Evaluation::resolved_v4(native, inputs, shape, poles, arithmetic, &axes);
         }
-        Evaluation::from_v4(native, inputs, self.shape, self.poles)
+        let Engine::V4(native) = &mut self.engine;
+        Evaluation::from_v4(native, inputs, shape, poles, arithmetic)
     }
     fn prepare_inputs(
         &self,
@@ -439,72 +597,298 @@ fn pack(
     Ok(output)
 }
 
+/// Exact decimal momenta and scales of a batch (`LoopInputs`), as rationals
+/// per point.
+#[allow(clippy::type_complexity)]
+fn exact_inputs(
+    inputs: &LoopInputs,
+    external_count: usize,
+) -> RusticolResult<(Vec<Vec<Rational>>, Vec<Rational>)> {
+    use rusticol_core::loop_v2::dress::parse_rational;
+    let width = 4 * external_count;
+    let momenta = inputs
+        .momenta
+        .chunks(width.max(1))
+        .map(|point| point.iter().map(|x| parse_rational(x)).collect())
+        .collect::<RusticolResult<Vec<Vec<_>>>>()?;
+    let scales = inputs
+        .scales_squared
+        .iter()
+        .map(|x| parse_rational(x))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    Ok((momenta, scales))
+}
+
+/// A value of an evaluation: binary64, or an exact decimal (its nearest
+/// binary64 value and its literal).
+pub(crate) trait Output: Clone {
+    fn double(&self) -> f64;
+    fn literal(&self) -> Option<String>;
+}
+
+impl Output for f64 {
+    fn double(&self) -> f64 {
+        *self
+    }
+    fn literal(&self) -> Option<String> {
+        None
+    }
+}
+
+impl Output for Decimal {
+    fn double(&self) -> f64 {
+        self.to_f64()
+    }
+    fn literal(&self) -> Option<String> {
+        Some(self.text())
+    }
+}
+
+/// Real outputs and, for the extended carriers, their literals; an absent
+/// pole is a quiet NaN (its literal `None`).
+#[derive(Default)]
+struct Reals {
+    values: Vec<f64>,
+    literals: Vec<Option<String>>,
+}
+
+impl Reals {
+    fn push<N: Output>(&mut self, value: Option<&N>) {
+        self.values.push(value.map_or(f64::NAN, Output::double));
+        self.literals.push(value.and_then(Output::literal));
+    }
+}
+
+/// The `decimal` record of an evaluation in `arithmetic`.
+fn decimal_values(
+    arithmetic: Arithmetic,
+    born: Reals,
+    virtual_values: Reals,
+) -> Option<DecimalValues> {
+    (arithmetic != Arithmetic::Double).then(|| DecimalValues {
+        arithmetic: arithmetic.name(),
+        digits: arithmetic.working_digits(),
+        born: born
+            .literals
+            .into_iter()
+            .map(|value| value.expect("a Born value"))
+            .collect(),
+        virtual_values: virtual_values.literals,
+    })
+}
+
+/// Per point the evaluated values of an evaluation in the runtime's
+/// arithmetic, or its failures (`ordinary`: the inclusive virtual).
+fn statuses_of<T>(
+    ids: &[u64],
+    points: &[Result<T, Vec<String>>],
+) -> (Vec<u64>, Vec<PointStatus>, BTreeMap<u64, Vec<String>>) {
+    let mut successful = Vec::new();
+    let mut statuses = Vec::with_capacity(points.len());
+    let mut failures = BTreeMap::new();
+    for (id, point) in ids.iter().zip(points) {
+        match point {
+            Ok(_) => {
+                successful.push(*id);
+                statuses.push(PointStatus::AccuracyNotEstablished);
+            }
+            Err(reasons) => {
+                statuses.push(PointStatus::Failed);
+                failures.insert(*id, reasons.clone());
+            }
+        }
+    }
+    (successful, statuses, failures)
+}
+
 impl Evaluation {
-    /// One ordinary binary64 batch of a plan v4 process: Born per order and
-    /// the complete virtual per sector and epsilon power (with `Poles::None`
-    /// the finite part, the poles quiet NaNs), failed points without rows.
+    /// One ordinary batch of a plan v4 process in the runtime's arithmetic:
+    /// Born per order and the complete virtual per sector and epsilon power
+    /// (with `Poles::None` the finite part, the poles quiet NaNs), failed
+    /// points without rows.
     fn from_v4(
         native: &mut V2Runtime,
         inputs: LoopInputs,
         shape: Shape,
         poles: Poles,
+        arithmetic: Arithmetic,
     ) -> RusticolResult<Self> {
-        use rusticol_core::loop_v2::dress::parse_rational;
-        let width = 4 * shape.external_count;
-        let momenta = inputs
-            .momenta
-            .chunks(width.max(1))
-            .map(|point| point.iter().map(|x| parse_rational(x)).collect())
-            .collect::<RusticolResult<Vec<Vec<_>>>>()?;
-        let scales = inputs
-            .scales_squared
-            .iter()
-            .map(|x| parse_rational(x))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let points = native.evaluate(&momenta, &scales, poles.v2())?;
-        let mut successful_point_ids = Vec::new();
-        let mut statuses = Vec::with_capacity(points.len());
-        let mut failures = BTreeMap::new();
-        let mut born = Vec::new();
-        let mut virtual_values = Vec::new();
-        for (id, point) in inputs.point_ids.iter().zip(points) {
-            match point {
-                Ok((born_values, sectors)) => {
-                    successful_point_ids.push(*id);
-                    statuses.push(PointStatus::AccuracyNotEstablished);
-                    born.extend(born_values);
-                    for laurent in sectors {
-                        let finite = laurent.len();
-                        virtual_values.extend(laurent);
-                        // Absent poles (finite-only).
-                        virtual_values.extend((finite..shape.epsilon_count).map(|_| f64::NAN));
-                    }
-                }
-                Err(reasons) => {
-                    statuses.push(PointStatus::Failed);
-                    failures.insert(*id, reasons);
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        match arithmetic {
+            Arithmetic::Double => {
+                let points = native.evaluate(&momenta, &scales, poles.v2())?;
+                Self::ordinary(inputs, shape, poles, arithmetic, points)
+            }
+            _ => {
+                let points =
+                    native.evaluate_extended(&momenta, &scales, poles.v2(), arithmetic.v2())?;
+                Self::ordinary(inputs, shape, poles, arithmetic, points)
+            }
+        }
+    }
+
+    fn ordinary<N: Output>(
+        inputs: LoopInputs,
+        shape: Shape,
+        poles: Poles,
+        arithmetic: Arithmetic,
+        points: Vec<V2Point<N>>,
+    ) -> RusticolResult<Self> {
+        let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
+        let mut born = Reals::default();
+        let mut virtual_values = Reals::default();
+        for (born_values, sectors) in points.into_iter().flatten() {
+            for value in &born_values {
+                born.push(Some(value));
+            }
+            for laurent in sectors {
+                for k in 0..shape.epsilon_count {
+                    // Absent poles (finite-only).
+                    virtual_values.push(laurent.get(k));
                 }
             }
         }
-        let diagnostics_json = serde_json::to_string(&serde_json::json!({
-            "requested_point_ids":inputs.point_ids,
-            "successful_point_ids":successful_point_ids,
-            "failures":failures,
-            "r2_strategy":"model", "engine":"v2", "poles":poles.name(),
-            "primary_color_contraction":"direct",
-        }))
-        .map_err(serialization)?;
+        let diagnostics_json = diagnostics(
+            &inputs.point_ids,
+            &successful_point_ids,
+            &failures,
+            poles,
+            arithmetic,
+        )?;
         Ok(Self {
             requested_point_ids: inputs.point_ids,
             successful_point_ids,
             statuses,
-            born,
-            virtual_values,
+            born: born.values.clone(),
+            virtual_values: virtual_values.values.clone(),
             shape,
             resolved: false,
             diagnostics_json,
+            decimal: decimal_values(arithmetic, born, virtual_values),
         })
     }
+
+    /// One helicity-resolved batch of a plan v4 process (the Python API's
+    /// `evaluate_resolved`): per Born helicity row (and at leading colour
+    /// per Born basis element) the Born and the virtual, from the stored
+    /// resolved columns, in the layout point/order/helicity/colour/(epsilon).
+    fn resolved_v4(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        shape: Shape,
+        poles: Poles,
+        arithmetic: Arithmetic,
+        axes: &Observables,
+    ) -> RusticolResult<Self> {
+        let (momenta, scales) = exact_inputs(&inputs, shape.external_count)?;
+        let keys = native.resolved_keys()?;
+        match arithmetic {
+            Arithmetic::Double => {
+                let points =
+                    native.evaluate_columns("resolved", &momenta, &scales, &[], poles.v2())?;
+                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+            }
+            _ => {
+                let points = native.evaluate_columns_extended(
+                    "resolved",
+                    &momenta,
+                    &scales,
+                    &[],
+                    poles.v2(),
+                    arithmetic.v2(),
+                )?;
+                Self::resolved(inputs, shape, poles, arithmetic, axes, &keys, points)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolved<N: Output>(
+        inputs: LoopInputs,
+        shape: Shape,
+        poles: Poles,
+        arithmetic: Arithmetic,
+        axes: &Observables,
+        keys: &[(usize, usize)],
+        points: Vec<ColumnPoint<N>>,
+    ) -> RusticolResult<Self> {
+        let helicities = axes.rows.len();
+        let colours = axes.colour_ids.len();
+        // Column index of each (helicity row, colour component).
+        let mut index = vec![usize::MAX; helicities * colours];
+        for (column, (row, colour)) in keys.iter().enumerate() {
+            index[row * colours + colour] = column;
+        }
+        if index.contains(&usize::MAX) {
+            return Err(invalid("the stored resolved columns do not cover the rows"));
+        }
+        let (successful_point_ids, statuses, failures) = statuses_of(&inputs.point_ids, &points);
+        let mut born = Reals::default();
+        let mut virtual_values = Reals::default();
+        for columns in points.into_iter().flatten() {
+            for order in 0..axes.born_orders {
+                for &column in &index {
+                    born.push(Some(&columns[column].born[order].re));
+                }
+            }
+            for sector in 0..shape.virtual_orders {
+                for &column in &index {
+                    let laurent = &columns[column].virtual_values[sector];
+                    for k in 0..shape.epsilon_count {
+                        virtual_values.push(laurent.get(k).map(|z| &z.re));
+                    }
+                }
+            }
+        }
+        let diagnostics_json = diagnostics(
+            &inputs.point_ids,
+            &successful_point_ids,
+            &failures,
+            poles,
+            arithmetic,
+        )?;
+        Ok(Self {
+            requested_point_ids: inputs.point_ids,
+            successful_point_ids,
+            statuses,
+            born: born.values.clone(),
+            virtual_values: virtual_values.values.clone(),
+            shape: Shape {
+                born_orders: axes.born_orders,
+                ..shape
+            },
+            resolved: true,
+            diagnostics_json,
+            decimal: decimal_values(arithmetic, born, virtual_values),
+        })
+    }
+}
+
+impl Evaluation {
+    /// The `decimal` record as JSON (`null` for a binary64 evaluation).
+    pub fn decimal_json(&self) -> RusticolResult<String> {
+        serde_json::to_string(&self.decimal).map_err(serialization)
+    }
+}
+
+/// The diagnostics record of an evaluation.
+fn diagnostics(
+    requested: &[u64],
+    successful: &[u64],
+    failures: &BTreeMap<u64, Vec<String>>,
+    poles: Poles,
+    arithmetic: Arithmetic,
+) -> RusticolResult<String> {
+    serde_json::to_string(&serde_json::json!({
+        "requested_point_ids":requested,
+        "successful_point_ids":successful,
+        "failures":failures,
+        "r2_strategy":"model", "engine":"v2", "poles":poles.name(),
+        "arithmetic": arithmetic.name(),
+        "working_digits": (arithmetic != Arithmetic::Double).then(|| arithmetic.working_digits()),
+        "primary_color_contraction":"direct",
+    }))
+    .map_err(serialization)
 }
 
 #[cfg(test)]

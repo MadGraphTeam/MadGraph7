@@ -46,9 +46,11 @@ static void *array(size_t count, size_t element_size) {
     if (!product(count,element_size,&bytes) || bytes > PTRDIFF_MAX) return NULL;
     return bytes ? malloc(bytes) : NULL;
 }
+/* Every status but FAILED has a numerical row (plan v4 returns
+ * ACCURACY_NOT_ESTABLISHED for a computed point). */
 static int successful(uint32_t status) {
     return status == RUSTICOL_VIRTUAL_SUCCESS || status == RUSTICOL_VIRTUAL_VERIFIED ||
-        status == RUSTICOL_VIRTUAL_RESCUED;
+        status == RUSTICOL_VIRTUAL_RESCUED || status == RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED;
 }
 
 static UmamiStatus evaluate_bulk(int correlated,

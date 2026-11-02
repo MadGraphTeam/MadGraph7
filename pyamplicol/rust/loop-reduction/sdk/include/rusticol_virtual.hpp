@@ -91,6 +91,11 @@ public:
     std::string diagnostics_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_result_diagnostics_json);
     }
+    // Extended precision: {"arithmetic","digits","born","virtual"} decimal
+    // literals equal to the Python API's Decimal values; "null" in binary64.
+    std::string decimal_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_result_decimal_json);
+    }
 };
 
 // Complex grouped axes: point/history/order/(epsilon), never positive weights.
@@ -141,6 +146,10 @@ public:
     }
     std::string spin_legs_json() const {
         return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_spin_legs_json);
+    }
+    // Extended precision: [real, imaginary] decimal literals; "null" in binary64.
+    std::string decimal_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_correlated_result_decimal_json);
     }
 };
 
@@ -222,6 +231,11 @@ public:
     // "uv" (the bare loop's UV poles) or "ir" (the renormalised IR poles).
     void set_poles(const std::string &poles) {
         virtual_detail::check(rusticol_virtual_set_poles(handle_.get(), poles.c_str()));
+    }
+    // "double" (default), "double-double", or "arbitrary" with digits > 0
+    // decimal digits (the Python API's arithmetic=/precision=).
+    void set_arithmetic(const std::string &arithmetic, std::uint32_t digits = 0) {
+        virtual_detail::check(rusticol_virtual_set_arithmetic(handle_.get(), arithmetic.c_str(), digits));
     }
     std::uint64_t update_parameters(const std::string &exact_json) {
         std::uint64_t revision = 0;

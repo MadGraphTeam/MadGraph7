@@ -2,11 +2,15 @@
 
 > **Plan v4 only.** The legacy one-loop engine was removed (2026-10-29, user
 > ruling M-QCD Q3): as in the shared SDK ([README](../README.md)), a plan v4
-> process serves ordinary (unresolved) binary64 virtuals here; resolved and
-> correlated calls refuse with the plan v4 reason, and the options carry no
-> verification policy (SDK ABI version 2). The native
-> control client below (`client_umami_virtual.c`) was written for the removed
-> legacy artifacts.
+> process serves ordinary, resolved (`options.resolved = 1`) and colour- and
+> spin-correlated virtuals here, from its stored observable columns, in the
+> handle's pole selection and arithmetic (`rusticol_virtual_set_arithmetic`:
+> the outputs are the nearest doubles; the exact decimals of double-double
+> and arbitrary precision come with the optional diagnostic result,
+> `rusticol_virtual_result_decimal_json`); the options carry no verification
+> policy (SDK ABI version 2). The plan v4 control is
+> `../examples/extras_v4_umami.c`; the older control client below
+> (`client_umami_virtual.c`) was written for the removed legacy artifacts.
 
 This source adapter extends UMAMI's keyed bulk-memory conventions for the
 pyAmpliCol virtual SDK. It is explicitly a **pyAmpliCol extension**, not a
@@ -129,8 +133,9 @@ whole-point failure statuses.
 ## Correlated operation
 
 `pyamplicol_umami_virtual_v1_evaluate_correlated` (grouped complex colour
-histories and joint spin-vector inputs) remains exported with its keys and
-`pyamplicol_umami_virtual_v1_supported_correlated_inputs`. It was served by the
-removed legacy runtime and refuses a plan v4 process with the plan v4 reason;
-evaluate correlated and spin-source virtuals of plan v4 through the Python API.
+histories and joint spin-vector inputs, keys in
+`pyamplicol_umami_virtual_v1_supported_correlated_inputs`) evaluates every
+stored history of a plan v4 process in one SDK call (`born` first), with the
+spin vectors of one declared spin class, bitwise the Python API's
+`evaluate_correlated_many` in binary64.
 
