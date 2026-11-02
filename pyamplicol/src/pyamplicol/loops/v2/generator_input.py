@@ -670,9 +670,14 @@ class NativeGeneration:
                 states.add(mirror)
                 pending.append(mirror)
         # Colour states are totally ordered (checked); typed as Any to sort.
-        ordered: list[Any] = sorted(cast(set[Any], states))
-        if any(not a < b for a, b in itertools.pairwise(ordered)):
+        # A model may name a key whose tuples order as its states do
+        # (``SeedColour.state_order_key``): compared at C speed.
+        order_key = getattr(colour, "state_order_key", None)
+        ordered: list[Any] = sorted(cast(set[Any], states), key=order_key)
+        keys = ordered if order_key is None else list(map(order_key, ordered))
+        if any(not a < b for a, b in itertools.pairwise(keys)):
             raise ValueError("colour states must be totally ordered")
+        del keys
         rank = {state: i for i, state in enumerate(ordered)}
         state_rows: list[list[int] | None] = [None] * len(self._positions)
         for position, found in per_position.items():
@@ -935,6 +940,29 @@ class NativeGeneration:
         if complete:
             self.base = build
         return plan
+
+
+# The oldest generation's threshold while full collections are deferred
+# (``full_collections_deferred``): no pass is triggered within a generation.
+_DEFERRED_THRESHOLD = 1 << 30
+
+
+@contextmanager
+def full_collections_deferred() -> Iterator[None]:
+    """The cyclic collector's full (oldest-generation) passes deferred while
+    a generation builds its tens of millions of long-lived, acyclic objects:
+    each pass traverses the whole heap and frees next to nothing (seven
+    gluons LC: 21 passes, 12-15 s of a 70-90 s ``LoopSlice.generate``, under
+    11k objects freed), and the heap grows tenfold per leg. Young
+    collections keep running; the thresholds are restored on exit (nested
+    uses keep the outermost's). Usable as a decorator."""
+
+    young, middle, old = gc.get_threshold()
+    gc.set_threshold(young, middle, max(old, _DEFERRED_THRESHOLD))
+    try:
+        yield
+    finally:
+        gc.set_threshold(young, middle, old)
 
 
 @contextmanager
