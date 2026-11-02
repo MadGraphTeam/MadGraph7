@@ -876,8 +876,10 @@ $(BUILDDIR)/.hrflags: FORCE_HRFLAGS
 FORCE_HRFLAGS:
 $(BUILDDIR)/SigmaKin.o: $(BUILDDIR)/.hrflags
 else
-ifneq ($(wildcard HelRecycling.inc),)
 ifeq ($(filter clean cleanall cleancommon cleanallcommon,$(MAKECMDGOALS)),)
+ifneq ($(wildcard HelZeroAmps.inc),)
+$(info INFO: --hel_recycling: this $(BACKEND) build of $(notdir $(CURDIR)) skips the amplitudes that vanish at each helicity; the wavefunction recycling is CPU only (see backend/gpu/SigmaKin.cc))
+else ifneq ($(wildcard HelRecycling.inc),)
 $(info INFO: --hel_recycling is CPU only: this $(BACKEND) build of $(notdir $(CURDIR)) is the plain matrix element (see backend/gpu/SigmaKin.cc))
 endif
 endif
