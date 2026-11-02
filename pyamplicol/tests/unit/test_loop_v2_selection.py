@@ -1567,6 +1567,14 @@ def test_selections_are_masks_on_one_template(
             if selection.get("color_flows") == ["flow:2,1,3,5,4"]:
                 assert not any(masked.masks.families[0])
                 assert all(x == 0 for x in got[0][column.key].totals)
+            # MF-MASKS-ROWS: a call keeping some Born rows dresses the
+            # families pruned to the rows they reach (``plan::LiveRows``),
+            # one keeping every row the template's families.
+            counts = masked.columns.last_report["counts"]
+            if len(column.rows or ()) in range(1, len(hel)):
+                assert 0 < counts.get("live-row links", 0)
+            else:
+                assert "live-row links" not in counts
     assert built["sets"] > 1  # the oracles' own column sets
 
 
