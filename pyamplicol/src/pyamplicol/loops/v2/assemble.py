@@ -2374,14 +2374,14 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         reading = TreeReading(data)
-        rules = set()
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
-            rules.update(
-                term.vertex.rule
-                for content in skeleton.contents
-                for term in content.terms
-            )
+        # The vertices of every reading: those of the distinct contents.
+        rules = {
+            term.vertex.rule
+            for content in weights.contents_seen()
+            for term in content.terms
+        }
         for rule in sorted(rules):
             reading.conjugate(rule)  # refuses vertices it cannot read
         if program is not None:

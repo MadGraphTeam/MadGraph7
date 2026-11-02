@@ -474,7 +474,7 @@ def check_leaf_weights(slice_, weights=None) -> int:
         own = slice_.weights
         weights = LeafWeights.__new__(LeafWeights)
         weights.__dict__.update(own.__dict__)
-        weights._signs, weights._kinds = {}, {}
+        weights._signs, weights._kinds, weights._read_ids = {}, {}, {}
     plans = [slice_.plan]
     if slice_.scaleless is not None:
         plans.append(slice_.scaleless.plan)
@@ -484,14 +484,15 @@ def check_leaf_weights(slice_, weights=None) -> int:
             expected = _reading_outcome(weights._fermion_sign, skeleton)
             assert _reading_outcome(weights.fermion_sign, skeleton) == expected
             assert _reading_outcome(weights.fermion_sign, skeleton) == expected
-            kinds = [weights._kinds.get(c) for c in skeleton.contents]
+            kinds = [weights._kinds[c][0] for c in skeleton.contents]
             fast += _FERMIONIC not in kinds
     return fast
 
 
 @pytest.mark.loop_fast
 def test_leaf_weights_equal_the_full_rule(slices):
-    """D1: one sign per distinct contents tuple, and the fast path for
+    """D1: one sign per distinct tuple of what the rule reads of the
+    contents (loop lines and routing terms; mf-8g-1c), and the fast path for
     contents without a fermion line, equal the full rule on every reading
     (g g > t t~: the top line through the loop, top loops, gluon and ghost
     loops; g g > g g: quark loops beside gluon and ghost loops), the fast
@@ -512,7 +513,8 @@ def test_leaf_weights_equal_the_full_rule(slices):
     assert weight == skeleton.weight * skeleton.multiplicity * sign
     blind = LeafWeights.__new__(LeafWeights)
     blind.__dict__.update(tops.weights.__dict__)
-    blind._ends, blind._end_mask, blind._signs, blind._kinds = {}, 0, {}, {}
+    blind._ends, blind._end_mask = {}, 0
+    blind._signs, blind._kinds, blind._read_ids = {}, {}, {}
     check_leaf_weights(tops, blind)
     refusals = sum(
         isinstance(_reading_outcome(blind.fermion_sign, s), tuple)
