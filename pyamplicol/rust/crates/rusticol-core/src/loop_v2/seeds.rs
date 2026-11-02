@@ -88,18 +88,18 @@ impl<T: Carrier> Seeds<T> {
         std::borrow::Cow::Owned(out)
     }
 
-    /// The leaf object `weight × U0[key]` into `out` (zeroed: a buffer of
-    /// the family walk's pool), from the materialised value when there is
-    /// one, else formed in place.
+    /// The leaf object `weight × U0[key]` into `out`, from the materialised
+    /// value when there is one, else formed in one pass: per lane vector the
+    /// key's classes summed from zero in order, then scaled (the
+    /// materialised key's operations, so the same bits).
     pub fn leaf_into<const L: usize>(&self, key: usize, weight: &T, out: &mut [T]) {
         if let Some(value) = self.values.get(key) {
             leaf_object::<T, L>(value, weight, out);
             return;
         }
-        self.key_into::<L>(key, out);
-        for target in out.iter_mut() {
-            let value = target.clone();
-            *target = weight.clone() * &value;
+        match &self.keys[key] {
+            Key::Class(class) => leaf_object::<T, L>(&self.classes[*class], weight, out),
+            Key::Sum(terms) => leaf_sum::<T, L>(&self.classes, terms, weight, out),
         }
     }
 }
@@ -196,6 +196,76 @@ fn key_sum_body<T: Carrier, const L: usize>(
             }
         }
     }
+}
+
+/// `out = weight × Σ_c x_c U0_c` per lane vector: the sum from zero over the
+/// key's classes in order (as [`key_sum_body`] into a zero buffer), then the
+/// product with `weight` (as [`leaf_object`]).
+#[inline(always)]
+fn leaf_sum_body<T: Carrier, const L: usize>(
+    classes: &[Vec<T>],
+    terms: &[(usize, T, T)],
+    weight: &T,
+    out: &mut [T],
+) {
+    let v = lane_vector_len(L);
+    let zero = weight.zero();
+    for (j, target) in out.chunks_exact_mut(v).enumerate() {
+        let mut sum_re: [T; L] = std::array::from_fn(|_| zero.clone());
+        let mut sum_im: [T; L] = std::array::from_fn(|_| zero.clone());
+        for (class, re, im) in terms {
+            let (c, d) = classes[*class][j * v..][..v].split_at(L);
+            for l in 0..L {
+                sum_re[l] += re.clone() * &c[l] - im.clone() * &d[l];
+                sum_im[l] += re.clone() * &d[l] + im.clone() * &c[l];
+            }
+        }
+        let (target_re, target_im) = target.split_at_mut(L);
+        for l in 0..L {
+            target_re[l] = weight.clone() * &sum_re[l];
+            target_im[l] = weight.clone() * &sum_im[l];
+        }
+    }
+}
+
+/// [`leaf_sum_body`] in the widest vectors the running CPU reports for
+/// binary64 ([`super::kernels::Simd`]; the same operations per lane).
+fn leaf_sum<T: Carrier, const L: usize>(
+    classes: &[Vec<T>],
+    terms: &[(usize, T, T)],
+    weight: &T,
+    out: &mut [T],
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use super::kernels::Simd;
+        #[target_feature(enable = "avx512f")]
+        fn avx512<T: Carrier, const L: usize>(
+            classes: &[Vec<T>],
+            terms: &[(usize, T, T)],
+            weight: &T,
+            out: &mut [T],
+        ) {
+            leaf_sum_body::<T, L>(classes, terms, weight, out)
+        }
+        #[target_feature(enable = "avx2")]
+        fn avx2<T: Carrier, const L: usize>(
+            classes: &[Vec<T>],
+            terms: &[(usize, T, T)],
+            weight: &T,
+            out: &mut [T],
+        ) {
+            leaf_sum_body::<T, L>(classes, terms, weight, out)
+        }
+        match Simd::detect::<T>() {
+            // SAFETY: `Simd::detect` returns a width only when the running
+            // CPU reports its feature.
+            Simd::Avx512 => return unsafe { avx512::<T, L>(classes, terms, weight, out) },
+            Simd::Avx2 => return unsafe { avx2::<T, L>(classes, terms, weight, out) },
+            Simd::Baseline => {}
+        }
+    }
+    leaf_sum_body::<T, L>(classes, terms, weight, out)
 }
 
 /// [`key_sum_body`] in the widest vectors the running CPU reports for
@@ -330,5 +400,43 @@ mod tests {
         let mut out = [0.0; 4];
         leaf_object::<f64, 2>(&seed, &-0.5, &mut out);
         assert_eq!(out, [-0.5, 1.0, -0.25, -2.0]);
+    }
+
+    #[test]
+    fn leaves_formed_in_place_equal_the_materialised_keys_bitwise() {
+        const L: usize = 4;
+        let len = 3 * lane_vector_len(L);
+        let mut x = 0.1_f64;
+        let mut next = || {
+            x = (x * 7.3 + 0.37).fract();
+            x * 2.0 - 1.0
+        };
+        let classes: Vec<Vec<f64>> = (0..3).map(|_| (0..len).map(|_| next()).collect()).collect();
+        let keys = vec![
+            Key::Class(1),
+            Key::Sum(vec![(0, 0.3, -1.2), (2, 2.0 / 3.0, 0.5)]),
+            Key::Sum(vec![(2, -1.0, 0.0), (1, 0.25, 1.0 / 7.0), (0, 1e-3, -3.5)]),
+        ];
+        let mut seeds = Seeds {
+            classes,
+            keys,
+            values: Vec::new(),
+        };
+        let weight = -1.0 / 3.0;
+        let lazy: Vec<Vec<f64>> = (0..3)
+            .map(|key| {
+                let mut out = vec![0.0; len];
+                seeds.leaf_into::<L>(key, &weight, &mut out);
+                out
+            })
+            .collect();
+        seeds.materialise::<L>(&0.0);
+        for (key, lazy) in lazy.iter().enumerate() {
+            let mut out = vec![0.0; len];
+            seeds.leaf_into::<L>(key, &weight, &mut out);
+            let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            assert_eq!(bits(lazy), bits(&out), "key {key}");
+            assert_eq!(bits(&seeds.value::<L>(key)), bits(&seeds.values[key]));
+        }
     }
 }
