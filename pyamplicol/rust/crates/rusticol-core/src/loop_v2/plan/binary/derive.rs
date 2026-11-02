@@ -830,6 +830,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // per source row (collected); then per step its edges, its split
     // candidate, and the family's factor, vertex and current sets.
     tally.keep(file.families.len() as u64, size_of::<Family>());
+    // The families' distinct leaf weights (at most one per leaf) and their
+    // index by text.
+    let leaves: u64 = file.families.iter().map(|f| f.leaves.len() as u64).sum();
+    tally.keep_grown(leaves, size_of::<Rational>());
+    tally.map_grown(leaves, size_of::<(&str, u32)>());
     let mut largest_rank = 0;
     for f in &file.families {
         require(

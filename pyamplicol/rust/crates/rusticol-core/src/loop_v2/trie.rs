@@ -46,7 +46,7 @@ pub fn run_family<T: Carrier, const L: usize>(
     let weights: Vec<T> = family
         .leaves
         .iter()
-        .map(|leaf| data.cast(&leaf.weight))
+        .map(|leaf| data.cast(&plan.leaf_weights[leaf.weight as usize]))
         .collect();
     // A split part's row links, unpacked (`plan::PackedLinks`).
     let mut links = Vec::new();
@@ -57,7 +57,7 @@ pub fn run_family<T: Carrier, const L: usize>(
         let mut source = |edge: &Edge, pool: &mut Pool<T>| -> RusticolResult<Vec<T>> {
             match edge.source {
                 Source::Leaf(leaf) => {
-                    let seed = &seeds.values[family.leaves[leaf].seed];
+                    let seed = &seeds.values[family.leaves[leaf].seed as usize];
                     let mut input = pool.take(seed.len());
                     leaf_object::<T, L>(seed, &weights[leaf], &mut input);
                     Ok(input)

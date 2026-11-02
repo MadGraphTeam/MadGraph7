@@ -456,9 +456,30 @@ pub struct SeedKey {
 
 #[derive(Clone, Debug)]
 pub struct Leaf {
-    pub seed: usize,
-    /// Exact leaf weight (automorphism, flavour multiplicity, fermion sign).
-    pub weight: Rational,
+    pub seed: u32,
+    /// Exact leaf weight (automorphism, flavour multiplicity, fermion sign):
+    /// an index into the program's distinct leaf weights
+    /// ([`LoopProgramV4::leaf_weights`]; M-FINAL MF-8G-2 item 4).
+    pub weight: u32,
+}
+
+/// The distinct leaf weights of a plan's families, each text parsed once.
+#[derive(Default)]
+struct LeafWeights<'a> {
+    values: Vec<Rational>,
+    index: HashMap<&'a str, u32>,
+}
+
+impl<'a> LeafWeights<'a> {
+    fn get(&mut self, text: &'a str) -> RusticolResult<u32> {
+        if let Some(&found) = self.index.get(text) {
+            return Ok(found);
+        }
+        let next = u32::try_from(self.values.len()).map_err(|_| invalid("leaf weights"))?;
+        self.values.push(exact(text)?);
+        self.index.insert(text, next);
+        Ok(next)
+    }
 }
 
 /// The source of an edge: a leaf seed or the output of an earlier step.
@@ -867,6 +888,8 @@ pub struct LoopProgramV4 {
     pub seed_weights: Vec<[Rational; 2]>,
     pub seeds: Vec<SeedKey>,
     pub families: Vec<Family>,
+    /// The distinct exact weights of the families' leaves.
+    pub leaf_weights: Vec<Rational>,
     pub forward: Option<Vec<State>>,
     pub merged: Option<Merged>,
     pub products: Vec<MonomialProductTable>,
@@ -1571,10 +1594,18 @@ impl LoopProgramV4 {
             rows: &rows,
             content_rows: &content_rows,
         };
+        let mut leaf_weights = LeafWeights::default();
         for f in &file.families {
             order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-            families.push(Self::family(f, &shared, &mut tables, &mut split_inputs)?);
+            families.push(Self::family(
+                f,
+                &shared,
+                &mut tables,
+                &mut split_inputs,
+                &mut leaf_weights,
+            )?);
         }
+        let leaf_weights = leaf_weights.values;
         let forward = file
             .forward
             .as_ref()
@@ -1606,6 +1637,7 @@ impl LoopProgramV4 {
             seed_weights,
             seeds,
             families,
+            leaf_weights,
             forward,
             merged,
             products: tables.tables,
@@ -1618,11 +1650,12 @@ impl LoopProgramV4 {
         Ok(program)
     }
 
-    fn family(
-        f: &FamilyFile,
+    fn family<'a>(
+        f: &'a FamilyFile,
         shared: &Shared<'_>,
         tables: &mut Tables,
         split_inputs: &mut SplitInputs,
+        leaf_weights: &mut LeafWeights<'a>,
     ) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = (1u64 << file.legs) - 1;
@@ -1645,8 +1678,8 @@ impl LoopProgramV4 {
             .map(|leaf| {
                 require(leaf.seed < seeds, "leaf seed index")?;
                 Ok(Leaf {
-                    seed: leaf.seed,
-                    weight: exact(&leaf.weight)?,
+                    seed: u32::try_from(leaf.seed).map_err(|_| invalid("leaf seed index"))?,
+                    weight: leaf_weights.get(&leaf.weight)?,
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
