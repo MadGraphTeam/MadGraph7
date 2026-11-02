@@ -779,16 +779,19 @@ enum TermInput {
     Momentum { slot: usize, mu: usize },
 }
 
-/// One interaction of the interaction program.
+/// One interaction of the interaction program: state components and
+/// accumulator offsets as `u32` (M-FINAL MF-8G-2 item 4: a counterterm
+/// program has millions; the loader refuses a program whose state or
+/// accumulator row does not fit).
 struct Edge {
-    left: usize,
-    left_dimension: usize,
-    right: usize,
-    right_dimension: usize,
-    left_momentum: usize,
-    right_momentum: usize,
+    left: u32,
+    left_dimension: u32,
+    right: u32,
+    right_dimension: u32,
+    left_momentum: u32,
+    right_momentum: u32,
     /// Offset of the result's accumulator in the step's accumulator row.
-    accumulator: usize,
+    accumulator: u32,
     /// The exact weight: an index into the program's distinct weights
     /// (`Interactions::weights`; M-FINAL MF-8G-2 item 4).
     weight: u32,
@@ -1597,14 +1600,15 @@ fn load_interactions(
                     && within(pr, 4),
                 "interaction",
             )?;
+            let narrow = |value: usize| u32::try_from(value).map_err(|_| invalid("interaction"));
             groups.entry(kernel).or_default().push(Edge {
-                left,
-                left_dimension: ld,
-                right,
-                right_dimension: rd,
-                left_momentum: pl,
-                right_momentum: pr,
-                accumulator: offsets[accumulator],
+                left: narrow(left)?,
+                left_dimension: narrow(ld)?,
+                right: narrow(right)?,
+                right_dimension: narrow(rd)?,
+                left_momentum: narrow(pl)?,
+                right_momentum: narrow(pr)?,
+                accumulator: narrow(offsets[accumulator])?,
                 weight,
                 pole: pole[accumulator],
             });
@@ -4247,16 +4251,15 @@ where
                 parameters.clear();
                 for (edge, _) in chunk {
                     for state in states.chunks_exact(layout.size) {
+                        let (left, right) = (edge.left as usize, edge.right as usize);
+                        let (pl, pr) = (edge.left_momentum as usize, edge.right_momentum as usize);
                         parameters
-                            .extend_from_slice(&state[edge.left..edge.left + edge.left_dimension]);
+                            .extend_from_slice(&state[left..left + edge.left_dimension as usize]);
                         parameters.extend_from_slice(
-                            &state[edge.right..edge.right + edge.right_dimension],
+                            &state[right..right + edge.right_dimension as usize],
                         );
-                        parameters
-                            .extend_from_slice(&state[edge.left_momentum..edge.left_momentum + 4]);
-                        parameters.extend_from_slice(
-                            &state[edge.right_momentum..edge.right_momentum + 4],
-                        );
+                        parameters.extend_from_slice(&state[pl..pl + 4]);
+                        parameters.extend_from_slice(&state[pr..pr + 4]);
                         parameters.extend(model(*kernel).map(|index| state[index].clone()));
                     }
                 }
@@ -4269,7 +4272,7 @@ where
                 for &(edge, weight) in chunk {
                     for point in 0..points {
                         let values = row.next().expect("a kernel row per point");
-                        let target = &mut sums[point * step.width + edge.accumulator..];
+                        let target = &mut sums[point * step.width + edge.accumulator as usize..];
                         for (sum, value) in target.iter_mut().zip(values) {
                             *sum += weight.clone() * value.clone();
                         }
@@ -4383,28 +4386,29 @@ where
         return Ok(());
     }
     let (left, right) = (first.left_dimension, first.right_dimension);
-    let inputs = left + right + 8 + models.len();
     require(
-        plane.input_len() == inputs
-            && active
-                .iter()
-                .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
+        active
+            .iter()
+            .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
         "interaction kernel inputs",
     )?;
+    let (left, right) = (left as usize, right as usize);
+    let inputs = left + right + 8 + models.len();
+    require(plane.input_len() == inputs, "interaction kernel inputs")?;
     let width = plane.output_len();
     let size = layout.size;
     for chunk in active.chunks((PLANE_ROWS / points).max(1)) {
         let rows = chunk.len() * points;
         let (planes, stride) = plane.planes(rows);
         fill_planes(planes, stride, 0, left, chunk, states, size, |edge| {
-            edge.left
+            edge.left as usize
         });
         fill_planes(planes, stride, left, right, chunk, states, size, |edge| {
-            edge.right
+            edge.right as usize
         });
         let momenta = left + right;
         fill_planes(planes, stride, momenta, 4, chunk, states, size, |edge| {
-            edge.left_momentum
+            edge.left_momentum as usize
         });
         fill_planes(
             planes,
@@ -4414,7 +4418,7 @@ where
             chunk,
             states,
             size,
-            |edge| edge.right_momentum,
+            |edge| edge.right_momentum as usize,
         );
         for (k, &index) in models.iter().enumerate() {
             fill_planes(
@@ -4435,7 +4439,7 @@ where
         let mut row = 0;
         for &(edge, weight) in chunk {
             for point in 0..points {
-                let target = &mut sums[point * step.width + edge.accumulator..];
+                let target = &mut sums[point * step.width + edge.accumulator as usize..];
                 for (output, sum) in (0..width).zip(target.iter_mut()) {
                     let at = base + 2 * output * stride + row;
                     let value = Complex::new(planes[at].clone(), planes[at + stride].clone());

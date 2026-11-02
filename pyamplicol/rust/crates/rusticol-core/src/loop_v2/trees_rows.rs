@@ -173,10 +173,11 @@ fn prune(interactions: &mut Interactions, needed: &mut [bool]) {
             needed[start..start + dimension].fill(false);
         }
         for (_kernel, edges) in &mut step.groups {
-            edges.retain(|edge| read[edge.accumulator]);
+            edges.retain(|edge| read[edge.accumulator as usize]);
             for edge in edges.iter() {
-                needed[edge.left..edge.left + edge.left_dimension].fill(true);
-                needed[edge.right..edge.right + edge.right_dimension].fill(true);
+                let (left, right) = (edge.left as usize, edge.right as usize);
+                needed[left..left + edge.left_dimension as usize].fill(true);
+                needed[right..right + edge.right_dimension as usize].fill(true);
             }
         }
         step.groups.retain(|(_kernel, edges)| !edges.is_empty());
@@ -189,7 +190,7 @@ mod tests {
     use super::{block_slots, prune};
     use symbolica::domains::rational::Rational;
 
-    fn edge(left: usize, right: usize, accumulator: usize) -> Edge {
+    fn edge(left: u32, right: u32, accumulator: u32) -> Edge {
         Edge {
             left,
             left_dimension: 1,
@@ -239,7 +240,9 @@ mod tests {
                 let edges = step
                     .groups
                     .iter()
-                    .flat_map(|(kernel, edges)| edges.iter().map(move |e| (*kernel, e.left)))
+                    .flat_map(|(kernel, edges)| {
+                        edges.iter().map(move |e| (*kernel, e.left as usize))
+                    })
                     .collect();
                 let outputs = step.outputs.iter().map(|output| output.3).collect();
                 (edges, outputs)
