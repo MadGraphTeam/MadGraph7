@@ -327,7 +327,8 @@ def synthesize_fundamental_fierz_auxiliaries(
 
     A certified ``T^a_ij`` kernel implies the SU(3) color-flow decomposition
     into an ordinary line connection and a ``1 / N_c`` singlet subtraction.
-    The synthetic current reuses the exact compiled Lorentz/coupling kernel;
+    The synthetic current reuses the exact compiled Lorentz/coupling kernel,
+    with the ``1 / N_c`` of its production as an exact factor of the coupling;
     no particle name or PDG label participates in the proof.
 
     This milestone deliberately targets the supported QCD-like contract:
@@ -446,9 +447,17 @@ def synthesize_fundamental_fierz_auxiliaries(
 
         kind = next_kind + len(synthetic)
         coefficient = complex(*(kernel.color_projection_coefficient or (1.0, 0.0)))
+        coupling_expression = kernel.coupling_expression
         if source_slot == 2:
+            # The 1/N_c of the singlet subtraction enters the coupling exactly,
+            # as in ``synthesize_u1_projections``: in the binary64 colour
+            # coefficient it would cap every evaluation beyond double
+            # precision at the rounding of 1/3.
             fundamental_dimension = abs(representations[0])
-            coefficient /= fundamental_dimension
+            coupling_expression = (
+                _sym.E(kernel.coupling_expression)
+                * _sym.E(f"1/{fundamental_dimension}")
+            ).to_canonical_string()
         source_legs = list(kernel.source_particle_legs)
         source_legs[source_slot] = -1
         synthetic_kernel = CompiledOrientedKernel(
@@ -468,7 +477,7 @@ def synthesize_fundamental_fierz_auxiliaries(
                 ).to_canonical_string()
                 for component in kernel.component_expressions
             ),
-            coupling_expression=kernel.coupling_expression,
+            coupling_expression=coupling_expression,
             coupling_orders=kernel.coupling_orders,
             runtime_parameters=kernel.runtime_parameters,
             color_source=color_source,
