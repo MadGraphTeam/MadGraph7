@@ -66,10 +66,10 @@ decimal_digits, requests, helicity_ids)` takes decimal-string momenta
 `ceil(digits * log2(10))` bits) and `NativeDecimalCorrelatedRequest`s whose spin
 vectors are `[real, imaginary]` decimal strings per component. It returns
 request-major `[real, imaginary]` decimal strings, `values[request *
-point_count + point]`. Sources, stages, the exact colour weights and the
-contraction are evaluated at the working precision; the normalization constant
-and the process-group factor are the artifact's, exactly as in
-`evaluate_with_precision`.
+point_count + point]`. Sources, stages, the exact colour weights, the
+contraction and derived model parameters are evaluated at the working
+precision; the normalization constant and the process-group factor are the
+artifact's, exactly as in `evaluate_with_precision`.
 
 LC, NLC and full colour are selected at generation for each inserted colour
 matrix, independently of connection order. The underlying amplitudes remain

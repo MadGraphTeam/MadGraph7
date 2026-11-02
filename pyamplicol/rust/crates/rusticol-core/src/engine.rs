@@ -4481,6 +4481,11 @@ struct ModelParameterEvaluatorRuntime {
     input_parameter_indices: Vec<usize>,
     outputs: Vec<GenericDerivedParameterOutputManifest>,
     evaluator: EvaluatorGroup,
+    /// The outputs' exact definitions for the double-double and
+    /// arbitrary-precision paths, attached on first use
+    /// (`NativeRuntime::ensure_exact_model_parameters`).
+    #[cfg(feature = "symbolica-runtime")]
+    exact: Option<Arc<ExactModelParameterDerivation>>,
 }
 
 struct StageRuntime {

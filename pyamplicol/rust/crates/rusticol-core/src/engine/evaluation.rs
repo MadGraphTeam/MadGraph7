@@ -2475,11 +2475,10 @@ impl ExecutionRuntime {
         let momentum_slots = &self.momentum_slots;
         let external_count = self.external_count;
         let external_is_initial = &self.external_is_initial;
-        let particle_masses = &self.particle_masses;
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        let model_parameter_values = &self.model_parameter_values_f64;
-        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
+        let (model_parameter_values, masses) =
+            self.generic_model_parameters::<T>(binary_precision)?;
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2517,9 +2516,8 @@ impl ExecutionRuntime {
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_model_parameters_row_generic(
                 model_parameter_start,
-                model_parameter_values,
+                &model_parameter_values,
                 row_state,
-                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
@@ -2953,11 +2951,10 @@ impl ExecutionRuntime {
         let momentum_slots = &self.momentum_slots;
         let external_count = self.external_count;
         let external_is_initial = &self.external_is_initial;
-        let particle_masses = &self.particle_masses;
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
-        let model_parameter_values = &self.model_parameter_values_f64;
-        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
+        let (model_parameter_values, masses) =
+            self.generic_model_parameters::<T>(binary_precision)?;
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2994,9 +2991,8 @@ impl ExecutionRuntime {
                 &mut state[row * self.parameter_count..(row + 1) * self.parameter_count];
             Self::fill_model_parameters_row_generic(
                 model_parameter_start,
-                model_parameter_values,
+                &model_parameter_values,
                 row_state,
-                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();

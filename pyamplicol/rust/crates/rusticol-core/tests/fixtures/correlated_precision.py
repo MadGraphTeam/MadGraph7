@@ -11,6 +11,11 @@ writes into DIR
 * ``builtin/``: the built-in SM processes ``u d > u d g``, ``u u~ > g g g`` and
   ``g g > g g g`` at full colour (compiled), declaring every dipole
   ``T_k . T_l`` (k < l, id ``Tkl``) and every gluon leg as a spin class;
+* ``ufo/``: ``u d > u d``, ``g g > g g`` and ``g g > g g g`` of the UFO
+  ``models/json/sm`` (restriction ``no_b_mass``, QCD only, full colour,
+  compiled), whose couplings are derived model parameters;
+* ``heft/``: ``g g > h`` of the built-in SM-HEFT (compiled), whose coupling
+  G_H is a derived model parameter;
 * ``reference.json``: the exact integer points and, per built-in process and
   point, the Python exact correlated path (``Runtime.evaluate_correlated_many``,
   arbitrary precision) at ``REFERENCE_DIGITS`` digits, divided by the Python
@@ -26,6 +31,7 @@ import sys
 from decimal import Decimal, localcontext
 from pathlib import Path
 
+import pyamplicol
 from pyamplicol import (
     ColorCorrelator,
     CorrelatedRequest,
@@ -39,6 +45,7 @@ from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
     GenerationConfig,
+    ProcessConfig,
     RunConfig,
 )
 
@@ -50,11 +57,21 @@ POINTS_2TO3 = (
     (540, ((390, -360, -120, -90), (250, 120, -160, -150), (440, 240, 280, 240))),
     (490, ((390, -360, -120, -90), (340, 160, 240, 180), (250, 200, -120, -90))),
 )
+POINTS_2TO2 = (
+    (700, ((700, 200, 300, 600), (700, -200, -300, -600))),
+    (450, ((450, 50, 200, 400), (450, -50, -200, -400))),
+    (2200, ((2200, 1200, 400, -1800), (2200, -1200, -400, 1800))),
+)
 
 BUILTIN = {
     "ud_udg": ("u d > u d g", (5,)),
     "uux_ggg": ("u u~ > g g g", (3, 4, 5)),
     "gg_ggg": ("g g > g g g", (1, 2, 3, 4, 5)),
+}
+UFO = {
+    "ud_ud": "u d > u d",
+    "gg_gg": "g g > g g",
+    "gg_ggg": "g g > g g g",
 }
 
 
@@ -102,12 +119,20 @@ def requests(legs, spin_legs, point):
     return result
 
 
-def generate(expressions, output, model, correlators=None):
+def generate(expressions, output, model, correlators=None, max_coupling_orders=None):
     config = RunConfig(
         action="generate",
         color=ColorConfig(accuracy="full"),
         evaluator=EvaluatorConfig(backend="jit", execution_mode="compiled"),
         generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        process=(
+            ProcessConfig()
+            if max_coupling_orders is None
+            else ProcessConfig(
+                coupling_order_policy="explicit",
+                max_coupling_orders=max_coupling_orders,
+            )
+        ),
     )
     names = tuple(expressions)
     Generator(config).generate(
@@ -136,9 +161,23 @@ def main(root: Path) -> None:
             ModelSource.built_in_sm(),
             declarations,
         )
+    ufo_root = Path(pyamplicol.__file__).parent / "assets/models/json/sm"
+    generate(
+        UFO,
+        root / "ufo",
+        ModelSource.from_path(ufo_root / "sm.json", restriction="no_b_mass"),
+        max_coupling_orders={"QED": 0},
+    )
+    generate(
+        {"gg_h": "g g > h"},
+        root / "heft",
+        ModelSource.built_in_sm_heft(),
+        max_coupling_orders={"QCD": 0, "QED": 0, "HIG": 1},
+    )
     reference = {
         "digits": REFERENCE_DIGITS,
         "points_2to3": [momenta(e, outgoing) for e, outgoing in POINTS_2TO3],
+        "points_2to2": [momenta(e, outgoing) for e, outgoing in POINTS_2TO2],
         "builtin": {},
     }
     for name, (expression, spin_legs) in BUILTIN.items():

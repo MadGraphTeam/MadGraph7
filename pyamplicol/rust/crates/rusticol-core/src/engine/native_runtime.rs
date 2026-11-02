@@ -4627,6 +4627,7 @@ impl NativeRuntime {
         if self.execution_lane.is_recurrence() {
             return Err(recurrence_parity_pending("higher-precision evaluation"));
         }
+        self.ensure_exact_model_parameters()?;
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut values, _profile) = self.runtime.run_double(&batch)?;
@@ -4730,6 +4731,7 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
+        self.ensure_exact_model_parameters()?;
         let mut evaluation = if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut resolved, _profile) = self.runtime.run_resolved_generic(

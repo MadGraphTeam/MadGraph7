@@ -903,12 +903,14 @@ impl NativeRuntime {
                 decimal_digits,
             )
         } else if decimal_digits == 32 {
+            self.ensure_exact_model_parameters()?;
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let mut values =
                 evaluate_many_generic::<DoubleFloat>(self, &batch, requests, helicity_ids, None)?;
             self.apply_process_group_factor_high_precision(&mut values, None);
             native_runtime::format_decimal_values(values, decimal_digits)
         } else {
+            self.ensure_exact_model_parameters()?;
             let binary_precision = decimal_digits_to_bits(decimal_digits);
             let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
             let mut values = evaluate_many_generic::<Float>(
