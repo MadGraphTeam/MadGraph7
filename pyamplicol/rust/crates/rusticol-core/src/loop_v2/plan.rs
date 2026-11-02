@@ -472,7 +472,23 @@ pub struct Edge {
     pub content: usize,
     pub source_rank: usize,
     pub products: usize,
+    /// The row links of a fused step's edge. A split step's edges keep none
+    /// once its form is chosen ([`release_split_links`]): its parts hold
+    /// the links it runs ([`SplitPart::links`]).
     pub links: Vec<super::kernels::RowLink>,
+}
+
+/// Release the edges' row links of a step that runs split (M-FINAL MF-8G-2
+/// item 4): the split form reads its parts' links only (`trie`, `merged`),
+/// which repeat the edges' links per routing term, so a loaded plan holds
+/// each split link once. The form choice and the modelled costs have read
+/// them already.
+fn release_split_links(edges: &mut [Edge], split: &Option<SplitStep>) {
+    if split.is_some() {
+        for edge in edges {
+            edge.links = Vec::new();
+        }
+    }
 }
 
 /// The kernel form of a dressing step (DESIGN.md §5.2).
@@ -1695,6 +1711,7 @@ impl LoopProgramV4 {
                 rank_in: s.rank_in,
             };
             let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            release_split_links(&mut edges, &split);
             match &split {
                 None => factors.extend(edges.iter().map(|edge| edge.factor)),
                 Some(split) => {
@@ -1996,6 +2013,7 @@ impl LoopProgramV4 {
                 rank_in: s.rank_in,
             };
             let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            release_split_links(&mut edges, &split);
             states.push(MergedState {
                 step: Step {
                     seeded: s.seeded,

@@ -279,14 +279,18 @@ fn remove_empty(family: &mut Family, contents: &[Content], vertices: &[Vertex]) 
 }
 
 /// The modelled work of a pruned step (as the loader counts it,
-/// `fused_cost` and `split_candidate`): the fused form's, and the split
-/// form's when the step runs split (a fused step's split alternative is not
-/// recounted).
+/// `fused_cost` and `split_candidate`): the fused form's of a fused step,
+/// and the split form's of a step that runs split (a fused step's split
+/// alternative is not recounted, nor a split step's fused one: its edges
+/// keep no links, `release_split_links`).
 fn costs(step: &Step, contents: &[Content], vertices: &[Vertex]) -> (StepCost, Option<StepCost>) {
-    let fused = fused_cost(step.seeded, step.d_alpha, &step.edges, contents);
     let Some(split) = &step.split else {
-        return (fused, None);
+        return (
+            fused_cost(step.seeded, step.d_alpha, &step.edges, contents),
+            None,
+        );
     };
+    let fused = step.costs.0;
     let rank_in = if step.seeded { 0 } else { step.rank_in };
     let (cut, m_in) = step_shape(step.seeded, step.d_alpha, rank_in);
     let mut iterations = 0;
