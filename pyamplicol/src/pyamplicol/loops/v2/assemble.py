@@ -5525,8 +5525,8 @@ def _born_partitions(slice_, charged: frozenset[int]) -> dict[Orders, frozenset]
     if found is not None:
         return found
     dag = slice_.blocks.born_dag
-    if hasattr(dag, "materialize"):
-        dag = dag.materialize()
+    if hasattr(dag, "structural"):
+        dag = dag.structural()  # the DAG the summary's root ids index
     species = slice_.prepared.structure.perturbative_species_orders or {}
     corrections = frozenset(slice_.request.corrections)
     full = (1 << len(slice_.blocks.process.legs)) - 1

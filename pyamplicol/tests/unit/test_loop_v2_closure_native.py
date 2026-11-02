@@ -192,12 +192,18 @@ def test_the_born_dag_is_compiled_once_and_summarised(generate, monkeypatch):
     assert summary.species == blocks.propagated_species(dag)
     assert {root.coupling_orders for root in summary.roots} == set(orders)
     assert summary.roots == blocks._born_roots(dag, CompiledUFOModel(compiled))
-    # Recompiled on demand (``materialize`` and attribute reads), equal.
-    rebuilt = summary.materialize()
+    # Recompiled on demand: the structural DAG (``structural``) equal, the
+    # complete one (``materialize`` and attribute reads; mf-8g-1c) with the
+    # same sectors, orders and species.
+    rebuilt = summary.structural()
     assert len(compiles) == 2
     assert rebuilt.amplitude_roots == dag.amplitude_roots
     assert rebuilt.currents == dag.currents
-    assert summary.interactions == dag.interactions
+    assert rebuilt.interactions == dag.interactions
+    complete = summary.materialize()
+    assert len(compiles) == 3
+    assert summary.interactions == complete.interactions
+    assert blocks.propagated_species(complete) == summary.species
     # Without a scope, a slice compiles its own Born once.
     compiles.clear()
     generate("uux_ddxg")
