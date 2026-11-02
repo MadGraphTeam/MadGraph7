@@ -93,18 +93,6 @@ fn lane_runs_cover_the_batch_in_the_fewest_chunks() {
     assert_eq!(lane_runs(16), vec![(0, 16, 8)]);
 }
 
-#[cfg(target_arch = "x86_64")]
-#[test]
-fn the_closure_simd_cap_only_lowers_the_width() {
-    assert_eq!(Wide::cap(Some("baseline")), Wide::Baseline);
-    assert_eq!(Wide::cap(Some("avx2")), Wide::Avx2);
-    assert_eq!(Wide::cap(Some("avx512")), Wide::Avx512);
-    assert_eq!(Wide::cap(Some("AVX2")), Wide::Avx512);
-    assert_eq!(Wide::cap(None), Wide::Avx512);
-    // Other carriers take the baseline whatever the cap.
-    assert_eq!(Wide::detect::<f32>(), Wide::Baseline);
-}
-
 #[test]
 fn carrier_values_read_exactly() {
     // A derived mass is bound to its carrier value's exact rational (its

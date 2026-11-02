@@ -93,7 +93,8 @@ pub fn run_forward<T: Carrier, const L: usize>(
         let row = state.out_row() * v;
         for closure in &state.closures {
             let weight = data.cast(&closure.weight);
-            let seed = &seeds.values[closure.seed];
+            let seed = seeds.value::<L>(closure.seed);
+            let seed = seed.as_ref();
             let family = &plan.families[closure.family];
             let n_family = ncoeff(family.rank);
             for o in 0..columns {

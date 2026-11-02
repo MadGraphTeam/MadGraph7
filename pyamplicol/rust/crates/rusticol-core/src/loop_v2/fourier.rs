@@ -1057,9 +1057,13 @@ mod tests {
         );
         let batch = batch(zero);
         let data = LaneData::<T, 2>::new(&plan, &batch, &[0, 1], zero).unwrap();
-        let direct = super::super::seeds::seeds(&plan, &data);
-        let fast = seeds_fourier(&plan, &fourier, &data);
-        for (a, b) in fast.values.iter().zip(&direct.values) {
+        let mut direct = super::super::seeds::seeds(&plan, &data);
+        let mut fast = seeds_fourier(&plan, &fourier, &data);
+        direct.materialise::<2>(zero);
+        fast.materialise::<2>(zero);
+        assert!(!direct.values().is_empty());
+        assert_eq!(fast.values().len(), direct.values().len());
+        for (a, b) in fast.values().iter().zip(direct.values()) {
             let scale = b.iter().map(|x| x.to_f64().abs()).fold(0.0, f64::max);
             assert!(scale > 0.0);
             for (x, y) in a.iter().zip(b) {

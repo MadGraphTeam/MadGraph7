@@ -238,7 +238,8 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
             let weight = state.weights[e].map(|w| &self.weights.edges[w]);
             match step.edges[e].source {
                 Source::Leaf(entry) => {
-                    let seed = &self.seeds.values[merged.entries[entry].seed];
+                    let seed = self.seeds.value::<L>(merged.entries[entry].seed);
+                    let seed = seed.as_ref();
                     let w = match weight {
                         Some(w) => product(&self.weights.entries[entry], w),
                         None => self.weights.entries[entry].clone(),

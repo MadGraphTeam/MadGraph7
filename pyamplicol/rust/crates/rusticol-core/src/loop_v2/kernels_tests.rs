@@ -482,7 +482,7 @@ fn binary64_blocked_matches_pattern_kernel() {
 }
 
 /// Runs the fused and split forms of one segment in carrier `T`.
-fn fused_and_split<T: FloatLike>(
+fn fused_and_split<T: FloatLike + 'static>(
     segment: &Segment<'_>,
     data: &[Vec<Rational>; 4],
     convert: impl Fn(&Rational) -> T,
@@ -558,4 +558,16 @@ fn extended_precision_carriers_keep_their_precision() {
         assert!(relative_error(&double_float[form], &exact[form]) <= 1e-29);
         assert!(relative_error(&float[form], &exact[form]) <= 1e-57);
     }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn the_simd_cap_only_lowers_the_width() {
+    assert_eq!(Simd::cap(Some("baseline")), Simd::Baseline);
+    assert_eq!(Simd::cap(Some("avx2")), Simd::Avx2);
+    assert_eq!(Simd::cap(Some("avx512")), Simd::Avx512);
+    assert_eq!(Simd::cap(Some("AVX2")), Simd::Avx512);
+    assert_eq!(Simd::cap(None), Simd::Avx512);
+    // Other carriers take the baseline whatever the cap.
+    assert_eq!(Simd::detect::<f32>(), Simd::Baseline);
 }
