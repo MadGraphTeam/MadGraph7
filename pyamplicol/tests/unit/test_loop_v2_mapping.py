@@ -2,8 +2,8 @@
 """Processes a stored plan v4 process serves through a leg mapping (M-FINAL
 MF-MAP, ``loops.v2.mapping``).
 
-One public artifact (loop_sm, QCD, full colour, ``process.flavor_blind``)
-stores two representatives, ``d d~ > g g`` and ``d g > d g``, and serves:
+Three public artifacts (loop_sm, QCD, full colour, ``process.flavor_blind``)
+store the representatives ``d d~ > g g`` and ``d g > d g`` and serve:
 
 * two explicit permutation aliases (``ProcessAlias``: ``d~ d > g g`` and
   ``d g > g d``), published as the manifest's alias records;
@@ -12,6 +12,16 @@ stores two representatives, ``d d~ > g g`` and ``d g > d g``, and serves:
   permutation (``s~ s > g g``, ``g s > s g``), and one pure side permutation
   (``g d > g d``), listed in ``process-groups.json``;
 * a side-permuted selector expression (``g d > d g``).
+
+Spin classes are declared for a whole process set and every generated
+process must carry a four-component vector source on their legs (the tree
+route's rule, ``observables.require_vector_spin_sources``; a set-wide class
+on a quark leg of one member is refused at generation). Each artifact
+therefore declares them on legs that are gluons in every member: legs 3 and
+4 for ``d d~ > g g`` / ``s~ s > g g`` / ``d~ d > g g``, leg 4 for
+``d g > d g`` / ``g s > s g``; ``g d > g d`` and ``d g > g d`` exchange a
+gluon leg of ``d g > d g`` with a quark leg, so their artifact declares
+colour correlations only.
 
 A second one stores ``u u~ > d d~ g`` and serves an alias and a member whose
 permutations are three-cycles of the final legs (not involutions, so a
@@ -95,13 +105,6 @@ SPIN = {
     )
 }
 
-REQUESTS = (
-    ("ddx", "d d~ > g g"),
-    ("sxs", "s~ s > g g"),
-    ("dg", "d g > d g"),
-    ("gs", "g s > s g"),
-    ("gd", "g d > g d"),
-)
 # (alias, target, representative leg -> alias leg)
 ALIASES = (("ddx_swap", "ddx", (1, 0, 3, 2)), ("dg_out", "dg", (0, 1, 3, 2)))
 
@@ -122,6 +125,18 @@ HISTORIES = [
     _history(i, j) for i, j in ((1, 3), (1, 4), (2, 3), (2, 4), (1, 2), (2, 1))
 ]
 SPIN_CLASSES = [[3], [4]]
+# The mapping artifacts: fixture -> (requests, the representative first;
+# aliases; spin classes on legs that are gluons in every member and closed
+# under every member permutation, so that the members fold).
+SETS = {
+    "mapped": (
+        (("ddx", "d d~ > g g"), ("sxs", "s~ s > g g")),
+        ALIASES[:1],
+        SPIN_CLASSES,
+    ),
+    "mapped_qg": ((("dg", "d g > d g"), ("gs", "g s > s g")), (), [[4]]),
+    "mapped_gd": ((("dg", "d g > d g"), ("gd", "g d > g d")), ALIASES[1:], []),
+}
 # Not closed under exchanging the initial legs (T12 without T21; leg 4 alone).
 OPEN_HISTORIES = [_history(1, 3), _history(1, 2)]
 OPEN_SPIN_CLASSES = [[4]]
@@ -134,10 +149,10 @@ HISTORIES_5 = [_history(1, j) for j in (3, 4, 5)]
 SERVED = tuple(history["id"] for history in HISTORIES)
 MAPPED = {
     "ddx_swap": ("mapped", "ddx", (1, 0, 3, 2), SERVED, 4),
-    "dg_out": ("mapped", "dg", (0, 1, 3, 2), SERVED, 3),
+    "dg_out": ("mapped_gd", "dg", (0, 1, 3, 2), SERVED, None),
     "sxs": ("mapped", "ddx", (1, 0, 2, 3), SERVED, 4),
-    "gs": ("mapped", "dg", (1, 0, 2, 3), SERVED, 4),
-    "gd": ("mapped", "dg", (1, 0, 3, 2), SERVED, 3),
+    "gs": ("mapped_qg", "dg", (1, 0, 2, 3), SERVED, 4),
+    "gd": ("mapped_gd", "dg", (1, 0, 3, 2), SERVED, None),
     "udg_cycle": ("cycle", "udg", (0, 1, 4, 2, 3), ("T13", "T14", "T15"), None),
     "ssg": ("cycle", "udg", (0, 1, 3, 4, 2), ("T13", "T14", "T15"), None),
 }
@@ -205,20 +220,47 @@ def _generate(
     return root / "artifact"
 
 
-@pytest.fixture(scope="module")
-def mapped(loop_sm_compiled_model, loop_native, tmp_path_factory):
-    """The mapping artifact (two representatives serving the aliases, the
-    members and side permutations; generation validates every served
+def _mapped(name: str, model: Path, tmp_path_factory) -> Path:
+    """The mapping artifact ``SETS[name]`` (one representative serving its
+    alias, members and side permutations; generation validates every served
     process against the Python reference executor)."""
 
-    del loop_native
+    entries, aliases, spin = SETS[name]
     return _generate(
-        loop_sm_compiled_model,
-        tmp_path_factory.mktemp("mapped"),
-        REQUESTS,
-        ALIASES,
+        model,
+        tmp_path_factory.mktemp(name),
+        entries,
+        aliases,
         "flavor_blind = true",
+        spin=spin,
     )
+
+
+@pytest.fixture(scope="module")
+def mapped(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """``d d~ > g g`` serving ``d~ d > g g`` and ``s~ s > g g`` (spin classes
+    on the final gluons 3 and 4)."""
+
+    del loop_native
+    return _mapped("mapped", loop_sm_compiled_model, tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def mapped_qg(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """``d g > d g`` serving ``g s > s g`` (spin class on gluon 4, a gluon in
+    both)."""
+
+    del loop_native
+    return _mapped("mapped_qg", loop_sm_compiled_model, tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def mapped_gd(loop_sm_compiled_model, loop_native, tmp_path_factory):
+    """``d g > d g`` serving ``d g > g d`` and ``g d > g d`` (no leg is a
+    gluon in all three: colour correlations only)."""
+
+    del loop_native
+    return _mapped("mapped_gd", loop_sm_compiled_model, tmp_path_factory)
 
 
 @pytest.fixture(scope="module")
@@ -283,29 +325,32 @@ def _close(left, right, label) -> None:
                 assert abs(_number(u) - _number(v)) <= 1e-12 * size, label
 
 
-def test_artifact_publishes_aliases_and_permuted_members(mapped):
-    """The representatives alone are stored; the aliases are manifest alias
-    records and the members ``process-groups.json`` members of basis
-    ``exact-loop-flavor`` with their representative-to-member permutation."""
+@pytest.mark.parametrize("artifact", sorted(SETS))
+def test_artifact_publishes_aliases_and_permuted_members(request, artifact):
+    """The representative alone is stored; the alias is a manifest alias
+    record and the member a ``process-groups.json`` member of basis
+    ``exact-loop-flavor`` with its representative-to-member permutation."""
 
     from pyamplicol.artifacts import inspect_artifact, load_manifest
     from pyamplicol.artifacts.process_groups import read_process_groups
 
+    entries, declared, _spin = SETS[artifact]
+    mapped = request.getfixturevalue(artifact)
     manifest = load_manifest(mapped)
     records = {record["id"]: record for record in manifest.processes}
-    assert sorted(records) == ["ddx", "dg"]
+    assert sorted(records) == [entries[0][0]]
     aliases = {
         alias["id"]: (record["id"], tuple(alias["external_permutation"]))
         for record in records.values()
         for alias in record["aliases"]
     }
-    assert aliases == {name: (target, perm) for name, target, perm in ALIASES}
+    assert aliases == {name: (target, perm) for name, target, perm in declared}
     inspected = {
         alias.id: alias.representative_id
         for process in inspect_artifact(mapped).processes
         for alias in process.aliases
     }
-    assert inspected == {name: target for name, target, _perm in ALIASES}
+    assert inspected == {name: target for name, target, _perm in declared}
     groups = read_process_groups(mapped)
     members = {
         member.process_id: (representative, member.permutation, str(member.basis))
@@ -315,21 +360,22 @@ def test_artifact_publishes_aliases_and_permuted_members(mapped):
     }
     assert members == {
         name: (MAPPED[name][1], MAPPED[name][2], "exact-loop-flavor")
-        for name in ("sxs", "gs", "gd")
+        for name, _expression in entries[1:]
     }
 
 
 @pytest.mark.parametrize("name", sorted(MAPPED))
 def test_mapped_process_is_its_representative_at_permuted_momenta(request, name):
     """Inclusive, colour-correlated (every served history, relabelled onto
-    the representative's), spin-correlated and resolved outputs of a mapped
-    process equal its representative's at the permuted momenta, bitwise."""
+    the representative's), spin-correlated (where its set declares a spin
+    class) and resolved outputs of a mapped process equal its
+    representative's at the permuted momenta, bitwise."""
 
     from pyamplicol.correlators import CorrelatedRequest
 
     artifact, representative, permutation, served, spin = MAPPED[name]
     mapped = request.getfixturevalue(artifact)
-    points = POINTS if artifact == "mapped" else POINTS_5
+    points = POINTS_5 if artifact == "cycle" else POINTS
     scales = SCALES[: len(points)]
     runtime = _load(mapped, name)
     stored = _load(mapped, representative)
@@ -342,7 +388,7 @@ def test_mapped_process_is_its_representative_at_permuted_momenta(request, name)
     )
     available = [item.id for item in runtime.available_color_correlations()]
     assert available[0] == "born" and sorted(available[1:]) == sorted(served)
-    declared = HISTORIES if artifact == "mapped" else HISTORIES_5
+    declared = HISTORIES_5 if artifact == "cycle" else HISTORIES
     histories = {item["id"]: item for item in declared}
     for history in served:
         # The history read on the mapped process's labels, relabelled onto
@@ -358,8 +404,9 @@ def test_mapped_process_is_its_representative_at_permuted_momenta(request, name)
         assert _values(left) == _values(right), (history, image)
     if spin is not None:
         # Public leg ``spin`` is representative leg permutation.index(spin -
-        # 1) + 1: another leg for d~ d > g g (4 -> 3), d g > g d and
-        # g d > g d (3 -> 4).
+        # 1) + 1: another leg for d~ d > g g (4 -> 3). (d g > g d and
+        # g d > g d move a gluon leg of d g > d g onto a quark leg: no spin
+        # class is valid for every member of their set.)
         image = permutation.index(spin - 1) + 1
         left = runtime.evaluate_correlated_many(
             points, {"s": CorrelatedRequest("born", {spin: SPIN[4]})}, mu_r2=scales
@@ -442,7 +489,7 @@ def test_open_declarations_keep_members_and_refuse_unserved(open_, direct):
         )
 
 
-def test_selectors_reach_the_mapped_processes(mapped):
+def test_selectors_reach_the_mapped_processes(mapped, mapped_qg):
     """Alias and member expressions select them; an expression equal to a
     stored one up to a side permutation selects the stored process with
     that permutation (and keeps its id); a crossing is not a mapping."""
@@ -451,22 +498,49 @@ def test_selectors_reach_the_mapped_processes(mapped):
 
     assert _load(mapped, "D~ D > G G").physics.process_id == "ddx_swap"
     assert _load(mapped, "s~ s > g g").physics.process_id == "sxs"
-    permuted = _load(mapped, "g d > d g")
+    permuted = _load(mapped_qg, "g d > d g")
     assert permuted.physics.process_id == "dg"
     assert permuted.external_permutation == (1, 0, 2, 3)
     assert permuted.physics.process == "G d > d G"
-    stored = _load(mapped, "dg")
+    stored = _load(mapped_qg, "dg")
     q = _to_representative(POINTS, (1, 0, 2, 3))
     assert _values(permuted.evaluate(POINTS, mu_r2=SCALES)) == _values(
         stored.evaluate(q, mu_r2=SCALES)
     )
     with pytest.raises(PyAmpliColError):
-        _load(mapped, "d g > d d~")
+        _load(mapped_qg, "d g > d d~")
+
+
+def test_set_wide_spin_class_on_a_quark_leg_is_refused(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """Spin classes are declared for the whole process set: a class on leg
+    3, a gluon of ``d d~ > g g`` but a quark of ``d g > d g``, is refused at
+    the generation of the second process, typed, with the tree route's
+    message (``generation.correlated``), and no artifact is published."""
+
+    import re
+
+    from pyamplicol.api.errors import GenerationError
+
+    del loop_native
+    reason = "spin-correlated leg 3 requires a full four-component vector source"
+    with pytest.raises(GenerationError, match=re.escape(reason)):
+        _generate(
+            loop_sm_compiled_model,
+            tmp_path,
+            (("ddx", "d d~ > g g"), ("dg", "d g > d g")),
+            process="flavor_blind = true",
+            histories=[],
+            spin=[[3]],
+        )
+    assert not (tmp_path / "artifact").exists()
 
 
 def test_non_exact_group_relations_are_refused(mapped, tmp_path):
     """A process-group member of any basis but ``exact-loop-flavor`` (a
-    relation found by numerical analysis) is refused at load, typed."""
+    relation found by numerical analysis) is refused at load, typed; the
+    alias of its representative is unaffected."""
 
     from dataclasses import replace
 
@@ -488,15 +562,15 @@ def test_non_exact_group_relations_are_refused(mapped, tmp_path):
         edited.add_group(
             [
                 replace(member, basis=GroupingBasis.NUMERICAL)
-                if member.process_id == "gs"
+                if member.process_id == "sxs"
                 else member
                 for member in group.members
             ]
         )
     write_process_groups(copy, edited)
     with pytest.raises(EvaluationError, match="numerical"):
-        _load(copy, "gs")
-    assert _load(copy, "sxs").representative_process_key == "ddx"
+        _load(copy, "sxs")
+    assert _load(copy, "ddx_swap").representative_process_key == "ddx"
 
 
 @pytest.fixture(scope="module")
@@ -597,20 +671,20 @@ def test_leading_colour_components_of_a_permuted_process(leading):
                     ), (anchor.id, row, values)
 
 
-def test_double_double_through_the_mapping(mapped):
+def test_double_double_through_the_mapping(mapped_qg):
     """A composed spin and colour correlation in double-double: the member
     ``g s > s g`` equals ``d g > d g`` at the permuted momenta (member leg 4
     is representative leg 4; T13 is the representative's T23)."""
 
     from pyamplicol.correlators import CorrelatedRequest
 
-    left = _load(mapped, "gs").evaluate_correlated_many(
+    left = _load(mapped_qg, "gs").evaluate_correlated_many(
         POINTS[:1],
         {"s": CorrelatedRequest("T13", SPIN)},
         mu_r2=SCALES[:1],
         arithmetic="double-double",
     )["s"]
-    right = _load(mapped, "dg").evaluate_correlated_many(
+    right = _load(mapped_qg, "dg").evaluate_correlated_many(
         _to_representative(POINTS[:1], (1, 0, 2, 3)),
         {"s": CorrelatedRequest("T23", SPIN)},
         mu_r2=SCALES[:1],
