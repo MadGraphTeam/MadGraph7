@@ -185,6 +185,9 @@ class TestRealChannelExport(unittest.TestCase):
                           'aloha/template_files/aloha_functions.f')
         with open(filename) as stream:
             template = stream.read()
+        # the '##' blocks resolved as for an output without --density
+        template = '\n'.join(writers.FortranWriter(os.devnull).preprocess_template(
+            template, context={'density': False}))
         template = template[template.index('      SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS'):]
         template = template[:template.index('C Helper functions')]
         # Helicity -1 has the same full matrix element as +1 and is not

@@ -1331,6 +1331,8 @@ c the same method
 
       double precision pboost(0:3)
       logical me_boosted
+      integer frame_id
+      common/to_frame_me/frame_id
 
       double precision xi_i_fks_ev,y_ij_fks_ev,t
       double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
@@ -1398,7 +1400,10 @@ C check if momenta have to be rotated
 c The R_y(pi) flip only ever served to put a j_fks=2 mother back on +z; in
 c the me_frame the mother is off the beam axis anyway. See montecarlocounter.f.
       if (ileg.eq.1.or.ileg.eq.2) then
-        if (j_fks.eq.2 .and. nexternal-1.ne.3 .and. .not.me_boosted) then
+c         rotate only without a requested frame (see get_mbar in
+c         montecarlocounter.f)
+        if (j_fks.eq.2 .and. nexternal-1.ne.3 .and. .not.me_boosted
+     &      .and. frame_id.eq.0) then
 c Rotation according to innerpin.m. Use rotate_invar() if a more 
 c general rotation is needed.
 c Exclude 2->1 (at the Born level) processes: matrix elements are

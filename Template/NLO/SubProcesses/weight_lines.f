@@ -15,8 +15,50 @@
      $        ,g_strong(:),wgts(:,:),parton_iproc(:,:),y_bst(:)
      $        ,cpower(:),plot_wgts(:,:),shower_scale(:),unwgt(:,:)
      $        ,bias_wgt(:),shower_scale_a(:,:,:)
+c Spin-density-matrix weights (an output made with --density and
+c density_weights in the run_card; docs/nlo_density_usage_plan.md).
+c wgt_dens(1:3,k,icontr) are the three pieces of wgt(1:3,icontr)
+c projected on element k of the density matrix (density_weights.f);
+c dens_lum(icontr) is the luminosity include_PDF_and_alphas used. n_dens
+c is the number of elements (0: no density weights; -1: not set yet).
+c While dens_rerun, add_wgt adds into wgt_dens(:,idens,:) of the
+c contributions dens_first..icontr instead of creating new ones.
+c dens_diag(k) tells if element k is diagonal (their sum is the
+c unprojected weight, checked by include_density_weights).
+         double precision, allocatable :: wgt_dens(:,:,:),dens_lum(:)
+         logical, allocatable :: dens_used(:),dens_diag(:)
+         integer :: n_dens=-1, idens=0, dens_first=1, max_dens_contr=0
+         integer :: n_dens_dropped=0, n_dens_trace_bad=0
+         logical :: dens_rerun=.false., dens_saved_do_virt=.false.
          save
       end module weight_lines
+
+
+      subroutine density_lines_ensure(n_contr)
+c Makes sure the density-matrix weights can hold n_contr contributions
+      use weight_lines
+      implicit none
+      integer n_contr
+      double precision, allocatable :: temp3(:,:,:),temp1(:)
+      logical, allocatable :: ltemp1(:)
+      if (n_dens.le.0) return
+      if (n_contr.le.max_dens_contr) return
+      allocate(temp3(3,n_dens,n_contr))
+      allocate(temp1(n_contr))
+      allocate(ltemp1(n_contr))
+      temp3=0d0
+      temp1=0d0
+      ltemp1=.false.
+      if (max_dens_contr.gt.0) then
+         temp3(:,:,1:max_dens_contr)=wgt_dens
+         temp1(1:max_dens_contr)=dens_lum
+         ltemp1(1:max_dens_contr)=dens_used
+      endif
+      call move_alloc(temp3,wgt_dens)
+      call move_alloc(temp1,dens_lum)
+      call move_alloc(ltemp1,dens_used)
+      max_dens_contr=n_contr
+      end
 
 
       subroutine weight_lines_allocated(nexternal,n_contr,n_wgt,n_proc)

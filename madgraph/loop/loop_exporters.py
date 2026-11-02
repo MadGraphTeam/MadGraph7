@@ -275,6 +275,10 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             # main reduction tool in that case, and the poles wouldn't be zero then
             MLCard['COLLIERComputeUVpoles'] = False
             MLCard['COLLIERComputeIRpoles'] = False
+        # The density matrix needs the colour flows of every helicity, so
+        # helicities equal up to a sign must not be merged (level 2).
+        if 'density' in self.cmd_options:
+            MLCard['HelicityFilterLevel'] = min(MLCard['HelicityFilterLevel'], 1)
 
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
@@ -850,15 +854,18 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
 
         LoopInduced = not matrix_element.get('processes')[0].get('has_born')
         self.has_loop_induced = max(LoopInduced, self.has_loop_induced)
-        # Force the computation of loop color flows for loop_induced processes
-        ComputeColorFlows = self.compute_color_flows or LoopInduced
+        # density matrix requested (output ... --density=i,j)
+        UseDensity = 'density' in self.cmd_options
+        # Force the computation of loop color flows for loop_induced processes,
+        # and for the density matrix, which is built from the colour flows of
+        # every helicity (the loop and, with a Born, the Born ones).
+        ComputeColorFlows = self.compute_color_flows or LoopInduced or UseDensity
         # The variable AmplitudeReduction is just to make the contextual
         # conditions more readable in the include files.
         AmplitudeReduction = LoopInduced or ComputeColorFlows
         # Even when not reducing at the amplitude level, the TIR caching
         # is useful when there is more than one squared split order config.
         TIRCaching = AmplitudeReduction or n_squared_split_orders>1
-        UseDensity = 'density' in self.cmd_options #detects if we want to compute the density matrix
         MadEventOutput = False
         return {'LoopInduced': LoopInduced,
                 'ComputeColorFlows': ComputeColorFlows,
@@ -1261,6 +1268,39 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
         return self.generate_loop_subprocess(matrix_element,fortran_model,
                                                             unique_id=self.unique_id)
 
+    def get_density_replace_dict(self, matrix_element):
+        """The density-matrix entries of the replace dictionaries (output
+        option --density=i,j: legs i,j of this matrix element): the legs
+        POS(k) and, for each combination I of their helicities, the
+        helicity ALLOW_HEL((I-1)*N_CHANGING+k) of leg POS(k)."""
+        replace_dict = {'use_density': '.false.', 'dens_nchanging': 1,
+                        'dens_ncomb': 2, 'dens_pos': '\n',
+                        'dens_allow_hel': '\n'}
+        if 'density' not in self.cmd_options:
+            return replace_dict
+        import math
+        # the density matrix is built from the colour flows, which only
+        # the optimized output computes (compute_color_flows.f)
+        if not isinstance(self, LoopProcessOptimizedExporterFortranSA):
+            raise MadGraph5Error('The density matrix (--density) of a '
+                'one-loop matrix element needs the optimized loop output: '
+                'set loop_optimized_output True.')
+        replace_dict['use_density'] = '.true.'
+        changing = [int(i) for i in self.cmd_options['density'].split(',')]
+        replace_dict['dens_nchanging'] = len(changing)
+        replace_dict['dens_pos'] = '\n        '.join(
+               ['POS(%s) = %i' % (i+1, pos) for i,pos in enumerate(changing)])
+        get_helicity_per_particle = matrix_element.get_helicity_per_particle()
+        changing_hels = [get_helicity_per_particle[pos-1] for pos in changing]
+        replace_dict['dens_ncomb'] = math.prod([len(hel) for hel in changing_hels])
+        i = 0
+        replace_dict['dens_allow_hel'] = ''
+        for comb in  itertools.product(*changing_hels):
+            for h in comb:
+                i += 1
+                replace_dict['dens_allow_hel'] += ' ALLOW_HEL(%i) = %i\n       ' % (i, h)
+        return replace_dict
+
     def write_check_sa(self, writer, matrix_element):
         """Writes out the steering code check_sa. In the optimized output mode,
         All the necessary entries in the replace_dictionary have already been 
@@ -1272,30 +1312,7 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
             if key not in list(replace_dict.keys()):
                 replace_dict[key]=''
         
-        #initialisation of the parameters for density matrix (dont think it is needed)
-        replace_dict['use_density'] = '.false.'
-        replace_dict['dens_nchanging'] = 1
-        replace_dict['dens_ncomb'] = 2
-        replace_dict['dens_pos'] = '\n'
-        replace_dict['dens_allow_hel'] = '\n'
-
-        if 'density' in self.cmd_options:
-            import math
-            replace_dict['use_density'] = '.true.'
-            changing = [int(i) for i in self.cmd_options['density'].split(',')]
-            replace_dict['dens_nchanging'] = len(changing)
-            replace_dict['dens_pos'] = '\n        '.join(
-                   ['POS(%s) = %i' % (i+1, pos) for i,pos in enumerate(changing)])
-            get_helicity_per_particle = matrix_element.get_helicity_per_particle()
-            changing_hels = [get_helicity_per_particle[pos-1] for pos in changing]
-            replace_dict['dens_ncomb'] = math.prod([len(hel) for hel in changing_hels])
-
-            i = 0
-            replace_dict['dens_allow_hel'] = ''
-            for comb in  itertools.product(*changing_hels):
-                for h in comb:
-                    i += 1
-                    replace_dict['dens_allow_hel'] += ' ALLOW_HEL(%i) = %i\n       ' % (i, h)
+        replace_dict.update(self.get_density_replace_dict(matrix_element))
 
         if matrix_element.get('processes')[0].get('has_born'):
             file = open(os.path.join(self.template_dir,'check_sa.inc')).read()
@@ -1815,10 +1832,17 @@ C               ENDIF""")%replace_dict
         # This is to decide whether once to reuse old wavefunction to store new
         # ones (provided they are not used further in the code.)
         bornME.optimization = True
+        # With --density the loop matrix element has its own GET_DENSITY (in
+        # compute_color_flows.f, the virtual's): the Born's tree-level one is
+        # then <prefix>BORN_GET_DENSITY.
+        proc_prefix = matrix_element.rep_dict['proc_prefix']
+        density_prefix = proc_prefix + 'BORN_' \
+                  if self.get_context(matrix_element)['UseDensity'] else None
         replace_dict = super(LoopProcessExporterFortranSA,self).write_matrix_element_v4(
                                                   writer, bornME, fortran_model,
-                           proc_prefix=matrix_element.rep_dict['proc_prefix'],
-                           return_replace_dict=True)
+                           proc_prefix=proc_prefix,
+                           return_replace_dict=True,
+                           density_prefix=density_prefix)
         if not replace_dict:
             return 0
         # The MadLoop drivers include the number of squared split orders of
@@ -2184,7 +2208,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         else:
             self.group_loops = (not self.get_context(matrix_element)['ComputeColorFlows'])\
                           and matrix_element.get('processes')[0].get('has_born')
-        
+
+        # 'loop_group_id' lives on the loop amplitudes and the ungrouped
+        # coefficient writer overwrites it, while the cached 'loop_groups' (and
+        # hence NLOOPGROUPS) is kept. Resync the ids, otherwise a grouped output
+        # following an ungrouped one of the same matrix element addresses
+        # LOOPCOEFS beyond NLOOPGROUPS and silently drops loop groups. The
+        # cached squared orders hold the max loop group id, so they go too.
+        if self.group_loops:
+            matrix_element.get('loop_groups')
+            matrix_element.update_loop_group_ids()
+            if hasattr(matrix_element, 'squared_orders'):
+                del matrix_element.squared_orders
+
         return self.group_loops
     
     def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
@@ -2776,6 +2812,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             matrix_element.rep_dict['nBornFlows'] = 0
 
         replace_dict = copy.copy(matrix_element.rep_dict)
+        replace_dict.update(self.get_density_replace_dict(matrix_element))
         
         # The following variables only have to be defined for the LoopInduced
         # output for madevent.

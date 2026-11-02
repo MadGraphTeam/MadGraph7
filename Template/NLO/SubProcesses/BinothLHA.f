@@ -5,6 +5,7 @@ c that calls the OLP and returns the virtual weights. For convenience
 c also the born_wgt is passed to this subroutine.
 c
       use FKSParams
+      use weight_lines, only: dens_rerun
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
@@ -301,11 +302,14 @@ c======================================================================
 c
 c Check poles for the first PS points when doing MC over helicities, and
 c for all phase-space points when not doing MC over helicities. Skip
-c MadLoop initialization PS points.
+c MadLoop initialization PS points, and the re-evaluations of the
+c density-matrix weights (the unprojected virtual at the same point is
+c checked; elements of the density matrix can vanish at Born level,
+c their poles are checked by check_poles in the standalone output).
       cpol=.false.
       ret_code_common=ret_code
       if ((firsttime .or. mc_hel.eq.0) .and. mod(ret_code,100)/10.ne.3
-     $     .and. mod(ret_code,100)/10.ne.4) then
+     $     .and. mod(ret_code,100)/10.ne.4 .and. .not.dens_rerun) then
          call getpoles(p,QES2,madfks_double,madfks_single,fksprefact)
          polecheck_passed = .true.
          ! loop over the full result and each of the amp_split

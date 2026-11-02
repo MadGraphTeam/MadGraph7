@@ -335,3 +335,54 @@ class IOTestMadLoopSquaredOrdersExport(IOTests.IOTestManager):
                         glob.glob(pjoin(self.IOpath,'loop_CT_calls*.f')):
                 base_name = '.'.join(file.split('.')[:-1])+'_%s.'+file.split('.')[-1]
                 shutil.move(file,base_name%name)
+
+#===============================================================================
+# LoopGroupIdsTest
+#===============================================================================
+class LoopGroupIdsTest(unittest.TestCase):
+    """The 'loop_group_id' of the loop amplitudes must match the grouping of the
+    output being written, even when the interface reuses a matrix element that
+    an earlier ungrouped (colour-flow) output already went through."""
+
+    def test_grouped_output_after_ungrouped_one(self):
+        """u u~ > t t~ [virt=QCD]: an ungrouped coefficient pass followed by a
+        grouped output used to keep the ungrouped ids (up to NLOOPS) while
+        NLOOPGROUPS came from the cached groups, silently dropping loops."""
+
+        model = import_ufo.import_model('loop_sm')
+        legs = base_objects.LegList([base_objects.Leg({'id':pid,'state':i>1})
+                                   for i, pid in enumerate([2,-2,6,-6])])
+        proc = base_objects.Process({'legs':legs, 'model':model,
+                                     'orders':{'QCD':2,'QED':0},
+                                     'perturbation_couplings':['QCD'],
+                                     'NLO_mode':'virt'})
+        me = loop_helas_objects.LoopHelasMatrixElement(
+                loop_diagram_generation.LoopAmplitude(proc),
+                optimized_output=True)
+        exporter = loop_exporters.LoopProcessOptimizedExporterFortranSA(
+                              _proc_file_path,
+                              {'clean':False, 'complex_mass':False,
+                               'export_format':'madloop','mp':True,
+                               'loop_dir':_loop_file_path,
+                               'cuttools_dir':_cuttools_file_path,
+                               'fortran_compiler':'gfortran',
+                               'output_dependencies':'external',
+                               'SubProc_prefix': 'P',
+                               'compute_color_flows': False})
+        me.compute_all_analytic_information(exporter.get_aloha_model(model))
+
+        lamps = [lamp for ldiag in me.get_loop_diagrams()
+                                      for lamp in ldiag.get_loop_amplitudes()]
+        groups = me.get('loop_groups')
+        self.assertLess(len(groups), len(lamps))
+
+        # What the ungrouped output (loop_color_flows / --density) does
+        helas_call_writers.FortranUFOHelasCallWriterOptimized(model, False).\
+                           get_coef_construction_calls(me, group_loops=False)
+        self.assertEqual(max(lamp.get('loop_group_id') for lamp in lamps),
+                                                                 len(lamps)-1)
+
+        self.assertTrue(exporter.set_group_loops(me))
+        for i, (_, group) in enumerate(me.get('loop_groups')):
+            for lamp in group:
+                self.assertEqual(lamp.get('loop_group_id'), i)

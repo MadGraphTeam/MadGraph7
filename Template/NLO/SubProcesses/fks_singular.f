@@ -432,6 +432,7 @@ c This subroutine computes the soft-virtual matrix elements and adds its
 c value to the list of weights using the add_wgt subroutine
       use extra_weights
       use mint_module
+      use weight_lines, only: dens_rerun, dens_saved_do_virt
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
@@ -550,8 +551,10 @@ C to make sure that it cannot be incorrectly understood.
 c Special for the soft-virtual needed for the virt-tricks. The
 c *_wgt_mint variable should be directly passed to the mint-integrator
 c and not be part of the plots nor computation of the cross section.
+      if (.not.dens_rerun) then
       virt_wgt_mint(0)=virt_wgt_mint(0)+virt_wgt*f_nb
       born_wgt_mint(0)=born_wgt_mint(0)+born_wgt*f_b
+      endif
       do iamp=1, amp_split_size
         if (amp_split_virt(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -561,10 +564,12 @@ c and not be part of the plots nor computation of the cross section.
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
         wgt1=amp_split_virt(iamp)*f_nb
+        if (.not.dens_rerun) then
         virt_wgt_mint(iamp)=virt_wgt_mint(iamp)
      $       +wgt1
         born_wgt_mint(iamp)=born_wgt_mint(iamp)
      $       +amp_split_born_for_virt(iamp)*f_nb
+        endif
         wgt1=wgt1/g**(QCD_power)
         call add_wgt(14,orders,wgt1,0d0,0d0)
       enddo
@@ -1990,6 +1995,12 @@ c        contribution
       double precision get_rescale_alpha_factor
       external get_n_tagged_photons get_rescale_alpha_factor
 
+c While re-evaluating with the projector of a density-matrix element,
+c the weight is that element of an existing contribution
+      if (dens_rerun) then
+         call add_wgt_density(type,orders,wgt1,wgt2,wgt3)
+         return
+      endif
       if (wgt1.eq.0d0 .and. wgt2.eq.0d0 .and. wgt3.eq.0d0) return
 c Check for NaN's and INF's. Simply skip the contribution
       if (wgt1.ne.wgt1) return
@@ -2052,6 +2063,11 @@ C Secondly, the more advanced filter
 
       icontr=icontr+1
       call weight_lines_allocated(nexternal,icontr,max_wgt,max_iproc)
+      if (n_dens.gt.0) then
+         call density_lines_ensure(icontr)
+         wgt_dens(:,:,icontr)=0d0
+         dens_lum(icontr)=0d0
+      endif
       itype(icontr)=type
 
 C here we rescale the contributions by the ratio of alpha's in different
@@ -2173,6 +2189,181 @@ c i.e., the term on the 2nd line of Eq.(20) of arXiv:1412.8408.
       endif
       end
       
+      subroutine add_wgt_density(type,orders,wgt1,wgt2,wgt3)
+c The weight of a contribution re-evaluated with the projector W of the
+c density-matrix element idens (see density_rerun_start): it is that
+c element of the contribution created by the unprojected evaluation, the
+c one with the same type, split order and FKS configuration (and, if
+c several, the next one not yet used in this pass). As add_wgt, it is
+c rescaled for tagged photons.
+      use weight_lines
+      use extra_weights
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      integer type,orders(nsplitorders),ic,ntagph
+      double precision wgt1,wgt2,wgt3,resc
+      integer              nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+      integer get_n_tagged_photons
+      double precision get_rescale_alpha_factor
+      external get_n_tagged_photons get_rescale_alpha_factor
+      if (wgt1.eq.0d0 .and. wgt2.eq.0d0 .and. wgt3.eq.0d0) return
+      if (wgt1.ne.wgt1 .or. wgt2.ne.wgt2 .or. wgt3.ne.wgt3) return
+      do ic=dens_first,icontr
+         if (dens_used(ic)) cycle
+         if (itype(ic).ne.type) cycle
+         if (amppos(ic).ne.amp_pos) cycle
+         if (nFKS(ic).ne.nFKSprocess) cycle
+         if (orderstag(ic).ne.orders_tag) cycle
+         resc=1d0
+         ntagph=get_n_tagged_photons()
+         if (ntagph.gt.0)
+     &        resc=get_rescale_alpha_factor(ntagph,orders(qed_pos))
+         wgt_dens(1,idens,ic)=wgt_dens(1,idens,ic)+wgt1*resc
+         wgt_dens(2,idens,ic)=wgt_dens(2,idens,ic)+wgt2*resc
+         wgt_dens(3,idens,ic)=wgt_dens(3,idens,ic)+wgt3*resc
+         dens_used(ic)=.true.
+         return
+      enddo
+c No unprojected contribution to attach it to (it was zero, or filtered)
+      n_dens_dropped=n_dens_dropped+1
+      if (n_dens_dropped.le.10) write (*,*) 'WARNING: density-matrix'/
+     $     /' weight without its contribution, dropped: type',type
+      return
+      end
+
+
+      integer function density_n_active()
+c The number of density-matrix elements each weight carries: those of
+c the output's --density legs when density_weights is set in the
+c run_card, 0 otherwise. Set up (and checked) on the first call.
+      use weight_lines
+      use FKSParams, only: separate_flavour_configs
+      implicit none
+      include 'run.inc'
+      double precision volh
+      integer mc_hel,ihel
+      logical fillh
+      common/mc_int2/volh,mc_hel,ihel,fillh
+      integer k,i,j,kind
+      if (n_dens.lt.0) then
+         n_dens=0
+         if (density_weights) then
+            call density_n_elements(n_dens)
+            if (n_dens.eq.0) then
+               write (*,*) 'ERROR: density_weights needs an output '/
+     $              /'made with --density'
+               stop 1
+            endif
+            if (separate_flavour_configs) then
+               write (*,*) 'ERROR: density_weights is not available'/
+     $              /' with separate_flavour_configs'
+               stop 1
+            endif
+c The projected virtual needs the sum over all helicities
+            if (mc_hel.ne.0) write (*,*) 'Density weights: '/
+     $           /'explicitly summing over helicities in the virtuals'
+            mc_hel=0
+            write (*,*) 'Density weights: ',n_dens,' elements'
+            allocate(dens_diag(n_dens))
+            do k=1,n_dens
+               call density_element(k,i,j,kind)
+               dens_diag(k)=kind.eq.0
+            enddo
+         endif
+      endif
+      density_n_active=n_dens
+      return
+      end
+
+
+      subroutine density_begin()
+c Called before the unprojected evaluation of a group of contributions
+c (a compute_* routine): they will be icontr+1, icontr+2, ...
+      use weight_lines
+      implicit none
+      dens_first=icontr+1
+      end
+
+
+      subroutine density_rerun_start(k)
+c Before re-evaluating the same group of contributions with the
+c projector of density-matrix element k (density_weights.f)
+      use weight_lines
+      implicit none
+      integer k
+      if (icontr.ge.dens_first) then
+         call density_lines_ensure(icontr)
+         dens_used(dens_first:icontr)=.false.
+      endif
+      idens=k
+      dens_rerun=.true.
+      call density_set_element(k)
+      end
+
+
+      subroutine density_rerun_end()
+      use weight_lines
+      implicit none
+      dens_rerun=.false.
+      call density_unset()
+      end
+
+
+      subroutine include_density_weights
+c Appends to wgts(:,icontr) one column per density-matrix element: the
+c element of the central weight, built from the projected pieces exactly
+c as include_PDF_and_alphas builds wgts(1,:) (same luminosity, couplings
+c and logs) and include_bias_wgt rescales it. Checks that the diagonal
+c elements sum to the central weight: to rounding, or to the accuracy of
+c MadLoop for the virtual (whose density uses the colour flows of the
+c reference evaluation of the stability test).
+      use weight_lines
+      implicit none
+      include 'nexternal.inc'
+      integer i,k,iwgt0
+      double precision diag,tol
+      double precision mu2_q,mu2_r,mu2_f,rwgt_muR_dep_fac
+      external rwgt_muR_dep_fac
+      integer density_n_active
+      external density_n_active
+      if (density_n_active().eq.0) return
+      if (icontr.eq.0) return
+      call density_lines_ensure(icontr)
+      iwgt0=iwgt
+      iwgt=iwgt+n_dens
+      call weight_lines_allocated(nexternal,max_contr,iwgt,max_iproc)
+      do i=1,icontr
+         mu2_q=scales2(1,i)
+         mu2_r=scales2(2,i)
+         mu2_f=scales2(3,i)
+         do k=1,n_dens
+            wgts(iwgt0+k,i)=dens_lum(i)*bias_wgt(i)*(wgt_dens(1,k,i)
+     $           +wgt_dens(2,k,i)*log(mu2_r/mu2_q)+wgt_dens(3,k,i)
+     $           *log(mu2_f/mu2_q))*g_strong(i)**QCDpower(i)
+     $           *rwgt_muR_dep_fac(sqrt(mu2_r),sqrt(mu2_r),cpower(i))
+         enddo
+         diag=0d0
+         do k=1,n_dens
+            if (dens_diag(k)) diag=diag+wgts(iwgt0+k,i)
+         enddo
+         if (itype(i).eq.14) then
+            tol=1d-4
+         else
+            tol=1d-7
+         endif
+         if (abs(diag-wgts(1,i)).gt.tol*abs(wgts(1,i))) then
+            n_dens_trace_bad=n_dens_trace_bad+1
+            if (n_dens_trace_bad.le.10) write (*,*) 'WARNING: density'/
+     $           /' weights: the diagonal elements do not sum to the'/
+     $           /' weight (itype, nFKS, weight, sum):',itype(i),nFKS(i)
+     $           ,wgts(1,i),diag
+         endif
+      enddo
+      end
+
+
       subroutine include_PDF_and_alphas
 c Multiply the saved wgt() info by the PDFs, alpha_S and the scale
 c dependence and saves the weights in the wgts() array. The weights in
@@ -2251,6 +2442,10 @@ c overwrite the relevant information.]
      &        *log(mu2_f/mu2_q))*g_strong(i)**QCDpower(i)
      &        *rwgt_muR_dep_fac(sqrt(mu2_r),sqrt(mu2_r),cpower(i))
          wgts(iwgt,i)=xlum * wgt_wo_pdf
+         if (n_dens.gt.0) then
+            call density_lines_ensure(icontr)
+            dens_lum(i)=xlum
+         endif
          do j=1,iproc
             parton_iproc(j,i)=parton_iproc(j,i) * wgt_wo_pdf
          enddo
@@ -6586,7 +6781,8 @@ c
       endif
 c
       i=1
-      do while(ckc(i).gt.0.1d0 .and. xseclvc.ne.0d0)
+c Stop at imax: if nothing ever got within 10% the test simply fails.
+      do while(i.lt.imax .and. ckc(i).gt.0.1d0 .and. xseclvc.ne.0d0)
         i=i+1
       enddo
       imin=i
@@ -6721,7 +6917,8 @@ c
       endif
 c
       i=1
-      do while(ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0)
+c Stop at imax: if nothing ever got within 10% the test simply fails.
+      do while(i.lt.imax .and. ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0)
         i=i+1
       enddo
       imin=i
@@ -6823,6 +7020,7 @@ c
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use extra_weights
       use mint_module
+      use weight_lines, only: dens_rerun, dens_saved_do_virt
       implicit none
       include "genps.inc"
       include 'nexternal.inc'
@@ -7213,8 +7411,12 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       enddo
 
       if (fold.eq.0) then
-         if ((ran2().le.virtual_fraction(ichan) .and.
-     $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
+c (the projected re-evaluations of the density-matrix weights reuse the
+c choice of the unprojected evaluation, without drawing)
+         if (.not.dens_rerun) dens_saved_do_virt=
+     $        (ran2().le.virtual_fraction(ichan) .and.
+     $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt'
+         if (dens_saved_do_virt) then
             call cpu_time(tBefore)
             Call binothlha_frame(p_born,born_wgt,virt_wgt)
             do iamp=1,amp_split_size

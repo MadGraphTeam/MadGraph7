@@ -6122,6 +6122,10 @@ class RunCardNLO(RunCard):
         self.add_param('pdf_set_min', 244601, hidden=True)
         self.add_param('pdf_set_max', 244700, hidden=True)
         self.add_param('store_rwgt_info', False)
+        # spin-density matrix weights of the --density legs (output ... --density=i,j):
+        # docs/nlo_density_usage_plan.md. Without --density there is nothing to compute.
+        self.add_param('density_weights', False, hidden=True, comment='with an output made with --density=i,j: also compute, for each weight, the spin-density matrix of those legs (one weight per element)')
+        self.add_param('density_nrk', False, hidden=True, comment='density weights: the density matrix in the helicity frame {n,r,k} of the first density leg (the frame of the matrix elements rotated so that this leg moves along +z, with the z axis in the (y,z) plane), as in the density mode of the reweight module')
         self.add_param('systematics_program', 'none', include=False, hidden=True, comment='Choose which program to use for systematics computation: none, systematics')
         self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the arguments to pass to the systematics command, like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
 

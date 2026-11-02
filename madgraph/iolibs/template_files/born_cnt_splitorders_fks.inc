@@ -28,6 +28,9 @@ C
        DOUBLE PRECISION TINY
        PARAMETER (TINY = 1D-12)
        DOUBLE PRECISION MAX_VAL
+## if(density) {
+      include "density_info.inc"
+## }
 C
 C     FUNCTIONS
 C
@@ -71,6 +74,15 @@ C this is for the orders of the counterterms
  firsttime = .false.
 endif
 
+## if(density) {
+C the projector W of the density matrix is not implemented for the
+C extra counterterms
+      IF (DENS_W_ON) THEN
+        WRITE(*,*) 'ERROR: the density-matrix projector W is not'
+        WRITE(*,*) 'available for the extra counterterms (born_cnt)'
+        STOP 1
+      ENDIF
+## }
 CALL SBORN_CNT%(proc_prefix)s_SPLITORDERS(P,ANS)
 
 MAX_VAL = 0D0
@@ -226,27 +238,24 @@ C
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
+C The amplitudes are computed by GET_AMP_BORN_CNT, the JAMPs by
+C GET_JAMP_BORN_CNT; GET_MATRIX_BORN_CNT is the colour sum of one
+C helicity, GET_INTER_BORN_CNT the colour contraction of the JAMPs of the
+C two helicities of the FKS mother (the spin-correlated Born, ANS(2,:)).
 
 %(process_lines)s
 C  
-      USE ALOHA_OBJECT
       IMPLICIT NONE
 C  
 C CONSTANTS
 C  
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
-      INTEGER    NGRAPHS,    NEIGEN 
-      PARAMETER (NGRAPHS=   %(ngraphs)d,NEIGEN=  1) 
-      INTEGER    NWAVEFUNCS, NCOLOR
-      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
-      REAL*8     ZERO
-      PARAMETER (ZERO=0D0)
-      complex*16 imag1
-      parameter (imag1 = (0d0,1d0))
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d) 
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
       include "nexternal.inc"
-      include "born_nhel.inc"
-      include "coupl.inc"
 C  
 C ARGUMENTS 
 C  
@@ -256,51 +265,21 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER I,J,M,N,ihel,back_hel,glu_ij
-      INTEGER IC(NEXTERNAL-1),nmo
-      parameter (nmo=nexternal-1)
-      data ic /nmo*1/
-      INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
-      INTEGER  CF(NCOLOR*(NCOLOR+1)/2)
-      INTEGER CF_INDEX, DENOM
-      COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
-      type(aloha) W(NWAVEFUNCS)
-      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+      INTEGER I,ihel,back_hel,glu_ij,iflip
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
+      COMPLEX*16 RES(NSQAMPSO)
 C  
 C GLOBAL VARIABLES
 C  
-
-C MZ uncomment and change these lines if we'll decide to
-C use also the amp from the counterterms for the multichannelling
-C      double precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,nampso)
-C      common/to_amps/  amp2,       jamp2
-      double precision hel_fac
-      integer get_hel,skip
-      common/cBorn_CNT%(proc_prefix)s/hel_fac,get_hel,skip
-      logical calculatedBorn
-      common/ccalculatedBorn_CNT%(proc_prefix)s/calculatedBorn
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
 
-C
-C FUNCTION
-C
-      INTEGER SQSOINDEXB_CNT%(proc_prefix)s
-
 %(ij_lines)s
-C  
-C COLOR DATA
-C  
-%(color_data_lines)s
 C ----------
 C BEGIN CODE
 C ----------
-
-C don't cache for extra counterterms
-      calculatedBorn=.false.
       glu_ij = ij_values(nfksprocess)
-      jamp(:,:) = (0d0,0d0)
+      jamph(:,:,:) = (0d0,0d0)
       DO I = 1, NSQAMPSO
         ANS(1,I)=0D0
         ANS(2,I)=0D0
@@ -310,14 +289,142 @@ C don't cache for extra counterterms
       back_hel = nhel(glu_ij)
       do ihel=-1,1,2
         if (ihel.eq.-1.or.nhel(glu_ij).ne.0) then
-        if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
-        if (.not. calculatedBorn) then
-%(helas_calls)s
-        elseif (calculatedBorn) then
-        write(*,*) 'ERROR: EXTRA CNT should be called with calculated_born=false'
+          if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
+          iflip = 2-(1-ihel)/2
+          CALL GET_AMP_BORN_CNT%(proc_prefix)s(P,NHEL,AMP)
+          CALL GET_JAMP_BORN_CNT%(proc_prefix)s(AMP,JAMP)
+          CALL GET_MATRIX_BORN_CNT%(proc_prefix)s(JAMP,RES)
+          DO I = 1, NSQAMPSO
+            BORNS(iflip,I) = DBLE(RES(I))
+          ENDDO
+          jamph(iflip,:,:) = jamp(:,:)
         endif
+      Enddo
+      do i = 1, nsqampso
+      ans(1,i) = borns(1,i) + borns(2,i) 
+      enddo
+      CALL GET_INTER_BORN_CNT%(proc_prefix)s(JAMPH(2,:,:),JAMPH(1,:,:),RES)
+      ANS(2,:) = RES(:)
+      nhel(glu_ij) = back_hel
+      END
+
+
+      SUBROUTINE GET_AMP_BORN_CNT%(proc_prefix)s(P,NHEL,AMP)
+C
+%(info_lines)s
+C Returns the amplitudes AMP(NGRAPHS) for the helicity configuration NHEL
+C (the HELAS calls)
+%(process_lines)s
+C
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER    NGRAPHS,    NEIGEN 
+      PARAMETER (NGRAPHS=   %(ngraphs)d,NEIGEN=  1) 
+      INTEGER    NWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d) 
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      complex*16 imag1
+      parameter (imag1 = (0d0,1d0))
+      include "nexternal.inc"
+      include "coupl.inc"
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1)
+      COMPLEX*16 AMP(NGRAPHS)
+C
+C LOCAL VARIABLES
+C
+      INTEGER IC(NEXTERNAL-1),nmo
+      parameter (nmo=nexternal-1)
+      data ic /nmo*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /NMO*1/
+      type(aloha) W(NWAVEFUNCS)
+C ----------
+C BEGIN CODE
+C ----------
+%(helas_calls)s
+      END
+
+
+      SUBROUTINE GET_JAMP_BORN_CNT%(proc_prefix)s(AMP,JAMP)
+C
+%(info_lines)s
+C Returns the JAMPs (colour-ordered amplitudes) for each amplitude split
+C order
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d)
+      complex*16 imag1
+      parameter (imag1 = (0d0,1d0))
+C
+C ARGUMENTS
+C
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+C
+C LOCAL VARIABLES
+C
+      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+C ----------
+C BEGIN CODE
+C ----------
+      jamp(:,:) = (0d0,0d0)
 %(jamp_lines)s
-	DO M = 1, NAMPSO
+      END
+
+
+      SUBROUTINE GET_MATRIX_BORN_CNT%(proc_prefix)s(JAMP,RES)
+C
+C conj(JAMP).CF.JAMP / DENOM for each squared split order (one helicity);
+C only the real part of RES is meaningful
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+C
+C ARGUMENTS
+C
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO), RES(NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,M,N
+      INTEGER  CF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER CF_INDEX, DENOM
+      COMPLEX*16 ZTEMP
+C
+C FUNCTION
+C
+      INTEGER SQSOINDEXB_CNT%(proc_prefix)s
+C  
+C COLOR DATA
+C  
+%(color_data_lines)s
+C ----------
+C BEGIN CODE
+C ----------
+      RES(:) = (0d0,0d0)
+      DO M = 1, NAMPSO
         CF_INDEX = 0
         DO I = 1, NCOLOR
           ZTEMP = (0.D0,0.D0)
@@ -325,42 +432,64 @@ C don't cache for extra counterterms
             CF_INDEX = CF_INDEX +1
             ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
           ENDDO
-	      DO N = 1, NAMPSO
-              BORNS(2-(1-ihel)/2,SQSOINDEXB_CNT%(proc_prefix)s(M,N))=BORNS(2-(1-ihel)/2,SQSOINDEXB_CNT%(proc_prefix)s(M,N))+ZTEMP*DCONJG(JAMP(I,N))   
+          DO N = 1, NAMPSO
+            RES(SQSOINDEXB_CNT%(proc_prefix)s(M,N))=RES(SQSOINDEXB_CNT%(proc_prefix)s(M,N))+ZTEMP*DCONJG(JAMP(I,N))
           ENDDO
         ENDDO
-        ENDDO
-        BORNS(:,:)=BORNS(:,:)/DENOM
+      ENDDO
+      RES(:)=RES(:)/DENOM
+      END
 
 
-c        Do I = 1, NGRAPHS
-c          amp2(i)=amp2(i)+amp(i)*dconjg(amp(i))
-c        Enddo
-        do J = 1,NAMPSO
-        Do I = 1, NCOLOR
-c          Jamp2(i,J)=Jamp2(i,J)+Jamp(i,J)*dconjg(Jamp(i,J))
-          Jamph(2-(1-ihel)/2,i,J)=Jamp(i,J)
-        Enddo
-        ENDDO
-      endif
-      Enddo
-      do i = 1, nsqampso
-      ans(1,i) = borns(1,i) + borns(2,i) 
-      enddo
+      SUBROUTINE GET_INTER_BORN_CNT%(proc_prefix)s(JAMPA,JAMPB,RES)
+C
+C The colour contraction of two sets of JAMPs, for each squared split order:
+C   RES = sum CF_ij (JAMPA(j,M) conj(JAMPB(i,N)) + JAMPA(i,M) conj(JAMPB(j,N)))
+C         / (2 DENOM)
+C i.e. sum_ij S_ij JAMPA(i) conj(JAMPB(j)) for the symmetric colour matrix S
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+C
+C ARGUMENTS
+C
+      COMPLEX*16 JAMPA(NCOLOR,NAMPSO), JAMPB(NCOLOR,NAMPSO), RES(NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,M,N
+      INTEGER  CF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER CF_INDEX, DENOM
+C
+C FUNCTION
+C
+      INTEGER SQSOINDEXB_CNT%(proc_prefix)s
+C  
+C COLOR DATA
+C  
+%(color_data_lines)s
+C ----------
+C BEGIN CODE
+C ----------
+      RES(:) = (0d0,0d0)
       DO M = 1, NAMPSO
       CF_INDEX = 0 
       DO I = 1, NCOLOR
-        ZTEMP = (0.D0,0.D0)
         DO J = I, NCOLOR
           CF_INDEX = CF_INDEX + 1
           DO N = 1, NAMPSO
-             ANS(2,SQSOINDEXB_CNT%(proc_prefix)s(M,N))= ANS(2,SQSOINDEXB_CNT%(proc_prefix)s(M,N)) + CF(CF_INDEX)*JAMPH(2,J,M)*DCONJG(JAMPH(1,I,N))+CF(CF_INDEX)*JAMPH(2,I,M)*DCONJG(JAMPH(1,J,N))
+             RES(SQSOINDEXB_CNT%(proc_prefix)s(M,N))= RES(SQSOINDEXB_CNT%(proc_prefix)s(M,N)) + CF(CF_INDEX)*JAMPA(J,M)*DCONJG(JAMPB(I,N))+CF(CF_INDEX)*JAMPA(I,M)*DCONJG(JAMPB(J,N))
           ENDDO
         ENDDO
       ENDDO
       ENDDO
-      ANS(2,:) = ANS(2,:) / (2d0*DENOM)
-      nhel(glu_ij) = back_hel
+      RES(:) = RES(:) / (2d0*DENOM)
       END
        
 

@@ -7,7 +7,8 @@ c Wrapper routines for the fixed order analyses
       integer nwgt
       character(len=50),allocatable :: weights_info(:),ctemp(:)
       character*13 temp
-      integer i,npdfs,ii,jj,n,kk,nn
+      integer i,npdfs,ii,jj,n,kk,nn,ndens,density_n_active
+      external density_n_active
       double precision xsecScale_acc(maxscales,maxscales,maxdynscales)
      $     ,xsecPDFr_acc(0:maxPDFs,maxPDFsets)
       common /scale_pdf_print/xsecScale_acc,xsecPDFr_acc
@@ -120,6 +121,16 @@ c Initialize grid parameters to negative values.
          appl_nx      = -1
          appl_xorder  = -1
       endif
+c the spin-density-matrix columns (density_weights), after the scale and
+c PDF ones, as include_density_weights appends them
+      ndens=density_n_active()
+      do kk=1,ndens
+         nwgt=nwgt+1
+         allocate(ctemp(nwgt))
+         ctemp(1:nwgt-1)=weights_info
+         call move_alloc(ctemp,weights_info)
+         call density_element_label(kk,weights_info(nwgt))
+      enddo
       call analysis_begin(nwgt,weights_info)
 c To keep track of the accumulated results:
       do kk=1,dyn_scale(0)

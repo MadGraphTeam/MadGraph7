@@ -36,6 +36,16 @@ c variables (something not possible in old fortran version)
          double precision, allocatable :: histy(:,:,:),histy_acc(:,:,:)
      $        ,histy2(:,:),histy_err(:,:),histxl(:,:),histxm(:,:)
      $        ,step(:),p_wgts(:,:)
+c The spin-density-matrix weights (labels starting with 'dens '): their
+c positions idens(1:ndens) among the weights and, per bin, the sums of
+c the squares of w_K (histd2(2K-1,:,:)) and of w_K + w_1 (histd2(2K,:,:))
+c for the current iteration, and the accumulated uncertainties of
+c these two (histd_err), written as the extra columns '<label> @dy' and
+c '<label> @dyc'. With both, the covariance of w_K with the central
+c value, and so the uncertainty of w_K/w_1, can be computed.
+         integer :: ndens=0
+         integer, allocatable :: idens(:)
+         double precision, allocatable :: histd2(:,:,:),histd_err(:,:,:)
          save
       end module HwU_variables
 
@@ -69,6 +79,18 @@ c     zero if any of the other weights are non-zero.
       allocate(wgts_info(nwgts))
       do i=1,nwgts
          wgts_info(i)=wgt_info(i)
+      enddo
+      ndens=0
+      do i=1,nwgts
+         if (wgts_info(i)(1:5).eq.'dens ') ndens=ndens+1
+      enddo
+      allocate(idens(ndens))
+      ndens=0
+      do i=1,nwgts
+         if (wgts_info(i)(1:5).eq.'dens ') then
+            ndens=ndens+1
+            idens(ndens)=i
+         endif
       enddo
       return
       end
@@ -165,6 +187,8 @@ c     Set all the bins to zero.
          histi(label,i)=0
          histy2(label,i)=0d0
          histy_err(label,i)=0d0
+         histd2(:,label,i)=0d0
+         histd_err(:,label,i)=0d0
       enddo
       return
       end
@@ -238,7 +262,7 @@ c correctly taken into account.
       subroutine HwU_add_points
       use HwU_variables
       implicit none
-      integer i,j
+      integer i,j,k
       do i=1,np
          do j=1,nwgts
             histy(j,p_label(i),p_bin(i))=
@@ -247,6 +271,12 @@ c correctly taken into account.
          histi(p_label(i),p_bin(i))=histi(p_label(i),p_bin(i))+1
          histy2(p_label(i),p_bin(i))=
      $        histy2(p_label(i),p_bin(i))+p_wgts(1,i)**2
+         do k=1,ndens
+            histd2(2*k-1,p_label(i),p_bin(i))=histd2(2*k-1,p_label(i)
+     $           ,p_bin(i))+p_wgts(idens(k),i)**2
+            histd2(2*k,p_label(i),p_bin(i))=histd2(2*k,p_label(i)
+     $           ,p_bin(i))+(p_wgts(idens(k),i)+p_wgts(1,i))**2
+         enddo
       enddo
       np=0
       return
@@ -280,6 +310,7 @@ c     ready for the next iteration.
                histy(j,label,i)=0d0
             enddo
             histy2(label,i)=0d0
+            histd2(:,label,i)=0d0
             histi(label,i)=0
          enddo
       enddo
@@ -307,6 +338,7 @@ c     Set all the bins to zero.
                histy_acc(j,label,i)=0d0
             enddo
             histy_err(label,i)=0d0
+            histd_err(:,label,i)=0d0
          enddo
          call accumulate_results(label,nPSinv,niter,dummy)
       enddo
@@ -326,11 +358,16 @@ c weights are non-zero.
       subroutine accumulate_results(label,nPSinv,niter,values)
       use HwU_variables
       implicit none
-      integer label,i,j
+      integer label,i,j,k
       double precision nPSinv,etot,niter,y_squared
      $     ,values(2),a1,a2
-      double precision,allocatable :: vtot(:)
+      double precision,allocatable :: vtot(:),dtot(:),detot(:),dacc(:)
       if (.not. allocated(vtot)) allocate(vtot(nwgts))
+c the density weights: their value (dtot: w_K and w_K + w_1, as in
+c histd2) and the uncertainty of the current iteration (detot), and
+c their accumulated values (dacc)
+      if (.not. allocated(dtot)) allocate(dtot(2*ndens),detot(2*ndens)
+     $     ,dacc(2*ndens))
       if (error_estimation.eq.2) then
 c     Use the weighted average bin-by-bin. This is not really justified
 c     for fNLO computations, because for bins with low statistics, the
@@ -353,6 +390,7 @@ c     still biased) estimator of the standard deviation.
             else
                etot=abs(vtot(1))*10d0 ! multiply by 10 to make it large
             endif
+            call HwU_dens_iter_err(label,i,vtot,nPSinv,dtot,detot)
 c     If the error estimation of the accumulated results is still zero
 c     (i.e. no points were added yet, e.g. because it is the first
 c     iteration) simply copy the results of this iteration over the
@@ -362,7 +400,16 @@ c     accumulated results.
                   histy_acc(j,label,i)=vtot(j)
                enddo
                histy_err(label,i)=etot
+               histd_err(1:2*ndens,label,i)=detot(1:2*ndens)
             else
+c     the density weights are combined with the same coefficients
+               a1=(1d0/etot)/(1d0/histy_err(label,i)+1d0/etot)
+               a2=(1d0/histy_err(label,i))/(1d0/histy_err(label,i)+1d0
+     $              /etot)
+               do k=1,2*ndens
+                  histd_err(k,label,i)=sqrt((a2*histd_err(k,label,i))**2
+     $                 +(a1*detot(k))**2)
+               enddo
 c     Add the results of the current iteration to the accumulated results
                do j=1,nwgts
                   histy_acc(j,label,i)=(histy_acc(j,label,i)
@@ -392,6 +439,7 @@ c     still biased) estimator of the standard deviation.
             else
                etot=abs(vtot(1))*10d0 ! multiply by 10 to make it large
             endif
+            call HwU_dens_iter_err(label,i,vtot,nPSinv,dtot,detot)
 c     If the error estimation of the accumulated results is still zero
 c     (i.e. no points were added yet, e.g. because it is the first
 c     iteration) simply copy the results of this iteration over the
@@ -401,6 +449,7 @@ c     accumulated results.
                   histy_acc(j,label,i)=vtot(j)
                enddo
                histy_err(label,i)=etot
+               histd_err(1:2*ndens,label,i)=detot(1:2*ndens)
             else
 c     Add the results of the current iteration to the accumulated results
                do j=1,nwgts
@@ -412,6 +461,11 @@ c     Add the results of the current iteration to the accumulated results
                a2=((1d0/values(2))/((1d0/values(1))+1d0/values(2)))**2
                histy_err(label,i)=sqrt(a2*histy_err(label,i)**2 +
      &              a1*etot**2)
+c     the density weights are combined with the same coefficients
+               do k=1,2*ndens
+                  histd_err(k,label,i)=sqrt(a2*histd_err(k,label,i)**2
+     $                 +a1*detot(k)**2)
+               enddo
             endif
          enddo 
       elseif(error_estimation.eq.1) then
@@ -421,6 +475,26 @@ c     simply sum the weights in the bins
      &           histy_acc(1,label,i).eq.0d0) cycle
             if (niter.ne.1d0) y_squared=((niter-1)*histy_err(label,i))
      &           **2+(niter-1)*histy_acc(1,label,i)**2
+c     the density weights: the same, with their accumulated values
+c     before this iteration
+            do k=1,ndens
+               dacc(2*k-1)=histy_acc(idens(k),label,i)
+               dacc(2*k)=histy_acc(idens(k),label,i)+histy_acc(1,label,i)
+               dtot(2*k-1)=histy(idens(k),label,i)*nPSinv
+               dtot(2*k)=(histy(idens(k),label,i)+histy(1,label,i))
+     $              *nPSinv
+            enddo
+            do k=1,2*ndens
+               if (niter.eq.1d0) then
+                  histd_err(k,label,i)=0d0
+               else
+                  a1=((niter-1)*histd_err(k,label,i))**2+(niter-1)
+     $                 *dacc(k)**2
+                  a2=(dacc(k)*(niter-1d0)+dtot(k))/niter
+                  histd_err(k,label,i)=sqrt(abs((a1+dtot(k)**2)/niter
+     $                 -a2**2)/niter)
+               endif
+            enddo
             do j=1,nwgts
                vtot(j)=histy(j,label,i)*nPSinv
                histy_acc(j,label,i)=(histy_acc(j,label,i)*(niter-1d0)
@@ -452,11 +526,41 @@ c     making sure we normalise with the number of iterations.
                etot=sqrt(histy2(label,i))*nPSinv
                histy_err(label,i)= sqrt(((niter-1d0)*histy_err(label,i))
      &              **2+etot**2)/niter
+               do k=1,2*ndens
+                  histd_err(k,label,i)=sqrt(((niter-1d0)*histd_err(k
+     $                 ,label,i))**2+histd2(k,label,i)*nPSinv**2)/niter
+               enddo
             else
                histy_err(label,i)=(niter-1d0)/niter*histy_err(label,i)
+               histd_err(:,label,i)=(niter-1d0)/niter*histd_err(:,label
+     $              ,i)
             endif
          enddo
       endif
+      end
+
+
+      subroutine HwU_dens_iter_err(label,i,vtot,nPSinv,dtot,detot)
+c The density weights of bin i of histogram label in the current
+c iteration: their values (dtot: w_K, w_K + w_1) and uncertainties
+c (detot), estimated as that of the central value in accumulate_results
+      use HwU_variables
+      implicit none
+      integer label,i,k
+      double precision vtot(nwgts),nPSinv,dtot(2*ndens),detot(2*ndens)
+      do k=1,ndens
+         dtot(2*k-1)=vtot(idens(k))
+         dtot(2*k)=vtot(idens(k))+vtot(1)
+      enddo
+      do k=1,2*ndens
+         detot(k)=sqrt(abs(histd2(k,label,i)*nPSinv-dtot(k)**2)*nPSinv)
+         if (histi(label,i).gt.1) then
+            detot(k)=detot(k)*sqrt(dble(histi(label,i))
+     &           /(dble(histi(label,i))-1.5d0))
+         else
+            detot(k)=abs(dtot(k))*10d0
+         endif
+      enddo
       end
       
 c Write the histograms to disk at the end of the run, multiplying the
@@ -464,7 +568,7 @@ c output by 'xnorm'
       subroutine HwU_output(unit,xnorm)
       use HwU_variables
       implicit none
-      integer unit,i,j,label
+      integer unit,i,j,k,label
       integer max_length
       character(len=:), allocatable :: buffer
       character*4 str_nbin
@@ -479,6 +583,12 @@ c     weights}.
       write (unit,'(a)', advance='no') ' & dy'
       do j=2,nwgts
          write (unit,'(a)', advance='no') ' & '//trim(adjustl(wgts_info(j)))
+      enddo
+      do k=1,ndens
+         write (unit,'(a)', advance='no') ' & '//
+     $        trim(adjustl(wgts_info(idens(k))))//' @dy'
+         write (unit,'(a)', advance='no') ' & '//
+     $        trim(adjustl(wgts_info(idens(k))))//' @dyc'
       enddo
       write (unit,'(a)') ''
       write (unit,'(a)') ''
@@ -499,6 +609,9 @@ c     data
            write (unit,'(2x,e14.7)', advance='no') histy_err(label,i)*xnorm
            do j=2,nwgts
               write (unit, '(2x,e14.7)', advance='no') histy_acc(j,label,i)*xnorm
+           enddo
+           do k=1,2*ndens
+              write (unit, '(2x,e14.7)', advance='no') histd_err(k,label,i)*abs(xnorm)
            enddo
 	   write(unit, *) ''
          enddo
@@ -530,6 +643,9 @@ c Clean all the allocatable variables:
       if (allocated(p_bin)) deallocate(p_bin)
       if (allocated(p_label)) deallocate(p_label)
       if (allocated(p_wgts)) deallocate(p_wgts)
+      if (allocated(idens)) deallocate(idens)
+      if (allocated(histd2)) deallocate(histd2)
+      if (allocated(histd_err)) deallocate(histd_err)
       return
       end
 
@@ -590,6 +706,8 @@ c single histogram
          allocate(histi(1,nbin_l))
          allocate(histy2(1,nbin_l))
          allocate(histy_err(1,nbin_l))
+         allocate(histd2(2*ndens,1,nbin_l))
+         allocate(histd_err(2*ndens,1,nbin_l))
          max_plots=1
          max_bins=nbin_l
       endif
@@ -646,6 +764,13 @@ c histy_err
          allocate(temp2(label_max,nbin_max))
          temp2(1:max_plots,1:max_bins)=histy_err
          call move_alloc(temp2,histy_err)
+c histd2 and histd_err
+         allocate(temp3(2*ndens,label_max,nbin_max))
+         temp3(1:2*ndens,1:max_plots,1:max_bins)=histd2
+         call move_alloc(temp3,histd2)
+         allocate(temp3(2*ndens,label_max,nbin_max))
+         temp3(1:2*ndens,1:max_plots,1:max_bins)=histd_err
+         call move_alloc(temp3,histd_err)
 c Update maximums
          max_plots=label_max
          max_bins=nbin_max

@@ -290,6 +290,9 @@ C
         write (*,*) "2eps   / ao2pi      = ", MATELEM(3,0)/AO2PI	    
 	  ENDIF
       write (*,*) "---------------------------------"
+## if(UseDensity) {
+      CALL GET_DENSITY_MATRIX(P, MATELEM(0,0), PREC_FOUND(0))
+## }
 
       open(69, file="result.dat", err=976, action='WRITE')
       do i=1,nexternal      
@@ -359,6 +362,72 @@ C      write (*,*) "-------------------------------------------------"
         
         
         
+## if(UseDensity) {
+      SUBROUTINE GET_DENSITY_MATRIX(P, ANS, ACC)
+C     Spin-density matrix of the legs POS (output option --density) at the
+C     point P, for the Born, the finite part and the two poles of the
+C     virtual. Prints each trace next to the matrix element ANS(0:3) and
+C     writes every element to density.dat as: K  I  J  Re  Im, with K=0 the
+C     Born, 1 the finite part, 2 and 3 the single and double pole, and (I,J)
+C     the helicity combinations (I <= J) listed in the header of the file.
+      IMPLICIT NONE
+      INTEGER N_CHANGING
+      PARAMETER (N_CHANGING=%(dens_nchanging)i)
+      INTEGER N_COMB_RHO
+      PARAMETER (N_COMB_RHO=%(dens_ncomb)i)
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL), ANS(0:3), ACC
+
+      INTEGER POS(N_CHANGING)
+      INTEGER ALLOW_HEL(N_CHANGING*N_COMB_RHO)
+      DOUBLE COMPLEX RHO((N_COMB_RHO*(N_COMB_RHO+1))/2, 0:3)
+      DOUBLE PRECISION TRACE, MAXDIFF
+      INTEGER I, J, K, SOL
+      CHARACTER*6 LABEL(0:3)
+      DATA LABEL/'Born  ','finite','1eps  ','2eps  '/
+
+      %(dens_pos)s
+      %(dens_allow_hel)s
+
+      CALL %(proc_prefix)sGET_DENSITY_ALL(P, POS, N_CHANGING, ALLOW_HEL, N_COMB_RHO, 0D0, 0D0, RHO)
+
+      write (*,*) "Spin-density matrix of legs", (POS(K),K=1,N_CHANGING)
+      MAXDIFF = 0D0
+      DO K = 0, 3
+        TRACE = 0D0
+        SOL = 0
+        DO I = 1, N_COMB_RHO
+          DO J = I, N_COMB_RHO
+            SOL = SOL + 1
+            IF (I.EQ.J) TRACE = TRACE + DBLE(RHO(SOL,K))
+          ENDDO
+        ENDDO
+        write (*,'(1x,a,a6,a,e25.15,a,e25.15)') 'Tr rho ', LABEL(K), ' =', TRACE, '   matrix element =', ANS(K)
+        IF (ANS(K).NE.0D0) MAXDIFF = MAX(MAXDIFF, ABS(TRACE/ANS(K)-1D0))
+      ENDDO
+      write (*,*) "Max. relative difference trace/matrix element =", MAXDIFF
+      write (*,*) "(the matrix element is the average of the stability evaluations, accuracy", ACC, ")"
+      write (*,*) "---------------------------------"
+
+      open(70, file="density.dat", action='WRITE')
+      write (70,*) '# legs', (POS(K),K=1,N_CHANGING)
+      DO I = 1, N_COMB_RHO
+        write (70,*) '# combination', I, ':', (ALLOW_HEL((I-1)*N_CHANGING+K),K=1,N_CHANGING)
+      ENDDO
+      DO K = 0, 3
+        SOL = 0
+        DO I = 1, N_COMB_RHO
+          DO J = I, N_COMB_RHO
+            SOL = SOL + 1
+            write (70,'(3(1x,i3),2(1x,ES25.15E3))') K, I, J, DBLE(RHO(SOL,K)), DIMAG(RHO(SOL,K))
+          ENDDO
+        ENDDO
+      ENDDO
+      close(70)
+      END
+
+## }
          double precision function dot(p1,p2)
 C *************************************************************
 C     4-Vector Dot product

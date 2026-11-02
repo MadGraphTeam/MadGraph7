@@ -153,6 +153,28 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             args.append(self.ask_tutorial(default='nlo'))
         return mg_interface.CheckValidForCmd.check_tutorial(self, args)
 
+    def _fks_leg_list_option(self, args, name):
+        """Remove '--<name>=i,j,...' from args and return [i, j, ...], or
+        None if the option is absent. For the NLO outputs (the aMC@NLO one
+        and the FKS standalone one, --fks)."""
+        values = None
+        for arg in list(args):
+            if not arg.startswith('--%s=' % name):
+                continue
+            args.remove(arg)
+            if args and args[0] == 'ewsudakovsa':
+                raise self.InvalidCmd('"--%s" is not available for the EW '
+                    'Sudakov output.' % name)
+            try:
+                values = [int(v) for v in arg.split('=', 1)[1].split(',')]
+            except ValueError:
+                raise self.InvalidCmd('"--%s" takes a comma-separated list of '
+                    'leg numbers, e.g. --%s=3,4, not "%s".' % (name, name, arg))
+            if not values or min(values) < 1 or len(set(values)) != len(values):
+                raise self.InvalidCmd('"--%s": the leg numbers must be distinct '
+                    'and positive, not "%s".' % (name, arg))
+        return values
+
     def check_output(self, args):
         """ check the validity of the line"""
 
@@ -170,6 +192,15 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             if not self._fks_standalone:
                 raise self.InvalidCmd('"--limits" is only available for the FKS '
                     'standalone output: "output standalone_fortran --fks --limits".')
+        # '--density=i,j' asks for the spin-density matrix of the (massive,
+        # final-state) legs i,j -- numbered as in the process definition --
+        # summed over the helicities of every other leg, in the aMC@NLO output
+        # or the FKS standalone one (--fks). '--me_frame=i,j' sets the frame
+        # the helicities are defined in (default: the rest frame of the
+        # density legs). Both are checked against each process when the
+        # directories are written.
+        self._fks_density = self._fks_leg_list_option(args, 'density')
+        self._fks_me_frame = self._fks_leg_list_option(args, 'me_frame')
 
         if args and args[0] == 'ewsudakovsa':
             self._export_format = 'ewsudsa'

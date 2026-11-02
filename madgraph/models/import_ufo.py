@@ -817,6 +817,11 @@ def import_full_model(model_path, decay=False, prefix='', options={}):
         try:
             model = save_load_object.load_from_file( \
                                           os.path.join(model_path, pickle_name))
+            # read_from_file reports an unreadable file (e.g. a model
+            # directory macOS does not let us read) and returns None
+            # instead of raising
+            if model is None:
+                raise IOError('could not read %s' % pickle_name)
         except Exception as error:
             logger.info('failed to load model from pickle file. Try importing UFO from File')
         else:

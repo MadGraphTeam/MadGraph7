@@ -441,6 +441,12 @@ C      currently computed.
       INTEGER HEL_MULT
       DOUBLE COMPLEX JAMPL(3,NLOOPFLOWS,NLOOPAMPSO)
       COMMON/%(proc_prefix)sJAMPL/JAMPL
+## if(not LoopInduced){
+      INTEGER NBORNFLOWS
+      PARAMETER (NBORNFLOWS=%(nBornFlows)d)
+      DOUBLE COMPLEX JAMPB(NBORNFLOWS,NLOOPAMPSO)
+      COMMON/%(proc_prefix)sJAMPB/JAMPB
+## }
 C     
 C     LOCAL VARIABLES 
 C     
@@ -448,7 +454,11 @@ C
 C     ----------
 C     BEGIN CODE
 C     ----------
+## if(LoopInduced){
       CALL %(proc_prefix)sDO_COMPUTE_INTER_JAMP(RES_CPLX, HEL_MULT, JAMPL, JAMPL)
+## } else {
+      CALL %(proc_prefix)sDO_COMPUTE_INTER_JAMP(RES_CPLX, HEL_MULT, JAMPL, JAMPL, JAMPB, JAMPB)
+## }
       DO I=0,3
         DO J=0, NSQUAREDSO
           RES(I,J) = DREAL(RES_CPLX(I,J)) !RES is real for matrix element computation and complex for density matrix computation. A conversion is necessary
@@ -472,7 +482,7 @@ c
     INTEGER I
     INTEGER NHEL(NEXTERNAL)
     INTEGER HELC(NEXTERNAL,NCOMB)
-    COMMON/ML5_0_HELCONFIGS/HELC
+    COMMON/%(proc_prefix)sHELCONFIGS/HELC
 c    
 c   START CODE
 c
@@ -543,9 +553,17 @@ c         IF (CHOSEN_SO_CONFIGS(I)) THEN
 ## }
 
 
+## if(LoopInduced) {
       SUBROUTINE %(proc_prefix)sDO_COMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL1,JAMPL2)
-C     Computation of the interference between JAMPL1 and JAMPL2
-C     This subroutine is used to compute the matrix element JAMPL1 = JAMPL2 or the density matrix JAMPL1 != JAMPL2
+## } else {
+      SUBROUTINE %(proc_prefix)sDO_COMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL1,JAMPL2,JAMPB1,JAMPB2)
+## }
+C     Computation of the interference between the colour flows of two
+C     helicity configurations, 1 and 2: the matrix element when they are the
+C     same, an element rho(1,2) of the density matrix otherwise. INTER(0,*) is
+C     tree x tree, INTER(1:3,*) the finite part, single and double pole of
+C     loop x tree (loop x loop for loop-induced processes). Element (1,2) is
+C     sum_ab C_ab A_a(1) conjg(A_b(2)), complex when 1 != 2.
       IMPLICIT NONE
 C     
 C     CONSTANTS 
@@ -612,8 +630,8 @@ C
       %(complex_dp_format)s JAMPL2(3,NLOOPFLOWS,NLOOPAMPSO)
 
 ## if(not LoopInduced){
-      %(complex_dp_format)s JAMPB(NBORNFLOWS,NBORNAMPSO)
-	common/%(proc_prefix)sJAMPB/JAMPB
+      %(complex_dp_format)s JAMPB1(NBORNFLOWS,NBORNAMPSO)
+      %(complex_dp_format)s JAMPB2(NBORNFLOWS,NBORNAMPSO)
 ## }
 ## if(LoopInduced and MadEventOutput){
       %(real_dp_format)s AMP2_ALL(3,NCONFIGS,0:NSQUAREDSO)    
@@ -672,9 +690,9 @@ DO I=1, NBORNFLOWS
     IF (BornColorFlowMatrix(I,J)%Denom.LT.0) COLOR_COEF=COLOR_COEF*IMAG1
     DO M=1,NBORNAMPSO
 C It may be that this AmpSO index does not receive contribution by the Born amps (because we put the loop and Born amplitude split orders in a common list)
-      IF (ABS(JAMPB(I,M)).eq.0.0d0) CYCLE
+      IF ((ABS(JAMPB1(I,M))+ABS(JAMPB1(J,M))).eq.0.0d0) CYCLE
       DO N=1,NBORNAMPSO
-        IF (ABS(JAMPB(J,N)).eq.0.0d0) CYCLE
+        IF ((ABS(JAMPB2(I,N))+ABS(JAMPB2(J,N))).eq.0.0d0) CYCLE
 C First fetch what orders the split order indices M, N correspond to
         CALL %(proc_prefix)sML5GET_ORDERS_FOR_AMPSOINDEX(M,ORDERS_A)
         CALL %(proc_prefix)sML5GET_ORDERS_FOR_AMPSOINDEX(N,ORDERS_B)
@@ -685,7 +703,10 @@ C Now figure out to which SQSOINDEX these orders together correspond to *in the 
         ELSE 
           DOUBLEFACT=1
         ENDIF
-        TEMP(1) = DOUBLEFACT*HEL_MULT*DBLE(COLOR_COEF*JAMPB(I,M)*DCONJG(JAMPB(J,N)))
+C The (I,J) and (J,I) terms are both written out, so that the result is the
+C density-matrix element when JAMPB1 and JAMPB2 differ. When they are the same
+C it is real, and equal to the former DOUBLEFACT*DBLE(C*JAMPB(I,M)*DCONJG(JAMPB(J,N))).
+        TEMP(1) = DOUBLEFACT*HEL_MULT*(COLOR_COEF*(JAMPB1(I,M)*DCONJG(JAMPB2(J,N))+JAMPB1(J,M)*DCONJG(JAMPB2(I,N))))/2D0
         INTER(0,ISQSO) = INTER(0,ISQSO) + TEMP(1)
         IF((.not.FILTER_SO).or.SQSO_TARGET.eq.-1.or.SQSO_TARGET.eq.ISQSO) THEN
           INTER(0,0) = INTER(0,0) + TEMP(1)
@@ -708,10 +729,10 @@ DO I=1,NLOOPFLOWS
     DO M=1,NLOOPAMPSO
 ## if(not LoopInduced){
 C It may be that this AmpSO index does not receive contribution by the Loop amps (because we put the loop and Born amplitude split orders in a common list)
-      IF((ABS(JAMPL1(1,I,M))+ABS(JAMPL1(2,I,M))+ABS(JAMPL1(3,I,M))).eq.0.0d0) CYCLE
+      IF((ABS(JAMPL1(1,I,M))+ABS(JAMPL1(2,I,M))+ABS(JAMPL1(3,I,M))+ABS(JAMPL2(1,I,M))+ABS(JAMPL2(2,I,M))+ABS(JAMPL2(3,I,M))).eq.0.0d0) CYCLE
       DO N=1,NBORNAMPSO
 C Same for contributions of split order index N by the Born amps
-      IF(ABS(JAMPB(J,N)).eq.0.0d0) CYCLE
+      IF((ABS(JAMPB1(J,N))+ABS(JAMPB2(J,N))).eq.0.0d0) CYCLE
 ## } else {
       IF (I.eq.J) THEN
         LOWERBOUND = M
@@ -755,12 +776,9 @@ c          DO config_j=1,nconfigs
 ## }
         DO K=1,3
 ## if(not LoopInduced){      
-C NOTE: JAMPB is a single-helicity common block (there is no JAMPB_ALL the way
-C there is a JAMPL_ALL), so this Born x Loop interference is only meaningful
-C when JAMPL1 and JAMPL2 hold the same helicity -- i.e. the matrix-element
-C call COMPUTE_RES_FROM_JAMP makes. An off-diagonal (H1 != H2) density matrix
-C for a process with a Born is therefore not supported here.
-          TEMP(K) = 2.0d0*HEL_MULT*DBLE(COLOR_COEF*JAMPL1(K,I,M)*DCONJG(JAMPB(J,N)))
+C Loop(1) x conjg(Born(2)) plus Born(1) x conjg(Loop(2)). For the same
+C helicity this is the former 2*DBLE(C*JAMPL(K,I,M)*DCONJG(JAMPB(J,N))).
+          TEMP(K) = HEL_MULT*(COLOR_COEF*JAMPL1(K,I,M)*DCONJG(JAMPB2(J,N)) + DCONJG(COLOR_COEF)*JAMPB1(J,N)*DCONJG(JAMPL2(K,I,M)))
 ## }
           INTER(K,ISQSO) = INTER(K,ISQSO) + TEMP(K)
 ## if(LoopInduced and MadEventOutput){
@@ -787,6 +805,8 @@ ENDDO
       END SUBROUTINE
 
 
+## if(LoopInduced){
+C A process with a Born gets SMATRIXHEL (of the Born) from born_matrix.f
      SUBROUTINE %(proc_prefix)sSMATRIXHEL(P,HEL,ANS)
       IMPLICIT NONE
 C
@@ -824,10 +844,15 @@ C ----------
       USERHEL=-1
 
       END
+## }
 
 ## if(UseDensity){
 
-C This subroutine resets to 0 the common arrays JAMPL_ALL for the density matrix
+C This subroutine resets to 0 the colour flows stored per helicity for the
+C density matrix (JAMPL_ALL, and JAMPB_ALL for a process with a Born). It is
+C called before the reference evaluation of each phase-space point, so that a
+C helicity skipped by the helicity filter has zero colour flows rather than
+C those of the previous point.
 SUBROUTINE %(proc_prefix)sREINITIALIZE_JAMP_ALL()
 implicit none
 C  
@@ -835,50 +860,35 @@ C CONSTANTS
 C 
       %(complex_dp_format)s CMPLXZERO
       PARAMETER (CMPLXZERO=(0.0d0,0.0d0))
-      %(real_dp_format)s ZERO
-      PARAMETER (ZERO=0.0d0)
       INTEGER    NLOOPAMPSO
       PARAMETER (NLOOPAMPSO=%(nAmpSO)d)
       INTEGER NLOOPFLOWS
       PARAMETER (NLOOPFLOWS=%(nLoopFlows)d)
       INTEGER NCOMB
       PARAMETER (NCOMB=%(ncomb)d)
-## if(LoopInduced and MadEventOutput){
-      INTEGER NCONFIGS
-      PARAMETER (NCONFIGS=%(nmultichannel_configs)i)
-## }
 ## if(not LoopInduced){
       INTEGER NBORNFLOWS
       PARAMETER (NBORNFLOWS=%(nBornFlows)d)
-C     We use the same list of amplitude split order for Born and Loop, so that NBORNAMPSO is always equal to NLOOPAMPSO
-      INTEGER    NBORNAMPSO
-      PARAMETER (NBORNAMPSO=NLOOPAMPSO)
 ## }
-C
-C LOCAL VARIABLES
-C
-      INTEGER I,J,K,L
 C
 C GLOBAL VARIABLES
 C
       DOUBLE COMPLEX JAMPL_ALL(3, NLOOPFLOWS,NLOOPAMPSO, NCOMB)
       COMMON/%(proc_prefix)sDENSITY_MATRIX/JAMPL_ALL
+## if(not LoopInduced){
+      DOUBLE COMPLEX JAMPB_ALL(NBORNFLOWS,NLOOPAMPSO, NCOMB)
+      COMMON/%(proc_prefix)sDENSITY_MATRIX_B/JAMPB_ALL
+## }
 
 C ----------
 C BEGIN CODE
 C ----------
 
-DO I=1,NLOOPAMPSO
-  DO J=1,NLOOPFLOWS
-    DO K=1,3
-      DO L=1,NCOMB
-        JAMPL_ALL(K,J,I,L)=CMPLXZERO
-      ENDDO
-    ENDDO
-  ENDDO
-ENDDO
-write(*,*) "JAMPL_ALL reinitialised"
-END SUBROUTINE
+      JAMPL_ALL(:,:,:,:)=CMPLXZERO
+## if(not LoopInduced){
+      JAMPB_ALL(:,:,:)=CMPLXZERO
+## }
+      END SUBROUTINE
 ## }
 
 C This subroutine resets to 0 the common arrays JAMPL, JAMPB and possibly JAMPL_FOR_AMP2 if used
@@ -1046,187 +1056,117 @@ CONTINUE
 END SUBROUTINE
 
 ## if(UseDensity) {
-# Core of the density matrix calculations
-      SUBROUTINE %(proc_prefix)sGET_ALL_INTER(JAMPL_ALL, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB_RHO, INTER)
-      IMPLICIT NONE
+C ------------------------------------------------------------------------
+C Spin-density matrix of the legs POS(1..N_CHANGING), summed over the
+C helicities of every other leg. ALLOW_HEL((I-1)*N_CHANGING+K) is the helicity
+C of leg POS(K) in combination I, and an element (I,J) is
+C     sum_{other hels} sum_ab C_ab A_a(I) conjg(A_b(J)),
+C packed as the upper triangle, row by row: (1,1),(1,2),...,(1,N),(2,2),...
+C The colour flows of every helicity are stored by STORE_JAMP during the
+C reference evaluation of SLOOPMATRIX (never a rotated one of the stability
+C test, which would change the phases of the off-diagonal elements).
+C ------------------------------------------------------------------------
 
-      INCLUDE 'MadLoopParams.inc'
+      SUBROUTINE %(proc_prefix)sGET_ALL_INTER(NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB_RHO, INTER)
+C     Density matrix for one helicity configuration NHEL of the legs that are
+C     not in POS. INTER(:,0) is tree x tree, INTER(:,1:3) the finite part,
+C     single and double pole (summed over the selected squared split orders).
+      IMPLICIT NONE
 C     
 C     CONSTANT
 C     
-      INTEGER    NSQUAREDSO, NLOOPAMPSO, NSO
-      PARAMETER (NSQUAREDSO=%(nSquaredSO)d, NLOOPAMPSO=%(nAmpSO)d, NSO=%(nSO)d)
-      INTEGER NLOOPFLOWS
-      PARAMETER (NLOOPFLOWS=%(nLoopFlows)d)
-      INTEGER NCOMB
-      PARAMETER (NCOMB=%(ncomb)d)
-      INTEGER HEL_MULT
-      PARAMETER (HEL_MULT=1)
+      INTEGER    NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)i)
 C     
 C     ARGUMENTS
 C     
-      INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal)i)
       INTEGER NHEL(NEXTERNAL)
       INTEGER N_CHANGING, N_COMB_RHO
-      INTEGER POS(*)
+      INTEGER POS(N_CHANGING)
       INTEGER ALLOW_HEL(N_CHANGING * N_COMB_RHO)
-      DOUBLE COMPLEX INTER(N_COMB_RHO * (N_COMB_RHO + 1)/2, 0:NSQUAREDSO)
-
+      DOUBLE COMPLEX INTER(N_COMB_RHO * (N_COMB_RHO + 1)/2, 0:3)
 C     
-C     Intermediate array
+C     LOCAL VARIABLES
 C     
-      DOUBLE COMPLEX JAMPL_ALL(3, NLOOPFLOWS,NLOOPAMPSO, NCOMB)
       DOUBLE COMPLEX INTER_TMP(0:3,0:NSQUAREDSO)
+      INTEGER ORDER_HEL(N_COMB_RHO)
+      INTEGER I, J, K, N, SOL
 
-C     
-C     Common for density
-C     
-      INTEGER HELC(NEXTERNAL,NCOMB), ORDER_HEL(N_COMB_RHO)
-      COMMON/%(proc_prefix)sHELCONFIGS/HELC
-
-C
-C     Common for GOODHEL
-C
-c     the common for goodhel is not good because there is some treatment afterwards in loop_matrix
-      INTEGER GOODHEL(NCOMB)
-      common/%(proc_prefix)sFilters/GOODHEL
-C     The parameter below sets the convention for the helicity filter
-C     For a given helicity, the attached integer 'i' means
-C     'i' in ]-inf;-HELOFFSET[ -> Helicity is equal, up to a sign, to helicity number abs(i+HELOFFSET)
-C     'i' == -HELOFFSET        -> Helicity is analytically zero
-C     'i' in ]-HELOFFSET,inf[  -> Helicity is contributing with weight 'i'. If it is zero, it is skipped.
-C     Typically, the hel_offset is 10000
-      INTEGER HELOFFSET
-	DATA HELOFFSET/%(hel_offset)d/
-      CHARACTER*512 Proc_Prefix
-      PARAMETER ( Proc_Prefix='%(proc_prefix)s')
-C     
-C     local
-C     
-      INTEGER I,J, N, SOL, H, K, NUMBERCALL
-      CHARACTER*512 HelFilterFN, MLPATH, TMP
-      COMMON/MLPATH/MLPATH
-      
-
-C Here we setup GOODHEL. If GOODHEL(H) = -10000, its JAMP is 0 so we can skip all its computations
-      CALL JOINPATH(MLPATH,PROC_PREFIX,TMP)
-      CALL JOINPATH(TMP,'HelFilter.dat',HELFILTERFN)
-
-      OPEN(1, FILE=HelFilterFN, err=102, status='OLD',action='READ')
-      DO I=1,NCOMB
-      READ(1,*,END=103) GOODHEL(I)
-      ENDDO
-      GOTO 103
-      102  CONTINUE
-      DO J=1,NCOMB
-            GOODHEL(J)=1
-      ENDDO
-      103  CONTINUE
-      CLOSE(1)
-
-      IF (HelicityFilterLevel.eq.1) THEN
-        DO J=1,NCOMB
-          IF ((GOODHEL(J).GT.1).OR.(GOODHEL(J).LT.-HELOFFSET)) THEN
-            GOODHEL(J)=1
-          ENDIF
-        ENDDO
-      ELSE IF (HelicityFilterLevel.eq.0) THEN
-        DO J=1,NCOMB
-          GOODHEL(J)=1
-        ENDDO
-      ELSE
-        WRITE(*,*) '### ERROR The parameter HelicityFilterLevel only accepts values of 0 and 1. The value was set to', HelicityFilterLevel
-C       We cannot stop the code here because in the initialisation phase, HelicityFilterLevel = 2.
-      ENDIF
-
-c     Here we determine which helicity state we want to compute and which position it has in the JAMPL_ALL structure
-      do I = 1, N_COMB_RHO
-      do N = 1, N_CHANGING
-      NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
-      enddo
-      CALL %(proc_prefix)sFIND_H(NHEL, H)
-      ORDER_HEL(I) = H
-      enddo
-
-
-      NUMBERCALL = 0
-      SOL = 0 
       DO I = 1, N_COMB_RHO
-        IF (GOODHEL(ORDER_HEL(I)).lt.0) THEN
-          DO J = I, N_COMB_RHO
-            SOL = SOL + 1
-            DO K=0, NSQUAREDSO
-              INTER(SOL,K) = 0D0
-            ENDDO
-          ENDDO
-        ELSE
-          DO J= I, N_COMB_RHO
-            SOL = SOL + 1
-            IF (GOODHEL(ORDER_HEL(J)).lt.0) THEN
-              DO K=0, NSQUAREDSO
-                INTER(SOL,K) = 0D0
-              ENDDO
-            ELSE
-              call %(proc_prefix)sCOMPUTE_INTER_JAMP(INTER_TMP,HEL_MULT,JAMPL_ALL,ORDER_HEL(I), ORDER_HEL(J))
-              NUMBERCALL = NUMBERCALL + 1
-              DO K=0, NSQUAREDSO
-                INTER(SOL,K) = INTER_TMP(1,K) + INTER_TMP(2,K) + INTER_TMP(3,K) !we sum the 3 contributions even though contribution 2 and 3 should be zero
-              ENDDO
-            ENDIF
-          ENDDO
+        DO N = 1, N_CHANGING
+          NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
+        ENDDO
+        CALL %(proc_prefix)sFIND_H(NHEL, ORDER_HEL(I))
+        IF (ORDER_HEL(I).EQ.0) THEN
+          WRITE(*,*) 'Helicity configuration not found:', NHEL
+          STOP 'Density matrix: invalid helicity for a changing leg.'
         ENDIF
       ENDDO
 
-c      WRITE(*,*) "NUMBERCALL", NUMBERCALL
+      SOL = 0
+      DO I = 1, N_COMB_RHO
+        DO J = I, N_COMB_RHO
+          SOL = SOL + 1
+          CALL %(proc_prefix)sCOMPUTE_INTER_JAMP(INTER_TMP, ORDER_HEL(I), ORDER_HEL(J))
+          DO K = 0, 3
+            INTER(SOL,K) = INTER_TMP(K,0)
+          ENDDO
+        ENDDO
+      ENDDO
+
       RETURN
       END SUBROUTINE
 
 
-
-
-      SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)
+      SUBROUTINE %(proc_prefix)sGET_DENSITY_ALL(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)
+C     Full density matrix at the phase-space point P: INTER(:,0) is the Born
+C     (zero for a loop-induced process), INTER(:,1:3) the finite part, single
+C     and double pole of the virtual, normalised as ANS(0:3,0) of SLOOPMATRIX:
+C     the trace of INTER(:,K) is ANS(K,0), to the accuracy of the stability test.
+C     ALPHAS and SCALE2 (mu_R^2) are used when both are non-zero.
       IMPLICIT NONE
 C     
 C     CONSTANT
 C     
-      INTEGER    NSQUAREDSO, NLOOPAMPSO, NSO
-      PARAMETER (NSQUAREDSO=%(nSquaredSO)d, NLOOPAMPSO=%(nAmpSO)d, NSO=%(nSO)d)
-      INTEGER NLOOPFLOWS
-      PARAMETER (NLOOPFLOWS=%(nLoopFlows)d)
+      INTEGER    NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
       INTEGER NCOMB
       PARAMETER (NCOMB=%(ncomb)d)
-      INTEGER HEL_MULT
-      PARAMETER (HEL_MULT=1)
+## if(LoopInduced){
       INTEGER NSQSO_BORN
       PARAMETER (NSQSO_BORN=0)
+## } else {
+      %(get_nsqso_born)s
+## }
       INTEGER AUX_DIMENSION
       PARAMETER(AUX_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)i)
+      INCLUDE 'MadLoopParams.inc'
 C     
 C     ARGUMENTS
 C     
       INTEGER N_CHANGING, N_COMB
-      INTEGER THISNHEL(NEXTERNAL)
       INTEGER POS(N_CHANGING)
       INTEGER ALLOW_HEL(N_CHANGING*N_COMB)
-      DOUBLE COMPLEX INTER(N_COMB * (N_COMB + 1)/2) !only 1 dimension here, correspond to the 0-element
-      DOUBLE COMPLEX TMP_INTER(N_COMB * (N_COMB + 1)/2, 0:NSQUAREDSO)
+      DOUBLE COMPLEX INTER(N_COMB * (N_COMB + 1)/2, 0:3)
       DOUBLE PRECISION P(0:3, NEXTERNAL)
       DOUBLE PRECISION ALPHAS, SCALE2
-
 C     
-C     Intermediate array
+C     LOCAL VARIABLES
 C     
-
-      DOUBLE COMPLEX JAMPL_ALL(3, NLOOPFLOWS,NLOOPAMPSO, NCOMB)
-      COMMON/%(proc_prefix)sDENSITY_MATRIX/JAMPL_ALL
-
-      INTEGER HELC(NEXTERNAL,NCOMB), ORDER_HEL(N_COMB)
-      COMMON/%(proc_prefix)sHELCONFIGS/HELC
+      DOUBLE COMPLEX TMP_INTER(N_COMB * (N_COMB + 1)/2, 0:3)
+      INTEGER THISNHEL(NEXTERNAL)
       REAL*8 AUX(0:3,0:AUX_DIMENSION)
-
+      INTEGER I, K, IHEL, IPART, JJ
+      DOUBLE PRECISION POLFACT
+C     
+C     GLOBAL VARIABLES
+C     
+      INTEGER HELC(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sHELCONFIGS/HELC
 C     beam polarisation, filled from python through PY_SET_BEAMPOL.
 C     Same common block and convention as the v1 MadSpin path
 C     (matrix_standalone_msP_v4.inc / msF).
@@ -1235,29 +1175,31 @@ C     (matrix_standalone_msP_v4.inc / msF).
       DOUBLE PRECISION BEAMPOL(2)
       COMMON/TO_BEAMPOL/BEAMPOL
 
-C
-C     local
-C
-      INTEGER I, IHEL, IPART, JJ
-      DOUBLE PRECISION POLFACT
-
-c     Maybe should be a .or. ?
       IF ((ALPHAS.ne.0D0).and.(SCALE2.ne.0D0)) THEN
         call UPDATE_AS_PARAM2(SCALE2, ALPHAS)
       ENDIF
 
       CALL %(proc_prefix)sSLOOPMATRIX(P, AUX)
 
-      do I = 1, N_COMB*(N_COMB+1)/2
-        INTER(I) = 0D0
-      enddo
-      
+C     HelicityFilterLevel=2 evaluates one helicity for all those equal to it
+C     up to a sign, which is right for the summed matrix element only: the
+C     others never get their colour flows stored. (MadLoopParams is read
+C     during the first SLOOPMATRIX call, hence the check after it.)
+      IF (HelicityFilterLevel.GT.1) THEN
+        WRITE(*,*) 'ERROR: the density matrix needs HelicityFilterLevel'
+        WRITE(*,*) '0 or 1 in MadLoopParams.dat, not', HelicityFilterLevel
+        STOP 1
+      ENDIF
+
+      INTER(:,:) = (0D0,0D0)
+C     One pass per helicity configuration of the legs not in POS: those whose
+C     changing legs are in the first combination of ALLOW_HEL.
       DO IHEL =1, NCOMB
         THISNHEL(:) = HELC(:, IHEL)
-	    DO IPART=1,N_CHANGING
-            if(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10 !BYPASS COMPUTATION FOR HELICITY
+        DO IPART=1,N_CHANGING
+          IF(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10
         ENDDO
-        call %(proc_prefix)sGET_ALL_INTER(JAMPL_ALL, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, TMP_INTER)
+        CALL %(proc_prefix)sGET_ALL_INTER(THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, TMP_INTER)
 C       Support for polarised beam: reweight the initial-state helicity
 C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
 C       the process has two incoming legs -- the same shared library
@@ -1279,14 +1221,194 @@ C           in BLOCK DATA BEAMPOL_DEFAULT.
             ENDIF
           ENDDO
         ENDIF
-        do I = 1, N_COMB*(N_COMB+1)/2
-          INTER(I) = INTER(I) + POLFACT*TMP_INTER(I, 0)
-        enddo
- 10   enddo
-        
-c      CALL %(proc_prefix)sNORMALISE_RHO(INTER, N_COMB, RHO_NORM)
-c      WRITE(*,*) "DENSITY MATRIX = ", RHO_NORM(:,0)
-      RETURN 
+        DO K = 0, 3
+          DO I = 1, N_COMB*(N_COMB+1)/2
+            INTER(I,K) = INTER(I,K) + POLFACT*TMP_INTER(I,K)
+          ENDDO
+        ENDDO
+ 10   ENDDO
+
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sDENSITY_PROJECT_ANS(ANS)
+C     The projector W of the density matrix (the FKS standalone output with
+C     --density): if the file density_w.dat exists in the working
+C     directory (one line 'C1 C2 Re Im' per element W(C1,C2), read once),
+C     the result ANS(0:3,0:NSQUAREDSO) of SLOOPMATRIX is replaced by
+C     Re Tr(W rho), rho the density matrix of the output's density legs
+C     built from the colour flows stored for this point. The Born
+C     (ANS(0,*)) and the colour-linked Borns of MadFKS read the same file,
+C     so that check_poles can test each element of the density matrix.
+      IMPLICIT NONE
+      INTEGER    NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+## if(LoopInduced){
+      INTEGER NSQSO_BORN
+      PARAMETER (NSQSO_BORN=0)
+## } else {
+      %(get_nsqso_born)s
+## }
+      INTEGER ANS_DIMENSION
+      PARAMETER(ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      INTEGER NCOMB
+      PARAMETER (NCOMB=%(ncomb)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)i)
+      INTEGER N_CHANGING
+      PARAMETER (N_CHANGING=%(dens_nchanging)i)
+      INTEGER N_COMB
+      PARAMETER (N_COMB=%(dens_ncomb)i)
+      REAL*8 ANS(0:3,0:ANS_DIMENSION)
+C
+      INTEGER POS(N_CHANGING), ALLOW_HEL(N_CHANGING*N_COMB)
+      INTEGER ORDER_HEL(N_COMB), THISNHEL(NEXTERNAL)
+      DOUBLE COMPLEX W(N_COMB,N_COMB), RES(0:3,0:NSQUAREDSO)
+      DOUBLE COMPLEX INTER_TMP(0:3,0:NSQUAREDSO)
+      LOGICAL W_ON, W_READ
+      SAVE W, W_ON, W_READ
+      DATA W_ON /.FALSE./, W_READ /.FALSE./
+      INTEGER I, K, IHEL, IPART, C1, C2, N
+      DOUBLE PRECISION WR, WI
+      INTEGER HELC(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sHELCONFIGS/HELC
+      INTEGER USERHEL
+      COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
+C     the projector set by the caller (DENSITY_SET_W), which takes
+C     precedence over density_w.dat
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
+
+      IF (API_SET) THEN
+        IF (.NOT.API_ON) RETURN
+        W(:,:)=API_W(:,:)
+        GOTO 25
+      ENDIF
+      IF (.NOT.W_READ) THEN
+        W_READ=.TRUE.
+        W(:,:)=(0D0,0D0)
+        OPEN(UNIT=82,FILE='density_w.dat',STATUS='OLD',ERR=20)
+ 10     READ(82,*,END=15,ERR=15) C1, C2, WR, WI
+        W(C1,C2)=DCMPLX(WR,WI)
+        GOTO 10
+ 15     CLOSE(82)
+        W_ON=.TRUE.
+        WRITE(*,*) 'MadLoop: density-matrix projector W read from density_w.dat'
+ 20     CONTINUE
+      ENDIF
+      IF (.NOT.W_ON) RETURN
+ 25   CONTINUE
+      IF (USERHEL.NE.-1) THEN
+        WRITE(*,*) 'ERROR: the density-matrix projector W needs the sum'
+        WRITE(*,*) 'over all helicities, not a single helicity.'
+        STOP 1
+      ENDIF
+
+      %(dens_pos)s
+      %(dens_allow_hel)s
+
+      RES(:,:)=(0D0,0D0)
+C     one pass per helicity configuration of the legs not in POS
+      DO IHEL=1,NCOMB
+        THISNHEL(:)=HELC(:,IHEL)
+        DO IPART=1,N_CHANGING
+          IF (THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 30
+        ENDDO
+        DO I=1,N_COMB
+          DO N=1,N_CHANGING
+            THISNHEL(POS(N))=ALLOW_HEL((I-1)*N_CHANGING+N)
+          ENDDO
+          CALL %(proc_prefix)sFIND_H(THISNHEL, ORDER_HEL(I))
+        ENDDO
+        DO C1=1,N_COMB
+          DO C2=1,N_COMB
+            IF (W(C2,C1).EQ.(0D0,0D0)) CYCLE
+            CALL %(proc_prefix)sCOMPUTE_INTER_JAMP(INTER_TMP, ORDER_HEL(C1), ORDER_HEL(C2))
+            RES(:,:)=RES(:,:)+W(C2,C1)*INTER_TMP(:,:)
+          ENDDO
+        ENDDO
+ 30   CONTINUE
+      ENDDO
+      DO K=0,3
+        DO I=0,NSQUAREDSO
+          ANS(K,I)=DBLE(RES(K,I))
+        ENDDO
+      ENDDO
+      END
+
+
+      SUBROUTINE %(proc_prefix)sDENSITY_SET_W(WIN, N, ON)
+C     Sets the projector W of the density matrix (N x N, the combinations
+C     of DENSITY_PROJECT_ANS) and switches it on or off: with it on, the
+C     result of SLOOPMATRIX is Re Tr(W rho). Used by the aMC@NLO
+C     density-matrix weights (density_weights.f); it takes precedence over
+C     the file density_w.dat.
+      IMPLICIT NONE
+      INTEGER N_COMB
+      PARAMETER (N_COMB=%(dens_ncomb)i)
+      INTEGER N
+      DOUBLE COMPLEX WIN(N,N)
+      LOGICAL ON
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
+      IF (N.NE.N_COMB) THEN
+        WRITE(*,*) 'ERROR: density projector of size', N, 'for',
+     &    N_COMB, 'helicity combinations'
+        STOP 1
+      ENDIF
+      API_SET=.TRUE.
+      API_ON=ON
+      IF (ON) API_W(:,:)=WIN(:,:)
+      END
+
+
+      LOGICAL FUNCTION %(proc_prefix)sDENSITY_W_ACTIVE()
+C     True when the projector set by DENSITY_SET_W is on
+      IMPLICIT NONE
+      INTEGER N_COMB
+      PARAMETER (N_COMB=%(dens_ncomb)i)
+      LOGICAL API_SET, API_ON
+      DOUBLE COMPLEX API_W(N_COMB,N_COMB)
+      COMMON/%(proc_prefix)sDENSITY_W_API/API_W, API_ON, API_SET
+      %(proc_prefix)sDENSITY_W_ACTIVE=API_SET.AND.API_ON
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)
+C     Density matrix of the one-loop result: the finite part of the virtual
+C     for a process with a Born, the (finite) loop-induced amplitude squared
+C     otherwise. GET_DENSITY_ALL also returns the Born and the poles.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)i)
+C     
+C     ARGUMENTS
+C     
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(N_CHANGING)
+      INTEGER ALLOW_HEL(N_CHANGING*N_COMB)
+      DOUBLE COMPLEX INTER(N_COMB * (N_COMB + 1)/2)
+      DOUBLE PRECISION P(0:3, NEXTERNAL)
+      DOUBLE PRECISION ALPHAS, SCALE2
+C     
+C     LOCAL VARIABLES
+C     
+      DOUBLE COMPLEX TMP_INTER(N_COMB * (N_COMB + 1)/2, 0:3)
+      INTEGER I
+
+      CALL %(proc_prefix)sGET_DENSITY_ALL(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, TMP_INTER)
+      DO I = 1, N_COMB*(N_COMB+1)/2
+## if(LoopInduced){
+C       the pole slots of a loop-induced amplitude are zero up to rounding
+        INTER(I) = TMP_INTER(I,1) + TMP_INTER(I,2) + TMP_INTER(I,3)
+## } else {
+        INTER(I) = TMP_INTER(I,1)
+## }
+      ENDDO
+      RETURN
       END
 
      SUBROUTINE %(proc_prefix)sFIND_H(NHEL, H)
@@ -1317,31 +1439,34 @@ C     If it does not find the state in HELC, it returns 0
       END SUBROUTINE
 
       SUBROUTINE %(proc_prefix)sSTORE_JAMP(H)
-C     This subroutine stores the JAMP with helicity state HELC(:,H) in JAMPL_ALL
+C     This subroutine stores the colour flows of the helicity configuration
+C     HELC(:,H) in JAMPL_ALL (and the Born ones in JAMPB_ALL)
       IMPLICIT NONE
       INTEGER NLOOPFLOWS, NEXTERNAL
       PARAMETER (NLOOPFLOWS=%(nLoopFlows)d, NEXTERNAL=%(nexternal)i)
-      INTEGER NCOMB, NSQUAREDSO
-      PARAMETER (NCOMB=%(ncomb)d, NSQUAREDSO=%(nSquaredSO)d)
+      INTEGER NCOMB
+      PARAMETER (NCOMB=%(ncomb)d)
       INTEGER    NLOOPAMPSO
       PARAMETER (NLOOPAMPSO=%(nAmpSO)d)
       INTEGER H
-      INTEGER HELC(NEXTERNAL,NCOMB)
 
       DOUBLE COMPLEX JAMPL_ALL(3,NLOOPFLOWS,NLOOPAMPSO,NCOMB)
-      
       COMMON/%(proc_prefix)sDENSITY_MATRIX/JAMPL_ALL
-      COMMON/%(proc_prefix)sHELCONFIGS/HELC
       COMPLEX*16 JAMPL(3,NLOOPFLOWS,NLOOPAMPSO)
       COMMON/%(proc_prefix)sJAMPL/JAMPL
+## if(not LoopInduced){
+      INTEGER NBORNFLOWS
+      PARAMETER (NBORNFLOWS=%(nBornFlows)d)
+      DOUBLE COMPLEX JAMPB_ALL(NBORNFLOWS,NLOOPAMPSO,NCOMB)
+      COMMON/%(proc_prefix)sDENSITY_MATRIX_B/JAMPB_ALL
+      COMPLEX*16 JAMPB(NBORNFLOWS,NLOOPAMPSO)
+      COMMON/%(proc_prefix)sJAMPB/JAMPB
+## }
 
-c     THIS JAMPL_ALL CORRESPONDS TO HELC(H)
-      JAMPL_ALL(:,:,:,H) = JAMPL(:,:,:) !this line basically stores JAMPL in JAMPL_ALL
-
-c      WRITE(*,*) "JAMP STORED", JAMPL
-c      WRITE(*,*) "HELCITY STATE", HELC(:,H)
-c      WRITE(*,*) "JAMPL ALL", JAMPL_ALL
-c      WRITE(*,*) "----------------"
+      JAMPL_ALL(:,:,:,H) = JAMPL(:,:,:)
+## if(not LoopInduced){
+      JAMPB_ALL(:,:,H) = JAMPB(:,:)
+## }
       RETURN
       END SUBROUTINE
 
@@ -1381,8 +1506,10 @@ C     This subroutine stores the JAMP with helicity state HELC(:,H) in JAMPL_ALL
 
 
 
-      SUBROUTINE %(proc_prefix)sCOMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL_ALL,H1,H2)
-C     This function computes the interference between JAMPL_ALL(:,:,:,H1) and JAMPL_ALL(:,:,:,H2)
+      SUBROUTINE %(proc_prefix)sCOMPUTE_INTER_JAMP(INTER,H1,H2)
+C     Density-matrix element between the helicity configurations H1 and H2,
+C     from the colour flows stored by STORE_JAMP, divided by the averaging
+C     and symmetry factor IDEN as ANS of SLOOPMATRIX.
       IMPLICIT NONE
 C     
 C     CONSTANTS 
@@ -1393,32 +1520,38 @@ C
       PARAMETER (NLOOPFLOWS=%(nLoopFlows)d)
       INTEGER NCOMB
       PARAMETER (NCOMB=%(ncomb)d)
+      INTEGER HEL_MULT
+      PARAMETER (HEL_MULT=1)
       INTEGER IDEN
       %(den_factor_line)s
-      INTEGER I, SOINDEX
+## if(not LoopInduced){
+      INTEGER NBORNFLOWS
+      PARAMETER (NBORNFLOWS=%(nBornFlows)d)
+## }
 C     
 C     ARGUMENTS
 C     
       DOUBLE COMPLEX INTER(0:3,0:NSQUAREDSO)
-C     HEL_MULT is the helicity multiplier which can be more than one
-C      if several helicity configuration are mapped onto the one being
-C      currently computed.
-      INTEGER HEL_MULT, H1, H2 !helicity states chosen for the 2 JAMPL we compute the interference from
+      INTEGER H1, H2
+C     
+C     GLOBAL VARIABLES
+C     
       DOUBLE COMPLEX JAMPL_ALL(3,NLOOPFLOWS,NLOOPAMPSO,NCOMB)
-      DOUBLE COMPLEX JAMPL1(3,NLOOPFLOWS,NLOOPAMPSO)
-      DOUBLE COMPLEX JAMPL2(3,NLOOPFLOWS,NLOOPAMPSO)
+      COMMON/%(proc_prefix)sDENSITY_MATRIX/JAMPL_ALL
+## if(not LoopInduced){
+      DOUBLE COMPLEX JAMPB_ALL(NBORNFLOWS,NLOOPAMPSO,NCOMB)
+      COMMON/%(proc_prefix)sDENSITY_MATRIX_B/JAMPB_ALL
+## }
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I, SOINDEX
 
-C     ----------
-C     BEGIN CODE
-C     ----------
-C     Initialise JAMPL1 and JAMPL2
-      JAMPL1(:,:,:) = JAMPL_ALL(:,:,:,H1)
-      JAMPL2(:,:,:) = JAMPL_ALL(:,:,:,H2)
-
-      IF (HEL_MULT.ne.1) THEN 
-        ERROR STOP 'HEL_MULT is bigger than 1, it is not yet implemented'
-      ENDIF
-      CALL %(proc_prefix)sDO_COMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL1,JAMPL2)
+## if(LoopInduced){
+      CALL %(proc_prefix)sDO_COMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL_ALL(1,1,1,H1),JAMPL_ALL(1,1,1,H2))
+## } else {
+      CALL %(proc_prefix)sDO_COMPUTE_INTER_JAMP(INTER,HEL_MULT,JAMPL_ALL(1,1,1,H1),JAMPL_ALL(1,1,1,H2),JAMPB_ALL(1,1,H1),JAMPB_ALL(1,1,H2))
+## }
 
       DO SOINDEX = 0, NSQUAREDSO
         DO I=0, 3

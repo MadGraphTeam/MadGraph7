@@ -15,6 +15,7 @@
 
 
 from __future__ import absolute_import
+import glob
 import logging
 import math
 import os
@@ -660,24 +661,188 @@ class FKSSALauncher(ExtLauncher):
         if self.with_limits:
             failed = [os.path.basename(p) for p in born_dirs
                       if not self._run_limits(p)]
+            # with --density the virtual is kept: check its poles too, per
+            # element of the density matrix
+            failed += [os.path.basename(p) for p in born_dirs
+                       if os.path.isfile(pjoin(p, 'density_info.inc'))
+                       and glob.glob(pjoin(p, 'V*'))
+                       and not self._run_poles(p)]
             if failed:
                 from madgraph import MadGraph5Error
-                raise MadGraph5Error('Soft/collinear limit test FAILED in %s '
-                    '(see test_ME.log there)' % ', '.join(failed))
+                raise MadGraph5Error('Soft/collinear limit or pole test FAILED '
+                    'in %s (see test_ME*.log / check_poles*.log there)'
+                    % ', '.join(sorted(set(failed))))
 
-    def _run_limits(self, born_path):
-        """build and run test_soft_col_limits; True if no check FAILED."""
-        pdir = os.path.basename(born_path)
-        logger.info('Building test_soft_col_limits in %s ...' % pdir)
-        misc.compile(['test_soft_col_limits'], cwd=born_path)
-        log = pjoin(born_path, 'test_ME.log')
+    def mc_limits_input(self):
+        """the input of test_soft_col_limits for the MC counterterms
+        (test_MC), as the aMC@NLO launch writes it, for the parton shower of
+        the run_card"""
+        run_card = banner_mod.RunCardNLO(pjoin(self.running_dir, 'Cards',
+                                               'run_card.dat'))
+        return "1 \n %s\n 1 -0.1\n-1 -0.1\n" % \
+            run_card['parton_shower'].upper() + self.limits_input[2:]
+
+    def _run_limits_once(self, born_path, log, input=None):
+        """run test_soft_col_limits once (ME counterterms, or the given
+        input), output in log; returns its text"""
         with open(pjoin(born_path, 'test_ME_input.txt'), 'w') as fsock:
-            fsock.write(self.limits_input)
+            fsock.write(input or self.limits_input)
         with open(pjoin(born_path, 'test_ME_input.txt')) as stdin, \
                 open(log, 'w') as stdout:
             misc.call(['./test_soft_col_limits'], cwd=born_path, stdin=stdin,
                       stdout=stdout, stderr=subprocess.STDOUT)
-        content = open(log, errors='replace').read()
+        return open(log, errors='replace').read()
+
+    @staticmethod
+    def density_basis(n_comb):
+        """The hermitian basis of the n_comb x n_comb density matrix, as
+        (label, {(C1,C2): W(C1,C2)}): E_II, E_IJ+E_JI (whose trace with rho
+        is 2 Re rho_IJ) and i(E_IJ-E_JI) (2 Im rho_IJ), I < J."""
+        basis = []
+        for i in range(1, n_comb + 1):
+            basis.append(('rho_%d%d' % (i, i), {(i, i): 1}))
+            for j in range(i + 1, n_comb + 1):
+                basis.append(('Re_rho_%d%d' % (i, j), {(i, j): 1, (j, i): 1}))
+                basis.append(('Im_rho_%d%d' % (i, j), {(i, j): 1j, (j, i): -1j}))
+        return basis
+
+    @staticmethod
+    def read_born_density(born_path):
+        """The Born density matrix rho(C1,C2) (all C1, C2) at the point of
+        check_fks, from its density_born.dat, or None."""
+        path = pjoin(born_path, 'density_born.dat')
+        if not os.path.isfile(path):
+            return None
+        rho = {}
+        for line in open(path):
+            data = line.split()
+            if not data or data[0] in ('#', 'T', 'TP') or data[0] != '0':
+                continue
+            c1, c2 = int(data[1]), int(data[2])
+            rho[(c1, c2)] = complex(float(data[3]), float(data[4]))
+            rho[(c2, c1)] = rho[(c1, c2)].conjugate()
+        return rho
+
+    def density_elements(self, born_path):
+        """The projectors W to test for an output with --density: one per
+        element of a hermitian basis of the density matrix, as (label, W).
+
+        An element that vanishes in the Born (e.g. Im rho of a planar 2 -> 2
+        Born) has counterterms (and poles) that are zero up to rounding, and
+        a test following the ratio to them cannot converge. Such an element
+        (|Tr(W rho_B)| < 1e-12 Tr rho_B at the check_fks point) is tested
+        with W + 1 instead (label '<element>+trace'): it must vanish at the
+        scale of the trace."""
+        info = open(pjoin(born_path, 'density_info.inc')).read()
+        n_comb = int(re.search(r'n_comb_b\s*=\s*(\d+)', info, re.I).group(1))
+        rho = self.read_born_density(born_path)
+        trace = abs(sum(rho[(c, c)] for c in range(1, n_comb + 1))) if rho else 0
+        elements = []
+        for label, w in self.density_basis(n_comb):
+            if rho and trace > 0 and abs(sum(val * rho[(c2, c1)]
+                    for (c1, c2), val in w.items())) < 1e-12 * trace:
+                w = dict(w)
+                for c in range(1, n_comb + 1):
+                    w[(c, c)] = w.get((c, c), 0) + 1
+                label += '+trace'
+            elements.append((label, w))
+        return elements
+
+    def _run_per_element(self, born_path, run_one):
+        """run_one(label) once per element of the density matrix, with its
+        projector in density_w.dat (read by the Fortran). True if all of
+        them return True."""
+        wfile = pjoin(born_path, 'density_w.dat')
+        all_ok = True
+        try:
+            for label, w in self.density_elements(born_path):
+                with open(wfile, 'w') as fsock:
+                    for (c1, c2), val in sorted(w.items()):
+                        fsock.write('%d %d %r %r\n' % (c1, c2,
+                                    complex(val).real, complex(val).imag))
+                all_ok = run_one(label) and all_ok
+        finally:
+            if os.path.exists(wfile):
+                os.remove(wfile)
+        return all_ok
+
+    def _run_limits_density(self, born_path):
+        """For an output with --density: the limit test once per element of
+        the density matrix, with the ME counterterms (test_ME) and then with
+        the MC counterterms (test_MC, first for the helicity sum). True if no
+        check FAILED."""
+        pdir = os.path.basename(born_path)
+        def make_run_one(test, input):
+            name = {'test_ME': 'ME', 'test_MC': 'MC'}[test]
+            def run_one(label):
+                log = pjoin(born_path, '%s%s.log'
+                            % (test, '_' + label if label else ''))
+                content = self._run_limits_once(born_path, log, input)
+                npass = content.count('PASSED')
+                nfail = content.count('FAILED')
+                what = label or 'helicity sum'
+                if nfail or not npass:
+                    logger.error('%s %s: soft/collinear limit test (%s '
+                        'counterterms) FAILED (%d passed, %d failed), see %s'
+                        % (pdir, what, name, npass, nfail, log))
+                    return False
+                logger.info('%s %s: soft/collinear limit test (%s '
+                    'counterterms) passed (%d checks)'
+                    % (pdir, what, name, npass))
+                return True
+            return run_one
+        ok = self._run_per_element(born_path,
+                                   make_run_one('test_ME', self.limits_input))
+        run_mc = make_run_one('test_MC', self.mc_limits_input())
+        ok = run_mc('') and ok
+        return self._run_per_element(born_path, run_mc) and ok
+
+    # check_poles: 20 points, default tolerance (as the aMC@NLO launch)
+    poles_input = "20\n-1\n"
+
+    def _run_poles(self, born_path):
+        """For an output with --density (which keeps the virtual): build
+        check_poles and compare the poles of the virtual (MadLoop) with
+        those predicted by MadFKS, first for the helicity sum, then for each
+        element of the density matrix. A test fails when more than 10% of
+        the points fail, as for the aMC@NLO launch. True if none failed."""
+        pdir = os.path.basename(born_path)
+        logger.info('Building check_poles in %s ...' % pdir)
+        # madloop=true links libMadLoop (built from the V* directories), as
+        # the aMC@NLO launch sets it in make_opts
+        misc.compile(['check_poles', 'madloop=true'], cwd=born_path)
+        with open(pjoin(born_path, 'check_poles_input.txt'), 'w') as fsock:
+            fsock.write(self.poles_input)
+        def run_one(label):
+            name = 'check_poles%s.log' % ('_' + label if label else '')
+            log = pjoin(born_path, name)
+            with open(pjoin(born_path, 'check_poles_input.txt')) as stdin, \
+                    open(log, 'w') as stdout:
+                misc.call(['./check_poles'], cwd=born_path, stdin=stdin,
+                          stdout=stdout, stderr=subprocess.STDOUT)
+            content = open(log, errors='replace').read()
+            npass = len(re.findall(r'^\s*PASSED', content, re.M))
+            nfail = len(re.findall(r'^\s*FAILED', content, re.M))
+            what = label or 'helicity sum'
+            if not npass + nfail or nfail > 0.1 * (npass + nfail):
+                logger.error('%s %s: poles do NOT cancel (%d points passed, '
+                    '%d failed), see %s' % (pdir, what, npass, nfail, log))
+                return False
+            logger.info('%s %s: poles cancel (%d of %d points)'
+                        % (pdir, what, npass, npass + nfail))
+            return True
+        ok = run_one('')
+        return self._run_per_element(born_path, run_one) and ok
+
+    def _run_limits(self, born_path):
+        """build and run test_soft_col_limits; True if no check FAILED.
+        With --density, it is run again for each element of the density
+        matrix (_run_limits_density)."""
+        pdir = os.path.basename(born_path)
+        logger.info('Building test_soft_col_limits in %s ...' % pdir)
+        misc.compile(['test_soft_col_limits'], cwd=born_path)
+        log = pjoin(born_path, 'test_ME.log')
+        content = self._run_limits_once(born_path, log)
         if 'incoming j_fks, but fixed shat' in content:
             # an initial-state FKS parton needs a varying momentum fraction,
             # i.e. PDF beams; for incoming leptons ([QED]) that means lepton
@@ -694,6 +859,8 @@ class FKSSALauncher(ExtLauncher):
             return False
         logger.info('%s: soft/collinear limit test passed (%d checks)'
                     % (pdir, npass))
+        if os.path.isfile(pjoin(born_path, 'density_info.inc')):
+            return self._run_limits_density(born_path)
         return True
 
     @staticmethod

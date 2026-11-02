@@ -130,9 +130,25 @@ C
       DATA NTRY/0/
       include 'real_matrix_weights.inc'
 %(den_factor_line)s
+## if(density) {
+      include 'density_info.inc'
+## }
 C ----------
 C BEGIN CODE
 C ----------
+## if(density) {
+C     Projected on the density legs: Tr(W rho) instead of the helicity
+C     sum. Before NTRY is incremented, so that the helicity filter is
+C     still set up by the first unprojected call. The helicities are
+C     those of the frame of the density legs, where two of them giving
+C     the same matrix element at the first point need not give it at
+C     the others: the T_IDENT shortcut below is not used.
+      CALL DENSITY_W_INIT()
+      IF (DENS_W_ON) THEN
+        CALL SMATRIX%(proc_prefix)s_W(P,ANS,GOODHEL,NTRY.GE.2)
+        RETURN
+      ENDIF
+## }
       NTRY=NTRY+1
       if (get_real_diagram_weights) real_amp2(:)=0d0
       DO I=0,NSQAMPSO
@@ -148,6 +164,7 @@ C identical matrix elements
                 T_SAVE(IHEL,I)=T(I)
             ENDDO
             T_IDENT(IHEL)=-1
+## if(not density) {
             DO I=1,IHEL-1
                IF (T(0).EQ.0D0) EXIT
                IF (T_SAVE(I,0).EQ.0D0) CYCLE
@@ -157,6 +174,7 @@ C identical matrix elements
                 T_IDENT(IHEL) = I
  444            continue
             ENDDO
+## }
           ELSE
             IF (T_IDENT(IHEL).GT.0) THEN
 C if two helicity states are identical, dont recompute
@@ -204,26 +222,22 @@ C
 C
 C Returns amplitude squared summed/avg over colors
 c for the point with external lines W(0:6,NEXTERNAL)
+c The amplitudes are computed by GET_AMP, the JAMPs by GET_JAMP and the
+c colour sum by GET_MATRIX.
 C  
 %(process_lines)s
 C  
-      USE ALOHA_OBJECT
       IMPLICIT NONE
 C  
 C CONSTANTS
 C  
       INTEGER    NGRAPHS
       PARAMETER (NGRAPHS=%(ngraphs)d) 
-      INTEGER    NWAVEFUNCS, NCOLOR
-      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
-      REAL*8     ZERO
-      PARAMETER (ZERO=0D0)
-      COMPLEX*16 IMAG1
-      PARAMETER (IMAG1=(0D0,1D0))
       include 'nexternal.inc'
-      include 'coupl.inc'
 C  
 C ARGUMENTS 
 C  
@@ -233,17 +247,123 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER I,J,M,N
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+      include 'real_matrix_weights.inc'
+C ----------
+C BEGIN CODE
+C ----------
+      CALL GET_AMP_%(proc_prefix)s(P,NHEL,AMP)
+      if (get_real_diagram_weights) then
+%(real_amp2_lines)s
+      endif
+      CALL GET_JAMP_%(proc_prefix)s(AMP,JAMP)
+      CALL GET_MATRIX_%(proc_prefix)s(JAMP,RES)
+      END
+
+
+      SUBROUTINE GET_AMP_%(proc_prefix)s(P,NHEL,AMP)
+C
+%(info_lines)s
+C Returns the amplitudes AMP(NGRAPHS) for the helicity configuration NHEL
+C (the HELAS calls)
+%(process_lines)s
+C
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=%(ngraphs)d) 
+      INTEGER    NWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d) 
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      include 'nexternal.inc'
+      include 'coupl.inc'
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      COMPLEX*16 AMP(NGRAPHS)
+C
+C LOCAL VARIABLES
+C
       INTEGER IC(NEXTERNAL)
       data ic /nexternal*1/
       INTEGER FLAVOR(NEXTERNAL)
       DATA FLAVOR /NEXTERNAL*1/
+      type(aloha) W(NWAVEFUNCS)
+C ----------
+C BEGIN CODE
+C ----------
+%(helas_calls)s
+      END
+
+
+      SUBROUTINE GET_JAMP_%(proc_prefix)s(AMP,JAMP)
+C
+%(info_lines)s
+C Returns the JAMPs (colour-ordered amplitudes) for each amplitude split
+C order
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=%(ngraphs)d) 
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+      INTEGER NAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+C
+C ARGUMENTS
+C
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+C
+C LOCAL VARIABLES
+C
+      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+C ----------
+C BEGIN CODE
+C ----------
+      jamp(:,:) = (0d0,0d0)
+%(jamp_lines)s
+      END
+
+
+      SUBROUTINE GET_MATRIX_%(proc_prefix)s(JAMP,RES)
+C
+C The colour sum conj(JAMP).CF.JAMP/DENOM of one helicity, for each squared
+C split order, and their sum in RES(0)
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+C
+C ARGUMENTS
+C
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO)
+      REAL*8 RES(0:NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,M,N
       INTEGER CF(NCOLOR*(NCOLOR+1))
       INTEGER CF_INDEX, DENOM
-      COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
-      type(aloha) W(NWAVEFUNCS)
-      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
-      include 'real_matrix_weights.inc'
+      COMPLEX*16 ZTEMP
 C
 C FUNCTION
 C
@@ -255,13 +375,6 @@ C
 C ----------
 C BEGIN CODE
 C ----------
-      jamp(:,:) = (0d0,0d0)
-%(helas_calls)s
-      if (get_real_diagram_weights) then
-%(real_amp2_lines)s
-      endif
-%(jamp_lines)s
-
       RES(:) = 0d0
       DO M = 1, NAMPSO
       CF_INDEX = 0
@@ -283,6 +396,170 @@ C ----------
       ENDDO
 
       END
+
+## if(density) {
+
+      SUBROUTINE GET_INTER_%(proc_prefix)s(JAMPA,JAMPB,RES)
+C
+C The colour contraction sum_ij S_ij JAMPA(i) conj(JAMPB(j)) of the JAMPs
+C of two helicity configurations, for each squared split order; with
+C JAMPA = JAMPB its real part is GET_MATRIX
+C
+      IMPLICIT NONE
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      COMPLEX*16 JAMPA(NCOLOR,NAMPSO), JAMPB(NCOLOR,NAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
+      INTEGER I,J,M,N
+      INTEGER CF(NCOLOR*(NCOLOR+1))
+      INTEGER CF_INDEX, DENOM
+      COMPLEX*16 ZTEMP
+      INTEGER SQSOINDEX%(proc_prefix)s
+%(color_data_lines)s
+      RES(:) = (0d0,0d0)
+      DO M = 1, NAMPSO
+        DO N = 1, NAMPSO
+          ZTEMP = (0d0,0d0)
+          CF_INDEX = 0
+          DO I = 1, NCOLOR
+            DO J = I, NCOLOR
+              CF_INDEX = CF_INDEX+1
+              ZTEMP = ZTEMP + CF(CF_INDEX)*(JAMPA(J,M)*DCONJG(JAMPB(I,N))+JAMPA(I,M)*DCONJG(JAMPB(J,N)))
+            ENDDO
+          ENDDO
+          RES(SQSOINDEX%(proc_prefix)s(M,N)) = RES(SQSOINDEX%(proc_prefix)s(M,N)) + ZTEMP
+        ENDDO
+      ENDDO
+      RES(:) = RES(:)/(2d0*DENOM)
+      END
+
+
+      SUBROUTINE SMATRIX%(proc_prefix)s_W(P,ANS,GOODHEL,FILTER)
+C
+C The real emission projected on the density legs of the Born
+C (density_info.inc): Tr(W rho) for the projector W, per squared split
+C order (ANS(0) is their sum), averaged as SMATRIX. The density legs are
+C at the Born positions POS_B; in this real emission they are shifted by
+C the FKS parton i_fks of the current FKS configuration (the mapping of
+C get_frame_mask_real in me_frame_boost.f).
+C With FILTER, the helicities that vanish in the helicity sum (not
+C GOODHEL) are skipped. The JAMPs of every helicity are kept for the next
+C call at the same momenta and strong coupling: the other projectors of
+C the density-matrix weights then cost the colour contractions only.
+C The configurations grouped by the helicities of the other legs
+C (HIDX(C,R,nFKS): rest R, density legs in combination C) are built on
+C the first call for each FKS configuration.
+C
+      IMPLICIT NONE
+      include 'nexternal.inc'
+      include 'density_info.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      include 'coupl.inc'
+      INTEGER     NCOMB         
+      PARAMETER ( NCOMB=%(ncomb)d)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=%(ncolor)d) 
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=%(ngraphs)d) 
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
+      LOGICAL GOODHEL(NCOMB), FILTER
+      INTEGER IHEL,JHEL,IDEN,I,K,C,C1,C2,RPOS(N_CHANGING_B)
+      INTEGER HELIDX(N_COMB_B)
+      LOGICAL ISFIRST, SAME
+      COMPLEX*16 AMP(NGRAPHS), JALL(NCOLOR,NAMPSO,NCOMB)
+      COMPLEX*16 RES(NSQAMPSO), ZANS(NSQAMPSO)
+      LOGICAL JALL_OK
+      REAL*8 P_SAVE(0:3,NEXTERNAL), G_SAVE
+      SAVE JALL, JALL_OK, P_SAVE, G_SAVE
+      DATA JALL_OK /.FALSE./
+      INTEGER R, HIDX(N_COMB_B,NCOMB,FKS_CONFIGS), NRST(FKS_CONFIGS)
+      LOGICAL HIDX_DONE(FKS_CONFIGS), FIRSTTIME
+      SAVE HIDX, NRST, HIDX_DONE, FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+%(helicity_lines)s
+%(den_factor_line)s
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      IF (FIRSTTIME) THEN
+        HIDX_DONE(:)=.FALSE.
+        FIRSTTIME=.FALSE.
+      ENDIF
+      IF (.NOT.HIDX_DONE(NFKSPROCESS)) THEN
+        DO K=1,N_CHANGING_B
+          RPOS(K)=POS_B(K)
+          IF (POS_B(K).GE.FKS_I_D(NFKSPROCESS)) RPOS(K)=POS_B(K)+1
+        ENDDO
+        NRST(NFKSPROCESS)=0
+        DO IHEL=1,NCOMB
+C         one rest per helicity of the other legs: the configurations
+C         whose density legs are in the first combination
+          ISFIRST=.TRUE.
+          DO K=1,N_CHANGING_B
+            IF (NHEL(RPOS(K),IHEL).NE.ALLOW_HEL_B(K)) ISFIRST=.FALSE.
+          ENDDO
+          IF (.NOT.ISFIRST) CYCLE
+          NRST(NFKSPROCESS)=NRST(NFKSPROCESS)+1
+          R=NRST(NFKSPROCESS)
+          DO C=1,N_COMB_B
+            HIDX(C,R,NFKSPROCESS)=0
+            DO JHEL=1,NCOMB
+              SAME=.TRUE.
+              DO I=1,NEXTERNAL
+                IF (ANY(RPOS(:).EQ.I)) CYCLE
+                IF (NHEL(I,JHEL).NE.NHEL(I,IHEL)) SAME=.FALSE.
+              ENDDO
+              DO K=1,N_CHANGING_B
+                IF (NHEL(RPOS(K),JHEL).NE.ALLOW_HEL_B((C-1)*N_CHANGING_B+K)) SAME=.FALSE.
+              ENDDO
+              IF (SAME) HIDX(C,R,NFKSPROCESS)=JHEL
+            ENDDO
+            IF (HIDX(C,R,NFKSPROCESS).EQ.0) THEN
+              WRITE(*,*) 'ERROR: real helicity not found for combination', C
+              STOP 1
+            ENDIF
+          ENDDO
+        ENDDO
+        HIDX_DONE(NFKSPROCESS)=.TRUE.
+      ENDIF
+      IF (.NOT.JALL_OK .OR. G.NE.G_SAVE .OR. ANY(P.NE.P_SAVE)) THEN
+        DO IHEL=1,NCOMB
+          IF (FILTER.AND..NOT.GOODHEL(IHEL)) THEN
+            JALL(:,:,IHEL)=(0d0,0d0)
+            CYCLE
+          ENDIF
+          CALL GET_AMP_%(proc_prefix)s(P,NHEL(1,IHEL),AMP)
+          CALL GET_JAMP_%(proc_prefix)s(AMP,JALL(1,1,IHEL))
+        ENDDO
+        P_SAVE(:,:)=P(:,:)
+        G_SAVE=G
+        JALL_OK=.TRUE.
+      ENDIF
+      ZANS(:)=(0d0,0d0)
+      DO R=1,NRST(NFKSPROCESS)
+        DO C1=1,N_COMB_B
+          HELIDX(C1)=HIDX(C1,R,NFKSPROCESS)
+        ENDDO
+        DO C1=1,N_COMB_B
+          DO C2=1,N_COMB_B
+            IF (DENS_W(C2,C1).EQ.(0d0,0d0)) CYCLE
+            CALL GET_INTER_%(proc_prefix)s(JALL(1,1,HELIDX(C1)),JALL(1,1,HELIDX(C2)),RES)
+            ZANS(:)=ZANS(:)+DENS_W(C2,C1)*RES(:)
+          ENDDO
+        ENDDO
+      ENDDO
+      ANS(0)=0d0
+      DO I=1,NSQAMPSO
+        ANS(I)=DBLE(ZANS(I))/DBLE(IDEN)
+        ANS(0)=ANS(0)+ANS(I)
+      ENDDO
+      END
+## }
 
 C
 C Helper functions to deal with the split orders.
