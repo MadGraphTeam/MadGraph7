@@ -27,7 +27,7 @@ use super::exact::{
     finite, fsum, key_bits, pair_eq, roundtrip_ratio,
 };
 use super::input::{DagInput, Vertex};
-use super::recursion::{Dag, FxMap};
+use super::recursion::{Dag, FxMap, FxSet};
 use super::{ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, invalid};
 use std::collections::HashMap;
 
@@ -452,12 +452,84 @@ pub fn derive<D: ReuseDag>(
         .collect()
 }
 
+/// An evaluation group key of `_rewrite_interaction_evaluation_reuse`.
+type RewriteKey = (u32, u32, u32, i64, i8, u32);
+
 /// The evaluation groups of `_rewrite_interaction_evaluation_reuse`, first
-/// seen.
-type RewriteGroups = FxMap<(u32, u32, u32, i64, i8, u32), i64>;
+/// seen (in increasing interaction index).
+///
+/// A key holds the canonical inputs, representatives of currents of the
+/// interaction's own input masks (the classes are per mask) or the inputs
+/// themselves, so two interactions share a key only if their results share
+/// a mask. When the interactions come in runs of one result mask (the
+/// recursion makes them mask by mask; the prune and the grade split keep
+/// their order), the map holds the current run's keys only and `offset`
+/// counts the groups of the runs before (MF-8G-1: a map of every group of
+/// the DAG otherwise, the groups of 13.3 M interactions at g g > 5g LC);
+/// the ids are those of one map over the whole DAG.
+struct RewriteGroups {
+    map: FxMap<RewriteKey, i64>,
+    offset: i64,
+    /// The result mask of the current run; `None` before the first, and
+    /// always with one map (`per_run` false).
+    mask: Option<u64>,
+    per_run: bool,
+}
+
+impl RewriteGroups {
+    fn new<D: ReuseDag>(dag: &D, equivalences: &[Equivalence]) -> Self {
+        Self {
+            map: FxMap::default(),
+            offset: 0,
+            mask: None,
+            per_run: mask_runs(dag, equivalences),
+        }
+    }
+
+    fn group(&mut self, mask: u64, key: RewriteKey) -> i64 {
+        if self.per_run && self.mask != Some(mask) {
+            self.offset += self.map.len() as i64;
+            self.map.clear();
+            self.mask = Some(mask);
+        }
+        let next = self.offset + self.map.len() as i64;
+        *self.map.entry(key).or_insert(next)
+    }
+}
+
+/// Whether the interactions come in runs of one result mask (no mask after
+/// its run) and every key's inputs join to its result's mask: each input
+/// mask joins the other to the result's, and a representative has its
+/// current's mask (so a key never meets two result masks).
+fn mask_runs<D: ReuseDag>(dag: &D, equivalences: &[Equivalence]) -> bool {
+    let mut finished: FxSet<u64> = FxSet::default();
+    let mut run = None;
+    let own = |current: u32| {
+        let representative = equivalences[current as usize].representative;
+        dag.mask(representative as usize) == dag.mask(current as usize)
+    };
+    for i in 0..dag.interaction_count() {
+        let mask = dag.mask(dag.result(i) as usize);
+        let (left, right) = (dag.left(i), dag.right(i));
+        let (a, b) = (dag.mask(left as usize), dag.mask(right as usize));
+        if a & b != 0 || a | b != mask || !own(left) || !own(right) {
+            return false;
+        }
+        if run != Some(mask) {
+            if let Some(previous) = run {
+                finished.insert(previous);
+            }
+            if finished.contains(&mask) {
+                return false;
+            }
+            run = Some(mask);
+        }
+    }
+    true
+}
 
 /// The rewritten (group, factor) of interaction `i` (in increasing `i`, with
-/// one `groups` map: `rewrite`).
+/// one `groups`: `rewrite`).
 fn rewrite_at<D: ReuseDag>(
     dag: &D,
     kernels: &[Kernel],
@@ -475,17 +547,17 @@ fn rewrite_at<D: ReuseDag>(
         equivalences[right as usize],
     );
     let result = dag.result(i) as usize;
-    let next = groups.len() as i64;
-    let group = *groups
-        .entry((
+    let group = groups.group(
+        dag.mask(result),
+        (
             kernel.class_rank,
             inputs.0,
             inputs.1,
             dag.pdg(result),
             dag.chirality(result),
             dag.identity_rank(i),
-        ))
-        .or_insert(next);
+        ),
+    );
     (group, factor)
 }
 
@@ -496,7 +568,7 @@ pub fn rewrite<D: ReuseDag>(
     kernels: &[Kernel],
     equivalences: &[Equivalence],
 ) -> Vec<(i64, Complex)> {
-    let mut groups = RewriteGroups::default();
+    let mut groups = RewriteGroups::new(dag, equivalences);
     (0..dag.interaction_count())
         .map(|i| rewrite_at(dag, kernels, equivalences, &mut groups, i))
         .collect()
@@ -609,7 +681,7 @@ pub fn assign_reuse(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
     // `rewrite` in two passes, without a copy per interaction (MF-8G-1
     // item 4): the first compares, the second (only when some interaction
     // changes) writes; the groups are first seen in both.
-    let mut groups = RewriteGroups::default();
+    let mut groups = RewriteGroups::new(&view, &equivalences);
     let n = dag.interactions.len();
     let unchanged = (0..n).all(|i| {
         let (group, factor) = rewrite_at(&view, &kernels, &equivalences, &mut groups, i);
@@ -619,7 +691,7 @@ pub fn assign_reuse(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
     if unchanged {
         return Ok(());
     }
-    let mut groups = RewriteGroups::default();
+    let mut groups = RewriteGroups::new(&BuilderView { input, dag: &*dag }, &equivalences);
     for i in 0..n {
         let (group, factor) = rewrite_at(
             &BuilderView { input, dag: &*dag },
@@ -808,5 +880,130 @@ impl ColumnarDag {
             }
         }
         Ok((equivalences, out))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A DAG of masks and (left, right, result) rows for the rewrite.
+    struct Rows {
+        masks: Vec<u64>,
+        pdgs: Vec<i64>,
+        interactions: Vec<(u32, u32, u32)>,
+    }
+
+    impl ReuseDag for Rows {
+        fn current_count(&self) -> usize {
+            self.masks.len()
+        }
+        fn interaction_count(&self) -> usize {
+            self.interactions.len()
+        }
+        fn mask(&self, current: usize) -> u64 {
+            self.masks[current]
+        }
+        fn is_source(&self, current: usize) -> bool {
+            self.masks[current].count_ones() == 1
+        }
+        fn source_state(&self, current: usize) -> (i32, i32) {
+            (current as i32, 1)
+        }
+        fn pdg(&self, current: usize) -> i64 {
+            self.pdgs[current]
+        }
+        fn chirality(&self, _current: usize) -> i8 {
+            0
+        }
+        fn kernel(&self, _interaction: usize) -> usize {
+            0
+        }
+        fn left(&self, interaction: usize) -> u32 {
+            self.interactions[interaction].0
+        }
+        fn right(&self, interaction: usize) -> u32 {
+            self.interactions[interaction].1
+        }
+        fn result(&self, interaction: usize) -> u32 {
+            self.interactions[interaction].2
+        }
+        fn colour_weight(&self, _interaction: usize) -> Complex {
+            IDENTITY_FACTOR
+        }
+        fn identity_rank(&self, _interaction: usize) -> u32 {
+            0
+        }
+    }
+
+    /// The groups through one map of the whole DAG (the oracle's).
+    fn one_map(rows: &Rows, kernels: &[Kernel], equivalences: &[Equivalence]) -> Vec<i64> {
+        let mut groups = RewriteGroups {
+            map: FxMap::default(),
+            offset: 0,
+            mask: None,
+            per_run: false,
+        };
+        (0..rows.interaction_count())
+            .map(|i| rewrite_at(rows, kernels, equivalences, &mut groups, i).0)
+            .collect()
+    }
+
+    #[test]
+    fn groups_per_mask_run_equal_one_map() {
+        let kernels = [Kernel {
+            class_rank: 0,
+            factor: IDENTITY_FACTOR,
+            swap: false,
+            exchange: None,
+        }];
+        // Sources 0-3 (legs 1-4), then two currents of {1, 2}, one of
+        // {3, 4} and two of {1, 2, 3}.
+        let masks = vec![1, 2, 4, 8, 3, 3, 12, 7, 7];
+        let pdgs = vec![21; masks.len()];
+        let identity: Vec<Equivalence> = (0..masks.len() as u32)
+            .map(|representative| Equivalence {
+                representative,
+                factor: IDENTITY_FACTOR,
+            })
+            .collect();
+        // Repeated keys within a run (rows 0-1 and 3, 5) and across none.
+        let runs = Rows {
+            masks: masks.clone(),
+            pdgs: pdgs.clone(),
+            interactions: vec![
+                (0, 1, 4),
+                (0, 1, 5),
+                (2, 3, 6),
+                (4, 2, 7),
+                (5, 2, 8),
+                (4, 2, 8),
+            ],
+        };
+        assert!(mask_runs(&runs, &identity));
+        let expected = one_map(&runs, &kernels, &identity);
+        assert_eq!(expected, vec![0, 0, 1, 2, 3, 2]);
+        let rewritten: Vec<i64> = rewrite(&runs, &kernels, &identity)
+            .into_iter()
+            .map(|(group, _)| group)
+            .collect();
+        assert_eq!(rewritten, expected);
+        // A mask after its run: one map.
+        let scattered = Rows {
+            masks: masks.clone(),
+            pdgs: pdgs.clone(),
+            interactions: vec![(0, 1, 4), (2, 3, 6), (0, 1, 5), (4, 2, 7)],
+        };
+        assert!(!mask_runs(&scattered, &identity));
+        let rewritten: Vec<i64> = rewrite(&scattered, &kernels, &identity)
+            .into_iter()
+            .map(|(group, _)| group)
+            .collect();
+        assert_eq!(rewritten, one_map(&scattered, &kernels, &identity));
+        assert_eq!(rewritten, vec![0, 1, 0, 2]);
+        // A representative off its current's mask: one map.
+        let mut moved = identity.clone();
+        moved[5].representative = 6;
+        assert!(!mask_runs(&runs, &moved));
     }
 }
