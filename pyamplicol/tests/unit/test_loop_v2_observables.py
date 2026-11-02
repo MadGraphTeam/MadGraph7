@@ -1409,7 +1409,7 @@ print(
     json.dumps(
         {
             "totals": [[z.real.hex(), z.imag.hex()] for z in values],
-            "program": digest(program),
+            "program": hashlib.sha256(plan.json().encode()).hexdigest(),
             "kernels": digest(program["kernels"]),
             "constants": digest([repr(key) for key in plan.constants]),
             "raw kernels": digest(raw),
@@ -1469,7 +1469,14 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
         assert run.returncode == 0, err[-4000:]
         outputs.append(json.loads(out.strip().splitlines()[-1]))
     first, kernel_shift, _tree_shift = outputs
-    assert first["raw stages"] != kernel_shift["raw stages"]
+    # The probe discriminates: a raw (pre-canonical) record moves with the
+    # history, the raw tree stages or, where the symbols the generation makes
+    # before them absorb the history (MF-8G-1's native tree program), the raw
+    # kernel records.
+    assert (first["raw stages"], first["raw kernels"]) != (
+        kernel_shift["raw stages"],
+        kernel_shift["raw kernels"],
+    )
     for output in outputs[1:]:
         for item in ("program", "kernels", "constants", "totals"):
             assert output[item] == first[item], item

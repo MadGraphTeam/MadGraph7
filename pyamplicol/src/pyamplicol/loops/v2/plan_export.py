@@ -170,16 +170,30 @@ class ExportedPlan:
 
         from . import native_lowering
 
-        if native_lowering.NATIVE_JSON or self.model is not None:
+        if native_lowering.NATIVE_JSON or self.streamed:
             return native_lowering.plan_json(self).decode("ascii")
         return self.python_json()
+
+    @property
+    def streamed(self) -> bool:
+        """Whether ``program``'s families are the view of ``model``'s streamed
+        families (a replaced ``program`` is read as its own records)."""
+
+        from . import native_lowering
+
+        families = self.program.get("families")
+        return (
+            self.model is not None
+            and isinstance(families, native_lowering.NativeFamilies)
+            and families.model is self.model
+        )
 
     def python_json(self) -> str:
         """The plan JSON written by ``json`` (the native writer's oracle; a
         plan whose families were streamed has none, export it with
         ``native_lowering.NATIVE_FAMILIES`` off)."""
 
-        if self.model is not None:
+        if self.streamed:
             raise ValueError(
                 "a plan with streamed families has no Python family records"
             )

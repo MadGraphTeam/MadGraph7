@@ -82,9 +82,8 @@ def plan_model(exported: Any, native: Any | None = None) -> Any:
     ``ExportedPlan`` or its ``program``), read from the Python objects; the
     plan's own model when its families were streamed (``NATIVE_FAMILIES``)."""
 
-    model = getattr(exported, "model", None)
-    if model is not None:
-        return model
+    if getattr(exported, "streamed", False):
+        return exported.model
     return _native(native).V2PlanModel.from_program(_program(exported))
 
 
@@ -108,17 +107,17 @@ class NativeFamilies(Sequence[dict[str, Any]]):
     (``ExportedPlan.python_json()``, the oracle) needs the Python records."""
 
     def __init__(self, model: Any) -> None:
-        self._model = model
+        self.model = model
 
     def __len__(self) -> int:
-        return int(self._model.family_count())
+        return int(self.model.family_count())
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice):
             return [self[i] for i in range(*index.indices(len(self)))]
         if index < 0:
             index += len(self)
-        return json.loads(bytes(self._model.family_json(index)))
+        return json.loads(bytes(self.model.family_json(index)))
 
 
 def plan_model_from_json(exported: Any, native: Any | None = None) -> Any:

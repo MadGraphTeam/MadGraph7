@@ -108,14 +108,17 @@ PROCESSES = {
 SITES = {"gg_ttx", "gg_gg", "gg_ggg"}
 
 
-@pytest.fixture(autouse=True)
-def python_family_records(monkeypatch):
+@pytest.fixture(scope="module", autouse=True)
+def python_family_records():
     """This module checks the native writer against ``json.dumps`` of the
     Python records (``ExportedPlan.python_json()``): its exports keep the
-    families' Python records (``NATIVE_FAMILIES`` off); the streamed form is
-    checked against them by ``test_streamed_families_equal_the_python_records``."""
+    families' Python records (``NATIVE_FAMILIES`` off, also for the module's
+    shared exports); the streamed form is checked against them by
+    ``test_streamed_families_equal_the_python_records``."""
 
-    monkeypatch.setattr(native_lowering, "NATIVE_FAMILIES", False)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(native_lowering, "NATIVE_FAMILIES", False)
+        yield
 
 
 @pytest.fixture(scope="module")
@@ -1195,7 +1198,7 @@ def check_streamed(streamed, oracle) -> None:
     model writes the oracle's JSON and binary member byte for byte, and its
     family view decodes to the oracle's Python records."""
 
-    assert streamed.model is not None and oracle.model is None
+    assert streamed.streamed and not oracle.streamed
     text = oracle.python_json()
     assert streamed.json() == text
     assert streamed.binary() == oracle.binary()
