@@ -6,7 +6,8 @@
 //! fraction texts; cells stay native in [`NativeCellTable`] handles, which
 //! count their decodes. Nothing here touches Symbolica state.
 use super::*;
-use rusticol_core::loop_v2::dipole_orbits::DipoleOrbits;
+use rusticol_core::loop_v2::dipole_orbits::{Correlator, DipoleOrbits};
+use rusticol_core::loop_v2::dress::parse_rational;
 use rusticol_core::loop_v2::generate::FastMap;
 use rusticol_core::loop_v2::generate::cells::{
     self, Accuracy, AdjointOrbits, CellEngine, ClassInput, Exact, History, Laurent, OpenString,
@@ -748,6 +749,47 @@ impl NativeDipoleOrbits {
         self.decodes.fetch_add(out.len(), Ordering::Relaxed);
         Ok(out)
     }
+
+    /// The native Catani operator's colour input (`Correlator`, M-FINAL
+    /// MF-8G-3) for a tree program's Born components: per component its
+    /// (basis element, Born order, factor text), the number of Born orders,
+    /// and the (bra, ket) order pairs to form. `V2Executor.evaluate(...,
+    /// dipoles=)` then returns per point and pair the colour correlations
+    /// contracted over the stored orbits (no dense operator).
+    fn correlator(
+        &self,
+        components: Vec<(usize, usize, String)>,
+        orders: usize,
+        sandwiches: Vec<(usize, usize)>,
+    ) -> PyResult<NativeDipoleCorrelator> {
+        let components = components
+            .into_iter()
+            .map(|(b, o, factor)| Ok((b, o, parse_rational(&factor).map_err(error)?)))
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(NativeDipoleCorrelator {
+            correlator: Arc::new(
+                Correlator::new(self.orbits.clone(), components, orders, sandwiches)
+                    .map_err(error)?,
+            ),
+        })
+    }
+}
+
+/// The stored dipole operators with a tree program's Born component map
+/// (`NativeDipoleOrbits.correlator`): `V2Executor.evaluate`'s `dipoles`.
+#[pyclass(frozen)]
+pub(crate) struct NativeDipoleCorrelator {
+    pub(crate) correlator: Arc<Correlator>,
+}
+
+#[pymethods]
+impl NativeDipoleCorrelator {
+    /// The coloured legs (label, representation) in leg order: the index
+    /// order of each `c × c` block of the correlations.
+    #[getter]
+    fn coloured(&self) -> Vec<(i64, i32)> {
+        self.correlator.orbits().coloured.clone()
+    }
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -755,6 +797,7 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeCellEngine>()?;
     module.add_class::<NativeAdjointOrbits>()?;
     module.add_class::<NativeDipoleOrbits>()?;
+    module.add_class::<NativeDipoleCorrelator>()?;
     module.add_function(wrap_pyfunction!(colour_gram, module)?)?;
     module.add_function(wrap_pyfunction!(contract_colours, module)?)?;
     module.add_function(wrap_pyfunction!(face_counts, module)?)?;
