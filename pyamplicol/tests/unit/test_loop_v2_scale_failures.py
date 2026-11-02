@@ -119,20 +119,26 @@ def test_a_non_finite_counterterm_coupling_fails_only_its_points(runtime):
 
 
 @pytest.mark.loop_fast
-def test_scale_isolation_keeps_point_failures_and_other_errors():
+def test_scale_isolation_keeps_point_failures_and_other_errors(loop_native):
     """``isolate_scale_failures`` without a native batch: per-scale reruns
     map their results and point failures back to the caller's indices, one
-    failing scale fails its points only, and any other error propagates."""
+    failing scale fails its points only, and any other error propagates,
+    also one with the same text that is not the native typed refusal
+    (``NonFiniteCountertermError``)."""
 
+    from pyamplicol.loops.native import load_loop_native
     from pyamplicol.runtime.virtual import isolate_scale_failures
 
+    del loop_native
+    typed = load_loop_native().NonFiniteCountertermError
+    assert issubclass(typed, ValueError)
     scales = ["4", "1e-400", "9", "4.0", "1E-400"]
     calls: list[list[int]] = []
 
     def run(indices: list[int]) -> tuple[list, dict[int, list[str]]]:
         calls.append(indices)
         if any(scales[i].lower() == "1e-400" for i in indices):
-            raise ValueError(f"loop v2 trees: {NOT_FINITE} (helper)")
+            raise typed(f"loop v2 trees: {NOT_FINITE} (helper)")
         found = [f"value {i}" for i in indices]
         failed = {
             k: ["lane 0: ImpreciseResult"] for k, i in enumerate(indices) if i == 2
@@ -159,3 +165,9 @@ def test_scale_isolation_keeps_point_failures_and_other_errors():
 
     with pytest.raises(ValueError, match="unknown parameter"):
         isolate_scale_failures(other, scales)
+
+    def untyped(indices: list[int]) -> tuple[list, dict[int, list[str]]]:
+        raise ValueError(f"loop v2 trees: {NOT_FINITE} (helper)")
+
+    with pytest.raises(ValueError, match="diagnostic is not finite"):
+        isolate_scale_failures(untyped, scales)

@@ -92,7 +92,9 @@ from . import ew_policy, generator_input
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
+    born_dag_scope,
     build_tree_blocks,
+    release_born_dag,
     requested_loop_blocks,
     vetoed_particle_ids,
     with_ward_kernels,
@@ -426,6 +428,10 @@ class TreeRows:
         from pyamplicol.generation.runtime_schema import build_runtime_schema
         from pyamplicol.models.external import CompiledUFOModel
 
+        from .blocks import BornDagSummary
+
+        if isinstance(dag, BornDagSummary):
+            dag = dag.materialize()  # a slice's released Born DAG (R3)
         self.compiled = compiled
         self.dag = dag
         self.model = CompiledUFOModel(compiled)
@@ -1316,47 +1322,61 @@ def _site_coefficient(compiled: Any, fixed: Mapping[str, Any], continuation: Any
 def _whole_rule_terms(closure: SiteClosure, site) -> tuple[WholeRuleTerm, ...]:
     """The replacement terms of a whole-rule site, closed on every block choice."""
 
-    from symbolica.community import hepkit
-
-    from pyamplicol.loops.physical_color import split_color_grades
-
-    from .colour import relabel, spenso_colour_network
-
     continuation = site.rule.whole_rule_continuation
     out = []
     for term in continuation.terms:
-        kernel = term.kernel
-        legs = {
-            hepkit.Symbols.half_edge()(half, 1).to_canonical_string(): index + 1
-            for index, half in enumerate(kernel.leg_half_edges)
-        }
-
-        def rename(label, legs=legs):
-            return ("leg", legs[label]) if label in legs else ("dummy", label)
-
-        network = relabel(spenso_colour_network(kernel.color.to_expression()), rename)
-        pairings = _metric_pairings(kernel.lorentz.to_expression(), legs)
-        grades = tuple(
-            (degree, expression)
-            for degree, (expression,) in split_color_grades(
-                (term.coefficient,), continuation.nc
-            )
-        )
-        parameters = tuple(
-            sorted(
-                {
-                    symbol.get_name().rsplit("::", 1)[-1]
-                    for _degree, expression in grades
-                    for symbol in expression.get_all_symbols(False)
-                    if symbol.get_name().startswith("UFO::")
-                }
-            )
+        network, pairings, grades, parameters = _whole_rule_parts(
+            closure, term, continuation.nc
         )
         for choice, sign, colour in closure.close(network, site.blocks):
             out.append(
                 WholeRuleTerm(choice, sign, colour, pairings, grades, parameters)
             )
     return tuple(out)
+
+
+def _whole_rule_parts(closure: SiteClosure, term: Any, nc: Any) -> tuple[Any, ...]:
+    """The site-independent parts of a whole-rule continuation term: its
+    colour network on UFO legs, metric pairings, N_c grades and UFO
+    parameters, formed once per closure (``SiteClosure.whole_rule_parts``)."""
+
+    found = closure.whole_rule_parts.get(id(term))
+    if found is not None and found[0] is term:
+        return found[1:]
+
+    from symbolica.community import hepkit
+
+    from pyamplicol.loops.physical_color import split_color_grades
+
+    from .colour import relabel, spenso_colour_network
+
+    kernel = term.kernel
+    legs = {
+        hepkit.Symbols.half_edge()(half, 1).to_canonical_string(): index + 1
+        for index, half in enumerate(kernel.leg_half_edges)
+    }
+
+    def rename(label, legs=legs):
+        return ("leg", legs[label]) if label in legs else ("dummy", label)
+
+    network = relabel(spenso_colour_network(kernel.color.to_expression()), rename)
+    pairings = _metric_pairings(kernel.lorentz.to_expression(), legs)
+    grades = tuple(
+        (degree, expression)
+        for degree, (expression,) in split_color_grades((term.coefficient,), nc)
+    )
+    parameters = tuple(
+        sorted(
+            {
+                symbol.get_name().rsplit("::", 1)[-1]
+                for _degree, expression in grades
+                for symbol in expression.get_all_symbols(False)
+                if symbol.get_name().startswith("UFO::")
+            }
+        )
+    )
+    closure.whole_rule_parts[id(term)] = (term, network, pairings, grades, parameters)
+    return network, pairings, grades, parameters
 
 
 def _metric_pairings(expression: Any, legs: Mapping[str, int]):
@@ -2091,13 +2111,21 @@ class LoopSlice:
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
 
+        tree_model = CompiledUFOModel(model)
+        # The Born DAG's compile arguments (``build_tree_blocks``; its summary
+        # recompiles it from them on demand, ``TreeBlocks.summarised``).
+        born_recipe = {
+            "max_coupling_orders": dict(request.born_orders),
+            "ignored_particle_ids": vetoed_particle_ids(request.particle_veto),
+        }
+
         def tree_program(reachable):
             blocks = build_tree_blocks(
                 process,
-                CompiledUFOModel(model),
-                born_coupling_orders=dict(request.born_orders),
+                tree_model,
+                born_coupling_orders=born_recipe["max_coupling_orders"],
                 block_coupling_orders=_block_order_bounds(request),
-                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+                ignored_particle_ids=born_recipe["ignored_particle_ids"],
                 reachability=(
                     None
                     if reachable is None
@@ -2132,6 +2160,9 @@ class LoopSlice:
                 from .selection import restrict_rows
 
                 blocks = restrict_rows(blocks, request.selection.helicities)
+            # The structural reads of the Born DAG are done: the slice keeps
+            # its summary (R3; the DAG is released, recompiled on demand).
+            blocks = blocks.summarised(tree_model, born_recipe)
             table = blocks.block_table(data)
             if native_families:
                 generation = NativeGeneration(table, loop_catalogue, selection, native)
@@ -2168,16 +2199,21 @@ class LoopSlice:
                 data,
                 request.born_orders,
             )
-        blocks, compiled, table, generation, families = tree_program(reachable)
-        if reachable is not None and (
-            families.families != reachable.families
-            or families.scaleless != reachable.scaleless
-        ):
-            # The field-level table does not predict this process's tree
-            # blocks (e.g. electroweak currents the tree compiler does not
-            # build split closed-loop flavour classes, ``families.
-            # _closed_loop_classes``): every block current is built.
-            blocks, compiled, table, generation, families = tree_program(None)
+        # The Born DAG is compiled once (``blocks.born_dag_scope``): by the
+        # caller's preflight (the public route) or the first tree program;
+        # the slice keeps its summary and releases it from the scope.
+        with born_dag_scope():
+            blocks, compiled, table, generation, families = tree_program(reachable)
+            if reachable is not None and (
+                families.families != reachable.families
+                or families.scaleless != reachable.scaleless
+            ):
+                # The field-level table does not predict this process's tree
+                # blocks (e.g. electroweak currents the tree compiler does not
+                # build split closed-loop flavour classes, ``families.
+                # _closed_loop_classes``): every block current is built.
+                blocks, compiled, table, generation, families = tree_program(None)
+            release_born_dag(blocks.born_dag)
 
         def schedules():
             colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
@@ -2588,6 +2624,7 @@ class LoopSlice:
         their virtual sector degrees: a skeleton live in any table is kept.
         """
 
+        observables = tuple(observables)
         accuracy = self.request.accuracy
         selection = self.request.selection
         # A colour-flow selection's Born basis is its flows' tensors
@@ -2619,7 +2656,22 @@ class LoopSlice:
             )
 
         keep = own
-        if ring_aware:
+        native_schedules = (
+            self.generation is not None and "schedules" in generator_input.NATIVE_STAGES
+        )
+        if not ring_aware:
+            if native_schedules:
+                # The native prune liveness of the seed stage that read the
+                # complete build (B1, ``native_seeds.prune_keep``), read by
+                # the native rebuild: the same flags as ``own`` without a
+                # Python callback per skeleton; None (a table without such a
+                # stage, the poles companion's) keeps the callback.
+                from . import native_seeds
+
+                flags = native_seeds.prune_keep(self, observables)
+                if flags is not None:
+                    keep = _PruneKeep(flags.build, flags.flags, own)
+        else:
             # The selected flows' basis elements only: a skeleton is kept
             # when its ring (``SkeletonView`` readings, rotations and the
             # reflection) is live in the plan's reading of that ring, whose
@@ -2647,7 +2699,7 @@ class LoopSlice:
                 trie for frame, trie in candidates if frame == frames[family.key]
             )
 
-        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+        if native_schedules:
             self.plan = self.generation.schedules(self.colour, frames=frames, keep=keep)
         else:
             self.plan = build_schedules(
@@ -2969,6 +3021,8 @@ class LoopSlice:
             return found
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
         index = {tensor: b for b, tensor in enumerate(self.basis.tensors)}
+        # Each literal tensor's basis element once (Born terms share them).
+        element: dict[Any, int] = {}
         out: dict[tuple[int, Orders], set[int]] = defaultdict(set)
         for order, terms in self.born_terms.items():
             for term in terms:
@@ -2976,7 +3030,11 @@ class LoopSlice:
                     g for g, _c in layout.get((term.entry.coupling.name, 0), ())
                 }
                 for item in term.colour.terms:
-                    b = index[_single(item.tensor, self.basis.legs)]
+                    b = element.get(item.tensor)
+                    if b is None:
+                        b = element[item.tensor] = index[
+                            _single(item.tensor, self.basis.legs)
+                        ]
                     out[b, order].update(item.nc_power + g for g in couplings)
         self._cache["born-grades"] = out
         return out
@@ -5068,6 +5126,23 @@ def _born_tensors(closure: SiteClosure, born_terms) -> BornBasis:
         ),
         tuple(frozenset(tensors[tensor]) for tensor in ordered),
     )
+
+
+@dataclass(frozen=True, eq=False)
+class _PruneKeep(generator_input.ReadingKeep):
+    """``_prune_colour``'s native prune flags (``native_seeds.prune_keep``,
+    B1) for the readings of the complete build, which the native rebuild
+    reads without a callback; any other skeleton (an oracle's or a test's
+    Python build) reads the Python liveness ``fallback``, which the flags
+    equal on the readings (``test_loop_v2_native_seeds``)."""
+
+    fallback: Callable[[Skeleton], bool] | None = field(default=None, repr=False)
+
+    def __call__(self, skeleton: Skeleton) -> bool:
+        found = self._kept().get(id(skeleton))
+        if found is None or found[0] is not skeleton:
+            return self.fallback(skeleton)
+        return found[1]
 
 
 def _single(tensor, legs) -> ConnectedColorTensor:

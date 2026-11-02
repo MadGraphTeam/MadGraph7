@@ -2168,12 +2168,14 @@ class NativeExecutor:
                     return None
                 return {label(lane, exported): carrier(values) for lane, values in runs}
 
-            scaleless = scaleless_check = None
-            if extra is not None:
-                scaleless = read(extra["families"][index], twin.exported)
-                if extra["check"] is not None:
-                    scaleless_check = read(extra["check"][index], twin.exported)
             with _Numbers(precision).scope():
+                # Every lane (the companion's too) is read at the working
+                # digits: an extended carrier rounds its literals there.
+                scaleless = scaleless_check = None
+                if extra is not None:
+                    scaleless = read(extra["families"][index], twin.exported)
+                    if extra["check"] is not None:
+                        scaleless_check = read(extra["check"][index], twin.exported)
                 if output.get("counterterms") is not None:
                     evaluation.counterterms = {
                         key: numbers.real(Decimal(str(re)))

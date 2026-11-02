@@ -71,14 +71,18 @@ Plan v4 artifacts (the v2 loop engine, `point_inputs = "native-v2"`) open
 through the same `rusticol_virtual_open`: the stored native programs (tree,
 counterterm and parameter programs with their binary64 SymJIT plane
 applications) evaluate every point without Python, generation or a Symbolica
-licence, bitwise equal to the Python API in binary64. They serve ordinary
-(unresolved) binary64 virtuals with model R2: `rusticol_virtual_set_poles`
-selects every pole (`"all"`, the default), the finite part alone (`"none"`:
+licence, bitwise equal to the Python API in binary64. They serve the
+ordinary virtual with model R2 and, from the process's stored observable
+columns, the helicity-resolved, colour-correlated and spin-correlated ones, in
+binary64, double-double and arbitrary precision (the extended carriers equal
+the Python API's `Decimal` results; "Plan v4 extras" below).
+`rusticol_virtual_set_poles` selects every pole (`"all"`, the default), the finite part alone (`"none"`:
 the pole-only work is skipped natively and the single and double pole entries
 are quiet NaNs) or a split selection (`"uv"`: the poles are the bare loop's UV
 poles; `"ir"`: the renormalised virtual's IR poles), which also runs the
 stored companion of the certified-scaleless families; the finite part is the
-same in every selection, and every selection is bitwise the Python API's.
+same in every selection, and every selection is bitwise the Python API's
+in binary64 (exactly its `Decimal` values in the extended carriers).
 `rusticol_virtual_set_arithmetic` selects the arithmetic of later
 evaluations (below); resolved and correlated evaluations read the process's
 stored observable columns (below).

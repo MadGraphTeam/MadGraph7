@@ -278,23 +278,24 @@ def born_amplitude_orders(
     """The Born amplitude orders of ``process`` within the coupling-order
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
-    compiles the Born of a slice (without the vetoed |PDG| codes
+    compiles the Born of a slice (``blocks.loop_born_dag``, shared with it
+    in an open ``blocks.born_dag_scope``) (without the vetoed |PDG| codes
     ``particle_veto``; a loop Born DAG, ``loop_born``: a Dirac current
     closing on a Weyl sink is a root, ``dag_ordering.DIRAC_WEYL_CLOSURE``)."""
 
-    from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
-    from .blocks import _born_roots, vetoed_particle_ids
+    from .blocks import _born_roots, loop_born_dag, vetoed_particle_ids
 
     model = CompiledUFOModel(compiled)
-    dag = compile_generic_dag(
+    # In an open ``blocks.born_dag_scope`` (the public route's generation)
+    # the slice's ``build_tree_blocks`` reuses this DAG.
+    dag = loop_born_dag(
         build_model_process_ir(process, compiled.ir, color_accuracy="full"),
-        model=model,
+        model,
         max_coupling_orders=dict(bounds),
         ignored_particle_ids=vetoed_particle_ids(particle_veto),
-        loop_born=True,
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag
@@ -1473,6 +1474,9 @@ class V2VirtualRuntime:
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
         self._group_member = group_member
         self._member = None
+        self._mapping = (
+            None if group_member is None else _mapping_kind(selected, group_member)
+        )
         self._observables: Any = None
         self._execution = execution
         compiled = CompiledModel.from_dict(model_payload, validate_fingerprint=False)
@@ -1584,6 +1588,7 @@ class V2VirtualRuntime:
                 runtime = V2ObservablesRuntime(
                     observables,
                     member=self._member,
+                    mapping=self._mapping,
                     arithmetic=self.default_arithmetic,
                     precision=self.default_precision,
                 )
@@ -2287,6 +2292,24 @@ class V2VirtualRuntime:
 
     def unmute_warnings(self) -> None:
         """No effect: v2 runtimes emit no runtime warnings."""
+
+
+def _mapping_kind(record: Mapping[str, Any], group_member: Any) -> str:
+    """How the stored process ``record`` serves the selected mapped process
+    (``_select``), for messages: a manifest permutation alias, the stored
+    process selected in another leg order within each side, or a
+    process-group (flavour) member, possibly in permuted leg order."""
+
+    process_id = str(group_member.process_id)
+    if process_id == str(record["id"]):
+        return "a side permutation of the stored process"
+    if any(str(alias["id"]) == process_id for alias in record.get("aliases", ())):
+        return "a permutation alias"
+    permutation = tuple(int(leg) for leg in group_member.permutation)
+    permuted = permutation != tuple(range(len(permutation)))
+    return "a process-group flavour member" + (
+        " in permuted leg order" if permuted else ""
+    )
 
 
 def _stored_member(group_member: Any, representative: str) -> Any:
