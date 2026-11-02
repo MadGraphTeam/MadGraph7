@@ -691,6 +691,12 @@ def _canonical_symbols(count: int) -> list[Any]:
 
     from pyamplicol._internal.physics.symbols import symbols
 
+    from ..scalar_frontend import scalar_predicates
+
+    if len(_CANONICAL_SYMBOLS) < count:
+        # The scalar predicates precede every canonical block, in their own
+        # aligned block (``scalar_predicates``).
+        scalar_predicates()
     while len(_CANONICAL_SYMBOLS) < count:
         start = len(_CANONICAL_SYMBOLS)
         padding = -len(Expression.get_all_symbol_names()) % _CANONICAL_BLOCK

@@ -712,6 +712,38 @@ def _refuse_selected_observables(request: Any, declared: bool) -> None:
         )
 
 
+def require_vector_spin_sources(
+    compiled: Any, process: Any, spin_classes: Iterable[Iterable[int]]
+) -> None:
+    """Every leg of a declared spin class is a leg of ``process`` with a full
+    four-component vector source, refused at generation (``GenerationError``)
+    with the tree engine's correlated-generation rule and message
+    (``generation.correlated``) instead of at evaluation."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    labels = sorted({int(label) for group in spin_classes for label in group})
+    if not labels:
+        return
+    ir = build_model_process_ir(process, compiled.ir, color_accuracy="full")
+    model = CompiledUFOModel(compiled)
+    by_label = {int(leg.label): leg for leg in ir.legs}
+    for label in labels:
+        leg = by_label.get(label)
+        if leg is None or leg.outgoing_pdg is None:
+            raise GenerationError(
+                f"spin-correlated leg {label} is absent from {ir.process!r}"
+            )
+        source = model._source_ir(int(leg.outgoing_pdg))
+        if source.wavefunction_family != "vector" or source.component_dimension != 4:
+            raise GenerationError(
+                f"spin-correlated leg {label} requires a full "
+                "four-component vector source"
+            )
+
+
 @dataclass
 class ObservableSlice:
     """A generated slice and its declared observables.
@@ -759,6 +791,9 @@ class ObservableSlice:
                 or correlators.all_color_through_order is not None
             )
             or ward,
+        )
+        require_vector_spin_sources(
+            compiled, request.process, correlators.spin_correlations
         )
         full = bool(correlators.spin_correlations) or ward
         if full:

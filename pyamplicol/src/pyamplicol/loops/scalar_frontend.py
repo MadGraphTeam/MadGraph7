@@ -59,6 +59,64 @@ def _producer_predicate(mode: str):
     return predicate
 
 
+_PREDICATE_NAMES = (
+    "truth",
+    "equal",
+    "less",
+    "less_equal",
+    "real_part",
+    "imaginary_part",
+)
+_PREDICATES: dict[str, Any] = {}
+_PREDICATE_BLOCK = 1 << 16
+
+
+def scalar_predicates() -> dict[str, Any]:
+    """The native predicate heads ``pyamplicol_scalar_v1::<name>`` (their
+    producer evaluations attached), created once per interpreter as the first
+    ids of a block of 2^16 symbol ids, before any canonical evaluator symbol
+    (``loops.v2.assemble._canonical_symbols`` creates them first).
+
+    They are the only non-built-in symbols the parameter program keeps after
+    its canonical renaming (the native runtime binds them by name), and
+    Symbolica orders terms and factors by symbol ids: created wherever the
+    interpreter first needed them (after the ~2e5 symbols of a model compiled
+    from its UFO source, or early when it was read from the model cache),
+    they made the stored parameter evaluator depend on how the model was
+    obtained. Aligned like the canonical blocks, they order the same way in
+    every process history. Predicates that already exist (defined by an
+    earlier load) are taken as they are."""
+
+    if not _PREDICATES:
+        from symbolica import Expression
+
+        names = [f"pyamplicol_scalar_v1::{name}" for name in _PREDICATE_NAMES]
+        defined = Expression.get_all_symbol_names()
+        if not set(names) & set(defined):
+            padding = -len(defined) % _PREDICATE_BLOCK
+            if padding:
+                symbols.qualified(
+                    *(f"pyamplicol_scalar_v1::pad{k}" for k in range(padding)),
+                    tags=[],
+                )
+            if len(Expression.get_all_symbol_names()) % _PREDICATE_BLOCK:
+                raise RuntimeError(
+                    "the scalar predicates could not be aligned to a block of "
+                    "symbol ids: the parameter program would depend on the "
+                    "process history"
+                )
+        _PREDICATES.update(
+            (
+                name,
+                symbols.qualified(
+                    qualified, eval={"complex": _producer_predicate(name)}
+                ),
+            )
+            for name, qualified in zip(_PREDICATE_NAMES, names, strict=True)
+        )
+    return dict(_PREDICATES)
+
+
 class ScalarFunctionLibrary:
     """A source-bound helper library; raw registry order never chooses a helper."""
 
@@ -71,20 +129,7 @@ class ScalarFunctionLibrary:
         self._lowered: dict[tuple[str, bool], ScalarExpression] = {}
         self.zero, self.one, self.imaginary = E("0"), E("1"), E("1i")
         self.choose = symbols.qualified("symbolica::if")
-        self.predicates = {
-            name: symbols.qualified(
-                f"pyamplicol_scalar_v1::{name}",
-                eval={"complex": _producer_predicate(name)},
-            )
-            for name in (
-                "truth",
-                "equal",
-                "less",
-                "less_equal",
-                "real_part",
-                "imaginary_part",
-            )
-        }
+        self.predicates = scalar_predicates()
         self._choose_name = self.choose.get_name()
         self._predicate_heads = {
             symbol.get_name(): name for name, symbol in self.predicates.items()
