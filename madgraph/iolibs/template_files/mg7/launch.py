@@ -204,6 +204,7 @@ def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
     beam = run_card["beam"]
     return bool(
         mlm_clustering and not is_decay and not leptonic
+        and beam["dynamical_scale_choice"] != "ckkwl"
         and beam["pdf_reweighting"]
         and (beam["scale_scheme"] == "madevent"
              or beam["clustering_mean_pdf_ladder"]))
@@ -343,7 +344,15 @@ class MadgraphProcess:
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
         merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
-        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+        if merge_subprocesses and self.run_card.is_ckkwl_merged():
+            # the merging cut is built per subprocess from its leg flavours
+            logger.warning(
+                "merge_subprocesses is not supported with a CKKW-L merging cut "
+                "(ktdurham/ptlund); the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] in (
+                "mlm", "ckkwl"):
             # A merged subprocess bundles matrix elements whose legs differ -
             # q q~ > l l g next to q g > l l q - while the MLM clustering is
             # built once per subprocess from a single assignment of flavours to
@@ -352,7 +361,8 @@ class MadgraphProcess:
             # weights of one element only.
             logger.warning(
                 "merge_subprocesses is not supported with dynamical_scale_choice "
-                "= mlm; the subprocesses are kept separate"
+                "= %s; the subprocesses are kept separate",
+                self.run_card["beam"]["dynamical_scale_choice"]
             )
             merge_subprocesses = False
         if merge_subprocesses:
@@ -756,6 +766,23 @@ class MadgraphProcess:
             elif cuts.get(key, {}).get("min", 0.0) > xqcut:
                 cuts[key]["min"] = 0.0
 
+    def init_merging_cut(self) -> None:
+        """The CKKW-L merging cut (ktdurham or ptlund) of the run card, as
+        (measure, minimum, merging pdg ids), or None."""
+        self.merging_cut = None
+        ps = self.run_card["phasespace"]
+        if self.is_decay or not self.run_card.is_ckkwl_merged():
+            return
+        if float(ps["ktdurham"]) > 0:
+            measure, value = ms.MergingScale.Measure.kt_durham, float(ps["ktdurham"])
+        else:
+            measure, value = ms.MergingScale.Measure.pt_lund, float(ps["ptlund"])
+        pdgs = ps["merging_pdgs"]
+        if pdgs == "auto":
+            # madevent's default for pdgs_for_merging_cut: the coloured particles
+            pdgs = _proc_characteristic().get("colored_pdgs") or [21, 1, 2, 3, 4, 5, 6]
+        self.merging_cut = (measure, value, {abs(int(pdg)) for pdg in pdgs})
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
@@ -765,6 +792,7 @@ class MadgraphProcess:
             if key != "order_by"
         }
         self.apply_auto_ptj_mjj(cuts)
+        self.init_merging_cut()
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -904,7 +932,9 @@ class MadgraphProcess:
         # "mlm" is not one of the closed-form scale choices: it needs the diagram
         # topologies of each subprocess, so the EnergyScale is built later, in
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
-        if beam_args["dynamical_scale_choice"] == "mlm":
+        # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
+        self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
         elif beam_args["dynamical_scale_choice"] in dynamical_scales:
@@ -930,22 +960,25 @@ class MadgraphProcess:
             # The merging needs the scales of its own clustering history: a
             # custom scale or a factor on it would move the merging scale away
             # from the one the shower is matched to.
+            choice = beam_args["dynamical_scale_choice"]
             if self.custom_functions.pop("scale", None) is not None:
                 logger.warning(
-                    "custom scale ignored under dynamical_scale_choice = mlm")
+                    "custom scale ignored under dynamical_scale_choice = %s", choice)
             if float(beam_args.get("scale_factor", 1.)) != 1.:
                 logger.warning(
-                    "scale_factor ignored under dynamical_scale_choice = mlm")
+                    "scale_factor ignored under dynamical_scale_choice = %s", choice)
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for. That includes "mlm": a
             # decay has no beams to cluster into, so there is no merging to do.
             if self.mlm_clustering:
                 logger.warning(
-                    "dynamical_scale_choice = mlm has no meaning for a decay; "
-                    "using the decaying mass as a fixed scale instead"
+                    "dynamical_scale_choice = %s has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead",
+                    beam_args["dynamical_scale_choice"]
                 )
                 self.mlm_clustering = False
+                self.ckkwl_scale = False
             self.scale_kwargs.setdefault(
                 "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
             )
@@ -1182,6 +1215,7 @@ class MadgraphProcess:
         # the emission scale of the MLM alpha_s vertices, which only an MLM
         # sample with per-vertex alpha_s has
         if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["dynamical_scale_choice"] != "ckkwl"
                 and self.run_card["beam"]["alphas_reweighting"] != "none"):
             config.alps = [float(v) for v in syst["alps"]]
         else:
@@ -3022,6 +3056,7 @@ class MadgraphSubprocess:
         custom_cut = self.process.custom_function(
             "cut", self.particle_count, representative_pids
         )
+        merging_cut = self.build_merging_cut()
         if len(self.process.cut_data) > 0:
             self.cuts = ms.Cuts([
                 ms.CutItem(
@@ -3034,9 +3069,9 @@ class MadgraphSubprocess:
                     mode=cut_item.mode,
                 )
                 for cut_item in self.process.cut_data
-            ], custom_cut)
-        elif custom_cut is not None:
-            self.cuts = ms.Cuts(self.particle_count, custom_cut)
+            ], custom_cut, merging_cut)
+        elif custom_cut is not None or merging_cut is not None:
+            self.cuts = ms.Cuts(self.particle_count, custom_cut, merging_cut)
         else:
             self.cuts = None
         # A flavor standing for both beam orientations draws the orientation
@@ -3080,6 +3115,9 @@ class MadgraphSubprocess:
             min_scale = self.process.run_card["beam"]["min_scale"]
             max_scale = self.process.max_scale
         if self.process.mlm_clustering:
+            # "ckkwl": madevent's dynamical_scale_choice -1 central scale, with
+            # no merging cut and no alpha_s / pdf ladder (Pythia8 applies those)
+            ckkwl = getattr(self.process, "ckkwl_scale", False)
             mc_data = self.build_multi_channel_data()
             all_pids = (clean_pids(self.meta["incoming"])
                         + clean_pids(self.meta["outgoing"]))
@@ -3095,13 +3133,14 @@ class MadgraphSubprocess:
                     ),
                     scale_scheme=getattr(
                         ms.MLMClustering.ScaleScheme,
-                        self.process.run_card["beam"]["scale_scheme"],
+                        "madevent" if ckkwl
+                        else self.process.run_card["beam"]["scale_scheme"],
                     ),
                     pdg_color_types={
                         int(key): value
                         for key, value in self.meta["pdg_color_types"].items()
                     },
-                    xqcut=self.process.run_card["phasespace"]["xqcut"],
+                    xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
                     bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
                     jet_radius=self.process.run_card["beam"]["jet_radius"],
                     hadronic=not self.process.leptonic,
@@ -3113,9 +3152,10 @@ class MadgraphSubprocess:
                     ),
                     alphas_scheme=getattr(
                         ms.MLMClustering.AlphasScheme,
-                        self.process.run_card["beam"]["alphas_reweighting"],
+                        "none" if ckkwl
+                        else self.process.run_card["beam"]["alphas_reweighting"],
                     ),
-                    pdf_reweighting=self.process.run_card["beam"][
+                    pdf_reweighting=False if ckkwl else self.process.run_card["beam"][
                         "pdf_reweighting"
                     ],
                     clustering_measure=getattr(
@@ -3155,6 +3195,45 @@ class MadgraphSubprocess:
                         me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
+
+    def build_merging_cut(self):
+        """ms.MergingCut of the CKKW-L cut for this subprocess, or None.
+
+        As madevent, the merging legs never include decay-chain products, and
+        the flavours are those of the first flavour of the subprocess."""
+        merging_cut = getattr(self.process, "merging_cut", None)
+        if merging_cut is None or len(self.meta["incoming"]) != 2:
+            return None
+        measure, value, merging_pdgs = merging_cut
+        n_in = len(self.meta["incoming"])
+        decay = decay_products(self.meta, self.unmerged_meta)
+
+        def leg_mask(pids):
+            return [
+                i >= n_in and i - n_in not in decay and abs(pid) in merging_pdgs
+                for i, pid in enumerate(pids)
+            ]
+
+        pids = self.flavor_pids()[0]
+        mask = leg_mask(pids)
+        if any(leg_mask(option) != mask
+               for option in _flavor_options(self.meta, self.unmerged_meta)):
+            raise ValueError(
+                f"subprocess {self.meta['incoming']} > {self.meta['outgoing']} "
+                "groups flavours that merging_pdgs treats differently; regenerate "
+                "the process after 'set apply_flavor_grouping False'"
+            )
+        hadronic = not self.process.leptonic
+        scale = ms.MergingScale(
+            measure,
+            list(pids),
+            mask,
+            d_parameter=float(self.process.run_card["phasespace"]["dparameter"]),
+            hadronic1=hadronic,
+            hadronic2=hadronic,
+            max_jet_flavor=int(self.process.run_card["beam"]["max_jet_flavor"]),
+        )
+        return ms.MergingCut(scale, value) if scale.active() else None
 
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the

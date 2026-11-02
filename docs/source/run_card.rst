@@ -350,8 +350,8 @@ VEGAS grids adapt the phase-space sampling during the survey.
     :math:`k_T = \min(p_{T,i}, p_{T,j})\,\Delta R_{ij}/D` of each pair. ``0`` disables it.
     Pythia8's ``Merging:TMS`` defaults to this value, and ``Merging:Process`` has to be set
     in the Pythia8 card. Only one of ``ktdurham`` and ``ptlund`` can be set, and neither
-    together with ``xqcut``. With ``auto_ptj_mjj`` the jet :math:`p_T` cut is raised to it on
-    hadron colliders.
+    together with ``xqcut``. On hadron colliders the phase-space sampling starts the
+    :math:`p_T` of the merging partons at this value.
 
 ``ptlund`` (``0.0``)
     CKKW-L merging with Pythia8: the smallest Pythia8 evolution :math:`p_T` over all ISR and
@@ -362,8 +362,8 @@ VEGAS grids adapt the phase-space sampling during the survey.
 
 ``merging_pdgs`` (``"auto"``)
     PDG ids of the particles the ``ktdurham`` or ``ptlund`` cut applies to. ``auto`` takes
-    all colored particles of the process. Decay products of on-shell particles are excluded
-    unless ``cut_decays`` is set.
+    all colored particles of the process. As in MadEvent, decay-chain products are never
+    merging partons.
 
 [custom_functions]
 ------------------
