@@ -606,9 +606,12 @@ type SegmentTable = Vec<(LegSet, u32, i64)>;
 /// child)` they take (a child of depth 1 is the first leaf of its
 /// `(orders, ring)`), its `rank_in` the largest q-degree of the dressed
 /// `ring[..d - 1]`; nodes are numbered depth by depth, each depth sorted by
-/// `(orders, suffix)`. Suffixes are interned (`(head label, tail id)`), so
-/// no suffix is copied per leaf and depth; [`build_trie_oracle`] is the
-/// direct transcription of `schedules.build_trie`.
+/// `(orders, suffix)`. The `(orders, suffix)` pairs are interned once per
+/// leaf and depth as `(orders, head label, tail id)`: an id of depth `d` is
+/// the node, and the ids of depth `d - 1` with that tail are its edges
+/// (distinct by construction), so no suffix is copied or grouped per leaf
+/// and depth; [`build_trie_oracle`] is the direct transcription of
+/// `schedules.build_trie`.
 fn build_trie(
     key: &FamilyKey,
     oriented: &[(usize, &[u32])],
@@ -618,99 +621,115 @@ fn build_trie(
 ) -> (Vec<TrieNode>, i64) {
     let count = key.len();
     let leaves = oriented.len();
-    // Suffix ids: 0 is the empty suffix; `tails[id] = (head, tail)`.
-    let mut tails: Vec<(u32, u32)> = vec![(u32::MAX, u32::MAX)];
-    let mut interned: HashMap<(u32, u32), u32> = HashMap::default();
-    // `suffix[d * leaves + leaf]`: the id of `ring[d..]` (d = 0..=count).
-    let mut suffix = vec![0u32; (count + 1) * leaves];
-    for (leaf, (_, ring)) in oriented.iter().enumerate() {
-        let mut tail = 0u32;
-        for depth in (0..count).rev() {
-            let pair = (ring[depth], tail);
-            tail = *interned.entry(pair).or_insert_with(|| {
-                tails.push(pair);
-                (tails.len() - 1) as u32
-            });
-            suffix[depth * leaves + leaf] = tail;
-        }
-    }
-    let spelled = |mut id: u32| -> Vec<u32> {
-        let mut out = Vec::new();
-        while id != 0 {
-            let (head, tail) = tails[id as usize];
-            out.push(head);
-            id = tail;
-        }
-        out
-    };
-    // Depth 0: the first leaf of each (orders, ring).
-    let mut first: HashMap<(u32, u32), u32> = HashMap::default();
-    for (leaf, (skeleton, _)) in oriented.iter().enumerate() {
-        first
-            .entry((orders[*skeleton], suffix[leaf]))
-            .or_insert(leaf as u32);
-    }
-    let mut child: Vec<u32> = oriented
-        .iter()
-        .enumerate()
-        .map(|(leaf, (skeleton, _))| first[&(orders[*skeleton], suffix[leaf])])
-        .collect();
-    let mut degree = vec![0i64; leaves];
-    let mut nodes: Vec<TrieNode> = Vec::new();
-    let mut group = vec![0u32; leaves];
-    for depth in 1..=count {
-        // Group the leaves by (orders, ring[depth..]).
-        let mut index: HashMap<(u32, u32), u32> = HashMap::default();
-        let mut keys: Vec<(u32, u32)> = Vec::new();
-        let mut edges: Vec<Vec<(u32, u32)>> = Vec::new();
-        let mut rank_in: Vec<i64> = Vec::new();
-        for (leaf, (skeleton, ring)) in oriented.iter().enumerate() {
-            if depth >= 2 {
-                degree[leaf] += segments[ring[depth - 2] as usize].2;
-            }
-            let key = (orders[*skeleton], suffix[depth * leaves + leaf]);
-            let at = *index.entry(key).or_insert_with(|| {
-                keys.push(key);
-                edges.push(Vec::new());
-                rank_in.push(0);
-                (keys.len() - 1) as u32
-            }) as usize;
-            edges[at].push((ring[depth - 1], child[leaf]));
-            rank_in[at] = rank_in[at].max(degree[leaf]);
-            group[leaf] = at as u32;
-        }
-        let suffixes: Vec<Vec<u32>> = keys.iter().map(|&(_, id)| spelled(id)).collect();
-        let mut order: Vec<usize> = (0..keys.len()).collect();
-        order.sort_unstable_by(|&a, &b| {
-            space
-                .get(keys[a].0)
-                .cmp(space.get(keys[b].0))
-                .then_with(|| suffixes[a].cmp(&suffixes[b]))
-        });
-        let mut node_of = vec![0u32; keys.len()];
-        let mut suffixes = suffixes;
-        for at in order {
-            node_of[at] = nodes.len() as u32;
-            let mut node_edges = std::mem::take(&mut edges[at]);
-            node_edges.sort_unstable();
-            node_edges.dedup();
-            nodes.push(TrieNode {
-                depth,
-                orders: keys[at].0,
-                rank_in: rank_in[at],
-                suffix: std::mem::take(&mut suffixes[at]),
-                edges: node_edges,
-            });
-        }
-        for leaf in 0..leaves {
-            child[leaf] = node_of[group[leaf] as usize];
-        }
-    }
     let rank = oriented
         .iter()
         .map(|(_, ring)| ring.iter().map(|&l| segments[l as usize].2).sum::<i64>())
         .max()
         .unwrap_or(0);
+    if count == 0 {
+        return (Vec::new(), rank);
+    }
+    // Interned (orders, head, tail id); the empty suffix of an orders has
+    // head and tail u32::MAX. `depth_of[id]` is the depth whose suffix the
+    // id spells (`count` for the empty one).
+    let mut items: Vec<(u32, u32, u32)> = Vec::new();
+    let mut depth_of: Vec<u32> = Vec::new();
+    let mut interned: HashMap<(u32, u32, u32), u32> = HashMap::default();
+    let mut intern = |item: (u32, u32, u32), depth: usize| -> u32 {
+        *interned.entry(item).or_insert_with(|| {
+            items.push(item);
+            depth_of.push(depth as u32);
+            (items.len() - 1) as u32
+        })
+    };
+    // `at[d * leaves + leaf]`: the id of the leaf's (orders, ring[d..]).
+    let mut at = vec![0u32; (count + 1) * leaves];
+    for (leaf, (skeleton, ring)) in oriented.iter().enumerate() {
+        let order = orders[*skeleton];
+        let mut tail = intern((order, u32::MAX, u32::MAX), count);
+        at[count * leaves + leaf] = tail;
+        for depth in (0..count).rev() {
+            tail = intern((order, ring[depth], tail), depth);
+            at[depth * leaves + leaf] = tail;
+        }
+    }
+    drop(intern);
+    drop(interned);
+    let ids = items.len();
+    // The first leaf of each depth-0 id (the children of depth 1).
+    let mut number = vec![u32::MAX; ids];
+    for leaf in 0..leaves {
+        let id = at[leaf] as usize;
+        if number[id] == u32::MAX {
+            number[id] = leaf as u32;
+        }
+    }
+    // rank_in per id: the largest q-degree of ring[..d - 1] over its leaves.
+    let mut rank_in = vec![0i64; ids];
+    let mut degree = vec![0i64; leaves];
+    for depth in 2..=count {
+        for (leaf, (_, ring)) in oriented.iter().enumerate() {
+            degree[leaf] += segments[ring[depth - 2] as usize].2;
+            let id = at[depth * leaves + leaf] as usize;
+            rank_in[id] = rank_in[id].max(degree[leaf]);
+        }
+    }
+    // The ids of each depth, in first-seen order.
+    let mut by_depth: Vec<Vec<u32>> = vec![Vec::new(); count + 1];
+    for (id, &depth) in depth_of.iter().enumerate() {
+        by_depth[depth as usize].push(id as u32);
+    }
+    let spelled = |mut id: u32| -> Vec<u32> {
+        let mut out = Vec::new();
+        loop {
+            let (_, head, tail) = items[id as usize];
+            if head == u32::MAX {
+                return out;
+            }
+            out.push(head);
+            id = tail;
+        }
+    };
+    let mut nodes: Vec<TrieNode> = Vec::new();
+    let mut node_of = vec![u32::MAX; ids];
+    for depth in 1..=count {
+        let mut keyed: Vec<(u32, Vec<u32>)> = by_depth[depth]
+            .iter()
+            .map(|&id| (id, spelled(id)))
+            .collect();
+        keyed.sort_unstable_by(|a, b| {
+            space
+                .get(items[a.0 as usize].0)
+                .cmp(space.get(items[b.0 as usize].0))
+                .then_with(|| a.1.cmp(&b.1))
+        });
+        let first = nodes.len();
+        for (id, suffix) in keyed {
+            node_of[id as usize] = nodes.len() as u32;
+            nodes.push(TrieNode {
+                depth,
+                orders: items[id as usize].0,
+                rank_in: rank_in[id as usize],
+                suffix,
+                edges: Vec::new(),
+            });
+        }
+        // Each id of depth - 1 is one edge of its tail's node.
+        for &child in &by_depth[depth - 1] {
+            let (_, head, tail) = items[child as usize];
+            let target = if depth == 1 {
+                number[child as usize]
+            } else {
+                node_of[child as usize]
+            };
+            nodes[node_of[tail as usize] as usize]
+                .edges
+                .push((head, target));
+        }
+        for node in &mut nodes[first..] {
+            node.edges.sort_unstable();
+        }
+    }
     (nodes, rank)
 }
 
@@ -794,6 +813,8 @@ fn segment_rows(mask: LegSet, leg_rows: &[u64]) -> Option<u128> {
     Some(rows)
 }
 
+/// The cost of built trie nodes (the oracle of [`interned_trie_cost`]).
+#[cfg(test)]
 fn trie_cost(
     nodes: &[TrieNode],
     rank: i64,
@@ -829,6 +850,101 @@ fn trie_cost(
                     .node(rows_out, node.rank_in, x_rows)
                     .ok_or_else(overflow)?,
             )
+            .ok_or_else(overflow)?;
+    }
+    Ok(total)
+}
+
+/// `trie_cost` of the trie `build_trie` builds for these leaves, from its
+/// interned `(orders, suffix)` ids without forming the nodes: a node's input
+/// rows are its head's rows times its tail's, its edge rows the sum of the
+/// rows of the heads of the ids it is the tail of, its `rank_in` the
+/// leaves' largest dressed q-degree. All factors and terms are at least 1
+/// or 0, so a sum or product overflows exactly when `trie_cost`'s does.
+fn interned_trie_cost(
+    count: usize,
+    oriented: &[(usize, &[u32])],
+    orders: &[u32],
+    model: &CostModel,
+    leg_rows: &[u64],
+    segments: &SegmentTable,
+) -> Result<u128, String> {
+    let overflow =
+        || "the schedule-B cost exceeds 128 bits (or a leg has no helicity count)".to_string();
+    let leaves = oriented.len();
+    let rank = oriented
+        .iter()
+        .map(|(_, ring)| ring.iter().map(|&l| segments[l as usize].2).sum::<i64>())
+        .max()
+        .unwrap_or(0);
+    // Per id: (its head's rows, tail id, depth); the empty suffix of an
+    // orders has tail u32::MAX. Every label of a ring heads some id, so a
+    // label without rows fails as `trie_cost` fails on its edge.
+    let mut items: Vec<(u128, u32, u32)> = Vec::new();
+    let mut interned: HashMap<(u32, u32, u32), u32> = HashMap::default();
+    let mut at = vec![0u32; (count + 1) * leaves];
+    let mut rowless = false;
+    for (leaf, (skeleton, ring)) in oriented.iter().enumerate() {
+        let order = orders[*skeleton];
+        let mut tail = *interned
+            .entry((order, u32::MAX, u32::MAX))
+            .or_insert_with(|| {
+                items.push((1, u32::MAX, count as u32));
+                (items.len() - 1) as u32
+            });
+        at[count * leaves + leaf] = tail;
+        for depth in (0..count).rev() {
+            let label = ring[depth];
+            tail = *interned.entry((order, label, tail)).or_insert_with(|| {
+                let rows = segment_rows(segments[label as usize].0, leg_rows);
+                rowless |= rows.is_none();
+                items.push((rows.unwrap_or(0), tail, depth as u32));
+                (items.len() - 1) as u32
+            });
+            at[depth * leaves + leaf] = tail;
+        }
+    }
+    drop(interned);
+    if rowless {
+        return Err(overflow());
+    }
+    let ids = items.len();
+    let mut rank_in = vec![0i64; ids];
+    let mut degree = vec![0i64; leaves];
+    for depth in 2..=count {
+        for (leaf, (_, ring)) in oriented.iter().enumerate() {
+            degree[leaf] += segments[ring[depth - 2] as usize].2;
+            let id = at[depth * leaves + leaf] as usize;
+            rank_in[id] = rank_in[id].max(degree[leaf]);
+        }
+    }
+    // Input rows of each id's suffix (ids are interned tails first).
+    let mut rows_out: Vec<Option<u128>> = Vec::with_capacity(ids);
+    let mut x_rows: Vec<Option<u128>> = vec![Some(0); ids];
+    let mut accumulators: u128 = 0;
+    for &(rows, tail, _) in &items {
+        if tail == u32::MAX {
+            accumulators += 1;
+            rows_out.push(Some(1));
+        } else {
+            let product = rows_out[tail as usize].and_then(|r| r.checked_mul(rows));
+            rows_out.push(product);
+            let sum = &mut x_rows[tail as usize];
+            *sum = sum.and_then(|x| x.checked_add(rows));
+        }
+    }
+    let mut total = model
+        .close(rank)
+        .and_then(|c| c.checked_mul(accumulators))
+        .ok_or_else(overflow)?;
+    for (id, &(_, _, depth)) in items.iter().enumerate() {
+        if depth == 0 {
+            continue; // the leaves' rings: no node
+        }
+        let rows = rows_out[id].ok_or_else(overflow)?;
+        let x = x_rows[id].ok_or_else(overflow)?;
+        total = total
+            .checked_add(model.node(rows, rank_in[id], x).ok_or_else(overflow)?)
             .ok_or_else(overflow)?;
     }
     Ok(total)
@@ -1070,10 +1186,6 @@ fn view_and_tries(
                         .ok_or_else(|| format!("no fixed frame for family {family}"))?,
                 ),
             };
-            // (frame, target index, nodes, rank, cost) of the cheapest frame
-            // so far.
-            type Candidate = ((usize, bool), usize, Vec<TrieNode>, i64, u128);
-            let mut best: Option<Candidate> = None;
             // orient: per skeleton and frame, the fitting reading that
             // `shared_suffix` picks (first minimum of (ring[1:], ring)).
             let target_index: HashMap<&FamilyKey, usize> = targets
@@ -1110,13 +1222,8 @@ fn view_and_tries(
             if chosen.iter().any(|row| row.iter().any(Option::is_none)) {
                 return Err(format!("skeleton does not belong to family {family}"));
             }
-            for (t, (_target, frame)) in targets.iter().enumerate() {
-                if let Some(frame_wanted) = wanted
-                    && *frame != frame_wanted
-                {
-                    continue;
-                }
-                let oriented: Vec<(usize, &[u32])> = chosen
+            let oriented_in = |t: usize| -> Vec<(usize, &[u32])> {
+                chosen
                     .iter()
                     .enumerate()
                     .map(|(index, row)| {
@@ -1125,20 +1232,36 @@ fn view_and_tries(
                             data.readings[index][row[t].expect("checked")].as_slice(),
                         )
                     })
-                    .collect();
-                let (nodes, rank) = build_trie(key, &oriented, &data.orders, space, &segments);
+                    .collect()
+            };
+            // The cheapest frame is priced on its interned (orders, suffix)
+            // ids (`interned_trie_cost` = `trie_cost` of its trie); only the
+            // chosen frame's trie is built.
+            let mut best: Option<((usize, bool), usize, u128)> = None;
+            for (t, (_target, frame)) in targets.iter().enumerate() {
+                if let Some(frame_wanted) = wanted
+                    && *frame != frame_wanted
+                {
+                    continue;
+                }
                 let cost = match &input.policy {
-                    FramePolicy::Cheapest { model, leg_rows } => {
-                        trie_cost(&nodes, rank, count, model, leg_rows, &segments)?
-                    }
+                    FramePolicy::Cheapest { model, leg_rows } => interned_trie_cost(
+                        count,
+                        &oriented_in(t),
+                        &data.orders,
+                        model,
+                        leg_rows,
+                        &segments,
+                    )?,
                     FramePolicy::Fixed { .. } => 0,
                 };
-                if best.as_ref().is_none_or(|b| cost < b.4) {
-                    best = Some((*frame, t, nodes, rank, cost));
+                if best.as_ref().is_none_or(|b| cost < b.2) {
+                    best = Some((*frame, t, cost));
                 }
             }
-            let (frame, t, nodes, rank, _) =
+            let (frame, t, _) =
                 best.ok_or_else(|| format!("the fixed frame is not a frame of family {family}"))?;
+            let (nodes, rank) = build_trie(key, &oriented_in(t), &data.orders, space, &segments);
             let leaves: Vec<(usize, Vec<u32>)> = chosen
                 .iter()
                 .enumerate()
@@ -1166,7 +1289,10 @@ fn view_and_tries(
 
 #[cfg(test)]
 mod tests {
-    use super::{OrderSpace, SegmentTable, build_trie, build_trie_oracle, segment_rows};
+    use super::{
+        CostModel, OrderSpace, SegmentTable, build_trie, build_trie_oracle, interned_trie_cost,
+        segment_rows, trie_cost,
+    };
 
     #[test]
     fn interned_suffix_tries_equal_the_transcribed_ones() {
@@ -1211,6 +1337,78 @@ mod tests {
                         (b.depth, b.orders, &b.suffix, b.rank_in, &b.edges)
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn interned_frame_costs_equal_the_built_tries_costs() {
+        // The pseudo-random leaves of the trie test, priced by the default
+        // and the dense cost models with per-leg helicity counts.
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut next = |bound: u64| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 33) % bound
+        };
+        let mut space = OrderSpace::new();
+        let order_ids = [
+            space.intern(vec![(0, 3)]),
+            space.intern(vec![(0, 2), (1, 1)]),
+            space.intern(vec![(1, 2)]),
+        ];
+        let segments: SegmentTable =
+            (0..9).map(|l| ((1u64 << (l % 7)) | (1u64 << ((l + 3) % 7)), 0, (l % 3) as i64)).collect();
+        let models = [
+            CostModel {
+                fused: 200,
+                split: 64,
+                vertex: 300,
+                seed_fused: 80,
+                seed_split: 4,
+                closure: 4,
+                columns: 1,
+            },
+            CostModel {
+                fused: 320,
+                split: 64,
+                vertex: 1300,
+                seed_fused: 80,
+                seed_split: 4,
+                closure: 4,
+                columns: 3,
+            },
+        ];
+        let leg_rows = [2u64, 2, 3, 1, 2, 5, 2];
+        for count in 1..=7usize {
+            for skeletons in [1usize, 5, 40, 300] {
+                let orders: Vec<u32> = (0..skeletons)
+                    .map(|_| order_ids[next(3) as usize])
+                    .collect();
+                let rings: Vec<(usize, Vec<u32>)> = (0..2 * skeletons)
+                    .map(|leaf| {
+                        let ring = (0..count).map(|_| next(4 + count as u64 % 5) as u32).collect();
+                        (leaf % skeletons, ring)
+                    })
+                    .collect();
+                let borrowed: Vec<(usize, &[u32])> =
+                    rings.iter().map(|(s, r)| (*s, r.as_slice())).collect();
+                let key = vec![(0u64, 0u32); count];
+                let (nodes, rank) = build_trie(&key, &borrowed, &orders, &space, &segments);
+                for model in &models {
+                    let expected = trie_cost(&nodes, rank, count, model, &leg_rows, &segments);
+                    let found =
+                        interned_trie_cost(count, &borrowed, &orders, model, &leg_rows, &segments);
+                    assert_eq!(found, expected, "count {count}, {skeletons}");
+                }
+                // A leg without its helicity count fails both ways.
+                let short = &leg_rows[..3];
+                assert!(trie_cost(&nodes, rank, count, &models[0], short, &segments).is_err());
+                assert!(
+                    interned_trie_cost(count, &borrowed, &orders, &models[0], short, &segments)
+                        .is_err()
+                );
             }
         }
     }
