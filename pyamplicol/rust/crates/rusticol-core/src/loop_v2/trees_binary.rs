@@ -527,7 +527,7 @@ impl StepColumns {
         let mut renumbered = vec![u64::MAX; weights.len()];
         let mut used = Vec::new();
         for step in steps {
-            for row in &step.rows {
+            for row in step.rows.iter() {
                 let w = usize::try_from(row[8])
                     .ok()
                     .filter(|&w| w < weights.len())
@@ -557,7 +557,7 @@ impl StepColumns {
         };
         for step in steps {
             out.rows.push(step.rows.len() as u64);
-            for row in &step.rows {
+            for row in step.rows.iter() {
                 for (k, value) in row[..8].iter().enumerate() {
                     rows[k].push(unsigned(*value)?);
                 }
@@ -608,7 +608,7 @@ impl StepColumns {
         let mut total = 0usize;
         for step in &steps {
             total += step.rows.len();
-            for row in &step.rows {
+            for row in step.rows.iter() {
                 let w = usize::try_from(row[8])
                     .ok()
                     .filter(|&w| w < weights.len())
@@ -664,7 +664,7 @@ impl StepColumns {
         const CHUNK: usize = 1 << 20;
         let mut index = total;
         while let Some(mut step) = steps.pop() {
-            while let Some(row) = step.rows.pop() {
+            while let Some(row) = step.rows.pop(CHUNK) {
                 index -= 1;
                 for (k, column) in rows.iter_mut().enumerate() {
                     let value = if k == 8 {
@@ -676,9 +676,6 @@ impl StepColumns {
                         Column::U32(values) => values[index] = value as u32,
                         Column::U64(values) => values[index] = value,
                     }
-                }
-                if step.rows.capacity() - step.rows.len() > CHUNK {
-                    step.rows.shrink_to_fit();
                 }
             }
         }
@@ -1438,13 +1435,14 @@ mod tests {
                 rows: vec![
                     [0, 4, 4, 8, 4, 100, 104, 0, 2],
                     [1, wide, 4, 12, 4, 100, 108, 1, 0],
-                ],
+                ]
+                .into(),
                 accumulators: vec![4, 4],
                 outputs: vec![[0, -1, 112, 16, 4], [1, 0, 116, 20, 4]],
                 accumulator_masks: vec![0, 3],
             },
             Step {
-                rows: vec![[1, 16, 4, 20, 4, 112, 116, 0, 2]],
+                rows: crate::loop_v2::dag::program::Rows::Narrow(vec![[1, 16, 4, 20, 4, 112, 116, 0, 2]]),
                 accumulators: vec![4],
                 outputs: vec![[0, 1, 120, 24, 4]],
                 accumulator_masks: vec![],

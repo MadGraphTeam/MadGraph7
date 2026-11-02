@@ -212,7 +212,7 @@ impl V2Program {
         let steps = PyList::empty(py);
         for step in &self.program.steps {
             let rows = PyList::empty(py);
-            for row in &step.rows {
+            for row in step.rows.iter() {
                 let (real, imag) = &texts[row[8] as usize];
                 let mut items: Vec<Bound<'py, PyAny>> = Vec::with_capacity(10);
                 for value in &row[..8] {
