@@ -311,7 +311,7 @@ KERNELSPEC void kernel_fks_final_massive_sample(
     FIn<T, 0> r_y,
     FIn<T, 0> sqrt_s,
     FIn<T, 1> p_jbar,
-    FSIn<T, 0> m_j,
+    FIn<T, 0> m_j,
     FOut<T, 0> xi_hat,
     FOut<T, 0> y,
     FOut<T, 0> det
@@ -335,7 +335,7 @@ KERNELSPEC void kernel_fks_final_massive_sample_inverse(
     FIn<T, 0> y,
     FIn<T, 0> sqrt_s,
     FIn<T, 1> p_jbar,
-    FSIn<T, 0> m_j,
+    FIn<T, 0> m_j,
     FOut<T, 0> r_xi,
     FOut<T, 0> r_y,
     FOut<T, 0> det
@@ -362,7 +362,7 @@ KERNELSPEC void kernel_fks_final_massive_radiate(
     FIn<T, 0> r_phi,
     FIn<T, 0> sqrt_s,
     FIn<T, 1> p_jbar,
-    FSIn<T, 0> m_j,
+    FIn<T, 0> m_j,
     FOut<T, 1> p_i,
     FOut<T, 1> p_j,
     FOut<T, 0> xi,
@@ -438,7 +438,7 @@ KERNELSPEC void kernel_fks_final_massive_cluster(
     FIn<T, 1> p_i,
     FIn<T, 1> p_j,
     FIn<T, 0> sqrt_s,
-    FSIn<T, 0> m_j,
+    FIn<T, 0> m_j,
     FOut<T, 1> p_jbar,
     FOut<T, 0> xi_hat,
     FOut<T, 0> y,
@@ -586,8 +586,8 @@ KERNELSPEC void kernel_fks_initial_radiate(
     FIn<T, 0> sqrt_s,
     FIn<T, 0> x1_born,
     FIn<T, 0> x2_born,
-    FSIn<T, 0> s_hat_min,
-    FSIn<T, 0> beam_sign,
+    FIn<T, 0> s_hat_min,
+    FIn<T, 0> beam_sign,
     FOut<T, 1> p_in1,
     FOut<T, 1> p_in2,
     FOut<T, 1> p_i,
@@ -662,8 +662,8 @@ KERNELSPEC void kernel_fks_initial_cluster(
     FIn<T, 1> p_i,
     FIn<T, 0> x1,
     FIn<T, 0> x2,
-    FSIn<T, 0> s_hat_min,
-    FSIn<T, 0> beam_sign,
+    FIn<T, 0> s_hat_min,
+    FIn<T, 0> beam_sign,
     FOut<T, 0> sqrt_s,
     FOut<T, 0> x1_born,
     FOut<T, 0> x2_born,
@@ -774,7 +774,7 @@ KERNELSPEC void kernel_fks_initial_recoil_boost(
     FIn<T, 0> xi,
     FIn<T, 0> y,
     FIn<T, 0> r_phi,
-    FSIn<T, 0> beam_sign,
+    FIn<T, 0> beam_sign,
     FOut<T, 2> p_out
 ) {
     fks_initial_recoil_boost<T>(p, xi, y, r_phi, FVal<T>(beam_sign), 1., p_out);
@@ -786,7 +786,7 @@ KERNELSPEC void kernel_fks_initial_recoil_boost_inverse(
     FIn<T, 0> xi,
     FIn<T, 0> y,
     FIn<T, 0> r_phi,
-    FSIn<T, 0> beam_sign,
+    FIn<T, 0> beam_sign,
     FOut<T, 2> p_out
 ) {
     fks_initial_recoil_boost<T>(p, xi, y, r_phi, FVal<T>(beam_sign), -1., p_out);
@@ -866,9 +866,9 @@ KERNELSPEC void kernel_fks_counter_event_det(
     FIn<T, 0> y,
     FIn<T, 0> xi_hat,
     FIn<T, 0> rat,
-    FSIn<T, 0> soft,
-    FSIn<T, 0> collinear,
-    FSIn<T, 0> exists,
+    FIn<T, 0> soft,
+    FIn<T, 0> collinear,
+    FIn<T, 0> exists,
     FOut<T, 0> det_out
 ) {
     FVal<T> d = det, xv = xi, yv = y, xh = xi_hat, rt = rat, s(soft), c(collinear);

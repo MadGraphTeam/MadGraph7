@@ -50,6 +50,9 @@ namespace madspace {
  * - `mirror_index` – `int`, shape `(batch,)` – 1 to take leg 1 from beam 2 and
  *   leg 2 from beam 1. Present only when `mirror_beams` is set; it follows
  *   `permutation_index`.
+ * - `sqrt_s_hat_min` – `float`, shape `(batch,)` – lower bound on sqrt(s_hat)
+ *   of the event. Present only when `sqrt_s_hat_min_condition` is set; it
+ *   comes last.
  *
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n_out + 2, 4)` – all momenta (incoming
@@ -117,6 +120,12 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param sqrt_s_hat_min_condition  Add the `sqrt_s_hat_min` condition, a
+     *                         lower bound on sqrt(s_hat) for each event. It
+     *                         acts like a cut on sqrt(s_hat) at that value:
+     *                         it raises the lower end of the s_hat the
+     *                         luminosity mapping samples and sets the weight
+     *                         of an event below it to zero.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -129,7 +138,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        bool sqrt_s_hat_min_condition = false
     );
 
     /**
@@ -171,6 +181,12 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param sqrt_s_hat_min_condition  Add the `sqrt_s_hat_min` condition, a
+     *                         lower bound on sqrt(s_hat) for each event. It
+     *                         acts like a cut on sqrt(s_hat) at that value:
+     *                         it raises the lower end of the s_hat the
+     *                         luminosity mapping samples and sets the weight
+     *                         of an event below it to zero.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,
@@ -182,7 +198,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        bool sqrt_s_hat_min_condition = false
     );
 
     /**
@@ -224,6 +241,8 @@ public:
     double beam_rapidity() const { return _beam_rapidity; }
     /// Whether the mapping takes the `mirror_index` condition.
     bool mirror_beams() const { return _mirror_beams; }
+    /// Whether the mapping takes the `sqrt_s_hat_min` condition.
+    bool sqrt_s_hat_min_condition() const { return _sqrt_s_hat_min_condition; }
     /// Whether the PDF convolution is skipped (`x1` = `x2` = 1).
     bool leptonic() const { return _leptonic; }
     /// Masses of the particles in the order of the output momenta, the beams
@@ -278,6 +297,7 @@ private:
     double _sqrt_s_lab;
     double _beam_rapidity;
     bool _mirror_beams;
+    bool _sqrt_s_hat_min_condition;
     bool _leptonic;
     bool _map_luminosity;
     bool _two_to_one;

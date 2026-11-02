@@ -227,6 +227,18 @@ double min_transverse_mass_sum(
     }
     return sum;
 }
+// The floor on sqrt(s_hat) of each event (the sqrt_s_hat_min condition) raises
+// the lower end of the s_hat the luminosity mapping samples, as a cut on
+// sqrt(s_hat) does with the e_min of the root. A floor above the upper end
+// leaves an empty range, sampled at its upper end with a vanishing weight,
+// and the cut on sqrt(s_hat) in build_forward_impl zeroes the event, as for a
+// cut above the beam energy.
+Value raised_s_min(
+    FunctionBuilder& fb, Value s_min, Value s_max, const NamedVector<Value>& conditions
+) {
+    auto floor = fb.square(conditions.at("sqrt_s_hat_min"));
+    return fb.max(s_min, fb.min(floor, s_max));
+}
 } // namespace
 
 PhaseSpaceMapping::PhaseSpaceMapping(
@@ -240,7 +252,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     const std::optional<ColorOrderedMapping::Options>& color_ordered,
     double beam_rapidity,
     bool mirror_beams,
-    std::optional<double> s_hat_power
+    std::optional<double> s_hat_power,
+    bool sqrt_s_hat_min_condition
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -276,6 +289,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             if (mirror_beams) {
                 conditions.push_back("mirror_index", batch_int);
             }
+            if (sqrt_s_hat_min_condition) {
+                conditions.push_back("sqrt_s_hat_min", batch_float);
+            }
             return conditions;
         }()
     ),
@@ -289,6 +305,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     _sqrt_s_lab(cm_energy),
     _beam_rapidity(beam_rapidity),
     _mirror_beams(mirror_beams),
+    _sqrt_s_hat_min_condition(sqrt_s_hat_min_condition),
     _leptonic(leptonic),
     // A decay has no beams to sample momentum fractions for: the root
     // virtuality is fixed at the decaying particle's mass (passed as
@@ -807,7 +824,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     const std::optional<ColorOrderedMapping::Options>& color_ordered,
     double beam_rapidity,
     bool mirror_beams,
-    std::optional<double> s_hat_power
+    std::optional<double> s_hat_power,
+    bool sqrt_s_hat_min_condition
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -861,7 +879,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         color_ordered,
         beam_rapidity,
         mirror_beams,
-        s_hat_power
+        s_hat_power,
+        sqrt_s_hat_min_condition
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -901,6 +920,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         }
         auto p_ext_lab = to_lab(fb, p_ext_stack, x1, x2, conditions);
         dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
+        if (_sqrt_s_hat_min_condition) {
+            // the floor as a cut, for where the sampling does not take it
+            // (no luminosity mapping), as a cut on sqrt(s_hat) would
+            auto above =
+                fb.sub(fb.obs_sqrt_s(p_ext_lab), conditions.at("sqrt_s_hat_min"));
+            dets.push_back(
+                fb.cut_one(above, 0., std::numeric_limits<double>::infinity())
+            );
+        }
         auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
         // Without sampled momentum fractions (leptonic, a decay) x1 = x2 = 1
         // stay constants above. They are returned with the batch dimension of
@@ -957,6 +985,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         }
         if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
+            if (decay_index == 0 && _sqrt_s_hat_min_condition) {
+                s_min = raised_s_min(fb, s_min, s_max, conditions);
+            }
             auto invariant =
                 _s_invariants.at(invariant_index++)
                     .build_forward(fb, {next_random()}, {s_min, s_max});
@@ -1333,6 +1364,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         }
         if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
+            if (decay_index == 0 && _sqrt_s_hat_min_condition) {
+                s_min = raised_s_min(fb, s_min, s_max, conditions);
+            }
             data.mass = data.computed_mass.value();
             data.mass2 = fb.square(data.mass.value());
             auto invariant =

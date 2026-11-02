@@ -169,6 +169,10 @@ def test_phasespace_mapping_both_constructors():
         mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
         cuts=None,
         color_ordered=None,
+        beam_rapidity=0.0,
+        mirror_beams=False,
+        s_hat_power=None,
+        sqrt_s_hat_min_condition=True,
     )
 
 

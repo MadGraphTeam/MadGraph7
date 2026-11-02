@@ -1525,7 +1525,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<ColorOrderedMapping::Options>&,
                 double,
                 bool,
-                std::optional<double>>(),
+                std::optional<double>,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1537,6 +1538,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
+            py::arg("sqrt_s_hat_min_condition") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1550,7 +1552,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<ColorOrderedMapping::Options>&,
                 double,
                 bool,
-                std::optional<double>>(),
+                std::optional<double>,
+                bool>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1561,6 +1564,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
+            py::arg("sqrt_s_hat_min_condition") = false,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -1592,6 +1596,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "mirror_beams",
             &PhaseSpaceMapping::mirror_beams,
             pydoc::doc("PhaseSpaceMapping::mirror_beams")
+        )
+        .def(
+            "sqrt_s_hat_min_condition",
+            &PhaseSpaceMapping::sqrt_s_hat_min_condition,
+            pydoc::doc("PhaseSpaceMapping::sqrt_s_hat_min_condition")
         )
         .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
         .def("empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty"))
