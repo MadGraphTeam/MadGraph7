@@ -349,7 +349,9 @@ def counterterm_trees_digest(trees: Any) -> str:
     records of ``tools/loop_v2_dag.py`` hold since A5."""
 
     hasher = hashlib.sha256()
-    hasher.update(json.dumps(trees.record, separators=(",", ":")).encode())
+    # The record with its steps (decoded where ``NATIVE_SECTIONS`` holds
+    # them as a binary section): the digest does not depend on the form.
+    hasher.update(json.dumps(trees.full_record(), separators=(",", ":")).encode())
     for saved in trees.saved:
         hasher.update(hashlib.sha256(saved).digest())
     return hasher.hexdigest()

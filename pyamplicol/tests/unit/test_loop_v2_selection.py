@@ -589,7 +589,7 @@ def test_helicity_selections_keep_split_block_currents(
         ProcessSet((ProcessRequest.parse(process, name="p"),)), output
     )
     stored = output / "processes" / "p" / "loop-runtime.pacbin"
-    trees = read_native_process(stored, read_plan(stored)).trees.program
+    trees = read_native_process(stored, read_plan(stored)).trees.full_program()
     assert trees.get("block_row_terms")
     runtime = Runtime.load(output, process="p", model_parameters=PARAMETERS)
     reference = json.loads((MQCD / "uux_wpwmg_4fs.json").read_text())

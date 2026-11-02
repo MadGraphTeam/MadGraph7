@@ -75,13 +75,20 @@ def _trees_record(trees: NativeTrees) -> dict[str, Any]:
 
 
 def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
-    """A tree program as named byte members: its JSON, its saved kernels and
-    parameter evaluator, and their binary64 SymJIT plane applications."""
+    """A tree program as named byte members: its JSON (or its binary form,
+    ``tree-program.bin``, ``native_trees.NATIVE_SECTIONS``), its saved
+    kernels and parameter evaluator, and their binary64 SymJIT plane
+    applications."""
 
     if len(trees.planes) != len(trees.kernels) + 1:
         raise ValueError("a native process stores a plane application per state")
+    program = (
+        {f"{prefix}tree-program.bin": trees.binary()}
+        if trees.is_binary
+        else {f"{prefix}tree-program.json": trees.json().encode()}
+    )
     out = {
-        f"{prefix}tree-program.json": trees.json().encode(),
+        **program,
         f"{prefix}parameters.bin": bytes(trees.parameters),
         f"{prefix}parameters.symjit": bytes(trees.planes[-1]),
     }
@@ -94,7 +101,19 @@ def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
 def _trees_from_members(
     members: Mapping[str, bytes], meta: Mapping[str, Any], prefix: str = ""
 ) -> NativeTrees:
-    program = json.loads(members[f"{prefix}tree-program.json"])
+    container = members.get(f"{prefix}tree-program.bin")
+    if container is not None:
+        # A binary tree program: Python reads its head only (the executor
+        # reads the container, ``NativeTrees.executor_argument``).
+        from pyamplicol.loops.native import load_loop_native
+
+        container = bytes(container)
+        head = load_loop_native().tree_program_section(container, "head")
+        if head is None:
+            raise ValueError("a binary tree program without its head")
+        program = json.loads(head)
+    else:
+        program = json.loads(members[f"{prefix}tree-program.json"])
     kernels = []
     while f"{prefix}kernel-{len(kernels)}.bin" in members:
         kernels.append(bytes(members[f"{prefix}kernel-{len(kernels)}.bin"]))
@@ -117,7 +136,21 @@ def _trees_from_members(
             for component, sector, power in meta["counterterm_outputs"]
         ),
         tuple(planes),
+        container=container,
     )
+
+
+def _stored_dipoles(slice_: Any) -> str | None:
+    """C4's stored form for a slice (``dipoles.stored(dipoles.build(slice_))``:
+    one exact entry per relabelling orbit, built and checked in
+    rusticol-core at generation), or None for a Born basis with fewer than
+    two coloured legs (no dipole)."""
+
+    if len(slice_.basis.legs) < 2:
+        return None
+    from . import dipoles
+
+    return dipoles.stored(dipoles.build(slice_))
 
 
 def _plan_view(
@@ -174,6 +207,11 @@ class NativeProcess:
     # The stored observable columns (``native_observables.StoredObservables``)
     # of a process generated with declared colour histories or spin classes.
     observables: Any = None
+    # C4 (M-FINAL MF-8G-1 item 7): the IR dipole operators of the Born basis
+    # per relabelling orbit in their portable stored form (``dipoles.FORMAT``,
+    # kB; ``_stored_dipoles``), for a loaded process's Catani prediction
+    # (``dipole_orbits``); None without two coloured legs.
+    dipoles: str | None = None
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -283,7 +321,7 @@ class NativeProcess:
                 twin_record["fourier"] = json.loads(twin.fourier)
             record["scaleless"] = twin_record
             companion = NativeCompanion(twin_json, twin.trees, twin_record)
-        return cls(plan_json, trees, record, companion)
+        return cls(plan_json, trees, record, companion, dipoles=_stored_dipoles(slice_))
 
     # -- storage -------------------------------------------------------------
 
@@ -304,6 +342,8 @@ class NativeProcess:
             out.update(_trees_members(self.scaleless.trees, SCALELESS))
         if self.observables is not None:
             out.update(self.observables.members())
+        if self.dipoles is not None:
+            out["dipoles.json"] = self.dipoles.encode()
         return out
 
     @classmethod
@@ -342,7 +382,27 @@ class NativeProcess:
             from .native_observables import StoredObservables
 
             observables = StoredObservables.from_members(members)
-        return cls(plan_json, trees, record, companion, observables)
+        dipoles = members.get("dipoles.json")
+        return cls(
+            plan_json,
+            trees,
+            record,
+            companion,
+            observables,
+            None if dipoles is None else bytes(dipoles).decode(),
+        )
+
+    def dipole_orbits(self) -> Any:
+        """The stored IR dipole operators (``dipoles.load``: a
+        ``NativeDipoleOrbits``, validated; ``dipoles.operators`` and
+        ``matrices`` expand them by index arithmetic, no Symbolica), or None
+        when the process stores none."""
+
+        if self.dipoles is None:
+            return None
+        from . import dipoles
+
+        return dipoles.load(self.dipoles)
 
     # -- evaluation ----------------------------------------------------------
 

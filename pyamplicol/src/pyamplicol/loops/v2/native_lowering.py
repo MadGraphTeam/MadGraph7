@@ -41,6 +41,7 @@ oracle). The native lowering itself (D3) comes later.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,6 +49,16 @@ from typing import Any
 # byte ``ExportedPlan.python_json()``, RUST-MIGRATION.md rule 1; equal on every
 # control, tests/unit/test_loop_v2_native_lowering.py).
 NATIVE_JSON = True
+
+# M-FINAL MF-8G-1 item 5 (rule 1): ``export_plan`` streams each schedule-B
+# family record into the native model as the exporter makes it
+# (``families_builder``), so the export never holds the Python records of
+# every family; the plan's ``program["families"]`` is then a read-only view
+# that decodes a family from the model when asked (``NativeFamilies``) and
+# ``ExportedPlan.json()`` / ``binary()`` come from that model. Off (or with
+# ``NATIVE_JSON`` off), the Python records stay in the program (the oracle,
+# ``ExportedPlan.python_json()``).
+NATIVE_FAMILIES = True
 
 
 def _native(native: Any | None) -> Any:
@@ -68,9 +79,45 @@ def _program(exported: Any) -> Any:
 
 def plan_model(exported: Any, native: Any | None = None) -> Any:
     """The native model (``V2PlanModel``) of an exported plan's records (an
-    ``ExportedPlan`` or its ``program``), read from the Python objects."""
+    ``ExportedPlan`` or its ``program``), read from the Python objects; the
+    plan's own model when its families were streamed (``NATIVE_FAMILIES``)."""
 
+    if getattr(exported, "streamed", False):
+        return exported.model
     return _native(native).V2PlanModel.from_program(_program(exported))
+
+
+def families_builder(native: Any | None = None) -> Any:
+    """An empty ``V2PlanFamilies``: ``push`` one family record at a time."""
+
+    return _native(native).V2PlanFamilies()
+
+
+def streamed_model(program: dict[str, Any], families: Any, native: Any | None = None) -> Any:
+    """The native model of ``program`` (its ``families`` an empty list) with
+    the streamed ``families`` (``families_builder``, taken)."""
+
+    return _native(native).V2PlanModel.from_program_families(program, families)
+
+
+class NativeFamilies(Sequence[dict[str, Any]]):
+    """``program["families"]`` of a plan whose families were streamed: each
+    family decoded from the native model when asked (its plan JSON record),
+    nothing kept. Not JSON-serialisable on purpose: ``json.dumps(program)``
+    (``ExportedPlan.python_json()``, the oracle) needs the Python records."""
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    def __len__(self) -> int:
+        return int(self.model.family_count())
+
+    def __getitem__(self, index: Any) -> Any:
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(len(self)))]
+        if index < 0:
+            index += len(self)
+        return json.loads(bytes(self.model.family_json(index)))
 
 
 def plan_model_from_json(exported: Any, native: Any | None = None) -> Any:
@@ -137,8 +184,11 @@ def read(data: bytes, native: Any | None = None) -> str:
 
 
 __all__ = [
+    "NATIVE_FAMILIES",
     "NATIVE_JSON",
+    "NativeFamilies",
     "PlanLoad",
+    "families_builder",
     "load",
     "plan_binary",
     "plan_encodings",
@@ -146,4 +196,5 @@ __all__ = [
     "plan_model",
     "plan_model_from_json",
     "read",
+    "streamed_model",
 ]

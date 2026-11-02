@@ -462,15 +462,13 @@ def _validate(args) -> dict[str, Any]:
         record["point_inputs"] = LOOP_V2_NATIVE_POINT_INPUTS
         trees = executor.exported.trees
         record["tree_program_mb"] = round(
-            (len(trees.json()) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
+            (_stored_size(trees) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
         )
-        record["counterterm_terms"] = len(trees.program["counterterms"]["terms"])
+        record["counterterm_terms"] = _counterterm_terms(trees)
         program = trees.program.get("counterterm_trees")
         if program is not None:
             # The tree recursion's counterterm program (WP2.2), natively.
-            record["counterterm_interactions"] = sum(
-                len(step["interactions"]) for step in program["interactions"]["steps"]
-            )
+            record["counterterm_interactions"] = _counterterm_interactions(trees)
     else:
         executor = NativeExecutor(
             slice_, forward=False, exported=export_plan(slice_, forward=False)
@@ -593,7 +591,7 @@ def poles(args) -> dict[str, Any]:
     record["plan_json_mb"] = round(len(executor._plan_json) / 1e6, 2)
     record["tree_program_mb"] = round(
         (
-            len(executor.exported.trees.json())
+            _stored_size(executor.exported.trees)
             + sum(len(saved) for saved in executor.exported.trees.kernels)
         )
         / 1e6,
@@ -757,3 +755,37 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _stored_size(trees: Any) -> int:
+    """Bytes of a tree program as stored: its binary form (M-FINAL MF-8G-1,
+    ``native_trees.NATIVE_SECTIONS``), else its JSON."""
+
+    return len(trees.binary()) if trees.is_binary else len(trees.json())
+
+
+def _counterterm_interactions(trees: Any) -> int:
+    """Interactions of a tree program's counterterm program (its binary step
+    section's row count where it has one)."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.native_trees import COUNTERTERM_STEPS
+
+    section = dict(trees.sections).get(COUNTERTERM_STEPS)
+    if section is not None:
+        return int(load_loop_native().tree_steps_counts(section)[0])
+    program = trees.program["counterterm_trees"]
+    return sum(len(step["interactions"]) for step in program["interactions"]["steps"])
+
+
+def _counterterm_terms(trees: Any) -> int:
+    """Closure terms of a tree program's counterterm record (its binary term
+    section's count where it has one)."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.native_trees import COUNTERTERM_TERMS
+
+    section = dict(trees.sections).get(COUNTERTERM_TERMS)
+    if section is not None:
+        return int(load_loop_native().tree_terms_count(section))
+    return len(trees.program["counterterms"]["terms"])

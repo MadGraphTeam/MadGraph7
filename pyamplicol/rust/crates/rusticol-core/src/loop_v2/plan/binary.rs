@@ -173,6 +173,32 @@ pub fn column_names() -> &'static [&'static str] {
     COLUMN_NAMES
 }
 
+/// Schedule-B family records gathered one at a time: the exporter's
+/// streamed families (MF-8G-1 item 5), so the Python export never holds the
+/// records of every family at once.
+#[derive(Default)]
+pub struct FamilyRecords(Vec<FamilyFile>);
+
+impl FamilyRecords {
+    /// Append one family read by any `serde` deserializer of the loader's
+    /// file form (the exporter's Python record of a family).
+    pub fn push_records<'de, D: serde::Deserializer<'de>>(
+        &mut self,
+        records: D,
+    ) -> Result<(), D::Error> {
+        self.0.push(serde::Deserialize::deserialize(records)?);
+        Ok(())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// A plan v4 in the loader's file form: the input of [`LoopProgramV4`]'s
 /// validation and derivations, written as the exporter's JSON or as the
 /// binary columnar member.
@@ -199,6 +225,32 @@ impl PlanModel {
             file: serde::Deserialize::deserialize(records)?,
             member: None,
         })
+    }
+
+    /// [`Self::from_records`] of a plan whose families came one at a time
+    /// ([`FamilyRecords`]; the records' own `families` list is empty).
+    pub fn from_records_with_families<'de, D: serde::Deserializer<'de>>(
+        records: D,
+        families: FamilyRecords,
+    ) -> Result<Self, D::Error> {
+        let mut file: PlanFile = serde::Deserialize::deserialize(records)?;
+        if !file.families.is_empty() {
+            return Err(serde::de::Error::custom(
+                "families both in the records and streamed",
+            ));
+        }
+        file.families = families.0;
+        Ok(Self { file, member: None })
+    }
+
+    /// The number of schedule-B families.
+    pub fn family_count(&self) -> usize {
+        self.file.families.len()
+    }
+
+    /// The JSON of family `index` as the plan JSON writes it.
+    pub fn family_json(&self, index: usize) -> Option<Vec<u8>> {
+        self.file.families.get(index).map(json::family_json)
     }
 
     /// The model of a binary plan member ([`Self::binary`]).

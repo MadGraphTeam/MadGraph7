@@ -182,6 +182,9 @@ pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 2] = ["native-v1", "regenerated-a
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
+/// The binary tree program (`loop_v2::trees::binary`, M-FINAL MF-8G-1), which
+/// a process stores instead of [`LOOP_V2_NATIVE_TREES_MEMBER`].
+pub const LOOP_V2_NATIVE_TREES_BINARY_MEMBER: &str = "point-inputs/tree-program.bin.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
 pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
 /// The interaction kernels' saved evaluators and plane applications,
@@ -383,7 +386,11 @@ pub fn load_loop_v2_artifact(
                 PacbinMemberKind::LoopRuntimePlan,
             ),
             (
-                LOOP_V2_NATIVE_TREES_MEMBER,
+                if reader.member(LOOP_V2_NATIVE_TREES_BINARY_MEMBER).is_ok() {
+                    LOOP_V2_NATIVE_TREES_BINARY_MEMBER
+                } else {
+                    LOOP_V2_NATIVE_TREES_MEMBER
+                },
                 PacbinMemberKind::LoopRuntimePlan,
             ),
             (
@@ -536,8 +543,17 @@ pub fn read_loop_v2_native_inputs(
             &format!("{prefix}parameters.symjit"),
             PacbinMemberKind::SymjitApplication,
         )?);
+        // The binary tree program (`loop_v2::trees::binary`, M-FINAL
+        // MF-8G-1) where the process stores one, else the JSON one;
+        // `TreeProgram::load` reads either.
+        let binary = format!("{prefix}tree-program.bin.zlib");
+        let program = if reader.member(&binary).is_ok() {
+            binary
+        } else {
+            format!("{prefix}tree-program.json.zlib")
+        };
         Ok(LoopV2NativeTrees {
-            trees_json: inflate(&format!("{prefix}tree-program.json.zlib"))?,
+            trees_json: inflate(&program)?,
             evaluators,
             planes,
         })

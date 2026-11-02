@@ -135,8 +135,26 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
         let set = sets[current as usize];
         first[current as usize] + (set & ((1u64 << k) - 1)).count_ones()
     };
-    let mut interactions: Vec<Interaction> = Vec::with_capacity(dag.interactions.len());
-    for interaction in &dag.interactions {
+    // The interactions are expanded in place (MF-8G-1 item 4, generation
+    // peak): interaction i becomes |left grades| x |right grades| copies at
+    // positions >= i, so writing the copies from the last interaction back
+    // never overwrites one not yet read, and the DAG never holds two copies
+    // of its interactions.
+    let copies = |interaction: &Interaction| -> usize {
+        (sets[interaction.left as usize].count_ones() * sets[interaction.right as usize].count_ones())
+            as usize
+    };
+    let old = dag.interactions.len();
+    let total: usize = dag.interactions.iter().map(copies).sum();
+    if old > 0 {
+        let filler = dag.interactions[0];
+        dag.interactions.resize(total, filler);
+    }
+    let mut write = total;
+    for read in (0..old).rev() {
+        let interaction = dag.interactions[read];
+        write -= copies(&interaction);
+        let mut position = write;
         let shift = u1[dag.currents[interaction.result as usize].key.particle as usize] as u32;
         let mut left_rest = sets[interaction.left as usize];
         while left_rest != 0 {
@@ -146,18 +164,19 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
             while right_rest != 0 {
                 let right_k = right_rest.trailing_zeros();
                 right_rest &= right_rest - 1;
-                interactions.push(Interaction {
+                dag.interactions[position] = Interaction {
                     left: copy_id(interaction.left, left_k),
                     right: copy_id(interaction.right, right_k),
                     result: copy_id(interaction.result, left_k + right_k + shift),
-                    ..*interaction
-                });
+                    ..interaction
+                };
+                position += 1;
             }
         }
     }
+    debug_assert_eq!(write, 0);
     dag.sources = dag.sources.iter().map(|id| first[*id as usize]).collect();
     dag.currents = currents;
-    dag.interactions = interactions;
     Ok(())
 }
 
