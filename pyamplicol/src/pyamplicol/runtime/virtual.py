@@ -307,6 +307,16 @@ def v2_options(
     return selection, checks
 
 
+def _mapping_kind(member: Any) -> str:
+    """How a ``loops.v2.observables.FlavourMember`` is served: a species
+    substitution (a flavour member, possibly in permuted leg order) or a
+    leg permutation alone (a permutation alias)."""
+
+    if member.species:
+        return "a flavour member" + (" in permuted leg order" if member.alias else "")
+    return "a permutation alias" if member.alias else "a flavour member"
+
+
 class V2ObservablesRuntime:
     """The public virtual-runtime calls over a generated v2 slice's
     observables; the artifact runtime (``loops.v2.artifact.V2VirtualRuntime``)
@@ -353,6 +363,7 @@ class V2ObservablesRuntime:
         precision: int | None = None,
         executor: Literal["native", "python"] = "native",
         member: Any = None,
+        mapping: str | None = None,
         lanes: int | None = None,
         threads: int | None = None,
     ) -> None:
@@ -361,6 +372,9 @@ class V2ObservablesRuntime:
         self._observables = observables
         self._catalogue: Any = None
         self._member = member
+        # How the member is served, for messages (the artifact's selector
+        # knows it; ``_mapping_kind`` otherwise).
+        self._mapping = mapping
         self._executor = executor
         self._native_options = {
             key: value
@@ -840,11 +854,15 @@ class V2ObservablesRuntime:
         return rescue(policy, len(points), level, on_failure=on_failure)
 
     def _refuse_member_selection(self) -> None:
-        if self._member is not None:
-            raise CompatibilityError(
-                "helicity and colour-flow selection of a flavour member is not "
-                "available; select on its representative process"
-            )
+        member = self._member
+        if member is None:
+            return
+        kind = self._mapping or _mapping_kind(member)
+        raise CompatibilityError(
+            f"helicity and colour-flow selection of {kind} ({member.process!r}, "
+            f"served by {member.representative!r}) is not available; select on "
+            "its representative process"
+        )
 
     def _evaluate_selected(
         self,
