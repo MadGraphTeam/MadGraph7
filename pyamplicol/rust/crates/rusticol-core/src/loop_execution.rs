@@ -426,13 +426,36 @@ pub mod v2 {
             backend: &mut B,
             options: V2Options,
         ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
+            self.evaluate_families(batch, zero, backend, options, None)
+        }
+
+        /// [`Self::evaluate`] dressing only the families `families` keeps
+        /// (one flag per plan family; None: every family): an evaluation
+        /// whose seeds vanish on the other families (an evaluation-time
+        /// selection's masks, `V2Executor.evaluate`) skips them, and their
+        /// lanes are absent, as a plan without them has none.
+        pub fn evaluate_families<T: Carrier + Real, B: V2Backend<T> + Send>(
+            &self,
+            batch: &V2Batch<T>,
+            zero: &T,
+            backend: &mut B,
+            options: V2Options,
+            families: Option<&[bool]>,
+        ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
             batch.validate(&self.plan)?;
+            if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
+                return Err(RusticolError::invalid_argument(
+                    "one family flag per plan family",
+                ));
+            }
             let threads = self.pool.current_num_threads();
             let fourier = self.contraction(options.contraction)?;
             self.pool.install(|| {
                 let (results, mut report) = with_lanes!(
                     self.lanes,
-                    evaluate_lanes::<T>(&self.plan, fourier, batch, zero, backend, options)
+                    evaluate_lanes::<T>(
+                        &self.plan, fourier, batch, zero, backend, options, families
+                    )
                 )?;
                 report.threads = threads;
                 Ok((results, report))
@@ -965,6 +988,7 @@ pub mod v2 {
         zero: &T,
         backend: &mut (impl V2Backend<T> + Send),
         options: V2Options,
+        families: Option<&[bool]>,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
         let width = options.poles.width();
@@ -979,7 +1003,15 @@ pub mod v2 {
             ));
         }
         let merged = merged_of(plan, options.schedule)?;
-        let b_families = b_families(plan, merged);
+        let mut b_families = b_families(plan, merged);
+        if let Some(kept) = families {
+            if merged.is_some() {
+                return Err(RusticolError::invalid_argument(
+                    "a family mask runs schedule B (schedule M dresses its merged families together)",
+                ));
+            }
+            b_families.retain(|&f| kept[f]);
+        }
         // The chunk-input budget in reals, and in lane vectors for the
         // bucket chunks' own inputs.
         let input_budget = options.input_budget / std::mem::size_of::<T>().max(1);

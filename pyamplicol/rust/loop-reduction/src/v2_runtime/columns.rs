@@ -345,6 +345,7 @@ impl Observables {
         Ok(PointSources {
             vectors,
             rows: Some(keep),
+            basis: None,
         })
     }
 }
@@ -661,6 +662,7 @@ impl V2Runtime {
                             Ok(PointSources {
                                 vectors: Vec::new(),
                                 rows: None,
+                                basis: None,
                             })
                         } else {
                             observables.sources(spin, zero)

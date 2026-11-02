@@ -446,6 +446,88 @@ impl Trees {
     }
 }
 
+/// The masks of one evaluation call (`V2Executor.evaluate`'s `rows`,
+/// `basis`, `components` and `families`): an evaluation-time selection run
+/// on the executor of a template column set, one program for every
+/// selection (`loops/v2/native_observables.py`; DESIGN §8.5). The kept Born
+/// helicity `rows` seed and interfere (every other row's Born components
+/// vanish, as a spin source's fixed row does); the observable columns'
+/// interferences keep the bra Born `basis` elements only; the seeds' bra
+/// keeps the plan Born `components` only (the others read zero); and only
+/// the plan `families` kept are dressed (the caller's statement that the
+/// others' seeds vanish under these masks; their lanes are absent). None
+/// keeps every one.
+#[derive(Default)]
+struct Selection {
+    rows: Option<Vec<bool>>,
+    basis: Option<Vec<bool>>,
+    components: Option<Vec<bool>>,
+    families: Option<Vec<bool>>,
+}
+
+impl Selection {
+    fn is_empty(&self) -> bool {
+        self.rows.is_none()
+            && self.basis.is_none()
+            && self.components.is_none()
+            && self.families.is_none()
+    }
+
+    /// Each point's sources with the kept rows (and the point's own) and the
+    /// kept basis elements; points without sources get an empty one.
+    fn sources<T>(
+        &self,
+        sources: Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>>,
+        points: usize,
+    ) -> Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>> {
+        if self.rows.is_none() && self.basis.is_none() {
+            return sources;
+        }
+        let mut sources = sources.unwrap_or_else(|| {
+            (0..points)
+                .map(|_| rusticol_core::loop_v2::trees::PointSources {
+                    vectors: Vec::new(),
+                    rows: None,
+                    basis: None,
+                })
+                .collect()
+        });
+        for point in &mut sources {
+            if let Some(kept) = &self.rows {
+                point.rows = Some(match point.rows.take() {
+                    Some(own) => own.iter().zip(kept).map(|(a, b)| *a && *b).collect(),
+                    None => kept.clone(),
+                });
+            }
+            if self.basis.is_some() {
+                point.basis.clone_from(&self.basis);
+            }
+        }
+        Some(sources)
+    }
+
+    /// Zero the plan Born components the seeds' bra does not keep (`born`:
+    /// per point `rows x components`).
+    fn mask_born<T: Real>(&self, born: &mut [Vec<Complex<T>>], zero: &T) -> PyResult<()> {
+        let Some(kept) = &self.components else {
+            return Ok(());
+        };
+        for point in born {
+            if kept.is_empty() || point.len() % kept.len() != 0 {
+                return Err(error("one component flag per plan Born component"));
+            }
+            for row in point.chunks_exact_mut(kept.len()) {
+                for (value, keep) in row.iter_mut().zip(kept) {
+                    if !keep {
+                        *value = Complex::new(zero.clone(), zero.clone());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Per point spin sources (`inputs["sources"]`): per point `(vectors,
 /// rows)`, `vectors` (1-based leg label, four `[re, im]` exact texts) and
 /// `rows` a kept flag per Born row, or None (every row).
@@ -459,7 +541,11 @@ fn point_sources<T: V2Carrier>(
         .into_iter()
         .map(|(vectors, rows)| {
             let vectors = source_vectors(vectors, zero)?;
-            Ok(rusticol_core::loop_v2::trees::PointSources { vectors, rows })
+            Ok(rusticol_core::loop_v2::trees::PointSources {
+                vectors,
+                rows,
+                basis: None,
+            })
         })
         .collect()
 }
@@ -750,6 +836,7 @@ fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     bits: u32,
     options: V2Options,
     bounds: Bounds,
+    selection: &Selection,
 ) -> PyResult<Evaluation>
 where
     Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
@@ -757,6 +844,11 @@ where
 {
     let batch = batch(inputs, &zero)?;
     if !inputs.contains("parameters")? {
+        if !selection.is_empty() {
+            return Err(error(
+                "selection masks need the executor's tree program (native inputs)",
+            ));
+        }
         let (results, report) = py
             .detach(|| executor.evaluate(&batch, &zero, backend, options))
             .map_err(error)?;
@@ -772,7 +864,8 @@ where
         rusticol_core::loop_execution::v2::Poles::None
     );
     let started = std::time::Instant::now();
-    let filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
+    let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
+    filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
     // The report's "trees" stage: the whole native input fill, then its
     // parts (`TreeInputs::seconds`).
     let mut tree_seconds = started.elapsed().as_secs_f64();
@@ -841,8 +934,10 @@ where
                         .collect::<Vec<_>>()
                 }));
         }
+        selection.mask_born(&mut sub.born, &zero)?;
+        let families = selection.families.as_deref();
         let (part_results, part_report) = py
-            .detach(|| executor.evaluate(&sub, &zero, backend, options))
+            .detach(|| executor.evaluate_families(&sub, &zero, backend, options, families))
             .map_err(error)?;
         results.extend(part_results);
         merge_report(&mut report, part_report);
@@ -943,13 +1038,17 @@ fn tree_columns_with<T: Exchanged + Real + TreeCarrier + Send + Sync>(
     inputs: &Bound<'_, PyDict>,
     zero: T,
     bits: u32,
+    selection: &Selection,
 ) -> PyResult<ExportedColumns>
 where
     Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
     TreeRuntime<T>: Send,
 {
     let mut batch = batch(inputs, &zero)?;
-    let out = trees.fill(executor, inputs, &mut batch, true, &zero)?;
+    let points = batch.momenta.len();
+    let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
+    filling.sources = selection.sources(filling.sources.take(), points);
+    let out = trees.fill_part(executor, &filling, 0..points, &mut batch, true, None, &zero)?;
     Ok(out.columns.map(|points| {
         points
             .iter()
@@ -1202,22 +1301,45 @@ impl V2Executor {
     /// what `evaluate` returns in `columns` (with poles), without dressing
     /// or reducing the loops; None when the program has no columns. The
     /// split selections of a model with pole regulators read them at the IR
-    /// regulator 0 (`native_observables.StoredColumns`).
-    fn tree_columns(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedColumns> {
+    /// regulator 0 (`native_observables.StoredColumns`). `rows` and `basis`
+    /// are `evaluate`'s selection masks.
+    #[pyo3(signature = (inputs, *, rows=None, basis=None))]
+    fn tree_columns(
+        &mut self,
+        inputs: &Bound<'_, PyDict>,
+        rows: Option<Vec<bool>>,
+        basis: Option<Vec<bool>>,
+    ) -> PyResult<ExportedColumns> {
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self
             .trees
             .as_mut()
             .ok_or_else(|| error("the executor has no tree program"))?;
+        let selection = Selection {
+            rows,
+            basis,
+            ..Selection::default()
+        };
+        let selection = &selection;
         match self.carrier {
-            Carriers::Double => tree_columns_with(executor, trees, inputs, 0.0, bits),
-            Carriers::DoubleDouble => {
-                tree_columns_with(executor, trees, inputs, DoubleFloat::from(0.0), bits)
-            }
-            Carriers::Arbitrary(_) => {
-                tree_columns_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
-            }
+            Carriers::Double => tree_columns_with(executor, trees, inputs, 0.0, bits, selection),
+            Carriers::DoubleDouble => tree_columns_with(
+                executor,
+                trees,
+                inputs,
+                DoubleFloat::from(0.0),
+                bits,
+                selection,
+            ),
+            Carriers::Arbitrary(_) => tree_columns_with(
+                executor,
+                trees,
+                inputs,
+                Float::with_val(bits, 0),
+                bits,
+                selection,
+            ),
             Carriers::Exact => Err(error("the exact carrier has no native trees")),
         }
     }
@@ -1396,7 +1518,12 @@ impl V2Executor {
     /// chunks; None: block rows and Born components within 3 GiB),
     /// `fill_points` points per tree fill (None: tree states within 4 GiB)
     /// and `input_budget` bytes of chunk inputs per lane chunk (None: 8 GiB).
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None))]
+    /// Selection masks (native trees only; None keeps every one; `Selection`):
+    /// `rows` the kept Born helicity rows, `basis` the observable columns'
+    /// kept bra Born basis elements, `components` the seeds' kept plan Born
+    /// components, `families` the plan families dressed (the others' lanes
+    /// are absent): one executor serves every evaluation-time selection.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1416,6 +1543,10 @@ impl V2Executor {
         part_points: Option<usize>,
         fill_points: Option<usize>,
         input_budget: Option<usize>,
+        rows: Option<Vec<bool>>,
+        basis: Option<Vec<bool>>,
+        components: Option<Vec<bool>>,
+        families: Option<Vec<bool>>,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -1456,6 +1587,27 @@ impl V2Executor {
             part_points,
             fill_points,
         };
+        let selection = Selection {
+            rows,
+            basis,
+            components,
+            families,
+        };
+        let plan = self.executor.plan();
+        if selection
+            .rows
+            .as_ref()
+            .is_some_and(|kept| kept.len() != plan.rows)
+            || selection
+                .components
+                .as_ref()
+                .is_some_and(|kept| kept.len() != plan.born_components)
+        {
+            return Err(error(
+                "selection masks: one flag per plan Born row and per plan Born component",
+            ));
+        }
+        let selection = &selection;
         let bits = self.bits()?;
         let carrier = self.carrier;
         // The generic reduction builds Symbolica expressions and the exact
@@ -1473,7 +1625,7 @@ impl V2Executor {
         let trees = self.trees.as_mut();
         match carrier {
             Carriers::Double => evaluate_with(
-                py, executor, trees, backend, inputs, 0.0, bits, options, bounds,
+                py, executor, trees, backend, inputs, 0.0, bits, options, bounds, selection,
             ),
             Carriers::DoubleDouble => evaluate_with(
                 py,
@@ -1485,6 +1637,7 @@ impl V2Executor {
                 bits,
                 options,
                 bounds,
+                selection,
             ),
             Carriers::Arbitrary(_) => evaluate_with(
                 py,
@@ -1496,6 +1649,7 @@ impl V2Executor {
                 bits,
                 options,
                 bounds,
+                selection,
             ),
             Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
         }

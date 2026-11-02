@@ -1047,11 +1047,15 @@ struct ColumnsFile {
 
 /// The spin sources of one point: per (1-based) leg label a literal complex
 /// four-vector replacing the leg's wavefunction in the trees and the
-/// counterterm program, and the Born rows the point keeps (a source leg's
-/// fixed helicity row; `None`: every row).
+/// counterterm program, the Born rows the point keeps (a source leg's fixed
+/// helicity row, or an evaluation-time selection's rows; `None`: every row)
+/// and the bra Born basis elements its observable columns keep (an
+/// evaluation-time selection's flows, on top of each column's own; `None`:
+/// every element; the ket is never masked).
 pub struct PointSources<T> {
     pub vectors: Vec<(usize, [Complex<T>; 4])>,
     pub rows: Option<Vec<bool>>,
+    pub basis: Option<Vec<bool>>,
 }
 
 /// The loop-side sources of one point (`TreeProgram::inputs_loop_side`):
@@ -3100,6 +3104,7 @@ impl TreeProgram {
                 sources.len() == momenta.len() && self.columns.is_some(),
                 "spin sources per point need the observable columns",
             )?;
+            let basis = self.counterterms.as_ref().map_or(0, |ct| ct.layout.basis);
             for point in sources {
                 require(
                     point
@@ -3107,6 +3112,10 @@ impl TreeProgram {
                         .as_ref()
                         .is_none_or(|rows| rows.len() == self.rows),
                     "a point's kept rows",
+                )?;
+                require(
+                    point.basis.as_ref().is_none_or(|kept| kept.len() == basis),
+                    "a point's kept basis elements",
                 )?;
             }
         }
@@ -3350,6 +3359,7 @@ impl TreeProgram {
                 .as_mut()
                 .map(|loop_amplitudes| std::mem::take(&mut loop_amplitudes[index]));
             let kept_rows = sources.and_then(|sources| sources[index].rows.as_deref());
+            let kept_basis = sources.and_then(|sources| sources[index].basis.as_deref());
             if let Some(kept) = kept_rows {
                 // A source leg keeps its fixed row only: the other rows'
                 // Born components vanish (no seeds, no interference).
@@ -3376,6 +3386,14 @@ impl TreeProgram {
                 let every = vec![true; self.rows];
                 let mut values = Vec::with_capacity(columns.columns.len());
                 for column in &columns.columns {
+                    // The column's bra basis elements and the point's.
+                    let basis: Option<std::borrow::Cow<'_, [bool]>> =
+                        match (column.basis.as_deref(), kept_basis) {
+                            (Some(own), Some(kept)) => Some(std::borrow::Cow::Owned(
+                                own.iter().zip(kept).map(|(a, b)| *a && *b).collect(),
+                            )),
+                            (own, kept) => own.or(kept).map(std::borrow::Cow::Borrowed),
+                        };
                     let keep: Vec<bool> = (0..self.rows)
                         .map(|row| {
                             column.rows.as_ref().is_none_or(|rows| rows[row])
@@ -3396,7 +3414,7 @@ impl TreeProgram {
                             &kets[index],
                             ct.components,
                             keep,
-                            column.basis.as_deref(),
+                            basis.as_deref(),
                             couplings,
                             poles,
                             zero,
