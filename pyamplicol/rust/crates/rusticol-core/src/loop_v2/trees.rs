@@ -453,6 +453,24 @@ fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
 }
 
+/// [`TreeProgram::bind`]'s refusal of a batch in which a counterterm
+/// coupling's diagnostic is not finite at some point's mu_R^2 in the carrier
+/// (e.g. `mu_r2 = 1e-400` underflows in binary64). It depends on the scale,
+/// so a caller may re-run the batch per scale ([`is_nonfinite_counterterm`];
+/// the Python runtimes' `isolate_scale_failures`).
+pub fn nonfinite_counterterm() -> RusticolError {
+    invalid(
+        "a counterterm coupling's diagnostic is not finite (a model helper \
+         function was evaluated outside its domain)",
+    )
+}
+
+/// Whether `error` is [`nonfinite_counterterm`]'s refusal (its kind and
+/// text, built in that one place).
+pub fn is_nonfinite_counterterm(error: &RusticolError) -> bool {
+    *error == nonfinite_counterterm()
+}
+
 fn require(condition: bool, message: &str) -> RusticolResult<()> {
     if condition {
         Ok(())
@@ -2600,11 +2618,9 @@ impl TreeProgram {
             }
             for &o in &program.finite {
                 let value = &row[o];
-                require(
-                    value.re.is_finite() && value.im.is_finite(),
-                    "a counterterm coupling's diagnostic is not finite \
-                     (a model helper function was evaluated outside its domain)",
-                )?;
+                if !(value.re.is_finite() && value.im.is_finite()) {
+                    return Err(nonfinite_counterterm());
+                }
             }
         }
         let counterterm_couplings = rows

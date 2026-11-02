@@ -555,3 +555,36 @@ def test_hc_rows_equal_madloop(hc_nlo_x0_ufo, loop_native, tmp_path, row_id):
     row = _row(card, row_id)
     runtime = _generate(hc_nlo_x0_ufo, card, row, tmp_path)
     _check_row(runtime, card, row, double_double=row_id == "HC02")
+
+
+# ------------------------------------------------------------------- HC05
+
+
+@pytest.mark.loop_physics
+def test_hc05_five_point_gluon_r2_is_refused_typed(hc_nlo_x0_ufo, loop_native, tmp_path):
+    """HC05, g g > x0 g g (heft, top vetoed), is refused typed: the model's
+    five-point R2 [G G G G X0] has the colour f*f*f*f, which the tree colour
+    flow carries only as a multi-trace state, and its vertex can enter a tree
+    of the request, so the counterterm program refuses it
+    (``unlowered-counterterm``, REQUIREMENTS_ADDENDUM J) before anything is
+    exported (about 10 s). The plan stage builds no counterterm program and
+    cannot see it."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.loops.v2.refusals import LoopEngineRefusal
+
+    row = {
+        "id": "HC05",
+        "process": "g g > x0 g g",
+        "particle_veto": ["t"],
+        "restriction": "heft",
+    }
+    with pytest.raises(LoopEngineRefusal) as error:
+        _generate(hc_nlo_x0_ufo, _card(), row, tmp_path)
+    assert isinstance(error.value, GenerationError)
+    assert error.value.key == "unlowered-counterterm"
+    message = str(error.value)
+    assert "[G G G G X0]" in message
+    assert "f(1,-1,-2)*f(2,-2,-3)*f(3,-3,-4)*f(4,-4,-1)" in message
+    assert "multi-trace" in message
+    assert not (tmp_path / "HC05").exists()

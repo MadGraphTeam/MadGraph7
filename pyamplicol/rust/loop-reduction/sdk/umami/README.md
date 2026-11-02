@@ -1,4 +1,9 @@
-# pyAmpliCol UMAMI virtual extension, version 1
+# pyAmpliCol UMAMI virtual extension, layout version 2
+
+`PYAMPLICOL_UMAMI_VIRTUAL_VERSION` (and `pyamplicol_umami_virtual_v1_version()`)
+is 2: the options struct lost version 1's `verification_json` member with the
+virtual C ABI version 2. The file, symbol and key names keep their historical
+`_v1` / `V1` spelling; compare the version, not the names, to detect the layout.
 
 > **Plan v4 only.** The legacy one-loop engine was removed (2026-10-29, user
 > ruling M-QCD Q3): as in the shared SDK ([README](../README.md)), a plan v4

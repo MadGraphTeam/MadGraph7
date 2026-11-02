@@ -1415,6 +1415,9 @@ class V2VirtualRuntime:
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
         self._group_member = group_member
         self._member = None
+        self._mapping = (
+            None if group_member is None else _mapping_kind(selected, group_member)
+        )
         self._observables: Any = None
         self._execution = execution
         compiled = CompiledModel.from_dict(model_payload, validate_fingerprint=False)
@@ -1528,6 +1531,7 @@ class V2VirtualRuntime:
                 runtime = V2ObservablesRuntime(
                     observables,
                     member=self._member,
+                    mapping=self._mapping,
                     arithmetic=self.default_arithmetic,
                     precision=self.default_precision,
                 )
@@ -2231,6 +2235,24 @@ class V2VirtualRuntime:
 
     def unmute_warnings(self) -> None:
         """No effect: v2 runtimes emit no runtime warnings."""
+
+
+def _mapping_kind(record: Mapping[str, Any], group_member: Any) -> str:
+    """How the stored process ``record`` serves the selected mapped process
+    (``_select``), for messages: a manifest permutation alias, the stored
+    process selected in another leg order within each side, or a
+    process-group (flavour) member, possibly in permuted leg order."""
+
+    process_id = str(group_member.process_id)
+    if process_id == str(record["id"]):
+        return "a side permutation of the stored process"
+    if any(str(alias["id"]) == process_id for alias in record.get("aliases", ())):
+        return "a permutation alias"
+    permutation = tuple(int(leg) for leg in group_member.permutation)
+    permuted = permutation != tuple(range(len(permutation)))
+    return "a process-group flavour member" + (
+        " in permuted leg order" if permuted else ""
+    )
 
 
 def _stored_member(group_member: Any, representative: str) -> Any:

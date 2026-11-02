@@ -1161,6 +1161,12 @@ mod tests {
     }
 
     /// A 256-bit generic engine of tadpole lanes `∫ c / (q² - m²)`.
+    /// The generic engine builds and evaluates Symbolica expressions: like
+    /// every production caller (the executor's worker threads, a routed
+    /// binary64 lane), a test driving it directly holds pyAmpliCol's library
+    /// key on its thread. Without it and without `SYMBOLICA_LICENSE`,
+    /// Symbolica's restricted mode admits one thread per user, so two such
+    /// tests on parallel test threads aborted the test binary (SIGABRT).
     fn tadpoles(masses: &[Float], scale: &Float) -> (GenericEngine<Float>, BucketInput<Float>) {
         let zero = Float::with_val(256, 0);
         let complex = |x: &Float| Complex::new(x.clone(), zero.clone());
@@ -1181,6 +1187,7 @@ mod tests {
 
     #[test]
     fn imprecise_float_masters_fail_their_lane() {
+        let _unlock = pyamplicol::unlock(); // `tadpoles`
         // numerica tracks significant bits: a squared mass known to 53 bits
         // gives an A0 below `required_tracked_bits(256)` = 64 tracked bits,
         // which the master provider reports as `ImpreciseResult`; the lane
@@ -1201,6 +1208,7 @@ mod tests {
 
     #[test]
     fn generic_chunks_leave_values_unchanged() {
+        let _unlock = pyamplicol::unlock(); // `tadpoles`
         let scale = Float::with_val(256, 1_000_000);
         let masses: Vec<_> = (0..GENERIC_CHUNK_LANES + 3)
             .map(|k| Float::with_val(256, 29929 + 7 * k as i64))
