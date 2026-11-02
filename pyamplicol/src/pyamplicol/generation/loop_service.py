@@ -1158,7 +1158,9 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # Their Born DAGs stay in the scope: each slice reuses its own
             # (``blocks.born_dag_scope``; compiled once per process, R3).
             stack.enter_context(born_dag_scope())
-            context, requests, _dags, skipped = _born_members(backend, context)
+            # Only the scope keeps the Born DAGs (each slice releases its own).
+            context, requests, _released, skipped = _born_members(backend, context)
+            del _released
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
