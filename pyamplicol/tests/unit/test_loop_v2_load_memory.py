@@ -1,22 +1,25 @@
 # SPDX-License-Identifier: 0BSD
-"""Load memory (M-FINAL MF-8G-2 items 2 and 4): a stored process loads its
-plan and binary tree programs compressed.
+"""Load memory (M-FINAL MF-8G-2 items 2 and 4): a stored process reads its
+plan and binary tree programs on demand, through the handle opened at load.
 
 ``artifact.load_native_process`` reads a ``loop-runtime.pacbin`` as
 ``read_native_process`` does (one member enumeration,
 ``artifact._native_members``), but the plan, the companion plan and the
-binary tree programs stay compressed in memory (``StoredMember``: the
-member's zlib payload): the native executor inflates them itself
+binary tree programs are read on demand (``StoredMember``): through the
+container's read-only handle opened at load (its digests verified through
+it), each read digest-checked; the native executor inflates them itself
 (rusticol-core ``loop_artifact::inflate_loop_v2_member``), and the Python view
 holds the small members and each tree program's head only (inflated alone,
 ``inflate_loop_v2_section``). The in-memory load is the oracle:
 
-* the compressed view reads the same plan text and tree-program head, and
+* the on-demand view reads the same plan text and tree-program head, and
   decodes to the same tree program;
 * its executors evaluate bitwise as the in-memory ones (no poles, all poles,
   and the "uv" selection that runs the certified-scaleless companion);
-* a loaded process does not depend on its container: rewriting, moving or
-  deleting it after the load changes nothing (``Runtime.load`` included);
+* a loaded process does not depend on its path: replacing, moving or
+  deleting the artifact after the load changes no result (``Runtime.load``
+  included; correlated and resolved calls in ``test_loop_v2_stored_process``),
+  and a file rewritten in place is refused;
 * an older build's JSON store (JSON plan member, JSON tree programs) loads
   and evaluates alike.
 
@@ -30,6 +33,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import shutil
 from decimal import Decimal
 from pathlib import Path
@@ -122,10 +126,9 @@ def test_file_backed_load_equals_the_in_memory_load(stored, loop_native):
 
 
 @pytest.mark.loop_fast
-def test_a_loaded_process_does_not_depend_on_its_container(
-    stored, loop_native, tmp_path
-):
+def test_a_loaded_process_does_not_depend_on_its_path(stored, loop_native, tmp_path):
     from pyamplicol.loops.v2.artifact import (
+        PLAN_BINARY_MEMBER,
         load_native_process,
         read_native_process,
         read_plan,
@@ -136,23 +139,40 @@ def test_a_loaded_process_does_not_depend_on_its_container(
     path = tmp_path / "loop-runtime.pacbin"
     shutil.copyfile(stored, path)
     loaded = load_native_process(path)
-    # Another stored plan (one more byte, same member) in a valid container:
-    # the loaded process keeps what it read.
+    # Replaced by another valid container (one more byte in the plan, same
+    # member), published as the generator publishes one (a new file renamed
+    # over the path): the loaded process reads the file it loaded.
     plan = read_plan(stored)
-    write_plan(plan + (" " if isinstance(plan, str) else b" "), path)
+    other = tmp_path / "other.pacbin"
+    write_plan(plan + (" " if isinstance(plan, str) else b" "), other)
+    os.replace(other, path)
     points, scales = _points("required/uux_ddxg.json", 1)
     executor = loaded.executor(loop_native)
     expected = oracle.executor(loop_native)
     assert repr(
         executor.evaluate(points, scales, parameters=PARAMETERS, poles="none")
     ) == repr(expected.evaluate(points, scales, parameters=PARAMETERS, poles="none"))
-    # Deleted: the companion executor ("uv") and the plan text are formed
-    # after the deletion from the members held.
+    # Deleted: the companion executor ("uv") and the plan text are read
+    # after the deletion.
     path.unlink()
     assert repr(
         executor.evaluate(points, scales, parameters=PARAMETERS, poles="uv")
     ) == repr(expected.evaluate(points, scales, parameters=PARAMETERS, poles="uv"))
     assert loaded.plan_json == oracle.plan_json
+    # Rewritten in place (the loaded file itself changes): refused, never
+    # read as another plan.
+    shutil.copyfile(stored, path)
+    rewritten = load_native_process(path)
+    assert rewritten.plan.member == PLAN_BINARY_MEMBER
+    with path.open("r+b") as stream:
+        stream.seek(rewritten.plan.offset + rewritten.plan.length // 2)
+        byte = stream.read(1)
+        stream.seek(-1, 1)
+        stream.write(bytes([byte[0] ^ 0xFF]))
+    with pytest.raises(ValueError, match="changed since the process was loaded"):
+        rewritten.executor(loop_native).evaluate(
+            points, scales, parameters=PARAMETERS, poles="none"
+        )
 
 
 @pytest.mark.loop_fast
@@ -218,11 +238,13 @@ def test_a_json_store_loads_as_the_in_memory_one(stored, loop_native, tmp_path):
 
 
 @pytest.mark.loop_fast
-def test_a_loaded_runtime_survives_moving_its_artifact(tmp_path):
+def test_a_loaded_runtime_survives_moving_and_replacing_its_artifact(tmp_path):
     """``Runtime.load`` (``V2VirtualRuntime``, ``load_native_process``): the
     executors are built on the first evaluation, after the artifact moved
-    away, and evaluate as a runtime whose artifact stayed in place."""
+    away and another file took its place, and evaluate as a runtime whose
+    artifact stayed in place."""
 
+    from pyamplicol import Runtime
     from pyamplicol._internal import selftest_virtual_ew as selftest
 
     root = selftest.fixture_root()
@@ -231,14 +253,20 @@ def test_a_loaded_runtime_survives_moving_its_artifact(tmp_path):
     shutil.copytree(root / "artifact", artifact)
     in_place = selftest.evaluate(artifact, expected)
 
-    from pyamplicol import Runtime
-
     runtime = Runtime.load(artifact, process=selftest.NAME, mute_warnings=True)
     shutil.move(artifact, tmp_path / "moved")
+    for pacbin in (tmp_path / "moved").glob("processes/*/loop-runtime.pacbin"):
+        # Another file at the loaded container's path.
+        replaced = artifact / pacbin.relative_to(tmp_path / "moved")
+        replaced.parent.mkdir(parents=True)
+        replaced.write_bytes(b"not a container")
     points = [[list(map(float, p)) for p in point] for point in expected["points"]]
-    result = runtime.evaluate(points, mu_r2=[float(x) for x in expected["mu_r2"]])
+    scales = [float(x) for x in expected["mu_r2"]]
+    result = runtime.evaluate(points, mu_r2=scales)
     shutil.rmtree(tmp_path / "moved")
-    again = runtime.evaluate(points, mu_r2=[float(x) for x in expected["mu_r2"]])
+    for poles in ("uv", "ir"):
+        assert repr(runtime.evaluate(points, mu_r2=scales, poles=poles).values)
+    again = runtime.evaluate(points, mu_r2=scales)
     assert repr(again.values) == repr(result.values)
     moved = [
         tuple(

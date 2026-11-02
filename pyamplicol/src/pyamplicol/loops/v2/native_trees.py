@@ -73,7 +73,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, BinaryIO, cast
 
 from pyamplicol.color.contraction_types import NC
 
@@ -252,30 +252,69 @@ def _native() -> Any:
 @dataclass(frozen=True, eq=False)
 class StoredMember:
     """A zlib member of a stored process's ``loop-runtime.pacbin`` that a
-    loaded process keeps compressed in memory (M-FINAL MF-8G-2 item 2): its
-    plan, its companion plan and its binary tree programs
-    (``artifact.load_native_process``). ``payload`` is the member's zlib
-    stream as stored (digest-checked when the container was opened), so the
-    loaded process no longer depends on the container's path. The native
-    executor inflates it itself (``native()``, rusticol-core
+    loaded process reads on demand (M-FINAL MF-8G-2 item 2): its plan, its
+    companion plan and its binary tree programs
+    (``artifact.load_native_process``). The loaded process holds the
+    container's read-only handle (``handle``: opened once at load, its
+    payload digests verified through it, kept for the process's lifetime),
+    the member's place in it and its payload digest. Every read goes through
+    that handle, never the path, and checks the digest (``payload``): moving,
+    renaming, deleting or replacing the artifact after the load changes no
+    result (the handle keeps the loaded file); a file rewritten in place is
+    refused. Where no positional read is available (``os.pread``), ``data``
+    holds the payload read at load instead. The native executor inflates the
+    payload itself (``native()``, rusticol-core
     ``loop_artifact::inflate_loop_v2_member``); Python inflates it only where
     a caller needs the bytes (``bytes()``, ``text()``) and a tree program's
     head (``section``, which inflates no further than that section)."""
 
     member: str
-    payload: bytes = field(repr=False)
+    sha256: str
+    handle: BinaryIO | None = field(default=None, repr=False)
+    offset: int = 0
+    length: int = 0
+    data: bytes | None = field(default=None, repr=False)
+
+    def payload(self) -> bytes:
+        """The member's zlib payload, read through the handle (digest
+        checked), or the one read at load."""
+
+        if self.data is not None:
+            return self.data
+        if self.handle is None:
+            raise ValueError(f"stored member {self.member!r} has no source")
+        import os
+
+        fileno = self.handle.fileno()
+        parts = []
+        done = 0
+        while done < self.length:
+            # One positional read per call returns at most ~2 GiB.
+            size = min(self.length - done, 1 << 30)
+            chunk = os.pread(fileno, size, self.offset + done)
+            if not chunk:
+                break
+            parts.append(chunk)
+            done += len(chunk)
+        data = parts[0] if len(parts) == 1 else b"".join(parts)
+        if len(data) != self.length or hashlib.sha256(data).hexdigest() != self.sha256:
+            raise ValueError(
+                f"stored member {self.member!r} changed since the process was "
+                "loaded (its file was rewritten in place); load it again"
+            )
+        return data
 
     def native(self) -> tuple[str, bytes]:
         """The executor's argument for the member (``V2Executor``)."""
 
-        return (self.member, self.payload)
+        return (self.member, self.payload())
 
     def bytes(self) -> bytes:
         """The inflated member."""
 
         import zlib
 
-        return zlib.decompress(self.payload)
+        return zlib.decompress(self.payload())
 
     def text(self) -> str:
         """The plan JSON of a stored plan member (decoded from a binary plan
@@ -289,7 +328,9 @@ class StoredMember:
         """Section ``name`` of a stored binary tree program, inflating no
         further than it (None: absent)."""
 
-        found = _native().stored_tree_program_section(self.member, self.payload, name)
+        found = _native().stored_tree_program_section(
+            self.member, self.payload(), name
+        )
         return None if found is None else bytes(found)
 
 

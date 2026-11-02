@@ -683,38 +683,61 @@ def read_native_process(
 def load_native_process(path: Path) -> Any:
     """The native point inputs of a ``loop-runtime.pacbin`` written with them,
     as ``read_native_process`` reads them (``_native_members``), but the
-    plan, the companion plan and the binary tree programs stay compressed
-    (``StoredMember``: the member's zlib payload, M-FINAL MF-8G-2 item 2): the
-    executors inflate them natively, and the process's Python view inflates
-    the small members only (assembly record, saved evaluators, plane
-    applications, observable columns, dipole operators) and each tree
-    program's head. Every member is read here: the loaded process does not
-    depend on ``path`` afterwards (moving, deleting or rewriting the
-    container cannot change it). A JSON tree program (an older build's
-    store) is inflated as ``read_native_process`` inflates it."""
+    plan, the companion plan and the binary tree programs are read on demand
+    (``StoredMember``, M-FINAL MF-8G-2 item 2): the executors inflate them
+    natively, and the process's Python view inflates the small members only
+    (assembly record, saved evaluators, plane applications, observable
+    columns, dipole operators) and each tree program's head. The container
+    is opened once, here: its payload digests are verified through that
+    handle, which the stored members keep for the process's lifetime and
+    read through (digest checked), so the loaded process does not depend on
+    ``path`` (moving, renaming, deleting or replacing the artifact changes no
+    result; a file rewritten in place is refused). Without positional reads
+    (``os.pread``) the stored members are read here. A JSON tree program (an
+    older build's store) is inflated as ``read_native_process`` inflates
+    it."""
+
+    import os
 
     from .native_process import NativeProcess
 
-    with PacbinReader.open(path) as reader:
-        index = {member.logical_path: member for member in reader.index.members}
+    handle = Path(path).open("rb")  # noqa: SIM115 - kept by the stored members
+    try:
+        with PacbinReader.open(handle) as reader:
+            index = {member.logical_path: member for member in reader.index.members}
 
-        def stored(name: str) -> StoredMember:
-            payload = _read_member(reader, name, PacbinMemberKind.LOOP_RUNTIME_PLAN)
-            return StoredMember(name, payload)
+            def stored(name: str) -> StoredMember:
+                member = index[name]
+                if member.kind != PacbinMemberKind.LOOP_RUNTIME_PLAN:
+                    raise ArtifactError(
+                        f"loop runtime member {name!r} has the wrong kind"
+                    )
+                if not hasattr(os, "pread"):
+                    kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
+                    data = _read_member(reader, name, kind)
+                    return StoredMember(name, member.sha256, data=data)
+                return StoredMember(
+                    name, member.sha256, handle, member.offset, member.length
+                )
 
-        # The binary plan members where stored (M-FINAL MF-8G-1 item 5), else
-        # the JSON ones (as ``read_plan``).
-        plan_name = PLAN_BINARY_MEMBER if PLAN_BINARY_MEMBER in index else PLAN_MEMBER
-        if plan_name not in index:
-            raise ArtifactError("the loop runtime has no plan v4")
-        plan = stored(plan_name)
-        scaleless_name = (
-            SCALELESS_PLAN_BINARY_MEMBER
-            if SCALELESS_PLAN_BINARY_MEMBER in index
-            else SCALELESS_PLAN_MEMBER
-        )
-        scaleless = stored(scaleless_name) if scaleless_name in index else None
-        members = _native_members(reader, scaleless is not None, stored)
+            # The binary plan members where stored (M-FINAL MF-8G-1 item 5),
+            # else the JSON ones (as ``read_plan``).
+            plan_name = (
+                PLAN_BINARY_MEMBER if PLAN_BINARY_MEMBER in index else PLAN_MEMBER
+            )
+            if plan_name not in index:
+                raise ArtifactError("the loop runtime has no plan v4")
+            plan = stored(plan_name)
+            scaleless_name = (
+                SCALELESS_PLAN_BINARY_MEMBER
+                if SCALELESS_PLAN_BINARY_MEMBER in index
+                else SCALELESS_PLAN_MEMBER
+            )
+            scaleless = stored(scaleless_name) if scaleless_name in index else None
+            members = _native_members(reader, scaleless is not None, stored)
+    except BaseException:
+        handle.close()
+        raise
     try:
         return NativeProcess.from_members(plan, members, scaleless)
     except ValueError as error:
