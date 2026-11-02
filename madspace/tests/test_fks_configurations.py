@@ -73,7 +73,7 @@ def test_configurations_of_the_fortran(path):
     if len(mappings) > 1:
         mapping = fks_configuration_mapping(born, configurations)
         assert isinstance(mapping, ms.FKSConfigurationMapping)
-        assert len(mapping.configurations()) == len(mappings)
+        assert mapping.configurations() == [(m.i_fks(), m.j_fks()) for m in mappings]
 
 
 def test_born_of_real():

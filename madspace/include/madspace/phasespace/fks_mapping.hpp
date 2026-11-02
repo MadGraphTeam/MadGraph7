@@ -1,6 +1,5 @@
 #pragma once
 
-#include <functional>
 #include <variant>
 #include <vector>
 
@@ -194,7 +193,8 @@ private:
  * floor of the Born mapping (a `sqrt_s` cut, which FKSMapping accepts there).
  * For an incoming emitter the Born has less energy than the real emission, and
  * the bound squared is the `s_hat_min` of the FKSMapping, as the
- * tau_lower_bound of genps_fks.f.
+ * tau_lower_bound of genps_fks.f. An @ref FKSConfigurationMapping takes the
+ * bound as its `sqrt_s_hat_floor` and does both, per event.
  *
  * @param cuts             The cuts on the Born-level objects.
  * @param outgoing_masses  The masses of the final-state particles of the
@@ -204,26 +204,44 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
 
 /**
  * Phase space of a real emission in the FKS configurations of one Born, each
- * event in the configuration of its `fks_index` condition.
+ * event in the configuration of its `fks_index` condition, all in one pass.
  *
- * The configurations are @ref FKSMapping "FKSMappings" of the same Born
- * mapping. The batch is split by `fks_index`, each part goes through its
- * configuration, forward or inverse, and the results are merged in the order
- * of the batch. Drawing `fks_index`, uniformly or with an adaptive discrete
- * sampler, and its weight belong to the integrand, as for the
- * `permutation_index` of a @ref PhaseSpaceMapping: this mapping only routes
- * the events. The alternative, with the configurations as channels, is a
+ * The configurations share the Born mapping and differ only by the positions
+ * @f$i@f$ and @f$j@f$ in the real process. For every event a table read at its
+ * `fks_index` gives them, with the mass of the emitter and the two lower
+ * bounds on the partonic energy: the floor of the Born mapping (its
+ * `sqrt_s_hat_min` condition), @p sqrt_s_hat_floor for a final-state emitter
+ * and none for an incoming one, and the `s_hat_min` of the emission,
+ * @p s_hat_min, for an incoming emitter at least @p sqrt_s_hat_floor squared.
+ * That is the split of madspace.fks.fks_mappings (see fks_sqrt_s_hat_min). The
+ * emission is built for every event in one layout, the Born momenta in their
+ * order with @f$i@f$ appended, with the formulas of each kind of emitter the
+ * configurations have (incoming, massless and massive final-state), and every
+ * event takes those of its emitter. The momenta of the real emission are
+ * permuted into the order of the real process of the configuration last
+ * (`permute_momenta`). Event by event, the results are those of the
+ * @ref FKSMapping of the configuration (for a final-state emitter with a
+ * Born mapping that has the floor as a cut on sqrt(s_hat)).
+ *
+ * Drawing `fks_index`, uniformly or with an adaptive discrete sampler, and its
+ * weight belong to the integrand, as for the `permutation_index` of a
+ * @ref PhaseSpaceMapping: this mapping only routes the events. The
+ * alternative, with the configurations as channels, is a
  * @ref MultiChannelMapping of the FKSMappings.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the Born, incoming included.
  *
  * **Inputs**
- * - those of the configurations (`random`, and `discrete` if the Born mapping
- *   has any).
+ * - `random` – `float`, shape `(batch, random_dim())` – the random numbers of
+ *   the Born mapping, then @f$r_\xi@f$, @f$r_y@f$ and @f$r_\phi@f$ of the
+ *   emission.
+ * - `discrete` – `int`, shape `(batch, discrete_dim())` – the discrete channel
+ *   choices of the Born mapping. Present only when it has any.
  *
  * **Conditions**
- * - those of the configurations (`permutation_index`), then
+ * - those of the Born mapping except `sqrt_s_hat_min` (`permutation_index`,
+ *   `mirror_index`), then
  * - `fks_index` – `int`, shape `(batch,)` – the configuration of the event,
  *   from 0 to the number of configurations minus one.
  *
@@ -239,21 +257,45 @@ double fks_sqrt_s_hat_min(const Cuts& cuts, const std::vector<double>& outgoing_
  */
 class FKSConfigurationMapping : public Mapping {
 public:
-    /// @param configurations  The FKS configurations, FKSMappings of the same
-    ///                        Born mapping.
-    FKSConfigurationMapping(const std::vector<FKSMapping>& configurations);
-    /// The FKS configurations.
-    const std::vector<FKSMapping>& configurations() const { return _configurations; }
-    /// Number of random numbers, that of each configuration.
-    std::size_t random_dim() const { return _configurations.at(0).random_dim(); }
+    /// The positions of i and of the emitter j in the real process, 0-based.
+    using Configuration = std::pair<std::size_t, std::size_t>;
+
+    /**
+     * @param born              The @ref PhaseSpaceMapping of the Born process,
+     *                          without cuts (they belong to the real emission
+     *                          and the counter-events). With a floor, it needs
+     *                          the `sqrt_s_hat_min` condition
+     *                          (`sqrt_s_hat_min_condition`).
+     * @param configurations    (i_fks, j_fks) of each configuration, in the
+     *                          order of `fks_index`.
+     * @param s_hat_min         Lower bound on the partonic energy squared of
+     *                          the real emission, see @ref FKSRadiation.
+     * @param sqrt_s_hat_floor  Lower bound on sqrt(s_hat) of every real
+     *                          emission that passes the cuts, as
+     *                          fks_sqrt_s_hat_min gives it: the floor of the
+     *                          Born for a final-state emitter, and raising
+     *                          @p s_hat_min for an incoming one.
+     */
+    FKSConfigurationMapping(
+        const PhaseSpaceMapping& born,
+        const std::vector<Configuration>& configurations,
+        double s_hat_min = 0.,
+        double sqrt_s_hat_floor = 0.
+    );
+    /// The Born mapping.
+    const PhaseSpaceMapping& born() const { return _born; }
+    /// (i_fks, j_fks) of each configuration.
+    const std::vector<Configuration>& configurations() const { return _configurations; }
+    /// The lower bound on the partonic energy squared of the real emission.
+    double s_hat_min() const { return _s_hat_min; }
+    /// The lower bound on sqrt(s_hat) from the cuts.
+    double sqrt_s_hat_floor() const { return _sqrt_s_hat_floor; }
+    /// Number of random numbers, those of the Born mapping and three.
+    std::size_t random_dim() const { return _born.random_dim() + 3; }
     /// Number of discrete channel choices of the Born mapping.
-    std::size_t discrete_dim() const override {
-        return _configurations.at(0).discrete_dim();
-    }
+    std::size_t discrete_dim() const override { return _born.discrete_dim(); }
     /// Number of particles of the real emission, incoming included.
-    std::size_t particle_count() const {
-        return _configurations.at(0).particle_count();
-    }
+    std::size_t particle_count() const { return _born.particle_count() + 1; }
     /**
      * Add the real emission, its Born and its FKS counter-events to @p fb, each
      * event in the configuration of its `fks_index`, at the inputs and
@@ -267,11 +309,20 @@ public:
     ) const;
     /// Names and types of the results of build_counter_events(), those of
     /// FKSMapping::counter_event_types.
-    NamedVector<Type> counter_event_types() const {
-        return _configurations.at(0).counter_event_types();
-    }
+    NamedVector<Type> counter_event_types() const;
+
+    /// The kinds of emitter, in the order the formulas are built.
+    enum EmitterKind { incoming, massless_final, massive_final };
 
 private:
+    // the emission of every kind of emitter the configurations have, in the
+    // layout of the Born momenta with i appended, in the Born c.m. frame
+    struct Emission {
+        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat;
+    };
+    // what the emissions of an event need
+    struct Context;
+
     Result build_forward_impl(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,
@@ -282,18 +333,66 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
-    // splits the batch by fks_index, builds each configuration on its part
-    // and merges the results (named, the weight as det)
-    NamedVector<Value> build_split(
+    NamedVector<Value> build_events(
         FunctionBuilder& fb,
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions,
-        const std::function<NamedVector<Value>(
-            const FKSMapping&, const NamedVector<Value>&, const NamedVector<Value>&
-        )>& build
+        bool with_counter_events
     ) const;
+    // the conditions of the Born mapping, its floor read at fks_index
+    NamedVector<Value>
+    born_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    Emission build_emission(
+        FunctionBuilder& fb,
+        const Context& context,
+        EmitterKind kind,
+        Value xi_hat,
+        Value y_var
+    ) const;
+    // per event the value of the kind of its emitter
+    Value pick(FunctionBuilder& fb, const ValueVec& by_kind, Value slot) const;
+    // per event the momenta (rows each) of the kind of its emitter
+    Value pick_rows(
+        FunctionBuilder& fb, const ValueVec& by_kind, std::size_t rows, Value fks_index
+    ) const;
+    Emission pick_emission(
+        FunctionBuilder& fb,
+        const std::vector<Emission>& by_kind,
+        Value slot,
+        Value fks_index
+    ) const;
+    bool has(EmitterKind kind) const;
 
-    std::vector<FKSMapping> _configurations;
+    PhaseSpaceMapping _born;
+    std::vector<Configuration> _configurations;
+    double _s_hat_min;
+    double _sqrt_s_hat_floor;
+    std::vector<double> _born_masses;
+    // the masses in the layout: those of the Born, then 0 for i
+    std::vector<double> _layout_masses;
+    // the kinds of emitter the configurations have, and per configuration its
+    // position among them
+    std::vector<EmitterKind> _kinds;
+    std::vector<me_int_t> _kind_slots;
+    // per configuration: the emitter mass, the floor of the Born, s_hat_min of
+    // the emission, the beam of an incoming emitter (+-1), and whether it has
+    // collinear counter-events
+    std::vector<double> _emitter_masses;
+    std::vector<double> _born_floors;
+    std::vector<double> _radiation_s_hat_min;
+    std::vector<double> _beam_signs;
+    std::vector<double> _collinear_exists;
+    // permutations per configuration (output[k] = input[table[c][k]]): the Born
+    // emitter first (Born order, n); the emitter and i into place ([Born order,
+    // j, i] -> layout, n + 2); the Born emitter into place ([Born order,
+    // jbar] -> Born order, n + 1); the layout into the order of the real
+    // process and back (n + 1); the emitter first in the layout (n + 1)
+    nested_vector2<me_int_t> _emitter_first;
+    nested_vector2<me_int_t> _emission_into_place;
+    nested_vector2<me_int_t> _jbar_into_place;
+    nested_vector2<me_int_t> _real_order;
+    nested_vector2<me_int_t> _layout_order;
+    nested_vector2<me_int_t> _layout_emitter_first;
 };
 
 /**

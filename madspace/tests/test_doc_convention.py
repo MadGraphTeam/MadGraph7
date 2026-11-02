@@ -57,16 +57,15 @@ CASES = {
         s_hat_min=0.0,
     ),
     "FKSConfigurationMapping": dict(
-        configurations=[
-            ms.FKSMapping(
-                ms.PhaseSpaceMapping(
-                    [0.0] * 4, 1000.0, mode=ms.PhaseSpaceMapping.TChannelMode.rambo
-                ),
-                4,
-                j_fks,
-            )
-            for j_fks in (2, 3)
-        ]
+        born=ms.PhaseSpaceMapping(
+            [0.0] * 4,
+            1000.0,
+            mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
+            sqrt_s_hat_min_condition=True,
+        ),
+        configurations=[(4, 2), (4, 3)],
+        s_hat_min=0.0,
+        sqrt_s_hat_floor=100.0,
     ),
     "FKSKinematics": dict(
         mapping=ms.FKSMapping(

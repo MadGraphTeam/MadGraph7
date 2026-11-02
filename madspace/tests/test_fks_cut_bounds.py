@@ -3,9 +3,10 @@
 fks_sqrt_s_hat_min turns the cuts on the Born-level objects into a lower bound
 on sqrt(s_hat) of the real emission. madspace.fks.fks_mappings puts it where it
 belongs: a floor of the Born mapping for a final-state emitter (s_hat is that
-of the Born), s_hat_min for an incoming one. The bound must hold for every real
-emission that passes the cuts, whatever i does, or it would remove part of the
-cross section. Here the cuts are applied as an NLO integrand would apply them:
+of the Born), s_hat_min for an incoming one. fks_configuration_mapping does the
+same in one pass, the floor read per event by the Born mapping. The bound must
+hold for every real emission that passes the cuts, whatever i does, or it would
+remove part of the cross section. Here the cuts are applied as an NLO integrand would apply them:
 to jets clustered from the final-state partons, and to the other particles.
 """
 
@@ -16,10 +17,10 @@ import os
 import numpy as np
 import pytest
 import torch
-from madspace_testing import to_numpy
+from madspace_testing import default_context, to_numpy
 
 import madspace as ms
-from madspace.fks import fks_mappings
+from madspace.fks import fks_configuration_mapping, fks_mappings
 
 O = ms.Observable
 SQRT_S = 2000.0
@@ -220,6 +221,75 @@ def test_bounded_configurations(case):
             means.append((w.mean(), w.std() / math.sqrt(len(w))))
         (mean, err), (mean_free, err_free) = means
         assert abs(mean - mean_free) < 5 * math.hypot(err, err_free)
+
+
+@pytest.mark.parametrize("case", CASES)
+def test_configurations_in_one_pass(case):
+    """With the cuts, the FKSConfigurationMapping gives every event, forward,
+    inverse and with its counter-events, those of the FKSMapping of its
+    configuration from fks_mappings: the floor of the Born of a final-state
+    emitter as a condition of the Born mapping, read per event."""
+    name, masses, (pt_jet, pt_lepton, m_ll, pt_top) = CASES[case]
+    configurations = reference(name)["fks_configurations"]
+    cuts = cut_items(configurations["born_pdgs"], pt_jet, pt_lepton, m_ll, pt_top)
+    born = ms.PhaseSpaceMapping(
+        masses,
+        SQRT_S,
+        mode=ms.PhaseSpaceMapping.TChannelMode.rambo,
+        sqrt_s_hat_min_condition=True,
+    )
+    mapping = fks_configuration_mapping(born, configurations, cuts=cuts)
+    assert mapping.sqrt_s_hat_floor() == ms.fks_sqrt_s_hat_min(cuts, masses[2:])
+    references = fks_mappings(born_factory(masses), configurations, cuts=cuts)
+    count = len(references)
+    batch = 400 * count
+    rng = np.random.default_rng(23)
+    r = 0.02 + 0.96 * rng.random((batch, mapping.random_dim()))
+    index = rng.integers(0, count, batch).astype(np.int32)
+    index_torch = torch.as_tensor(index, dtype=torch.int32).to(
+        torch.get_default_device()
+    )
+    outputs = mapping.map_forward([torch.as_tensor(r)], [index_torch])
+    momenta, x1, x2, det = (to_numpy(t) for t in outputs)
+    names = list(mapping.counter_event_types().keys())
+    runtime = ms.FunctionRuntime(
+        ms.FKSKinematics(mapping).function(), default_context()
+    )
+    kinematics = [to_numpy(t) for t in runtime.call([torch.as_tensor(r), index_torch])]
+    # the references on the whole batch, so that every event is computed in the
+    # same SIMD lane, compared at the events of their configuration
+    for k, reference_mapping in enumerate(references):
+        events = np.flatnonzero(index == k)
+        ref = reference_mapping.map_forward([torch.as_tensor(r)])
+        for ours, theirs in zip([momenta, x1, x2, det], ref):
+            np.testing.assert_array_equal(ours[events], to_numpy(theirs)[events])
+        single = ms.FunctionRuntime(
+            ms.FKSKinematics(reference_mapping).function(), default_context()
+        )
+        ref = single.call([torch.as_tensor(r)])
+        for name, ours, theirs in zip(names, kinematics, ref):
+            np.testing.assert_array_equal(
+                ours[events], to_numpy(theirs)[events], err_msg=name
+            )
+    bound = mapping.sqrt_s_hat_floor()
+    assert (sqrt_s_hat(momenta)[det > 0] >= bound * (1 - 1e-12)).all()
+    # the inverse is that of the FKSMapping of each event too, and a round trip
+    # to their conditioning (3.5e-9 in r_xi for an incoming emitter near the
+    # edge of its range)
+    r_inv, det_inv = (
+        to_numpy(t) for t in mapping.map_inverse(list(outputs[:3]), [index_torch])
+    )
+    for k, reference_mapping in enumerate(references):
+        events = np.flatnonzero(index == k)
+        ref = reference_mapping.map_forward([torch.as_tensor(r)])
+        ref_inv = reference_mapping.map_inverse(list(ref[:3]))
+        for ours, theirs in zip([r_inv, det_inv], ref_inv):
+            np.testing.assert_array_equal(ours[events], to_numpy(theirs)[events])
+    ok = det > 0
+    np.testing.assert_allclose(r_inv[ok], r[ok], rtol=0, atol=1e-8)
+    # the floor needs the condition
+    with pytest.raises(ValueError):
+        fks_configuration_mapping(born_factory(masses)(None), configurations, cuts=cuts)
 
 
 def test_born_floor_only_for_final_emitters():

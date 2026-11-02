@@ -1654,14 +1654,36 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "FKSConfigurationMapping", pydoc::doc("FKSConfigurationMapping")
     )
         .def(
-            py::init<const std::vector<FKSMapping>&>(),
+            py::init<
+                const PhaseSpaceMapping&,
+                const std::vector<FKSConfigurationMapping::Configuration>&,
+                double,
+                double>(),
+            py::arg("born"),
             py::arg("configurations"),
+            py::arg("s_hat_min") = 0.,
+            py::arg("sqrt_s_hat_floor") = 0.,
             pydoc::doc("FKSConfigurationMapping::FKSConfigurationMapping")
+        )
+        .def(
+            "born",
+            &FKSConfigurationMapping::born,
+            pydoc::doc("FKSConfigurationMapping::born")
         )
         .def(
             "configurations",
             &FKSConfigurationMapping::configurations,
             pydoc::doc("FKSConfigurationMapping::configurations")
+        )
+        .def(
+            "s_hat_min",
+            &FKSConfigurationMapping::s_hat_min,
+            pydoc::doc("FKSConfigurationMapping::s_hat_min")
+        )
+        .def(
+            "sqrt_s_hat_floor",
+            &FKSConfigurationMapping::sqrt_s_hat_floor,
+            pydoc::doc("FKSConfigurationMapping::sqrt_s_hat_floor")
         )
         .def(
             "random_dim",

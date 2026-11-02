@@ -14,7 +14,8 @@ madgraph/iolibs/export_fks.py):
         real_me, need_color_links, need_charge_links, splitting_type,
         extra_cnt_index
 
-The functions here turn it into the FKSMappings of a Born mapping, with the
+The functions here turn it into the FKSMappings of a Born mapping, one per
+configuration, or into one FKSConfigurationMapping for all of them, with the
 0-based positions of madspace. The Born mapping gives the masses, so the
 emitter is massive where it gives it a mass. With the cuts on the Born-level
 objects, the configurations get the lower bound on the partonic energy that
@@ -71,6 +72,27 @@ def sqrt_s_floor(pdgs, sqrt_s_min):
     )
 
 
+def checked_configurations(born_pdgs, particle_count, configurations):
+    """The configurations of fks_configurations.json, checked against the
+    Born: a Born mapping of its particles, and real processes that are the
+    Born with i and j in the place of i + j, the order FKSMapping assumes."""
+    if configurations["nincoming"] != 2:
+        raise ValueError("FKS mappings need two incoming particles")
+    if particle_count != len(born_pdgs):
+        raise ValueError(
+            f"the Born mapping has {particle_count} particles, "
+            f"the Born {len(born_pdgs)}"
+        )
+    for configuration in configurations["configurations"]:
+        if born_of_real(configuration) != born_pdgs:
+            raise ValueError(
+                f"the real process {configuration['real_pdgs']} is not the Born "
+                f"{born_pdgs} with i_fks = {configuration['i_fks']} and "
+                f"j_fks = {configuration['j_fks']}"
+            )
+    return configurations["configurations"]
+
+
 def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
     """The FKSMappings of the FKS configurations of a Born, in their order.
 
@@ -95,8 +117,6 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
             of i + j, the order FKSMapping assumes.
     """
     born_pdgs = list(configurations["born_pdgs"])
-    if configurations["nincoming"] != 2:
-        raise ValueError("FKS mappings need two incoming particles")
     if cuts is None:
         born_plain = born_final = born
     elif callable(born):
@@ -109,19 +129,10 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
             "with cuts, born has to be a function that returns the Born mapping "
             "for given cuts"
         )
-    if born_plain.particle_count() != len(born_pdgs):
-        raise ValueError(
-            f"the Born mapping has {born_plain.particle_count()} particles, "
-            f"the Born {len(born_pdgs)}"
-        )
     mappings = []
-    for configuration in configurations["configurations"]:
-        if born_of_real(configuration) != born_pdgs:
-            raise ValueError(
-                f"the real process {configuration['real_pdgs']} is not the Born "
-                f"{born_pdgs} with i_fks = {configuration['i_fks']} and "
-                f"j_fks = {configuration['j_fks']}"
-            )
+    for configuration in checked_configurations(
+        born_pdgs, born_plain.particle_count(), configurations
+    ):
         i_fks, j_fks = configuration["i_fks"] - 1, configuration["j_fks"] - 1
         if cuts is None:
             mapping = FKSMapping(born, i_fks, j_fks, s_hat_min=s_hat_min)
@@ -135,6 +146,39 @@ def fks_mappings(born, configurations, s_hat_min=0.0, cuts=None):
 
 def fks_configuration_mapping(born, configurations, s_hat_min=0.0, cuts=None):
     """The FKSConfigurationMapping of the FKS configurations of a Born, with
-    fks_index the position of the configuration (nFKSprocess - 1). See
-    fks_mappings."""
-    return FKSConfigurationMapping(fks_mappings(born, configurations, s_hat_min, cuts))
+    fks_index the position of the configuration (nFKSprocess - 1): all
+    configurations in one pass, each event in that of its fks_index, as the
+    FKSMapping of fks_mappings for it.
+
+    Args:
+        born: the PhaseSpaceMapping of the Born process, without cuts, its
+            momenta in the order of born_pdgs. With cuts that bound sqrt(s_hat)
+            from below, it needs sqrt_s_hat_min_condition=True: the floor of
+            the configurations with a final-state emitter is a condition of
+            the Born mapping, read per event.
+        configurations: the content of fks_configurations.json (see
+            read_fks_configurations).
+        s_hat_min: lower bound on the partonic energy squared of the real
+            emission, see FKSMapping.
+        cuts: the cuts on the Born-level objects (indexed like the Born), whose
+            bound (fks_sqrt_s_hat_min) is the floor of the Born for a
+            final-state emitter and raises s_hat_min for an incoming one. They
+            stay to be applied to the real emission and the counter-events.
+
+    Raises:
+        ValueError: as fks_mappings, and if a floor needs the
+            sqrt_s_hat_min condition the Born mapping does not have.
+    """
+    born_pdgs = list(configurations["born_pdgs"])
+    pairs = [
+        (configuration["i_fks"] - 1, configuration["j_fks"] - 1)
+        for configuration in checked_configurations(
+            born_pdgs, born.particle_count(), configurations
+        )
+    ]
+    floor = (
+        0.0 if cuts is None else fks_sqrt_s_hat_min(cuts, born.external_masses()[2:])
+    )
+    return FKSConfigurationMapping(
+        born, pairs, s_hat_min=s_hat_min, sqrt_s_hat_floor=floor
+    )
