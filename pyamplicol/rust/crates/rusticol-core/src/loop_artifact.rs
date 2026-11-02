@@ -238,7 +238,9 @@ struct PhysicsV4 {
 }
 
 /// A plan v4 process admitted from its artifact. `plan_json` is the stored
-/// plan (its SHA-256 is `plan_sha256`); `request` is the generation recipe.
+/// plan's bytes, its binary plan member or (artifacts written before it) its
+/// JSON (`loop_runtime::read_loop_program_v4_json`; their SHA-256 is
+/// `plan_sha256`); `request` is the generation recipe.
 /// `scaleless_*` is the companion plan of the certified-scaleless families
 /// that the "uv" and "ir" pole selections run (DESIGN.md §12.4), when the
 /// process has such families.

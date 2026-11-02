@@ -611,7 +611,7 @@ def test_split_trace_steps_equal_the_reference_executor(loop_native):
     )
     slice_ = LoopSlice.generate(compiled, request, loop_native)
     executor = NativeExecutor(slice_, forward=False)
-    plan = json.loads(executor._plan_json)
+    plan = json.loads(executor.exported.json())
     ranks = [
         (
             family["rank"],

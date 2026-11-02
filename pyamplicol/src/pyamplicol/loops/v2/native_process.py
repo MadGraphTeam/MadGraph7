@@ -11,7 +11,8 @@ their (Born, loop) pairs, the normalisation, the request's fixed
 parameters, scale parameter, colour accuracy and contraction, and the lane
 labels of the plan's families, loop orders and columns.
 
-``NativeProcess`` holds exactly that: the plan JSON, the tree program
+``NativeProcess`` holds exactly that: the plan (its binary member, M-FINAL
+MF-8G-1 item 5, or a plan JSON), the tree program
 (``native_trees.NativeTrees``: its JSON, saved kernels and parameter
 evaluator) and an assembly record, all serialisable, so a stored process
 evaluates without regenerating its slice. ``NativeProcess.executor`` builds
@@ -182,25 +183,41 @@ def _plan_view(
     )
 
 
+def _plan_json(plan: str | bytes) -> str:
+    from .native_lowering import member_json
+
+    return member_json(plan)
+
+
 @dataclass(frozen=True)
 class NativeCompanion:
-    """The certified-scaleless companion of a native process: its plan JSON
-    (the artifact's companion plan), its tree program (no Born or
-    counterterm outputs) and its lane labels (``record``: plan family count
-    and loop orders; its columns are the process's sectors)."""
+    """The certified-scaleless companion of a native process: its plan (the
+    artifact's companion plan: a binary plan member or a JSON), its tree
+    program (no Born or counterterm outputs) and its lane labels
+    (``record``: plan family count and loop orders; its columns are the
+    process's sectors)."""
 
-    plan_json: str
+    plan: str | bytes
     trees: NativeTrees
     record: Mapping[str, Any]
+
+    @property
+    def plan_json(self) -> str:
+        """The companion plan's JSON (formed from a binary member on each
+        call, ``native_lowering.member_json``)."""
+
+        return _plan_json(self.plan)
 
 
 @dataclass(frozen=True)
 class NativeProcess:
     """The native evaluation of one v2 process: plan, tree program and the
     assembly record (module docstring), with the native companion of its
-    certified-scaleless families when it has them."""
+    certified-scaleless families when it has them. ``plan`` is the stored
+    plan as the native loader reads it: its binary plan member (M-FINAL
+    MF-8G-1 item 5; ``ExportedPlan.binary()``) or a plan JSON (text)."""
 
-    plan_json: str
+    plan: str | bytes
     trees: NativeTrees
     record: Mapping[str, Any]
     scaleless: NativeCompanion | None = None
@@ -212,6 +229,14 @@ class NativeProcess:
     # kB; ``_stored_dipoles``), for a loaded process's Catani prediction
     # (``dipole_orbits``); None without two coloured legs.
     dipoles: str | None = None
+
+    @property
+    def plan_json(self) -> str:
+        """The plan's JSON (formed from a binary member on each call,
+        ``native_lowering.member_json``): for the Python readers of plan
+        records; the executor reads ``plan`` itself."""
+
+        return _plan_json(self.plan)
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -233,13 +258,14 @@ class NativeProcess:
         cls,
         slice_: Any,
         exported: Any,
-        plan_json: str,
-        scaleless: tuple[Any, str] | None = None,
+        plan: str | bytes,
+        scaleless: tuple[Any, str | bytes] | None = None,
     ) -> NativeProcess:
         """The process of a plan exported with its tree program
         (``export_plan(slice_, trees=True, born_squared=True)``, sector
-        columns); ``plan_json`` is ``exported.json()``. ``scaleless`` is the
-        (exported plan, JSON) of the slice's certified-scaleless companion,
+        columns); ``plan`` is ``exported.binary()`` (or ``exported.json()``).
+        ``scaleless`` is the (exported plan, its binary member or JSON) of the
+        slice's certified-scaleless companion,
         exported with its tree program (``trees=True, born_squared=False,
         counterterms=False``); required when the slice has one."""
 
@@ -321,7 +347,7 @@ class NativeProcess:
                 twin_record["fourier"] = json.loads(twin.fourier)
             record["scaleless"] = twin_record
             companion = NativeCompanion(twin_json, twin.trees, twin_record)
-        return cls(plan_json, trees, record, companion, dipoles=_stored_dipoles(slice_))
+        return cls(plan, trees, record, companion, dipoles=_stored_dipoles(slice_))
 
     # -- storage -------------------------------------------------------------
 
@@ -338,7 +364,11 @@ class NativeProcess:
             **_trees_members(self.trees),
         }
         if self.scaleless is not None:
-            out[f"{SCALELESS}plan.json"] = self.scaleless.plan_json.encode()
+            plan = self.scaleless.plan
+            if isinstance(plan, str):
+                out[f"{SCALELESS}plan.json"] = plan.encode()
+            else:
+                out[f"{SCALELESS}plan.bin"] = bytes(plan)
             out.update(_trees_members(self.scaleless.trees, SCALELESS))
         if self.observables is not None:
             out.update(self.observables.members())
@@ -349,13 +379,13 @@ class NativeProcess:
     @classmethod
     def from_members(
         cls,
-        plan_json: str,
+        plan: str | bytes,
         members: Mapping[str, bytes],
-        scaleless_json: str | None = None,
+        scaleless: str | bytes | None = None,
     ) -> NativeProcess:
         """The process of ``members`` (``members``) for its plan and, when it
         has certified-scaleless families, its companion plan (by default the
-        one ``members`` holds)."""
+        one ``members`` holds); a plan is a binary plan member or a JSON."""
 
         record = json.loads(members["native-process.json"])
         if record.get("schema") != SCHEMA:
@@ -365,17 +395,19 @@ class NativeProcess:
         trees = _trees_from_members(members, record["trees"])
         companion = None
         twin = record["scaleless"]
-        if scaleless_json is None and f"{SCALELESS}plan.json" in members:
-            scaleless_json = bytes(members[f"{SCALELESS}plan.json"]).decode()
+        if scaleless is None and f"{SCALELESS}plan.bin" in members:
+            scaleless = bytes(members[f"{SCALELESS}plan.bin"])
+        if scaleless is None and f"{SCALELESS}plan.json" in members:
+            scaleless = bytes(members[f"{SCALELESS}plan.json"]).decode()
         if twin is not None:
-            if scaleless_json is None:
+            if scaleless is None:
                 raise ValueError("the native process's companion plan is missing")
             companion = NativeCompanion(
-                scaleless_json,
+                scaleless,
                 _trees_from_members(members, twin["trees"], SCALELESS),
                 twin,
             )
-        elif scaleless_json is not None:
+        elif scaleless is not None:
             raise ValueError("a companion plan without its native tree program")
         observables = None
         if "observables.json" in members:
@@ -384,7 +416,7 @@ class NativeProcess:
             observables = StoredObservables.from_members(members)
         dipoles = members.get("dipoles.json")
         return cls(
-            plan_json,
+            plan,
             trees,
             record,
             companion,
@@ -431,14 +463,14 @@ class NativeProcess:
             twin = self.scaleless
             companion = (
                 _plan_view(twin.record, columns, twin.trees, record["families"]),
-                twin.plan_json,
+                twin.plan,
             )
             view.scaleless = _ProcessView(record, native, externals)
         return NativeExecutor(
             view,
             forward=False,
             exported=_plan_view(record, columns, self.trees),
-            plan_json=self.plan_json,
+            plan_json=self.plan,
             inputs="native",
             scaleless=companion,
             **options,

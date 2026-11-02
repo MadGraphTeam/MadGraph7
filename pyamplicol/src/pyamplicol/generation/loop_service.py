@@ -1179,10 +1179,10 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
                     write_plan(
-                        process.plan_json,
+                        process.plan,
                         path,
                         native=process.native,
-                        scaleless_json=process.scaleless_plan_json,
+                        scaleless=process.scaleless_plan,
                     )
                     legs = process.state_legs()
                     # WP3.2 EWI-7: the conventions of an electroweak virtual

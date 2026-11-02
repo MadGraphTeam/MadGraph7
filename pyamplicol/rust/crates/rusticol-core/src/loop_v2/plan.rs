@@ -1233,9 +1233,14 @@ impl LoopProgramV4 {
 
     /// [`Self::load`] with an explicit kernel-form policy. The derivations
     /// are bounded (module docs): refused values and an ungranted peak give
-    /// an error before deriving.
-    pub fn load_with(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
-        binary::PlanModel::from_json(json)?.program(policy)
+    /// an error before deriving. A binary plan member (the stored form,
+    /// M-FINAL MF-8G-1 item 5; [`binary::is_binary`]) is read by its one
+    /// reader, [`read_binary_with`]; anything else is read as a plan JSON.
+    pub fn load_with(data: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        if binary::is_binary(data) {
+            return read_binary_with(data, policy);
+        }
+        binary::PlanModel::from_json(data)?.program(policy)
     }
 
     /// The derivations of a plan JSON after the bound's refusals, without

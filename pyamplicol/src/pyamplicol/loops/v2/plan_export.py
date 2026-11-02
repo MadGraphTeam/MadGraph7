@@ -208,6 +208,16 @@ class ExportedPlan:
 
         return native_lowering.plan_binary(self)
 
+    def stored(self) -> str | bytes:
+        """The plan as an artifact stores it and the native executor loads
+        it (M-FINAL MF-8G-1 item 5): the binary plan member (``binary``),
+        or the plan JSON (``json``) when ``native_lowering.BINARY_PLAN`` is
+        off (the oracle; artifacts written before the member)."""
+
+        from . import native_lowering
+
+        return self.binary() if native_lowering.BINARY_PLAN else self.json()
+
 
 @dataclass
 class _Object:
@@ -1406,11 +1416,11 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
-        plan_json: str | None = None,
+        plan_json: str | bytes | None = None,
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
         counterterms: bool = True,
-        scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
+        scaleless: tuple[ExportedPlan, str | bytes] | Callable[[], Any] | None = None,
         contraction: Literal["auto", "direct", "fft"] | None = None,
     ):
         if inputs not in ("python", "native"):
@@ -1448,8 +1458,9 @@ class NativeExecutor:
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
-        # ``plan_json``: ``exported.json()`` when the caller already holds it.
-        self._plan_json = self.exported.json() if plan_json is None else plan_json
+        # ``plan_json``: the stored plan (``exported.stored()``: its binary
+        # member, or a plan JSON) when the caller already holds it.
+        self._plan_json = self.exported.stored() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it

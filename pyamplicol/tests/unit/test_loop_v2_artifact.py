@@ -2248,10 +2248,10 @@ def _strings(path: Path) -> str:
     """The text of one artifact file; a PACBIN's plan members (the process
     plan and the companion of certified-scaleless families) decompressed."""
 
-    from pyamplicol.loops.v2.artifact import SCALELESS_PLAN_MEMBER, read_plan
+    from pyamplicol.loops.v2.artifact import SCALELESS_PLAN_MEMBER, read_plan_json
 
     if path.name == "loop-runtime.pacbin":
-        plans = (read_plan(path), read_plan(path, SCALELESS_PLAN_MEMBER))
+        plans = (read_plan_json(path), read_plan_json(path, SCALELESS_PLAN_MEMBER))
         return "".join(p or "" for p in plans) + path.read_bytes().decode("latin-1")
     return path.read_bytes().decode("latin-1")
 
@@ -2761,6 +2761,7 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     with the companion)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
+    from pyamplicol.loops.v2.native_lowering import member_json
 
     entries = (("gg4g", "g g > g g g g"),)
     card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
@@ -2773,7 +2774,7 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     execution = json.loads((output / "processes/gg4g/execution.json").read_text())
     plan = read_plan(output / "processes/gg4g/loop-runtime.pacbin")
     assert plan_digest(plan) == execution["plan_sha256"]
-    assert len(json.loads(plan)["families"]) == 1100
+    assert len(json.loads(member_json(plan))["families"]) == 1100
     admitted = admit(loop_native, output, "gg4g")
     assert admitted["families"] == 1100
     assert admitted["plan_sha256"] == execution["plan_sha256"]

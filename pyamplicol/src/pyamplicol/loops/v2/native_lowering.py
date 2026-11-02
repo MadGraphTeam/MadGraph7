@@ -60,6 +60,16 @@ NATIVE_JSON = True
 # ``ExportedPlan.python_json()``).
 NATIVE_FAMILIES = True
 
+# M-FINAL MF-8G-1 item 5: the binary plan member is the plan's stored form
+# (``ExportedPlan.stored()``): an artifact's plan and companion plan members
+# (``artifact.write_plan``), the native process's plan and the plan every
+# native executor loads (``loop_v2::plan::read_binary``, which
+# ``LoopProgramV4::load`` takes for a member). ``plan_sha256`` digests the
+# stored bytes. Off, the plan JSON is stored and loaded (the oracle; the
+# form of artifacts written before the member, which every reader keeps
+# reading).
+BINARY_PLAN = True
+
 
 def _native(native: Any | None) -> Any:
     """``native``, else the staged loop core, verified once per process: the
@@ -142,6 +152,32 @@ def plan_binary(exported: Any, native: Any | None = None) -> bytes:
     return bytes(plan_model(exported, native).binary())
 
 
+# The binary plan member's magic (``loop_v2::plan::binary``).
+_MAGIC = b"LOOPPLAN"
+
+
+def is_member(plan: str | bytes) -> bool:
+    """Whether a stored plan is a binary plan member (else a plan JSON, as
+    text or bytes): ``loop_v2::plan::binary::is_binary``'s magic."""
+
+    return not isinstance(plan, str) and bytes(plan[:8]) == _MAGIC
+
+
+def member_json(plan: str | bytes, native: Any | None = None) -> str:
+    """The plan JSON of a stored plan (M-FINAL MF-8G-1 item 5): the text of a
+    JSON, the native model's JSON of a binary member (``V2PlanModel.
+    from_binary(...).json()``, byte for byte the exporter's JSON of the same
+    plan). Formed on each call, never kept: the Python readers that still
+    read plan records (the observable column sets) take it from here."""
+
+    if isinstance(plan, str):
+        return plan
+    data = bytes(plan)
+    if not is_member(data):
+        return data.decode("ascii")
+    return bytes(_native(native).V2PlanModel.from_binary(data).json()).decode("ascii")
+
+
 def plan_encodings(exported: Any, native: Any | None = None) -> tuple[bytes, bytes]:
     """The plan JSON and the binary member of an exported plan, from one
     native model."""
@@ -184,12 +220,15 @@ def read(data: bytes, native: Any | None = None) -> str:
 
 
 __all__ = [
+    "BINARY_PLAN",
     "NATIVE_FAMILIES",
     "NATIVE_JSON",
     "NativeFamilies",
     "PlanLoad",
     "families_builder",
+    "is_member",
     "load",
+    "member_json",
     "plan_binary",
     "plan_encodings",
     "plan_json",

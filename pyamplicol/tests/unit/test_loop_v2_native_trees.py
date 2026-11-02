@@ -657,7 +657,7 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     (tmp_path / "members").mkdir()
     for member, data in NativeProcess.of(native).members().items():
         (tmp_path / "members" / member).write_bytes(data)
-    (tmp_path / "plan.json").write_text(native._plan_json)
+    (tmp_path / "plan.json").write_text(native.exported.json())
     frozen = streams.load(stream)
     points = [streams.exact(frozen, k) for k in range(11)]
     scales = [("250000", "1000000", "4000000")[k % 3] for k in range(11)]
