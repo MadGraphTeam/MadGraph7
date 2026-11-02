@@ -137,21 +137,17 @@ def _inputs(
     return points, formatted_scales
 
 
-# The native parameter program refuses a whole batch when a counterterm
-# coupling is not finite at one point's mu_R^2 in the lane's carrier
-# (``rusticol-core`` ``loop_v2/trees.rs``; e.g. mu_r2 = "1e-400" underflows in
-# binary64).
-_NONFINITE_COUNTERTERM = "a counterterm coupling's diagnostic is not finite"
-
-
 def isolate_scale_failures(
     run: Callable[[list[int]], tuple[list[Any], dict[int, list[str]]]],
     scales: Sequence[str],
 ) -> tuple[list[Any], dict[int, list[str]]]:
     """``run(indices)``, the per-point results and failures of the points
     ``indices`` evaluated as one batch, for every point. If a counterterm
-    coupling is not finite at some mu_R^2 (``_NONFINITE_COUNTERTERM``), the
-    batch runs again per exact mu_R^2, and the points of a failing scale
+    coupling is not finite at some mu_R^2 (the native parameter binding
+    refuses the whole batch with the typed ``NonFiniteCountertermError``, a
+    ``ValueError``: ``rusticol-core`` ``loop_v2/trees.rs``
+    ``nonfinite_counterterm``; e.g. mu_r2 = "1e-400" underflows in binary64),
+    the batch runs again per exact mu_R^2, and the points of a failing scale
     fail alone with that reason, a numerical failure of their own (as the
     Python reference path fails them, ``scalar_bindings.SourceBindingFailure``);
     the other points keep their results."""
@@ -159,7 +155,9 @@ def isolate_scale_failures(
     from fractions import Fraction
 
     def scale_failure(error: ValueError) -> bool:
-        return _NONFINITE_COUNTERTERM in str(error)
+        from pyamplicol.loops.native import load_loop_native
+
+        return isinstance(error, load_loop_native().NonFiniteCountertermError)
 
     try:
         return run(list(range(len(scales))))
