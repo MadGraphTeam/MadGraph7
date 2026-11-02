@@ -330,13 +330,15 @@ fn apply_row<T: FloatLike, const L: usize>(
     let m_in = ncoeff(segment.rank());
     let m_out = ncoeff(segment.output_rank);
     let products = segment.products;
+    let (entries, monomials) = (layout.entries(), layout.monomials());
+    debug_assert_eq!(x.len(), entries.len() * v);
     for a in 0..segment.cut {
-        for ((entry, &n), y) in layout
-            .entries()
-            .iter()
-            .zip(layout.monomials())
-            .zip(x.chunks_exact(v))
-        {
+        // Entries grouped by output column, entry order within a group:
+        // each output coefficient still receives its terms in entry order
+        // (the same bits), while its column stays in cache.
+        for &e in layout.by_out() {
+            let e = e as usize;
+            let (entry, n, y) = (&entries[e], monomials[e], &x[e * v..][..v]);
             let src = &input[(a * loop_in + entry.loop_in) * m_in * v..][..m_in * v];
             let dst = &mut output[(a * segment.outgoing + entry.out) * m_out * v..][..m_out * v];
             for (m, o) in src.chunks_exact(v).enumerate() {

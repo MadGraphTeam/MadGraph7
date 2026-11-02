@@ -110,6 +110,8 @@ pub struct SegmentLayout {
     degree: usize,
     entries: Vec<SegmentEntry>,
     monomials: Vec<usize>,
+    /// Entry indices grouped by `out`, in entry order within a group.
+    by_out: Vec<u32>,
 }
 
 impl SegmentLayout {
@@ -146,12 +148,17 @@ impl SegmentLayout {
             .iter()
             .map(|entry| monomial_index(entry.exponents))
             .collect();
+        let mut by_out: Vec<u32> = (0..entries.len())
+            .map(|e| u32::try_from(e).expect("a segment has fewer than 2^32 entries"))
+            .collect();
+        by_out.sort_by_key(|&e| entries[e as usize].out);
         Ok(Self {
             loop_in_dimension,
             out_dimension,
             degree,
             entries,
             monomials,
+            by_out,
         })
     }
 
@@ -176,6 +183,14 @@ impl SegmentLayout {
     /// index of the entry in a [`MonomialProductTable`].
     pub fn monomials(&self) -> &[usize] {
         &self.monomials
+    }
+
+    /// Entry indices grouped by output column, in entry order within each
+    /// group (a stable sort): the order the executor's kernels apply them,
+    /// so each output column stays in cache while every entry writing it
+    /// runs, and each output coefficient receives its terms in entry order.
+    pub fn by_out(&self) -> &[u32] {
+        &self.by_out
     }
 }
 
