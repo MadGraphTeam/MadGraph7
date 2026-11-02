@@ -224,3 +224,51 @@ def test_the_summary_recompiles_its_structural_and_its_complete_born(generate):
         (r.color_sector_id, r.coupling_orders)
         for r in blocks._born_roots(complete, summary.model)
     }
+
+
+# --------------------------------------------- deferred full collections
+
+
+@pytest.mark.loop_fast
+def test_full_collections_are_deferred_and_restored():
+    """``generator_input.full_collections_deferred`` lifts only the oldest
+    generation's threshold, nested uses keep the outermost's, and the
+    thresholds come back on exit (also on an error)."""
+
+    import gc
+
+    from pyamplicol.loops.v2.generator_input import full_collections_deferred
+
+    before = gc.get_threshold()
+    with full_collections_deferred():
+        young, middle, old = gc.get_threshold()
+        assert (young, middle) == before[:2]
+        assert old >= 1 << 30
+        with full_collections_deferred():
+            assert gc.get_threshold() == (young, middle, old)
+        assert gc.get_threshold() == (young, middle, old)
+    assert gc.get_threshold() == before
+    with pytest.raises(RuntimeError), full_collections_deferred():
+        raise RuntimeError("restored")
+    assert gc.get_threshold() == before
+
+
+@pytest.mark.loop_physics
+def test_generation_defers_full_collections(generate):
+    import gc
+
+    seen = []
+
+    def watch(phase, info):
+        if phase == "start" and info["generation"] == 2:
+            seen.append(gc.get_threshold())
+
+    before = gc.get_threshold()
+    passes = gc.get_count()
+    gc.callbacks.append(watch)
+    try:
+        generate("gg_gg")
+    finally:
+        gc.callbacks.remove(watch)
+    assert gc.get_threshold() == before
+    assert not seen, (seen, passes)

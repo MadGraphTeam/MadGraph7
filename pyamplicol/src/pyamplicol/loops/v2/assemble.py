@@ -1994,6 +1994,7 @@ class LoopSlice:
     # -- generation ------------------------------------------------------------
 
     @classmethod
+    @generator_input.full_collections_deferred()
     def generate(
         cls,
         compiled: Any,

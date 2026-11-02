@@ -916,6 +916,29 @@ class NativeGeneration:
         return plan
 
 
+# The oldest generation's threshold while full collections are deferred
+# (``full_collections_deferred``): no pass is triggered within a generation.
+_DEFERRED_THRESHOLD = 1 << 30
+
+
+@contextmanager
+def full_collections_deferred() -> Iterator[None]:
+    """The cyclic collector's full (oldest-generation) passes deferred while
+    a generation builds its tens of millions of long-lived, acyclic objects:
+    each pass traverses the whole heap and frees next to nothing (seven
+    gluons LC: 21 passes, 12-15 s of a 70-90 s ``LoopSlice.generate``, under
+    11k objects freed), and the heap grows tenfold per leg. Young
+    collections keep running; the thresholds are restored on exit (nested
+    uses keep the outermost's). Usable as a decorator."""
+
+    young, middle, old = gc.get_threshold()
+    gc.set_threshold(young, middle, max(old, _DEFERRED_THRESHOLD))
+    try:
+        yield
+    finally:
+        gc.set_threshold(young, middle, old)
+
+
 @contextmanager
 def _no_cyclic_gc() -> Iterator[None]:
     """Decoding builds millions of acyclic objects; the cyclic collector
