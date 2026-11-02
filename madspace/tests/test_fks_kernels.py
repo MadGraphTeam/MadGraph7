@@ -76,7 +76,7 @@ def radiate(xi_hat, y, r_phi, sqrt_s, p_jbar):
     return run(
         lambda fb, *args: fb.fks_final_massless_radiate(*args),
         [F, F, F, F, V],
-        [V, V, F, F, F],
+        [V, V, F, F, F, V],
         [xi_hat, y, r_phi, sqrt_s, p_jbar],
     )
 
@@ -106,7 +106,7 @@ def real_from_born(p_born, i_fks, j_fks, nin, xi_hat, y, r_phi, sqrt_s):
     i_fks, j_fks are the 0-based positions in the real process, j a massless
     final-state parton."""
     jb = j_fks if j_fks < i_fks else j_fks - 1
-    p_i, p_j, xi, xi_max, det_xi = radiate(xi_hat, y, r_phi, sqrt_s, p_born[:, jb])
+    p_i, p_j, xi, xi_max, det_xi, _ = radiate(xi_hat, y, r_phi, sqrt_s, p_born[:, jb])
     spect = [b for b in range(nin, p_born.shape[1]) if b != jb]
     real_born = p_born.copy()
     if spect:
@@ -315,7 +315,7 @@ def test_final_massless_volume(n_out):
     rng = np.random.default_rng(7)
     r = rng.random((batch, 3))
     xi_hat, y, det_sample = xi_y_sample(r[:, 0], r[:, 1])
-    _, _, xi, _, det_xi = radiate(xi_hat, y, r[:, 2], sqrt_s, p_born[:, -1])
+    _, _, xi, _, det_xi, _ = radiate(xi_hat, y, r[:, 2], sqrt_s, p_born[:, -1])
     weight = det_born * xi * det_xi * det_sample
 
     _, det_real = random_born(n_out + 1, batch, seed=8 + n_out)
@@ -335,7 +335,7 @@ def initial_radiate(
     return run(
         lambda fb, *args: fb.fks_initial_radiate(*args, s_hat_min, beam_sign),
         [F, F, F, F, F, F],
-        [V, V, V, F, F, F, F, F, F, F],
+        [V, V, V, F, F, F, F, F, F, F, V],
         [xi_hat, y_hat, r_phi, sqrt_s, x1_born, x2_born],
     )
 
@@ -359,7 +359,7 @@ def initial_real_from_born(
         (p_born[:, 0] + p_born[:, 1])[:, 0] ** 2
         - ((p_born[:, 0] + p_born[:, 1])[:, 1:] ** 2).sum(1)
     )
-    p1, p2, p_i, x1, x2, xi, y, xi_min, xi_max, det_xi = initial_radiate(
+    p1, p2, p_i, x1, x2, xi, y, xi_min, xi_max, det_xi, _ = initial_radiate(
         xi_hat, y_hat, r_phi, sqrt_s, x_born[0], x_born[1], beam_sign, s_hat_min
     )
     final = initial_recoil_boost(p_born[:, 2:], xi, y, r_phi, beam_sign)
@@ -512,7 +512,7 @@ def massive_radiate(xi_hat, y, r_phi, sqrt_s, p_jbar, m_j):
     return run(
         lambda fb, *args: fb.fks_final_massive_radiate(*args, m_j),
         [F, F, F, F, V],
-        [V, V, F, F, F, F],
+        [V, V, F, F, F, F, V],
         [xi_hat, y, r_phi, sqrt_s, p_jbar],
     )
 
@@ -532,7 +532,7 @@ def massive_real_from_born(p_born, i_fks, j_fks, nin, xi_hat, y, r_phi, m_j):
     jb = j_fks if j_fks < i_fks else j_fks - 1
     p_in = p_born[:, 0] + p_born[:, 1]
     sqrt_s = np.sqrt(p_in[:, 0] ** 2 - (p_in[:, 1:] ** 2).sum(1))
-    p_i, p_j, xi, xi_max, xi_norm, det_xi = massive_radiate(
+    p_i, p_j, xi, xi_max, xi_norm, det_xi, _ = massive_radiate(
         xi_hat, y, r_phi, sqrt_s, p_born[:, jb], m_j
     )
     spect = [b for b in range(nin, p_born.shape[1]) if b != jb]
@@ -775,7 +775,7 @@ def test_final_massive_volume(masses):
     xi_hat, y, det_sample = massive_sample(
         r[:, 0], r[:, 1], sqrt_s, p_born[:, 2], 173.0
     )
-    _, _, xi, _, _, det_xi = massive_radiate(
+    _, _, xi, _, _, det_xi, _ = massive_radiate(
         xi_hat, y, r[:, 2], sqrt_s, p_born[:, 2], 173.0
     )
     weight = det_born * xi * det_xi * det_sample

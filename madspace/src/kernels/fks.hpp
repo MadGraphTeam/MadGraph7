@@ -104,7 +104,8 @@ KERNELSPEC void kernel_fks_final_massless_radiate(
     FOut<T, 1> p_j,
     FOut<T, 0> xi,
     FOut<T, 0> xi_max,
-    FOut<T, 0> det_xi
+    FOut<T, 0> det_xi,
+    FOut<T, 1> p_i_hat
 ) {
     FVal<T> xh = xi_hat, yv = y, rs = sqrt_s, rp = r_phi;
     auto pjb = load_mom<T>(p_jbar);
@@ -138,6 +139,13 @@ KERNELSPEC void kernel_fks_final_massless_radiate(
     auto rot = fks_angles<T>(pjb);
     store_mom<T>(p_i, fks_rotate<T>(e_i, ix, iy, iz, rot));
     store_mom<T>(p_j, fks_rotate<T>(kj, -ix, -iy, jz, rot));
+    // i per unit xi, with the direction it has at this xi (that of the soft
+    // limit at xi = 0)
+    auto eh = 0.5 * rs;
+    store_mom<T>(
+        p_i_hat,
+        fks_rotate<T>(eh, eh * sth * cos(phi), eh * sth * sin(phi), eh * cth, rot)
+    );
     xi = xiv;
     xi_max = xm;
     det_xi = fks_final_massless_det_xi<T>(s, xiv, xm, yv, kj, kbar);
@@ -368,7 +376,8 @@ KERNELSPEC void kernel_fks_final_massive_radiate(
     FOut<T, 0> xi,
     FOut<T, 0> xi_max,
     FOut<T, 0> xi_norm,
-    FOut<T, 0> det_xi
+    FOut<T, 0> det_xi,
+    FOut<T, 1> p_i_hat
 ) {
     FVal<T> xh = xi_hat, yv = y, rs = sqrt_s, rp = r_phi;
     auto pjb = load_mom<T>(p_jbar);
@@ -425,6 +434,12 @@ KERNELSPEC void kernel_fks_final_massive_radiate(
     auto rot = fks_angles<T>(pjb);
     store_mom<T>(p_i, fks_rotate<T>(rs * ei, ix, iy, iz, rot));
     store_mom<T>(p_j, fks_rotate<T>(ej, -ix, -iy, jz, rot));
+    // i per unit xi, with the direction it has at this xi
+    auto eh = 0.5 * rs;
+    store_mom<T>(
+        p_i_hat,
+        fks_rotate<T>(eh, eh * sth * cos(phi), eh * sth * sin(phi), eh * cth, rot)
+    );
     auto kbar =
         sqrt(max(pjb[1] * pjb[1] + pjb[2] * pjb[2] + pjb[3] * pjb[3], EPS2)) / rs;
     xi = xiv;
@@ -597,7 +612,8 @@ KERNELSPEC void kernel_fks_initial_radiate(
     FOut<T, 0> y,
     FOut<T, 0> xi_min,
     FOut<T, 0> xi_max,
-    FOut<T, 0> det_xi
+    FOut<T, 0> det_xi,
+    FOut<T, 1> p_i_hat
 ) {
     FVal<T> xh = xi_hat, yh = y_hat, rp = r_phi, rs_born = sqrt_s;
     FVal<T> x1b = x1_born, x2b = x2_born, sign(beam_sign);
@@ -644,6 +660,17 @@ KERNELSPEC void kernel_fks_initial_radiate(
             e_i * sth * cos(phi),
             e_i * sth * sin(phi),
             2. * e_i * yb / bst
+        }
+    );
+    // i per unit xi, in the same frame
+    auto eh = 0.5 * rs;
+    store_mom<T>(
+        p_i_hat,
+        FourMom<T>{
+            eh * (2. - xiv * sin2) / bst,
+            eh * sth * cos(phi),
+            eh * sth * sin(phi),
+            2. * eh * yb / bst
         }
     );
     x1 = x1b / (sq_omx * omega);

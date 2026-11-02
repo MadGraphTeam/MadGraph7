@@ -246,6 +246,8 @@ c stale. (ycm_cnt(0) is stale for the second fold of a massive j_fks.)
                   write (*,fmt) pre//'XBJ',xbjrk_ev(1),xbjrk_ev(2)
      &                 ,((xbjrk_cnt(j,k),j=1,2),k=-2,2)
                   write (*,fmt) pre//'SHAT',shat_ev,(shat_cnt(k),k=-2,2)
+                  write (*,fmt) pre//'PIHAT',(p_i_fks_ev(j),j=0,3)
+     &                 ,((p_i_fks_cnt(j,k),j=0,3),k=-2,2)
                enddo
                tau_lower_bound=tau_lower_bound_save
             endif

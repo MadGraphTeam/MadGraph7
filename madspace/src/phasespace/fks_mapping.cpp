@@ -339,8 +339,18 @@ NamedVector<Value> FKSMapping::build_events(
     for (const auto& name : {"xi", "xi_hat", "y", "xi_max"}) {
         outputs.push_back(name, real.at(name));
     }
+    // i per unit xi into the lab like a massless momentum
+    auto hat_to_lab = [&](Value p_i_hat) {
+        auto hat = standard_orientation(fb, fb.stack({p_i_hat}), conditions);
+        if (boosted) {
+            hat = fb.fks_beam_boost(hat, Value(std::vector<double>{0.}), plus, minus);
+        }
+        return fb.unstack(hat).at(0);
+    };
+    outputs.push_back("p_i_hat", hat_to_lab(real.at("p_i_hat")));
     for (const auto& name : _radiation.counter_events()) {
         to_lab(name + "_", real.at(name + "_det"), outputs);
+        outputs.push_back(name + "_p_i_hat", hat_to_lab(real.at(name + "_p_i_hat")));
     }
     return outputs;
 }
@@ -360,12 +370,14 @@ NamedVector<Type> FKSMapping::counter_event_types() const {
         {"xi_hat", batch_float},
         {"y", batch_float},
         {"xi_max", batch_float},
+        {"p_i_hat", batch_four_vec},
     };
     for (const auto& name : _radiation.counter_events()) {
         types.push_back(name + "_momenta", batch_four_vec_array(n + 1));
         types.push_back(name + "_x1", batch_float);
         types.push_back(name + "_x2", batch_float);
         types.push_back(name + "_det", batch_float);
+        types.push_back(name + "_p_i_hat", batch_four_vec);
     }
     return types;
 }
@@ -565,12 +577,14 @@ NamedVector<Type> FKSConfigurationMapping::counter_event_types() const {
         {"xi_hat", batch_float},
         {"y", batch_float},
         {"xi_max", batch_float},
+        {"p_i_hat", batch_four_vec},
     };
     for (const auto& name : {"soft", "collinear", "soft_collinear"}) {
         types.push_back(std::string(name) + "_momenta", batch_four_vec_array(n + 1));
         types.push_back(std::string(name) + "_x1", batch_float);
         types.push_back(std::string(name) + "_x2", batch_float);
         types.push_back(std::string(name) + "_det", batch_float);
+        types.push_back(std::string(name) + "_p_i_hat", batch_four_vec);
     }
     return types;
 }
@@ -642,6 +656,10 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::pick_emission(
         }
         return values;
     };
+    ValueVec p_i_hat;
+    for (const auto& value : field(&Emission::p_i_hat)) {
+        p_i_hat.push_back(fb.stack({value}));
+    }
     return {
         pick_rows(fb, field(&Emission::momenta), _born_masses.size() + 1, fks_index),
         pick(fb, field(&Emission::x1), slot),
@@ -651,6 +669,7 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::pick_emission(
         pick(fb, field(&Emission::xi_max), slot),
         pick(fb, field(&Emission::det_xi), slot),
         pick(fb, field(&Emission::rat), slot),
+        fb.unstack(pick_rows(fb, p_i_hat, 1, fks_index)).at(0),
     };
 }
 
@@ -663,21 +682,49 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
 ) const {
     const auto& c = context;
     if (kind == incoming) {
-        auto [p_in1, p_in2, p_i, x1_real, x2_real, xi, y, xi_min, xi_max, det_xi] =
-            fb.fks_initial_radiate(
-                xi_hat, y_var, c.r_phi, c.sqrt_s, c.x1, c.x2, c.s_hat_min, c.beam_sign
-            );
+        auto
+            [p_in1,
+             p_in2,
+             p_i,
+             x1_real,
+             x2_real,
+             xi,
+             y,
+             xi_min,
+             xi_max,
+             det_xi,
+             p_i_hat] =
+                fb.fks_initial_radiate(
+                    xi_hat,
+                    y_var,
+                    c.r_phi,
+                    c.sqrt_s,
+                    c.x1,
+                    c.x2,
+                    c.s_hat_min,
+                    c.beam_sign
+                );
         auto boosted = fb.unstack(fb.fks_initial_recoil_boost(
             fb.stack(c.final_state), xi, y, c.r_phi, c.beam_sign
         ));
         ValueVec layout{p_in1, p_in2};
         layout.insert(layout.end(), boosted.begin(), boosted.end());
         layout.push_back(p_i);
-        return {fb.stack(layout), x1_real, x2_real, xi, y, xi_max, det_xi, Value(1.)};
+        return {
+            fb.stack(layout),
+            x1_real,
+            x2_real,
+            xi,
+            y,
+            xi_max,
+            det_xi,
+            Value(1.),
+            p_i_hat
+        };
     }
-    Value p_i, p_j, xi, xi_max, det_xi, rat(1.);
+    Value p_i, p_j, xi, xi_max, det_xi, rat(1.), p_i_hat;
     if (kind == massive_final) {
-        auto [p_i_m, p_j_m, xi_m, xi_max_m, xi_norm, det_xi_m] =
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, xi_norm, det_xi_m, p_i_hat_m] =
             fb.fks_final_massive_radiate(
                 xi_hat, y_var, c.r_phi, c.sqrt_s, c.p_jbar, c.emitter_mass
             );
@@ -687,14 +734,16 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
         xi_max = xi_max_m;
         det_xi = det_xi_m;
         rat = fb.div(xi_max_m, xi_norm);
+        p_i_hat = p_i_hat_m;
     } else {
-        auto [p_i_m, p_j_m, xi_m, xi_max_m, det_xi_m] =
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, det_xi_m, p_i_hat_m] =
             fb.fks_final_massless_radiate(xi_hat, y_var, c.r_phi, c.sqrt_s, c.p_jbar);
         p_i = p_i_m;
         p_j = p_j_m;
         xi = xi_m;
         xi_max = xi_max_m;
         det_xi = det_xi_m;
+        p_i_hat = p_i_hat_m;
     }
     // the whole final state of the Born recoils, the Born emitter included,
     // which j then replaces (the boost acts on each momentum alone)
@@ -709,7 +758,7 @@ FKSConfigurationMapping::Emission FKSConfigurationMapping::build_emission(
         fb.permute_momenta(fb.stack(rows), _emission_into_place, c.fks_index)
     );
     auto layout = fb.stack(ValueVec(placed.begin(), placed.end() - 1));
-    return {layout, c.x1, c.x2, xi, y_var, xi_max, det_xi, rat};
+    return {layout, c.x1, c.x2, xi, y_var, xi_max, det_xi, rat, p_i_hat};
 }
 
 NamedVector<Value> FKSConfigurationMapping::build_events(
@@ -832,6 +881,15 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
     outputs.push_back("xi_hat", xi_hat);
     outputs.push_back("y", event.y);
     outputs.push_back("xi_max", event.xi_max);
+    // i per unit xi into the lab like a massless momentum
+    auto hat_to_lab = [&](Value p_i_hat) {
+        auto hat = fks_standard_orientation(fb, _born, fb.stack({p_i_hat}), conditions);
+        if (boosted) {
+            hat = fb.fks_beam_boost(hat, Value(std::vector<double>{0.}), plus, minus);
+        }
+        return fb.unstack(hat).at(0);
+    };
+    outputs.push_back("p_i_hat", hat_to_lab(event.p_i_hat));
 
     Value collinear_exists(1.);
     if (has(massive_final)) {
@@ -868,6 +926,7 @@ NamedVector<Value> FKSConfigurationMapping::build_events(
             collinear ? collinear_exists : Value(1.)
         );
         to_lab(name + "_", counter, det, outputs);
+        outputs.push_back(name + "_p_i_hat", hat_to_lab(counter.p_i_hat));
     }
     return outputs;
 }

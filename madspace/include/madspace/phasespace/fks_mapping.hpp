@@ -318,7 +318,7 @@ private:
     // the emission of every kind of emitter the configurations have, in the
     // layout of the Born momenta with i appended, in the Born c.m. frame
     struct Emission {
-        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat;
+        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat, p_i_hat;
     };
     // what the emissions of an event need
     struct Context;

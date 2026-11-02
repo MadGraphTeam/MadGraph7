@@ -174,6 +174,16 @@ def test_matches_genps_fks(data, conf, points, prefix):
         assert_close(out["x1"], field("rad_xbjrk_ev")[:, 0], 1e-12)
         assert_close(out["x2"], field("rad_xbjrk_ev")[:, 1], 1e-12)
 
+    # i per unit xi: p_i = xi p_i_hat (the event of genps_fks.f is compared
+    # above, its p_i_fks_ev adds nothing; its counter-events below, where
+    # p_i_hat is all that is left of i)
+    np.testing.assert_allclose(
+        out["xi"][:, None] * out["p_i_hat"],
+        out["momenta"][:, i_fks],
+        rtol=0,
+        atol=1e-13 * scale.max(),
+    )
+
     # the radiation Jacobian: genps_fks.f leaves out xi, the width of the range
     # of xi (xi_max - xi_min, xi_norm for a massive emitter) and the factors
     # 1 - stiny (not for the second solution of a massive emitter) and 1 - ctiny
@@ -211,6 +221,11 @@ def test_matches_genps_fks(data, conf, points, prefix):
         cnt = boost_z(out[name + "_momenta"], masses, -y_born)
         diff = np.abs(cnt - p_cnt).max((1, 2)) / scale
         assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
+        # i per unit xi, finite where i is soft (p_i_fks_cnt)
+        hat = boost_z(out[name + "_p_i_hat"][:, None], [0.0], -y_born)[:, 0]
+        hat_scale_cnt = np.sqrt(field("rad_shat_cnt")[:, pos]) / 2
+        diff = np.abs(hat - field("rad_p_i_hat_cnt")[:, pos]).max(1) / hat_scale_cnt
+        assert (diff <= 1e-13 + 10 * born_dev)[valid].all()
         if not leptonic:
             x_cnt = field("rad_xbjrk_cnt")[:, pos]
             dx1 = np.abs(out[name + "_x1"] / x_cnt[:, 0] - 1)
@@ -234,12 +249,14 @@ def test_counter_events_of_each_emitter():
         mapping = ms.FKSMapping(born, 4, j_fks)
         assert list(mapping.radiation().counter_events()) == names
         keys = list(mapping.counter_event_types().keys())
-        assert keys[12:] == [
-            f"{name}_{k}" for name in names for k in ["momenta", "x1", "x2", "det"]
+        assert keys[13:] == [
+            f"{name}_{k}"
+            for name in names
+            for k in ["momenta", "x1", "x2", "det", "p_i_hat"]
         ]
     born = ms.PhaseSpaceMapping([0.0, 0.0, 0.0, 0.0], 1000.0, mode="rambo")
     keys = list(ms.FKSMapping(born, 4, 2).counter_event_types().keys())
-    assert keys[:12] == [
+    assert keys[:13] == [
         "momenta",
         "x1",
         "x2",
@@ -252,6 +269,7 @@ def test_counter_events_of_each_emitter():
         "xi_hat",
         "y",
         "xi_max",
+        "p_i_hat",
     ]
 
 

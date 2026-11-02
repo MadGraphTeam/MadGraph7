@@ -2365,6 +2365,9 @@ fks_final_massless_radiate:
     - name: det_xi
       type: [float]
       desc: "Jacobian of (xi_hat, y, r_phi) to the (n+1)-body phase space in units of the n-body one, divided by xi"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit (the p_i_fks of genps_fks.f, at the counter-events too)"
   desc: "FKS emission off a massless final-state parton, as generate_momenta_massless_final of MadGraph's genps_fks.f, except that the angle of i to i + j comes from its exact sine and cosine instead of the law of cosines, and the direction of the Born emitter from its components instead of the cosine of its polar angle (both lose up to half the digits of small angles). The sum of i and j has the direction of the Born emitter and the other final-state momenta are boosted along it with @ref fks_recoil_boost, at fixed partonic energy. Evaluated at xi_hat = 0 or y = 1 it gives the soft and collinear counter-events. det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
 
 fks_final_massless_cluster:
@@ -2539,6 +2542,9 @@ fks_final_massive_radiate:
     - name: det_xi
       type: [float]
       desc: "Jacobian of (xi_hat, y, r_phi) to the (n+1)-body phase space in units of the n-body one, divided by xi"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit (the p_i_fks of genps_fks.f, at the counter-events too)"
   desc: "FKS emission off a massive final-state parton, as generate_momenta_massive_final of MadGraph's genps_fks.f. The emitter comes to rest at xi_m = ((1 - m_j)^2 - m_rec^2) / (1 - m_j) (in units of sqrt_s, with m_rec the mass of the system recoiling against it). For y >= 0 xi runs from 0 to xi_max = xi_m. For y < 0 there are two solutions for the momentum of the emitter, which meet at xi_max > xi_m, and xi_hat runs from 0 to xi_max with the first and back to xi_m with the second. Unlike genps_fks.f, xi_max, the momentum of the emitter and the phase-space factor are written without cancellations (genps_fks.f loses up to 1e-11 relative in the Jacobian of the second solution near xi_m and xi_max), the angle of i to i + j comes from its exact sine and cosine and the direction of the Born emitter from its components. The other final-state momenta are boosted with @ref fks_recoil_boost. Evaluated at xi_hat = 0 it gives the soft counter-event (genps_fks.f has no collinear one for a massive emitter). det_xi stays finite in the soft limit and diverges like 1 / sqrt(xi_max - xi) where the two solutions meet, the Jacobian of the map is xi det_xi."
 
 fks_final_massive_cluster:
@@ -2640,6 +2646,9 @@ fks_initial_radiate:
     - name: det_xi
       type: [float]
       desc: "Jacobian of (xi_hat, y_hat, r_phi, x1_born, x2_born) to (x1, x2) and the (n+1)-body phase space, in units of the n-body one, divided by xi"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, p_i / xi, which stays finite in the soft limit (the p_i_fks of genps_fks.f, at the counter-events too)"
   desc: "FKS emission off an incoming parton, as generate_momenta_initial of MadGraph's genps_fks.f. The real emission has sqrt(s) = sqrt_s / sqrt(1 - xi), its incoming momenta and i are built in its centre-of-mass frame and boosted along z into the Born centre-of-mass frame, in which the final state of the Born keeps zero longitudinal momentum (see @ref fks_initial_recoil_boost). xi_max is the smaller root of the conditions x1 <= 1 and x2 <= 1, written without the cancellations of genps_fks.f near y -> -1 and x -> 1 (which lose up to 1e-4 relative there). With s_hat_min above the Born, xi >= xi_min = 1 - sqrt_s^2 / s_hat_min and y is restricted to where xi_max(y) >= xi_min, as genps_fks.f does with tau_lower_bound; the map then covers exactly the real emissions with s >= s_hat_min. Evaluated at xi_hat = 0 or y_hat = 1 it gives the soft and collinear counter-events where they exist (xi_min = 0, respectively y = 1 allowed). det_xi stays finite in the soft limit, the Jacobian of the map is xi det_xi."
 
 fks_initial_cluster:

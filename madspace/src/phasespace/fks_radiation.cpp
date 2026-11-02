@@ -127,10 +127,21 @@ FKSRadiation::Emission FKSRadiation::build_emission(
     auto p_born = fb.unstack(born);
     if (initial_state()) {
         double beam_sign = _j_fks == 0 ? 1. : -1.;
-        auto [p_in1, p_in2, p_i, x1_real, x2_real, xi, y, xi_min, xi_max, det_xi] =
-            fb.fks_initial_radiate(
-                xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
-            );
+        auto
+            [p_in1,
+             p_in2,
+             p_i,
+             x1_real,
+             x2_real,
+             xi,
+             y,
+             xi_min,
+             xi_max,
+             det_xi,
+             p_i_hat] =
+                fb.fks_initial_radiate(
+                    xi_hat, y_var, r_phi, sqrt_s, x1, x2, _s_hat_min, beam_sign
+                );
         ValueVec final_state(p_born.begin() + INCOMING_COUNT, p_born.end());
         auto boosted = fb.unstack(
             fb.fks_initial_recoil_boost(fb.stack(final_state), xi, y, r_phi, beam_sign)
@@ -139,14 +150,16 @@ FKSRadiation::Emission FKSRadiation::build_emission(
         for (std::size_t r = INCOMING_COUNT, k = 0; r < _born_particle_count + 1; ++r) {
             real.push_back(r == _i_fks ? p_i : boosted.at(k++));
         }
-        return {fb.stack(real), x1_real, x2_real, xi, y, xi_max, det_xi, Value(1.)};
+        return {
+            fb.stack(real), x1_real, x2_real, xi, y, xi_max, det_xi, Value(1.), p_i_hat
+        };
     }
 
     auto jb = born_index(_j_fks);
     auto p_jbar = p_born.at(jb);
-    Value p_i, p_j, xi, xi_max, det_xi, rat(1.);
+    Value p_i, p_j, xi, xi_max, det_xi, rat(1.), p_i_hat;
     if (_emitter_mass > 0.) {
-        auto [p_i_m, p_j_m, xi_m, xi_max_m, xi_norm, det_xi_m] =
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, xi_norm, det_xi_m, p_i_hat_m] =
             fb.fks_final_massive_radiate(
                 xi_hat, y_var, r_phi, sqrt_s, p_jbar, _emitter_mass
             );
@@ -156,14 +169,16 @@ FKSRadiation::Emission FKSRadiation::build_emission(
         xi_max = xi_max_m;
         det_xi = det_xi_m;
         rat = fb.div(xi_max_m, xi_norm);
+        p_i_hat = p_i_hat_m;
     } else {
-        auto [p_i_m, p_j_m, xi_m, xi_max_m, det_xi_m] =
+        auto [p_i_m, p_j_m, xi_m, xi_max_m, det_xi_m, p_i_hat_m] =
             fb.fks_final_massless_radiate(xi_hat, y_var, r_phi, sqrt_s, p_jbar);
         p_i = p_i_m;
         p_j = p_j_m;
         xi = xi_m;
         xi_max = xi_max_m;
         det_xi = det_xi_m;
+        p_i_hat = p_i_hat_m;
     }
 
     ValueVec spectators;
@@ -187,7 +202,7 @@ FKSRadiation::Emission FKSRadiation::build_emission(
     for (std::size_t r = 0; r < _born_particle_count + 1; ++r) {
         real.push_back(r == _i_fks ? p_i : p_born.at(born_index(r)));
     }
-    return {fb.stack(real), x1, x2, xi, y_var, xi_max, det_xi, rat};
+    return {fb.stack(real), x1, x2, xi, y_var, xi_max, det_xi, rat, p_i_hat};
 }
 
 Mapping::Result FKSRadiation::build_forward_impl(
@@ -239,6 +254,7 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
     outputs.push_back("xi_hat", xi_hat);
     outputs.push_back("y", event.y);
     outputs.push_back("xi_max", event.xi_max);
+    outputs.push_back("p_i_hat", event.p_i_hat);
     for (const auto& name : counter_events()) {
         bool soft = name != "collinear", collinear = name != "soft";
         // a massive emitter has no collinear counter-events: they keep the
@@ -274,6 +290,7 @@ NamedVector<Value> FKSRadiation::build_counter_events_impl(
                 exists ? 1. : 0.
             )
         );
+        outputs.push_back(name + "_p_i_hat", cnt.p_i_hat);
     }
     return outputs;
 }

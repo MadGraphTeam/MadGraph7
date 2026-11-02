@@ -167,11 +167,17 @@ public:
      * - `momenta`, `x1`, `x2` (unless leptonic) and `weight`: the forward map;
      * - `xi`, `xi_hat`, `y`, `xi_max`: the FKS variables of the event (`xi_hat`
      *   as genps_fks.f samples it, `y` the cosine of i to j);
+     * - `p_i_hat`: the momentum of i per unit @f$\xi@f$ in the event,
+     *   @f$p_i / \xi@f$ (the `p_i_fks_ev` of genps_fks.f);
      * - for each counter-event `k` of counter_events(): `k_momenta`, `k_x1`,
      *   `k_x2` (unless leptonic) and `k_det`, the Jacobian of the map at the
      *   counter-event without the factor @f$\xi@f$ (so that the weight of the
      *   event is @f$\xi@f$ times its own `det`), with the sampling Jacobian of
-     *   the event. `k_det` is 0 where genps_fks.f does not generate the
+     *   the event, and `k_p_i_hat`, the momentum of i per unit
+     *   @f$\xi@f$ (`p_i_fks_cnt`), finite at @f$\xi = 0@f$: the direction
+     *   from which i becomes soft, which the sector functions and the eikonal
+     *   factors of the soft limits need. `k_det` is 0 where genps_fks.f does
+     *   not generate the
      *   counter-event: the soft one for @f$\xi_\mathrm{min} > 0@f$ and for
      *   the second solution of a massive emitter, the collinear one for
      *   @f$y = 1@f$ outside the range of an incoming emitter with
@@ -198,8 +204,8 @@ private:
     // the emission at given sampling variables, in the Born c.m. frame
     struct Emission {
         // rat: end of the first solution of a massive emitter in xi_hat, 1
-        // for any other emitter
-        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat;
+        // for any other emitter; p_i_hat: i per unit xi
+        Value momenta, x1, x2, xi, y, xi_max, det_xi, rat, p_i_hat;
     };
     // (xi_hat, y or y_hat, det_sample) from (r_xi, r_y)
     std::tuple<Value, Value, Value> build_sample(

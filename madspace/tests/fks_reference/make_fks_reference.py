@@ -37,7 +37,8 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
                prefix_y_ev, prefix_xiimax_ev, prefix_xi_cnt, prefix_xi_hat_cnt,
                prefix_xiimax_cnt, prefix_xbjrk_ev, prefix_xbjrk_cnt,
-               prefix_shat_ev, prefix_shat_cnt
+               prefix_shat_ev, prefix_shat_cnt, prefix_p_i_hat_ev,
+               prefix_p_i_hat_cnt (p_i_fks_ev, p_i_fks_cnt: i per unit xi)
     The rad_ and cut_ entries come from rerunning generate_FKS_kinematics on
     the Born of the point with unit Born weights (the jac entries are then
     the radiation Jacobian times compute_flux), cut_ with and rad_ without
@@ -126,7 +127,7 @@ def momenta(values):
     return [values[i : i + 4] for i in range(0, len(values), 4)]
 
 
-RERUN_KEYS = ("JAC", "PEV", "PCNT", "XI", "XBJ", "SHAT")
+RERUN_KEYS = ("JAC", "PEV", "PCNT", "XI", "XBJ", "SHAT", "PIHAT")
 
 
 def parse_rerun(point, prefix, key, rest):
@@ -159,6 +160,9 @@ def parse_rerun(point, prefix, key, rest):
     elif key == "SHAT":
         v = floats(rest)
         point[f"{prefix}_shat_ev"], point[f"{prefix}_shat_cnt"] = v[0], v[1:6]
+    elif key == "PIHAT":
+        v = momenta(floats(rest))
+        point[f"{prefix}_p_i_hat_ev"], point[f"{prefix}_p_i_hat_cnt"] = v[0], v[1:6]
 
 
 def parse(text):
