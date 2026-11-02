@@ -1160,6 +1160,47 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("CustomPdf::function_index")
         );
 
+    auto merging_scale = py::classh<MergingScale, FunctionGenerator>(
+        m, "MergingScale", pydoc::doc("MergingScale")
+    );
+    add_enum<MergingScale::Measure>(
+        merging_scale,
+        "Measure",
+        {
+            {"kt_durham", MergingScale::kt_durham},
+            {"pt_lund", MergingScale::pt_lund},
+        }
+    );
+    merging_scale
+        .def(
+            py::init<
+                MergingScale::Measure,
+                const std::vector<int>&,
+                const std::vector<bool>&,
+                double,
+                bool,
+                bool,
+                int>(),
+            py::arg("measure"),
+            py::arg("pdg_ids"),
+            py::arg("merging_legs"),
+            py::arg("d_parameter") = 0.4,
+            py::arg("hadronic1") = true,
+            py::arg("hadronic2") = true,
+            py::arg("max_jet_flavor") = 4,
+            pydoc::doc("MergingScale::MergingScale")
+        )
+        .def("measure", &MergingScale::measure, pydoc::doc("MergingScale::measure"))
+        .def("active", &MergingScale::active, pydoc::doc("MergingScale::active"))
+        .def(
+            "merging_leg_indices",
+            &MergingScale::merging_leg_indices,
+            pydoc::doc("MergingScale::merging_leg_indices")
+        )
+        .def(
+            "bounds_pt", &MergingScale::bounds_pt, pydoc::doc("MergingScale::bounds_pt")
+        );
+
     auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
@@ -1188,6 +1229,14 @@ PYBIND11_MODULE(_madspace_py, m) {
     // Registered before the methods that return it: pybind11 writes a method's
     // signature when it is defined, and a type it does not know yet ends up as
     // its raw C++ name, which pybind11-stubgen rejects.
+    py::classh<Cuts::MergingCut>(m, "MergingCut", pydoc::doc("Cuts::MergingCut"))
+        .def(py::init<MergingScale, double>(), py::arg("scale"), py::arg("min"))
+        .def_readonly(
+            "scale", &Cuts::MergingCut::scale, pydoc::doc("Cuts::MergingCut::scale")
+        )
+        .def_readonly(
+            "min", &Cuts::MergingCut::min, pydoc::doc("Cuts::MergingCut::min")
+        );
     py::classh<Cuts::PairMassAny>(cuts, "PairMassAny", pydoc::doc("Cuts::PairMassAny"))
         .def_readonly(
             "pairs", &Cuts::PairMassAny::pairs, pydoc::doc("Cuts::PairMassAny::pairs")
@@ -1198,17 +1247,24 @@ PYBIND11_MODULE(_madspace_py, m) {
     cuts.def(
             py::init<
                 const std::vector<Cuts::CutItem>&,
-                const std::optional<CustomFunction>&>(),
+                const std::optional<CustomFunction>&,
+                const std::optional<Cuts::MergingCut>&>(),
             py::arg("cut_data"),
             py::arg("custom_cut") = std::nullopt,
+            py::arg("merging_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts")
     )
         .def(
-            py::init<std::size_t, const std::optional<CustomFunction>&>(),
+            py::init<
+                std::size_t,
+                const std::optional<CustomFunction>&,
+                const std::optional<Cuts::MergingCut>&>(),
             py::arg("particle_count"),
             py::arg("custom_cut") = std::nullopt,
+            py::arg("merging_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts#2")
         )
+        .def("merging_cut", &Cuts::merging_cut, pydoc::doc("Cuts::merging_cut"))
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
         .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
         .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))

@@ -2740,6 +2740,54 @@ cut_any:
       desc: "weight, zero unless some observable is in [min, max]"
   desc: "Zeroes the weight unless at least one observable in the vector is inside its window. See @ref Cuts."
 
+merging_scale_kt_durham:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "external momenta, incoming first"
+    - name: merging_legs
+      type: [int, single, n]
+      desc: "1 for every outgoing leg subject to the merging cut, 0 for the others"
+    - name: d_parameter
+      type: [float, single]
+      desc: "D of the hadronic kt measure"
+    - name: beam_flags
+      type: [int, single]
+      desc: "bit 0 (1): beam 1 is a hadron, bit 1 (2): beam 2 is a hadron"
+    - name: mode
+      type: [int, single]
+      desc: "0 no merging scale, 2 the full measure"
+  outputs:
+    - name: scale
+      type: [float]
+      desc: "smallest Durham kt of the merging legs"
+  vectorized: False
+  desc: "CKKW-L ktdurham merging scale: the smallest pT to the beam and pairwise Durham kt of the merging legs. See @ref MergingScale."
+
+merging_scale_pt_lund:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc: "external momenta, incoming first"
+    - name: merging_legs
+      type: [int, single, n]
+      desc: "1 for every outgoing leg subject to the merging cut, 0 for the others"
+    - name: pdg_ids
+      type: [int, single, n]
+      desc: "signed pdg id of every external leg"
+    - name: beam_flags
+      type: [int, single]
+      desc: "bit 0 (1): beam 1 is a hadron, bit 1 (2): beam 2 is a hadron"
+    - name: mode
+      type: [int, single]
+      desc: "0 no merging scale, 1 pT of exactly two massless legs, 2 the full measure"
+  outputs:
+    - name: scale
+      type: [float]
+      desc: "smallest Pythia8 evolution pT of the merging legs"
+  vectorized: False
+  desc: "CKKW-L ptlund merging scale: the smallest Pythia8 evolution pT over the ISR and FSR splittings of the merging legs. See @ref MergingScale."
+
 ---
 title: Energy scale
 
