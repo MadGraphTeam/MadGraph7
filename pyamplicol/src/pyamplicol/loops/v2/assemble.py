@@ -428,6 +428,10 @@ class TreeRows:
         from pyamplicol.generation.runtime_schema import build_runtime_schema
         from pyamplicol.models.external import CompiledUFOModel
 
+        from .blocks import BornDagSummary
+
+        if isinstance(dag, BornDagSummary):
+            dag = dag.materialize()  # a slice's released Born DAG (R3)
         self.compiled = compiled
         self.dag = dag
         self.model = CompiledUFOModel(compiled)
