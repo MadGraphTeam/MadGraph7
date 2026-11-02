@@ -13,14 +13,15 @@ combination of vocabulary colours, e.g. the trace of four adjoint generators
 onto candidate products of two adjoint tensors (``f*f``, ``Identity*Identity``,
 ``d*d``, ``d*f``, ``f*d`` over every pairing of the adjoint legs) that the tree
 vocabulary admits on the vertex's legs (``tree_colour_source`` decides, so the
-candidates follow the tree compiler, never a leg count): every overlap is a
-full colour contraction by the engine's colour reduction (tau strings and
-traces, ``ct_sites.ufo_colour_network``; SU(N_c) Fierz,
-``colour.reduce_network``) at N_c = 3, exact in complex rationals; a maximal
-independent set of candidates is kept (the Jacobi identity, and the SU(3)
-relation of the d*d pairings, make the candidates dependent), the Gram system
-is solved exactly and the residual norm must vanish. Otherwise the colour has
-no vocabulary form and ``None`` is returned (the caller keeps it unlowered).
+candidates follow the tree compiler, never a leg count): every colour is
+reduced by the engine's colour algebra to tau traces of its legs
+(``ct_sites.ufo_colour_network``, SU(N_c) Fierz in ``colour.reduce_network``)
+and every overlap is their full contraction (``colour.contract_colour``) at
+N_c = 3, exact in complex rationals; a maximal independent set of candidates
+is kept (the Jacobi identity, and the SU(3) relation of the d*d pairings,
+make the candidates dependent), the Gram system is solved exactly and the
+residual norm must vanish. Otherwise the colour has no vocabulary form and
+``None`` is returned (the caller keeps it unlowered).
 
 Only colours whose legs are adjoint or colour singlets are projected (the
 candidates are adjoint tensors). The projection is at N_c = 3: a request that
@@ -34,17 +35,14 @@ from collections.abc import Sequence
 from fractions import Fraction
 from functools import lru_cache
 
-from pyamplicol.color.connections import ExactColorCoefficient
+from pyamplicol.color.connections import (
+    ColorLeg,
+    ConnectedColorTensor,
+    ExactColorCoefficient,
+)
 from pyamplicol.color.contraction_types import NC
 
-from .colour import (
-    ColourNetwork,
-    ColourProduct,
-    ColourString,
-    multiply,
-    reduce_network,
-    relabel,
-)
+from .colour import ColourNetwork, contract_colour, reduce_network
 
 # The candidate products, in the order the independent set is kept.
 _PRODUCTS = (
@@ -56,24 +54,6 @@ _PRODUCTS = (
 )
 
 
-def _conjugate(network: ColourNetwork) -> ColourNetwork:
-    """The complex conjugate: tau is hermitian, so a trace or string reverses."""
-
-    return tuple(
-        ColourProduct(
-            term.coefficient.conjugate(),
-            tuple(
-                ColourString(string.col, tuple(reversed(string.word)), string.row)
-                for string in term.strings
-            ),
-            tuple(tuple(reversed(trace)) for trace in term.traces),
-            term.nc_power,
-            term.root2_power,
-        )
-        for term in network
-    )
-
-
 def _network(source: str, representations: tuple[int, ...]) -> ColourNetwork:
     from .ct_sites import ufo_colour_network
 
@@ -81,29 +61,31 @@ def _network(source: str, representations: tuple[int, ...]) -> ColourNetwork:
 
 
 @lru_cache(maxsize=1 << 12)
+def _reduced(source: str, representations: tuple[int, ...]) -> ConnectedColorTensor:
+    """``source`` on its adjoint legs as literal tau traces (exact in N_c)."""
+
+    adjoint = [leg for leg, value in enumerate(representations, 1) if value == 8]
+    return reduce_network(
+        _network(source, representations),
+        tuple(ColorLeg(leg, 8) for leg in adjoint),
+        {("leg", leg): leg for leg in adjoint},
+    )
+
+
+@lru_cache(maxsize=1 << 12)
 def _overlap(
     left: str, right: str, representations: tuple[int, ...]
 ) -> tuple[Fraction, Fraction]:
     """``<left|right>``: the full contraction of the conjugate of ``left``
-    with ``right`` over every leg and summed index, at N_c = 3."""
+    with ``right`` over every leg (``colour.contract_colour``) at N_c = 3."""
 
-    bra = _conjugate(_network(left, representations))
-    ket = relabel(
-        _network(right, representations),
-        lambda label: ("ket", label) if label[0] != "leg" else label,
+    laurent = contract_colour(
+        _reduced(left, representations), _reduced(right, representations)
     )
-    tensor = reduce_network(multiply(bra, ket), (), {})
-    if any(term.tensor.open_strings or term.tensor.traces for term in tensor.terms):
-        raise ValueError("a full colour contraction left an open index")
     total = ExactColorCoefficient(0)
-    for term in tensor.terms:
-        total = total + term.coefficient.scaled(Fraction(NC) ** term.nc_power)
-    if tensor.normalization_power % 2:
-        if total:
-            raise ValueError("a colour overlap is irrational (odd power of sqrt 2)")
-        return Fraction(0), Fraction(0)
-    scale = Fraction(1, 2 ** (tensor.normalization_power // 2))
-    return total.real * scale, total.imag * scale
+    for power, value in laurent.items():
+        total = total + value.scaled(Fraction(NC) ** power)
+    return total.real, total.imag
 
 
 def _candidates(
@@ -212,7 +194,7 @@ def vocabulary_colours(
     try:
         norm = _overlap(source, source, representations)
     except (NotImplementedError, ValueError):
-        return None
+        return None  # not a colour tensor of these legs (open indices, ...)
     basis = _independent(candidates, representations)
     gram = [[_overlap(a, b, representations)[0] for b in basis] for a in basis]
     projections = [_overlap(b, source, representations) for b in basis]
