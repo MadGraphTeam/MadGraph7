@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, pinned by the test; the run_card.toml default is now dynamical HT/2), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed (also pinned by the test, so these values stay valid if the run_card.toml default PDF changes), 1M events. decay_cuts: [phasespace] cut_decays (default false, as MadEvent's cut_decays) leaves the products of on-shell decay-chain propagators out of the cuts; its references were cross-checked against madevent at the same fixed scale with nn23lo1 and mmll / cut_decays set alike.",
+  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, pinned by the test; the run_card.toml default is now dynamical HT/2), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed (also pinned by the test, so these values stay valid if the run_card.toml default PDF changes), 1M events. decay_cuts: [phasespace] cut_decays (default false, as MadEvent's cut_decays) leaves the products of on-shell decay-chain propagators out of the cuts; its references were cross-checked against madevent at the same fixed scale with nn23lo1 and mmll / cut_decays set alike. ckkwl: madevent references (10k events, ickkw = 0, nn23lo1, mmll = 50, no jet cuts) of the CKKW-L ktdurham / ptlund generation cut.",
   "defines": [],
   "sections": {
     "3jets": [
@@ -59,6 +59,10 @@
       {"id": "zj_ee_mmll_cut_decays", "process": "p p > z j, z > e+ e-", "cross": 6.689723e+00, "error": 1.846906e-03,  "cuts": {"lepton-sfos_pair_mass.min": 100.0}, "cut_decays": true},
       {"id": "wj_had",                "process": "p p > w+ j, w+ > j j", "cross": 1.415209e+04, "error": 3.891570e+00, "cut_decays": false},
       {"id": "wj_had_cut_decays",     "process": "p p > w+ j, w+ > j j", "cross": 9.463383e+03, "error": 3.147889e+00,  "cut_decays": true}
+    ],
+    "ckkwl": [
+      {"id": "pp_eejj_ktdurham", "process": "p p > e+ e- j j", "cross": 5.591e+01, "error": 1.605e-01, "disable_jet_cuts": true, "cuts": {"lepton-sfos_pair_mass.min": 50.0}, "phasespace": {"ktdurham": 30.0}, "madnis": false},
+      {"id": "pp_eejj_ptlund",   "process": "p p > e+ e- j j", "cross": 5.408e+01, "error": 1.764e-01, "disable_jet_cuts": true, "cuts": {"lepton-sfos_pair_mass.min": 50.0}, "phasespace": {"ptlund": 30.0}, "madnis": false}
     ]
   }
 }
