@@ -473,13 +473,14 @@ pub mod v2 {
         let mut out = vec![Vec::new(); batch.points()];
         for chunk in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
-            let seeds = match fourier {
+            let mut seeds = match fourier {
                 Some(fourier) => seeds_fourier(plan, fourier, &data),
                 None => seeds(plan, &data),
             };
+            seeds.materialise::<L>(zero);
             for (lane, &point) in chunk.iter().enumerate() {
                 out[point] = seeds
-                    .values
+                    .values()
                     .iter()
                     .map(|key| {
                         key.chunks(v)
@@ -747,7 +748,10 @@ pub mod v2 {
         let merged = merged_of(plan, schedule)?;
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
-            let seeds = seeds(plan, &data);
+            let mut seeds = seeds(plan, &data);
+            if schedule != Schedule::B || merged.is_some() {
+                seeds.materialise::<L>(zero);
+            }
             let mut inputs = ChunkInputs::new(plan);
             let numerators = match schedule {
                 Schedule::B | Schedule::M => {
@@ -1035,13 +1039,18 @@ pub mod v2 {
             let start = Instant::now();
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
             let contraction = Instant::now();
-            let seeds = match fourier {
+            let mut seeds = match fourier {
                 Some(fourier) => {
                     report.count(FFT_SEED_JOBS, fourier.jobs() as u64);
                     seeds_fourier(plan, fourier, &data)
                 }
                 None => seeds(plan, &data),
             };
+            // Schedule B forms each key where a leaf reads it; schedule M
+            // reads them all.
+            if !merged_parts.is_empty() {
+                seeds.materialise::<L>(zero);
+            }
             // The contraction alone ("seeds" also gathers the lane data).
             report.time(SEED_CONTRACTION, contraction);
             report.time("seeds", start);

@@ -219,7 +219,7 @@ class ExportedPlan:
         """The plan as an artifact stores it and the native executor loads
         it (M-FINAL MF-8G-1 item 5): the binary plan member (``binary``),
         or the plan JSON (``json``) when ``native_lowering.BINARY_PLAN`` is
-        off (the oracle; artifacts written before the member). A streamed
+        off (the oracle's stored form). A streamed
         plan keeps only its member from here on (``PlanSource.release``)."""
 
         from . import native_lowering

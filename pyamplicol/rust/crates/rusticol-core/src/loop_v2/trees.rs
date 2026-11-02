@@ -1265,13 +1265,19 @@ pub struct TreeRuntime<T> {
     counterterm_edge_weights: Vec<Complex<T>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
-    metric: Option<Vec<Complex<T>>>,
+    /// The Born metric cells (squared order, component, component) with
+    /// their values: one compact stream per Born row (`TreeProgram::squared`).
+    metric: Option<Vec<MetricValue<T>>>,
     average: T,
     interference: Option<InterferenceRuntime<T>>,
     /// The metric runtime of each distinct column interference
     /// (`Columns::programs`).
     columns: Vec<InterferenceRuntime<T>>,
 }
+
+/// A Born metric cell in a carrier: (squared order, component, component,
+/// value).
+type MetricValue<T> = (u32, u32, u32, Complex<T>);
 
 /// One kernel (or the parameter program) in carrier `T`: its exact
 /// evaluator in the carrier, or in binary64 its SymJIT plane application.
@@ -2835,9 +2841,10 @@ impl TreeProgram {
             .as_ref()
             .map(|ct| ct.interference.runtime(zero));
         let metric = self.metric.as_ref().map(|entries| {
+            let index = |i: usize| u32::try_from(i).expect("a Born metric index fits 32 bits");
             entries
                 .iter()
-                .map(|(_s, _l, _r, [re, im])| complex(re, im))
+                .map(|(s, l, r, [re, im])| (index(*s), index(*l), index(*r), complex(re, im)))
                 .collect()
         });
         let columns = self
@@ -3882,19 +3889,19 @@ impl TreeProgram {
     fn squared<T: Carrier>(
         &self,
         runtime: &TreeRuntime<T>,
-        metric: &[Complex<T>],
+        metric: &[MetricValue<T>],
         bra: &[Complex<T>],
         ket: &[Complex<T>],
         zero: &T,
     ) -> Vec<T> {
-        let entries = self.metric.as_ref().expect("a runtime metric has entries");
         let mut out = vec![zero.clone(); self.squared.len()];
         for (row, ket) in bra
             .chunks_exact(self.components)
             .zip(ket.chunks_exact(self.components))
         {
-            for ((squared, left, right, _), value) in entries.iter().zip(metric) {
-                out[*squared] += (row[*left].conj() * value.clone() * ket[*right].clone()).re;
+            for (squared, left, right, value) in metric {
+                out[*squared as usize] +=
+                    (row[*left as usize].conj() * value.clone() * ket[*right as usize].clone()).re;
             }
         }
         out.into_iter()
@@ -4010,53 +4017,6 @@ fn kernel_lanes_avx2<T: Carrier, const L: usize>(
     kernel_lanes::<T, L>(kernel, constants, x, zero)
 }
 
-/// The vector width the closure kernels run in: binary64 lanes take the
-/// widest the running CPU reports (never a build-host feature), the other
-/// carriers the baseline.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Wide {
-    Baseline,
-    #[cfg(target_arch = "x86_64")]
-    Avx2,
-    #[cfg(target_arch = "x86_64")]
-    Avx512,
-}
-
-/// Caps the closure kernels' vector width (`Wide::detect`) at `baseline`
-/// or `avx2`, so that one AVX-512 host runs the code paths of an AVX2-only
-/// or a baseline x86-64 host (the bitwise check of
-/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
-/// caps nothing. It never enables a feature the CPU lacks.
-const CLOSURE_SIMD_ENV: &str = "RUSTICOL_TEST_CLOSURE_SIMD";
-
-impl Wide {
-    fn detect<T: 'static>() -> Self {
-        #[cfg(target_arch = "x86_64")]
-        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            static CAP: std::sync::OnceLock<Wide> = std::sync::OnceLock::new();
-            let cap =
-                *CAP.get_or_init(|| Self::cap(std::env::var(CLOSURE_SIMD_ENV).ok().as_deref()));
-            if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
-                return Self::Avx512;
-            }
-            if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
-                return Self::Avx2;
-            }
-        }
-        Self::Baseline
-    }
-
-    /// The widest width `CLOSURE_SIMD_ENV`'s value allows.
-    #[cfg(target_arch = "x86_64")]
-    fn cap(value: Option<&str>) -> Self {
-        match value {
-            Some("baseline") => Self::Baseline,
-            Some("avx2") => Self::Avx2,
-            _ => Self::Avx512,
-        }
-    }
-}
-
 impl<T: Carrier> Closure<'_, T> {
     /// The closures of points `first .. first + points` in lanes of `L`
     /// points (the unused lanes of a last chunk repeat the run's last point
@@ -4079,7 +4039,7 @@ impl<T: Carrier> Closure<'_, T> {
         let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
         let (state, size) = self.states;
         let (ct_state, ct_size) = self.counterterm_states;
-        let wide = Wide::detect::<T>();
+        let wide = super::kernels::Simd::detect::<T>();
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
         sums.par_chunks_mut(width * v).enumerate().for_each_init(
@@ -4140,16 +4100,18 @@ impl<T: Carrier> Closure<'_, T> {
                     let kernel = &self.plan.kernels[term.kernel].outputs[0];
                     let (mut value_re, mut value_im) = match wide {
                         // SAFETY: `wide` holds only the features this CPU
-                        // reports (`Wide::detect`).
+                        // reports (`Simd::detect`).
                         #[cfg(target_arch = "x86_64")]
-                        Wide::Avx512 => unsafe {
+                        super::kernels::Simd::Avx512 => unsafe {
                             kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
                         },
                         #[cfg(target_arch = "x86_64")]
-                        Wide::Avx2 => unsafe {
+                        super::kernels::Simd::Avx2 => unsafe {
                             kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
                         },
-                        Wide::Baseline => kernel_lanes::<T, L>(kernel, self.constants, x, zero),
+                        super::kernels::Simd::Baseline => {
+                            kernel_lanes::<T, L>(kernel, self.constants, x, zero)
+                        }
                     };
                     if term.sign < 0 {
                         for l in 0..L {

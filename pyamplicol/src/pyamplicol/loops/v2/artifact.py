@@ -8,9 +8,11 @@ envelope under the runtime capability ``rusticol.loop-runtime.v4``:
   ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.bin.zlib``: the plan v4
   program of ``plan_export`` (its binary columnar member, zlib-compressed,
   M-FINAL MF-8G-1 item 5; schedule B; the forward oracle F is not stored)
-  that the native ``V2Executor`` validates and runs. Artifacts written
-  before the member store the plan JSON, ``schedule/loop-plan-v4.json.zlib``,
-  which every reader still reads.
+  that the native ``V2Executor`` validates and runs. The oracle switch
+  ``native_lowering.BINARY_PLAN = False`` stores the plan JSON instead,
+  ``schedule/loop-plan-v4.json.zlib``, which the readers therefore also read
+  (the oracle's form, not a compatibility promise: AGENTS.md keeps no old
+  internal artifact formats).
   Its kernels are exact polynomial term lists interpreted natively
   (``loop_v2/dress.rs``): no compiled code, so nothing depends on the build
   host's CPU features or paths. A process with certified-scaleless families
@@ -458,13 +460,12 @@ def write_plan(
         name, data = _plan_member(scaleless, scaleless=True)
         members.append((name, plan_kind, zlib.compress(data, 6)))
     del data
-    plan = plan_kind
     if native is not None:
         stored = native.members()
         members.append(
             (
                 NATIVE_RECORD_MEMBER,
-                plan,
+                plan_kind,
                 zlib.compress(stored["native-process.json"], 6),
             )
         )
@@ -478,11 +479,15 @@ def write_plan(
             members += [
                 (
                     f"{path}{NATIVE_TREES_MEMBER}",
-                    plan,
+                    plan_kind,
                     zlib.compress(stored[f"{prefix}tree-program.json"], 6),
                 )
                 if binary is None
-                else (f"{path}{NATIVE_TREES_BINARY_MEMBER}", plan, zlib.compress(binary, 6)),
+                else (
+                    f"{path}{NATIVE_TREES_BINARY_MEMBER}",
+                    plan_kind,
+                    zlib.compress(binary, 6),
+                ),
                 (
                     f"{path}{NATIVE_PARAMETERS_MEMBER}",
                     state,
@@ -515,7 +520,7 @@ def write_plan(
             members.append(
                 (
                     f"{NATIVE_INPUTS_PREFIX}{NATIVE_DIPOLES_MEMBER}",
-                    plan,
+                    plan_kind,
                     zlib.compress(stored["dipoles.json"], 6),
                 )
             )
@@ -524,7 +529,7 @@ def write_plan(
                 members.append(
                     (
                         f"{NATIVE_OBSERVABLES_PREFIX}{name}.zlib",
-                        plan,
+                        plan_kind,
                         zlib.compress(stored[name], 6),
                     )
                 )

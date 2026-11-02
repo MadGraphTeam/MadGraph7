@@ -44,6 +44,14 @@
 //! from the kernel catalogue the structured forms. All kernels accumulate into
 //! their output; the carrier `T` is any [`FloatLike`] real (`f64`,
 //! `DoubleFloat`, `Float`, or `Rational` for exact oracles).
+//!
+//! **Vector width** (WP4.6). The builds target baseline x86-64, so the
+//! binary64 kernels ([`fused_edge`], [`split_edge`], [`split_vertex`]) are
+//! also compiled for AVX-512 and AVX2 and run in the widest width the running
+//! CPU reports ([`Simd::detect`]; never a build-host feature). The wider forms
+//! perform the same operations per lane in the same order (no fused
+//! multiply-add, no reassociation), so their values are bitwise the
+//! baseline's; only the speed depends on the CPU.
 
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
@@ -53,6 +61,105 @@ use symbolica::domains::float::FloatLike;
 pub const fn lane_vector_len(lanes: usize) -> usize {
     2 * lanes
 }
+
+/// The vector width the binary64 kernels run in (dressing, seed sums,
+/// interference z sums, root closures): binary64 lanes take the widest the
+/// running CPU reports, every other carrier the baseline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Simd {
+    Baseline,
+    #[cfg(target_arch = "x86_64")]
+    Avx2,
+    #[cfg(target_arch = "x86_64")]
+    Avx512,
+}
+
+/// Caps the kernels' vector width ([`Simd::detect`]) at `baseline` or
+/// `avx2`, so that an AVX-512 host also runs the code paths of an AVX2-only
+/// or a baseline x86-64 host (the bitwise check of
+/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
+/// caps nothing. It never enables a feature the CPU lacks.
+pub const KERNEL_SIMD_ENV: &str = "RUSTICOL_TEST_KERNEL_SIMD";
+
+impl Simd {
+    /// The width for carrier `T` (read once per process).
+    #[inline]
+    pub fn detect<T: 'static>() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            static WIDTH: std::sync::OnceLock<Simd> = std::sync::OnceLock::new();
+            return *WIDTH.get_or_init(|| {
+                let cap = std::env::var(KERNEL_SIMD_ENV).ok();
+                Self::widest(cap.as_deref())
+            });
+        }
+        Self::Baseline
+    }
+
+    /// The widest width the CPU reports within the cap `value`.
+    #[cfg(target_arch = "x86_64")]
+    fn widest(value: Option<&str>) -> Self {
+        let cap = Self::cap(value);
+        if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
+            return Self::Avx512;
+        }
+        if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
+            return Self::Avx2;
+        }
+        Self::Baseline
+    }
+
+    /// The widest width [`KERNEL_SIMD_ENV`]'s value allows.
+    #[cfg(target_arch = "x86_64")]
+    fn cap(value: Option<&str>) -> Self {
+        match value {
+            Some("baseline") => Self::Baseline,
+            Some("avx2") => Self::Avx2,
+            _ => Self::Avx512,
+        }
+    }
+}
+
+/// Defines `$name` as `$body` (an `#[inline(always)]` kernel generic over
+/// the carrier `T: $bound` and optionally a const `L`) dispatched on
+/// [`Simd::detect`]: the same body compiled for AVX-512, AVX2 and the
+/// baseline (the dressing kernels here; the seed sums and the
+/// interference z sums).
+macro_rules! dispatched {
+    (
+        $(#[$meta:meta])*
+        $vis:vis fn $name:ident<T: $bound:path $(, const $c:ident: usize)?>(
+            $($arg:ident: $ty:ty),* $(,)?
+        ) => $body:ident;
+    ) => {
+        $(#[$meta])*
+        $vis fn $name<T: $bound + 'static $(, const $c: usize)?>($($arg: $ty),*) {
+            #[cfg(target_arch = "x86_64")]
+            {
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx512f")]
+                fn avx512<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx2")]
+                fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
+                use $crate::loop_v2::kernels::Simd;
+                match Simd::detect::<T>() {
+                    // SAFETY: `Simd::detect` returns a width only when the
+                    // running CPU reports its feature.
+                    Simd::Avx512 => return unsafe { avx512::<T $(, $c)?>($($arg),*) },
+                    Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
+                    Simd::Baseline => {}
+                }
+            }
+            $body::<T $(, $c)?>($($arg),*)
+        }
+    };
+}
+pub(crate) use dispatched;
 
 /// Every entry of a `loop_in x out` segment of degree `degree`, in
 /// `[monomial][loop_in][out]` order: the layout [`fused_edge_blocked`] reads.
@@ -255,11 +362,23 @@ fn apply_row<T: FloatLike, const L: usize>(
     }
 }
 
-/// Fused segment for one edge:
-/// `output[h][a][b'][m*n] += input[in][a][b][m] * factor[block][entry(n, b, b')]`
-/// for every link `(h, in, block)`. Each factor row holds one lane vector per
-/// entry of `layout` (`incoming x outgoing`).
-pub fn fused_edge<T: FloatLike, const L: usize>(
+dispatched! {
+    /// Fused segment for one edge:
+    /// `output[h][a][b'][m*n] += input[in][a][b][m] * factor[block][entry(n, b, b')]`
+    /// for every link `(h, in, block)`. Each factor row holds one lane vector
+    /// per entry of `layout` (`incoming x outgoing`).
+    pub fn fused_edge<T: FloatLike, const L: usize>(
+        segment: &Segment<'_>,
+        layout: &SegmentLayout,
+        input: &[T],
+        factor: &[T],
+        links: &[RowLink],
+        output: &mut [T],
+    ) => fused_edge_body;
+}
+
+#[inline(always)]
+fn fused_edge_body<T: FloatLike, const L: usize>(
     segment: &Segment<'_>,
     layout: &SegmentLayout,
     input: &[T],
@@ -368,11 +487,22 @@ pub fn fused_edge_blocked<T: FloatLike, const L: usize, const B: usize, const BP
     }
 }
 
-/// First half of the split form for one edge:
-/// `accumulator[h][a][b][nu][m] += input[in][a][b][m] * current[block][nu]`.
-/// The accumulator rows are those of the node's output rows; it is shared by
-/// all edges of one vertex group and cleared by the caller.
-pub fn split_edge<T: FloatLike, const L: usize>(
+dispatched! {
+    /// First half of the split form for one edge:
+    /// `accumulator[h][a][b][nu][m] += input[in][a][b][m] * current[block][nu]`.
+    /// The accumulator rows are those of the node's output rows; it is shared
+    /// by all edges of one vertex group and cleared by the caller.
+    pub fn split_edge<T: FloatLike, const L: usize>(
+        segment: &Segment<'_>,
+        input: &[T],
+        current: &[T],
+        links: &[RowLink],
+        accumulator: &mut [T],
+    ) => split_edge_body;
+}
+
+#[inline(always)]
+fn split_edge_body<T: FloatLike, const L: usize>(
     segment: &Segment<'_>,
     input: &[T],
     current: &[T],
@@ -403,11 +533,23 @@ pub fn split_edge<T: FloatLike, const L: usize>(
     }
 }
 
-/// Second half of the split form: for the first `rows` output rows,
-/// `output[h][a][b'][m*n] += accumulator[h][a][(b, nu)][m] * vertex[entry(n, (b, nu), b')]`.
-/// `layout` is `(incoming * current) x outgoing` with loop-in columns from
-/// [`Segment::vertex_column`]; `vertex` holds one lane vector per entry.
-pub fn split_vertex<T: FloatLike, const L: usize>(
+dispatched! {
+    /// Second half of the split form: for the first `rows` output rows,
+    /// `output[h][a][b'][m*n] += accumulator[h][a][(b, nu)][m] * vertex[entry(n, (b, nu), b')]`.
+    /// `layout` is `(incoming * current) x outgoing` with loop-in columns from
+    /// [`Segment::vertex_column`]; `vertex` holds one lane vector per entry.
+    pub fn split_vertex<T: FloatLike, const L: usize>(
+        segment: &Segment<'_>,
+        layout: &SegmentLayout,
+        vertex: &[T],
+        rows: usize,
+        accumulator: &[T],
+        output: &mut [T],
+    ) => split_vertex_body;
+}
+
+#[inline(always)]
+fn split_vertex_body<T: FloatLike, const L: usize>(
     segment: &Segment<'_>,
     layout: &SegmentLayout,
     vertex: &[T],

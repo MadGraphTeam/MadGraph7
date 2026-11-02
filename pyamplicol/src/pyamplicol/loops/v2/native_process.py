@@ -152,9 +152,10 @@ def _stored_dipoles(slice_: Any) -> str | None:
     """C4's stored form for a slice (``dipoles.stored(dipoles.build(slice_))``:
     one exact entry per relabelling orbit, built and checked in
     rusticol-core at generation), or None for a Born basis with fewer than
-    two coloured legs (no dipole)."""
+    two coloured legs (no dipole; the basis lists the colour singlets
+    too)."""
 
-    if len(slice_.basis.legs) < 2:
+    if sum(leg.representation != 1 for leg in slice_.basis.legs) < 2:
         return None
     from . import dipoles
 
