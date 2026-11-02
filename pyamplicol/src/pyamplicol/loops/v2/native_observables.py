@@ -1813,8 +1813,8 @@ class StoredColumns:
             "rescale": retest == "rescaled",
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
-        selected = [{}, {}] if masks is None else [masks.options(0), masks.options(1)]
-        output = native.evaluate(inputs, schedule="B", **options, **selected[0])
+        selected = {} if masks is None else masks.options(0)
+        output = native.evaluate(inputs, schedule="B", **options, **selected)
         # The native report of the latest batch (stages and counts, as
         # ``plan_export.NativeExecutor.last_report``).
         self.last_report = output["report"]
@@ -1846,7 +1846,9 @@ class StoredColumns:
                 **inputs,
                 "parameters": batch_parameters(process.scaleless.trees, evaluations),
             }
-            extra = twin.evaluate(twin_inputs, schedule="B", **options, **selected[1])
+            # The template has a companion plan exactly when the set does.
+            selected = {} if masks is None else masks.options(1)
+            extra = twin.evaluate(twin_inputs, schedule="B", **options, **selected)
         families = int(self.meta["families"])
         orders = [_orders_of(o) for o in self.meta["orders"]]
         twin_orders = (
