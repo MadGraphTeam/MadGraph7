@@ -12,7 +12,6 @@ without the release: its exported plan and tree program are byte-identical.
 
 from __future__ import annotations
 
-import gc
 import json
 import weakref
 from pathlib import Path
@@ -75,9 +74,11 @@ def test_prune_releases_the_complete_build(
     slice_ = LoopSlice.generate(compiled, request, loop_native)
     pruned = [s for s in (slice_, slice_.scaleless) if s is not None and s.colour_pruned]
     assert slice_.colour_pruned and len(released) == len(pruned)
-    gc.collect()
     for ref, handle, native in released:
         # Nothing holds the decoded complete build, and its handle is gone.
+        # Freed by reference counting: the generation defers the cyclic
+        # collector's full passes (``full_collections_deferred``), and none
+        # has run here.
         assert ref() is None
         with pytest.raises(Exception, match="released"):
             native.readings(handle)
