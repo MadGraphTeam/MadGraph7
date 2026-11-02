@@ -2025,6 +2025,25 @@ class LoopSlice:
         in N_c right after the trees.
         """
 
+        # The cyclic collector's full passes are deferred for the whole
+        # generation (``generator_input.full_collections_deferred``).
+        with generator_input.full_collections_deferred():
+            return cls._generate(
+                compiled, request, native, prune=prune, native_inputs=native_inputs
+            )
+
+    @classmethod
+    def _generate(
+        cls,
+        compiled: Any,
+        request: SliceRequest,
+        native: Any,
+        *,
+        prune: bool,
+        native_inputs: bool,
+    ) -> LoopSlice:
+        """``generate`` with full collections deferred."""
+
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
         from pyamplicol.models.external import CompiledUFOModel
         from pyamplicol.processes.model import build_model_process_ir
@@ -2373,14 +2392,14 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         reading = TreeReading(data)
-        rules = set()
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
-            rules.update(
-                term.vertex.rule
-                for content in skeleton.contents
-                for term in content.terms
-            )
+        # The vertices of every reading: those of the distinct contents.
+        rules = {
+            term.vertex.rule
+            for content in weights.contents_seen()
+            for term in content.terms
+        }
         for rule in sorted(rules):
             reading.conjugate(rule)  # refuses vertices it cannot read
         if program is not None:
@@ -5525,8 +5544,8 @@ def _born_partitions(slice_, charged: frozenset[int]) -> dict[Orders, frozenset]
     if found is not None:
         return found
     dag = slice_.blocks.born_dag
-    if hasattr(dag, "materialize"):
-        dag = dag.materialize()
+    if hasattr(dag, "structural"):
+        dag = dag.structural()  # the DAG the summary's root ids index
     species = slice_.prepared.structure.perturbative_species_orders or {}
     corrections = frozenset(slice_.request.corrections)
     full = (1 << len(slice_.blocks.process.legs)) - 1

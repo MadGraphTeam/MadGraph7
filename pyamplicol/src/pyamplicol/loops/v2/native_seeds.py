@@ -693,9 +693,22 @@ class NativeSeedStage:
         if trees is None:
             return {}  # pure-gluon blocks are not certified Lie elements
         out: dict[PrimitiveKind, CompressionCertificate] = {}
+        # ``repr(contents)`` from each content's repr, formed once (contents
+        # are shared by many skeletons; the skeletons keep them alive).
+        reprs: dict[int, str] = {}
+
+        def contents_repr(index: int) -> str:
+            parts = []
+            for content in skeletons[index].contents:
+                found = reprs.get(id(content))
+                if found is None:
+                    found = reprs[id(content)] = repr(content)
+                parts.append(found)
+            return "(" + ", ".join(parts) + ("," if len(parts) == 1 else "") + ")"
+
         for name, indices in candidates:
             kind = cast(PrimitiveKind, name)
-            best = min(indices, key=lambda s: repr(skeletons[s].contents))
+            best = min(indices, key=contents_repr)
             instance = skeletons[best]
             raw = builder.combination(best)
             combination = tuple(
