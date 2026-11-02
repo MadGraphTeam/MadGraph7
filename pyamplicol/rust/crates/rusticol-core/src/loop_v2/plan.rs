@@ -1235,10 +1235,11 @@ impl LoopProgramV4 {
     /// are bounded (module docs): refused values and an ungranted peak give
     /// an error before deriving. A binary plan member (the stored form,
     /// M-FINAL MF-8G-1 item 5; [`binary::is_binary`]) is read by its one
-    /// reader, [`read_binary_with`]; anything else is read as a plan JSON.
+    /// reader within the caller's thread bound ([`binary::read_binary_bounded`]:
+    /// sequential outside a pool); anything else is read as a plan JSON.
     pub fn load_with(data: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
         if binary::is_binary(data) {
-            return read_binary_with(data, policy);
+            return binary::read_binary_bounded(data, policy);
         }
         binary::PlanModel::from_json(data)?.program(policy)
     }

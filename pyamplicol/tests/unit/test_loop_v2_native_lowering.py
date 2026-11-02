@@ -1194,21 +1194,26 @@ def _streamed_and_oracle(monkeypatch, slice_, **options):
 
 
 def check_streamed(streamed, oracle) -> None:
-    """MF-8G-1 item 5: a plan whose families were streamed into the native
-    model writes the oracle's JSON and binary member byte for byte, and its
-    family view decodes to the oracle's Python records."""
+    """MF-8G-1 item 5: a plan whose families and contents were streamed into
+    the native model writes the oracle's JSON and binary member byte for
+    byte, and its family and content views decode to the oracle's Python
+    records."""
 
     assert streamed.streamed and not oracle.streamed
     text = oracle.python_json()
     assert streamed.json() == text
     assert streamed.binary() == oracle.binary()
-    view = streamed.program["families"]
-    assert isinstance(view, native_lowering.NativeFamilies)
-    assert len(view) == len(oracle.program["families"])
-    assert json.dumps(list(view), separators=(",", ":")) == json.dumps(
-        oracle.program["families"], separators=(",", ":")
-    )
-    assert view[-1] == json.loads(json.dumps(oracle.program["families"][-1]))
+    for key, kind in (
+        ("families", native_lowering.NativeFamilies),
+        ("contents", native_lowering.NativeContents),
+    ):
+        view = streamed.program[key]
+        assert isinstance(view, kind)
+        assert len(view) == len(oracle.program[key]) > 0
+        assert json.dumps(list(view), separators=(",", ":")) == json.dumps(
+            oracle.program[key], separators=(",", ":")
+        )
+        assert view[-1] == json.loads(json.dumps(oracle.program[key][-1]))
     with pytest.raises(ValueError, match="streamed families"):
         streamed.python_json()
     with pytest.raises(TypeError):

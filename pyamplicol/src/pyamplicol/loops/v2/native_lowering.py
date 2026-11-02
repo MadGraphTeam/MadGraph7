@@ -51,12 +51,14 @@ from typing import Any
 NATIVE_JSON = True
 
 # M-FINAL MF-8G-1 item 5 (rule 1): ``export_plan`` streams each schedule-B
-# family record into the native model as the exporter makes it
-# (``families_builder``), so the export never holds the Python records of
-# every family; the plan's ``program["families"]`` is then a read-only view
-# that decodes a family from the model when asked (``NativeFamilies``) and
-# ``ExportedPlan.json()`` / ``binary()`` come from that model. Off (or with
-# ``NATIVE_JSON`` off), the Python records stay in the program (the oracle,
+# family record and each content record into the native model as the
+# exporter makes it (``families_builder``, ``contents_builder``), so the
+# export never holds the Python records of every family or content; the
+# plan's ``program["families"]`` and ``program["contents"]`` are then
+# read-only views that decode a record from the model when asked
+# (``NativeFamilies``, ``NativeContents``) and ``ExportedPlan.json()`` /
+# ``binary()`` come from that model. Off (or with ``NATIVE_JSON`` off), the
+# Python records stay in the program (the oracle,
 # ``ExportedPlan.python_json()``).
 NATIVE_FAMILIES = True
 
@@ -71,16 +73,23 @@ NATIVE_FAMILIES = True
 BINARY_PLAN = True
 
 
-def _native(native: Any | None) -> Any:
-    """``native``, else the staged loop core, verified once per process: the
-    one cache of ``dag_input._native`` (each ``load_loop_native`` re-verifies
-    the native build, 0.2-0.4 s)."""
+# The staged loop core, verified once per process (each ``load_loop_native``
+# re-verifies the native build, 0.2-0.4 s). Its own cache, not
+# ``dag_input._native``'s: a stored process's readers (``member_json``,
+# ``native_trees``) call it at load, where no generation module runs.
+_LOADED: list[Any] = []
+
+
+def _native(native: Any | None = None) -> Any:
+    """``native``, else the staged loop core (verified once per process)."""
 
     if native is not None:
         return native
-    from .dag_input import _native as loop_core
+    if not _LOADED:
+        from pyamplicol.loops.native import load_loop_native
 
-    return loop_core()
+        _LOADED.append(load_loop_native())
+    return _LOADED[0]
 
 
 def _program(exported: Any) -> Any:
@@ -103,31 +112,63 @@ def families_builder(native: Any | None = None) -> Any:
     return _native(native).V2PlanFamilies()
 
 
-def streamed_model(program: dict[str, Any], families: Any, native: Any | None = None) -> Any:
-    """The native model of ``program`` (its ``families`` an empty list) with
-    the streamed ``families`` (``families_builder``, taken)."""
+def contents_builder(native: Any | None = None) -> Any:
+    """An empty ``V2PlanContents``: ``push`` one content record at a time."""
 
-    return _native(native).V2PlanModel.from_program_families(program, families)
+    return _native(native).V2PlanContents()
 
 
-class NativeFamilies(Sequence[dict[str, Any]]):
-    """``program["families"]`` of a plan whose families were streamed: each
-    family decoded from the native model when asked (its plan JSON record),
-    nothing kept. Not JSON-serialisable on purpose: ``json.dumps(program)``
+def streamed_model(
+    program: dict[str, Any],
+    families: Any,
+    contents: Any | None = None,
+    native: Any | None = None,
+) -> Any:
+    """The native model of ``program`` (its ``families``, and with
+    ``contents`` its ``contents``, empty lists) with the streamed
+    ``families`` (``families_builder``, taken) and ``contents``
+    (``contents_builder``, taken)."""
+
+    return _native(native).V2PlanModel.from_program_families(
+        program, families, contents
+    )
+
+
+class _NativeRecords(Sequence[dict[str, Any]]):
+    """A plan list whose records were streamed into the native model: each
+    record decoded from the model when asked (its plan JSON record), nothing
+    kept. Not JSON-serialisable on purpose: ``json.dumps(program)``
     (``ExportedPlan.python_json()``, the oracle) needs the Python records."""
+
+    _count = ""
+    _json = ""
 
     def __init__(self, model: Any) -> None:
         self.model = model
 
     def __len__(self) -> int:
-        return int(self.model.family_count())
+        return int(getattr(self.model, self._count)())
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice):
             return [self[i] for i in range(*index.indices(len(self)))]
         if index < 0:
             index += len(self)
-        return json.loads(bytes(self.model.family_json(index)))
+        return json.loads(bytes(getattr(self.model, self._json)(index)))
+
+
+class NativeFamilies(_NativeRecords):
+    """``program["families"]`` of a plan whose families were streamed."""
+
+    _count = "family_count"
+    _json = "family_json"
+
+
+class NativeContents(_NativeRecords):
+    """``program["contents"]`` of a plan whose contents were streamed."""
+
+    _count = "content_count"
+    _json = "content_json"
 
 
 def plan_model_from_json(exported: Any, native: Any | None = None) -> Any:
@@ -223,8 +264,10 @@ __all__ = [
     "BINARY_PLAN",
     "NATIVE_FAMILIES",
     "NATIVE_JSON",
+    "NativeContents",
     "NativeFamilies",
     "PlanLoad",
+    "contents_builder",
     "families_builder",
     "is_member",
     "load",

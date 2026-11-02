@@ -390,6 +390,13 @@ fn term(out: &mut Out, term: &TermFile) {
     out.byte(b'}');
 }
 
+/// The JSON of one content, as the plan JSON writes it.
+pub(super) fn content_json(record: &ContentFile) -> Vec<u8> {
+    let mut out = Out(Vec::new());
+    content(&mut out, record);
+    out.0
+}
+
 /// The JSON of one schedule-B family, as the plan JSON writes it.
 pub(super) fn family_json(family: &FamilyFile) -> Vec<u8> {
     let mut out = Out(Vec::new());

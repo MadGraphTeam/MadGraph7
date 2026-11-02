@@ -240,10 +240,11 @@ COUNTERTERM_TERMS = "counterterms.terms"
 
 
 def _native() -> Any:
-    """The staged loop core, verified once per process (``dag_input._native``;
-    each ``load_loop_native`` re-verifies the native build, 0.2-0.4 s)."""
+    """The staged loop core, verified once per process
+    (``native_lowering._native``; each ``load_loop_native`` re-verifies the
+    native build, 0.2-0.4 s)."""
 
-    from .dag_input import _native as loop_core
+    from .native_lowering import _native as loop_core
 
     return loop_core()
 

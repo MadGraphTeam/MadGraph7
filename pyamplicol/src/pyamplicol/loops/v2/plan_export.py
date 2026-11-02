@@ -290,6 +290,11 @@ class _Exporter:
     # (class, loop order) -> seed-class record of the latest ``seed_records``
     # (the seed Fourier record's loop orbits, ``fourier_record``).
     class_records: dict[tuple[int, Orders], int] = field(default_factory=dict)
+    # The native sink of the content records (``native_lowering.
+    # contents_builder``; MF-8G-1 item 5), else None: the records are kept in
+    # ``content_records``. ``content_count`` counts them either way.
+    content_sink: Any = None
+    content_count: int = 0
 
     # -- kernels ------------------------------------------------------------
 
@@ -410,24 +415,27 @@ class _Exporter:
                     "rows": rows,
                 }
             )
-        found = len(self.content_records)
+        found = self.content_count
         self.contents[content] = (found, shape)
         mask = content.mask
         for row in shape.rows:
             if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():
                 raise ValueError(f"content {content.label} has a row off its legs")
-        self.content_records.append(
-            {
-                "d_in": shape.loop_in,
-                "d_out": shape.loop_out,
-                "degree": shape.degree,
-                "rows": len(shape.rows),
-                "mask": mask,
-                "row_helicities": [[h for _leg, h in row] for row in shape.rows],
-                "fused": [[b, b2, *e] for b, b2, e in shape.fused],
-                "terms": terms,
-            }
-        )
+        record = {
+            "d_in": shape.loop_in,
+            "d_out": shape.loop_out,
+            "degree": shape.degree,
+            "rows": len(shape.rows),
+            "mask": mask,
+            "row_helicities": [[h for _leg, h in row] for row in shape.rows],
+            "fused": [[b, b2, *e] for b, b2, e in shape.fused],
+            "terms": terms,
+        }
+        if self.content_sink is None:
+            self.content_records.append(record)
+        else:
+            self.content_sink.push(record)
+        self.content_count += 1
         return found, shape
 
     def factor(self, content: int, shift: int) -> int:
@@ -1156,15 +1164,19 @@ def export_plan(
     )
     helicities = born_helicities(slice_)
     rows = born_rows(slice_)
-    exporter = _Exporter(slice_, kinematics, rows, links=links)
     from . import native_lowering
 
-    # MF-8G-1 item 5: each family record goes to the native model as it is
-    # made (``native_lowering.NATIVE_FAMILIES``); only its loop orders stay.
+    # MF-8G-1 item 5: each family and content record goes to the native model
+    # as it is made (``native_lowering.NATIVE_FAMILIES``); only a family's
+    # loop orders stay.
     streamed = (
         native_lowering.families_builder()
         if native_lowering.NATIVE_FAMILIES and native_lowering.NATIVE_JSON
         else None
+    )
+    contents_sink = None if streamed is None else native_lowering.contents_builder()
+    exporter = _Exporter(
+        slice_, kinematics, rows, links=links, content_sink=contents_sink
     )
     families, keys, family_orders = [], [], []
     for key, schedule in slice_.plan.schedules.items():
@@ -1243,8 +1255,9 @@ def export_plan(
         program["column_weights"] = column_weights
     model = None
     if streamed is not None:
-        model = native_lowering.streamed_model(program, streamed)
+        model = native_lowering.streamed_model(program, streamed, contents_sink)
         program["families"] = native_lowering.NativeFamilies(model)
+        program["contents"] = native_lowering.NativeContents(model)
     born_components = tuple(exporter.born_components)
     column_seeds = None
     if column_sets is not None:
