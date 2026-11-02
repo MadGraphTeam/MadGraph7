@@ -442,9 +442,10 @@ class NativeGeneration:
     ``scaleless_companion`` returns the same generation scheduling a subset
     of the certified-scaleless families instead (the poles companion).
 
-    Every build is retained (``NativeBuild``, module docstring); ``base`` is
-    the last build of every skeleton, which a pruned rebuild reuses, and
-    ``build_of_plan`` finds the build of a decoded plan.
+    Every build is retained (``NativeBuild``, module docstring) until
+    ``release``; ``base`` is the last build of every skeleton, which a
+    pruned rebuild reuses, and ``build_of_plan`` finds the build of a
+    decoded plan.
     """
 
     def __init__(
@@ -484,6 +485,26 @@ class NativeGeneration:
 
         build = self._builds.get(id(plan))
         return build if build is not None and build.plan is plan else None
+
+    def release(self, build: NativeBuild) -> None:
+        """Forget ``build``, which no stage reads any more (the complete
+        build once ``LoopSlice._prune_colour`` has rebuilt from it): its
+        native arena entry (the builds rebuilt from it share only its
+        skeletons) and every reference this generation and the in-crate seed
+        stage lookup (``build_of``) hold, so its decoded plan, view and seed
+        stage go with the last outside reference. ``base`` is cleared when
+        it is that build: a later filtered ``schedules`` call builds anew."""
+
+        if build.generation._native is not self._native:
+            raise ValueError("the build is not one of this generation's")
+        for key, retained in list(self._builds.items()):
+            if retained is build:
+                del self._builds[key]
+        if self.base is build:
+            self.base = None
+        _LIVE_BUILDS.discard(build)
+        build.seed_stage = None
+        self._native.release(build.handle)
 
     def _position(self, vertex: int, blocks: Iterable[int]) -> Position:
         tables = self.tables
