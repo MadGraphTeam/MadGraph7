@@ -104,6 +104,78 @@ impl<T: Carrier> Seeds<T> {
     }
 }
 
+/// A seed class's direct sum `U0_c[o][h] = Σ_b K[c, b] conj(A0_b(h))` into
+/// `out` (zero), per Born row and observable column its weight column's
+/// terms in order: `(a + ib)(c - id)` per lane, added in place.
+#[inline(always)]
+fn class_sum_body<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    weights: &[Vec<(usize, T, T)>],
+    born: &[T],
+    out: &mut [T],
+) {
+    let v = lane_vector_len(L);
+    let columns = plan.columns;
+    for h in 0..plan.rows {
+        for (o, &w) in plan.column_weights.iter().enumerate() {
+            if !plan.column_rows.keeps(h, o) {
+                continue;
+            }
+            let terms = &weights[w];
+            let target = &mut out[(h * columns + o) * v..][..v];
+            for (component, re, im) in terms {
+                let born = &born[(h * plan.born_components + component) * v..][..v];
+                let (target_re, target_im) = target.split_at_mut(L);
+                for l in 0..L {
+                    let (c, d) = (&born[l], &born[L + l]);
+                    target_re[l] += re.clone() * c + im.clone() * d;
+                    target_im[l] += im.clone() * c - re.clone() * d;
+                }
+            }
+        }
+    }
+}
+
+/// [`class_sum_body`] in the widest vectors the running CPU reports for
+/// binary64 ([`super::kernels::Simd`]; the same operations per lane).
+fn class_sum<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    weights: &[Vec<(usize, T, T)>],
+    born: &[T],
+    out: &mut [T],
+) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use super::kernels::Simd;
+        #[target_feature(enable = "avx512f")]
+        fn avx512<T: Carrier, const L: usize>(
+            plan: &LoopProgramV4,
+            weights: &[Vec<(usize, T, T)>],
+            born: &[T],
+            out: &mut [T],
+        ) {
+            class_sum_body::<T, L>(plan, weights, born, out)
+        }
+        #[target_feature(enable = "avx2")]
+        fn avx2<T: Carrier, const L: usize>(
+            plan: &LoopProgramV4,
+            weights: &[Vec<(usize, T, T)>],
+            born: &[T],
+            out: &mut [T],
+        ) {
+            class_sum_body::<T, L>(plan, weights, born, out)
+        }
+        match Simd::detect::<T>() {
+            // SAFETY: `Simd::detect` returns a width only when the running
+            // CPU reports its feature.
+            Simd::Avx512 => return unsafe { avx512::<T, L>(plan, weights, born, out) },
+            Simd::Avx2 => return unsafe { avx2::<T, L>(plan, weights, born, out) },
+            Simd::Baseline => {}
+        }
+    }
+    class_sum_body::<T, L>(plan, weights, born, out)
+}
+
 /// `out += Σ_c x_c U0_c` over a key's classes in order: `(a + ib)(c + id)`
 /// per lane, added in place.
 #[inline(always)]
@@ -200,25 +272,7 @@ pub fn contract<T: Carrier, const L: usize>(
                 })
                 .collect();
             let mut out = vec![data.zero.clone(); plan.rows * columns * v];
-            for h in 0..plan.rows {
-                for (o, &w) in plan.column_weights.iter().enumerate() {
-                    if !plan.column_rows.keeps(h, o) {
-                        continue;
-                    }
-                    let terms = &weights[w];
-                    let target = &mut out[(h * columns + o) * v..][..v];
-                    for (component, re, im) in terms {
-                        let born = &data.born[(h * plan.born_components + component) * v..][..v];
-                        // weight * conj(A0): (a + ib)(c - id), added in place.
-                        let (target_re, target_im) = target.split_at_mut(L);
-                        for l in 0..L {
-                            let (c, d) = (&born[l], &born[L + l]);
-                            target_re[l] += re.clone() * c + im.clone() * d;
-                            target_im[l] += im.clone() * c - re.clone() * d;
-                        }
-                    }
-                }
-            }
+            class_sum::<T, L>(plan, &weights, &data.born, &mut out);
             for &(h, w, lanes) in extra.map_or(&[][..], |extra| &extra[class]) {
                 for (o, &column) in plan.column_weights.iter().enumerate() {
                     if column != w || !plan.column_rows.keeps(h, o) {
