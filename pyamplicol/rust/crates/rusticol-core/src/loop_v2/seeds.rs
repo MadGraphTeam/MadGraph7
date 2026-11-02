@@ -21,7 +21,7 @@
 //! ([`Seeds::materialise`]).
 
 use super::dress::{Carrier, LaneData};
-use super::kernels::lane_vector_len;
+use super::kernels::{dispatched, lane_vector_len};
 use super::plan::{LoopProgramV4, Seed};
 use rayon::prelude::*;
 
@@ -31,8 +31,9 @@ use rayon::prelude::*;
 pub struct Seeds<T> {
     classes: Vec<Vec<T>>,
     keys: Vec<Key<T>>,
-    /// Every key's value ([`Seeds::materialise`]; empty before).
-    pub values: Vec<Vec<T>>,
+    /// Every key's value ([`Seeds::materialise`]; empty before, read
+    /// through [`Seeds::values`]).
+    values: Vec<Vec<T>>,
 }
 
 /// A seed key in a carrier: one class with weight one, or its classes with
@@ -76,6 +77,18 @@ impl<T: Carrier> Seeds<T> {
             })
             .collect();
         self.values = values;
+    }
+
+    /// Every key's value, in key order. Panics before
+    /// [`Seeds::materialise`] (schedule B never materialises: its leaves
+    /// read [`Seeds::leaf_into`]).
+    pub fn values(&self) -> &[Vec<T>] {
+        assert_eq!(
+            self.values.len(),
+            self.keys.len(),
+            "Seeds::values before Seeds::materialise"
+        );
+        &self.values
     }
 
     /// `U0[key]`: the materialised value, else formed.
@@ -136,44 +149,15 @@ fn class_sum_body<T: Carrier, const L: usize>(
     }
 }
 
-/// [`class_sum_body`] in the widest vectors the running CPU reports for
-/// binary64 ([`super::kernels::Simd`]; the same operations per lane).
-fn class_sum<T: Carrier, const L: usize>(
-    plan: &LoopProgramV4,
-    weights: &[Vec<(usize, T, T)>],
-    born: &[T],
-    out: &mut [T],
-) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use super::kernels::Simd;
-        #[target_feature(enable = "avx512f")]
-        fn avx512<T: Carrier, const L: usize>(
-            plan: &LoopProgramV4,
-            weights: &[Vec<(usize, T, T)>],
-            born: &[T],
-            out: &mut [T],
-        ) {
-            class_sum_body::<T, L>(plan, weights, born, out)
-        }
-        #[target_feature(enable = "avx2")]
-        fn avx2<T: Carrier, const L: usize>(
-            plan: &LoopProgramV4,
-            weights: &[Vec<(usize, T, T)>],
-            born: &[T],
-            out: &mut [T],
-        ) {
-            class_sum_body::<T, L>(plan, weights, born, out)
-        }
-        match Simd::detect::<T>() {
-            // SAFETY: `Simd::detect` returns a width only when the running
-            // CPU reports its feature.
-            Simd::Avx512 => return unsafe { avx512::<T, L>(plan, weights, born, out) },
-            Simd::Avx2 => return unsafe { avx2::<T, L>(plan, weights, born, out) },
-            Simd::Baseline => {}
-        }
-    }
-    class_sum_body::<T, L>(plan, weights, born, out)
+dispatched! {
+    /// [`class_sum_body`] in the widest vectors the running CPU reports for
+    /// binary64 ([`super::kernels::Simd`]; the same operations per lane).
+    fn class_sum<T: Carrier, const L: usize>(
+        plan: &LoopProgramV4,
+        weights: &[Vec<(usize, T, T)>],
+        born: &[T],
+        out: &mut [T],
+    ) => class_sum_body;
 }
 
 /// `out += Σ_c x_c U0_c` over a key's classes in order: `(a + ib)(c + id)`
@@ -228,77 +212,25 @@ fn leaf_sum_body<T: Carrier, const L: usize>(
     }
 }
 
-/// [`leaf_sum_body`] in the widest vectors the running CPU reports for
-/// binary64 ([`super::kernels::Simd`]; the same operations per lane).
-fn leaf_sum<T: Carrier, const L: usize>(
-    classes: &[Vec<T>],
-    terms: &[(usize, T, T)],
-    weight: &T,
-    out: &mut [T],
-) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use super::kernels::Simd;
-        #[target_feature(enable = "avx512f")]
-        fn avx512<T: Carrier, const L: usize>(
-            classes: &[Vec<T>],
-            terms: &[(usize, T, T)],
-            weight: &T,
-            out: &mut [T],
-        ) {
-            leaf_sum_body::<T, L>(classes, terms, weight, out)
-        }
-        #[target_feature(enable = "avx2")]
-        fn avx2<T: Carrier, const L: usize>(
-            classes: &[Vec<T>],
-            terms: &[(usize, T, T)],
-            weight: &T,
-            out: &mut [T],
-        ) {
-            leaf_sum_body::<T, L>(classes, terms, weight, out)
-        }
-        match Simd::detect::<T>() {
-            // SAFETY: `Simd::detect` returns a width only when the running
-            // CPU reports its feature.
-            Simd::Avx512 => return unsafe { avx512::<T, L>(classes, terms, weight, out) },
-            Simd::Avx2 => return unsafe { avx2::<T, L>(classes, terms, weight, out) },
-            Simd::Baseline => {}
-        }
-    }
-    leaf_sum_body::<T, L>(classes, terms, weight, out)
+dispatched! {
+    /// [`leaf_sum_body`] in the widest vectors the running CPU reports for
+    /// binary64 ([`super::kernels::Simd`]; the same operations per lane).
+    fn leaf_sum<T: Carrier, const L: usize>(
+        classes: &[Vec<T>],
+        terms: &[(usize, T, T)],
+        weight: &T,
+        out: &mut [T],
+    ) => leaf_sum_body;
 }
 
-/// [`key_sum_body`] in the widest vectors the running CPU reports for
-/// binary64 ([`super::kernels::Simd`]; the same operations per lane).
-fn key_sum<T: Carrier, const L: usize>(classes: &[Vec<T>], terms: &[(usize, T, T)], out: &mut [T]) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use super::kernels::Simd;
-        #[target_feature(enable = "avx512f")]
-        fn avx512<T: Carrier, const L: usize>(
-            classes: &[Vec<T>],
-            terms: &[(usize, T, T)],
-            out: &mut [T],
-        ) {
-            key_sum_body::<T, L>(classes, terms, out)
-        }
-        #[target_feature(enable = "avx2")]
-        fn avx2<T: Carrier, const L: usize>(
-            classes: &[Vec<T>],
-            terms: &[(usize, T, T)],
-            out: &mut [T],
-        ) {
-            key_sum_body::<T, L>(classes, terms, out)
-        }
-        match Simd::detect::<T>() {
-            // SAFETY: `Simd::detect` returns a width only when the running
-            // CPU reports its feature.
-            Simd::Avx512 => return unsafe { avx512::<T, L>(classes, terms, out) },
-            Simd::Avx2 => return unsafe { avx2::<T, L>(classes, terms, out) },
-            Simd::Baseline => {}
-        }
-    }
-    key_sum_body::<T, L>(classes, terms, out)
+dispatched! {
+    /// [`key_sum_body`] in the widest vectors the running CPU reports for
+    /// binary64 ([`super::kernels::Simd`]; the same operations per lane).
+    fn key_sum<T: Carrier, const L: usize>(
+        classes: &[Vec<T>],
+        terms: &[(usize, T, T)],
+        out: &mut [T],
+    ) => key_sum_body;
 }
 
 /// `U0` of every seed key of the plan (classes, then keys, on parallel
@@ -436,7 +368,7 @@ mod tests {
             seeds.leaf_into::<L>(key, &weight, &mut out);
             let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
             assert_eq!(bits(lazy), bits(&out), "key {key}");
-            assert_eq!(bits(&seeds.value::<L>(key)), bits(&seeds.values[key]));
+            assert_eq!(bits(&seeds.value::<L>(key)), bits(&seeds.values()[key]));
         }
     }
 }

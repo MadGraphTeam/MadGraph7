@@ -3895,53 +3895,6 @@ fn kernel_lanes_avx2<T: Carrier, const L: usize>(
     kernel_lanes::<T, L>(kernel, constants, x, zero)
 }
 
-/// The vector width the closure kernels run in: binary64 lanes take the
-/// widest the running CPU reports (never a build-host feature), the other
-/// carriers the baseline.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Wide {
-    Baseline,
-    #[cfg(target_arch = "x86_64")]
-    Avx2,
-    #[cfg(target_arch = "x86_64")]
-    Avx512,
-}
-
-/// Caps the closure kernels' vector width (`Wide::detect`) at `baseline`
-/// or `avx2`, so that one AVX-512 host runs the code paths of an AVX2-only
-/// or a baseline x86-64 host (the bitwise check of
-/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
-/// caps nothing. It never enables a feature the CPU lacks.
-const CLOSURE_SIMD_ENV: &str = "RUSTICOL_TEST_CLOSURE_SIMD";
-
-impl Wide {
-    fn detect<T: 'static>() -> Self {
-        #[cfg(target_arch = "x86_64")]
-        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            static CAP: std::sync::OnceLock<Wide> = std::sync::OnceLock::new();
-            let cap =
-                *CAP.get_or_init(|| Self::cap(std::env::var(CLOSURE_SIMD_ENV).ok().as_deref()));
-            if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
-                return Self::Avx512;
-            }
-            if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
-                return Self::Avx2;
-            }
-        }
-        Self::Baseline
-    }
-
-    /// The widest width `CLOSURE_SIMD_ENV`'s value allows.
-    #[cfg(target_arch = "x86_64")]
-    fn cap(value: Option<&str>) -> Self {
-        match value {
-            Some("baseline") => Self::Baseline,
-            Some("avx2") => Self::Avx2,
-            _ => Self::Avx512,
-        }
-    }
-}
-
 impl<T: Carrier> Closure<'_, T> {
     /// The closures of points `first .. first + points` in lanes of `L`
     /// points (the unused lanes of a last chunk repeat the run's last point
@@ -3962,14 +3915,15 @@ impl<T: Carrier> Closure<'_, T> {
         let v = 2 * L;
         let chunks = points.div_ceil(L);
         let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
-        let wide = Wide::detect::<T>();
+        let wide = super::kernels::Simd::detect::<T>();
         let gather = Gather::of(program, self.terms);
         // The block currents of one lane chunk, lane-major.
         let mut currents = vec![zero.clone(); gather.values * v];
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
         for (chunk, sums) in sums.chunks_exact_mut(rows * width * v).enumerate() {
-            let lanes: [usize; L] = std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
+            let lanes: [usize; L] =
+                std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
             gather.fill::<T, L>(&mut currents, &lanes, self.states, self.counterterm_states);
             let currents = &currents;
             sums.par_chunks_mut(width * v).enumerate().for_each_init(
@@ -4017,16 +3971,18 @@ impl<T: Carrier> Closure<'_, T> {
                         let kernel = &self.plan.kernels[term.kernel].outputs[0];
                         let (mut value_re, mut value_im) = match wide {
                             // SAFETY: `wide` holds only the features this CPU
-                            // reports (`Wide::detect`).
+                            // reports (`Simd::detect`).
                             #[cfg(target_arch = "x86_64")]
-                            Wide::Avx512 => unsafe {
+                            super::kernels::Simd::Avx512 => unsafe {
                                 kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
                             },
                             #[cfg(target_arch = "x86_64")]
-                            Wide::Avx2 => unsafe {
+                            super::kernels::Simd::Avx2 => unsafe {
                                 kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
                             },
-                            Wide::Baseline => kernel_lanes::<T, L>(kernel, self.constants, x, zero),
+                            super::kernels::Simd::Baseline => {
+                                kernel_lanes::<T, L>(kernel, self.constants, x, zero)
+                            }
                         };
                         if term.sign < 0 {
                             for l in 0..L {
@@ -4131,8 +4087,9 @@ impl Gather {
 
     /// The gathered currents of the points `lanes` (lane `l` from point
     /// `lanes[l]`'s state; state indices past the tree state's size read the
-    /// counterterm program's state).
-    fn fill<T: Clone, const L: usize>(
+    /// counterterm program's state), in spans of [`Gather::SPAN`] gathered
+    /// values on the rayon pool (copies only).
+    fn fill<T: Clone + Send + Sync, const L: usize>(
         &self,
         out: &mut [T],
         lanes: &[usize; L],
@@ -4140,23 +4097,41 @@ impl Gather {
         (ct_state, ct_size): (&[Complex<T>], usize),
     ) {
         let v = 2 * L;
-        for &(start, offset, count) in &self.regions {
-            for c in 0..count {
-                let index = start + c;
-                let (values, stride, index) = if index < size {
-                    (state, size, index)
-                } else {
-                    (ct_state, ct_size, index - size)
-                };
-                let (re, im) = out[(offset + c) * v..(offset + c + 1) * v].split_at_mut(L);
-                for (l, &point) in lanes.iter().enumerate() {
-                    let value = &values[point * stride + index];
-                    re[l] = value.re.clone();
-                    im[l] = value.im.clone();
+        out[..self.values * v]
+            .par_chunks_mut(Self::SPAN * v)
+            .enumerate()
+            .for_each(|(span, out)| {
+                let first = span * Self::SPAN;
+                let last = first + out.len() / v;
+                // Regions are laid out in order: the first one ending past
+                // `first`, then on until `last`.
+                let at = self
+                    .regions
+                    .partition_point(|&(_, offset, count)| offset + count <= first);
+                for &(start, offset, count) in &self.regions[at..] {
+                    if offset >= last {
+                        break;
+                    }
+                    for g in first.max(offset)..last.min(offset + count) {
+                        let index = start + g - offset;
+                        let (values, stride, index) = if index < size {
+                            (state, size, index)
+                        } else {
+                            (ct_state, ct_size, index - size)
+                        };
+                        let (re, im) = out[(g - first) * v..(g - first + 1) * v].split_at_mut(L);
+                        for (l, &point) in lanes.iter().enumerate() {
+                            let value = &values[point * stride + index];
+                            re[l] = value.re.clone();
+                            im[l] = value.im.clone();
+                        }
+                    }
                 }
-            }
-        }
+            });
     }
+
+    /// Gathered values per task of [`Gather::fill`].
+    const SPAN: usize = 4096;
 }
 
 /// The interaction program on the states of a batch: per step, each

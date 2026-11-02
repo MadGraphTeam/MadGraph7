@@ -18,6 +18,7 @@
 //! once per (bra order, `p`, metric class) and dotted with each ket.
 
 use super::dress::{Carrier, cast};
+use super::kernels::dispatched;
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
@@ -175,64 +176,21 @@ fn z_sums_body<T: Carrier>(
     }
 }
 
-/// [`z_sums_body`] in the widest vectors the running CPU reports for
-/// binary64 ([`super::kernels::Simd`]; the same operations per lane, so the
-/// same bits).
-#[allow(clippy::too_many_arguments)]
-fn z_sums<T: Carrier>(
-    bras: &[(usize, usize)],
-    metric: &[Vec<(usize, Complex<T>)>],
-    keep_bra: Option<&[bool]>,
-    x_re: &[T],
-    x_im: &[T],
-    limit: usize,
-    z_re: &mut [T],
-    z_im: &mut [T],
-) {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use super::kernels::Simd;
-        #[allow(clippy::too_many_arguments)]
-        #[target_feature(enable = "avx512f")]
-        fn avx512<T: Carrier>(
-            bras: &[(usize, usize)],
-            metric: &[Vec<(usize, Complex<T>)>],
-            keep_bra: Option<&[bool]>,
-            x_re: &[T],
-            x_im: &[T],
-            limit: usize,
-            z_re: &mut [T],
-            z_im: &mut [T],
-        ) {
-            z_sums_body(bras, metric, keep_bra, x_re, x_im, limit, z_re, z_im)
-        }
-        #[allow(clippy::too_many_arguments)]
-        #[target_feature(enable = "avx2")]
-        fn avx2<T: Carrier>(
-            bras: &[(usize, usize)],
-            metric: &[Vec<(usize, Complex<T>)>],
-            keep_bra: Option<&[bool]>,
-            x_re: &[T],
-            x_im: &[T],
-            limit: usize,
-            z_re: &mut [T],
-            z_im: &mut [T],
-        ) {
-            z_sums_body(bras, metric, keep_bra, x_re, x_im, limit, z_re, z_im)
-        }
-        match Simd::detect::<T>() {
-            // SAFETY: `Simd::detect` returns a width only when the running
-            // CPU reports its feature.
-            Simd::Avx512 => {
-                return unsafe { avx512(bras, metric, keep_bra, x_re, x_im, limit, z_re, z_im) };
-            }
-            Simd::Avx2 => {
-                return unsafe { avx2(bras, metric, keep_bra, x_re, x_im, limit, z_re, z_im) };
-            }
-            Simd::Baseline => {}
-        }
-    }
-    z_sums_body(bras, metric, keep_bra, x_re, x_im, limit, z_re, z_im)
+dispatched! {
+    /// [`z_sums_body`] in the widest vectors the running CPU reports for
+    /// binary64 ([`super::kernels::Simd`]; the same operations per lane, so
+    /// the same bits).
+    #[allow(clippy::too_many_arguments)]
+    fn z_sums<T: Carrier>(
+        bras: &[(usize, usize)],
+        metric: &[Vec<(usize, Complex<T>)>],
+        keep_bra: Option<&[bool]>,
+        x_re: &[T],
+        x_im: &[T],
+        limit: usize,
+        z_re: &mut [T],
+        z_im: &mut [T],
+    ) => z_sums_body;
 }
 
 fn groups(
@@ -467,9 +425,18 @@ impl Interference {
             ket_width,
             couplings,
         };
-        let per_row = self.rows(runtime, &point, &rows, keep_bra, poles, zero, |out, entry, value| {
-            out[entry.output] += value;
-        }, &czero);
+        let per_row = self.rows(
+            runtime,
+            &point,
+            &rows,
+            keep_bra,
+            poles,
+            zero,
+            |out, entry, value| {
+                out[entry.output] += value;
+            },
+            &czero,
+        );
         let mut out = vec![czero; self.outputs.len()];
         for row in per_row {
             for (total, value) in out.iter_mut().zip(row) {
@@ -521,9 +488,18 @@ impl Interference {
             ket_width,
             couplings,
         };
-        let per_row = self.rows(runtime, &point, &rows, None, poles, zero, |out, entry, value| {
-            out[entry.output] += value.re.clone() + value.re;
-        }, zero);
+        let per_row = self.rows(
+            runtime,
+            &point,
+            &rows,
+            None,
+            poles,
+            zero,
+            |out, entry, value| {
+                out[entry.output] += value.re.clone() + value.re;
+            },
+            zero,
+        );
         let mut out = vec![zero.clone(); self.outputs.len()];
         for row in per_row {
             for (total, value) in out.iter_mut().zip(row) {
@@ -619,8 +595,10 @@ impl Interference {
                         x_im[j * lanes + lane] = x.im;
                     }
                 }
+                // The z sums and then the block's rows also run on the pool
+                // (a few row blocks alone leave threads idle).
                 let zs: Vec<(Vec<T>, Vec<T>)> = keys
-                    .iter()
+                    .par_iter()
                     .map(|&((bra, g, class), limit)| {
                         let mut z_re = vec![zero.clone(); limit * lanes];
                         let mut z_im = vec![zero.clone(); limit * lanes];
@@ -638,13 +616,13 @@ impl Interference {
                     })
                     .collect();
                 block
-                    .iter()
+                    .par_iter()
                     .enumerate()
                     .map(|(lane, &row)| {
                         let a = &point.born[row * point.born_width..][..point.born_width];
-                        let b = point
-                            .born_ket
-                            .map_or(a, |born| &born[row * point.born_width..][..point.born_width]);
+                        let b = point.born_ket.map_or(a, |born| {
+                            &born[row * point.born_width..][..point.born_width]
+                        });
                         let k = &point.ket[row * point.ket_width..][..point.ket_width];
                         let mut out = vec![out_zero.clone(); self.outputs.len()];
                         for (entry, groups) in self.entries.iter().zip(&per_entry) {
@@ -939,17 +917,23 @@ mod tests {
         let c = |re: u64, im: u64| Complex::new(re as f64 / 7.0 - 3.1, im as f64 / 13.0 - 1.7);
         let rows = 37;
         let width = born.len();
-        let amplitudes: Vec<Complex<f64>> =
-            (0..rows * width).map(|_| c(next() % 50, next() % 50)).collect();
-        let loop_side: Vec<Complex<f64>> =
-            (0..rows * width).map(|_| c(next() % 50, next() % 50)).collect();
-        let kets: Vec<Complex<f64>> =
-            (0..rows * ket.len()).map(|_| c(next() % 50, next() % 50)).collect();
+        let amplitudes: Vec<Complex<f64>> = (0..rows * width)
+            .map(|_| c(next() % 50, next() % 50))
+            .collect();
+        let loop_side: Vec<Complex<f64>> = (0..rows * width)
+            .map(|_| c(next() % 50, next() % 50))
+            .collect();
+        let kets: Vec<Complex<f64>> = (0..rows * ket.len())
+            .map(|_| c(next() % 50, next() % 50))
+            .collect();
         let couplings = [c(3, 5), c(40, 2)];
         let keep_rows: Vec<bool> = (0..rows).map(|row| row % 5 != 3).collect();
         let keep_bra: Vec<bool> = (0..basis).map(|b| b != 2).collect();
         let bits = |values: &[Complex<f64>]| -> Vec<(u64, u64)> {
-            values.iter().map(|z| (z.re.to_bits(), z.im.to_bits())).collect()
+            values
+                .iter()
+                .map(|z| (z.re.to_bits(), z.im.to_bits()))
+                .collect()
         };
         for depth in [None, Some(1)] {
             let program = Interference::new(
@@ -971,8 +955,17 @@ mod tests {
                 for born_ket in [None, Some(loop_side.as_slice())] {
                     for keep in [None, Some(keep_bra.as_slice())] {
                         let expected = row_by_row(
-                            &program, &runtime, &amplitudes, born_ket, width, &kets, ket.len(),
-                            &keep_rows, keep, &couplings, poles,
+                            &program,
+                            &runtime,
+                            &amplitudes,
+                            born_ket,
+                            width,
+                            &kets,
+                            ket.len(),
+                            &keep_rows,
+                            keep,
+                            &couplings,
+                            poles,
                         );
                         let mut total = vec![Complex::new(0.0, 0.0); 3];
                         for row in &expected {
@@ -981,21 +974,46 @@ mod tests {
                             }
                         }
                         let got = program.evaluate_complex(
-                            &runtime, &amplitudes, born_ket, width, &kets, ket.len(), &keep_rows,
-                            keep, &couplings, poles, &0.0,
+                            &runtime,
+                            &amplitudes,
+                            born_ket,
+                            width,
+                            &kets,
+                            ket.len(),
+                            &keep_rows,
+                            keep,
+                            &couplings,
+                            poles,
+                            &0.0,
                         );
                         assert_eq!(bits(&got), bits(&total), "complex {depth:?} {poles}");
                     }
                     // The real form: every row, 2 Re per entry.
                     let got = program.evaluate(
-                        &runtime, &amplitudes, born_ket, width, &kets, ket.len(), rows,
-                        &couplings, poles, &0.0,
+                        &runtime,
+                        &amplitudes,
+                        born_ket,
+                        width,
+                        &kets,
+                        ket.len(),
+                        rows,
+                        &couplings,
+                        poles,
+                        &0.0,
                     );
                     let mut reference = vec![0.0; 3];
                     for row in 0..rows {
                         let values = row_by_row_real(
-                            &program, &runtime, &amplitudes, born_ket, width, &kets, ket.len(),
-                            row, &couplings, poles,
+                            &program,
+                            &runtime,
+                            &amplitudes,
+                            born_ket,
+                            width,
+                            &kets,
+                            ket.len(),
+                            row,
+                            &couplings,
+                            poles,
                         );
                         for (t, v) in reference.iter_mut().zip(values) {
                             *t += v;
@@ -1040,7 +1058,8 @@ mod tests {
                 Ket::Born(o) => (&program.bra[o], b),
             };
             let mut value = czero;
-            for (g, ((_p, bras), classes)) in program.bra[entry.bra].iter().zip(classes).enumerate() {
+            for (g, ((_p, bras), classes)) in program.bra[entry.bra].iter().zip(classes).enumerate()
+            {
                 for ((_q, components), &class) in kets.iter().zip(classes) {
                     let z = cache.entry((entry.bra, g, class)).or_insert_with(|| {
                         let mut z = vec![czero; program.tensors];

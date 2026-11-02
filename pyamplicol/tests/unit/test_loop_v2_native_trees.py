@@ -639,10 +639,9 @@ for poles in ("none", "all"):
 def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream):
     """The binary64 root closures, and the dressing, seed-key and
     counterterm-interference kernels, run AVX-512, AVX2 or baseline code,
-    whichever the running CPU has (``loop_v2::trees::Wide``,
-    ``loop_v2::kernels::Simd``), so a process relocated to another x86-64
-    host may run another width. ``RUSTICOL_TEST_CLOSURE_SIMD`` and
-    ``RUSTICOL_TEST_KERNEL_SIMD`` cap the widths: the stored process, loaded
+    whichever the running CPU has (``loop_v2::kernels::Simd``), so a process
+    relocated to another x86-64 host may run another width.
+    ``RUSTICOL_TEST_KERNEL_SIMD`` caps the width: the stored process, loaded
     in fresh interpreters capped at AVX2 and at the baseline, gives bitwise
     the native inputs and evaluations (poles none and all) of the uncapped
     run on eleven points (a chunk of 8 lanes and one of 4)."""
@@ -670,10 +669,9 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     outputs = {}
     for cap in (None, "avx2", "baseline"):
         environment = dict(os.environ)
-        for variable in ("RUSTICOL_TEST_CLOSURE_SIMD", "RUSTICOL_TEST_KERNEL_SIMD"):
-            environment.pop(variable, None)
-            if cap is not None:
-                environment[variable] = cap
+        environment.pop("RUSTICOL_TEST_KERNEL_SIMD", None)
+        if cap is not None:
+            environment["RUSTICOL_TEST_KERNEL_SIMD"] = cap
         run = subprocess.run(
             [sys.executable, "-c", _SIMD_PROBE, str(tmp_path)],
             cwd=ROOT,

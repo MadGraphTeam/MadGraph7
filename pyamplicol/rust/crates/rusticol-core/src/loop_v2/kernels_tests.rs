@@ -559,3 +559,15 @@ fn extended_precision_carriers_keep_their_precision() {
         assert!(relative_error(&float[form], &exact[form]) <= 1e-57);
     }
 }
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn the_simd_cap_only_lowers_the_width() {
+    assert_eq!(Simd::cap(Some("baseline")), Simd::Baseline);
+    assert_eq!(Simd::cap(Some("avx2")), Simd::Avx2);
+    assert_eq!(Simd::cap(Some("avx512")), Simd::Avx512);
+    assert_eq!(Simd::cap(Some("AVX2")), Simd::Avx512);
+    assert_eq!(Simd::cap(None), Simd::Avx512);
+    // Other carriers take the baseline whatever the cap.
+    assert_eq!(Simd::detect::<f32>(), Simd::Baseline);
+}

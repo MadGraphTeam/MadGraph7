@@ -62,8 +62,9 @@ pub const fn lane_vector_len(lanes: usize) -> usize {
     2 * lanes
 }
 
-/// The vector width the dressing kernels run in: binary64 lanes take the
-/// widest the running CPU reports, every other carrier the baseline.
+/// The vector width the binary64 kernels run in (dressing, seed sums,
+/// interference z sums, root closures): binary64 lanes take the widest the
+/// running CPU reports, every other carrier the baseline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Simd {
     Baseline,
@@ -73,10 +74,11 @@ pub enum Simd {
     Avx512,
 }
 
-/// Caps the dressing kernels' vector width ([`Simd::detect`]) at `baseline`
-/// or `avx2`, so that an AVX-512 host also runs the code paths of an
-/// AVX2-only or a baseline x86-64 host (bitwise checks); any other value, or
-/// none, caps nothing. It never enables a feature the CPU lacks.
+/// Caps the kernels' vector width ([`Simd::detect`]) at `baseline` or
+/// `avx2`, so that an AVX-512 host also runs the code paths of an AVX2-only
+/// or a baseline x86-64 host (the bitwise check of
+/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
+/// caps nothing. It never enables a feature the CPU lacks.
 pub const KERNEL_SIMD_ENV: &str = "RUSTICOL_TEST_KERNEL_SIMD";
 
 impl Simd {
@@ -97,11 +99,7 @@ impl Simd {
     /// The widest width the CPU reports within the cap `value`.
     #[cfg(target_arch = "x86_64")]
     fn widest(value: Option<&str>) -> Self {
-        let cap = match value {
-            Some("baseline") => Self::Baseline,
-            Some("avx2") => Self::Avx2,
-            _ => Self::Avx512,
-        };
+        let cap = Self::cap(value);
         if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
             return Self::Avx512;
         }
@@ -110,40 +108,58 @@ impl Simd {
         }
         Self::Baseline
     }
+
+    /// The widest width [`KERNEL_SIMD_ENV`]'s value allows.
+    #[cfg(target_arch = "x86_64")]
+    fn cap(value: Option<&str>) -> Self {
+        match value {
+            Some("baseline") => Self::Baseline,
+            Some("avx2") => Self::Avx2,
+            _ => Self::Avx512,
+        }
+    }
 }
 
-/// Defines `$name` as `$body` (an `#[inline(always)]` kernel) dispatched on
+/// Defines `$name` as `$body` (an `#[inline(always)]` kernel generic over
+/// the carrier `T: $bound` and optionally a const `L`) dispatched on
 /// [`Simd::detect`]: the same body compiled for AVX-512, AVX2 and the
-/// baseline.
+/// baseline (the dressing kernels here; the seed sums and the
+/// interference z sums).
 macro_rules! dispatched {
     (
         $(#[$meta:meta])*
-        pub fn $name:ident<T, const L: usize>($($arg:ident: $ty:ty),* $(,)?) => $body:ident;
+        $vis:vis fn $name:ident<T: $bound:path $(, const $c:ident: usize)?>(
+            $($arg:ident: $ty:ty),* $(,)?
+        ) => $body:ident;
     ) => {
         $(#[$meta])*
-        pub fn $name<T: FloatLike + 'static, const L: usize>($($arg: $ty),*) {
+        $vis fn $name<T: $bound + 'static $(, const $c: usize)?>($($arg: $ty),*) {
             #[cfg(target_arch = "x86_64")]
             {
+                #[allow(clippy::too_many_arguments)]
                 #[target_feature(enable = "avx512f")]
-                fn avx512<T: FloatLike, const L: usize>($($arg: $ty),*) {
-                    $body::<T, L>($($arg),*)
+                fn avx512<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
                 }
+                #[allow(clippy::too_many_arguments)]
                 #[target_feature(enable = "avx2")]
-                fn avx2<T: FloatLike, const L: usize>($($arg: $ty),*) {
-                    $body::<T, L>($($arg),*)
+                fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
                 }
+                use $crate::loop_v2::kernels::Simd;
                 match Simd::detect::<T>() {
                     // SAFETY: `Simd::detect` returns a width only when the
                     // running CPU reports its feature.
-                    Simd::Avx512 => return unsafe { avx512::<T, L>($($arg),*) },
-                    Simd::Avx2 => return unsafe { avx2::<T, L>($($arg),*) },
+                    Simd::Avx512 => return unsafe { avx512::<T $(, $c)?>($($arg),*) },
+                    Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
                     Simd::Baseline => {}
                 }
             }
-            $body::<T, L>($($arg),*)
+            $body::<T $(, $c)?>($($arg),*)
         }
     };
 }
+pub(crate) use dispatched;
 
 /// Every entry of a `loop_in x out` segment of degree `degree`, in
 /// `[monomial][loop_in][out]` order: the layout [`fused_edge_blocked`] reads.
@@ -351,7 +367,7 @@ dispatched! {
     /// `output[h][a][b'][m*n] += input[in][a][b][m] * factor[block][entry(n, b, b')]`
     /// for every link `(h, in, block)`. Each factor row holds one lane vector
     /// per entry of `layout` (`incoming x outgoing`).
-    pub fn fused_edge<T, const L: usize>(
+    pub fn fused_edge<T: FloatLike, const L: usize>(
         segment: &Segment<'_>,
         layout: &SegmentLayout,
         input: &[T],
@@ -476,7 +492,7 @@ dispatched! {
     /// `accumulator[h][a][b][nu][m] += input[in][a][b][m] * current[block][nu]`.
     /// The accumulator rows are those of the node's output rows; it is shared
     /// by all edges of one vertex group and cleared by the caller.
-    pub fn split_edge<T, const L: usize>(
+    pub fn split_edge<T: FloatLike, const L: usize>(
         segment: &Segment<'_>,
         input: &[T],
         current: &[T],
@@ -522,7 +538,7 @@ dispatched! {
     /// `output[h][a][b'][m*n] += accumulator[h][a][(b, nu)][m] * vertex[entry(n, (b, nu), b')]`.
     /// `layout` is `(incoming * current) x outgoing` with loop-in columns from
     /// [`Segment::vertex_column`]; `vertex` holds one lane vector per entry.
-    pub fn split_vertex<T, const L: usize>(
+    pub fn split_vertex<T: FloatLike, const L: usize>(
         segment: &Segment<'_>,
         layout: &SegmentLayout,
         vertex: &[T],

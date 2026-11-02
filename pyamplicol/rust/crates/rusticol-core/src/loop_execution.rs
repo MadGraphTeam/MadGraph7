@@ -480,7 +480,7 @@ pub mod v2 {
             seeds.materialise::<L>(zero);
             for (lane, &point) in chunk.iter().enumerate() {
                 out[point] = seeds
-                    .values
+                    .values()
                     .iter()
                     .map(|key| {
                         key.chunks(v)
