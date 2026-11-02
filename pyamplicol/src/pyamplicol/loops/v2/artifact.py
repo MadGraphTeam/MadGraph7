@@ -404,14 +404,14 @@ def plan_digest(plan: Program) -> str:
     return hashlib.sha256(_plan_bytes(plan)).hexdigest()
 
 
-def _plan_member(plan: str | bytes, scaleless: bool = False) -> tuple[str, bytes]:
+def _plan_member(plan: Program, scaleless: bool = False) -> tuple[str, bytes]:
     """(logical path, bytes) of a stored plan: the binary member's path for a
     binary plan member, the JSON's for a JSON."""
 
     from .native_lowering import is_member
 
-    if not isinstance(plan, str | bytes | bytearray | memoryview):
-        plan = _plan_bytes(plan)
+    if isinstance(plan, StoredMember):
+        plan = plan.bytes()
     if is_member(plan):
         name = SCALELESS_PLAN_BINARY_MEMBER if scaleless else PLAN_BINARY_MEMBER
     else:
