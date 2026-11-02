@@ -482,7 +482,7 @@ fn binary64_blocked_matches_pattern_kernel() {
 }
 
 /// Runs the fused and split forms of one segment in carrier `T`.
-fn fused_and_split<T: FloatLike>(
+fn fused_and_split<T: FloatLike + 'static>(
     segment: &Segment<'_>,
     data: &[Vec<Rational>; 4],
     convert: impl Fn(&Rational) -> T,
