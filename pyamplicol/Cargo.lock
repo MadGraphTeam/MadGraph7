@@ -2327,6 +2327,7 @@ name = "rusticol-core"
 version = "1.0.1"
 dependencies = [
  "bincode",
+ "brotli",
  "flate2",
  "libc",
  "libloading",
@@ -2812,9 +2813,9 @@ dependencies = [
 
 [[package]]
 name = "symjit"
-version = "2.27.3"
+version = "2.28.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d5297d2ef25e396f984747fd0e480aaabb08e40e424f9cd07811efc6b20c140"
+checksum = "bdec554a983515575a26b0ecc045b2e38ad495fd5ff83693560818914d94928b"
 dependencies = [
  "ahash",
  "anyhow",

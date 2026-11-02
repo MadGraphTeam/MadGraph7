@@ -106,19 +106,8 @@ pub mod virtual_amplitudes {
             parameters_json: Option<&str>,
             strategy: Option<&str>,
         ) -> Result<Self> {
-            Self::open_with_policy(path, process, parameters_json, strategy, None)
-        }
-        /// Configure exact source binding and later verification together.
-        /// A per-call policy overrides this default only for that call.
-        pub fn open_with_policy(
-            path: impl AsRef<Path>,
-            process: Option<&str>,
-            parameters_json: Option<&str>,
-            strategy: Option<&str>,
-            verification_json: Option<&str>,
-        ) -> Result<Self> {
             // SAFETY: no borrowed inputs are involved in this version query.
-            if unsafe { ffi::rusticol_virtual_abi_version() } != 1 {
+            if unsafe { ffi::rusticol_virtual_abi_version() } != 2 {
                 return Err(Error::new(
                     ErrorKind::AbiMismatch,
                     "unsupported virtual ABI",
@@ -128,16 +117,14 @@ pub mod virtual_amplitudes {
             let process = optional_cstring(process, "process")?;
             let parameters = optional_cstring(parameters_json, "exact parameters JSON")?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
-            let verification = optional_cstring(verification_json, "verification JSON")?;
             let mut handle = ptr::null_mut();
             // SAFETY: owned strings and handle output live for the full call.
             check(unsafe {
-                ffi::rusticol_virtual_open_with_policy(
+                ffi::rusticol_virtual_open(
                     path.as_ptr(),
                     optional_pointer(&process),
                     optional_pointer(&parameters),
                     optional_pointer(&strategy),
-                    optional_pointer(&verification),
                     &mut handle,
                 )
             })?;
@@ -218,9 +205,7 @@ pub mod virtual_amplitudes {
             // SAFETY: exclusive live handle and owned string.
             check(unsafe { ffi::rusticol_virtual_set_poles(self.handle.as_ptr(), poles.as_ptr()) })
         }
-        /// One native bulk call. Binary64 inputs retain exact values in retries.
-        /// Omitted verification inherits the policy explicitly configured at open.
-        #[allow(clippy::too_many_arguments)]
+        /// One native bulk call; binary64 inputs are read as their exact values.
         pub fn evaluate(
             &mut self,
             momenta: &[f64],
@@ -229,11 +214,9 @@ pub mod virtual_amplitudes {
             mu_r2: &[f64],
             resolved: bool,
             strategy: Option<&str>,
-            verification_json: Option<&str>,
         ) -> Result<Evaluation> {
             self.validate_inputs(momenta, point_count, point_ids)?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
-            let verification = optional_cstring(verification_json, "verification JSON")?;
             let request = ffi::BatchRequest {
                 momenta: momenta.as_ptr(),
                 momentum_count: momenta.len(),
@@ -243,7 +226,6 @@ pub mod virtual_amplitudes {
                 scale_count: mu_r2.len(),
                 resolved: u32::from(resolved),
                 r2_strategy: optional_pointer(&strategy),
-                verification_json: optional_pointer(&verification),
             };
             let mut result = ptr::null_mut();
             // SAFETY: buffers and strings remain borrowed for this one bulk call.
@@ -326,17 +308,8 @@ pub mod virtual_amplitudes {
             point_ids: Option<&[u64]>,
             mu_r2: &[f64],
             strategy: Option<&str>,
-            verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
-            self.evaluate_correlated_inputs(
-                momenta,
-                point_count,
-                point_ids,
-                mu_r2,
-                None,
-                strategy,
-                verification_json,
-            )
+            self.evaluate_correlated_inputs(momenta, point_count, point_ids, mu_r2, None, strategy)
         }
         /// Literal complex vectors in row/selected-leg/component order. One row
         /// broadcasts, or supply one row per point. Legs are one-based labels.
@@ -349,7 +322,6 @@ pub mod virtual_amplitudes {
             legs: &[usize],
             vectors: &[Complex64],
             strategy: Option<&str>,
-            verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
             self.evaluate_correlated_inputs(
                 momenta,
@@ -358,7 +330,6 @@ pub mod virtual_amplitudes {
                 mu_r2,
                 Some((legs, vectors)),
                 strategy,
-                verification_json,
             )
         }
         fn evaluate_correlated_inputs(
@@ -369,11 +340,9 @@ pub mod virtual_amplitudes {
             mu_r2: &[f64],
             sources: Option<(&[usize], &[Complex64])>,
             strategy: Option<&str>,
-            verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
             self.validate_inputs(momenta, point_count, point_ids)?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
-            let verification = optional_cstring(verification_json, "verification JSON")?;
             let request = ffi::BatchRequest {
                 momenta: momenta.as_ptr(),
                 momentum_count: momenta.len(),
@@ -383,7 +352,6 @@ pub mod virtual_amplitudes {
                 scale_count: mu_r2.len(),
                 resolved: 0,
                 r2_strategy: optional_pointer(&strategy),
-                verification_json: optional_pointer(&verification),
             };
             let mut result = ptr::null_mut();
             if let Some((legs, vectors)) = sources {
@@ -619,7 +587,6 @@ pub mod virtual_amplitudes {
             pub scale_count: usize,
             pub resolved: u32,
             pub r2_strategy: *const c_char,
-            pub verification_json: *const c_char,
         }
         #[repr(C)]
         pub(super) struct SpinSources {
@@ -706,12 +673,11 @@ pub mod virtual_amplitudes {
             ) -> c_int;
             pub(super) fn rusticol_virtual_abi_version() -> u32;
             pub(super) fn rusticol_virtual_last_error_message() -> *const c_char;
-            pub(super) fn rusticol_virtual_open_with_policy(
+            pub(super) fn rusticol_virtual_open(
                 path: *const c_char,
                 process: *const c_char,
                 parameters: *const c_char,
                 strategy: *const c_char,
-                verification: *const c_char,
                 output: *mut *mut c_void,
             ) -> c_int;
             pub(super) fn rusticol_virtual_free(handle: *mut c_void) -> c_int;

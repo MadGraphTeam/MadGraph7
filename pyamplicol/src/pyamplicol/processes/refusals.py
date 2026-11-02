@@ -4,19 +4,20 @@
 A process request the product does not serve is refused, before any model
 work, with a typed error (``ProcessRequestUnsupported``) whose ``key`` names
 a listed rule (``PROCESS_REQUEST_REFUSALS``; a loop dry run lists them as
-``process_request_refusals``). The rules read the request's syntax and the
-number of its initial-state particles, never a particle or process name:
+``process_request_refusals``). The rules read the request's syntax, never a
+particle or process name:
 
-* ``decay-process``: a 1 -> n request (one initial particle). pyAmpliCol
-  evaluates 2 -> n scattering matrix elements; decays (with or without QCD
-  or electroweak corrections) are not served (user ruling 2026-10-28 ~15:25
-  (1): decays come after M-QCD; m-sm PLAN Q3 (a): after M-SM).
 * ``madloop-syntax``: MG5_aMC process syntax that has a pyAmpliCol run-card
   setting instead (``[virt=QCD]``, ``[QCD]`` and the other NLO brackets,
   coupling-order constraints such as ``QED=2`` or ``QCD^2==4``, ``/ x``
   particle exclusions) or no counterpart (``$``/``$$`` s-channel exclusions,
-  decay chains ``p p > t t~, t > b w+``, ``@N`` process tags). The message
-  names the run-card setting.
+  decay chains ``p p > t t~, t > b w+`` and ``t > b w+, w+ > e+ ve``, ``@N``
+  process tags). The message names the run-card setting.
+
+A process has one initial particle (a 1 -> n decay, MG5_aMC's ``t > b w+``)
+or two (a 2 -> n scattering; ``processes.model.require_external_leg_counts``).
+Tree-level decays (M-FINAL MF-DEC-1) and one-loop decays (MF-DEC-2) are
+served.
 """
 
 from __future__ import annotations
@@ -40,12 +41,6 @@ class ProcessRequestRefusal:
 
 PROCESS_REQUEST_REFUSALS = (
     ProcessRequestRefusal(
-        "decay-process",
-        "a 1 -> n decay request (one initial-state particle)",
-        "a 2 -> n scattering process; decays, with or without QCD or "
-        "electroweak corrections, are not served yet",
-    ),
-    ProcessRequestRefusal(
         "madloop-syntax",
         "MG5_aMC process syntax inside the process expression: NLO brackets "
         "([virt=QCD], [QCD], [real=QCD], [noborn=QCD], ...), coupling-order "
@@ -57,7 +52,8 @@ PROCESS_REQUEST_REFUSALS = (
         "process.max_coupling_orders = {QED = 2} for QED=2 (squared-order "
         "sectors are read out of the result, QCD^2==); "
         'generation.particle_veto = ["x"] for / x; s-channel exclusions, '
-        "decay chains and loop-induced [noborn=...] requests are not served",
+        "decay chains (request each decay, 't > b w+', as its own process) "
+        "and loop-induced [noborn=...] requests are not served",
     ),
 )
 _REFUSALS = {refusal.key: refusal for refusal in PROCESS_REQUEST_REFUSALS}
@@ -150,41 +146,11 @@ def refuse_order_brackets(
         )
 
 
-def refuse_decay_syntax(expression: str) -> None:
-    """Refuse (``decay-process``) an expression one of whose processes has a
-    single initial-state slot (repetitions such as ``2*g`` count their
-    slots; a multiparticle label or anonymous bracket is one slot)."""
-
-    from .core_syntax import _split_repeat_token, _tokenize_side, split_process_set
-
-    for process in split_process_set(" ".join(str(expression).split())):
-        initial, separator, _final = process.partition(">")
-        if not separator:
-            continue
-        slots = sum(
-            _split_repeat_token(token)[0] for token in _tokenize_side(initial.strip())
-        )
-        refuse_decay(process, slots)
-
-
-def refuse_decay(expression: str, initial_count: int) -> None:
-    """Refuse (``decay-process``) a request with one initial particle."""
-
-    if initial_count == 1:
-        raise ProcessRequestUnsupported(
-            "decay-process",
-            f"{' '.join(str(expression).split())!r} has one initial-state "
-            "particle (a 1 -> n decay)",
-        )
-
-
 __all__ = [
     "PROCESS_REQUEST_REFUSALS",
     "ProcessRequestRefusal",
     "ProcessRequestUnsupported",
     "listed_process_refusal_keys",
-    "refuse_decay",
-    "refuse_decay_syntax",
     "refuse_madloop_syntax",
     "refuse_order_brackets",
 ]

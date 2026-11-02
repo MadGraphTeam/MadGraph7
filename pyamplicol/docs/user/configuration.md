@@ -159,6 +159,20 @@ the default; other user labels are merged over model defaults.
 Broad products such as `p p > all all` can expand combinatorially. Prefer a
 narrow user-defined label for production scans.
 
+A process has one initial particle (a 1 -> n decay, `t > b w+`) or two. A
+decay is averaged over the decaying particle's helicities and colours only;
+its momenta are usually those of its rest frame. With
+`process.loop_coupling_orders` the one-loop decay (1 -> 2, 1 -> 3, QCD and
+electroweak) takes the decaying particle at its real mass with zero own
+width: fix that width to zero in `[loop.preparation] fixed_parameters`
+wherever the particle propagates (`WT = "0"` for `t > b w+ g`, as the
+`coloured-width` guard asks; an electroweak request asks it of every
+propagating width) and under the complex-mass scheme, which keeps external
+states stable (`cms-external-width`). Its field
+renormalisation is the model's, real on-shell (MadLoop's convention: the
+absorptive part of its self-energy at its mass is dropped). Decay chains
+(`t > b w+, w+ > e+ ve`) are refused (`madloop-syntax`).
+
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
 engine treats them as model-defined filtering and scheduling data and does not
@@ -520,10 +534,11 @@ on_failure = "return"         # default: "raise"
 With `on_failure = "return"`, numerical failures become unavailable whole-point
 rows with diagnostics (`null` in JSON); valid zero values remain zero. Invalid
 inputs and unsupported features still raise errors for the whole call; on v2
-runtimes this includes a non-positive `mu_r2` and a scale at which a
-counterterm coupling is not finite in the lane's arithmetic (for example
-`mu_r2 = "1e-400"` in binary64), which raise a `ValueError` for the whole batch
-(returning such points one by one is an open item). This setting applies only
+runtimes this includes a non-positive `mu_r2` (`ValueError`). A scale at which
+a counterterm coupling is not finite in the lane's arithmetic (for example
+`mu_r2 = "1e-400"` in binary64) is a numerical failure of the points at that
+scale only: the others keep their values, and with `"raise"` the
+`EvaluationError` names the first failed point. This setting applies only
 to virtual `evaluate`, including resolved output, and is not silently used by
 profiling or generation.
 
@@ -532,10 +547,11 @@ two tolerances, `verify_successful`, and the CLI options `--stability-higher`,
 `--stability-relative-tolerance`, `--stability-absolute-tolerance` and
 `--verify-successful`) was removed with the legacy loop engine, the only one
 that served it: any value other than the defaults is refused ("evaluation.stability
-(the precision-rescue policy ...) was removed ..."), and a Python
-`VirtualStabilityPolicy` is refused by v2 runtimes at load. v2 evaluations
-return stability estimates instead and leave escalating the arithmetic to the
-caller (below).
+(the precision-rescue policy ...) was removed ..."). v2 evaluations return
+stability estimates instead and leave escalating the arithmetic to the caller
+(below); the built-in rescue is a Python API option only
+(`evaluate(..., stability=VirtualRescuePolicy())`,
+[Python API](python-api.md#stability-rescue-one-loop-virtuals)).
 
 ### The v2 loop engine
 
@@ -912,8 +928,11 @@ double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin
 correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
-colour); exact flavour grouping (`process.flavor_blind`: an identity-port member
-such as `s s~ > g g` of `d d~ > g g` is served by its representative). `poles`
+colour); exact process mappings (`process.flavor_blind`: a member related by a
+proved species substitution, a permutation within each side, or both, such as
+`s s~ > g g` or `s~ s > g g` of `d d~ > g g`, is served by its representative;
+`ProcessAlias` permutation aliases are published; correlations compose with
+the mapping; see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)). `poles`
 and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
 too (resolved estimates are per helicity row and colour component).
 

@@ -35,7 +35,8 @@
 extern "C" {
 #endif
 
-/* Additive source-only ABI version 1; independent of the tree scalar handles.
+/* Source-only ABI version 2 (it dropped version 1's verification policy);
+ * independent of the tree scalar handles.
  * Handles are exclusive, non-concurrently callable. Results own their buffers
  * and remain usable after the originating runtime is cleared or destroyed.
  * All buffer capacities count elements (JSON counts bytes including NUL).
@@ -51,8 +52,8 @@ enum rusticol_virtual_function_status {
 };
 enum rusticol_virtual_point_status {
   RUSTICOL_VIRTUAL_SUCCESS = 0, /* initial success, accuracy not established */
-  RUSTICOL_VIRTUAL_VERIFIED = 1, /* explicit requested-bound agreement */
-  RUSTICOL_VIRTUAL_RESCUED = 2,
+  RUSTICOL_VIRTUAL_VERIFIED = 1, /* reserved: plan v4 never returns it */
+  RUSTICOL_VIRTUAL_RESCUED = 2, /* reserved: the rescue is the Python API's */
   RUSTICOL_VIRTUAL_FAILED = 3,
   RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED = 4
 };
@@ -69,7 +70,6 @@ typedef struct {
   size_t scale_count; /* one or point_count; zero allowed for an empty batch */
   uint32_t resolved; /* 0 inclusive, 1 helicity-resolved */
   const char *r2_strategy; /* NULL inherits open; auto/model, direct unavailable */
-  const char *verification_json; /* NULL: no hidden verification or rescue */
 } rusticol_virtual_batch_request;
 typedef struct {
   size_t requested_points, successful_points, born_values, virtual_values;
@@ -87,13 +87,6 @@ const char *rusticol_virtual_last_error_message(void);
 int rusticol_virtual_open(const char *path, const char *process,
   const char *parameters_json, const char *r2_strategy,
   rusticol_virtual_handle **output);
-/* Optional retained verification policy uses the batch-request JSON schema.
- * It is configured before exact source realization. Per-call policy overrides
- * this default; NULL per-call policy inherits it, including after clear.
- */
-int rusticol_virtual_open_with_policy(const char *path, const char *process,
-  const char *parameters_json, const char *r2_strategy,
-  const char *verification_json, rusticol_virtual_handle **output);
 int rusticol_virtual_free(rusticol_virtual_handle *handle); /* NULL is accepted */
 int rusticol_virtual_clear(rusticol_virtual_handle *handle);
 /* Plan v4: the whole mapping is validated first, as the Python API's
@@ -126,14 +119,8 @@ int rusticol_virtual_capabilities_json(const rusticol_virtual_handle *handle,
   char *output, size_t capacity, size_t *needed);
 /* Returns OK for a completed batch even if some points failed. Inspect statuses.
  * Numerical rows exist ONLY for successful_point_ids in their original order.
- * Every finite binary64 input is preserved exactly in higher-carrier retries.
- * Optional verification JSON:
- * {"higher":[{"arithmetic":"double-double","precision":null},
- *            {"arithmetic":"arbitrary","precision":60}],
- *  "relative_tolerance":"1e-8","absolute_tolerance":"1e-20",
- *  "verify_successful":true}
- * Actual precision must strictly increase; numerical agreement is not an
- * independent physics certificate. Global source binding errors precede rescue.
+ * Every finite binary64 input is read as its exact value. Stability estimates
+ * and the precision rescue are the Python API's.
  */
 int rusticol_virtual_evaluate(rusticol_virtual_handle *handle,
   const rusticol_virtual_batch_request *request, rusticol_virtual_result **output);

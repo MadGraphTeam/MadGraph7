@@ -140,7 +140,11 @@ class LoopV2ProcessArtifact:
     generation record; a load never regenerates from it); ``plan_sha256`` is the
     digest of the stored plan JSON and ``scaleless_plan_sha256`` that of the
     stored companion plan of the certified-scaleless families (None without
-    them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``).
+    them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``). ``aliases`` are the
+    process's published permutation aliases (the manifest's alias records:
+    ``id``, ``expression``, ``external_pdgs`` and ``external_permutation``,
+    representative leg -> alias leg within each side), which the runtime
+    serves through this process at the permuted momenta.
     """
 
     process_id: str
@@ -162,11 +166,15 @@ class LoopV2ProcessArtifact:
     def __post_init__(self) -> None:
         if not isinstance(self.metadata, LoopV2ExecutionMetadata):
             raise TypeError("v2 loop processes require LoopV2ExecutionMetadata")
-        if self.color_accuracy != self.metadata.color_accuracy or self.aliases:
-            raise ValueError(
-                "loop process colour accuracy must match its metadata; aliases "
-                "are unavailable"
-            )
+        if self.color_accuracy != self.metadata.color_accuracy:
+            raise ValueError("loop process colour accuracy must match its metadata")
+        for alias in self.aliases:
+            permutation = list(alias.get("external_permutation", ()))
+            if sorted(permutation) != list(range(len(self.external_pdgs))):
+                raise ValueError(
+                    f"alias {alias.get('id')!r} needs a complete permutation of "
+                    f"{len(self.external_pdgs)} external legs"
+                )
         if self.request is None or len(self.plan_sha256) != 64:
             raise ValueError("v2 loop processes record their request and plan digest")
         if (

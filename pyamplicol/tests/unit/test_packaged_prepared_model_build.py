@@ -376,7 +376,7 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert metadata["dependencies"]["symbolica_version"] == release["symbolica"][
         "python_version"
     ]
-    assert metadata["dependencies"]["symjit_version"] == "2.27.3"
+    assert metadata["dependencies"]["symjit_version"] == "2.28.3"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 

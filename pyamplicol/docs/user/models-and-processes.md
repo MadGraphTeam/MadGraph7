@@ -387,6 +387,24 @@ entries = [
 
 Repetition syntax such as `3*scalar_0` is supported for particle names.
 
+A process has one incoming particle (a 1 -> n decay, n >= 2, MG5_aMC's
+`t > b w+`) or two (a 2 -> n scattering). A tree-level decay is summed over
+the final helicities and colours, averaged over the decaying particle's
+helicities and colours only, and divided by the identical-particle factor
+of the final state; its momenta are those of any frame (the decaying
+particle at rest is the usual one). Multiparticle labels expand as for
+scattering (`w+ > j j`). On UFO models tree-level decays equal MG5_aMC
+standalone (`t > b w+`, `z > e- e+`, `h > b b~` with a massive b,
+`t > b w+ g`, `w+ > u d~ g`, `z > u u~ g`: the same parameter card, to
+rounding). Decay chains (`t > b w+, w+ > e+ ve`), `$` and `@N` are refused
+(`madloop-syntax`): request each decay as its own process. One-loop decays
+(`process.loop_coupling_orders`, QCD and electroweak) are served with the
+same averaging, the decaying particle at its real mass with zero own width
+and MadLoop's conventions for it (amputated loops, its field renormalisation
+real on-shell from the model's counterterms); a loop-induced decay
+(`h > g g`) is `loop-induced`. The built-in Standard Model keeps its fixed
+2 -> n catalogue.
+
 ## Multiparticles
 
 ```toml

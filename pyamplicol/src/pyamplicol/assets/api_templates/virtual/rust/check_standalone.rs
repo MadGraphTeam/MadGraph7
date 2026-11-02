@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if count == 0 {
         return Err("no validation points for the selected process".into());
     }
-    let result = runtime.evaluate(&momenta, count, None, &[scale], resolved, None, None)?;
+    let result = runtime.evaluate(&momenta, count, None, &[scale], resolved, None)?;
     println!("{}", runtime.metadata_json()?);
     println!("shape {:?}", result.shape);
     println!(

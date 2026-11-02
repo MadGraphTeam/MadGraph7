@@ -648,31 +648,48 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
 
 
-# Generates g g > g g in a fresh interpreter from the UFO source with the model
-# cache ``argv[2]`` and writes the SHA-256 of its plan and native members.
+# Generates one process in a fresh interpreter from the UFO source with the
+# model cache ``argv[2]`` and writes the SHA-256 of its plan and native
+# members: ``argv[5]`` "gg_gg" (loop_sm, g g > g g) or a required electroweak
+# fixture (the G_mu UFO, its request as ``tools/loop_v2_generate`` forms it).
 _GENERATE_DIGESTS = """
-import hashlib, json, sys
+import argparse, hashlib, json, sys
 from dataclasses import replace
 from pathlib import Path
 sys.path.insert(0, sys.argv[4])  # the checkout: tools/loop_reference
-from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.artifact import generate_process
 from pyamplicol.loops.v2.assemble import SliceRequest
 from pyamplicol.models.loading import compile_model_source
 
-ufo, cache, out = sys.argv[1:4]
-model = compile_model_source(ufo, cache_dir=Path(cache))
-model = replace(
-    model,
-    raw_loop_model=prepare_loop_sm_scalar_declarations(model.raw_loop_model).derived,
-    _serialized_path=None,
-    _prepared_bundle=None,
-)
-request = SliceRequest(
-    "g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0},
-    fixed_parameters={"MB": "0"}, scale_parameter="MU_R",
-)
+ufo, cache, out, root, case = sys.argv[1:6]
+if case == "gg_gg":
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    model = compile_model_source(ufo, cache_dir=Path(cache))
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"}, scale_parameter="MU_R",
+    )
+else:
+    from tools.loop_v2_generate import _fixture_request
+
+    model = compile_model_source(ufo, cache_dir=Path(cache), require_supported=False)
+    reference = json.loads(
+        (Path(root) / "tests/fixtures/loop/required" / f"{case}.json").read_text()
+    )
+    options = argparse.Namespace(compatibility=None, scale_parameter=None)
+    request, _ignored = _fixture_request(reference, model, options)
 generated = generate_process(model, request, load_loop_native())
 plan = generated.plan_json
 plan = plan.encode() if isinstance(plan, str) else plan
@@ -699,24 +716,62 @@ Path(out).write_text(json.dumps(
 ))
 """
 
+# Compiles the G_mu UFO into the model cache ``argv[2]`` (the warm cache of
+# the electroweak case).
+_COMPILE_MODEL = """
+import sys
+from pathlib import Path
+from pyamplicol.models.loading import compile_model_source
+
+compile_model_source(sys.argv[1], cache_dir=Path(sys.argv[2]), require_supported=False)
+"""
+
+# case -> (UFO fixture, parameter planes): the electroweak process's
+# parameter program calls the scalar predicates (conditionals of the G_mu
+# counterterms), which made its stored evaluator depend on the model cache
+# before ``scalar_frontend.scalar_predicates`` aligned them.
+_MODEL_CACHE_CASES = {
+    "gg_gg": ("loop_sm_ufo", {"parameters.symjit", "scaleless-parameters.symjit"}),
+    "gg_ttx_ew": ("loop_gmu_ufo", {"parameters.symjit"}),
+}
+
 
 @pytest.mark.loop_physics
+@pytest.mark.parametrize("case", sorted(_MODEL_CACHE_CASES))
 def test_native_members_do_not_depend_on_the_model_cache(
-    loop_sm_ufo, loop_sm_compiled_model, loop_native, tmp_path
+    case, loop_native, request, tmp_path
 ):
-    """g g > g g generated in two fresh interpreters from the UFO source, one
-    with an empty model cache and one with the session's warm cache: the plan
-    and every native member are byte-identical, except the parameter
-    programs' plane applications (the process's and its scaleless
-    companion's), whose SymJIT call tags are random
-    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py; the
-    companion's calls are the cut-argument canonicalisation's, MS-MASTERS);
-    their values at one real row are bitwise the same. The
-    compiled and the cached model list their helper functions in different
-    orders; the parameter program names them in sorted order, so its saved
-    state is the same."""
+    """One process generated in two fresh interpreters from the UFO source,
+    one with an empty model cache and one with a warm cache: the plan and
+    every native member are byte-identical, the parameter programs' saved
+    evaluators and plane applications included (the process's and, with
+    certified-scaleless families, its companion's, which call scalar
+    primitives: SymJIT 2.28.1 and later tag external calls deterministically,
+    siravan/symjit#26; 2.27.3's random tags made them differ), and their
+    values at one real row are bitwise the same. g g > g g (loop_sm, the
+    session's warm cache): the compiled and the cached model list their
+    helper functions in different orders; the parameter program names them
+    in sorted order. g g > t t~ [QCD+QED] (G_mu, a cache compiled first): its
+    parameter program keeps the scalar predicates, which the compiled and the
+    cached model created at different symbol ids; they are aligned
+    (``scalar_frontend.scalar_predicates``), so its saved state is the same."""
 
-    warm = Path(loop_sm_compiled_model).parent / "model-cache"
+    fixture, planes = _MODEL_CACHE_CASES[case]
+    ufo = request.getfixturevalue(fixture)
+    if case == "gg_gg":
+        warm = Path(request.getfixturevalue("loop_sm_compiled_model")).parent
+        warm = warm / "model-cache"
+    else:
+        warm = tmp_path / "warm-cache"
+        script = tmp_path / "compile.py"
+        script.write_text(_COMPILE_MODEL)
+        compiled = subprocess.run(
+            [sys.executable, str(script), str(ufo), str(warm)],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        assert compiled.returncode == 0, compiled.stderr[-2000:]
     assert warm.is_dir(), warm
     script = tmp_path / "generate.py"
     script.write_text(_GENERATE_DIGESTS)
@@ -726,10 +781,11 @@ def test_native_members_do_not_depend_on_the_model_cache(
             [
                 sys.executable,
                 str(script),
-                str(loop_sm_ufo),
+                str(ufo),
                 str(cache),
                 f"{name}.json",
                 str(ROOT),
+                case,
             ],
             cwd=tmp_path,
             stdout=subprocess.PIPE,
@@ -751,9 +807,7 @@ def test_native_members_do_not_depend_on_the_model_cache(
         for name, digest in cold["members"].items()
         if warm_run["members"][name] != digest
     )
-    planes = {"parameters.symjit", "scaleless-parameters.symjit"}
-    assert set(differing) <= planes, differing
-    # Their values are bitwise the same.
+    assert differing == [], differing
     assert cold["values"].keys() == planes, cold["values"].keys()
     assert cold["values"] == warm_run["values"]
 

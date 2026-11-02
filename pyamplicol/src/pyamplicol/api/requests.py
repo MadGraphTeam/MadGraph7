@@ -387,13 +387,11 @@ class ProcessRequest:
         if not normalized:
             raise ValueError("process expression must not be empty")
         _validate_delimiters(normalized)
-        from pyamplicol.processes.refusals import (
-            refuse_decay_syntax,
-            refuse_madloop_syntax,
-        )
+        from pyamplicol.processes.refusals import refuse_madloop_syntax
 
-        # MG5_aMC syntax ([virt=QCD], QED=2, $, /, decay chains, @N) and
-        # 1 -> n decays are listed refusals (tree and loop alike).
+        # MG5_aMC syntax ([virt=QCD], QED=2, $, /, decay chains, @N) is a
+        # listed refusal (tree and loop alike). A 1 -> n decay ('t > b w+') is
+        # a process, at tree level and at one loop.
         refuse_madloop_syntax(normalized)
         if ">" not in normalized:
             raise ValueError("process expression must contain '>'")
@@ -405,7 +403,6 @@ class ProcessRequest:
             sides = segment.split(">")
             if any(not side.strip() for side in sides):
                 raise ValueError("each process arrow must have particles on both sides")
-        refuse_decay_syntax(normalized)
         selected_name = _default_process_name(normalized) if name is None else name
         return cls(expression=normalized, name=selected_name)
 

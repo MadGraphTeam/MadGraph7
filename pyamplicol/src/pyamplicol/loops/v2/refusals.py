@@ -91,7 +91,7 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   scalar ones), ``majorana-fermion`` and ``multi-fermion-contact``. Each is
   decided by structure: widths, spin slots, the self-conjugacy of a
   fermion, the number of fermions at a vertex. Process-request refusals
-  (1 -> n decays, MG5_aMC syntax) are listed in ``processes.refusals``.
+  (MG5_aMC syntax) are listed in ``processes.refusals``.
   A massive (Dirac) current closing on a massless (Weyl) one (a fermion line
   joining massive and massless fermions through a chiral vertex, e.g.
   b b~ > w+ w- with a massless b) is no loop refusal since m-qcd MQ-5F: the
@@ -99,6 +99,15 @@ counts (second genericity audit, ``genericity-audit-2/REPORT.md``):
   (``generation.dag_ordering._direct_contraction_ir`` with ``loop_born``);
   the tree lanes refuse it (``dag_ordering.DiracWeylClosureUnsupported``,
   key ``dirac-weyl-closure``).
+* One-loop 1 -> n decays (M-FINAL MF-DEC-2) are served: no rule reads the
+  number of initial legs (``decay-process``, MF-DEC-1's interim refusal,
+  is retired). The decaying leg is an ordinary incoming leg: its field
+  renormalisation enters through the model's UV counterterm vertices (real
+  on-shell, the absorptive part of its self-energy at its mass dropped, as
+  MadLoop's NLOCT ``recms`` at zero width), its own width is zero
+  (``cms-external-width`` under the complex-mass scheme; in the real-mass
+  scheme the width of a particle that does not propagate enters nothing),
+  and a loop-induced decay (``h > g g``) is ``loop-induced``.
 * ``forced-seed-fft-unserved`` (MQ-FFT, a guard): ``colour_contraction =
   "fft"`` requires the certified symmetric-group FFT of the seed contraction
   (design §7.3). Orbits of the external adjoint labels are found and
@@ -512,9 +521,10 @@ LOOP_ADMISSION_REFUSALS = (
     ),
     LoopAdmissionRefusal(
         "feynman-gauge",
-        "a loop request on a model that cannot be taken in 't Hooft-Feynman "
-        "gauge: its source declares no gauge 1, or an electroweak request on "
-        "a model bundle prepared in another gauge",
+        "a loop request in which massive vectors can run in the loops (an "
+        "electroweak request, or a massive vector loop species) on a model "
+        "that cannot be taken in 't Hooft-Feynman gauge: its source declares "
+        "no gauge 1, or a model bundle prepared in another gauge",
         "loop lines, the Born and the counterterms take the gauge of the "
         "model's UV and R2 rules, 't Hooft-Feynman gauge (design §6.8), in "
         "which a massive vector's loop line has rank <= 1",
@@ -651,23 +661,18 @@ LOOP_CONFIGURATION_REFUSALS = (
         "none",
     ),
     LoopAdmissionRefusal(
-        "process-aliases",
-        "permutation aliases of a one-loop request (process aliases)",
-        "plan v4 artifacts publish no permutation-alias records",
-        "request each permuted process as its own entry",
-        "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
-    ),
-    LoopAdmissionRefusal(
         "process-group-analysis",
         "a numerical process-group analysis (process.analyze_process_groups) "
         "of a one-loop request",
-        "plan v4 artifacts group processes by an exact species-substitution "
-        "proof only (process.flavor_blind), never numerically",
-        "process.analyze_process_groups = 'none' (process.flavor_blind groups "
-        "identity-port flavour members exactly)",
+        "plan v4 artifacts map a process onto a stored one by exact relations "
+        "only (loops.v2.mapping: a permutation within each side, a species "
+        "substitution proved on the representative's source plan, or both), "
+        "never by a relation found only by numerical comparison",
+        "process.analyze_process_groups = 'none'; process.flavor_blind maps "
+        "exact flavour members and side permutations, ProcessAlias publishes "
+        "permutation aliases",
         "m-sm MS-MODEL",
-        "M-FINAL (m-sm PLAN §1.7)",
+        "none",
     ),
     LoopAdmissionRefusal(
         "direct-r2",

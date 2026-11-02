@@ -233,7 +233,7 @@ static void evaluate(rusticol_virtual_handle *runtime, size_t points, size_t leg
                      const double *momenta, const double *scales) {
   rusticol_virtual_shape_info shape;
   rusticol_virtual_batch_request request = {momenta, points * legs * 4, points, NULL,
-                                            scales, points, 0, NULL, NULL};
+                                            scales, points, 0, NULL};
   rusticol_virtual_result *result = NULL;
   rusticol_virtual_result_shape_info info;
   if (rusticol_virtual_shape(runtime, &shape) != RUSTICOL_VIRTUAL_OK ||

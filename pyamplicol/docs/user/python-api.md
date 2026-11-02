@@ -246,8 +246,16 @@ print(runtime.external_permutation)
 `process` may be a stable process ID, explicit alias ID, exact stored expression,
 or unique permutation-equivalent expression within each side. The loaded
 runtime exposes metadata in the requested public order.
-For correlated evaluation, load the stored process in its generated ordering;
-nonidentity aliases/permutations are not supported by that path yet.
+For correlated evaluation of a tree artifact, load the stored process in its
+generated ordering; nonidentity aliases/permutations are not supported by that
+path yet. A one-loop (virtual) artifact serves its aliases, side-permuted
+expressions and exact process-group members in its evaluation calls,
+correlated and resolved ones included: colour histories and spin legs are read
+on the selected process's legs and relabelled onto the stored process's, and a
+declared one whose relabelled image is not stored is not served. Helicity and
+colour-flow selection of such a mapped process is refused; select on the
+stored process (see
+[Process grouping](process-grouping.md#one-loop-virtual-artifacts)).
 
 ## Evaluate totals and resolved components
 
@@ -544,6 +552,99 @@ Its real and imaginary results remain `Decimal` values; `complex(value)` is an
 explicit conversion to ordinary double precision.
 
 Generated C/C++/Fortran/Rust standalone APIs support f64 (`precision=16`) only.
+
+## Stability rescue (one-loop virtuals)
+
+A one-loop virtual runtime can re-evaluate its numerically unstable points in
+higher precision by itself. Pass a `VirtualRescuePolicy` to `evaluate` (per
+call) or to `Runtime.load` (the default of every `evaluate` call that names
+no arithmetic, precision or stability checks of its own). The rescue is off
+unless a policy is passed, and it exists only in this Python API: the SDKs,
+the CLI and the run card have no rescue (`[evaluation.stability]` stays
+refused).
+
+```python
+from pyamplicol import Runtime, VirtualRescueLevel, VirtualRescuePolicy
+
+runtime = Runtime.load("artifacts/gg_ggg", model_parameters={"aS": "0.118"})
+result = runtime.evaluate(points, mu_r2="1000000", stability=VirtualRescuePolicy())
+print(result.rescue_counts)   # {0: 126, 1: 2, 'not met': 0, 'failed': 0} (128 points)
+record = result.rescue[17]    # level reached, its carrier, target, met, attempts
+
+custom = VirtualRescuePolicy((
+    VirtualRescueLevel("double", rotations=2, target=1e-7),
+    VirtualRescueLevel("double-double", rotations=("euler:0.1,0.2,0.3",)),
+    VirtualRescueLevel("arbitrary", 40, reduction_check="reversed", metric="finite"),
+))
+```
+
+A policy is an ordered ladder of levels in strictly increasing precision bits,
+modelled on gammaloop's built-in stability levels. Each `VirtualRescueLevel`
+has:
+
+- a carrier: `"double"`, `"double-double"` or `"arbitrary"` with `precision`
+  decimal digits;
+- its stability checks: `rotations` (a count of default rotations, exact
+  `Rotation` records or rotation text, including gammaloop's Euler rotation
+  `"euler:<alpha>,<beta>,<gamma>"` = Rz(gamma) Ry(beta) Rx(alpha) in radians,
+  rounded once to an exact rotation) and `reduction_check` (`"none"`,
+  `"reversed"` or `"rescaled"`), as in `VirtualStabilityChecks`;
+- a `target` on the stability estimate's `metric`: `"relative"` (each squared
+  order against its largest Laurent coefficient) or `"finite"` (the finite
+  part against itself).
+
+Only the last level may run without a check; it then keeps every point it
+evaluates, with no estimate. How a batch runs:
+
+1. Level 0 evaluates the whole batch.
+2. A point that fails (also when one of its rotated evaluations fails) or whose
+   estimate misses the target is evaluated again at the next level, from its
+   original exact inputs; no lower-precision value is reused. Escalated points
+   are evaluated one per native call, so each carrier builds one executor and
+   compiles its kernels once.
+3. Accepted points are never evaluated again. At the last level a point that
+   evaluates keeps its value with the target marked as not met; a point that
+   failed at every level is a failed lane (raised unless
+   `on_failure="return"`).
+
+Each lane of the result is the evaluation of the level that returned it: its
+values, pole parts, `stability` estimate and diagnostic carrier
+(`arithmetic`, `precision_bits`). Its status is `"success"` at level 0,
+`"rescued"` above and `"failed"` if every level failed;
+`accuracy_established` is `True` exactly when the estimate met the target.
+That is the estimate's verdict, not a certificate: the calibrated miss rates
+of the stability checks apply (about 0.1 % of binary64 points above their
+estimate with one rotation and the rescaled check). `result.rescue[i]` is a
+`VirtualRescueRecord` (`level`, `arithmetic`, `precision_bits`, `target`,
+`met`, and one `VirtualRescueAttempt` per level tried with its estimate or
+failure); `result.rescue_counts` counts the lanes accepted per level, plus
+`"not met"` and `"failed"`. Without a policy `rescue` is `None`.
+
+The default `VirtualRescuePolicy()` runs binary64, then double-double, then
+57-digit arbitrary precision, each with target 1e-5 on the relative estimate,
+one rotation `"euler:0.1,0.2,0.3"` and the rescaled reduction check. It
+differs from gammaloop's defaults (f64, f128, 1000-bit arb, target 1e-5, the
+same rotation) in three ways:
+
+- the rescaled reduction check is added, because a rotation keeps every
+  master integral's invariants and cannot see its own rounding;
+- the last level has 57 digits (pyAmpliCol's calibration carrier) instead of
+  1000 bits; set `VirtualRescueLevel("arbitrary", 300)` for gammaloop's;
+- the target applies to pyAmpliCol's error estimate, which sums the deviations
+  of every reduction lane with a safety factor of two, not to the spread of the
+  rotated values.
+
+Every pole selection (`poles=`), colour accuracy and leading-colour
+`helicities` / `color_flows` selection is supported. `stability=` together with
+`arithmetic`, a non-default `precision` or `stability_checks` is refused with a
+`CompatibilityError` (the levels own them), as is a policy on
+`evaluate_resolved` and `evaluate_correlated(_many)`, and a load-time policy
+with a load-time arithmetic or precision. Checks cost about one extra
+evaluation per rotation plus a fifth to a third for the rescaled check (one
+rotation and the rescaled check: 2.35 times plain binary64 on g g > g g g); never time a
+benchmark with a policy. Double-double and arbitrary-precision levels read the
+artifact's saved Symbolica state under the pyAmpliCol package key, as an
+explicit `arithmetic="double-double"` call does.
 
 ## Profile from Python
 

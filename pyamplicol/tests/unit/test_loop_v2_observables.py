@@ -1352,9 +1352,13 @@ from symbolica import S
 
 from pyamplicol._internal.physics.canonical_order import canonical_symbols
 
-# The model compiler's canonical symbols first: their block's padding would
-# absorb the unrelated symbols for every symbol created after it.
+from pyamplicol.loops.scalar_frontend import scalar_predicates
+
+# The model compiler's canonical symbols and the scalar predicates first:
+# their blocks' padding would absorb the unrelated symbols for every symbol
+# created after them.
 canonical_symbols(1)
+scalar_predicates()
 model, unrelated = sys.argv[1], int(sys.argv[2])
 for k in range(unrelated):
     S(f"history::unrelated{k}")

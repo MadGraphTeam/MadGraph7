@@ -2,8 +2,9 @@
 
 > **Plan v4 only.** The legacy one-loop engine was removed (2026-10-29, user
 > ruling M-QCD Q3): as in the shared SDK ([README](../README.md)), a plan v4
-> process serves ordinary (unresolved) binary64 virtuals here; resolved,
-> correlated and verified calls refuse with the plan v4 reason. The native
+> process serves ordinary (unresolved) binary64 virtuals here; resolved and
+> correlated calls refuse with the plan v4 reason, and the options carry no
+> verification policy (SDK ABI version 2). The native
 > control client below (`client_umami_virtual.c`) was written for the removed
 > legacy artifacts.
 
@@ -33,8 +34,8 @@ The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
 | `PYAMPLICOL_UMAMI_V1_IN_POINT_ID` | `uint64_t[stride]` | Optional; defaults to event indices |
 
 Scales are positive real renormalization scales **squared**, distinct from loop
-momentum mu squared. Binary64 values retain their exact value during native
-higher-precision verification/rescue. Input capacities count typed elements in
+momentum mu squared. Binary64 values are read as their exact values. Input
+capacities count typed elements in
 the full stride-based layout. Only the requested slice is read.
 
 | Output | Type and logical non-batch axes |
@@ -56,17 +57,16 @@ contracted component. Shape and catalogue metadata determine
 their counts and identities, never a positive-probability interpretation.
 
 Pass `count`, `stride` and `offset`, with `offset + count <= stride`, plus the
-parallel key/pointer/capacity arrays. Optional options select resolved output,
-R2 strategy and the existing explicit verification JSON policy. There is no
-hidden verification or rescue. Packing the requested columns, evaluating the
+parallel key/pointer/capacity arrays. Optional options select resolved output
+and the R2 strategy. Packing the requested columns, evaluating the
 entire batch, and scattering results each happen natively; there is one SDK
 batch call, with no event-by-event evaluator loop.
 
 A successful function call writes every requested point's status. Numerical
-outputs are written only for successful, verified or rescued points. Failed
+outputs are written only for successful points. Failed
 numerical slots and every slot outside the slice stay untouched. Status values
-are those in `rusticol_virtual.h`: initial success without established accuracy,
-verified, rescued, failed, or accuracy not established. This mandatory status
+are those in `rusticol_virtual.h` (plan v4 returns failed or accuracy not
+established). This mandatory status
 output prevents stale caller-buffer values from masquerading as valid results.
 Do not treat signed virtual values or resolved components as probabilities.
 Random selection keys and `UMAMI_OUT_MATRIX_ELEMENT` are deliberately unsupported;
@@ -75,17 +75,15 @@ no finite-only scalar result is substituted.
 All supplied layouts are checked before writes. Unknown or duplicate keys,
 missing mandatory inputs/statuses, invalid capacities, and overflowing index
 products fail without changing any output array. Zero-count calls accept absent
-buffers but still validate supplied keys and native strategy/policy choices.
+buffers but still validate supplied keys and the native strategy choice.
 `UmamiStatus` reports function errors, while the output status array reports
 per-point numerical outcomes. The extension's error getter provides its local
-or forwarded SDK diagnostic. A handle opened with an explicit verification
-policy can retain numerical global source-binding failures for complete-result
-rescue; malformed or unrecoverable parameters remain function errors. A NULL
-batch policy inherits that handle policy, as in the shared SDK.
+or forwarded SDK diagnostic; malformed or unrecoverable parameters remain
+function errors.
 
 An optional `rusticol_virtual_result **diagnostic_result` receives the ordinary
 owned SDK result. It contains compact successful rows, original point IDs,
-all-input statuses and complete diagnostics/verification history. Its numerical
+all-input statuses and complete diagnostics. Its numerical
 buffers use the SDK's layout, not UMAMI's; its shape queries describe that
 layout. Free it with `rusticol_virtual_result_free`. It remains valid after the
 runtime is cleared or destroyed. Pass NULL to discard it. The output pointer is
@@ -121,12 +119,12 @@ bundle does not yet publish this virtual extension.
 The native control covers the independent three-order MadLoop uudd fixture,
 resolved sums, irregular offset/stride slices, poisoned unused inputs, untouched
 padding and failed rows, actual numerical failures, optional/default IDs, scalar
-and per-event scales, explicit DoubleFloat verification, empty batches, invalid
+and per-event scales, empty batches, invalid
 keys/capacities and overflow rejection. It also accepts the retained `gg` source
 artifact for a separate one-order control. These are correctness tests, not new
 benchmark timings. The same control accepts a saved LC gg plan and checks every
 signed component through the strided layout, inclusive reconstruction and
-whole-point failure/verification statuses.
+whole-point failure statuses.
 
 ## Correlated operation
 

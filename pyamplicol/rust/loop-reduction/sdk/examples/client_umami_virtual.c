@@ -70,7 +70,7 @@ int main(int argc,char **argv) {
         for(size_t i=0;i<stride;i++) statuses[i]=123;
         void *outputs[3]={born,virt,statuses};
         size_t output_capacities[3]={stride*bw,stride*vw,stride};
-        pyamplicol_umami_virtual_v1_options options={resolved,NULL,NULL};
+        pyamplicol_umami_virtual_v1_options options={resolved,NULL};
         rusticol_virtual_result *details=NULL;
         check(pyamplicol_umami_virtual_v1_evaluate(runtime,count,stride,offset,3,input_keys,inputs,input_capacities,
             3,output_keys,outputs,output_capacities,&options,&details));
@@ -157,16 +157,14 @@ int main(int argc,char **argv) {
         native_check(rusticol_virtual_result_free(details)); details=NULL;
         for(size_t leg=0;leg<4;leg++) for(size_t component=0;component<4;component++)
             momenta[3+stride*(leg+4*component)]=point[4*leg+component];
-        /* Scalar scale, default original event IDs, explicit native verification. */
+        /* Scalar scale, default original event IDs. */
         const int scalar_keys[2]={UMAMI_IN_MOMENTA,PYAMPLICOL_UMAMI_V1_IN_MU_R2_SCALAR};
         const void *scalar_inputs[2]={momenta,&scalar_scale}; size_t scalar_capacities[2]={7*16,1};
-        options.verification_json="{\"higher\":[{\"arithmetic\":\"double-double\",\"precision\":null}],\"relative_tolerance\":\"1e-8\",\"absolute_tolerance\":\"1e-9\",\"verify_successful\":true}";
         check(pyamplicol_umami_virtual_v1_evaluate(runtime,1,stride,offset,2,scalar_keys,scalar_inputs,scalar_capacities,
             3,output_keys,outputs,output_capacities,&options,&details));
-        assert(statuses[offset]==RUSTICOL_VIRTUAL_VERIFIED);
+        assert(statuses[offset]!=RUSTICOL_VIRTUAL_FAILED);
         native_check(rusticol_virtual_result_copy_requested_ids(details,returned_ids,3)); assert(returned_ids[0]==offset);
         native_check(rusticol_virtual_result_free(details)); details=NULL;
-        options.verification_json=NULL;
         /* Missing mandatory statuses, unsupported scalar tree output, duplicates. */
         assert(pyamplicol_umami_virtual_v1_evaluate(runtime,count,stride,offset,3,input_keys,inputs,input_capacities,
             2,output_keys,outputs,output_capacities,&options,NULL)==UMAMI_ERROR);
@@ -195,6 +193,6 @@ int main(int argc,char **argv) {
     native_check(rusticol_virtual_update_parameters(runtime,"{\"aS\":[\"0.12\",\"0\"]}",&revision)); assert(revision>0);
     native_check(rusticol_virtual_clear(runtime)); native_check(rusticol_virtual_free(runtime));
     free(inclusive_born); free(inclusive_virtual);
-    printf("native UMAMI virtual v1 %s order/pole/resolved/stride/failure/verification controls passed\n",process);
+    printf("native UMAMI virtual v1 %s order/pole/resolved/stride/failure controls passed\n",process);
     return 0;
 }

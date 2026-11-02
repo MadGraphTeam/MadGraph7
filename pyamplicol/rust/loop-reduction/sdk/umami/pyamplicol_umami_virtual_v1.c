@@ -204,7 +204,7 @@ static UmamiStatus evaluate_bulk(int correlated,
         }
     }
     rusticol_virtual_batch_request request={momenta,momentum_count,count,ids,scales,count,resolved,
-        options ? options->r2_strategy : NULL, options ? options->verification_json : NULL};
+        options ? options->r2_strategy : NULL};
     rusticol_virtual_result_shape_info result_shape={0};
     if (correlated) {
         rusticol_virtual_correlated_result *typed=NULL;
