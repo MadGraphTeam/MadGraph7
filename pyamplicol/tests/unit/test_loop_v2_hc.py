@@ -645,3 +645,42 @@ def test_hc05_with_another_multi_trace_r2_colour_equals_madloop(
     output = tmp_path / "out"
     output.mkdir()
     _check_row(_generate(model, card, row, output), card, row)
+
+
+@pytest.mark.loop_physics
+def test_a_five_point_r2_colour_without_a_vocabulary_form_is_refused_typed(
+    hc_nlo_x0_ufo, loop_native, tmp_path
+):
+    """A synthetic copy of HC_NLO_X0 whose [G G G G X0] R2 colours are single
+    fundamental traces ``Tr(a,b,c,d)``: their charge-conjugation-odd part
+    needs the d*f pairings, which the five-point contact trees do not lower,
+    so the projection finds no vocabulary form and HC05 stays the typed
+    ``unlowered-counterterm`` refusal (REQUIREMENTS_ADDENDUM J), before
+    anything is exported."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.loops.v2.refusals import LoopEngineRefusal
+
+    model = tmp_path / "HC_SINGLE_TRACE"
+    shutil.copytree(hc_nlo_x0_ufo, model)
+    path = model / "CT_vertices.py"
+    text = path.read_text()
+    for ring, legs in (
+        ("f(1,-1,-2)*f(2,-2,-3)*f(3,-3,-4)*f(4,-4,-1)", "1,2,3,4"),
+        ("f(1,-1,-2)*f(2,-2,-3)*f(4,-3,-4)*f(3,-4,-1)", "1,2,4,3"),
+        ("f(1,-1,-2)*f(3,-2,-3)*f(2,-3,-4)*f(4,-4,-1)", "1,3,2,4"),
+    ):
+        assert text.count(f"'{ring}'") == 1, ring
+        text = text.replace(f"'{ring}'", f"'Tr({legs})'")
+    path.write_text(text)
+    card = _card()
+    row = _row(card, "HC05")
+    output = tmp_path / "out"
+    output.mkdir()
+    with pytest.raises(LoopEngineRefusal) as error:
+        _generate(model, card, row, output)
+    assert isinstance(error.value, GenerationError)
+    assert error.value.key == "unlowered-counterterm"
+    message = str(error.value)
+    assert "[G G G G X0]" in message and "Tr(1,2,3,4)" in message
+    assert not (output / "HC05").exists()
