@@ -27,7 +27,7 @@ use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rationa
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::loop_v2::trees::{
-    BoundParameters, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+    BoundParameters, TREE_FILL_BUDGET, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
 };
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::any::Any;
@@ -207,10 +207,48 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
 
 /// The native tree program of an executor and its carrier form.
 struct Trees {
-    program: TreeProgram,
+    /// Shared by the executors `V2Executor::derive` makes.
+    program: Arc<TreeProgram>,
     /// The program in the executor's carrier (a `TreeRuntime<T>`), built on
-    /// first use; the executor is shared with Python threads, hence the lock.
-    runtime: Mutex<Option<Box<dyn Any + Send>>>,
+    /// first use; the executor is shared with Python threads, hence the lock
+    /// (and executors of one carrier derived from each other share it).
+    runtime: Arc<Mutex<Option<Box<dyn Any + Send>>>>,
+}
+
+/// What a batch's tree fills share (`Trees::prepare`): the bound
+/// parameters of every point, its spin and loop-side sources, and whether
+/// they hold one entry per point (else the batch fills at once, which
+/// refuses them).
+struct Filling<T> {
+    bound: BoundParameters<T>,
+    sources: Option<Vec<rusticol_core::loop_v2::trees::PointSources<T>>>,
+    loop_sources: Option<Vec<rusticol_core::loop_v2::trees::LoopSources<T>>>,
+    points: usize,
+}
+
+impl<T: Clone> Filling<T> {
+    fn cuts(&self) -> bool {
+        self.bound.trees.holds(self.points)
+            && self.sources.as_ref().is_none_or(|s| s.len() == self.points)
+            && self
+                .loop_sources
+                .as_ref()
+                .is_none_or(|s| s.len() == self.points)
+    }
+}
+
+/// Bytes of block rows and Born components of one streamed part of a batch
+/// (`evaluate_with`): the batch fills, dresses and reduces that many points
+/// (whole lane chunks) at a time.
+const ROW_BUDGET: usize = 3 << 30;
+
+/// Per-call memory bounds of an evaluation (`V2Executor.evaluate`): points
+/// per streamed part (rounded up to whole lane chunks) and per tree fill;
+/// None: from [`ROW_BUDGET`] and [`TREE_FILL_BUDGET`].
+#[derive(Clone, Copy, Default)]
+struct Bounds {
+    part_points: Option<usize>,
+    fill_points: Option<usize>,
 }
 
 impl Trees {
@@ -247,8 +285,8 @@ impl Trees {
     }
 
     /// Native block rows and Born components of a batch (filled into
-    /// `batch`); returns every input for inspection. The binding and the
-    /// tree and closure stages run on `executor`'s pool (its `threads`
+    /// `batch`); returns every other input for inspection. The binding and
+    /// the tree and closure stages run on `executor`'s pool (its `threads`
     /// bound), not on the global one, as the SDK runtime's
     /// (`v2_runtime::V2Runtime`).
     fn fill<T: Exchanged + Real + TreeCarrier + Send + Sync>(
@@ -259,6 +297,23 @@ impl Trees {
         poles: bool,
         zero: &T,
     ) -> PyResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let filling = self.prepare(executor, inputs, &batch.scales, zero)?;
+        let points = batch.momenta.len();
+        self.fill_part(executor, &filling, 0..points, batch, poles, None, zero)
+    }
+
+    /// Bind a batch (`scales`: every point's) and read its sources.
+    fn prepare<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+        &self,
+        executor: &Executor,
+        inputs: &Bound<'_, PyDict>,
+        scales: &[Rational],
+        zero: &T,
+    ) -> PyResult<Filling<T>>
     where
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
@@ -277,31 +332,109 @@ impl Trees {
             .lock()
             .map_err(|_| error("a poisoned tree runtime"))?;
         let slot: &mut Option<Box<dyn Any + Send>> = &mut guard;
-        let (program, scales, momenta) = (&self.program, &batch.scales, &batch.momenta);
-        let (bound, out) = executor.install(|| -> PyResult<_> {
-            let (runtime, bound) = Self::bind(program, slot, &values, scales, zero)?;
-            let out = program
-                .inputs_loop_side(
+        let program = &*self.program;
+        let bound = executor.install(|| -> PyResult<_> {
+            Ok(Self::bind(program, slot, &values, scales, zero)?.1)
+        })?;
+        Ok(Filling {
+            bound,
+            sources,
+            loop_sources,
+            points: scales.len(),
+        })
+    }
+
+    /// The tree fill of the points `range` of a prepared batch into `batch`
+    /// (a batch of those points: momenta and scales), `fill` points at a
+    /// time (None: `TreeProgram::fill_points` within its budget). The block
+    /// rows and Born components move into `batch`; the other inputs are
+    /// returned.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_part<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+        &self,
+        executor: &Executor,
+        filling: &Filling<T>,
+        range: std::ops::Range<usize>,
+        batch: &mut V2Batch<T>,
+        poles: bool,
+        fill: Option<usize>,
+        zero: &T,
+    ) -> PyResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let whole = range.len() == filling.points;
+        if !whole && !filling.cuts() {
+            return Err(error(
+                "a batch with per-point inputs of another length fills at once",
+            ));
+        }
+        let mut guard = self
+            .runtime
+            .lock()
+            .map_err(|_| error("a poisoned tree runtime"))?;
+        let runtime = guard
+            .as_mut()
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .ok_or_else(|| error("the tree runtime of another carrier"))?;
+        let program = &*self.program;
+        let selected;
+        let trees = if whole {
+            &filling.bound.trees
+        } else {
+            selected = filling.bound.trees.select(range.clone());
+            &selected
+        };
+        let sources = filling
+            .sources
+            .as_deref()
+            .map(|all| if whole { all } else { &all[range.clone()] });
+        let loop_sources = filling
+            .loop_sources
+            .as_deref()
+            .map(|all| if whole { all } else { &all[range.clone()] });
+        let momenta = &batch.momenta;
+        let constants = &filling.bound.constants;
+        let mut out = executor.install(|| -> PyResult<_> {
+            let chunk = fill.unwrap_or_else(|| {
+                program.fill_points::<T>(momenta.len(), loop_sources.is_some(), TREE_FILL_BUDGET)
+            });
+            program
+                .inputs_chunked(
                     runtime,
                     executor.plan(),
-                    &bound.trees,
+                    trees,
                     momenta,
-                    &bound.constants,
+                    constants,
                     poles,
-                    sources.as_deref(),
-                    loop_sources.as_deref(),
+                    sources,
+                    loop_sources,
+                    chunk,
                     zero,
                 )
-                .map_err(error)?;
-            Ok((bound, out))
+                .map_err(error)
         })?;
-        batch.constants = bound.constants;
-        batch.masses = bound.masses;
-        batch.masses_imaginary = bound.masses_imaginary;
-        batch.leg_masses = bound.leg_masses;
-        batch.block_rows = out.block_rows.clone();
-        batch.born = out.born.clone();
+        batch.constants = filling.bound.constants.clone();
+        batch.masses = filling.bound.masses.clone();
+        batch.masses_imaginary = filling.bound.masses_imaginary.clone();
+        batch.leg_masses = filling.bound.leg_masses.clone();
+        batch.block_rows = std::mem::take(&mut out.block_rows);
+        batch.born = std::mem::take(&mut out.born);
         Ok(out)
+    }
+
+    /// Points per streamed part of a batch of `points` points on `lanes`
+    /// lanes: whole lane chunks whose block rows and Born components fit in
+    /// [`ROW_BUDGET`] (at least one chunk; the whole batch when it fits).
+    fn part_points<T>(&self, points: usize, lanes: usize) -> usize {
+        let point = self.program.row_values().max(1) * std::mem::size_of::<Complex<T>>();
+        let fit = ROW_BUDGET / point / lanes.max(1) * lanes.max(1);
+        if fit >= points {
+            points.max(1)
+        } else {
+            fit.max(lanes.max(1))
+        }
     }
 }
 
@@ -573,6 +706,31 @@ impl V2Executor {
     }
 }
 
+/// Add a streamed part's report to the batch's: seconds and counts add up,
+/// the peak reals per lane are the largest.
+fn merge_report(total: &mut Option<Report>, part: Report) {
+    let Some(total) = total else {
+        *total = Some(part);
+        return;
+    };
+    for (stage, seconds) in part.seconds {
+        *total.seconds.entry(stage).or_default() += seconds;
+    }
+    for (name, count) in part.counts {
+        *total.counts.entry(name).or_default() += count;
+    }
+    for (name, reals) in part.reals_per_lane {
+        let entry = total.reals_per_lane.entry(name).or_default();
+        *entry = (*entry).max(reals);
+    }
+}
+
+/// Evaluate a batch. With native trees it streams in parts of whole lane
+/// chunks (`Bounds`; `Trees::part_points`): each part's tree fill, then its
+/// dressing and reduction, so the batch's tree states, block rows and Born
+/// components never live at once. The executor dresses lane chunks of the
+/// same points in the same order, every lane alone, so each point's values
+/// are bitwise those of the batch at once.
 #[allow(clippy::too_many_arguments)]
 fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     py: Python<'_>,
@@ -583,58 +741,107 @@ fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier + Send + Sync>(
     zero: T,
     bits: u32,
     options: V2Options,
+    bounds: Bounds,
 ) -> PyResult<Evaluation>
 where
     Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
     TreeRuntime<T>: Send,
 {
-    let mut batch = batch(inputs, &zero)?;
-    let mut born = None;
-    let mut loop_born = None;
-    let mut counterterms = None;
-    let mut columns = None;
-    let mut tree_seconds = None;
-    if inputs.contains("parameters")? {
-        let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
-        // The counterterm pole outputs are formed unless finite-only (the
-        // split modes read the same per-power outputs).
-        let poles = !matches!(
-            options.poles,
-            rusticol_core::loop_execution::v2::Poles::None
-        );
-        let started = std::time::Instant::now();
-        let native = trees.fill(executor, inputs, &mut batch, poles, &zero)?;
-        // The report's "trees" stage: the whole native input fill, then its
-        // parts (`TreeInputs::seconds`).
-        tree_seconds = Some((started.elapsed().as_secs_f64(), native.seconds.clone()));
-        let export = |points: Vec<Vec<T>>| -> Vec<Values> {
-            points
-                .iter()
-                .map(|values| real_values(values, &zero, bits))
-                .collect()
+    let batch = batch(inputs, &zero)?;
+    if !inputs.contains("parameters")? {
+        let (results, report) = py
+            .detach(|| executor.evaluate(&batch, &zero, backend, options))
+            .map_err(error)?;
+        return Ok(export_evaluation(
+            results, report, bits, None, None, None, None,
+        ));
+    }
+    let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
+    // The counterterm pole outputs are formed unless finite-only (the
+    // split modes read the same per-power outputs).
+    let poles = !matches!(
+        options.poles,
+        rusticol_core::loop_execution::v2::Poles::None
+    );
+    let started = std::time::Instant::now();
+    let filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
+    // The report's "trees" stage: the whole native input fill, then its
+    // parts (`TreeInputs::seconds`).
+    let mut tree_seconds = started.elapsed().as_secs_f64();
+    let mut tree_parts: Vec<(&'static str, f64)> = Vec::new();
+    let points = batch.momenta.len();
+    let lanes = executor.lanes().max(1);
+    let part = match bounds.part_points {
+        _ if !filling.cuts() => points,
+        Some(part) => part.max(1).div_ceil(lanes) * lanes,
+        None => trees.part_points::<T>(points, lanes),
+    };
+    let export = |points: Vec<Vec<T>>| -> Vec<Values> {
+        points
+            .iter()
+            .map(|values| real_values(values, &zero, bits))
+            .collect()
+    };
+    let extend = |total: &mut Option<Vec<Values>>, part: Option<Vec<Values>>| {
+        if let Some(part) = part {
+            total.get_or_insert_with(Vec::new).extend(part);
+        }
+    };
+    let (mut born, mut loop_born, mut counterterms) = (None, None, None);
+    let mut columns: Option<Vec<Vec<Values>>> = None;
+    let mut results = Vec::with_capacity(points);
+    let mut report = None;
+    for first in (0..points.max(1)).step_by(part.max(1)) {
+        let range = first..(first + part).min(points);
+        let mut sub = V2Batch {
+            momenta: batch.momenta[range.clone()].to_vec(),
+            scales: batch.scales[range.clone()].to_vec(),
+            masses: Vec::new(),
+            masses_imaginary: Vec::new(),
+            leg_masses: Vec::new(),
+            constants: Vec::new(),
+            block_rows: Vec::new(),
+            born: Vec::new(),
         };
-        born = native.born_squared.map(export);
-        loop_born = native.loop_born.map(export);
-        counterterms = native.counterterms.map(export);
-        columns = native.columns.map(|points| {
-            points
-                .iter()
-                .map(|columns| {
+        let started = std::time::Instant::now();
+        let native = trees.fill_part(
+            executor,
+            &filling,
+            range,
+            &mut sub,
+            poles,
+            bounds.fill_points,
+            &zero,
+        )?;
+        tree_seconds += started.elapsed().as_secs_f64();
+        for (stage, seconds) in &native.seconds {
+            match tree_parts.iter_mut().find(|(name, _)| name == stage) {
+                Some((_, total)) => *total += seconds,
+                None => tree_parts.push((stage, *seconds)),
+            }
+        }
+        extend(&mut born, native.born_squared.map(export));
+        extend(&mut loop_born, native.loop_born.map(export));
+        extend(&mut counterterms, native.counterterms.map(export));
+        if let Some(part) = native.columns {
+            columns
+                .get_or_insert_with(Vec::new)
+                .extend(part.iter().map(|columns| {
                     columns
                         .iter()
                         .map(|values| T::export(values, bits))
-                        .collect()
-                })
-                .collect()
-        });
+                        .collect::<Vec<_>>()
+                }));
+        }
+        let (part_results, part_report) = py
+            .detach(|| executor.evaluate(&sub, &zero, backend, options))
+            .map_err(error)?;
+        results.extend(part_results);
+        merge_report(&mut report, part_report);
     }
-    let (results, mut report) = py
-        .detach(|| executor.evaluate(&batch, &zero, backend, options))
-        .map_err(error)?;
-    if let Some((total, parts)) = tree_seconds {
-        report.seconds.insert("trees", total);
-        report.seconds.extend(parts);
-    }
+    let mut report = report.expect("a batch has a part");
+    report.seconds.insert("trees", tree_seconds);
+    report.seconds.extend(tree_parts);
     Ok(export_evaluation(
         results,
         report,
@@ -710,8 +917,8 @@ where
             .collect()
     };
     Ok((
-        export(&out.block_rows),
-        export(&out.born),
+        export(&batch.block_rows),
+        export(&batch.born),
         export(&out.amplitudes),
         out.born_squared.map(reals),
         out.counterterms.map(reals),
@@ -857,8 +1064,8 @@ impl V2Executor {
                     program.set_columns(columns.as_bytes())?;
                 }
                 Ok::<_, rusticol_core::RusticolError>(Trees {
-                    program,
-                    runtime: Mutex::new(None),
+                    program: Arc::new(program),
+                    runtime: Arc::new(Mutex::new(None)),
                 })
             })
             .transpose()
@@ -882,6 +1089,82 @@ impl V2Executor {
             backend: None,
             trees,
         })
+    }
+
+    /// An executor of `arithmetic` (and `precision`, as for the
+    /// constructor) on this one's loaded plan, tree program (with `trees`)
+    /// and certified seed FFT (with `fourier`), shared instead of decoded
+    /// again: the auxiliary carriers and lane counts of one process (double-
+    /// double and arbitrary precision, the rescue levels) cost their own
+    /// runtimes only. An executor of the same carrier also shares the tree
+    /// runtime; the kernel forms are this one's.
+    #[pyo3(signature = (arithmetic="double", precision=None, *, lanes=16, threads=None, engine="fast", trees=true, fourier=true))]
+    #[allow(clippy::too_many_arguments)]
+    fn derive(
+        &self,
+        arithmetic: &str,
+        precision: Option<u32>,
+        lanes: usize,
+        threads: Option<usize>,
+        engine: &str,
+        trees: bool,
+        fourier: bool,
+    ) -> PyResult<Self> {
+        if !matches!(engine, "fast" | "generic") {
+            return Err(error("engine must be fast or generic"));
+        }
+        let carrier = match (arithmetic, precision) {
+            ("double", None) => Carriers::Double,
+            ("double-double", None) => Carriers::DoubleDouble,
+            ("arbitrary", Some(digits)) if digits > 0 => Carriers::Arbitrary(digits),
+            ("exact", None) => Carriers::Exact,
+            _ => {
+                return Err(error(
+                    "arithmetic must be double, double-double, exact, or arbitrary with digits",
+                ));
+            }
+        };
+        if trees && self.trees.is_none() {
+            return Err(error("the executor has no tree program to share"));
+        }
+        if fourier && self.executor.fourier().is_none() {
+            return Err(error("the executor has no seed Fourier record to share"));
+        }
+        if fourier && matches!(carrier, Carriers::Exact) {
+            return Err(error("the exact carrier contracts seeds directly"));
+        }
+        let same = std::mem::discriminant(&carrier) == std::mem::discriminant(&self.carrier)
+            && match (carrier, self.carrier) {
+                (Carriers::Arbitrary(a), Carriers::Arbitrary(b)) => a == b,
+                _ => true,
+            };
+        let trees = match &self.trees {
+            Some(shared) if trees => Some(Trees {
+                program: shared.program.clone(),
+                runtime: if same {
+                    shared.runtime.clone()
+                } else {
+                    Arc::new(Mutex::new(None))
+                },
+            }),
+            _ => None,
+        };
+        Ok(Self {
+            executor: self
+                .executor
+                .derive(lanes, threads, fourier)
+                .map_err(error)?,
+            carrier,
+            engine: engine.to_owned(),
+            backend: None,
+            trees,
+        })
+    }
+
+    /// Whether the executor has a tree program (native inputs).
+    #[getter]
+    fn has_trees(&self) -> bool {
+        self.trees.is_some()
     }
 
     /// The native tree inputs of a batch (needs a tree program): per point
@@ -1100,7 +1383,12 @@ impl V2Executor {
     /// `part_chunks` chunks) and the others by B. `poles` is `"all"`, `"none"`
     /// or `"split"` (each lane's UV residue as a fourth column, DESIGN.md
     /// §12.4); `master_poles` selects the masters' residues (generic engine).
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto"))]
+    /// Memory bounds (values bitwise unchanged): `part_points` points per
+    /// streamed part of a batch with native trees (rounded up to whole lane
+    /// chunks; None: block rows and Born components within 3 GiB),
+    /// `fill_points` points per tree fill (None: tree states within 4 GiB)
+    /// and `input_budget` bytes of chunk inputs per lane chunk (None: 8 GiB).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -1117,6 +1405,9 @@ impl V2Executor {
         part_chunks: Option<usize>,
         master_poles: &str,
         contraction: &str,
+        part_points: Option<usize>,
+        fill_points: Option<usize>,
+        input_budget: Option<usize>,
     ) -> PyResult<Evaluation> {
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -1150,6 +1441,13 @@ impl V2Executor {
         if let Some(chunks) = part_chunks {
             options.part_chunks = chunks;
         }
+        if let Some(budget) = input_budget {
+            options.input_budget = budget;
+        }
+        let bounds = Bounds {
+            part_points,
+            fill_points,
+        };
         let bits = self.bits()?;
         let carrier = self.carrier;
         // The generic reduction builds Symbolica expressions and the exact
@@ -1166,9 +1464,9 @@ impl V2Executor {
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         match carrier {
-            Carriers::Double => {
-                evaluate_with(py, executor, trees, backend, inputs, 0.0, bits, options)
-            }
+            Carriers::Double => evaluate_with(
+                py, executor, trees, backend, inputs, 0.0, bits, options, bounds,
+            ),
             Carriers::DoubleDouble => evaluate_with(
                 py,
                 executor,
@@ -1178,6 +1476,7 @@ impl V2Executor {
                 DoubleFloat::from(0.0),
                 bits,
                 options,
+                bounds,
             ),
             Carriers::Arbitrary(_) => evaluate_with(
                 py,
@@ -1188,6 +1487,7 @@ impl V2Executor {
                 Float::with_val(bits, 0),
                 bits,
                 options,
+                bounds,
             ),
             Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
         }

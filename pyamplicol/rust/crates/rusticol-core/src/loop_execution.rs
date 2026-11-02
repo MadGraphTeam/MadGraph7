@@ -22,7 +22,7 @@ pub struct LoopInputs {
 
 pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
-    use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
+    use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch, input_vectors};
     use crate::loop_v2::forward::{forward_factors, run_forward};
     pub use crate::loop_v2::fourier::SeedFourier;
     use crate::loop_v2::fourier::seeds_fourier;
@@ -43,6 +43,10 @@ pub mod v2 {
     /// Default families per streamed bucket chunk (bounds the live fused
     /// factors and family numerators).
     pub const DEFAULT_CHUNK_FAMILIES: usize = 512;
+    /// Default bytes of chunk inputs (fused factors, split vertex tensors
+    /// and currents) one lane chunk holds where it can
+    /// ([`V2Options::input_budget`]).
+    pub const DEFAULT_INPUT_BUDGET: usize = 8 << 30;
 
     /// The dressing schedule.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +102,12 @@ pub mod v2 {
         pub part_chunks: usize,
         /// The seed contraction (DESIGN.md §7.3).
         pub contraction: Contraction,
+        /// Bytes of chunk inputs a lane chunk holds where it can (schedule
+        /// B): a live input the current bucket chunk does not read is
+        /// dropped, the one read again latest first, and rebuilt bitwise
+        /// when read again (`ChunkInputs::prepare_within`; heap limbs of
+        /// arbitrary-precision reals excluded).
+        pub input_budget: usize,
     }
 
     impl Default for V2Options {
@@ -109,6 +119,7 @@ pub mod v2 {
                 schedule: Schedule::B,
                 part_chunks: DEFAULT_PART_CHUNKS,
                 contraction: Contraction::Auto,
+                input_budget: DEFAULT_INPUT_BUDGET,
             }
         }
     }
@@ -204,6 +215,9 @@ pub mod v2 {
 
     /// Report count of the modelled dressing work (complex MAC per lane).
     const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
+    /// Report count of the chunk inputs dropped while still live (rebuilt
+    /// when read again, `V2Options::input_budget`).
+    pub const INPUTS_DROPPED: &str = "chunk inputs dropped early";
 
     /// One point's family numerators: (family, loop orders, rank, per
     /// column the coefficients in the family's trie frame).
@@ -308,6 +322,22 @@ pub mod v2 {
                 pool,
                 fourier: None,
             })
+        }
+
+        /// An executor of the same loaded plan (and, with `fourier`, the same
+        /// certified seed FFT), shared rather than decoded again, with its own
+        /// lane count and thread pool.
+        pub fn derive(
+            &self,
+            lanes: usize,
+            threads: Option<usize>,
+            fourier: bool,
+        ) -> RusticolResult<Self> {
+            let mut out = Self::new(self.plan.clone(), lanes, threads)?;
+            if fourier {
+                out.fourier = self.fourier.clone();
+            }
+            Ok(out)
         }
 
         /// Attach the plan's seed Fourier record (`plan_export.fourier_record`),
@@ -449,13 +479,73 @@ pub mod v2 {
             .collect()
     }
 
-    /// A bucket chunk: its families, the inputs they read, and the inputs
-    /// read by it or a later chunk (an input lives from its first to its
-    /// last chunk).
+    /// A bucket chunk: its families and the inputs they read.
     struct BucketChunk {
         families: Vec<usize>,
         reads: Reads,
-        live: Reads,
+    }
+
+    /// Per chunk-input store (factors, vertex tensors, currents) and id, the
+    /// bucket chunks reading it, ascending (compressed rows): whether a held
+    /// input is still live and which chunk reads it next
+    /// (`ChunkInputs::prepare_within`).
+    struct ReadChunks([(Vec<u32>, Vec<u32>); 3]);
+
+    impl ReadChunks {
+        fn of(plan: &LoopProgramV4, chunks: &[BucketChunk]) -> Self {
+            let lens = [
+                plan.factors.len(),
+                plan.vertex_instances.len(),
+                plan.currents.len(),
+            ];
+            fn ids(chunk: &BucketChunk, store: usize) -> &[usize] {
+                match store {
+                    0 => &chunk.reads.factors,
+                    1 => &chunk.reads.vertices,
+                    _ => &chunk.reads.currents,
+                }
+            }
+            Self(std::array::from_fn(|store| {
+                let mut offsets = vec![0u32; lens[store] + 1];
+                for chunk in chunks {
+                    for &id in ids(chunk, store) {
+                        offsets[id + 1] += 1;
+                    }
+                }
+                for id in 0..lens[store] {
+                    offsets[id + 1] += offsets[id];
+                }
+                let mut fill = offsets.clone();
+                let mut reads = vec![0u32; offsets[lens[store]] as usize];
+                for (k, chunk) in chunks.iter().enumerate() {
+                    for &id in ids(chunk, store) {
+                        reads[fill[id] as usize] = k as u32;
+                        fill[id] += 1;
+                    }
+                }
+                (offsets, reads)
+            }))
+        }
+
+        fn reads(&self, store: usize, id: usize) -> &[u32] {
+            let (offsets, reads) = &self.0[store];
+            &reads[offsets[id] as usize..offsets[id + 1] as usize]
+        }
+
+        /// Whether input `id` of `store` is read by chunk `k` or a later one.
+        fn live(&self, store: usize, id: usize, k: usize) -> bool {
+            self.reads(store, id)
+                .last()
+                .is_some_and(|&j| j as usize >= k)
+        }
+
+        /// The first chunk after `k` reading input `id` of `store`
+        /// (`usize::MAX`: none).
+        fn next(&self, store: usize, id: usize, k: usize) -> usize {
+            let reads = self.reads(store, id);
+            let at = reads.partition_point(|&j| j as usize <= k);
+            reads.get(at).map_or(usize::MAX, |&j| j as usize)
+        }
     }
 
     /// The schedule-M graph an evaluation runs: the plan's under schedule M
@@ -478,60 +568,89 @@ pub mod v2 {
             .collect()
     }
 
-    /// Bucket chunks of at most `size` of `families` (ascending) in bucket
-    /// order.
-    fn bucket_chunks(plan: &LoopProgramV4, size: usize, families: &[usize]) -> Vec<BucketChunk> {
-        let parts: Vec<Vec<usize>> = plan
-            .buckets()
-            .values()
-            .map(|members| {
-                members
-                    .iter()
-                    .copied()
-                    .filter(|f| families.binary_search(f).is_ok())
-                    .collect::<Vec<_>>()
-            })
-            .filter(|members| !members.is_empty())
-            .flat_map(|members| {
-                members
-                    .chunks(size.max(1))
-                    .map(<[usize]>::to_vec)
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let reads: Vec<Reads> = parts.iter().map(|part| Reads::of(plan, part)).collect();
-        let last = |count: usize, ids: &dyn Fn(&Reads) -> &[usize]| {
-            let mut last = vec![0; count];
-            for (k, chunk) in reads.iter().enumerate() {
-                for &id in ids(chunk) {
-                    last[id] = k;
+    /// Bucket chunks of `families` (ascending) in bucket order: runs of at
+    /// most `size` families of one bucket whose chunk inputs take at most
+    /// `vectors` lane vectors (a family alone may take more; `usize::MAX`:
+    /// runs of `size`).
+    fn bucket_chunks(
+        plan: &LoopProgramV4,
+        size: usize,
+        families: &[usize],
+        vectors: usize,
+    ) -> Vec<BucketChunk> {
+        let bounded = vectors < usize::MAX;
+        let lens = [
+            plan.factors.len(),
+            plan.vertex_instances.len(),
+            plan.currents.len(),
+        ];
+        let mut seen: [Vec<u32>; 3] = if bounded {
+            lens.map(|len| vec![0; len])
+        } else {
+            Default::default()
+        };
+        let mut stamp = 0u32;
+        let mut parts: Vec<Vec<usize>> = Vec::new();
+        for members in plan.buckets().values() {
+            let mut current: Vec<usize> = Vec::new();
+            let mut held = 0usize;
+            stamp += 1;
+            for &f in members {
+                if families.binary_search(&f).is_err() {
+                    continue;
                 }
+                let family = &plan.families[f];
+                let ids = [&family.factors, &family.vertices, &family.currents];
+                // The lane vectors `f` adds to a chunk holding the `stamp`ed ids.
+                let new = |seen: &[Vec<u32>; 3], stamp: u32| -> usize {
+                    if !bounded {
+                        return 0;
+                    }
+                    let mut total = 0usize;
+                    for (store, ids) in ids.iter().enumerate() {
+                        for &id in ids.iter() {
+                            if seen[store][id] != stamp {
+                                total += input_vectors(plan, store, id);
+                            }
+                        }
+                    }
+                    total
+                };
+                let mut add = new(&seen, stamp);
+                if !current.is_empty()
+                    && (current.len() >= size.max(1) || held.saturating_add(add) > vectors)
+                {
+                    parts.push(std::mem::take(&mut current));
+                    stamp += 1;
+                    held = 0;
+                    add = new(&seen, stamp);
+                }
+                if bounded {
+                    for (store, ids) in ids.iter().enumerate() {
+                        for &id in ids.iter() {
+                            seen[store][id] = stamp;
+                        }
+                    }
+                }
+                held += add;
+                current.push(f);
             }
-            last
-        };
-        let factors = last(plan.factors.len(), &|r| &r.factors);
-        let vertices = last(plan.vertex_instances.len(), &|r| &r.vertices);
-        let currents = last(plan.currents.len(), &|r| &r.currents);
-        let alive = |last: &[usize], k: usize| -> Vec<usize> {
-            (0..last.len()).filter(|&id| last[id] >= k).collect()
-        };
+            if !current.is_empty() {
+                parts.push(current);
+            }
+        }
         parts
             .into_iter()
-            .zip(reads)
-            .enumerate()
-            .map(|(k, (families, reads))| BucketChunk {
+            .map(|families| BucketChunk {
+                reads: Reads::of(plan, &families),
                 families,
-                reads,
-                live: Reads {
-                    factors: alive(&factors, k),
-                    vertices: alive(&vertices, k),
-                    currents: alive(&currents, k),
-                },
             })
             .collect()
     }
 
-    /// Dress every family of `chunk` on one chunk of lanes (schedule B).
+    /// Dress every family of `chunk` on one chunk of lanes (schedule B);
+    /// `bound`: the chunk's index, the bucket chunks' reads and the reals
+    /// the chunk inputs hold where they can (none: unbounded).
     fn dress_families<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
         chunk: &BucketChunk,
@@ -539,10 +658,27 @@ pub mod v2 {
         seeds: &crate::loop_v2::seeds::Seeds<T>,
         data: &LaneData<T, L>,
         report: &mut Report,
+        bound: Option<(usize, &ReadChunks, usize)>,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
         let families = &chunk.families;
         let start = Instant::now();
-        inputs.prepare(plan, data, &chunk.reads, &chunk.live);
+        match bound {
+            Some((k, reads, budget)) => {
+                let dropped = inputs.prepare_within(
+                    plan,
+                    data,
+                    &chunk.reads,
+                    budget,
+                    |store, id| reads.live(store, id, k),
+                    |store, id| reads.next(store, id, k),
+                );
+                if dropped > 0 {
+                    report.count(INPUTS_DROPPED, dropped as u64);
+                }
+            }
+            // One chunk: every input it reads is live.
+            None => inputs.prepare(plan, data, &chunk.reads, &chunk.reads),
+        }
         report.time("factors", start);
         report.peak(
             "chunk inputs (factors, vertex tensors, currents)",
@@ -594,13 +730,16 @@ pub mod v2 {
                 Schedule::B | Schedule::M => {
                     let families = b_families(plan, merged);
                     let reads = Reads::of(plan, &families);
-                    let chunk = BucketChunk {
-                        families,
-                        live: reads.clone(),
-                        reads,
-                    };
-                    let mut numerators =
-                        dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?;
+                    let chunk = BucketChunk { families, reads };
+                    let mut numerators = dress_families(
+                        plan,
+                        &chunk,
+                        &mut inputs,
+                        &seeds,
+                        &data,
+                        &mut report,
+                        None,
+                    )?;
                     if let Some(merged) = merged {
                         let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
                         run_merged(plan, &parts, &mut inputs, &seeds, &data, |done| {
@@ -841,7 +980,16 @@ pub mod v2 {
         }
         let merged = merged_of(plan, options.schedule)?;
         let b_families = b_families(plan, merged);
-        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families);
+        // The chunk-input budget in reals, and in lane vectors for the
+        // bucket chunks' own inputs.
+        let input_budget = options.input_budget / std::mem::size_of::<T>().max(1);
+        let vectors = if options.input_budget == usize::MAX {
+            usize::MAX
+        } else {
+            input_budget / crate::loop_v2::kernels::lane_vector_len(L)
+        };
+        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families, vectors);
+        let read_chunks = ReadChunks::of(plan, &chunks_of_buckets);
         let merged_parts = merged
             .map(|merged| parts(merged, options.part_chunks, plan))
             .unwrap_or_default();
@@ -892,9 +1040,16 @@ pub mod v2 {
                 options,
                 sink: &mut sink,
             };
-            for part in &chunks_of_buckets {
-                let numerators =
-                    dress_families(plan, part, &mut inputs, &seeds, &data, &mut report)?;
+            for (k, part) in chunks_of_buckets.iter().enumerate() {
+                let numerators = dress_families(
+                    plan,
+                    part,
+                    &mut inputs,
+                    &seeds,
+                    &data,
+                    &mut report,
+                    Some((k, &read_chunks, input_budget)),
+                )?;
                 reduction.reduce(&numerators, &mut report)?;
             }
             if !merged_parts.is_empty() {
@@ -1085,6 +1240,24 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        /// The next bucket chunk reading an input follows the chunks'
+        /// ascending reads; none after the last.
+        #[test]
+        fn next_reads_follow_the_bucket_chunks() {
+            let reads = ReadChunks([
+                (vec![0, 3, 3], vec![0, 2, 5]),
+                (vec![0], Vec::new()),
+                (vec![0, 1], vec![1]),
+            ]);
+            assert!(reads.live(0, 0, 5) && !reads.live(0, 0, 6) && !reads.live(0, 1, 0));
+            assert_eq!(reads.next(0, 0, 0), 2);
+            assert_eq!(reads.next(0, 0, 1), 2);
+            assert_eq!(reads.next(0, 0, 2), 5);
+            assert_eq!(reads.next(0, 0, 5), usize::MAX);
+            assert_eq!(reads.next(0, 1, 0), usize::MAX);
+            assert_eq!(reads.next(2, 0, 0), 1);
         }
 
         /// Schedule M needs a plan exported with a merged graph; an empty
