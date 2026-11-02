@@ -870,19 +870,23 @@ where
     // The kept rows' liveness (DESIGN §8.5): the dressed families pruned to
     // the rows they reach and the tree program to what those read.
     let started = std::time::Instant::now();
-    let (live, tree_rows) = match &selection.rows {
+    let (live, tree_rows, liveness) = match &selection.rows {
         Some(rows) => py
             .detach(|| {
                 let live = executor.live_rows(rows, selection.families.as_deref())?;
+                let plan_seconds = started.elapsed().as_secs_f64();
                 let tree_rows = live
                     .as_ref()
                     .and_then(|live| trees.program.live_rows(executor.plan(), live));
-                Ok::<_, rusticol_core::RusticolError>((live, tree_rows))
+                let seconds = live.as_ref().map(|_| {
+                    let total = started.elapsed().as_secs_f64();
+                    (total, total - plan_seconds)
+                });
+                Ok::<_, rusticol_core::RusticolError>((live, tree_rows, seconds))
             })
             .map_err(error)?,
-        None => (None, None),
+        None => (None, None, None),
     };
-    let liveness = live.as_ref().map(|_| started.elapsed().as_secs_f64());
     let started = std::time::Instant::now();
     let mut filling = trees.prepare(executor, inputs, &batch.scales, &zero)?;
     filling.sources = selection.sources(filling.sources.take(), batch.momenta.len());
@@ -967,8 +971,9 @@ where
     }
     let mut report = report.expect("a batch has a part");
     report.seconds.insert("trees", tree_seconds);
-    if let Some(seconds) = liveness {
+    if let Some((seconds, trees)) = liveness {
         report.seconds.insert("row liveness", seconds);
+        report.seconds.insert("row liveness: trees", trees);
     }
     report.seconds.extend(tree_parts);
     Ok(export_evaluation(

@@ -451,7 +451,7 @@ pub mod v2 {
             if let Some(kept) = families {
                 listed.retain(|&f| kept[f]);
             }
-            self.plan.live_rows(rows, &listed)
+            self.pool.install(|| self.plan.live_rows(rows, &listed))
         }
 
         /// [`Self::evaluate`] dressing only the families `families` keeps

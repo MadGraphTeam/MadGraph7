@@ -34,6 +34,7 @@ use super::{
     step_shape,
 };
 use crate::RusticolResult;
+use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -164,7 +165,8 @@ impl LoopProgramV4 {
     /// The row liveness of an evaluation keeping the Born rows `rows` (one
     /// flag per plan row) and dressing `families` (ascending) by schedule B
     /// ([`LiveRows`]); `None` when `rows` drops no row a column seeds
-    /// (nothing to prune).
+    /// (nothing to prune). The families are pruned in parallel (the
+    /// caller's rayon pool).
     pub fn live_rows(&self, rows: &[bool], families: &[usize]) -> RusticolResult<Option<LiveRows>> {
         super::require(rows.len() == self.rows, "one kept flag per Born row")?;
         super::require(
@@ -181,7 +183,7 @@ impl LoopProgramV4 {
             return Ok(None);
         }
         let pruned: Vec<Family> = families
-            .iter()
+            .par_iter()
             .map(|&f| {
                 let mut family = self.families[f].clone();
                 prune_family(&mut family, &seeded, columns, &self.contents, &self.vertices);
