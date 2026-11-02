@@ -10,8 +10,11 @@ on and kept a generic seed per reading. Against that oracle
 frozen stream points: the finite parts and the ``"all"`` values are bitwise
 equal, the ``"uv"`` and ``"ir"`` values and both origins' parts equal to
 rounding (the seeds' decomposition changes the summation of the companion's
-lanes); g g > g g g bitwise in every mode (default tier), g g > g g g g to
-rounding (nightly).
+lanes); g g > g g g to 1e-12 relative (default tier), g g > g g g g to
+1e-15 relative (nightly). The g g > g g g check was bitwise in every mode
+until the SymJIT 2.28.3 re-pin (dbc92efb) moved its "uv" values by ~1e-16
+relative; the coordinator's ruling (slice-status DECISIONS 2026-11-01 ~23:35)
+compares the pole modes to 1e-12 relative instead.
 """
 
 from __future__ import annotations
@@ -53,6 +56,12 @@ def _companions(loop_sm_compiled_model, loop_native, monkeypatch, expression, n)
     return shared, own
 
 
+def _close(mine, theirs, tolerance, label):
+    scale = max(abs(x) for x in theirs)
+    for x, y in zip(mine, theirs, strict=True):
+        assert abs(x - y) <= tolerance * scale, label
+
+
 def _compare(shared, own, key, tolerance):
     assert len(shared.scaleless.table.classes) < len(own.scaleless.table.classes)
     mine, theirs = _values(shared, key), _values(own, key)
@@ -60,14 +69,19 @@ def _compare(shared, own, key, tolerance):
         for a, b in zip(results, theirs[mode], strict=True):
             for sector, laurent in a.components["virtual"].items():
                 other = b.components["virtual"][sector].coefficients
-                scale = max(abs(x) for x in other)
                 assert laurent.coefficients[0] == other[0], (mode, sector)
-                if mode == "all" or tolerance == 0:
+                if mode == "all":
                     assert laurent.coefficients == other, (mode, sector)
-                for x, y in zip(laurent.coefficients, other, strict=True):
-                    assert abs(x - y) <= tolerance * scale, (mode, sector)
-            if mode != "all" and tolerance == 0:
-                assert a.pole_origins == b.pole_origins
+                _close(laurent.coefficients, other, tolerance, (mode, sector))
+            if mode == "all":
+                continue
+            assert a.pole_origins.keys() == b.pole_origins.keys()
+            for origin, parts in a.pole_origins.items():
+                for component, sectors in parts.items():
+                    for sector, laurent in sectors.items():
+                        other = b.pole_origins[origin][component][sector]
+                        label = (mode, origin, component, sector)
+                        _close(laurent.coefficients, other.coefficients, tolerance, label)
 
 
 @pytest.mark.loop_physics
@@ -77,7 +91,7 @@ def test_companion_seeds_on_the_slice_certificates_ggg(
     shared, own = _companions(
         loop_sm_compiled_model, loop_native, monkeypatch, "g g > g g g", 3
     )
-    _compare(shared, own, "gg_ggg", 0.0)
+    _compare(shared, own, "gg_ggg", 1e-12)
 
 
 @pytest.mark.loop_nightly
