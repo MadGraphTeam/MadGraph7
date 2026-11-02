@@ -12,6 +12,7 @@
 #include "phasespace/discrete_sampler.hpp"
 #include "phasespace/fks_mapping.hpp"
 #include "phasespace/fks_radiation.hpp"
+#include "phasespace/fks_sector.hpp"
 #include "phasespace/flow.hpp"
 #include "phasespace/histograms.hpp"
 #include "phasespace/integrand.hpp"

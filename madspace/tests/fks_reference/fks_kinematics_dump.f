@@ -89,8 +89,8 @@ c that make_fks_reference.py parses.
       common/cxij_kperp/xij_kperp
       logical softtest,colltest
       common/sctests/softtest,colltest
-      double precision ran2
-      external ran2
+      double precision ran2,fks_Sij,s_ev,s_cnt(0:2)
+      external ran2,fks_Sij
       character*24 fmt
       parameter (fmt='(a,1x,*(es25.17e3,1x))')
 
@@ -176,6 +176,35 @@ c types, charges and FKS pairs of the real process
             write (*,fmt) 'SHAT',shat_ev,(shat_cnt(k),k=-2,2),tau_ev
      &           ,ycm_ev,(tau_cnt(k),k=-2,2),(ycm_cnt(k),k=-2,2)
             write (*,fmt) 'KPERP',(xij_kperp(j),j=0,3)
+            write (*,fmt) 'PIHAT',(p_i_fks_ev(j),j=0,3)
+     &           ,((p_i_fks_cnt(j,k),j=0,3),k=-2,2)
+c The sector function S_ij of the configuration (fks_Sij) at the event and
+c at its counter-events, with the arguments of compute_soft_counter_term
+c and its siblings, -1 where genps_fks.f did not generate the momenta (and
+c for the collinear ones of a massive emitter)
+            s_ev=-1d0
+            do k=0,2
+               s_cnt(k)=-1d0
+            enddo
+            if (jac_full.gt.0d0) then
+               call set_cms_stuff(-100)
+               s_ev=fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
+               if (jac_full_cnt(0).gt.0d0) then
+                  call set_cms_stuff(0)
+                  s_cnt(0)=fks_Sij(p1_cnt(0,1,0),i_fks,j_fks,0d0
+     &                 ,y_ij_fks_ev)
+               endif
+               if (jac_full_cnt(1).gt.0d0.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(1)
+                  s_cnt(1)=fks_Sij(p1_cnt(0,1,1),i_fks,j_fks
+     &                 ,xi_i_fks_cnt(1),1d0)
+               endif
+               if (jac_full_cnt(2).gt.0d0.and.emass(j_fks).eq.0d0) then
+                  call set_cms_stuff(2)
+                  s_cnt(2)=fks_Sij(p1_cnt(0,1,2),i_fks,j_fks,0d0,1d0)
+               endif
+            endif
+            write (*,fmt) 'SIJ',s_ev,(s_cnt(k),k=0,2)
 c Radiation part alone: rerun generate_FKS_kinematics on the Born of the
 c point with unit Born weights, once with the lower bound on the partonic
 c energy of the real emission that set_tau_min derives from the cuts

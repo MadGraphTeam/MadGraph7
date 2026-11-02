@@ -239,6 +239,7 @@ add_library(
     src/phasespace/color_ordered_mapping.cpp
     src/phasespace/fks_mapping.cpp
     src/phasespace/fks_radiation.cpp
+    src/phasespace/fks_sector.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
     src/phasespace/madnis.cpp

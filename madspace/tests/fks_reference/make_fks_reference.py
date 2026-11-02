@@ -32,6 +32,11 @@ counter-event index k = -2..2 stored at position k + 2, momenta as
                p_born, p_ev, p_cnt, xi_ev, xi_hat_ev, y_ev, xiimax_ev,
                xi_cnt, xi_hat_cnt, xiimax_cnt, xbjrk_ev, xbjrk_cnt, shat_ev,
                shat_cnt, tau_ev, ycm_ev, tau_cnt, ycm_cnt, kperp,
+               p_i_hat_ev, p_i_hat_cnt (p_i_fks_ev, p_i_fks_cnt: i per unit
+               xi), s_ij_ev, s_ij_cnt (fks_Sij at the event and at the
+               counter-events k = 0, 1, 2 as compute_soft_counter_term and
+               its siblings call it, -1 where the counter-event is not
+               generated or, for a massive emitter, has no collinear limit),
                shat_born, tau_born, ycm_born, xbjrk_born, tau_lower_bound,
                and for prefix in (rad, cut): prefix_jac, prefix_jac_cnt,
                prefix_p_ev, prefix_p_cnt, prefix_xi_ev, prefix_xi_hat_ev,
@@ -229,6 +234,12 @@ def parse(text):
             point.update(tau_cnt=v[8:13], ycm_cnt=v[13:18])
         elif key == "KPERP":
             point["kperp"] = floats(rest)
+        elif key == "PIHAT":
+            v = momenta(floats(rest))
+            point["p_i_hat_ev"], point["p_i_hat_cnt"] = v[0], v[1:6]
+        elif key == "SIJ":
+            v = floats(rest)
+            point["s_ij_ev"], point["s_ij_cnt"] = v[0], v[1:4]
         elif key == "BORNX":
             v = floats(rest)
             point.update(shat_born=v[0], tau_born=v[1], ycm_born=v[2])

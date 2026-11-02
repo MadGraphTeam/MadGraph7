@@ -905,5 +905,251 @@ KERNELSPEC void kernel_fks_counter_event_det(
     det_out = where((e != 0.) & soft_ok & collinear_ok, d, FVal<T>(0.));
 }
 
+// The FKS sector functions S_ij of fks_Sij.f. d_kl = (E_k E_l / (sqrt_s / 2)^2)^a
+// (1 - beta_k beta_l cos theta_kl)^b, energies and angles in the partonic
+// centre-of-mass frame of the momenta (written with invariants, so that the
+// momenta can be in any frame), and S_ij = h / sum_kl d_ij / d_kl over the
+// FKS pairs (k, l) of the real process, with h = h_damp(E_i / (E_i + E_j))
+// for a final-state pair of two gluons or photons.
+
+// energy of q in the rest frame of p_tot, of mass rs
+template <typename T>
+KERNELSPEC FVal<T> fks_frame_energy(FourMom<T> q, FourMom<T> p_tot, FVal<T> rs) {
+    return (q[0] * p_tot[0] - q[1] * p_tot[1] - q[2] * p_tot[2] - q[3] * p_tot[3]) / rs;
+}
+
+// d_kl of get_dkl_Sij for the momenta q1, q2 with energies e1, e2 (for the
+// energy factor; q1 can be the momentum of i per unit xi with the energy of
+// i), masses m1, m2 and colour octets o1, o2. With both, the energy of 1 is
+// in d_kl (d_ij / d_kl of a pair without i), else only that of 2. zero is set
+// where an energy or the angle falls below vtiny, as get_dkl_Sij does.
+template <typename T>
+KERNELSPEC FVal<T> fks_dkl(
+    FourMom<T> q1,
+    FVal<T> e1,
+    FVal<T> m1,
+    bool o1,
+    FourMom<T> q2,
+    FVal<T> e2,
+    FVal<T> m2,
+    bool o2,
+    bool both,
+    FourMom<T> p_tot,
+    FVal<T> half,
+    FVal<T> fks_a,
+    FVal<T> fks_b,
+    bool use_energy,
+    bool use_beta,
+    bool& zero
+) {
+    constexpr double vtiny = 1e-8;
+    zero = false;
+    FVal<T> energy = 1.;
+    if (both && (o1 || use_energy)) {
+        energy = energy * e1 / half;
+        if (e1 < vtiny * half) {
+            zero = true;
+            return 0.;
+        }
+    }
+    if (o2 || use_energy) {
+        energy = energy * e2 / half;
+        if (e2 < vtiny * half) {
+            zero = true;
+            return 0.;
+        }
+    }
+    if (energy > 0.) {
+        energy = pow(energy, fks_a);
+    }
+    // the angle in the frame of p_tot: with q's own energy E and length k,
+    // 1 - cos = (q1 q2) / (E1 E2) for massless momenta and 1 - beta_1 beta_2
+    // cos = (q1 q2) / (E1 E2) for massive ones whose velocity counts
+    auto rs = 2. * half;
+    auto f1 = fks_frame_energy<T>(q1, p_tot, rs);
+    auto f2 = fks_frame_energy<T>(q2, p_tot, rs);
+    auto dot12 = q1[0] * q2[0] - q1[1] * q2[1] - q1[2] * q2[2] - q1[3] * q2[3];
+    auto k1 = sqrt(max(f1 * f1 - m1 * m1, 0.));
+    auto k2 = sqrt(max(f2 * f2 - m2 * m2, 0.));
+    // g = 1 where beta enters (or the particle is massless), E / k otherwise
+    FVal<T> g1 = (!o1 && m1 != 0. && use_beta) || m1 == 0. ? FVal<T>(1.) : f1 / k1;
+    FVal<T> g2 = (!o2 && m2 != 0. && use_beta) || m2 == 0. ? FVal<T>(1.) : f2 / k2;
+    auto c0 = dot12 / (f1 * f2);
+    auto g12 = g1 * g2;
+    FVal<T> angle = g12 == 1. ? c0 : 1. - g12 * (1. - c0);
+    angle = max(angle, 0.);
+    zero = angle < vtiny;
+    if (angle > 0.) {
+        angle = pow(angle, fks_b);
+    }
+    return energy * angle;
+}
+
+template <typename T>
+KERNELSPEC FVal<T> fks_h_damp(FVal<T> x, FVal<T> one, FVal<T> a) {
+    if (x <= one) {
+        return 1.;
+    }
+    if (x >= 1. - one) {
+        return 0.;
+    }
+    auto y = (x - one) / (1. - 2. * one);
+    auto u = pow(1. - y, 2. * a), v = pow(y, 2. * a);
+    return u / (u + v);
+}
+
+template <typename T>
+KERNELSPEC void kernel_fks_sector_function(
+    FIn<T, 2> p,
+    FIn<T, 1> p_i_hat,
+    IIn<T, 0> index,
+    IIn<T, 1> fks_i,
+    IIn<T, 1> fks_j,
+    IIn<T, 3> pairs,
+    IIn<T, 2> octet,
+    IIn<T, 2> aorg,
+    FIn<T, 2> masses,
+    FIn<T, 1> options,
+    FOut<T, 0> s
+) {
+    std::size_t c = single_index(index);
+    std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
+    auto pair = pairs[c];
+    auto oct = octet[c];
+    auto ag = aorg[c];
+    auto mass = masses[c];
+    FVal<T> fks_a = options[0], fks_b = options[1];
+    bool use_energy = FVal<T>(options[2]) != 0., use_beta = FVal<T>(options[3]) != 0.;
+    FVal<T> h_one = options[4], h_a = options[5];
+
+    auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
+    FourMom<T> p_tot{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    auto rs = sqrt(max(lsquare<T>(p_tot), 0.));
+    if (p1[0] <= 0. || rs <= 0.) {
+        // unphysical kinematics, as fks_Sij.f
+        s = 0.;
+        return;
+    }
+    auto half = 0.5 * rs;
+    // i: the direction from its momentum per unit xi, its energy from its
+    // momentum (0 at a soft counter-event)
+    auto i_hat = load_mom<T>(p_i_hat);
+    auto e_i = fks_frame_energy<T>(load_mom<T>(p[ii]), p_tot, rs);
+    auto e_hat = fks_frame_energy<T>(i_hat, p_tot, rs);
+
+    FVal<T> inverse = 0., hfact = 1.;
+    std::size_t n = p.size();
+    for (std::size_t k = 0; k < n; ++k) {
+        for (std::size_t l = 0; l < n; ++l) {
+            if (single_index(pair[k][l]) == 0) {
+                continue;
+            }
+            bool zero_num = false, zero_den = false;
+            auto qk = load_mom<T>(p[k]), ql = load_mom<T>(p[l]);
+            auto qj = load_mom<T>(p[jj]);
+            bool ok = single_index(oct[k]) != 0, ol = single_index(oct[l]) != 0;
+            bool oi = single_index(oct[ii]) != 0, oj = single_index(oct[jj]) != 0;
+            FVal<T> mk = mass[k], ml = mass[l], mi = mass[ii], mj = mass[jj];
+            if ((k == ii && l == jj) || (l == ii && k == jj)) {
+                inverse = inverse + 1.;
+                if (single_index(ag[k]) != 0 && single_index(ag[l]) != 0 && jj >= 2) {
+                    auto e_j = fks_frame_energy<T>(qj, p_tot, rs);
+                    hfact = hfact * fks_h_damp<T>(e_i / (e_i + e_j), h_one, h_a);
+                }
+            } else if (k == ii || l == ii) {
+                // d_ij / d_il: the energy of i cancels
+                std::size_t other = k == ii ? l : k;
+                auto qo = load_mom<T>(p[other]);
+                bool oo = single_index(oct[other]) != 0;
+                FVal<T> mo = mass[other];
+                auto num = fks_dkl<T>(
+                    i_hat,
+                    e_hat,
+                    mi,
+                    oi,
+                    qj,
+                    fks_frame_energy<T>(qj, p_tot, rs),
+                    mj,
+                    oj,
+                    false,
+                    p_tot,
+                    half,
+                    fks_a,
+                    fks_b,
+                    use_energy,
+                    use_beta,
+                    zero_num
+                );
+                auto den = fks_dkl<T>(
+                    i_hat,
+                    e_hat,
+                    mi,
+                    oi,
+                    qo,
+                    fks_frame_energy<T>(qo, p_tot, rs),
+                    mo,
+                    oo,
+                    false,
+                    p_tot,
+                    half,
+                    fks_a,
+                    fks_b,
+                    use_energy,
+                    use_beta,
+                    zero_den
+                );
+                if (zero_den) {
+                    s = 0.;
+                    return;
+                }
+                inverse = inverse + num / den;
+            } else {
+                auto num = fks_dkl<T>(
+                    i_hat,
+                    e_i,
+                    mi,
+                    oi,
+                    qj,
+                    fks_frame_energy<T>(qj, p_tot, rs),
+                    mj,
+                    oj,
+                    true,
+                    p_tot,
+                    half,
+                    fks_a,
+                    fks_b,
+                    use_energy,
+                    use_beta,
+                    zero_num
+                );
+                auto den = fks_dkl<T>(
+                    qk,
+                    fks_frame_energy<T>(qk, p_tot, rs),
+                    mk,
+                    ok,
+                    ql,
+                    fks_frame_energy<T>(ql, p_tot, rs),
+                    ml,
+                    ol,
+                    true,
+                    p_tot,
+                    half,
+                    fks_a,
+                    fks_b,
+                    use_energy,
+                    use_beta,
+                    zero_den
+                );
+                if (zero_den) {
+                    s = 0.;
+                    return;
+                }
+                inverse = inverse + num / den;
+            }
+        }
+    }
+    s = hfact / inverse;
+}
+
 } // namespace kernels
 } // namespace madspace

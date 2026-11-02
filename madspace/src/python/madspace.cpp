@@ -1726,6 +1726,54 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSKinematics::mapping")
         );
 
+    py::classh<FKSSectorFunction, FunctionGenerator>(
+        m, "FKSSectorFunction", pydoc::doc("FKSSectorFunction")
+    )
+        .def(
+            py::init<
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const nested_vector3<std::size_t>&,
+                const nested_vector2<int>&,
+                const nested_vector2<int>&,
+                const nested_vector2<double>&,
+                double,
+                double,
+                bool,
+                bool,
+                double,
+                double>(),
+            py::arg("i_fks"),
+            py::arg("j_fks"),
+            py::arg("fks_j_from_i"),
+            py::arg("colors"),
+            py::arg("pdgs"),
+            py::arg("masses"),
+            py::arg("fks_a") = 1.5,
+            py::arg("fks_b") = 1.5,
+            py::arg("use_energy") = true,
+            py::arg("use_beta") = true,
+            py::arg("h_damp_one") = 0.01,
+            py::arg("h_damp_power") = 1.,
+            pydoc::doc("FKSSectorFunction::FKSSectorFunction")
+        )
+        .def(
+            "configuration_count",
+            &FKSSectorFunction::configuration_count,
+            pydoc::doc("FKSSectorFunction::configuration_count")
+        )
+        .def(
+            "particle_count",
+            &FKSSectorFunction::particle_count,
+            pydoc::doc("FKSSectorFunction::particle_count")
+        )
+        .def(
+            "pairs",
+            &FKSSectorFunction::pairs,
+            py::arg("index"),
+            pydoc::doc("FKSSectorFunction::pairs")
+        );
+
     py::classh<MultiChannelFunction, FunctionGenerator>(
         m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
     )

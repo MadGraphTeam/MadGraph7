@@ -2808,6 +2808,45 @@ fks_counter_event_det:
       desc: "det where the counter-event exists, 0 elsewhere"
   desc: "Jacobian of an FKS counter-event, zero where genps_fks.f does not generate it: a soft counter-event needs xi = 0, which a lower bound on the partonic energy of an emission off an incoming parton can exclude, and an event with the first solution for the momentum of a massive emitter; a collinear one needs y = 1, which the bound can exclude. A massive emitter has no collinear counter-events. See @ref FKSRadiation."
 
+fks_sector_function:
+  inputs:
+    - name: p
+      type: [float, n, 4]
+      desc: "momenta of the real emission or of a counter-event, in the order of the real process of the configuration of the event, in any frame"
+    - name: p_i_hat
+      type: [float, 4]
+      desc: "momentum of i per unit xi, which gives its direction where i is soft"
+    - name: index
+      type: [int]
+      desc: "FKS configuration of the event"
+    - name: fks_i
+      type: [int, single, c]
+      desc: "position of i in the real process of each configuration"
+    - name: fks_j
+      type: [int, single, c]
+      desc: "position of j in the real process of each configuration"
+    - name: pairs
+      type: [int, single, c, n, n]
+      desc: "1 where (k, l) is an FKS pair of the real process of the configuration, each pair once"
+    - name: octet
+      type: [int, single, c, n]
+      desc: "1 for a colour octet, whose energy is always in d_kl"
+    - name: aorg
+      type: [int, single, c, n]
+      desc: "1 for a gluon or a photon: a final-state pair (i, j) of two of them gets h_damp"
+    - name: masses
+      type: [float, single, c, n]
+      desc: "masses of the particles of the real process of each configuration"
+    - name: options
+      type: [float, single, 6]
+      desc: "fks_a, fks_b, useenergy, usebeta, one_h_damp and a_h_damp of fks_powers.inc"
+  outputs:
+    - name: s
+      type: [float]
+      desc: "the sector function S_ij of the configuration"
+  vectorized: False
+  desc: "FKS sector function S_ij of fks_Sij.f, 1 / sum_kl d_ij / d_kl over the FKS pairs (k, l) of the real process with d_kl = (E_k E_l / (sqrt_s / 2)^2)^fks_a (1 - beta_k beta_l cos theta_kl)^fks_b, times h_damp(E_i / (E_i + E_j)) for a final-state pair (i, j) of two gluons or photons. Energies and angles are those in the partonic centre-of-mass frame of the momenta, from invariants. i enters with the direction of p_i_hat and the energy of its momentum in p, so that at a soft counter-event the pairs without i drop out. As in fks_Sij.f, S_ij is zero where an energy or the angle of a pair in a denominator falls below 1e-8."
+
 fks_beam_boost:
   inputs:
     - name: p
