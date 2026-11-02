@@ -1274,6 +1274,49 @@ pub mod v2 {
             assert_eq!(report.counts["reduction lanes"], 3);
         }
 
+        /// A family mask (an evaluation-time selection, `V2Executor.
+        /// evaluate`'s `families`) dresses and reduces the kept families
+        /// only: the dropped family's lanes are absent, the kept one's are
+        /// bitwise those of the whole evaluation; a mask of the wrong length
+        /// is refused.
+        #[test]
+        fn a_family_mask_dresses_the_kept_families_only() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let batch = V2Batch {
+                momenta: vec![[1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec()],
+                scales: vec![Rational::from(1)],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new()],
+                born: vec![vec![Complex::new(1.0, 1.0)]],
+            };
+            let run = |families: Option<&[bool]>| {
+                let mut backend = Failing {
+                    calls: vec![Vec::new()],
+                };
+                executor
+                    .evaluate_families(&batch, &0.0, &mut backend, V2Options::default(), families)
+                    .map(|(results, report)| {
+                        let lanes = report.counts.get("reduction lanes").copied();
+                        (results, lanes.unwrap_or(0))
+                    })
+            };
+            let (every, lanes) = run(None).unwrap();
+            assert_eq!(lanes, 2);
+            let (kept, lanes) = run(Some(&[false, true])).unwrap();
+            assert_eq!(lanes, 1);
+            assert_eq!(kept[0].families.len(), 1);
+            assert_eq!(kept[0].families[0], every[0].families[1]);
+            let (none, lanes) = run(Some(&[false, false])).unwrap();
+            assert_eq!(lanes, 0);
+            assert!(none[0].families.is_empty() && none[0].failures.is_empty());
+            assert!(run(Some(&[true])).is_err());
+        }
+
         /// The next bucket chunk reading an input follows the chunks'
         /// ascending reads; none after the last.
         #[test]
