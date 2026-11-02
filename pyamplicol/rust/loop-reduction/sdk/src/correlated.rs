@@ -211,29 +211,7 @@ impl Runtime {
         let (momenta, scales) = exact_inputs(&inputs, self.shape.external_count)?;
         let points = inputs.point_ids.len();
         let spin_legs: Vec<usize> = inputs.spin_sources.keys().copied().collect();
-        let spins = if spin_legs.is_empty() {
-            Vec::new()
-        } else {
-            use rusticol_core::loop_v2::dress::parse_rational;
-            (0..points)
-                .map(|point| {
-                    inputs
-                        .spin_sources
-                        .iter()
-                        .map(|(leg, values)| {
-                            let component = |k: usize| -> RusticolResult<_> {
-                                let [re, im] = &values[4 * point + k];
-                                Ok((parse_rational(re)?, parse_rational(im)?))
-                            };
-                            Ok((
-                                *leg,
-                                [component(0)?, component(1)?, component(2)?, component(3)?],
-                            ))
-                        })
-                        .collect::<RusticolResult<BTreeMap<_, _>>>()
-                })
-                .collect::<RusticolResult<Vec<_>>>()?
-        };
+        let spins = spin_rows(&inputs.spin_sources, points)?;
         let Engine::V4(native) = &mut self.engine;
         let evaluation = match arithmetic {
             Arithmetic::Double => {
@@ -259,6 +237,52 @@ impl Runtime {
             ..evaluation
         })
     }
+}
+
+/// Per point the exact spin sources of every leg: `sources` maps a one-based
+/// leg to its four complex components per point (`4 * points` pairs, point
+/// major). A leg 0 or a vector of another length (e.g. one broadcast row
+/// passed to the per-point decimal API) is an invalid argument, never an
+/// out-of-bounds read.
+fn spin_rows(
+    sources: &BTreeMap<usize, Vec<[String; 2]>>,
+    points: usize,
+) -> RusticolResult<Vec<BTreeMap<usize, [(Rational, Rational); 4]>>> {
+    use rusticol_core::loop_v2::dress::parse_rational;
+
+    if sources.is_empty() {
+        return Ok(Vec::new());
+    }
+    let width = product(&[points, 4])?;
+    for (leg, values) in sources {
+        if *leg == 0 {
+            return Err(invalid("spin source legs must be unique one-based labels"));
+        }
+        if values.len() != width {
+            return Err(invalid(format!(
+                "the spin source of leg {leg} holds {} complex components; \
+                 {points} points need 4 per point ({width})",
+                values.len()
+            )));
+        }
+    }
+    (0..points)
+        .map(|point| {
+            sources
+                .iter()
+                .map(|(leg, values)| {
+                    let component = |k: usize| -> RusticolResult<_> {
+                        let [re, im] = &values[4 * point + k];
+                        Ok((parse_rational(re)?, parse_rational(im)?))
+                    };
+                    Ok((
+                        *leg,
+                        [component(0)?, component(1)?, component(2)?, component(3)?],
+                    ))
+                })
+                .collect::<RusticolResult<BTreeMap<_, _>>>()
+        })
+        .collect()
 }
 
 /// A complex output (`complex(value)` / the Python API's
@@ -398,6 +422,40 @@ mod tests {
                 })
             })
             .collect()
+    }
+
+    fn literal(values: &[&str]) -> Vec<[String; 2]> {
+        values
+            .iter()
+            .map(|value| [value.to_string(), "0".to_string()])
+            .collect()
+    }
+
+    #[test]
+    fn spin_sources_need_four_components_per_point() {
+        // Two points: one row per point is read point by point.
+        let rows = BTreeMap::from([(3, literal(&["1", "2", "3", "4", "5", "6", "7", "8"]))]);
+        let found = spin_rows(&rows, 2).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1][&3][0].0, Rational::from(5));
+        assert_eq!(found[1][&3][3].0, Rational::from(8));
+        // A broadcast row (4 pairs) for 2 points, a short or a long vector,
+        // and leg 0 are typed invalid arguments, not panics.
+        for (leg, values) in [
+            (3, literal(&["1", "2", "3", "4"])),
+            (3, literal(&["1", "2", "3", "4", "5", "6", "7"])),
+            (3, literal(&["0"; 12])),
+            (0, literal(&["0"; 8])),
+        ] {
+            let error = spin_rows(&BTreeMap::from([(leg, values)]), 2).unwrap_err();
+            assert_eq!(error.kind(), rusticol_core::RusticolErrorKind::InvalidArgument);
+        }
+        let message = spin_rows(&BTreeMap::from([(4, literal(&["1"; 4]))]), 2)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("leg 4 holds 4") && message.contains("(8)"), "{message}");
+        // No sources: the physical states, whatever the point count.
+        assert!(spin_rows(&BTreeMap::new(), 3).unwrap().is_empty());
     }
 
     #[test]

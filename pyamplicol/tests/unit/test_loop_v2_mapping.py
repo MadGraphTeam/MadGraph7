@@ -691,3 +691,65 @@ def test_double_double_through_the_mapping(mapped_qg):
         arithmetic="double-double",
     )["s"]
     assert _values(left) == _values(right)
+
+
+def test_selection_on_a_mapped_process_names_its_mapping(leading):
+    """Helicity and colour-flow selection of a mapped process is refused
+    typed (``CompatibilityError``) at leading colour, where its
+    representative selects, and the message says how the process is served:
+    the permutation alias ``dg_out`` and the side-permuted selector
+    ``g d > d g`` of ``d g > d g`` (no longer "flavour member" for both)."""
+
+    from pyamplicol.api.errors import CompatibilityError
+
+    cases = (
+        ("dg_out", "a permutation alias"),
+        ("g d > d g", "a side permutation of the stored process"),
+    )
+    for process, kind in cases:
+        runtime = _load(leading, process)
+        for selection in ({"helicities": ["h0"]}, {"color_flows": ["flow-0"]}):
+            with pytest.raises(CompatibilityError) as error:
+                runtime.evaluate(POINTS[:1], mu_r2=SCALES[:1], **selection)
+            message = str(error.value)
+            assert f"selection of {kind} (" in message, message
+            assert "flavour member" not in message
+            assert "select on its representative process" in message
+
+
+def test_mapping_kinds_name_flavour_members_and_aliases():
+    """The wording of the other mapping kinds: a process-group member of the
+    artifact (identity or permuted legs) and the in-memory members
+    (``observables.FlavourMember``: species, permutation or both)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.artifact import _mapping_kind as stored
+    from pyamplicol.loops.v2.observables import FlavourMember
+    from pyamplicol.runtime.virtual import _mapping_kind as member
+
+    record = {"id": "ddx", "aliases": [{"id": "ddx_swap"}]}
+
+    def group(process_id, permutation):
+        return SimpleNamespace(process_id=process_id, permutation=permutation)
+
+    assert stored(record, group("ddx", (1, 0, 2, 3))) == (
+        "a side permutation of the stored process"
+    )
+    assert stored(record, group("ddx_swap", (1, 0, 3, 2))) == "a permutation alias"
+    assert stored(record, group("ssx", (0, 1, 2, 3))) == (
+        "a process-group flavour member"
+    )
+    assert stored(record, group("sxs", (1, 0, 2, 3))) == (
+        "a process-group flavour member in permuted leg order"
+    )
+    identity, swapped = (0, 1, 2, 3), (1, 0, 2, 3)
+    assert member(FlavourMember("s s~ > g g", "d d~ > g g", identity, {1: 3})) == (
+        "a flavour member"
+    )
+    assert member(FlavourMember("s~ s > g g", "d d~ > g g", swapped, {1: 3})) == (
+        "a flavour member in permuted leg order"
+    )
+    assert member(FlavourMember("d~ d > g g", "d d~ > g g", swapped, {})) == (
+        "a permutation alias"
+    )

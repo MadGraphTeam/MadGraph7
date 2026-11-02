@@ -1543,12 +1543,16 @@ class StoredColumns:
                     for (family, order, column), values in runs
                 }
 
-            scaleless = scaleless_check = None
-            if extra is not None:
-                scaleless = read(extra["families"][index], twin_orders, families)
-                if extra["check"] is not None:
-                    scaleless_check = read(extra["check"][index], twin_orders, families)
             with _Numbers(precision).scope():
+                # Every lane (the companion's too) is read at the working
+                # digits: an extended carrier rounds its literals there.
+                scaleless = scaleless_check = None
+                if extra is not None:
+                    scaleless = read(extra["families"][index], twin_orders, families)
+                    if extra["check"] is not None:
+                        scaleless_check = read(
+                            extra["check"][index], twin_orders, families
+                        )
                 evaluation.column_locals = self._locals(
                     output["columns"][index], numbers, evaluation.poles
                 )

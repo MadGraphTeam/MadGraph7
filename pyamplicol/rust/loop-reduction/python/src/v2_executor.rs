@@ -275,7 +275,15 @@ impl Trees {
             .as_mut()
             .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
             .expect("a runtime of this carrier");
-        let bound = program.bind(runtime, values, scales, zero).map_err(error)?;
+        let bound = program
+            .bind(runtime, values, scales, zero)
+            .map_err(|failure| {
+                if rusticol_core::loop_v2::trees::is_nonfinite_counterterm(&failure) {
+                    NonFiniteCountertermError::new_err(failure.to_string())
+                } else {
+                    error(failure)
+                }
+            })?;
         Ok((runtime, bound))
     }
 
@@ -1544,6 +1552,18 @@ pyo3::create_exception!(
      caller's real points."
 );
 
+pyo3::create_exception!(
+    _loop_reduction,
+    NonFiniteCountertermError,
+    pyo3::exceptions::PyValueError,
+    "A batch the tree program's parameter binding refuses because a \
+     counterterm coupling's diagnostic is not finite at some point's mu_R^2 \
+     (`rusticol_core::loop_v2::trees::nonfinite_counterterm`; e.g. mu_r2 = \
+     1e-400 in binary64): it depends on the scale, so the Python runtimes \
+     re-run the batch per scale (`runtime.virtual.isolate_scale_failures`). \
+     A `ValueError`; its argument is the message."
+);
+
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), checked
 /// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
@@ -1680,6 +1700,10 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "PlaneMismatchError",
         module.py().get_type::<PlaneMismatchError>(),
+    )?;
+    module.add(
+        "NonFiniteCountertermError",
+        module.py().get_type::<NonFiniteCountertermError>(),
     )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;

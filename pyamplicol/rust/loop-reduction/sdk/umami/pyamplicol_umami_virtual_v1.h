@@ -7,12 +7,18 @@
 extern "C" {
 #endif
 
-/* pyAmpliCol extension version 1, NOT standard UMAMI virtual interoperability.
+/* pyAmpliCol extension, NOT standard UMAMI virtual interoperability.
  * It adds no umami_* symbols and changes no upstream/tree enums or ABI.
  * Use rusticol_virtual_open/free/clear/update_parameters and its metadata,
  * capabilities and shape queries. A handle identifies one saved process.
+ *
+ * Layout version 2 (with the virtual C ABI version 2): the options struct
+ * lost version 1's verification_json member. The file, symbol and key names
+ * keep their historical _v1 / V1 spelling (renaming them would break every
+ * client for no layout change); pyamplicol_umami_virtual_v1_version() and
+ * this macro report the layout a client was compiled against.
  */
-#define PYAMPLICOL_UMAMI_VIRTUAL_VERSION 1
+#define PYAMPLICOL_UMAMI_VIRTUAL_VERSION 2
 /* These provider-specific keys are accepted only by the versioned function.
  * Standard UMAMI_IN_MOMENTA is also accepted. Other standard inputs, including
  * random/probability selectors, channels and flavours, are unsupported.
