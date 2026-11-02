@@ -53,7 +53,10 @@ def _assert_passed(record, *, catani: bool, ward: bool) -> None:
     for row in record.get("dd", ()):
         assert row["passed"], row
     if ward:
-        assert record["ward"] and all(row["passed"] for row in record["ward"])
+        # A binary64 point beyond the binary64 scope (O1) is recorded, not
+        # asserted; at least one row is.
+        asserted = [row["passed"] for row in record["ward"] if row["asserted"]]
+        assert asserted and all(asserted)
     assert record["rescue"]["of"] == len(record["rescue"]["level0_estimates"])
 
 
