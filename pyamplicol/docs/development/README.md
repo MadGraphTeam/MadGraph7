@@ -49,6 +49,12 @@ documented `PYAMPLICOL_*` variables, saved PACBIN/artifact controls come from
 `PYAMPLICOL_LOOP_SAVED_FIXTURES` (default `<workspace>/fixtures`), and provider
 references are the committed `tests/fixtures/loop/*.json`, whose absence fails.
 
+Profiling only: `PYAMPLICOL_LOOP_STAGE_MEMORY` (any value) makes the native
+counterterm-DAG builder print the process's resident and peak memory after
+each stage and then reset the peak (`/proc/self/clear_refs`), so a run that
+records its peak RSS (the G1 harness, `tools/loop_v2_generate.py`) must not
+set it.
+
 ## Optimized loop native builds
 
 For long loop generation/validation runs, build the extension and loop SDK
