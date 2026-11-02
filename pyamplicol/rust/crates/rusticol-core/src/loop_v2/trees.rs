@@ -71,7 +71,7 @@ use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPla
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
@@ -789,7 +789,9 @@ struct Edge {
     right_momentum: usize,
     /// Offset of the result's accumulator in the step's accumulator row.
     accumulator: usize,
-    weight: [Rational; 2],
+    /// The exact weight: an index into the program's distinct weights
+    /// (`Interactions::weights`; M-FINAL MF-8G-2 item 4).
+    weight: u32,
     /// Whether only epsilon-pole terms read its result.
     pole: bool,
 }
@@ -819,6 +821,9 @@ struct Interactions {
     /// (inputs, outputs) of each kernel, in the same order.
     shapes: Vec<(usize, usize)>,
     steps: Vec<Step>,
+    /// The distinct exact interaction weights the edges index (a program
+    /// has a handful; each edge holds four bytes instead of two rationals).
+    weights: Vec<[Rational; 2]>,
 }
 
 /// The state of an interaction program: its size and model parameters.
@@ -1646,12 +1651,14 @@ fn load_interactions(
         })
     };
     let mut steps = Vec::new();
+    let mut weights: Vec<[Rational; 2]> = Vec::new();
     match columns {
         Some(columns) => {
             // A binary section (`binary::StepColumns`): each distinct weight
             // parsed once.
             require(program.steps.is_empty(), "steps in both forms")?;
-            let weights = columns.exact_weights()?;
+            weights = columns.exact_weights()?;
+            let distinct = u32::try_from(weights.len()).map_err(|_| invalid("weights"))?;
             let [o_acc, o_mom, o_start, o_dim] = &columns.output_columns;
             let r = &columns.row_columns;
             for range in columns.ranges() {
@@ -1662,6 +1669,10 @@ fn load_interactions(
                     .map(|k| columns.masks.at(k))
                     .collect();
                 let mut rows = (range.rows.0..range.rows.1).map(|k| {
+                    let weight = u32::try_from(r[8].get(k))
+                        .ok()
+                        .filter(|&w| w < distinct)
+                        .ok_or_else(|| invalid("interaction weight index"))?;
                     Ok((
                         r[0].at(k),
                         r[1].at(k),
@@ -1671,7 +1682,7 @@ fn load_interactions(
                         r[5].at(k),
                         r[6].at(k),
                         r[7].at(k),
-                        weights[r[8].at(k)].clone(),
+                        weight,
                     ))
                 });
                 let mut outputs = (range.outputs.0..range.outputs.1).map(|k| {
@@ -1687,9 +1698,21 @@ fn load_interactions(
             }
         }
         None => {
+            // The JSON program (the oracle): each distinct weight interned.
+            let mut index: HashMap<(String, String), u32> = HashMap::new();
             for step in program.steps {
                 let mut rows = step.interactions.into_iter().map(
                     |(kernel, left, ld, right, rd, pl, pr, accumulator, re, im)| {
+                        let weight = match index.get(&(re.clone(), im.clone())) {
+                            Some(&found) => found,
+                            None => {
+                                let next = u32::try_from(weights.len())
+                                    .map_err(|_| invalid("too many interaction weights"))?;
+                                weights.push([exact(&re)?, exact(&im)?]);
+                                index.insert((re, im), next);
+                                next
+                            }
+                        };
                         Ok((
                             kernel,
                             left,
@@ -1699,7 +1722,7 @@ fn load_interactions(
                             pl,
                             pr,
                             accumulator,
-                            [exact(&re)?, exact(&im)?],
+                            weight,
                         ))
                     },
                 );
@@ -1719,6 +1742,7 @@ fn load_interactions(
         planes: planes.map(<[Vec<u8>]>::to_vec),
         shapes,
         steps,
+        weights,
     })
 }
 
@@ -1732,7 +1756,7 @@ type StepRow = (
     usize,
     usize,
     usize,
-    [Rational; 2],
+    u32,
 );
 
 /// Validate a parameter program (`ParameterFile`) against the tree program
@@ -2774,6 +2798,11 @@ impl TreeProgram {
                 .collect::<RusticolResult<Vec<_>>>()
         };
         let weights_of = |program: &Interactions| -> Vec<Vec<Vec<Complex<T>>>> {
+            let distinct: Vec<Complex<T>> = program
+                .weights
+                .iter()
+                .map(|[re, im]| complex(re, im))
+                .collect();
             program
                 .steps
                 .iter()
@@ -2783,7 +2812,7 @@ impl TreeProgram {
                         .map(|(_kernel, edges)| {
                             edges
                                 .iter()
-                                .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
+                                .map(|edge| distinct[edge.weight as usize].clone())
                                 .collect()
                         })
                         .collect()

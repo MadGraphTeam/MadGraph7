@@ -198,7 +198,7 @@ mod tests {
             left_momentum: 10,
             right_momentum: 10,
             accumulator,
-            weight: [Rational::from(1), Rational::from(0)],
+            weight: 0,
             pole: false,
         }
     }
@@ -225,6 +225,7 @@ mod tests {
                     outputs: vec![output(0, 8), output(1, 9)],
                 },
             ],
+            weights: vec![[Rational::from(1), Rational::from(0)]],
         }
     }
 
