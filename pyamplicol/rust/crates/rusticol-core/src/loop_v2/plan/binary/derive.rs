@@ -199,6 +199,11 @@ const TREE_KEY: u64 = 40;
 /// The bytes of the one node a B-tree may hold below half full (its root).
 const TREE_ROOT: u64 = 256;
 
+/// The allocation of one shared link list (`plan::SharedLinks`): the `Arc`'s
+/// two counts and the list's header (its bytes are counted as the part's
+/// links).
+const SHARED_LINKS: usize = 2 * size_of::<usize>() + size_of::<super::super::PackedLinks>();
+
 /// The bytes of a B-tree set of `items` keys of at most 8 bytes.
 fn tree(items: u64) -> u64 {
     if items == 0 {
@@ -568,6 +573,9 @@ impl Sizes<'_> {
         let trees = filtered.saturating_mul(TREE_KEY);
         tally.hold_bytes(step, trees.saturating_add(terms.saturating_mul(TREE_ROOT)));
         tally.keep(terms, size_of::<SplitPart>());
+        // Each part's list shared (`plan::LinkInterner`), when it is the first
+        // of its links.
+        tally.keep(terms, SHARED_LINKS);
         let visits = rows.saturating_add(expanded).saturating_mul(terms);
         tally.iterate(visits.saturating_add(self.term_rows[content]));
         terms
@@ -1099,9 +1107,20 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     }
     tables.finish(&mut tally);
 
+    // The split parts' distinct link lists while the plan loads (one per
+    // part at most, and one per part the live-row pruning shortens, with
+    // its shared list).
+    let parts = sizes.parts;
+    let lists = if file.column_rows.is_some() {
+        tally.keep(parts, SHARED_LINKS);
+        parts.saturating_mul(2)
+    } else {
+        parts
+    };
+    tally.map_grown(lists, size_of::<super::super::SharedLinks>());
+
     // The split inputs (vertex instances and currents: at most one per
     // part) and their ordered lists.
-    let parts = sizes.parts;
     tally.map_grown(parts, size_of::<((usize, u64), usize)>());
     tally.map_grown(parts, size_of::<((usize, usize), usize)>());
     tally.keep(parts, size_of::<(usize, (usize, u64))>());

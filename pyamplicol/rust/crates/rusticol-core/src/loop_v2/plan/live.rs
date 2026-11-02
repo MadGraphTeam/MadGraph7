@@ -30,15 +30,16 @@
 //! programs.
 
 use super::{
-    Content, Family, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex, fused_cost,
-    step_shape,
+    Content, Family, LinkInterner, LoopProgramV4, ReadRows, Source, Step, StepCost, Vertex,
+    fused_cost, step_shape,
 };
 use std::collections::BTreeSet;
 
 impl LoopProgramV4 {
     /// Drop the schedule-B row links, edges and steps that only carry the
-    /// zeros of the Born rows no column keeps (module docs).
-    pub(super) fn prune_dead_rows(&mut self) {
+    /// zeros of the Born rows no column keeps (module docs); the split
+    /// parts' shortened link lists are interned in `links`.
+    pub(super) fn prune_dead_rows(&mut self, links: &mut LinkInterner) {
         if !self.column_rows.restricts() {
             return;
         }
@@ -47,7 +48,14 @@ impl LoopProgramV4 {
             .map(|row| self.column_rows.keeps(row / columns, row % columns))
             .collect();
         for family in &mut self.families {
-            prune_family(family, &seeded, columns, &self.contents, &self.vertices);
+            prune_family(
+                family,
+                &seeded,
+                columns,
+                &self.contents,
+                &self.vertices,
+                links,
+            );
         }
         // The factor and current rows the kept links read (schedules F and
         // M read the plan's chunk inputs too, with links of their own).
@@ -109,6 +117,7 @@ fn prune_family(
     columns: usize,
     contents: &[Content],
     vertices: &[Vertex],
+    interner: &mut LinkInterner,
 ) {
     let steps = &mut family.steps;
     // Forward: the object rows a kept seed row reaches.
@@ -175,7 +184,7 @@ fn prune_family(
                 let mut members: Vec<Vec<(usize, usize)>> = vec![Vec::new(); split.groups.len()];
                 for (e, (parts, input)) in split.parts.iter_mut().zip(&inputs).enumerate() {
                     for (p, part) in parts.iter_mut().enumerate() {
-                        part.links.retain(|link| kept(link, input));
+                        interner.retain(&mut part.links, |link| kept(link, input));
                         members[part.group].push((e, p));
                         if let Source::Step(child) = step.edges[e].source {
                             for link in part.links.iter() {

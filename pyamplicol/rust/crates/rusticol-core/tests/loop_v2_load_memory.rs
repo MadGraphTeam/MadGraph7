@@ -121,6 +121,26 @@ fn plan_parts(plan: &LoopProgramV4) -> Value {
             }
         }
     }
+    // Distinct split-part link lists (the sharing an interned list would
+    // give): hashed by value, counted with their links.
+    let mut distinct: std::collections::HashMap<u64, i64> = std::collections::HashMap::new();
+    for family in &plan.families {
+        for step in &family.steps {
+            if let Some(split) = &step.split {
+                for part in split.parts.iter().flatten() {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    part.links.len().hash(&mut h);
+                    for l in part.links.iter() {
+                        (l.output, l.input, l.block).hash(&mut h);
+                    }
+                    distinct.insert(h.finish(), part.links.len() as i64);
+                }
+            }
+        }
+    }
+    let distinct_lists = distinct.len() as i64;
+    let distinct_links: i64 = distinct.values().sum();
     let content_rows: i64 = plan
         .contents
         .iter()
@@ -131,7 +151,8 @@ fn plan_parts(plan: &LoopProgramV4) -> Value {
         "counts": {
             "families": plan.families.len(), "steps": steps, "edges": edges,
             "edge_links": links, "split_parts": split_parts, "split_links": split_links,
-            "split_targets": split_targets, "leaves": leaves, "contents": plan.contents.len(),
+            "split_targets": split_targets, "split_lists_distinct": distinct_lists,
+            "split_links_distinct": distinct_links, "leaves": leaves, "contents": plan.contents.len(),
             "term_rows": content_rows, "vertices": plan.vertices.len(),
             "seeds": plan.seeds.len(), "seed_classes": plan.seed_classes.len(),
             "products": plan.products.len(), "edge_bytes": size,
@@ -221,6 +242,8 @@ fn report(path: &str) -> Value {
         "plan_peak_mib": mib(plan_peak),
         "plan": parts,
         "trees_form": form,
+        "kernel_states_mib": mib(kernels.iter().map(|k| k.len() as i64).sum()),
+        "kernel_planes_mib": mib(planes.iter().map(|k| k.len() as i64).sum()),
         "trees_source_mib": mib(source.len() as i64),
         "trees_live_mib": mib(trees_live),
         "trees_peak_mib": mib(trees_peak),

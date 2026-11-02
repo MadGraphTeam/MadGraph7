@@ -50,7 +50,7 @@ mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
 use ninjars::fast::tensor_layout::ncoeff;
-pub use packed::PackedLinks;
+pub use packed::{LinkInterner, PackedLinks, SharedLinks};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::rational::Rational;
@@ -613,8 +613,9 @@ pub struct SplitPart {
     /// The step group of the term's vertex.
     pub group: usize,
     /// Row links whose `block` is the term row (its current row), packed
-    /// (`plan/packed.rs`; the dressing unpacks them per part).
-    pub links: PackedLinks,
+    /// and shared by the parts with equal links (`plan/packed.rs`; the
+    /// dressing unpacks them per part).
+    pub links: SharedLinks,
 }
 
 /// One schedule-B step: a dressed trie node, or one cut species of a
@@ -913,6 +914,8 @@ pub struct ReadRows {
 struct Tables {
     index: HashMap<(usize, usize), usize>,
     tables: Vec<MonomialProductTable>,
+    /// The split parts' distinct link lists (`plan/packed.rs`).
+    links: LinkInterner,
 }
 
 /// Ids of the split inputs the chosen split steps read.
@@ -1218,7 +1221,7 @@ fn split_candidate(
                 term: t,
                 current: 0,
                 group,
-                links,
+                links: tables.links.intern(links),
             });
         }
         parts.push(edge_parts);
@@ -1581,6 +1584,7 @@ impl LoopProgramV4 {
         let mut tables = Tables {
             index: HashMap::new(),
             tables: Vec::new(),
+            links: LinkInterner::default(),
         };
         let mut order_count = 0;
         let mut families = Vec::with_capacity(file.families.len());
@@ -1652,7 +1656,7 @@ impl LoopProgramV4 {
         };
         // Helicity-resolved and selected columns: the steps keep the rows
         // their kept Born rows reach (`live`).
-        program.prune_dead_rows();
+        program.prune_dead_rows(&mut tables.links);
         Ok(program)
     }
 
