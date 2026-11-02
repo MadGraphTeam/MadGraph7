@@ -1252,13 +1252,13 @@ impl<T> TreeInputs<T> {
 pub struct TreeRuntime<T> {
     /// The parameter program.
     parameters: Kernel<T>,
-    /// The interaction program's kernels and, per step and kernel group,
-    /// its interactions' weights.
+    /// The interaction program's kernels and its distinct interaction
+    /// weights (`Interactions::weights`, which each interaction indexes).
     kernels: Vec<Kernel<T>>,
-    edge_weights: Vec<Vec<Vec<Complex<T>>>>,
-    /// The counterterm program's kernels and interaction weights.
+    edge_weights: Vec<Complex<T>>,
+    /// The counterterm program's kernels and distinct interaction weights.
     counterterm_kernels: Vec<Kernel<T>>,
-    counterterm_edge_weights: Vec<Vec<Vec<Complex<T>>>>,
+    counterterm_edge_weights: Vec<Complex<T>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
     metric: Option<Vec<Complex<T>>>,
@@ -2797,26 +2797,11 @@ impl TreeProgram {
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
-        let weights_of = |program: &Interactions| -> Vec<Vec<Vec<Complex<T>>>> {
-            let distinct: Vec<Complex<T>> = program
+        let weights_of = |program: &Interactions| -> Vec<Complex<T>> {
+            program
                 .weights
                 .iter()
                 .map(|[re, im]| complex(re, im))
-                .collect();
-            program
-                .steps
-                .iter()
-                .map(|step| {
-                    step.groups
-                        .iter()
-                        .map(|(_kernel, edges)| {
-                            edges
-                                .iter()
-                                .map(|edge| distinct[edge.weight as usize].clone())
-                                .collect()
-                        })
-                        .collect()
-                })
                 .collect()
         };
         let kernels = kernels_of(&self.interactions)?;
@@ -4196,7 +4181,7 @@ fn run_interactions<T: Carrier>(
     program: &Interactions,
     layout: StateLayout,
     kernels: &mut [Kernel<T>],
-    edge_weights: &[Vec<Vec<Complex<T>>>],
+    edge_weights: &[Complex<T>],
     states: &mut [Complex<T>],
     points: usize,
     poles: bool,
@@ -4217,31 +4202,19 @@ where
     };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
-    // The weights follow the program's interactions (a runtime built before
-    // a row restriction, `rows`, would not).
+    // The interactions index the program's distinct weights (a row
+    // restriction, `rows`, keeps them).
     require(
-        edge_weights.len() == program.steps.len()
-            && program
-                .steps
-                .iter()
-                .zip(edge_weights)
-                .all(|(step, weights)| {
-                    step.groups.len() == weights.len()
-                        && step
-                            .groups
-                            .iter()
-                            .zip(weights)
-                            .all(|((_, edges), weights)| edges.len() == weights.len())
-                }),
+        edge_weights.len() == program.weights.len(),
         "a tree runtime of another interaction program",
     )?;
-    for (step, weights) in program.steps.iter().zip(edge_weights) {
+    for step in &program.steps {
         let mut sums = vec![czero.clone(); points * step.width];
-        for ((kernel, edges), weights) in step.groups.iter().zip(weights) {
+        for (kernel, edges) in &step.groups {
             let active: Vec<(&Edge, &Complex<T>)> = edges
                 .iter()
-                .zip(weights)
-                .filter(|(edge, _)| poles || !edge.pole)
+                .filter(|edge| poles || !edge.pole)
+                .map(|edge| (edge, &edge_weights[edge.weight as usize]))
                 .collect();
             if active.is_empty() {
                 continue;
