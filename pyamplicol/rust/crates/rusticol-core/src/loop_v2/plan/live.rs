@@ -692,4 +692,27 @@ mod tests {
         assert_eq!(expected.len(), 1);
         assert_eq!(pairs(&live.family(0).unwrap().steps[0].edges[0].links), expected);
     }
+
+    /// The executor keeps its latest row liveness and returns it again for
+    /// the same rows and family mask; other rows or masks form a new one,
+    /// and a mask of the wrong length is refused.
+    #[test]
+    fn the_executor_reuses_its_latest_row_liveness() {
+        use crate::loop_execution::v2::V2Executor;
+        use std::sync::Arc;
+        let executor = V2Executor::new(Arc::new(plan("null", 1)), 2, Some(1)).unwrap();
+        let first = executor.live_rows(&[true, false], None).unwrap().unwrap();
+        let again = executor.live_rows(&[true, false], None).unwrap().unwrap();
+        assert!(Arc::ptr_eq(&first, &again));
+        let masked = executor
+            .live_rows(&[true, false], Some(&[true, false]))
+            .unwrap()
+            .unwrap();
+        assert!(!Arc::ptr_eq(&first, &masked));
+        assert_eq!(masked.listed(), [0]);
+        let other = executor.live_rows(&[false, true], None).unwrap().unwrap();
+        assert_eq!(other.families(), [0, 1]);
+        assert!(executor.live_rows(&[true, true], None).unwrap().is_none());
+        assert!(executor.live_rows(&[true, false], Some(&[true])).is_err());
+    }
 }

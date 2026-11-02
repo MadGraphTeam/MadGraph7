@@ -276,6 +276,9 @@ pub mod v2 {
         lanes: usize,
         pool: rayon::ThreadPool,
         fourier: Option<Arc<SeedFourier>>,
+        /// The latest row liveness formed ([`Self::live_rows`]): calls
+        /// repeating its rows and families reuse it (one is kept).
+        live: std::sync::Mutex<Option<Arc<LiveRows>>>,
     }
 
     macro_rules! with_lanes {
@@ -322,6 +325,7 @@ pub mod v2 {
                 lanes,
                 pool,
                 fourier: None,
+                live: std::sync::Mutex::new(None),
             })
         }
 
@@ -436,12 +440,13 @@ pub mod v2 {
         /// pruned to the rows the kept rows reach and the input rows they
         /// read (`LiveRows`, DESIGN.md §8.5), or None when `rows` drops no
         /// seeded row. [`Self::evaluate_families`] and the tree fill
-        /// (`TreeProgram::live_rows`) take it.
+        /// (`TreeProgram::live_rows`) take it. The latest one is kept and
+        /// returned again for the same rows and families.
         pub fn live_rows(
             &self,
             rows: &[bool],
             families: Option<&[bool]>,
-        ) -> RusticolResult<Option<LiveRows>> {
+        ) -> RusticolResult<Option<Arc<LiveRows>>> {
             if families.is_some_and(|kept| kept.len() != self.plan.families.len()) {
                 return Err(RusticolError::invalid_argument(
                     "one family flag per plan family",
@@ -451,7 +456,23 @@ pub mod v2 {
             if let Some(kept) = families {
                 listed.retain(|&f| kept[f]);
             }
-            self.pool.install(|| self.plan.live_rows(rows, &listed))
+            let latest = self.live.lock().ok().and_then(|latest| {
+                latest
+                    .as_ref()
+                    .filter(|live| live.rows == rows && live.listed() == listed)
+                    .cloned()
+            });
+            if latest.is_some() {
+                return Ok(latest);
+            }
+            let live = self
+                .pool
+                .install(|| self.plan.live_rows(rows, &listed))?
+                .map(Arc::new);
+            if let (Some(live), Ok(mut latest)) = (&live, self.live.lock()) {
+                *latest = Some(live.clone());
+            }
+            Ok(live)
         }
 
         /// [`Self::evaluate`] dressing only the families `families` keeps

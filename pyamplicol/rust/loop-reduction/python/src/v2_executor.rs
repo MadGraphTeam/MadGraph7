@@ -876,7 +876,7 @@ where
                 let live = executor.live_rows(rows, selection.families.as_deref())?;
                 let plan_seconds = started.elapsed().as_secs_f64();
                 let tree_rows = live
-                    .as_ref()
+                    .as_deref()
                     .and_then(|live| trees.program.live_rows(executor.plan(), live));
                 let seconds = live.as_ref().map(|_| {
                     let total = started.elapsed().as_secs_f64();
@@ -963,7 +963,7 @@ where
         let families = selection.families.as_deref();
         let (part_results, part_report) = py
             .detach(|| {
-                executor.evaluate_families(&sub, &zero, backend, options, families, live.as_ref())
+                executor.evaluate_families(&sub, &zero, backend, options, families, live.as_deref())
             })
             .map_err(error)?;
         results.extend(part_results);
