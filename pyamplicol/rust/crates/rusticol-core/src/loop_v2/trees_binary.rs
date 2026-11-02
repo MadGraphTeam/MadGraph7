@@ -976,42 +976,44 @@ impl StepColumns {
         drop(written);
         let r = &self.row_columns;
         // Backward: the outputs a later reader reads, then the rows summed
-        // into their accumulators, whose inputs are read.
-        let mut kept: Vec<(Vec<usize>, Vec<usize>)> = vec![(Vec::new(), Vec::new()); ranges.len()];
-        for (s, range) in ranges.iter().enumerate().rev() {
-            let outputs: Vec<usize> = (range.outputs.0..range.outputs.1)
-                .filter(|&k| {
-                    let (start, dimension) = (o_start.at(k), o_dim.at(k));
-                    live[start..start + dimension].iter().any(|&x| x != 0)
-                })
-                .collect();
+        // into their accumulators, whose inputs are read. Kept rows and
+        // outputs are marked by their flat index (M-FINAL MF-8G-1: no
+        // per-step index lists).
+        let mut row_kept = vec![false; r[0].len()];
+        let mut output_kept = vec![false; o_acc.len()];
+        for range in ranges.iter().rev() {
             let mut wanted = vec![false; range.accumulators.1 - range.accumulators.0];
-            for &k in &outputs {
-                wanted[o_acc.at(k)] = true;
+            for k in range.outputs.0..range.outputs.1 {
+                let (start, dimension) = (o_start.at(k), o_dim.at(k));
+                if live[start..start + dimension].iter().any(|&x| x != 0) {
+                    output_kept[k] = true;
+                    wanted[o_acc.at(k)] = true;
+                }
             }
-            let mut rows = Vec::new();
             for k in range.rows.0..range.rows.1 {
                 let accumulator = r[7].at(k);
                 require(accumulator < wanted.len(), "an interaction accumulator")?;
                 if wanted[accumulator] {
-                    rows.push(k);
+                    row_kept[k] = true;
                 }
             }
-            for &k in &rows {
+            for k in range.rows.0..range.rows.1 {
+                if !row_kept[k] {
+                    continue;
+                }
                 for (start, length) in [(r[1].at(k), r[2].at(k)), (r[3].at(k), r[4].at(k))] {
                     require(start + length <= size, "an interaction reads a current outside its state")?;
                     live[start..start + length].fill(1);
                 }
             }
-            kept[s] = (rows, outputs);
         }
-        let used: BTreeSet<usize> = kept
-            .iter()
-            .flat_map(|(rows, _)| rows.iter().map(|&k| r[0].at(k)))
+        let used: BTreeSet<usize> = (0..row_kept.len())
+            .filter(|&k| row_kept[k])
+            .map(|k| r[0].at(k))
             .collect();
-        let used_propagators: BTreeSet<usize> = kept
-            .iter()
-            .flat_map(|(_, outputs)| outputs.iter().map(|&k| self.propagators.get(k)))
+        let used_propagators: BTreeSet<usize> = (0..output_kept.len())
+            .filter(|&k| output_kept[k])
+            .map(|k| self.propagators.get(k))
             .filter(|&p| p >= 0)
             .map(|p| p as usize)
             .collect();
@@ -1028,39 +1030,40 @@ impl StepColumns {
         for (new, &old) in used_propagators.iter().enumerate() {
             propagator_of[old] = new as i64;
         }
-        let mut out = StepColumns {
-            weights: self.weights.clone(),
-            ..Default::default()
-        };
-        let mut rows: [Vec<u64>; 9] = Default::default();
-        let mut dimensions = Vec::new();
-        let mut outs: [Vec<u64>; 4] = Default::default();
-        let mut props = Vec::new();
-        let mut masks = Vec::new();
-        for (s, ((kept_rows, kept_outputs), range)) in kept.iter().zip(&ranges).enumerate() {
-            let accumulators: BTreeSet<usize> =
-                kept_outputs.iter().map(|&k| o_acc.at(k)).collect();
+        // Per step the new index of each kept accumulator (those of its kept
+        // outputs, in increasing old index).
+        let accumulator_map = |range: &StepRange| -> (Vec<usize>, Vec<u64>) {
+            let accumulators: BTreeSet<usize> = (range.outputs.0..range.outputs.1)
+                .filter(|&k| output_kept[k])
+                .map(|k| o_acc.at(k))
+                .collect();
             let mut accumulator_of = vec![u64::MAX; range.accumulators.1 - range.accumulators.0];
             for (new, &old) in accumulators.iter().enumerate() {
                 accumulator_of[old] = new as u64;
             }
-            out.rows.push(kept_rows.len() as u64);
-            for &k in kept_rows {
-                rows[0].push(kernel_of[r[0].at(k)]);
-                for c in 1..7 {
-                    rows[c].push(r[c].get(k));
-                }
-                rows[7].push(accumulator_of[r[7].at(k)]);
-                rows[8].push(r[8].get(k));
-            }
+            (accumulators.into_iter().collect(), accumulator_of)
+        };
+        let mut out = StepColumns {
+            weights: self.weights.clone(),
+            ..Default::default()
+        };
+        let mut dimensions = Vec::new();
+        let mut outs: [Vec<u64>; 4] = Default::default();
+        let mut props = Vec::new();
+        let mut masks = Vec::new();
+        for (s, range) in ranges.iter().enumerate() {
+            let (accumulators, accumulator_of) = accumulator_map(range);
+            out.rows
+                .push((range.rows.0..range.rows.1).filter(|&k| row_kept[k]).count() as u64);
             out.accumulators.push(accumulators.len() as u64);
             dimensions.extend(
                 accumulators
                     .iter()
                     .map(|&a| self.dimensions.get(range.accumulators.0 + a)),
             );
-            out.outputs.push(kept_outputs.len() as u64);
-            for &k in kept_outputs {
+            let kept_outputs = (range.outputs.0..range.outputs.1).filter(|&k| output_kept[k]);
+            out.outputs.push(kept_outputs.clone().count() as u64);
+            for k in kept_outputs {
                 outs[0].push(accumulator_of[o_acc.at(k)]);
                 let p = self.propagators.get(k);
                 props.push(if p >= 0 { propagator_of[p as usize] } else { p });
@@ -1074,7 +1077,32 @@ impl StepColumns {
                 masks.extend(accumulators.iter().map(|&a| self.masks.get(range.masks.0 + a)));
             }
         }
-        out.row_columns = columns(rows);
+        // The row columns one at a time (the rows dominate a counterterm
+        // program: nine at once held 72 bytes per kept row).
+        let kept_rows = row_kept.iter().filter(|&&kept| kept).count();
+        let row_columns: Vec<Column> = (0..9)
+            .map(|c| {
+                let mut values = Vec::with_capacity(kept_rows);
+                for range in &ranges {
+                    let accumulator_of = if c == 7 {
+                        accumulator_map(range).1
+                    } else {
+                        Vec::new()
+                    };
+                    for k in (range.rows.0..range.rows.1).filter(|&k| row_kept[k]) {
+                        values.push(match c {
+                            0 => kernel_of[r[0].at(k)],
+                            7 => accumulator_of[r[7].at(k)],
+                            _ => r[c].get(k),
+                        });
+                    }
+                }
+                Column::of(values)
+            })
+            .collect();
+        out.row_columns = row_columns
+            .try_into()
+            .unwrap_or_else(|_| unreachable!("nine row columns"));
         out.dimensions = Column::of(dimensions);
         out.output_columns = columns(outs);
         out.propagators = SignedColumn::of(props);
